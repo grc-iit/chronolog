@@ -137,8 +137,7 @@ public:
     {
         std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
         std::unordered_set<StoryId> ids;
-        for(auto const& orphan_event: orphanEventQueue)
-        { ids.insert(orphan_event.storyId); }
+        for(auto const& orphan_event: orphanEventQueue) { ids.insert(orphan_event.storyId); }
         return ids;
     }
 
@@ -188,11 +187,12 @@ public:
             if(!orphanEventQueue.empty())
             {
                 std::unordered_map<StoryId, std::size_t> per_story;
-                for(auto const& orphan_event: orphanEventQueue)
-                { per_story[orphan_event.storyId]++; }
+                for(auto const& orphan_event: orphanEventQueue) { per_story[orphan_event.storyId]++; }
                 std::stringstream story_breakdown;
                 for(auto const& entry: per_story)
-                { story_breakdown << " story=" << entry.first << ":" << entry.second; }
+                {
+                    story_breakdown << " story=" << entry.first << ":" << entry.second;
+                }
                 LOG_ERROR("[IngestionQueue] Shutdown is dropping {} un-drainable orphan event(s) across {} "
                           "story(ies) that had no ingestion handle to seal them:{}",
                           orphanEventQueue.size(),

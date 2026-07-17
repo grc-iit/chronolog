@@ -96,8 +96,7 @@ TEST(KeeperOrphanRecovery, OrphansAreSealedIntoExtractionQueue)
         max_time = std::max(max_time, e.time());
     }
     chl::StoryChunk* chunk = new chl::StoryChunk("chron", "story", sid, min_time, max_time + 1, orphans.size());
-    for(auto const& e: orphans)
-    { chunk->insertEvent(e); }
+    for(auto const& e: orphans) { chunk->insertEvent(e); }
     eq.stashStoryChunk(chunk);
     // -------------------------------------------------------------------------
 

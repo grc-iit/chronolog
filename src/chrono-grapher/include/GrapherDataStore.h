@@ -66,7 +66,10 @@ public:
     // adoption call is refused (returns an error, creates nothing) if the story
     // or its chronicle has been destroyed; a real registration instead clears
     // any such tombstone, since the story/chronicle is alive again.
-    int startStoryRecording(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time,
+    int startStoryRecording(ChronicleName const&,
+                            StoryName const&,
+                            StoryId const&,
+                            uint64_t start_time,
                             bool is_adoption = false);
 
     int stopStoryRecording(StoryId const&);

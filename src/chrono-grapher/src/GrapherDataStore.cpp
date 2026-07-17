@@ -504,7 +504,9 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
     // on-demand pipeline to retire so it does not leak.
     std::deque<chl::StoryChunk*> orphan_chunks = theIngestionQueue.extractOrphanChunks();
     if(orphan_chunks.empty())
-    { return; }
+    {
+        return;
+    }
 
     std::unordered_set<chl::StoryId> adopted_stories;
     std::size_t discarded = 0;
@@ -532,8 +534,7 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
     // Schedule each on-demand pipeline to retire (now + inactive_pipeline_delay)
     // so it is not left resident forever. A subsequent real acquisition rescues
     // it from the waiting list; further stragglers re-adopt and reset the timer.
-    for(chl::StoryId const& story_id: adopted_stories)
-    { stopStoryRecording(story_id); }
+    for(chl::StoryId const& story_id: adopted_stories) { stopStoryRecording(story_id); }
 
     LOG_WARNING("[GrapherDataStore] Adopted orphan chunk(s) for {} story(ies) from the chunks' own chronicle/story "
                 "identity; discarded {} chunk(s) for destroyed stories.",

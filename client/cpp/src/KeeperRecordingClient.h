@@ -71,7 +71,8 @@ public:
         catch(thallium::exception const& ex)
         {
             LOG_ERROR("[KeeperRecordingClient] getTailSequences to {} failed: {}",
-                      to_string(recordingServiceId), ex.what());
+                      to_string(recordingServiceId),
+                      ex.what());
         }
         return std::vector<EventSequence>{};
     }
@@ -86,7 +87,8 @@ public:
         catch(thallium::exception const& ex)
         {
             LOG_ERROR("[KeeperRecordingClient] getTailEvents to {} failed: {}",
-                      to_string(recordingServiceId), ex.what());
+                      to_string(recordingServiceId),
+                      ex.what());
         }
         return std::vector<LogEvent>{};
     }

@@ -213,7 +213,9 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
     // extraction queue for archival.
     std::unordered_set<chl::StoryId> orphan_story_ids = theIngestionQueue.orphanStoryIds();
     if(orphan_story_ids.empty())
-    { return; }
+    {
+        return;
+    }
 
     std::lock_guard storeLock(dataStoreMutex);
     for(chl::StoryId const& story_id: orphan_story_ids)
@@ -221,16 +223,22 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
         // Active stories: the tick's drainOrphanEvents re-homes their events
         // into the live handle, so leave those alone.
         if(theMapOfStoryPipelines.find(story_id) != theMapOfStoryPipelines.end())
-        { continue; }
+        {
+            continue;
+        }
         // Stories never acquired on this keeper: keep buffering (an acquisition
         // may still be in flight) and we have no names to seal them with anyway.
         auto name_iter = retiredStoryNames.find(story_id);
         if(name_iter == retiredStoryNames.end())
-        { continue; }
+        {
+            continue;
+        }
 
         std::deque<chl::LogEvent> orphans = theIngestionQueue.extractOrphansForStory(story_id);
         if(orphans.empty())
-        { continue; }
+        {
+            continue;
+        }
 
         uint64_t min_time = orphans.front().time();
         uint64_t max_time = orphans.front().time();
@@ -246,8 +254,7 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
                                                               min_time,
                                                               max_time + 1,
                                                               orphans.size());
-        for(auto const& orphan_event: orphans)
-        { recovery_chunk->insertEvent(orphan_event); }
+        for(auto const& orphan_event: orphans) { recovery_chunk->insertEvent(orphan_event); }
 
         if(recovery_chunk->empty())
         {

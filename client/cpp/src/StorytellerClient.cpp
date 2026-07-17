@@ -41,8 +41,7 @@ chronolog::StoryHandleImpl<KeeperChoicePolicy>::~StoryHandleImpl()
 
 ////////////////////
 template <class KeeperChoicePolicy>
-void chronolog::StoryHandleImpl<KeeperChoicePolicy>::addRecordingClient(
-        chronolog::KeeperRecordingClient* keeperClient)
+void chronolog::StoryHandleImpl<KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient* keeperClient)
 {
     storyKeepers.push_back(keeperClient);
 }
@@ -193,7 +192,7 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::Service
 
 ///////////////////////////
 chronolog::StoryHandle* chronolog::StorytellerClient::findStoryHandle(ChronicleName const& chronicle,
-                                                                     StoryName const& story)
+                                                                      StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
 

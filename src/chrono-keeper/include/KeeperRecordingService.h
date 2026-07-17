@@ -25,9 +25,10 @@ class KeeperRecordingService: public tl::provider<KeeperRecordingService>
 {
 public:
     // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
-    static KeeperRecordingService*
-    CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
-                                 KeeperTailStore& tail_store)
+    static KeeperRecordingService* CreateKeeperRecordingService(tl::engine& tl_engine,
+                                                                uint16_t service_provider_id,
+                                                                IngestionQueue& ingestion_queue,
+                                                                KeeperTailStore& tail_store)
     {
         return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store);
     }
@@ -61,14 +62,15 @@ public:
 
     // Tail-read phase 2: return the payloads this keeper holds for the requested
     // event sequences (the globally-selected last-N, after client-side merge).
-    void tail_get_events(tl::request const& request, StoryId const& story_id,
-                         std::vector<EventSequence> const& seqs)
+    void tail_get_events(tl::request const& request, StoryId const& story_id, std::vector<EventSequence> const& seqs)
     {
         request.respond(theTailStore.getTailEvents(story_id, seqs));
     }
 
 private:
-    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
+    KeeperRecordingService(tl::engine& tl_engine,
+                           uint16_t service_provider_id,
+                           IngestionQueue& ingestion_queue,
                            KeeperTailStore& tail_store)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)

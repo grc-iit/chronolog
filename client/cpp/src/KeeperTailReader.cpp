@@ -32,10 +32,11 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
     for(auto* keeper: keepers)
     {
         if(keeper == nullptr)
-        { continue; }
+        {
+            continue;
+        }
         std::vector<EventSequence> seqs = keeper->getTailSequences(story_id, n);
-        for(auto const& seq: seqs)
-        { seqToKeeper[seq] = keeper; }
+        for(auto const& seq: seqs) { seqToKeeper[seq] = keeper; }
     }
     if(seqToKeeper.empty())
     {
@@ -67,12 +68,8 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
     }
 
     events.reserve(assembled.size());
-    for(auto const& entry: assembled)
-    { events.push_back(entry.second); }
+    for(auto const& entry: assembled) { events.push_back(entry.second); }
 
-    LOG_DEBUG("[KeeperTailReader] gather_story_tail(n={}) for story {} returned {} events",
-              n,
-              story_id,
-              events.size());
+    LOG_DEBUG("[KeeperTailReader] gather_story_tail(n={}) for story {} returned {} events", n, story_id, events.size());
     return CL_SUCCESS;
 }

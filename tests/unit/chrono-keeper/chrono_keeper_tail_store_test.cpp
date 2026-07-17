@@ -33,8 +33,13 @@ static void ensureLogger()
 // Build a sealed chunk for `sid` spanning [start,end) with `count` events at
 // times first_time, first_time+1, ... (clientId=client, index=0..count-1,
 // record = "<tag>#<i>"). Ownership passes to whoever ingests it.
-static chl::StoryChunk* makeChunk(chl::StoryId sid, uint64_t start, uint64_t end, uint64_t first_time, int count,
-                                  chl::ClientId client, std::string const& tag)
+static chl::StoryChunk* makeChunk(chl::StoryId sid,
+                                  uint64_t start,
+                                  uint64_t end,
+                                  uint64_t first_time,
+                                  int count,
+                                  chl::ClientId client,
+                                  std::string const& tag)
 {
     auto* chunk = new chl::StoryChunk("chron", "story", sid, start, end, 64);
     for(int i = 0; i < count; i++)
@@ -138,8 +143,8 @@ TEST(KeeperTailStore, GetTailEventsSkipsUnknownSequences)
     tail.ingestSealedChunk(sid, makeChunk(sid, 1000, 2000, 1000, 5, 1, "A")); // 1000..1004
 
     std::vector<chl::EventSequence> req = {chl::EventSequence{1002, 1, 2},  // present
-                                          chl::EventSequence{9999, 9, 9},  // absent
-                                          chl::EventSequence{1004, 1, 4}}; // present
+                                           chl::EventSequence{9999, 9, 9},  // absent
+                                           chl::EventSequence{1004, 1, 4}}; // present
     auto evs = tail.getTailEvents(sid, req);
     ASSERT_EQ(evs.size(), 2u);
     EXPECT_EQ(evs[0].getRecord(), "A#2");
@@ -186,15 +191,15 @@ TEST(KeeperTailStore, CapacityEvictsOldestAndForwardsFullyEvictedChunk)
 
     tail.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A")); // 100..104
     tail.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B")); // 200..204
-    EXPECT_EQ(q.size(), 0);                       // 10 events, nothing evicted yet
+    EXPECT_EQ(q.size(), 0);                                                // 10 events, nothing evicted yet
     EXPECT_EQ(tail.getTailSequences(sid, 100).size(), 10u);
 
     tail.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 5, 1, "C")); // 300..304 -> 15 > 10
     // oldest 5 (all of chunk A) evicted; A fully evicted -> forwarded to queue
     EXPECT_EQ(q.size(), 1);
     auto seqs = tail.getTailSequences(sid, 100);
-    ASSERT_EQ(seqs.size(), 10u);                  // tail capped at 10 (B+C)
-    EXPECT_EQ(std::get<0>(seqs.front()), 200u);   // oldest survivor is 200
+    ASSERT_EQ(seqs.size(), 10u);                // tail capped at 10 (B+C)
+    EXPECT_EQ(std::get<0>(seqs.front()), 200u); // oldest survivor is 200
     EXPECT_EQ(std::get<0>(seqs.back()), 304u);
 
     // an evicted event is no longer retrievable from the tail

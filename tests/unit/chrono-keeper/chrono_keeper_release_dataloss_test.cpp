@@ -68,10 +68,7 @@ static void ensureArgobots()
     }
 }
 
-static uint64_t nowNs()
-{
-    return std::chrono::high_resolution_clock::now().time_since_epoch().count();
-}
+static uint64_t nowNs() { return std::chrono::high_resolution_clock::now().time_since_epoch().count(); }
 
 // Drain the extraction queue and return the total number of events that were
 // actually handed off for persistence (RDMA to grapher / CSV archival).
@@ -96,7 +93,11 @@ TEST(KeeperReleaseDataLoss, AcceptanceWindowGetterDoesNotTruncate)
     chl::KeeperTailStore tail(eq, 1024);
 
     const uint32_t acceptance_window_secs = 60;
-    chl::KeeperStoryPipeline pipeline(eq, tail, "chron", "story", /*story_id=*/1,
+    chl::KeeperStoryPipeline pipeline(eq,
+                                      tail,
+                                      "chron",
+                                      "story",
+                                      /*story_id=*/1,
                                       /*start_time=*/nowNs(),
                                       /*chunk_granularity=*/30,
                                       acceptance_window_secs);
@@ -105,9 +106,8 @@ TEST(KeeperReleaseDataLoss, AcceptanceWindowGetterDoesNotTruncate)
 
     // With the uint16_t getter, this collapses 60e9 ns to ~tens of microseconds.
     EXPECT_EQ(static_cast<uint64_t>(pipeline.getAcceptanceWindow()), expected_ns)
-            << "getAcceptanceWindow() truncated the " << acceptance_window_secs
-            << "s (" << expected_ns << " ns) grace window down to "
-            << static_cast<uint64_t>(pipeline.getAcceptanceWindow())
+            << "getAcceptanceWindow() truncated the " << acceptance_window_secs << "s (" << expected_ns
+            << " ns) grace window down to " << static_cast<uint64_t>(pipeline.getAcceptanceWindow())
             << " ns. exit_time = now + this value, so the pipeline retires almost immediately after release.";
 }
 
@@ -127,7 +127,9 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
     // 1s grace window: long enough that a straggler arriving ~100ms after
     // release must still be captured; short enough to keep the test fast.
     const uint32_t acceptance_window_secs = 1;
-    chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,
+    chl::KeeperDataStore store(ingestionQueue,
+                               extractionQueue,
+                               tailStore,
                                /*max_chunk_size=*/4096,
                                /*story_chunk_duration_secs=*/30,
                                acceptance_window_secs,
@@ -166,12 +168,11 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
 
     const int persisted = countPersistedEvents(extractionQueue);
 
-    EXPECT_EQ(persisted, 2)
-            << "Ingested 2 events (one before release, one straggler within the "
-            << acceptance_window_secs << "s acceptance window) but only " << persisted
-            << " reached the extraction queue. The pipeline was retired almost "
-               "immediately after release (uint16 acceptance-window truncation), "
-               "so the straggler was orphaned in the IngestionQueue and lost.";
+    EXPECT_EQ(persisted, 2) << "Ingested 2 events (one before release, one straggler within the "
+                            << acceptance_window_secs << "s acceptance window) but only " << persisted
+                            << " reached the extraction queue. The pipeline was retired almost "
+                               "immediately after release (uint16 acceptance-window truncation), "
+                               "so the straggler was orphaned in the IngestionQueue and lost.";
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +232,9 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementLosesOrp
     chl::KeeperTailStore tailStore(extractionQueue, 1024);
 
     const int orphan_count = 3;
-    chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,
+    chl::KeeperDataStore store(ingestionQueue,
+                               extractionQueue,
+                               tailStore,
                                /*max_chunk_size=*/4096,
                                /*story_chunk_duration_secs=*/30,
                                /*acceptance_window_secs=*/0,
@@ -245,8 +248,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementLosesOrp
                                                                    orphan_count);
 
     EXPECT_EQ(persisted, 1 + orphan_count)
-            << "Ingested " << orphan_count
-            << " orphan(s) plus 1 in-handle event but only " << persisted
+            << "Ingested " << orphan_count << " orphan(s) plus 1 in-handle event but only " << persisted
             << " reached the extraction queue. retireDecayedPipelines() removed "
                "the ingestion handle without draining the orphan queue, so orphan "
                "events were stranded and lost.";
@@ -266,7 +268,9 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementReproduc
     constexpr int iterations = 100;
     constexpr int orphan_count = 2;
 
-    chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,
+    chl::KeeperDataStore store(ingestionQueue,
+                               extractionQueue,
+                               tailStore,
                                /*max_chunk_size=*/4096,
                                /*story_chunk_duration_secs=*/30,
                                /*acceptance_window_secs=*/0,
@@ -286,11 +290,10 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementReproduc
                                                                        story_base,
                                                                        orphan_count);
 
-        ASSERT_EQ(persisted, 1 + orphan_count)
-                << "iteration " << iter << " (story_id=" << sid << "): expected "
-                << (1 + orphan_count) << " persisted events but got " << persisted
-                << ". Orphans were not drained from IngestionQueue before handle "
-                   "removal at retirement.";
+        ASSERT_EQ(persisted, 1 + orphan_count) << "iteration " << iter << " (story_id=" << sid << "): expected "
+                                               << (1 + orphan_count) << " persisted events but got " << persisted
+                                               << ". Orphans were not drained from IngestionQueue before handle "
+                                                  "removal at retirement.";
     }
 }
 
@@ -324,7 +327,9 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
     chl::KeeperTailStore tailStore(extractionQueue, 1024);
 
     const uint32_t acceptance_window_secs = 1;
-    chl::KeeperDataStore store(ingestionQueue, extractionQueue, tailStore,
+    chl::KeeperDataStore store(ingestionQueue,
+                               extractionQueue,
+                               tailStore,
                                /*max_chunk_size=*/4096,
                                /*story_chunk_duration_secs=*/30,
                                acceptance_window_secs,
@@ -355,10 +360,10 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
 
     const int persisted = countPersistedEvents(extractionQueue);
 
-    EXPECT_EQ(persisted, 2)
-            << "Ingested 2 events (one parked in the orphan queue before the "
-               "handle was registered, one in the live deque) but only " << persisted
-            << " reached the extraction queue. The retirement path removed the "
-               "ingestion handle without draining the orphan queue, so the "
-               "orphaned event was stranded and lost.";
+    EXPECT_EQ(persisted, 2) << "Ingested 2 events (one parked in the orphan queue before the "
+                               "handle was registered, one in the live deque) but only "
+                            << persisted
+                            << " reached the extraction queue. The retirement path removed the "
+                               "ingestion handle without draining the orphan queue, so the "
+                               "orphaned event was stranded and lost.";
 }

@@ -38,8 +38,8 @@ int main(int argc, char** argv)
         }
         else
         {
-            std::cout << "[TailReaderExample] Configuration file loaded successfully from '" << conf_file_path
-                      << "'." << std::endl;
+            std::cout << "[TailReaderExample] Configuration file loaded successfully from '" << conf_file_path << "'."
+                      << std::endl;
         }
     }
     else
@@ -98,10 +98,7 @@ int main(int argc, char** argv)
     // Log some events
     const int event_count = 30;
     std::cout << "[TailReaderExample] Logging " << event_count << " events...\n";
-    for(int i = 0; i < event_count; i++)
-    {
-        story_handle->log_event("Tail event #" + std::to_string(i));
-    }
+    for(int i = 0; i < event_count; i++) { story_handle->log_event("Tail event #" + std::to_string(i)); }
 
     // Keep the story acquired while the chunks seal into the keeper tail.
     // (chunk_duration + acceptance_window; ~30s for the default local deploy)
