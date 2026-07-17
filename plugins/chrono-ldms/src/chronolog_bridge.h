@@ -16,44 +16,44 @@
 #include "ldms.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-/* Opaque per-story handle returned by clog_open(). */
-typedef void *clog_story_t;
+    /* Opaque per-story handle returned by clog_open(). */
+    typedef void* clog_story_t;
 
-/*
+    /*
  * Create (if needed) and connect the shared ChronoLog client. Idempotent:
  * after the first successful connect, subsequent calls are no-ops. Pass the
  * path to a ChronoLog client config JSON, or NULL/"" to use client defaults.
  * Returns 0 on success, errno-style code on failure.
  */
-int clog_connect(const char *client_conf_path);
+    int clog_connect(const char* client_conf_path);
 
-/*
+    /*
  * Ensure the chronicle exists and acquire the story. Returns an opaque handle
  * to be passed to clog_store()/clog_close(), or NULL on failure.
  */
-clog_story_t clog_open(const char *chronicle, const char *story);
+    clog_story_t clog_open(const char* chronicle, const char* story);
 
-/*
+    /*
  * Serialize the selected metrics of `set` to a JSON line and log it as one
  * ChronoLog event on the story. Returns 0 on success, errno-style on failure.
  */
-int clog_store(clog_story_t story, ldms_set_t set,
-	       int *metric_arry, size_t metric_count);
+    int clog_store(clog_story_t story, ldms_set_t set, int* metric_arry, size_t metric_count);
 
-/* Release the story and free the handle. */
-void clog_close(clog_story_t story);
+    /* Release the story and free the handle. */
+    void clog_close(clog_story_t story);
 
-/* Disconnect and destroy the shared client (best effort). */
-void clog_disconnect(void);
+    /* Disconnect and destroy the shared client (best effort). */
+    void clog_disconnect(void);
 
-/*
+    /*
  * Human-readable description of the most recent failure on the calling thread.
  * Valid until the next bridge call on the same thread.
  */
-const char *clog_last_error(void);
+    const char* clog_last_error(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

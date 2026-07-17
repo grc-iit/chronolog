@@ -87,8 +87,13 @@ int main(int argc, char** argv)
     const size_t TAIL_CAP = 65536;
 
     printf("events=%zu payload=%zuB tail_cap=%zu\n", N, PAYLOAD, TAIL_CAP);
-    printf("%-12s %-10s %12s %12s %12s %14s\n", "pattern", "structure", "ingest ns/ev", "merge ns/ev",
-           "total ns/ev", "vs deque");
+    printf("%-12s %-10s %12s %12s %12s %14s\n",
+           "pattern",
+           "structure",
+           "ingest ns/ev",
+           "merge ns/ev",
+           "total ns/ev",
+           "vs deque");
 
     for(std::string pattern: {"sorted", "nearsorted", "random"})
     {
@@ -116,9 +121,15 @@ int main(int argc, char** argv)
             double t3 = now_sec();
             double ing = (t1 - t0) / N * 1e9, mrg = (t3 - t2) / N * 1e9;
             base_total = ing + mrg;
-            printf("%-12s %-10s %12.0f %12.0f %12.0f %14s\n", pattern.c_str(), "deque", ing, mrg, ing + mrg,
+            printf("%-12s %-10s %12.0f %12.0f %12.0f %14s\n",
+                   pattern.c_str(),
+                   "deque",
+                   ing,
+                   mrg,
+                   ing + mrg,
                    "1.00x (base)");
-            if(chunk.size() != N) printf("!! chunk size mismatch\n");
+            if(chunk.size() != N)
+                printf("!! chunk size mismatch\n");
         }
         // ---- sorted-at-ingest: mutex + multimap insert (naive) ----
         {
@@ -138,7 +149,12 @@ int main(int argc, char** argv)
             buf.clear();
             double t3 = now_sec();
             double ing = (t1 - t0) / N * 1e9, mrg = (t3 - t2) / N * 1e9;
-            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n", pattern.c_str(), "mmap", ing, mrg, ing + mrg,
+            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n",
+                   pattern.c_str(),
+                   "mmap",
+                   ing,
+                   mrg,
+                   ing + mrg,
                    (ing + mrg) / base_total);
         }
         // ---- sorted-at-ingest with end-hint (near-sorted optimization) ----
@@ -158,7 +174,12 @@ int main(int argc, char** argv)
             buf.clear();
             double t3 = now_sec();
             double ing = (t1 - t0) / N * 1e9, mrg = (t3 - t2) / N * 1e9;
-            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n", pattern.c_str(), "mmap-hint", ing, mrg, ing + mrg,
+            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n",
+                   pattern.c_str(),
+                   "mmap-hint",
+                   ing,
+                   mrg,
+                   ing + mrg,
                    (ing + mrg) / base_total);
         }
         // ---- bounded live-tail alongside deque (hybrid option C) ----
@@ -173,7 +194,8 @@ int main(int argc, char** argv)
                 std::lock_guard<std::mutex> g(mx);
                 dq.push_back(e);
                 tail.emplace_hint(tail.end(), e.seq(), &dq.back());
-                if(tail.size() > TAIL_CAP) tail.erase(tail.begin());
+                if(tail.size() > TAIL_CAP)
+                    tail.erase(tail.begin());
             }
             double t1 = now_sec();
             std::map<Seq, Ev> chunk;
@@ -185,7 +207,12 @@ int main(int argc, char** argv)
             }
             double t3 = now_sec();
             double ing = (t1 - t0) / N * 1e9, mrg = (t3 - t2) / N * 1e9;
-            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n", pattern.c_str(), "dq+tail", ing, mrg, ing + mrg,
+            printf("%-12s %-10s %12.0f %12.0f %12.0f %13.2fx\n",
+                   pattern.c_str(),
+                   "dq+tail",
+                   ing,
+                   mrg,
+                   ing + mrg,
                    (ing + mrg) / base_total);
         }
         printf("\n");

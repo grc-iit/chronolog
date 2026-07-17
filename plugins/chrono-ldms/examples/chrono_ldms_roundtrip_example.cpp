@@ -48,13 +48,13 @@
 #include <chrono_monitor.h>
 #include <cmd_arg_parse.h> // pulls in <getopt.h> (optind) used by parse_conf_path_arg
 
-namespace {
+namespace
+{
 
 // Build one LDMS-style JSON metric record, matching what store_chronolog emits
 // (timestamp/producer/instance/schema envelope + a metrics object), plus a
 // per-run tag so repeated runs against the same story stay distinguishable.
-std::string make_ldms_sample(std::string const& schema, uint64_t sample_sec, long mem_total,
-                             std::string const& run_tag)
+std::string make_ldms_sample(std::string const& schema, uint64_t sample_sec, long mem_total, std::string const& run_tag)
 {
     std::ostringstream o;
     o << "{\"timestamp\":" << sample_sec << ".000000"
@@ -107,10 +107,14 @@ int main(int argc, char** argv)
         std::vector<std::string> pos(argv + (optind < argc ? optind : argc), argv + argc);
         try
         {
-            if(pos.size() >= 1) container = pos[0];
-            if(pos.size() >= 2) schema = pos[1];
-            if(pos.size() >= 3) count = static_cast<size_t>(std::stoul(pos[2]));
-            if(pos.size() >= 4) max_settle_seconds = std::stoi(pos[3]);
+            if(pos.size() >= 1)
+                container = pos[0];
+            if(pos.size() >= 2)
+                schema = pos[1];
+            if(pos.size() >= 3)
+                count = static_cast<size_t>(std::stoul(pos[2]));
+            if(pos.size() >= 4)
+                max_settle_seconds = std::stoi(pos[3]);
         }
         catch(std::exception const&)
         {
@@ -119,16 +123,17 @@ int main(int argc, char** argv)
             return 1;
         }
     }
-    if(count == 0) count = 1;
-    if(max_settle_seconds < 0) max_settle_seconds = 0;
+    if(count == 0)
+        count = 1;
+    if(max_settle_seconds < 0)
+        max_settle_seconds = 0;
 
     // Load config; build BOTH the portal config (write + tail read) and the
     // query-service config (best-effort archive read via the player).
     chronolog::ClientConfiguration confManager;
     if(!conf_file_path.empty() && !confManager.load_from_file(conf_file_path))
     {
-        std::cerr << "[chrono-ldms roundtrip] failed to load '" << conf_file_path
-                  << "', using client defaults\n";
+        std::cerr << "[chrono-ldms roundtrip] failed to load '" << conf_file_path << "', using client defaults\n";
     }
 
     chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
@@ -173,13 +178,13 @@ int main(int argc, char** argv)
     auto story_handle = acq.second;
 
     // ---- 1. RECORD: emit LDMS-shaped samples like store_chronolog does -------
-    std::string run_tag = std::to_string(static_cast<long>(getpid())) + "." +
-                          std::to_string(static_cast<uint64_t>(
-                                  std::chrono::duration_cast<std::chrono::milliseconds>(
-                                          std::chrono::system_clock::now().time_since_epoch())
-                                          .count()));
-    std::cout << "[chrono-ldms roundtrip] recording " << count << " LDMS sample(s) into " << container << "/"
-              << schema << " (run=" << run_tag << ", as an L2 aggregator -> store_chronolog would)\n";
+    std::string run_tag =
+            std::to_string(static_cast<long>(getpid())) + "." +
+            std::to_string(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                         std::chrono::system_clock::now().time_since_epoch())
+                                                         .count()));
+    std::cout << "[chrono-ldms roundtrip] recording " << count << " LDMS sample(s) into " << container << "/" << schema
+              << " (run=" << run_tag << ", as an L2 aggregator -> store_chronolog would)\n";
     uint64_t base_sec = static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
                     .count());
@@ -217,8 +222,8 @@ int main(int argc, char** argv)
         waited += interval;
     }
     print_events("tail", tail_events);
-    std::cout << "[chrono-ldms roundtrip] TAIL round trip: " << (tail_ok ? "PASS" : "FAIL")
-              << " (wrote " << count << ", read back " << tail_events.size()
+    std::cout << "[chrono-ldms roundtrip] TAIL round trip: " << (tail_ok ? "PASS" : "FAIL") << " (wrote " << count
+              << ", read back " << tail_events.size()
               << (tail_ok ? " matching" : " ; payloads did not match within the settle window") << ")\n";
 
     // ---- 3. ARCHIVE READ: best-effort ReplayStory() over the player ----------

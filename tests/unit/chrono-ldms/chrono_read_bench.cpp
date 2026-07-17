@@ -24,36 +24,53 @@
 
 int main(int argc, char** argv)
 {
-    if (argc < 7) {
+    if(argc < 7)
+    {
         fprintf(stderr, "args: conf chronicle payload_size n settle tail_k\n");
         return 2;
     }
     std::string conf = argv[1], chr = argv[2];
-    size_t   plen_req = strtoul(argv[3], 0, 10);
-    uint64_t n        = strtoull(argv[4], 0, 10);
-    int      settle   = atoi(argv[5]);
-    uint64_t tail_k   = strtoull(argv[6], 0, 10);
+    size_t plen_req = strtoul(argv[3], 0, 10);
+    uint64_t n = strtoull(argv[4], 0, 10);
+    int settle = atoi(argv[5]);
+    uint64_t tail_k = strtoull(argv[6], 0, 10);
 
     std::string payload = make_payload(plen_req);
     size_t plen = payload.size();
     std::string story = "r" + std::to_string(plen) + "_" + std::to_string(getpid());
 
-    chronolog::ClientConfiguration cm; cm.load_from_file(conf);
-    chronolog::chrono_monitor::initialize(cm.LOG_CONF.LOGTYPE,"cread.log",cm.LOG_CONF.LOGLEVEL,
-        cm.LOG_CONF.LOGNAME,cm.LOG_CONF.LOGFILESIZE,cm.LOG_CONF.LOGFILENUM,cm.LOG_CONF.FLUSHLEVEL);
-    chronolog::ClientPortalServiceConf p; p.PROTO_CONF=cm.PORTAL_CONF.PROTO_CONF;p.IP=cm.PORTAL_CONF.IP;p.PORT=cm.PORTAL_CONF.PORT;p.PROVIDER_ID=cm.PORTAL_CONF.PROVIDER_ID;
+    chronolog::ClientConfiguration cm;
+    cm.load_from_file(conf);
+    chronolog::chrono_monitor::initialize(cm.LOG_CONF.LOGTYPE,
+                                          "cread.log",
+                                          cm.LOG_CONF.LOGLEVEL,
+                                          cm.LOG_CONF.LOGNAME,
+                                          cm.LOG_CONF.LOGFILESIZE,
+                                          cm.LOG_CONF.LOGFILENUM,
+                                          cm.LOG_CONF.FLUSHLEVEL);
+    chronolog::ClientPortalServiceConf p;
+    p.PROTO_CONF = cm.PORTAL_CONF.PROTO_CONF;
+    p.IP = cm.PORTAL_CONF.IP;
+    p.PORT = cm.PORTAL_CONF.PORT;
+    p.PROVIDER_ID = cm.PORTAL_CONF.PROVIDER_ID;
     // WRITER-ONLY client: the tail read (playback) talks to the keeper recording
     // service, not the query service, so reader mode is unnecessary — and the
     // reader-mode query connection is what becomes unstable under concurrency.
     chronolog::Client client(p);
-    if (client.Connect()!=chronolog::CL_SUCCESS){fprintf(stderr,"connect failed\n");return 1;}
+    if(client.Connect() != chronolog::CL_SUCCESS)
+    {
+        fprintf(stderr, "connect failed\n");
+        return 1;
+    }
     client.CreateChronicle(chr);
     auto acq = client.AcquireStory(chr, story);
-    if (acq.first!=chronolog::CL_SUCCESS){fprintf(stderr,"acquire failed %d\n",acq.first);return 1;}
-
-    for (uint64_t i=0;i<n;i++) {
-        acq.second->log_event(payload);
+    if(acq.first != chronolog::CL_SUCCESS)
+    {
+        fprintf(stderr, "acquire failed %d\n", acq.first);
+        return 1;
     }
+
+    for(uint64_t i = 0; i < n; i++) { acq.second->log_event(payload); }
 
     sleep(settle); // hold story acquired so data becomes queryable
 
