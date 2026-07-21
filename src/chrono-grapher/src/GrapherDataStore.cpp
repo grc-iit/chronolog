@@ -22,7 +22,8 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
                                                      std::string const& story,
                                                      chronolog::StoryId const& story_id,
                                                      uint64_t start_time,
-                                                     bool is_adoption)
+                                                     bool is_adoption,
+                                                     bool* out_was_active)
 {
     LOG_INFO("[GrapherDataStore] Start recording story: Chronicle={}, Story={}, StoryId={}",
              chronicle,
@@ -65,6 +66,12 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
         //check it the pipeline was put on the waitingForExit list by the previous acquisition
         // and remove it from there
         auto waiting_iter = pipelinesWaitingForExit.find(story_id);
+        // Report whether this reused a genuinely-active acquisition (in the map
+        // and NOT scheduled for exit) -- captured before we rescue it below.
+        if(out_was_active != nullptr)
+        {
+            *out_was_active = (waiting_iter == pipelinesWaitingForExit.end());
+        }
         if(waiting_iter != pipelinesWaitingForExit.end())
         {
             pipelinesWaitingForExit.erase(waiting_iter);
@@ -89,6 +96,11 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
         //engage StoryPipeline with the IngestionQueue
         chl::StoryChunkIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
+        // A freshly created pipeline was not a pre-existing live acquisition.
+        if(out_was_active != nullptr)
+        {
+            *out_was_active = false;
+        }
         return chronolog::CL_SUCCESS;
     }
     else
@@ -509,6 +521,9 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
     }
 
     std::unordered_set<chl::StoryId> adopted_stories;
+    // Stories that already had a genuinely-active (live-acquisition) pipeline
+    // when their first chunk was adopted -- these must NOT be scheduled to retire.
+    std::unordered_set<chl::StoryId> active_stories;
     std::size_t discarded = 0;
     for(chl::StoryChunk* chunk: orphan_chunks)
     {
@@ -516,11 +531,13 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
         // creates one from the chunk's own names -- unless the story/chronicle is
         // tombstoned as destroyed, in which case it refuses and we discard the
         // chunk rather than resurrecting a deleted archive.
+        bool was_active = false;
         int rc = startStoryRecording(chunk->getChronicleName(),
                                      chunk->getStoryName(),
                                      chunk->getStoryId(),
                                      chunk->getStartTime(),
-                                     /*is_adoption=*/true);
+                                     /*is_adoption=*/true,
+                                     &was_active);
         if(rc != chronolog::CL_SUCCESS)
         {
             delete chunk;
@@ -528,13 +545,26 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
             continue;
         }
         theIngestionQueue.ingestStoryChunk(chunk);
-        adopted_stories.insert(chunk->getStoryId());
+        // Record active-ness only for the FIRST chunk adopted per story in this
+        // batch: once we create/rescue a pipeline, later chunks for the same
+        // story would observe it as "active" and wrongly spare it from retirement.
+        if(adopted_stories.insert(chunk->getStoryId()).second && was_active)
+        {
+            active_stories.insert(chunk->getStoryId());
+        }
     }
 
-    // Schedule each on-demand pipeline to retire (now + inactive_pipeline_delay)
-    // so it is not left resident forever. A subsequent real acquisition rescues
-    // it from the waiting list; further stragglers re-adopt and reset the timer.
-    for(chl::StoryId const& story_id: adopted_stories) { stopStoryRecording(story_id); }
+    // Schedule the on-demand pipelines (freshly created here, or rescued from the
+    // waiting list) to retire so they are not left resident forever. A story that
+    // was already under a live acquisition manages its own lifecycle -- scheduling
+    // it here would prematurely retire an in-use story.
+    for(chl::StoryId const& story_id: adopted_stories)
+    {
+        if(active_stories.find(story_id) == active_stories.end())
+        {
+            stopStoryRecording(story_id);
+        }
+    }
 
     LOG_WARNING("[GrapherDataStore] Adopted orphan chunk(s) for {} story(ies) from the chunks' own chronicle/story "
                 "identity; discarded {} chunk(s) for destroyed stories.",

@@ -66,11 +66,17 @@ public:
     // adoption call is refused (returns an error, creates nothing) if the story
     // or its chronicle has been destroyed; a real registration instead clears
     // any such tombstone, since the story/chronicle is alive again.
+    // out_was_active (when non-null) is set true iff a genuinely-active pipeline
+    // already existed for the story (present in the map and NOT scheduled for
+    // exit) -- i.e. the call reused a live acquisition rather than creating a
+    // new pipeline or rescuing one from the waiting list. adoptOrphanChunks uses
+    // this so it does not schedule a live acquisition's pipeline for retirement.
     int startStoryRecording(ChronicleName const&,
                             StoryName const&,
                             StoryId const&,
                             uint64_t start_time,
-                            bool is_adoption = false);
+                            bool is_adoption = false,
+                            bool* out_was_active = nullptr);
 
     int stopStoryRecording(StoryId const&);
 

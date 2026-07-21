@@ -87,10 +87,12 @@ public:
         auto& index = story_it->second.index;
         std::size_t take = (n < index.size()) ? n : index.size();
         result.reserve(take);
-        // walk from the newest (largest) key backwards, collect `take` of them
-        std::size_t skip = index.size() - take;
-        auto it = index.begin();
-        std::advance(it, skip);
+        // Position `take` entries back from end() -- O(take) -- rather than
+        // advancing O(index.size() - take) forward from begin() (which costs
+        // ~tailCapacity node-steps to fetch the last few events of a full tail),
+        // then walk forward to end() so the result comes out ascending.
+        auto it = index.end();
+        for(std::size_t i = 0; i < take; ++i) { --it; }
         for(; it != index.end(); ++it) { result.push_back(it->first); }
         return result; // ascending order
     }
