@@ -10,6 +10,8 @@
 #include <GrapherIdCard.h>
 #include <GrapherRegistrationMsg.h>
 #include <GrapherStatsMsg.h>
+#include <ChronoClock.h>
+#include <ClockState.h>
 #include <chronolog_errcode.h>
 
 
@@ -76,7 +78,21 @@ public:
             std::stringstream stats;
             stats << statsMsg;
             LOG_DEBUG("[GrapherRegistryClient] Sending Stats Message: {}", stats.str());
-            handle_grapher_stats_msg.on(reg_service_ph)(statsMsg);
+            // heartbeat doubles as the grapher's clock exchange with the Visor;
+            // timed so an unresponsive Visor cannot wedge the daemon loop.
+            uint64_t t0 = ProcessClock().local_reading();
+            ClockState visor_state =
+                    handle_grapher_stats_msg.on(reg_service_ph).timed(std::chrono::seconds(5), statsMsg);
+            uint64_t t1 = ProcessClock().local_reading();
+            ProcessClock().applySync(t0, visor_state.visor_time, t1);
+            LOG_DEBUG("[GrapherRegistryClient] Clock synced via heartbeat: offset={}, uncertainty={}",
+                      ProcessClock().offset(),
+                      ProcessClock().state().uncertainty);
+        }
+        catch(tl::timeout const&)
+        {
+            // tl::timeout derives from std::exception, not tl::exception.
+            LOG_WARNING("[GrapherRegisterClient] Stats/clock-sync RPC timed out.");
         }
         catch(tl::exception const&)
         {
@@ -111,7 +127,7 @@ private:
                   registry_provider_id);
         register_grapher = tl_engine.define("register_grapher");
         unregister_grapher = tl_engine.define("unregister_grapher");
-        handle_grapher_stats_msg = tl_engine.define("handle_grapher_stats_msg").disable_response();
+        handle_grapher_stats_msg = tl_engine.define("handle_grapher_stats_msg");
     }
 };
 } // namespace chronolog
