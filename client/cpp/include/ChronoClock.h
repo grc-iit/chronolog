@@ -4,8 +4,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <utility>
 
 #include "ClockState.h"
@@ -123,12 +126,55 @@ inline uint64_t monotonic_clamp(std::atomic<uint64_t>& last_tick, uint64_t raw)
     return next;
 }
 
+// Test-only clock-simulation hook (Tier-2 harness; see visor_clock_exchange.md
+// §6.3). When CHRONOLOG_SIM_CLOCK_OFFSET_NS is set, ProcessClock() adds that fixed
+// ns offset to this process's local steady clock — skewing a REAL process's
+// monotonic clock deterministically, without kernel time namespaces or
+// libfaketime (steady_clock/CLOCK_MONOTONIC is otherwise not settable).
+// CHRONOLOG_SIM_CLOCK_STEP_FILE (optional) names a file holding an additional ns
+// offset, re-read at most once/second, for mid-run clock steps. When neither is
+// set the returned source is empty, so ChronoClock uses the real steady_clock with
+// zero overhead and zero behavior change.
+inline ChronoClock::TimeSource envSimClockSource()
+{
+    const char* off_env = std::getenv("CHRONOLOG_SIM_CLOCK_OFFSET_NS");
+    const char* step_env = std::getenv("CHRONOLOG_SIM_CLOCK_STEP_FILE");
+    if(off_env == nullptr && step_env == nullptr)
+    {
+        return {}; // not simulated -> real steady_clock
+    }
+    int64_t base = (off_env != nullptr) ? std::strtoll(off_env, nullptr, 10) : 0;
+    std::string step_path = (step_env != nullptr) ? std::string(step_env) : std::string();
+    return [base, step_path]() -> uint64_t
+    {
+        uint64_t raw = ChronoClock::local_now();
+        int64_t extra = 0;
+        if(!step_path.empty())
+        {
+            static thread_local int64_t cached = 0;
+            static thread_local uint64_t next_read = 0;
+            if(raw >= next_read)
+            {
+                std::ifstream f(step_path);
+                if(f)
+                {
+                    f >> cached;
+                }
+                next_read = raw + 1000000000ULL; // re-read at most once/second
+            }
+            extra = cached;
+        }
+        return static_cast<uint64_t>(static_cast<int64_t>(raw) + base + extra);
+    };
+}
+
 // Process-wide clock singleton. Each ChronoLog process (client, keeper, grapher,
 // player) has exactly one node clock; the connect / heartbeat sync updates it and
-// the timestamp / boundary paths read it.
+// the timestamp / boundary paths read it. In production the sim source is empty,
+// so this is the real steady_clock.
 inline ChronoClock& ProcessClock()
 {
-    static ChronoClock instance;
+    static ChronoClock instance{envSimClockSource()};
     return instance;
 }
 
