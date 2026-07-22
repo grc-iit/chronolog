@@ -8,6 +8,7 @@
 
 #include <chronolog_errcode.h>
 #include <PlayerDataStore.h>
+#include <ChronoClock.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -44,7 +45,16 @@ void chronolog::PlayerDataStore::extractDecayedStoryChunks()
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
 
-    uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // Decay compares "now" against chunk end times derived from event ChronoTicks,
+    // so read "now" on the Visor timeline (the player syncs via its heartbeat).
+    // Until the first clock exchange, now_visor() is on the local steady-clock
+    // epoch (not the Visor's), so skip decay until synced.
+    if(!chronolog::ProcessClock().synced())
+    {
+        LOG_TRACE("[PlayerDataStore] Skipping chunk decay until the Visor clock is synced.");
+        return;
+    }
+    uint64_t current_time = chronolog::ProcessClock().now_visor();
     std::vector<chl::StoryChunk*> extracted_story_chunks;
 
     std::lock_guard storeLock(dataStoreMutex);
@@ -358,9 +368,22 @@ uint64_t chronolog::PlayerDataStore::get_active_window_boundary() const
     out << std::put_time(std::localtime(&boundary_time_t), "%Y-%m-%d_%T");
     LOG_DEBUG("[PlayerDataStore] active_window_boundary {}", out.str());
 #endif
-    return (std::chrono::high_resolution_clock::now() - std::chrono::seconds(acceptance_window_secs))
-            .time_since_epoch()
-            .count();
+    // The boundary splits replay into hot (Player mirror) vs cold (HDF5) by
+    // comparing against event ChronoTicks, so it must be computed on the Visor
+    // timeline: now_visor() minus the acceptance window (ns).
+    //
+    // Until the first clock exchange, now_visor() is on the local steady-clock
+    // epoch (not the Visor's) and is not comparable to event ticks; return 0 so
+    // the whole range is served from the hot mirror. Once synced, guard against
+    // uint64 underflow while Visor-timeline uptime is still below the window
+    // (now_visor() is ns-since-boot magnitude, not wall-clock).
+    if(!chronolog::ProcessClock().synced())
+    {
+        return 0;
+    }
+    uint64_t now = chronolog::ProcessClock().now_visor();
+    uint64_t window_ns = static_cast<uint64_t>(acceptance_window_secs) * 1000000000ULL;
+    return (now > window_ns) ? (now - window_ns) : 0;
 }
 ////////////////
 

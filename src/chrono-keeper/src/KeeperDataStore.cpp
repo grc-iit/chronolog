@@ -9,6 +9,7 @@
 
 #include <chronolog_errcode.h>
 #include <KeeperDataStore.h>
+#include <ChronoClock.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -137,7 +138,17 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
 
-    uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // Chunk decay compares "now" against chunk end times, which are derived from
+    // client event ChronoTicks (Visor-anchored). Read "now" on the same Visor
+    // timeline. Until this keeper has completed a clock exchange, now_visor() is on
+    // the local steady-clock epoch (not the Visor's), so skip decay until synced —
+    // the heartbeat establishes the offset within one cycle of startup.
+    if(!chronolog::ProcessClock().synced())
+    {
+        LOG_DEBUG("[KeeperDataStore] Skipping chunk decay until the Visor clock is synced.");
+        return;
+    }
+    uint64_t current_time = chronolog::ProcessClock().now_visor();
 
     std::lock_guard storeLock(dataStoreMutex);
     for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
