@@ -61,6 +61,8 @@ public:
 
     int Disconnect();
 
+    int SyncClock();
+
     ClientId client_id() const { return clientId; }
 
     int CreateChronicle(std::string const& chronicle_name);

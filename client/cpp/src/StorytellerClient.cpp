@@ -11,6 +11,7 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
+#include <ChronoClock.h>
 
 #include "KeeperRecordingClient.h"
 #include "StorytellerClient.h"
@@ -24,7 +25,11 @@ namespace chl = chronolog;
 
 uint64_t chronolog::ChronologTimer::getTimestamp()
 {
-    return std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // Visor-anchored tick for this client (local steady clock + synced offset),
+    // clamped per-client so a downward re-sync correction never yields a
+    // decreasing tick. This preserves per-story ordering (the EventSequence
+    // primary key) without any cross-node coordination. See monotonic_clamp.
+    return chronolog::monotonic_clamp(last_tick_, chronolog::ProcessClock().now_visor());
 }
 
 /////////////////////

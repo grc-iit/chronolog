@@ -20,7 +20,7 @@ namespace chronolog
 // format between the client and any ChronoLog server component changes in
 // an incompatible way; the Visor returns CL_ERR_PROTOCOL_VERSION_MISMATCH
 // if a connecting client's version doesn't match the server's expectation.
-static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 2;
+static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 3;
 
 // 64-bit ClientId layout. The high 48 bits are the client's network endpoint
 // (IPv4 + port) so a downstream consumer reading back events can identify the
@@ -162,6 +162,12 @@ public:
     int Connect();
 
     int Disconnect();
+
+    // Re-synchronize this client's clock with the ChronoVisor time authority.
+    // A round trip to the Visor refreshes the local offset used to derive event
+    // ChronoTicks. Off the per-event hot path; safe to call any time after a
+    // successful Connect(). Returns CL_SUCCESS or an error code.
+    int SyncClock();
 
     // Returns this client's packed ClientId — the same value that appears in
     // Event::client_id() / EventSequence::clientId for every event produced

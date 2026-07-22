@@ -245,6 +245,16 @@ int chronolog::ChronologClientImpl::Disconnect()
     return return_code;
 }
 
+int chronolog::ChronologClientImpl::SyncClock()
+{
+    if((clientState == UNKNOWN) || (clientState == SHUTTING_DOWN))
+    {
+        LOG_ERROR("[ChronoLogClientImpl] SyncClock called while not connected.");
+        return chronolog::CL_ERR_NO_CONNECTION;
+    }
+    return rpcVisorClient->SyncClock();
+}
+
 int chronolog::ChronologClientImpl::CreateChronicle(std::string const& chronicle_name)
 {
     if(chronicle_name.empty())
@@ -384,6 +394,10 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
                  chronicle_name);
         return std::pair<int, chronolog::StoryHandle*>(chronolog::CL_SUCCESS, storyHandle);
     }
+
+    // opportunistically refresh the clock offset at a natural interaction point
+    // so drift stays bounded between explicit SyncClock() calls (off the hot path)
+    rpcVisorClient->SyncClock();
 
     // issue rpc request to the Visor
     auto acquireStoryResponse = rpcVisorClient->AcquireStory(clientId, chronicle_name, story_name);

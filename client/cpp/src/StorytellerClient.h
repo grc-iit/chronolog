@@ -19,10 +19,17 @@
 namespace chronolog
 {
 
+// Produces the ChronoTick stamped on each event. The tick is the Visor-anchored
+// reading from the process clock (local steady clock + synced Visor offset),
+// clamped to be per-client monotonic so a downward offset correction after a
+// re-sync can never make this client emit a decreasing tick.
 class ChronologTimer
 {
 public:
     uint64_t getTimestamp();
+
+private:
+    std::atomic<uint64_t> last_tick_{0};
 };
 
 class KeeperRecordingClient;

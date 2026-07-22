@@ -12,11 +12,13 @@
 
 #include <chronolog_client.h>
 #include <chronolog_types.h>
+#include <ClockState.h>
 #include <KeeperIdCard.h>
 #include <ConnectResponseMsg.h>
 #include <AcquireStoryResponseMsg.h>
 
 #include "VisorClientPortal.h"
+#include "VisorClock.h"
 
 namespace tl = thallium;
 
@@ -54,17 +56,21 @@ public:
         }
 
         ClientId client_id = proposed_client_id;
-        uint64_t clock_offset;
-        int return_code = theVisorClientPortal.ClientConnect(client_account, client_id, clock_offset);
+        int return_code = theVisorClientPortal.ClientConnect(client_account, client_id);
         if(chronolog::CL_SUCCESS == return_code)
         {
-            request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id));
+            // hand the client the Visor authority tick so it can anchor its clock
+            request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id, ClockState{VisorClock::now()}));
         }
         else
         {
             request.respond(ConnectResponseMsg(return_code, ClientId{0}));
         }
     }
+
+    // Explicit client clock re-sync: reply with the current Visor authority tick.
+    // The client brackets this call with local timestamps to derive its offset.
+    void SyncClock(tl::request const& request) { request.respond(ClockState{VisorClock::now()}); }
 
     void Disconnect(tl::request const& request, ClientId const& client_token)
     {
@@ -131,6 +137,7 @@ private:
         , theVisorClientPortal(visorPortal)
     {
         define("Connect", &ClientPortalService::Connect);
+        define("SyncClock", &ClientPortalService::SyncClock);
         define("Disconnect", &ClientPortalService::Disconnect);
         define("CreateChronicle", &ClientPortalService::CreateChronicle);
         define("DestroyChronicle", &ClientPortalService::DestroyChronicle);

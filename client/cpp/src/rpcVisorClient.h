@@ -20,6 +20,8 @@
 #include <chrono_monitor.h>
 #include <chronolog_client.h>
 #include <chronolog_types.h>
+#include <ChronoClock.h>
+#include <ClockState.h>
 #include <ConnectResponseMsg.h>
 #include <AcquireStoryResponseMsg.h>
 
@@ -57,11 +59,21 @@ public:
                   chronolog::CLIENT_PROTOCOL_VERSION);
         try
         {
+            uint64_t t0 = ProcessClock().local_reading();
             ConnectResponseMsg response =
                     visor_connect.on(service_ph)(client_euid, proposed_client_id, chronolog::CLIENT_PROTOCOL_VERSION);
+            uint64_t t1 = ProcessClock().local_reading();
             LOG_INFO("[RpcVisorClient] Connection successful for Account={}, ClientID={}",
                      client_euid,
                      proposed_client_id);
+            // anchor the client clock to the Visor timeline from the connect round trip
+            if(response.getErrorCode() == chronolog::CL_SUCCESS)
+            {
+                ProcessClock().applySync(t0, response.getClockState().visor_time, t1);
+                LOG_DEBUG("[RpcVisorClient] Clock synced on connect: offset={}, uncertainty={}",
+                          ProcessClock().offset(),
+                          ProcessClock().state().uncertainty);
+            }
             return response;
         }
         catch(tl::exception const&)
@@ -69,6 +81,28 @@ public:
             LOG_ERROR("[RpcVisorClient] Connection attempt failed.");
         }
         return (ConnectResponseMsg(chronolog::CL_ERR_UNKNOWN, ClientId{0}));
+    }
+
+    // Explicit clock re-sync: a round trip to the Visor authority updated the
+    // process clock offset. Off the per-event hot path.
+    int SyncClock()
+    {
+        try
+        {
+            uint64_t t0 = ProcessClock().local_reading();
+            ClockState visor_state = sync_clock.on(service_ph)();
+            uint64_t t1 = ProcessClock().local_reading();
+            ProcessClock().applySync(t0, visor_state.visor_time, t1);
+            LOG_DEBUG("[RpcVisorClient] SyncClock: offset={}, uncertainty={}",
+                      ProcessClock().offset(),
+                      ProcessClock().state().uncertainty);
+            return chronolog::CL_SUCCESS;
+        }
+        catch(tl::exception const&)
+        {
+            LOG_ERROR("[RpcVisorClient] SyncClock attempt failed.");
+        }
+        return (chronolog::CL_ERR_UNKNOWN);
     }
 
     int Disconnect(ClientId const& client_id)
@@ -327,6 +361,7 @@ public:
     ~RpcVisorClient()
     {
         visor_connect.deregister();
+        sync_clock.deregister();
         visor_disconnect.deregister();
         create_chronicle.deregister();
         destroy_chronicle.deregister();
@@ -342,6 +377,7 @@ private:
     uint16_t service_provider_id;   // ChronoVisor ClientService provider_id id
     tl::provider_handle service_ph; //provider_handle for client registry service
     tl::remote_procedure visor_connect;
+    tl::remote_procedure sync_clock;
     tl::remote_procedure visor_disconnect;
     tl::remote_procedure create_chronicle;
     tl::remote_procedure destroy_chronicle;
@@ -367,6 +403,7 @@ private:
         try
         {
             visor_connect = tl_engine.define("Connect");
+            sync_clock = tl_engine.define("SyncClock");
             visor_disconnect = tl_engine.define("Disconnect");
             create_chronicle = tl_engine.define("CreateChronicle");
             destroy_chronicle = tl_engine.define("DestroyChronicle");
