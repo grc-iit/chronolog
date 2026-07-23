@@ -11,9 +11,11 @@
 #include <chrono>
 #include <cctype>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -48,6 +50,11 @@ typedef struct workload_conf_args_
     bool read = false;
     bool shared_story = false;
     bool perf_test = false;
+    // Latency (send->visible-via-playback) test knobs
+    bool latency_test = false;
+    uint64_t playback_n = 0;         // last-N events fetched per playback() poll (0 = auto)
+    uint64_t poll_interval_ms = 500; // sleep between playback() polls
+    uint64_t max_wait_sec = 180;     // give up waiting for an event to seal after this
 } workload_conf_args;
 
 static void usage(char** argv)
@@ -57,6 +64,7 @@ static void usage(char** argv)
                  "-c|--config <config_file>\n"
                  "-w|--write\t\tRecord events\n"
                  "-r|--read\t\tRetrieve events\n"
+                 "-l|--latency\t\tMeasure send->visible-via-playback() latency\n"
                  "-h|--chronicle_count <chronicle_count_per_proc>\n"
                  "-t|--story_count <story_count_per_proc>\n"
                  "-a|--min_event_size <min_event_size_in_byte>\n"
@@ -68,6 +76,9 @@ static void usage(char** argv)
                  "-f|--event_payload_file <event_payload_file>\n"
                  "-o|--shared_story\tAll procs record events to the same chronicle\n"
                  "-p|--perf\t\tReport performance metrics after completion\n"
+                 "-k|--playback_n <n>\t\t(latency) last-N events fetched per playback() poll (0=auto)\n"
+                 "-e|--poll_interval <ms>\t(latency) sleep between playback() polls in ms\n"
+                 "-m|--max_wait <sec>\t\t(latency) give up waiting for an event to seal after this\n"
                  "-u|--usage\t\tPrint this page\n"
               << std::endl;
 }
@@ -112,6 +123,7 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
     struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
                                     {"write", no_argument, nullptr, 'w'},
                                     {"read", optional_argument, nullptr, 'r'},
+                                    {"latency", no_argument, nullptr, 'l'},
                                     {"chronicle_count", required_argument, nullptr, 'h'},
                                     {"story_count", required_argument, nullptr, 't'},
                                     {"min_event_size", required_argument, nullptr, 'a'},
@@ -123,10 +135,13 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
                                     {"event_payload_file", optional_argument, nullptr, 'f'},
                                     {"shared_story", optional_argument, nullptr, 'o'},
                                     {"perf", optional_argument, nullptr, 'p'},
+                                    {"playback_n", required_argument, nullptr, 'k'},
+                                    {"poll_interval", required_argument, nullptr, 'e'},
+                                    {"max_wait", required_argument, nullptr, 'm'},
                                     {"usage", no_argument, nullptr, 'u'},
                                     {nullptr, 0, nullptr, 0}};
 
-    while((opt = getopt_long(argc, argv, "c:wrh:t:a:s:b:n:g:yf:opu", long_options, nullptr)) != -1)
+    while((opt = getopt_long(argc, argv, "c:wrlh:t:a:s:b:n:g:yf:opk:e:m:u", long_options, nullptr)) != -1)
     {
         switch(opt)
         {
@@ -139,6 +154,11 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
             case 'r':
                 workload_args.read = true;
                 workload_args.write = false; // read mode has higher priority than write mode
+                break;
+            case 'l':
+                workload_args.latency_test = true;
+                workload_args.write = false; // latency mode drives its own write+poll loop
+                workload_args.read = false;
                 break;
             case 'h':
                 workload_args.chronicle_count = get_uint64_t_from_string(optarg);
@@ -172,6 +192,15 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
                 break;
             case 'p':
                 workload_args.perf_test = true;
+                break;
+            case 'k':
+                workload_args.playback_n = get_uint64_t_from_string(optarg);
+                break;
+            case 'e':
+                workload_args.poll_interval_ms = get_uint64_t_from_string(optarg);
+                break;
+            case 'm':
+                workload_args.max_wait_sec = get_uint64_t_from_string(optarg);
                 break;
             case 'u':
                 if(rank == 0)
@@ -335,6 +364,194 @@ static uint64_t get_bigbang_timestamp(std::ifstream& file)
     return bigbang_timestamp;
 }
 
+// ---------------------------------------------------------------------------
+// Latency (send -> visible-via-playback) measurement
+//
+// StoryHandle::playback(n, events) returns the most recent `n` events of a
+// story from the keepers' in-memory tail, but only after a chunk SEALS
+// (chunk_duration + acceptance_window). The wall-clock gap between logging an
+// event and it first showing up in playback() is therefore a "freshness"
+// latency floored by that sealing window (~25-30s on the default local deploy),
+// not an RPC round-trip.
+//
+// log_event() returns the event's assigned timestamp, which is
+// high_resolution_clock::now().time_since_epoch().count() (ns) and is exactly
+// the value reported by Event::time() on playback. Because writer and poller run
+// in the same process (one MPI rank) on the same clock, the first-appearance
+// latency is simply now_ns() - event.time() with no clock-skew correction.
+// ---------------------------------------------------------------------------
+
+// Same clock domain as chronolog::ChronologTimer::getTimestamp().
+static uint64_t now_ns()
+{
+    return static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+}
+
+// Linear-interpolated percentile over an already-sorted vector.
+static double percentile(const std::vector<double>& sorted, double p)
+{
+    if(sorted.empty())
+        return 0.0;
+    if(sorted.size() == 1)
+        return sorted.front();
+    double rank = p * static_cast<double>(sorted.size() - 1);
+    size_t lo = static_cast<size_t>(rank);
+    size_t hi = std::min(lo + 1, sorted.size() - 1);
+    double frac = rank - static_cast<double>(lo);
+    return sorted[lo] * (1.0 - frac) + sorted[hi] * frac;
+}
+
+// Log `event_count` events to `story_handle`, then poll playback() until each
+// of THIS client's events first becomes visible, recording per-event
+// send->visible latency (ms). Appends to `latencies_ms`; bumps logged/seen.
+static void latency_measure_story(chronolog::StoryHandle* story_handle,
+                                  chronolog::ClientId my_client_id,
+                                  const workload_conf_args& workload_args,
+                                  uint64_t event_count,
+                                  size_t playback_n,
+                                  const std::string& payload_str,
+                                  std::vector<double>& latencies_ms,
+                                  uint64_t& logged_count,
+                                  uint64_t& seen_count)
+{
+    // Single interleaved loop: write events on the event-interval schedule while
+    // polling playback() on the poll-interval schedule. Interleaving matters when
+    // the write phase spans more than one chunk window (event_interval large): an
+    // event that seals mid-write must be caught at its true first appearance, not
+    // at the first poll after all writes finished. eventTime is monotonically
+    // assigned per log_event() call, so it uniquely keys an event of this client.
+    std::set<uint64_t> pending; // my logged eventTimes not yet seen via playback
+    uint64_t event_size = std::min(workload_args.ave_event_size, static_cast<uint64_t>(payload_str.size()));
+    std::string event_payload = payload_str.substr(0, event_size);
+
+    uint64_t write_interval_ns = workload_args.event_interval * 1000ULL;     // us -> ns
+    uint64_t poll_interval_ns = workload_args.poll_interval_ms * 1000000ULL; // ms -> ns
+    uint64_t written = 0;
+    uint64_t next_write_ns = now_ns(); // first event immediately
+    uint64_t next_poll_ns = now_ns();
+    uint64_t deadline_ns = 0; // countdown starts once the last event is written
+
+    while(true)
+    {
+        uint64_t now = now_ns();
+
+        // Write due events (a burst when event_interval == 0).
+        while(written < event_count && now >= next_write_ns)
+        {
+            uint64_t event_time = test_write_event(story_handle, event_payload);
+            if(event_time != 0)
+            {
+                pending.insert(event_time);
+                ++logged_count;
+            }
+            ++written;
+            next_write_ns = now + write_interval_ns;
+            if(written == event_count)
+                deadline_ns = now_ns() + workload_args.max_wait_sec * 1000000000ULL;
+            now = now_ns();
+        }
+
+        // Poll playback() and record first-appearance latency for pending events.
+        if(now >= next_poll_ns)
+        {
+            std::vector<chronolog::Event> events;
+            int rc = story_handle->playback(playback_n, events);
+            if(rc == chronolog::CL_SUCCESS)
+            {
+                uint64_t t_seen = now_ns();
+                for(const auto& event: events)
+                {
+                    if(event.client_id() != my_client_id)
+                        continue; // another client's event (shared story)
+                    auto it = pending.find(event.time());
+                    if(it == pending.end())
+                        continue; // not mine, or already recorded
+                    latencies_ms.push_back(static_cast<double>(t_seen - event.time()) / 1e6);
+                    ++seen_count;
+                    pending.erase(it);
+                }
+            }
+            next_poll_ns = now_ns() + poll_interval_ns;
+        }
+
+        // Done once every event is written and either all seen or we time out.
+        if(written == event_count && (pending.empty() || now_ns() >= deadline_ns))
+            break;
+
+        // Sleep until the next scheduled write or poll to avoid busy spinning.
+        uint64_t wake_ns = next_poll_ns;
+        if(written < event_count)
+            wake_ns = std::min(wake_ns, next_write_ns);
+        now = now_ns();
+        if(wake_ns > now)
+            usleep((wake_ns - now) / 1000ULL);
+    }
+}
+
+// Aggregate per-rank latency samples on rank 0 and print the distribution.
+static void report_latency(int rank,
+                           int size,
+                           const std::vector<double>& local_latencies_ms,
+                           uint64_t local_logged,
+                           uint64_t local_seen)
+{
+    int local_n = static_cast<int>(local_latencies_ms.size());
+    std::vector<int> counts(rank == 0 ? size : 0);
+    MPI_Gather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    std::vector<int> displs;
+    int total_n = 0;
+    if(rank == 0)
+    {
+        displs.resize(size);
+        for(int i = 0; i < size; i++)
+        {
+            displs[i] = total_n;
+            total_n += counts[i];
+        }
+    }
+    std::vector<double> all_latencies(rank == 0 ? total_n : 0);
+    MPI_Gatherv(local_latencies_ms.data(),
+                local_n,
+                MPI_DOUBLE,
+                all_latencies.data(),
+                counts.data(),
+                displs.data(),
+                MPI_DOUBLE,
+                0,
+                MPI_COMM_WORLD);
+
+    uint64_t total_logged = 0, total_seen = 0;
+    MPI_Reduce(&local_logged, &total_logged, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_seen, &total_seen, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if(rank != 0)
+        return;
+
+    uint64_t never_seen = (total_logged > total_seen) ? (total_logged - total_seen) : 0;
+    std::cout << "==================================================================" << std::endl;
+    std::cout << "===========  Latency (send -> visible via playback):  ============" << std::endl;
+    std::cout << "==================================================================" << std::endl;
+    std::cout << "Events logged: " << total_logged << ", seen: " << total_seen
+              << ", never seen (unsealed/evicted): " << never_seen << std::endl;
+    if(all_latencies.empty())
+    {
+        std::cout << "No events became visible via playback() within the max wait window." << std::endl;
+        std::cout << "Check that keepers are up and increase -m/--max_wait beyond the chunk sealing window."
+                  << std::endl;
+        return;
+    }
+    std::sort(all_latencies.begin(), all_latencies.end());
+    double sum = 0.0;
+    for(double d: all_latencies) sum += d;
+    double mean = sum / static_cast<double>(all_latencies.size());
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Latency (ms): min=" << all_latencies.front() << "  mean=" << mean
+              << "  median=" << percentile(all_latencies, 0.50) << std::endl;
+    std::cout << "              p90=" << percentile(all_latencies, 0.90) << "  p99=" << percentile(all_latencies, 0.99)
+              << "  max=" << all_latencies.back() << std::endl;
+}
+
 int main(int argc, char** argv)
 {
     // To suppress argobots warning
@@ -398,7 +615,11 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    if(workload_args.read)
+    if(workload_args.latency_test)
+    {
+        std::cout << "[PerformanceTest] Running in latency mode (send -> visible via playback())." << std::endl;
+    }
+    else if(workload_args.read)
     {
         std::cout << "[PerformanceTest] Running in read mode." << std::endl;
     }
@@ -424,6 +645,11 @@ int main(int argc, char** argv)
     int ret_i;
     uint64_t ret_u;
     uint64_t event_payload_size_per_rank = 0;
+
+    // Latency-mode accumulators (per rank)
+    std::vector<double> latency_samples_ms;
+    uint64_t latency_logged = 0;
+    uint64_t latency_seen = 0;
 
     std::string client_id = gen_random(8);
 
@@ -477,7 +703,7 @@ int main(int argc, char** argv)
                 auto ret = acquireStoryTimer.timeBlock(test_acquire_story, client, chronicle_name, story_name);
                 ret_i = ret.first;
                 story_handle = ret.second;
-                if(workload_args.write && ret_i != chronolog::CL_SUCCESS)
+                if((workload_args.write || workload_args.latency_test) && ret_i != chronolog::CL_SUCCESS)
                 {
                     std::cerr << "Failed to acquire story: " << story_name << " in Chronicle: " << chronicle_name
                               << ", ret: " << chronolog::to_string_client(ret_i) << std::endl;
@@ -495,7 +721,30 @@ int main(int argc, char** argv)
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 
-                if(workload_args.read)
+                if(workload_args.latency_test)
+                {
+                    // latency test: write events, then poll playback() until each
+                    // becomes visible, recording send->visible latency per event.
+                    uint64_t event_count_per_story = workload_args.event_count / workload_args.story_count;
+                    size_t playback_n = workload_args.playback_n;
+                    if(playback_n == 0)
+                    {
+                        // default: enough to cover this story's tail. For a shared
+                        // story every rank writes into it, so scale by proc count.
+                        playback_n = workload_args.shared_story ? static_cast<size_t>(event_count_per_story) * size
+                                                                : static_cast<size_t>(event_count_per_story);
+                    }
+                    latency_measure_story(story_handle,
+                                          client.client_id(),
+                                          workload_args,
+                                          event_count_per_story,
+                                          playback_n,
+                                          payload_str,
+                                          latency_samples_ms,
+                                          latency_logged,
+                                          latency_seen);
+                }
+                else if(workload_args.read)
                 {
                     // replay story test
                     uint64_t start_time = 0, end_time = UINT64_MAX;
@@ -750,6 +999,13 @@ int main(int argc, char** argv)
                           << std::endl;
             }
         }
+    }
+
+    // Latency results are the whole point of latency mode, so always report them
+    // (independent of -p). report_latency() runs MPI collectives on every rank.
+    if(workload_args.latency_test)
+    {
+        report_latency(rank, size, latency_samples_ms, latency_logged, latency_seen);
     }
 
     MPI_Finalize();
