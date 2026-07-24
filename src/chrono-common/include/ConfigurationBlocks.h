@@ -240,6 +240,13 @@ struct DataStoreConf
     // last-N playback before they age out to the extraction/archive path.
     // Keeper-only knob; ignored by grapher/player.
     int tail_capacity = 65536;
+    // When true, playback()/tail reads also serve events from the active
+    // (unsealed) timeline in addition to sealed chunks, cutting write-to-visible
+    // latency from the seal window (chunk_duration + acceptance_window) down to
+    // ~the ingestion tick. Reads inside the acceptance window are provisional
+    // (a late arrival may sort behind an already-seen event). Keeper-only knob;
+    // defaults false to preserve the sealed-only, final-result semantics.
+    bool live_tail_read = false;
 
     DataStoreConf() {}
 
@@ -251,7 +258,8 @@ struct DataStoreConf
                " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
                " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
-               " tail_capacity: " + std::to_string(tail_capacity) + "]";
+               " tail_capacity: " + std::to_string(tail_capacity) +
+               " live_tail_read: " + (live_tail_read ? "true" : "false") + "]";
     }
 };
 

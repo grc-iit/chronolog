@@ -290,6 +290,15 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             tail_capacity = json_object_get_int(val);
         }
+        else if(strcmp(key, "live_tail_read") == 0)
+        {
+            if(!json_object_is_type(val, json_type_boolean))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'live_tail_read': expected boolean" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            live_tail_read = json_object_get_boolean(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;

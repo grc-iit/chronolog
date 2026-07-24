@@ -211,8 +211,13 @@ int main(int argc, char** argv)
     // tail_capacity = max number of most-recent sealed events retained per story
     // for last-N playback before they age out to the extraction/archive path.
     // Configurable via DataStoreInternals.tail_capacity (default 65536).
+    // live_tail_read (default false): when true, tail reads also serve events from
+    // the active/unsealed timeline, cutting write-to-visible latency below the
+    // seal window at the cost of provisional (eventually-consistent) reads.
     const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
-    chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(), keeper_tail_capacity);
+    chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(),
+                                            keeper_tail_capacity,
+                                            KEEPER_CONF.DATA_STORE_CONF.live_tail_read);
 
     // Instantiate KeeperDataStore
     chronolog::IngestionQueue ingestionQueue;
