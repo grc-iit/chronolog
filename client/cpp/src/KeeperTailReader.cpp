@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include <chrono_monitor.h>
@@ -26,17 +27,52 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         return CL_SUCCESS;
     }
 
-    // Phase 1: collect each keeper's last-N event sequences, remembering which
-    // keeper reported each sequence (so phase 2 asks the right keeper for it).
-    std::map<EventSequence, KeeperRecordingClient*> seqToKeeper;
+    // Phase 1 (scatter): fan out tail_get_sequences to every keeper concurrently,
+    // then collect. Issuing all RPCs before waiting on any means total phase-1
+    // latency is ~the slowest keeper (bounded by the per-RPC timeout) instead of
+    // the sum, and one slow or hung keeper can neither serialize nor block the
+    // others. Each response is bounded by kTailReadRpcTimeoutMs; a timeout or RPC
+    // error simply drops that keeper's contribution (empty tail).
+    std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight;
+    inflight.reserve(keepers.size());
     for(auto* keeper: keepers)
     {
         if(keeper == nullptr)
         {
             continue;
         }
-        std::vector<EventSequence> seqs = keeper->getTailSequences(story_id, n);
-        for(auto const& seq: seqs) { seqToKeeper[seq] = keeper; }
+        try
+        {
+            inflight.emplace_back(keeper, keeper->getTailSequencesAsync(story_id, n));
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_ERROR("[KeeperTailReader] tail_get_sequences issue to {} failed: {}",
+                      to_string(keeper->getRecordingServiceId()),
+                      ex.what());
+        }
+    }
+
+    std::map<EventSequence, KeeperRecordingClient*> seqToKeeper;
+    for(auto& entry: inflight)
+    {
+        KeeperRecordingClient* keeper = entry.first;
+        try
+        {
+            std::vector<EventSequence> seqs = entry.second.wait();
+            for(auto const& seq: seqs) { seqToKeeper[seq] = keeper; }
+        }
+        catch(thallium::timeout const&)
+        {
+            LOG_WARNING("[KeeperTailReader] tail_get_sequences to {} timed out; skipping this keeper",
+                        to_string(keeper->getRecordingServiceId()));
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_ERROR("[KeeperTailReader] tail_get_sequences to {} failed: {}",
+                      to_string(keeper->getRecordingServiceId()),
+                      ex.what());
+        }
     }
     if(seqToKeeper.empty())
     {
@@ -54,16 +90,52 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         perKeeper[seq_iter->second].push_back(seq_iter->first);
     }
 
-    // Phase 2: fetch payloads for the selected sequences from each keeper and
-    // assemble Events keyed by sequence so the result is sorted ascending.
-    std::map<EventSequence, Event> assembled;
+    // Phase 2 (gather): fetch payloads for the selected sequences from each keeper
+    // concurrently — same rationale as phase 1. Issue all tail_get_events first,
+    // then wait on each; per-keeper timeout/error drops that keeper's payloads.
+    // perKeeper stays in scope through the waits so the seqs each request
+    // references remain valid.
+    std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight_events;
+    inflight_events.reserve(perKeeper.size());
     for(auto& keeper_entry: perKeeper)
     {
-        std::vector<LogEvent> logEvents = keeper_entry.first->getTailEvents(story_id, keeper_entry.second);
-        for(auto const& le: logEvents)
+        try
         {
-            EventSequence seq{le.time(), le.getClientId(), le.index()};
-            assembled[seq] = Event(le.time(), le.getClientId(), le.index(), le.getRecord());
+            inflight_events.emplace_back(keeper_entry.first,
+                                         keeper_entry.first->getTailEventsAsync(story_id, keeper_entry.second));
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_ERROR("[KeeperTailReader] tail_get_events issue to {} failed: {}",
+                      to_string(keeper_entry.first->getRecordingServiceId()),
+                      ex.what());
+        }
+    }
+
+    // Assemble Events keyed by sequence so the result comes out sorted ascending.
+    std::map<EventSequence, Event> assembled;
+    for(auto& entry: inflight_events)
+    {
+        KeeperRecordingClient* keeper = entry.first;
+        try
+        {
+            std::vector<LogEvent> logEvents = entry.second.wait();
+            for(auto const& le: logEvents)
+            {
+                EventSequence seq{le.time(), le.getClientId(), le.index()};
+                assembled[seq] = Event(le.time(), le.getClientId(), le.index(), le.getRecord());
+            }
+        }
+        catch(thallium::timeout const&)
+        {
+            LOG_WARNING("[KeeperTailReader] tail_get_events to {} timed out; skipping this keeper",
+                        to_string(keeper->getRecordingServiceId()));
+        }
+        catch(thallium::exception const& ex)
+        {
+            LOG_ERROR("[KeeperTailReader] tail_get_events to {} failed: {}",
+                      to_string(keeper->getRecordingServiceId()),
+                      ex.what());
         }
     }
 

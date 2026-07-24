@@ -1,6 +1,7 @@
 #ifndef KEEPER_RECORDING_CLIENT_H
 #define KEEPER_RECORDING_CLIENT_H
 
+#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -60,13 +61,37 @@ public:
 
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
-    // Tail-read phase 1: ask this keeper for its most recent (up to n) event
-    // sequences for the story.
+    // Per-RPC deadline (ms) for tail reads so a slow or hung keeper cannot block
+    // playback() indefinitely. Tail reads are served from the keeper's in-memory
+    // tail and normally return in well under a second; this is a generous ceiling
+    // (a hung keeper never responds, so any finite bound achieves the goal).
+    static constexpr int kTailReadRpcTimeoutMs = 5000;
+
+    // Tail-read phase 1 (async): issue tail_get_sequences without blocking and
+    // return a handle to wait on. Lets a caller fan out to all of a story's
+    // keepers concurrently so one slow/hung keeper cannot serialize the rest.
+    // wait() yields the sequences, or throws thallium::timeout after
+    // kTailReadRpcTimeoutMs (see gather_story_tail).
+    tl::async_response getTailSequencesAsync(StoryId const& story_id, uint64_t n)
+    {
+        return tail_get_sequences.on(service_ph)
+                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, n);
+    }
+
+    // Blocking convenience wrapper around getTailSequencesAsync(): a timeout or
+    // any RPC error degrades this keeper to an empty tail so one bad keeper does
+    // not fail (or hang) the whole playback().
     std::vector<EventSequence> getTailSequences(StoryId const& story_id, uint64_t n)
     {
         try
         {
-            return tail_get_sequences.on(service_ph)(story_id, n);
+            return getTailSequencesAsync(story_id, n).wait();
+        }
+        catch(thallium::timeout const&)
+        {
+            LOG_WARNING("[KeeperRecordingClient] getTailSequences to {} timed out after {} ms; treating as empty tail",
+                        to_string(recordingServiceId),
+                        kTailReadRpcTimeoutMs);
         }
         catch(thallium::exception const& ex)
         {
@@ -77,12 +102,30 @@ public:
         return std::vector<EventSequence>{};
     }
 
-    // Tail-read phase 2: ask this keeper for the payloads of the given sequences.
+    // Tail-read phase 2 (async): issue tail_get_events without blocking and return
+    // a handle to wait on, so payloads can be fetched from all of a story's
+    // keepers concurrently. wait() yields the payloads, or throws
+    // thallium::timeout after kTailReadRpcTimeoutMs. `seqs` must stay alive until
+    // the returned handle is waited on.
+    tl::async_response getTailEventsAsync(StoryId const& story_id, std::vector<EventSequence> const& seqs)
+    {
+        return tail_get_events.on(service_ph)
+                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
+    }
+
+    // Blocking convenience wrapper around getTailEventsAsync(): a timeout or any
+    // RPC error degrades this keeper to no payloads.
     std::vector<LogEvent> getTailEvents(StoryId const& story_id, std::vector<EventSequence> const& seqs)
     {
         try
         {
-            return tail_get_events.on(service_ph)(story_id, seqs);
+            return getTailEventsAsync(story_id, seqs).wait();
+        }
+        catch(thallium::timeout const&)
+        {
+            LOG_WARNING("[KeeperRecordingClient] getTailEvents to {} timed out after {} ms; treating as no payloads",
+                        to_string(recordingServiceId),
+                        kTailReadRpcTimeoutMs);
         }
         catch(thallium::exception const& ex)
         {
