@@ -92,35 +92,67 @@ rebuild and reinstall is a prerequisite.
 
 ## 4. Experiments
 
-Payload fixed at 4096 B (`-a 4096 -s 4096 -b 4096`) throughout to remove size
-variance. Shared story (`-o`) throughout, so all ranks contend on one pipeline —
-this is both the realistic tail-read case and the contention case.
+### Two sizing constraints that drive every parameter
+
+**(a) Poll traffic.** `playback(n)` returns *full payloads* for `n` events on
+every poll, so aggregate poll traffic is
+`ranks × playback_n × payload / poll_interval`. Payload is therefore **256 B, not
+4096 B**, across all latency families — at 4 KB the deep-tail points would demand
+tens of GB/s. It is identical in both arms, so the A/B remains valid.
+
+**(b) The OFF arm needs `playback_n` ≥ events per chunk period — on a shared
+story.** When a chunk seals, its entire chunk-duration worth of events becomes
+visible at once. Anything beyond the newest `playback_n` of them never appears in
+the last-N window and is miscounted as `never_seen`, biasing OFF's latency
+*downward* — i.e. silently understating the improvement. On a shared story at 120
+ranks × 10 ev/s that would require `playback_n ≥ 12 000`, which collides head-on
+with (a).
+
+**Family A therefore uses per-rank stories, not a shared story.** `playback_n`
+then only has to cover one rank's own stream (256 is ample for 400 events at
+10 ev/s), and `never_seen` goes to zero by construction. Contention is still
+measured properly — that is exactly what B1 and B2 are for, and they keep the
+shared story.
 
 ### Family A — the win: send→visible latency
 
+Per-rank stories (no `-o`), so scale means concurrent stories/pipelines.
+
 | Parameter | Value |
 |---|---|
-| ranks | 6, 24, 60, 120 (2/8/20/40 per client node) |
-| events per rank | 500 (120 ranks × 500 = 60 000 ≤ 65 536) |
-| event_interval | 100 ms |
+| ranks | 6, 24, 60, 120 (evenly over 3 client nodes) |
+| events per rank | 400 |
+| event_interval | 100 ms (10 ev/s per rank, 40 s write phase) |
 | poll_interval | 50 ms |
-| playback_n | set explicitly (never auto) |
-| max_wait | 63 s (≥ 2.5 × seal window) |
+| playback_n | 256 |
+| payload | 256 B |
+| max_wait | 63 s |
 
-Metric: send→visible p50 / p90 / p99 / max, plus `never_seen`.
+Metric: send→visible p50 / p90 / p99 / max, plus `never_seen` (expected 0).
 
 ### Family B1 — write-path interference
 
-Fixed 60 ranks, fixed write rate; sweep `poll_interval` ∈ {1000, 200, 50, 10} ms.
-This varies *read* pressure independently of *write* pressure using existing
-knobs. Metric: record-event throughput, ON vs OFF, at each read pressure.
+Shared story (`-o`) so all ranks contend on one pipeline's `sequencingMutex`.
+Fixed 60 ranks × 1000 events (60 000 total ≤ `tail_capacity`), fixed
+`event_interval` 50 ms; sweep `poll_interval` ∈ {1000, 200, 50, 10} ms, which
+varies *read* pressure at constant *write* pressure. `playback_n` fixed at 2048.
+
+Metric: `log_event()` service-time distribution, ON vs OFF, at each read
+pressure. Service time is the right metric here rather than aggregate
+throughput, because writes are paced — aggregate rate would mostly reflect the
+pacing, not the system.
 
 ### Family B2 — read-path service latency (sharpest test)
 
-Fixed 24 ranks, 2000 events each (48 000 total, within the sizing window); sweep
-`playback_n` ∈ {64, 256, 1024, 4096, 16384}. Metric: p50 / p99 of the
-`playback()` call itself. This is where the `1 + misses` lock cost must appear;
-a regression here is the real risk of the feature.
+Shared story, fixed 24 ranks × 2000 events (48 000 total, so depth 16 384 is
+reachable and nothing evicts), `event_interval` 20 ms, `poll_interval` 500 ms;
+sweep `playback_n` ∈ {64, 256, 1024, 4096, 16384}.
+
+Metric: p50 / p99 of the `playback()` call itself. This is where the
+`1 + misses` `sequencingMutex` cost must appear; a regression here is the real
+risk of the feature. `never_seen` is expected to be high at shallow depths in
+this family — the metric is service time, not visibility, so that is not a
+defect here.
 
 ### B3 — keeper cost
 
