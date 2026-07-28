@@ -142,6 +142,15 @@ pressure. Service time is the right metric here rather than aggregate
 throughput, because writes are paced — aggregate rate would mostly reflect the
 pacing, not the system.
 
+**Visibility latency is not a valid metric in this family.** `playback_n` (2048)
+is deliberately far below the events-per-chunk-period (60 ranks × 20 ev/s × 10 s
+≈ 12 000), so the OFF arm only ever observes the newest 2048 events of each
+sealed chunk and drops the rest — measured: 12 288 of 60 000 seen, i.e. exactly
+2048 × 6 chunks. The ON arm drops far fewer. Since the two arms truncate
+different fractions, their latency columns are lower bounds that must not be
+compared. The per-call service times are unaffected. The same caveat applies to
+B2.
+
 ### Family B2 — read-path service latency (sharpest test)
 
 Shared story, fixed 24 ranks × 2000 events (48 000 total, so depth 16 384 is

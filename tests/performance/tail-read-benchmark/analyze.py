@@ -232,13 +232,30 @@ def write_markdown(path, agg, info, warmup_s):
                   f"| {CFG_NAME[fam]} | arm | send→visible p50 (ms) | p99 (ms) | playback() p50 (us) | playback() p99 (us) "
                   f"| log_event() p50 (us) | p99 (us) | keeper CPU (% core) | keeper RSS (MB) | never seen |",
                   "|---|---|---|---|---|---|---|---|---|---|---|"]
+        flagged = False
         for r in sorted(rows, key=lambda r: (r["config"], ARM_ORDER.index(r["arm"]))):
+            # A materially truncated sample means the dropped events are exactly
+            # the slowest ones, so the latency columns are a lower bound and are
+            # NOT comparable between arms (the arms drop different fractions).
+            drop = r["never_seen"] / r["logged"] if r.get("logged") else 0.0
+            suspect = drop > 0.05
+            flagged = flagged or suspect
+            mark = "†" if suspect else ""
             lines.append(
-                f"| {r['config']} | {r['arm']} | {fmt(r['lat_p50'])} | {fmt(r['lat_p99'])} "
+                f"| {r['config']} | {r['arm']} | {fmt(r['lat_p50'])}{mark} | {fmt(r['lat_p99'])}{mark} "
                 f"| {fmt(r['pb_p50'])} | {fmt(r['pb_p99'])} | {fmt(r['wr_p50'])} | {fmt(r['wr_p99'])} "
                 f"| {fmt(r['keeper_cpu_pct'])} | {fmt(r['keeper_rss_mb'])} | {fmt(r['never_seen'], 0)} |"
             )
         lines.append("")
+        if flagged:
+            lines += [
+                "† >5% of events never became visible within max_wait, so these latency figures are a "
+                "LOWER BOUND and are **not comparable between arms** — the two arms truncate different "
+                "fractions of the sample. This is expected on the shared-story families, where playback_n "
+                "is deliberately smaller than the events-per-chunk-period; their metrics are the "
+                "playback() and log_event() service times, which are per-call and unaffected.",
+                "",
+            ]
     open(path, "w").write("\n".join(lines))
 
 
