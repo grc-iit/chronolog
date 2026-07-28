@@ -268,8 +268,10 @@ def fig_cdf(records, out_path):
     pts = sorted({r["config"] for r in records if r["family"] == "A"})
     if not pts:
         return None
-    fig, axes = plt.subplots(1, len(pts), figsize=(4.2 * len(pts), 4.0), squeeze=False, facecolor=SURFACE)
-    for ax, cfg in zip(axes[0], pts):
+    fig, axes = plt.subplots(1, len(pts), figsize=(3.6 * len(pts), 4.4), squeeze=False,
+                             sharey=True, facecolor=SURFACE)
+    handles = []
+    for i, (ax, cfg) in enumerate(zip(axes[0], pts)):
         for arm in ARM_ORDER:
             pooled = np.concatenate(
                 [r["_lat"] for r in records if r["family"] == "A" and r["arm"] == arm and r["config"] == cfg]
@@ -280,14 +282,20 @@ def fig_cdf(records, out_path):
                 continue
             xs = np.sort(pooled)
             ys = np.arange(1, xs.size + 1) / xs.size
-            ax.plot(xs, ys, color=ARM_COLOR[arm], linewidth=2, label=ARM_LABEL[arm])
+            (line,) = ax.plot(xs, ys, color=ARM_COLOR[arm], linewidth=2, label=ARM_LABEL[arm])
+            if i == 0:
+                handles.append(line)
         ax.set_xscale("log")
         ax.set_ylim(0, 1.02)
-        style_axes(ax, "send→visible latency (ms, log)", "cumulative fraction", f"{cfg} ranks")
-    axes[0][0].legend(frameon=False, fontsize=9, labelcolor=TEXT_SECONDARY, loc="lower right")
+        # Only the leftmost facet carries the y-label; repeating it is noise.
+        style_axes(ax, "send→visible latency (ms, log)", "cumulative fraction" if i == 0 else "", f"{cfg} ranks")
+    # Figure-level legend above the facets, so it cannot collide with a curve.
+    if handles:
+        fig.legend(handles=handles, frameon=False, fontsize=9, labelcolor=TEXT_SECONDARY,
+                   loc="upper left", bbox_to_anchor=(0.008, 0.94), ncol=len(handles))
     fig.suptitle("Tail-read freshness: sealed-only vs live tail read",
-                 color=TEXT_PRIMARY, fontsize=13, x=0.01, ha="left")
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+                 color=TEXT_PRIMARY, fontsize=13, x=0.008, y=0.985, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(out_path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return out_path
