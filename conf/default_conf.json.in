@@ -219,7 +219,8 @@
       "inactive_story_delay_secs": 300
     },
     "ArchiveReaders": {
-      "story_files_dir": "/tmp"
+      "story_files_dir": "/tmp",
+      "read_aux_files": false
     }
 }
 }

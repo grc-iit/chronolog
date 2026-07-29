@@ -50,7 +50,8 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
                                           readingRequest->storyName,
                                           readingRequest->startTime,
                                           readingRequest->endTime,
-                                          listOfChunks);
+                                          listOfChunks,
+                                          readAuxFiles);
 
         LOG_DEBUG("[ReadingAgent] Read {} StoryChunks for query {} Chronicle={}, Story={}, TimeRange=[{}, {})",
                   listOfChunks.size(),

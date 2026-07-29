@@ -63,6 +63,7 @@ struct PlayerConfiguration
         DATA_STORE_CONF.inactive_story_delay_secs = 300;
 
         READER_CONF.story_files_dir = "/tmp/";
+        READER_CONF.read_aux_files = false;
     }
     int parseJsonConf(json_object*);
 

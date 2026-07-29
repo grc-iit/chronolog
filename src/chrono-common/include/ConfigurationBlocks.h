@@ -274,12 +274,20 @@ struct DataStoreConf
 struct ExtractorReaderConf
 {
     std::string story_files_dir;
+    // When true, replay also reads the rotated/auxiliary archive files
+    // ("<chronicle>.<story>.<start>.vlen.<n>.h5") that the grapher produces when a
+    // chunk window is written more than once (straggler re-sends, grapher restart).
+    // Off by default: the main-file-only view is the historical behavior, and
+    // reading the rotations returns overlapping events that the caller must
+    // de-duplicate by EventSequence.
+    bool read_aux_files = false;
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
+        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
+               " READ_AUX_FILES: " + (read_aux_files ? "true" : "false") + "]";
     }
 };
 

@@ -175,6 +175,15 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                     }
                     READER_CONF.story_files_dir = json_object_get_string(val);
                 }
+                else if(strcmp(key, "read_aux_files") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_boolean))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'read_aux_files': expected boolean" << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    READER_CONF.read_aux_files = json_object_get_boolean(val);
+                }
                 else
                 {
                     std::cerr << "[ConfigurationManager] [chrono_player] Unknown ArchiveReaders configuration " << key

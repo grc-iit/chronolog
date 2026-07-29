@@ -41,10 +41,15 @@ class ArchiveReadingAgent
 
 
 public:
-    ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue, std::string const& archive_path)
+    // read_aux_files: serve replay from the rotated/auxiliary archive files in
+    // addition to the main one (ArchiveReaders.read_aux_files; off by default).
+    ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue,
+                        std::string const& archive_path,
+                        bool read_aux_files = false)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
         , theReadingAgent(archive_path, true) // Default to polling mode
+        , readAuxFiles(read_aux_files)
     {}
 
     ~ArchiveReadingAgent();
@@ -73,6 +78,9 @@ private:
 
     //archiveSpecific readingAgent (template later on)
     HDF5ArchiveReadingAgent theReadingAgent;
+
+    // include rotated/auxiliary archive files in replay (ArchiveReaders.read_aux_files)
+    bool readAuxFiles;
 };
 
 } // namespace chronolog
