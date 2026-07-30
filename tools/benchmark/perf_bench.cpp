@@ -564,7 +564,14 @@ gather_doubles(int rank, int size, const std::vector<double>& local, std::vector
         }
     }
     std::vector<double> all(rank == 0 ? total_n : 0);
-    MPI_Gatherv(local.data(), local_n, MPI_DOUBLE, all.data(), counts.data(), displs.data(), MPI_DOUBLE, 0,
+    MPI_Gatherv(local.data(),
+                local_n,
+                MPI_DOUBLE,
+                all.data(),
+                counts.data(),
+                displs.data(),
+                MPI_DOUBLE,
+                0,
                 MPI_COMM_WORLD);
     return all;
 }
@@ -589,7 +596,14 @@ static std::vector<uint64_t> gather_u64(int rank, int size, const std::vector<ui
         }
     }
     std::vector<uint64_t> all(rank == 0 ? total_n : 0);
-    MPI_Gatherv(local.data(), local_n, MPI_UINT64_T, all.data(), counts.data(), displs.data(), MPI_UINT64_T, 0,
+    MPI_Gatherv(local.data(),
+                local_n,
+                MPI_UINT64_T,
+                all.data(),
+                counts.data(),
+                displs.data(),
+                MPI_UINT64_T,
+                0,
                 MPI_COMM_WORLD);
     return all;
 }
@@ -704,8 +718,7 @@ static void report_latency(int rank, int size, const latency_stats& stats, const
         // understates the truth. Say so rather than letting it pass silently.
         std::cout << "WARNING: " << never_seen << " event(s) never became visible within -m/--max_wait ("
                   << workload_args.max_wait_sec
-                  << "s). Those are the SLOWEST samples, so the latency figures below are a LOWER BOUND."
-                  << std::endl;
+                  << "s). Those are the SLOWEST samples, so the latency figures below are a LOWER BOUND." << std::endl;
     }
 
     if(all_latencies.empty())
@@ -732,7 +745,10 @@ static void report_latency(int rank, int size, const latency_stats& stats, const
     if(!workload_args.csv_prefix.empty())
     {
         write_latency_csv(workload_args.csv_prefix + ".latency.csv", latency_counts, all_event_times, all_latencies);
-        write_sample_csv(workload_args.csv_prefix + ".playback.csv", "playback_us", playback_counts, all_playback_t,
+        write_sample_csv(workload_args.csv_prefix + ".playback.csv",
+                         "playback_us",
+                         playback_counts,
+                         all_playback_t,
                          all_playback_us);
         write_sample_csv(workload_args.csv_prefix + ".write.csv", "write_us", write_counts, all_write_t, all_write_us);
         std::cout << "Per-sample CSVs written to " << workload_args.csv_prefix << ".{latency,playback,write}.csv"
