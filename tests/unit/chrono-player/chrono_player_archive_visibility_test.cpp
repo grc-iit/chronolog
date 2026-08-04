@@ -88,7 +88,7 @@ protected:
         chl::StoryChunk* shipped = extractionQueue.ejectStoryChunk();
         ASSERT_EQ(shipped, chunk);
         chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-        ASSERT_GT(writer.writeStoryChunk(*shipped), 0u);
+        ASSERT_GT(writer.writeStoryChunk(*shipped).file_size, 0u);
         keeper.markShipped(shipped);
         keeper.confirmPersisted(kStory, kChunkEnd);
     }

@@ -1,6 +1,7 @@
 #include <atomic>
 #include <filesystem>
 #include <mutex>
+#include <regex>
 #include <stdexcept>
 #include <unistd.h>
 
@@ -212,8 +213,18 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     return 0;
 }
 
-hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
+StoryChunkWriteResult StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
 {
+    StoryChunkWriteResult result;
+    if(story_chunk.empty())
+    {
+        // Nothing to publish, and writeEvents() would take &data.front() of an
+        // empty vector. The grapher's HDF5 extractor never gets here with an empty
+        // window (it records the window and moves W itself), so this guards
+        // other callers.
+        LOG_DEBUG("[StoryChunkWriter] StoryChunk has no events; no file written.");
+        return result;
+    }
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
     for(const auto& event: story_chunk)
@@ -246,7 +257,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
             file->close();
             removePartialFile(partial_name);
-            return 0;
+            return result;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
@@ -258,11 +269,14 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         if(!publishFile(partial_name, rootDirectory, base_file_name, file_name))
         {
             removePartialFile(partial_name);
-            return 0;
+            return result;
         }
 
-        LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
-        return file_size;
+        LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file {}.", file_name);
+        result.file_size = file_size;
+        result.file_name = file_name;
+        result.seq = rotationIndexOf(fs::path(file_name).filename().string());
+        return result;
     }
     catch(H5::Exception const& error)
     {
@@ -272,6 +286,27 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         H5::Exception::printErrorStack();
     }
     removePartialFile(partial_name);
+    return result;
+}
+
+// "<chronicle>.<story>.<startSec>.vlen.h5" is number 0; a later write of the same
+// window carries its number just before the extension, as windowFileName() above
+// names it: "<...>.vlen.<n>.h5".
+uint32_t StoryChunkWriter::rotationIndexOf(std::string const& file_name)
+{
+    static std::regex const numbered(R"(\.vlen\.([0-9]+)\.h5$)");
+    std::smatch match;
+    if(std::regex_search(file_name, match, numbered) && match.size() == 2)
+    {
+        try
+        {
+            return static_cast<uint32_t>(std::stoul(match[1].str()));
+        }
+        catch(std::exception const&)
+        {
+            return 0;
+        }
+    }
     return 0;
 }
 

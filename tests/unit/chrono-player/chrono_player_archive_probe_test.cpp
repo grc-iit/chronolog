@@ -68,7 +68,7 @@ protected:
         chl::StoryChunk window("chron", "story", kStory, start_secs * NS, (start_secs + kWindowSecs) * NS);
         window.insertEvent(chl::LogEvent(kStory, start_secs * NS + 1, 5, 0, "payload"));
         chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-        ASSERT_GT(writer.writeStoryChunk(window), 0u);
+        ASSERT_GT(writer.writeStoryChunk(window).file_size, 0u);
     }
 
     std::vector<uint64_t> replayedTimes(chl::HDF5ArchiveReadingAgent& archive, uint64_t start, uint64_t end)

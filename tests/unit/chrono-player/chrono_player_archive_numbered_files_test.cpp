@@ -76,7 +76,7 @@ protected:
             window.insertEvent(chl::LogEvent(kStory, time, 5, index++, "payload"));
         }
         chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-        ASSERT_GT(writer.writeStoryChunk(window), 0u);
+        ASSERT_GT(writer.writeStoryChunk(window).file_size, 0u);
     }
 
     // The event times a replay of [start, end) reads from the archive, and

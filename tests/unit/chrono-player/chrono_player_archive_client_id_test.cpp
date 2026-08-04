@@ -93,7 +93,7 @@ TEST_F(ArchiveClientId, ArchivedEventKeepsItsFullClientId)
     chl::StoryChunk chunk("chron", "story", kStory, kWindowStart, kWindowEnd);
     chunk.insertEvent(chl::LogEvent(kStory, kWindowStart + 1, kWideClientId, 3, "payload"));
     chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+    ASSERT_GT(writer.writeStoryChunk(chunk).file_size, 0u);
 
     readWindow();
     ASSERT_EQ(chunks.size(), 1u);

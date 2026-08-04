@@ -19,6 +19,7 @@
 #include <atomic>
 #include <csignal>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -112,7 +113,7 @@ TEST_F(ChunkWriter, ASuccessfulWriteLeavesOnlyTheWindowFile)
     chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
     chl::StoryChunk chunk = window(60, 4, 16);
 
-    EXPECT_GT(writer.writeStoryChunk(chunk), 0u);
+    EXPECT_GT(writer.writeStoryChunk(chunk).file_size, 0u);
 
     EXPECT_EQ(fileNames(), (std::vector<std::string>{"C.S.60.vlen.h5"}));
 }
@@ -132,7 +133,7 @@ TEST_F(ChunkWriter, AFailedWriteLeavesNothingBehind)
         ::setrlimit(RLIMIT_FSIZE, &capped);
         chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
         chl::StoryChunk chunk = window(60, 400, 512);
-        hsize_t const written = writer.writeStoryChunk(chunk);
+        hsize_t const written = writer.writeStoryChunk(chunk).file_size;
         ::_exit(written == 0 ? 0 : 1);
     }
     int status = 0;
@@ -166,7 +167,7 @@ TEST_F(ChunkWriter, ConcurrentWritesOfOneWindowEachKeepTheirOwnFile)
                     // start together, so the writes overlap
                     --waiting;
                     while(waiting.load() > 0) { std::this_thread::yield(); }
-                    if(writer.writeStoryChunk(chunks[i]) > 0)
+                    if(writer.writeStoryChunk(chunks[i]).file_size > 0)
                     {
                         ++succeeded;
                     }
@@ -200,7 +201,7 @@ TEST_F(ChunkWriter, ConcurrentWritesOfOneWindowFromSeparateProcessesEachKeepThei
             (void)!::read(go[0], &byte, 1);
             chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
             chl::StoryChunk chunk = window(60, 1 + i, 16);
-            ::_exit(writer.writeStoryChunk(chunk) > 0 ? 0 : 1);
+            ::_exit(writer.writeStoryChunk(chunk).file_size > 0 ? 0 : 1);
         }
         children.push_back(child);
     }
@@ -235,7 +236,7 @@ TEST_F(ChunkWriter, AWrittenWindowCanBeOpenedForReadingWhileAnotherHandleIsOpen)
 {
     chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
     chl::StoryChunk chunk = window(60, 4, 16);
-    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+    ASSERT_GT(writer.writeStoryChunk(chunk).file_size, 0u);
 
     std::string const path = (dir / "C.S.60.vlen.h5").string();
     H5::H5File first(path, H5F_ACC_RDONLY, H5::FileCreatPropList::DEFAULT, chl::archiveFileAccess());
@@ -244,4 +245,76 @@ TEST_F(ChunkWriter, AWrittenWindowCanBeOpenedForReadingWhileAnotherHandleIsOpen)
         second.close();
     });
     first.close();
+}
+
+// The archive manifest records the file it must later find, so the writer has to
+// say which name it actually took rather than leaving the caller to re-derive it.
+TEST_F(ChunkWriter, ReportsThePublishedFileNameAndNumber)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 3, 16);
+
+    chl::StoryChunkWriteResult const result = writer.writeStoryChunk(chunk);
+
+    ASSERT_GT(result.file_size, 0u);
+    EXPECT_EQ(fs::path(result.file_name).filename().string(), "C.S.60.vlen.h5");
+    EXPECT_EQ(result.seq, 0u);
+    EXPECT_TRUE(fs::exists(result.file_name));
+}
+
+TEST_F(ChunkWriter, ASecondWriteOfTheSameWindowReportsTheNumberItTook)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk first = window(60, 1, 16);
+    chl::StoryChunk second = window(60, 2, 16);
+
+    chl::StoryChunkWriteResult const first_result = writer.writeStoryChunk(first);
+    chl::StoryChunkWriteResult const second_result = writer.writeStoryChunk(second);
+
+    EXPECT_EQ(first_result.seq, 0u);
+    EXPECT_EQ(second_result.seq, 1u) << "a re-send must land beside the original, not on top of it";
+    EXPECT_EQ(fs::path(second_result.file_name).filename().string(), "C.S.60.vlen.1.h5");
+    expectOneFilePerWrite(2);
+}
+
+// A file already holding the window's own name is stepped around, not replaced.
+TEST_F(ChunkWriter, AnExistingFileForTheSameWindowIsSteppedAround)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    fs::path const occupied = dir / "C.S.60.vlen.h5";
+    {
+        std::ofstream squatter(occupied);
+        squatter << "not an hdf5 file";
+    }
+    auto const original_size = fs::file_size(occupied);
+
+    chl::StoryChunk chunk = window(60, 3, 16);
+    chl::StoryChunkWriteResult const result = writer.writeStoryChunk(chunk);
+
+    ASSERT_GT(result.file_size, 0u);
+    EXPECT_EQ(fs::file_size(occupied), original_size) << "the file already there was overwritten";
+    EXPECT_EQ(result.seq, 1u);
+}
+
+TEST_F(ChunkWriter, AnEmptyChunkWritesNoFile)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk empty("C", "S", kStory, 60 * NS, 90 * NS);
+
+    chl::StoryChunkWriteResult const result = writer.writeStoryChunk(empty);
+
+    EXPECT_EQ(result.file_size, 0u);
+    EXPECT_TRUE(result.file_name.empty());
+    EXPECT_TRUE(fileNames().empty()) << "an empty chunk must not leave a file or a temporary behind";
+}
+
+TEST(ChunkWriterNames, RotationIndexIsReadFromTheNumberBeforeTheExtension)
+{
+    EXPECT_EQ(chl::StoryChunkWriter::rotationIndexOf("C.S.60.vlen.h5"), 0u);
+    EXPECT_EQ(chl::StoryChunkWriter::rotationIndexOf("C.S.60.vlen.1.h5"), 1u);
+    EXPECT_EQ(chl::StoryChunkWriter::rotationIndexOf("/archive/C.S.60.vlen.12.h5"), 12u);
+    // a chronicle or story name with digits between dots is not a number
+    EXPECT_EQ(chl::StoryChunkWriter::rotationIndexOf("C.7.60.vlen.h5"), 0u);
+    // a partial file is not a published one
+    EXPECT_EQ(chl::StoryChunkWriter::rotationIndexOf("C.S.60.vlen.h5.partial.host.1.0"), 0u);
 }

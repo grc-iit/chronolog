@@ -12,6 +12,19 @@
 
 namespace chronolog
 {
+
+// What a publish produced. file_size doubles as the success flag (0 == nothing
+// was written), preserving the caller's existing check; file_name and seq exist
+// because the archive manifest has to record the file it will later have to find,
+// and re-deriving the name in the caller would duplicate the numbering logic that
+// picked it.
+struct StoryChunkWriteResult
+{
+    hsize_t file_size = 0;
+    std::string file_name; // as published, empty on failure
+    uint32_t seq = 0;      // 0 for the window's own name, n for "...vlen.<n>.h5"
+};
+
 class StoryChunkWriter
 {
 public:
@@ -25,7 +38,14 @@ public:
 
     hsize_t writeStoryChunk(StoryChunkHVL& story_chunk);
 
-    hsize_t writeStoryChunk(StoryChunk& story_chunk);
+    // Writes the window under a temporary name and moves it into place under the
+    // first free name (see publishFile in StoryChunkWriter.cpp), and reports which
+    // name it took. An empty chunk writes nothing and returns file_size 0.
+    StoryChunkWriteResult writeStoryChunk(StoryChunk& story_chunk);
+
+    // The number a published name carries: 0 for "<...>.vlen.h5", n for
+    // "<...>.vlen.<n>.h5".
+    static uint32_t rotationIndexOf(std::string const& file_name);
 
     hsize_t writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data);
 
