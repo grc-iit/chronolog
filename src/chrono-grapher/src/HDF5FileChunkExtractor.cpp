@@ -200,7 +200,10 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
     }
 
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
-    hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
+    // write_result carries the published name and rotation index as well as the
+    // size; the archive manifest records those in a later step.
+    StoryChunkWriteResult const write_result = chunkWriter.writeStoryChunk(*story_chunk);
+    hsize_t size = write_result.file_size;
     if(size == 0)
     {
         LOG_ERROR("[HDF5FileChunkExtractor] Error writing StoryChunk to file: StoryId={} {}-{} {}-{} eventCount {}",
