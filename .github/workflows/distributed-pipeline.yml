@@ -535,6 +535,143 @@ jobs:
             echo "PERF_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Exercises the read side of the data flow, which the write-only perf test
+      # above does not cover:
+      #   1. write   - distributed telemetry writer produces real events and, unlike
+      #                chrono-bench, leaves its chronicles/stories in place.
+      #   2. tail read   - chrono-bench -l polls StoryHandle::playback() until each
+      #                event it logged is visible in the keeper tail.
+      #   3. archive read - reader-to-csv replays the telemetry story through the
+      #                player/HDF5 archive and must return rows.
+      # The archive read is only satisfiable once the events have been sealed,
+      # extracted and archived AND have aged past the player's acceptance window
+      # (get_active_window_boundary() clamps a query's end to now - acceptance_window,
+      # 300 s by default), so it is polled with a generous deadline rather than
+      # attempted once.
+      - name: Run Client Read Path Test
+        id: read-path
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+
+            MPIEXEC_BIN=\"\"
+            if [ -x \"\${REPO_DIR}/.spack-env/view/bin/mpiexec\" ]; then
+              MPIEXEC_BIN=\"\${REPO_DIR}/.spack-env/view/bin/mpiexec\"
+            elif command -v mpiexec &> /dev/null; then
+              MPIEXEC_BIN=\$(which mpiexec)
+            else
+              MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec \\( -type f -o -type l \\) -executable 2>/dev/null | head -1)
+            fi
+            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
+              echo '❌ mpiexec not found'
+              exit 1
+            fi
+
+            export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            cd \${WORK_DIR}
+            CLIENT_CONF=conf/default-chrono-client-conf.json
+            # The telemetry writer names each rank's chronicle after its hostname,
+            # so rank 0 (on c1) writes the chronicle we read back below.
+            CHRONICLE=\$(hostname)
+            STORY=cpu_usage
+            CSV=/tmp/chronolog_replay.csv
+
+            echo '--- [1/3] write path: distributed telemetry writer (data is kept) ---'
+            # Capture to a log and test the command's own status: piping into tail
+            # would make the pipeline status tail's, hiding a writer failure.
+            RC=0
+            timeout 240 \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+              examples/chrono-client-example-distributed-telemetry-writer \
+              --config \${CLIENT_CONF} -d 30 -i 5 > /tmp/telemetry_writer.log 2>&1 || RC=\$?
+            tail -8 /tmp/telemetry_writer.log || true
+            if [ \$RC -ne 0 ]; then
+              echo \"❌ telemetry writer failed (exit \${RC})\"
+              exit 1
+            fi
+            echo \"✅ telemetry written (chronicles c1..c4; stories cpu_usage/memory_usage/network_usage)\"
+
+            echo '--- [2/3] tail read: chrono-bench -l (playback from the keeper tail) ---'
+            RC=0
+            timeout 300 \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+              tools/benchmark/chrono-bench --config \${CLIENT_CONF} \
+              -l -n 64 -t 1 -h 1 -a 4096 -s 4096 -b 4096 -e 500 -m 120 \
+              > /tmp/tail_read_output.log 2>&1 || RC=\$?
+            grep -A4 'Latency (send' /tmp/tail_read_output.log || true
+            if [ \$RC -ne 0 ]; then
+              echo \"❌ tail read (chrono-bench -l) failed (exit \${RC})\"
+              tail -30 /tmp/tail_read_output.log || true
+              exit 1
+            fi
+            # Assert a NON-ZERO logged count as well as zero never-seen. never_seen is
+            # computed as logged - seen, so a run where every log_event() failed prints
+            # \"Events logged: 0, seen: 0, never seen (unsealed/evicted): 0\" and would
+            # otherwise satisfy this gate without the read path ever being exercised.
+            LATENCY_LINE=\$(grep -E '^Events logged: ' /tmp/tail_read_output.log | tail -1)
+            if ! echo \"\${LATENCY_LINE}\" | grep -qE 'Events logged: [1-9][0-9]*, seen: [0-9]+, never seen \\(unsealed/evicted\\): 0\$'; then
+              echo '❌ tail read: expected a non-zero logged count with every event visible via playback()'
+              echo \"   got: \${LATENCY_LINE:-<no 'Events logged:' line in the output>}\"
+              tail -30 /tmp/tail_read_output.log || true
+              exit 1
+            fi
+            echo \"✅ tail read: \${LATENCY_LINE}\"
+
+            echo '--- [3/3] archive read: reader-to-csv (ReplayStory over the HDF5 archive) ---'
+            echo \"Replaying \${CHRONICLE}/\${STORY}; waiting for archival + the player acceptance window ...\"
+            DEADLINE=\$(( SECONDS + 480 ))
+            ROWS=0
+            while [ \$SECONDS -lt \$DEADLINE ]; do
+              # reader-to-csv appends, so start from a clean file each attempt.
+              rm -f \${CSV}
+              examples/chrono-client-example-reader-to-csv \
+                --config \${CLIENT_CONF} --chronicle \${CHRONICLE} --story \${STORY} \
+                --interval 3600 --output_file \${CSV} > /tmp/reader_to_csv.log 2>&1 || true
+              if [ -f \${CSV} ]; then
+                ROWS=\$(wc -l < \${CSV})
+              else
+                ROWS=0
+              fi
+              if [ \"\${ROWS}\" -gt 0 ]; then
+                break
+              fi
+              sleep 15
+            done
+            # reader-to-csv exits 0 even when it replays nothing, so gate on rows.
+            if [ \"\${ROWS}\" -le 0 ]; then
+              echo \"❌ archive read returned no events for \${CHRONICLE}/\${STORY} within the deadline\"
+              echo '--- archive dir ---'
+              ls -la \${WORK_DIR}/output 2>/dev/null | head -20 || true
+              echo '--- reader-to-csv log ---'
+              tail -30 /tmp/reader_to_csv.log 2>/dev/null || true
+              exit 1
+            fi
+            echo \"✅ archive read: replayed \${ROWS} event(s) from \${CHRONICLE}/\${STORY}\"
+            head -3 \${CSV}
+            echo '✅ Read path test completed (write -> tail read -> archive read)'
+          "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      - name: Clean up archive output directory
+        if: always()
+        run: |
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            if [ -d \"\${WORK_DIR}/output\" ]; then
+              echo 'Removing archive files produced by the read path test...'
+              find \"\${WORK_DIR}/output\" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+              echo \"✅ Output directory cleaned (\$(ls -A \"\${WORK_DIR}/output\" 2>/dev/null | wc -l) entries remain)\"
+            else
+              echo 'ℹ️ No output directory to clean'
+            fi
+            rm -f /tmp/chronolog_replay.csv /tmp/reader_to_csv.log /tmp/tail_read_output.log /tmp/telemetry_writer.log 2>/dev/null || true
+          " || echo "⚠️ Output cleanup had errors but continuing"
+
       - name: Stop ChronoLog
         if: always()
         run: |
@@ -573,6 +710,8 @@ jobs:
           DEPLOY_D=${{ steps.deploy.outputs.duration || 0 }}
           PERF_D=${{ steps.perf-test.outputs.duration || 0 }}
           PERF_OUTCOME="${{ steps.perf-test.outcome }}"
+          READ_D=${{ steps.read-path.outputs.duration || 0 }}
+          READ_OUTCOME="${{ steps.read-path.outcome }}"
           PERF_OUTPUT=$(cat <<'PERF_SUMMARY_EOF'
           ${{ steps.perf-test.outputs.output }}
           PERF_SUMMARY_EOF
@@ -584,6 +723,12 @@ jobs:
             success) PERF_ICON="✅" ;;
             failure) PERF_ICON="❌" ;;
             *)       PERF_ICON="⚠️" ;;
+          esac
+
+          case "$READ_OUTCOME" in
+            success) READ_ICON="✅" ;;
+            failure) READ_ICON="❌" ;;
+            *)       READ_ICON="⚠️" ;;
           esac
 
           {
@@ -610,6 +755,11 @@ jobs:
             echo "| Build + install ChronoLog | $(fmt_duration "$BUILD_D") |"
             echo "| Deploy ChronoLog (distributed) | $(fmt_duration "$DEPLOY_D") |"
             echo "| Client performance test | $(fmt_duration "$PERF_D") |"
+            echo "| Client read path test | $(fmt_duration "$READ_D") |"
+            echo ""
+            echo "### 🔎 Client read path test"
+            echo ""
+            echo "${READ_ICON} Outcome: \`${READ_OUTCOME}\` — write (telemetry writer) → tail read (\`chrono-bench -l\`, \`playback()\`) → archive read (reader-to-csv, \`ReplayStory\`)"
             echo ""
             echo "### 🚀 Client performance test"
             echo ""
