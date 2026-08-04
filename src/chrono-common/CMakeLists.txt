@@ -8,6 +8,7 @@ find_package(Thallium REQUIRED)
 add_library(chrono_common STATIC
     src/city.cpp
     src/ConfigurationBlocks.cpp
+    src/ArchiveManifest.cpp
     src/StoryChunk.cpp
     src/StoryChunkWriter.cpp
     src/StoryPipeline.cpp

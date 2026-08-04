@@ -105,3 +105,26 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_module_test DESTINATION tests)
 endif()
 
+
+# ArchiveManifest (GTest) — durable record of published archive files and the
+# source of restored per-story watermarks. Pure file/JSON logic, no daemons.
+add_executable(archive_manifest_test
+    archive_manifest_test.cpp
+)
+
+target_include_directories(archive_manifest_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(archive_manifest_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(archive_manifest_test PROPERTIES OUTPUT_NAME chronolog-test-common-archive-manifest)
+gtest_discover_tests(archive_manifest_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_manifest_test DESTINATION tests)
+endif()
