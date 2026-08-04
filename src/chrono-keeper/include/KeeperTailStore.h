@@ -35,10 +35,21 @@ namespace chronolog
 class KeeperTailStore
 {
 public:
-    KeeperTailStore(StoryChunkExtractionQueue& extraction_queue, std::size_t tail_capacity, bool live_tail_read = false)
+    // tail_retention_ns bounds how long a sealed chunk may sit in the tail before it
+    // is forwarded for archival. Without it the ONLY forwarding paths are capacity
+    // eviction and shutdown, which makes archival volume-driven: a story producing
+    // fewer than tail_capacity events never reaches the grapher while the keeper
+    // runs, so its data is never written to HDF5 and survives only in keeper RAM.
+    // Before the tail store existed the pipeline handed each decayed chunk straight
+    // to the extraction queue; this restores that time-driven guarantee.
+    KeeperTailStore(StoryChunkExtractionQueue& extraction_queue,
+                    std::size_t tail_capacity,
+                    bool live_tail_read = false,
+                    uint64_t tail_retention_ns = 0)
         : theExtractionQueue(extraction_queue)
         , tailCapacity(tail_capacity)
         , liveTailRead(live_tail_read)
+        , tailRetentionNs(tail_retention_ns)
     {}
 
     ~KeeperTailStore()
@@ -75,6 +86,39 @@ public:
         tail.liveCounts.emplace(sealed_chunk, (std::size_t)sealed_chunk->getEventCount());
         for(auto it = sealed_chunk->begin(); it != sealed_chunk->end(); ++it) { tail.index[it->first] = sealed_chunk; }
         enforceCapacity(tail);
+    }
+
+    // Forward for archival every retained chunk whose retention window has passed,
+    // so a story that never fills the tail is still archived. Called on the keeper's
+    // maintenance tick with the same current_time that drives chunk decay, so this
+    // shares the pipeline's clock basis rather than introducing a second one.
+    //
+    // A chunk is compared on its END time: the whole chunk becomes archivable at
+    // once, which is the granularity the extraction queue takes ownership at.
+    // tail_retention_ns == 0 disables age-out (capacity/shutdown only).
+    void ageOutChunks(uint64_t current_time)
+    {
+        if(tailRetentionNs == 0)
+        {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(tailMutex);
+        for(auto& story_entry: storyTails)
+        {
+            StoryTail& tail = story_entry.second;
+            // index is ordered by EventSequence (event time first) and chunks are
+            // time-partitioned, so the oldest entry belongs to the oldest chunk;
+            // stop at the first chunk still inside its window.
+            while(!tail.index.empty())
+            {
+                StoryChunk const* oldest_chunk = tail.index.begin()->second;
+                if(oldest_chunk->getEndTime() + tailRetentionNs > current_time)
+                {
+                    break;
+                }
+                releaseOldestIndexedEvent(tail);
+            }
+        }
     }
 
     // Register/unregister the active (unsealed) timeline source for a story. Only
@@ -236,27 +280,34 @@ private:
         std::unordered_map<StoryChunk*, std::size_t> liveCounts;
     };
 
+    // Drop the oldest indexed event; when that was a chunk's last indexed event the
+    // chunk has no readers left, so ownership passes to the extraction queue (which
+    // archives and frees it). Releasing only on the last reference is what keeps the
+    // index from ever pointing at a chunk the drain thread is about to delete.
+    void releaseOldestIndexedEvent(StoryTail& tail)
+    {
+        auto oldest = tail.index.begin();
+        StoryChunk* chunk = oldest->second;
+        tail.index.erase(oldest);
+        auto lc = tail.liveCounts.find(chunk);
+        if(lc != tail.liveCounts.end() && --lc->second == 0)
+        {
+            theExtractionQueue.stashStoryChunk(chunk); // archive + free downstream
+            tail.liveCounts.erase(lc);
+        }
+    }
+
     // Evict oldest events until the tail is within capacity; once a retained
     // chunk has no indexed events left, forward it to the extraction queue.
     void enforceCapacity(StoryTail& tail)
     {
-        while(tail.index.size() > tailCapacity)
-        {
-            auto oldest = tail.index.begin();
-            StoryChunk* chunk = oldest->second;
-            tail.index.erase(oldest);
-            auto lc = tail.liveCounts.find(chunk);
-            if(lc != tail.liveCounts.end() && --lc->second == 0)
-            {
-                theExtractionQueue.stashStoryChunk(chunk); // archive + free downstream
-                tail.liveCounts.erase(lc);
-            }
-        }
+        while(tail.index.size() > tailCapacity) { releaseOldestIndexedEvent(tail); }
     }
 
     StoryChunkExtractionQueue& theExtractionQueue;
     std::size_t tailCapacity;
     bool liveTailRead;
+    uint64_t tailRetentionNs;
     std::mutex tailMutex;
     std::unordered_map<StoryId, StoryTail> storyTails;
 

@@ -90,7 +90,8 @@
       "acceptance_window_secs": 15,
       "inactive_story_delay_secs": 120,
       "tail_capacity": 65536,
-      "live_tail_read": false
+      "live_tail_read": false,
+      "tail_retention_secs": 60
     },
     "ExtractionModule": {
         "extraction_stream_count":2,

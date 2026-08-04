@@ -148,6 +148,11 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
     {
         (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
     }
+
+    // Chunks sealed above went into the tail store, which forwards them for
+    // archival only on capacity eviction or shutdown. Age them out on the same
+    // clock reading so a low-volume story is still archived while the keeper runs.
+    theTailStore.ageOutChunks(current_time);
 }
 ////////////////////////
 

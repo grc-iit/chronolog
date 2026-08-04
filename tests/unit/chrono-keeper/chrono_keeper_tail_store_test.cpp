@@ -224,3 +224,80 @@ TEST(KeeperTailStore, StoriesAreIsolated)
     ASSERT_EQ(e1.size(), 1u);
     EXPECT_EQ(e1[0].getRecord(), "S1#3");
 }
+
+// ---- archival must not depend on write volume ------------------------------
+//
+// Regression tests for the distributed-pipeline failure "archive read returned no
+// events": a story that never fills the tail was never archived at all.
+//
+// Before the tail store existed, KeeperStoryPipeline handed each decayed chunk
+// straight to the extraction queue, so archival was driven purely by time (chunk
+// decay). Routing sealed chunks through the tail store made the ONLY forwarding
+// paths capacity eviction and keeper shutdown, which silently converted archival
+// from time-driven to volume-driven: below tail_capacity (65536 events per story
+// by default) nothing reached the grapher while the keeper ran, so nothing was
+// ever written to HDF5 and the data lived only in keeper RAM.
+
+// Drain everything currently queued for extraction, freeing it as the extraction
+// module does, and report how many chunks were waiting.
+static std::size_t drainQueue(chl::StoryChunkExtractionQueue& q)
+{
+    std::size_t drained = 0;
+    while(chl::StoryChunk* chunk = q.ejectStoryChunk())
+    {
+        delete chunk;
+        drained++;
+    }
+    return drained;
+}
+
+TEST(KeeperTailStore, SealedChunkIsForwardedForArchivalOnceItsRetentionWindowPasses)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    // Capacity far above the event count, exactly as in a low-volume deployment.
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
+    ASSERT_EQ(drainQueue(q), 0u) << "a chunk must stay readable while it is inside the retention window";
+
+    // Still inside the window: end_time 200 + retention 1000 = 1200.
+    store.ageOutChunks(1100);
+    EXPECT_EQ(drainQueue(q), 0u) << "aged out too early -- tail reads would lose recent events";
+
+    // Past it: the chunk must now be handed over for archival even though the
+    // tail is nowhere near capacity.
+    store.ageOutChunks(1200);
+    EXPECT_EQ(drainQueue(q), 1u) << "a sealed chunk was never forwarded for archival below tail capacity";
+}
+
+TEST(KeeperTailStore, AgedOutChunkIsNoLongerServedFromTheTail)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
+    ASSERT_EQ(store.getTailSequences(1, 10).size(), 5u);
+
+    store.ageOutChunks(5000);
+    // Ownership passed to the extraction queue; the index must not keep pointing
+    // at a chunk the drain thread is about to free.
+    EXPECT_TRUE(store.getTailSequences(1, 10).empty()) << "tail index still references a handed-over chunk";
+    EXPECT_EQ(drainQueue(q), 1u);
+}
+
+TEST(KeeperTailStore, AgeOutLeavesYoungerStoriesAlone)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 3, 7, "old"));
+    store.ingestSealedChunk(2, makeChunk(2, 4000, 5000, 4000, 3, 8, "new"));
+
+    store.ageOutChunks(2000); // past story 1's window (1200), inside story 2's (6000)
+    EXPECT_EQ(drainQueue(q), 1u) << "exactly the aged story should be forwarded";
+    EXPECT_TRUE(store.getTailSequences(1, 10).empty());
+    EXPECT_EQ(store.getTailSequences(2, 10).size(), 3u) << "a younger story must stay in the tail";
+}
