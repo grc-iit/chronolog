@@ -33,6 +33,13 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
     // the sum, and one slow or hung keeper can neither serialize nor block the
     // others. Each response is bounded by kTailReadRpcTimeoutMs; a timeout or RPC
     // error simply drops that keeper's contribution (empty tail).
+    // Per-phase outcome tallies. A tail read is best-effort across the group, so ONE
+    // keeper failing degrades the result but is still a successful read; every keeper
+    // failing is not a read at all, and must not be reported as an empty tail.
+    std::size_t timeouts = 0;
+    std::size_t errors = 0;
+    std::size_t responded = 0;
+
     std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight;
     inflight.reserve(keepers.size());
     for(auto* keeper: keepers)
@@ -47,6 +54,7 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         }
         catch(thallium::exception const& ex)
         {
+            ++errors;
             LOG_ERROR("[KeeperTailReader] tail_get_sequences issue to {} failed: {}",
                       to_string(keeper->getRecordingServiceId()),
                       ex.what());
@@ -60,20 +68,46 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         try
         {
             std::vector<EventSequence> seqs = entry.second.wait();
+            ++responded;
             for(auto const& seq: seqs) { seqToKeeper[seq] = keeper; }
         }
         catch(thallium::timeout const&)
         {
+            ++timeouts;
             LOG_WARNING("[KeeperTailReader] tail_get_sequences to {} timed out; skipping this keeper",
                         to_string(keeper->getRecordingServiceId()));
         }
         catch(thallium::exception const& ex)
         {
+            ++errors;
             LOG_ERROR("[KeeperTailReader] tail_get_sequences to {} failed: {}",
                       to_string(keeper->getRecordingServiceId()),
                       ex.what());
         }
     }
+
+    // No keeper answered at all: the tail is unknown, not empty. Returning CL_SUCCESS
+    // here would be indistinguishable from "this story has no events yet", and callers
+    // do read it that way -- the e2e test and perf_bench both treat an empty result as
+    // "not visible yet" and keep polling.
+    if(responded == 0 && (timeouts + errors) > 0)
+    {
+        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - no keeper answered phase 1 ({} timed out, {} "
+                  "errored); the tail is unknown",
+                  story_id,
+                  timeouts,
+                  errors);
+        return (timeouts > 0) ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
+    }
+    if(timeouts + errors > 0)
+    {
+        LOG_WARNING("[KeeperTailReader] gather_story_tail: story {} - {} of {} keeper(s) did not answer phase 1; the "
+                    "tail may be missing their most recent events",
+                    story_id,
+                    timeouts + errors,
+                    responded + timeouts + errors);
+    }
+
     if(seqToKeeper.empty())
     {
         LOG_DEBUG("[KeeperTailReader] gather_story_tail: story {} has no tail events yet", story_id);
@@ -95,6 +129,10 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
     // then wait on each; per-keeper timeout/error drops that keeper's payloads.
     // perKeeper stays in scope through the waits so the seqs each request
     // references remain valid.
+    timeouts = 0;
+    errors = 0;
+    responded = 0;
+
     std::vector<std::pair<KeeperRecordingClient*, tl::async_response>> inflight_events;
     inflight_events.reserve(perKeeper.size());
     for(auto& keeper_entry: perKeeper)
@@ -106,6 +144,7 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         }
         catch(thallium::exception const& ex)
         {
+            ++errors;
             LOG_ERROR("[KeeperTailReader] tail_get_events issue to {} failed: {}",
                       to_string(keeper_entry.first->getRecordingServiceId()),
                       ex.what());
@@ -120,6 +159,7 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         try
         {
             std::vector<LogEvent> logEvents = entry.second.wait();
+            ++responded;
             for(auto const& le: logEvents)
             {
                 EventSequence seq{le.time(), le.getClientId(), le.index()};
@@ -128,15 +168,40 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
         }
         catch(thallium::timeout const&)
         {
+            ++timeouts;
             LOG_WARNING("[KeeperTailReader] tail_get_events to {} timed out; skipping this keeper",
                         to_string(keeper->getRecordingServiceId()));
         }
         catch(thallium::exception const& ex)
         {
+            ++errors;
             LOG_ERROR("[KeeperTailReader] tail_get_events to {} failed: {}",
                       to_string(keeper->getRecordingServiceId()),
                       ex.what());
         }
+    }
+
+    // Phase 1 found sequences, so there ARE events to fetch. If no keeper delivered
+    // any payload, the read failed -- do not report that as an empty tail.
+    if(responded == 0 && (timeouts + errors) > 0)
+    {
+        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - no keeper answered phase 2 ({} timed out, {} "
+                  "errored); {} selected event(s) could not be fetched",
+                  story_id,
+                  timeouts,
+                  errors,
+                  take);
+        return (timeouts > 0) ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
+    }
+    if(timeouts + errors > 0)
+    {
+        LOG_WARNING("[KeeperTailReader] gather_story_tail: story {} - {} of {} keeper(s) did not answer phase 2; "
+                    "returning {} of {} selected event(s)",
+                    story_id,
+                    timeouts + errors,
+                    responded + timeouts + errors,
+                    assembled.size(),
+                    take);
     }
 
     events.reserve(assembled.size());

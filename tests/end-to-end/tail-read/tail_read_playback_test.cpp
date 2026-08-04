@@ -184,11 +184,15 @@ int main(int argc, char** argv)
     std::vector<chronolog::Event> events;
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(max_wait_sec);
     bool got_all = false;
+    // Remember the last status so a failure can say WHY. A tail read that returns an
+    // error (no keeper answered) and one that legitimately has nothing yet both leave
+    // `events` empty, and reporting only the count sends the reader to the wrong place.
+    int last_rc = chronolog::CL_SUCCESS;
     while(std::chrono::steady_clock::now() < deadline)
     {
         events.clear();
-        int prc = handle->playback(static_cast<size_t>(event_count), events);
-        if(prc == chronolog::CL_SUCCESS && events.size() >= static_cast<size_t>(event_count))
+        last_rc = handle->playback(static_cast<size_t>(event_count), events);
+        if(last_rc == chronolog::CL_SUCCESS && events.size() >= static_cast<size_t>(event_count))
         {
             got_all = true;
             break;
@@ -200,7 +204,13 @@ int main(int argc, char** argv)
     if(!got_all)
     {
         std::cerr << "[tail-read-e2e] FAIL: playback() returned " << events.size() << "/" << event_count
-                  << " events within " << max_wait_sec << "s\n";
+                  << " events within " << max_wait_sec << "s"
+                  << " (last status: " << chronolog::to_string_client(last_rc) << ")\n";
+        if(last_rc != chronolog::CL_SUCCESS)
+        {
+            std::cerr << "[tail-read-e2e]       the last read FAILED rather than returning an empty tail -- check "
+                         "keeper reachability, not the seal window\n";
+        }
         result = 1;
     }
     else
