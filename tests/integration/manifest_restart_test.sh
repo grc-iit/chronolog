@@ -204,5 +204,49 @@ else
     bad "replay after restart returned $AFTER unique event(s), expected $BEFORE"
 fi
 
+# ------------------------------------- the tail poll, on a manifest-mode player ----
+# Everything above restarted a Player against an archive that already existed. The
+# other half of the claim is that a RUNNING manifest-mode Player keeps up as the
+# Grapher publishes, by re-reading the tail of the log rather than re-walking the
+# archive. The Player is now in manifest mode (asserted above), so a second writer
+# run exercises exactly that path.
+say "writing 30 more events; the running player must pick them up from the manifest tail"
+before_files=$h5_count
+timeout 200 "$TAIL_EXAMPLE" --config "$CLIENT_CONF" > /tmp/manifest_restart_writer2.out 2>&1
+
+waited=0
+while [ "$waited" -lt "$ARCHIVE_WAIT_SECS" ]; do
+    now_files=$(ls -1 "$OUTPUT_DIR"/TailChronicle.*.h5 2> /dev/null | wc -l)
+    if [ "$now_files" -gt "$before_files" ]; then
+        break
+    fi
+    sleep 5
+    waited=$((waited + 5))
+done
+
+now_files=$(ls -1 "$OUTPUT_DIR"/TailChronicle.*.h5 2> /dev/null | wc -l)
+if [ "$now_files" -gt "$before_files" ]; then
+    ok "tail poll: a second file was archived ($before_files -> $now_files)"
+else
+    bad "tail poll: no new file was archived within ${ARCHIVE_WAIT_SECS}s, nothing to pick up"
+fi
+
+# Give the poll a few ticks (manifest_poll_interval_ms defaults to 1000).
+sleep 6
+
+GREW=$(replay_unique /tmp/manifest_restart_grew.out)
+if [ "$GREW" -gt "$BEFORE" ]; then
+    ok "tail poll: replay now returns $GREW unique event(s), up from $BEFORE, with no restart"
+else
+    bad "tail poll: replay still returns $GREW unique event(s); the new file never entered the index"
+fi
+
+# The whole point is that it kept up WITHOUT falling back to walking the archive.
+if grep -qE "falling back to a recursive|Created start_time_file_name_map_" "$PLAYER_LOG" 2> /dev/null; then
+    bad "tail poll: the player fell back to a recursive directory scan"
+else
+    ok "tail poll: still no recursive directory scan"
+fi
+
 say "result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -347,6 +347,12 @@ struct ExtractorReaderConf
     // scanning, so it logs a warning naming both keys when that happens.
     // Player-only knob.
     bool manifest_enabled = true;
+    // How often the Player re-reads the tail of the manifest log to pick up files
+    // the Grapher published since startup. Cheap because the log is append-only:
+    // a tick costs the size of what changed, not a walk of the archive, which is
+    // what the directory listing it replaces (archive_scan_interval_secs) costs
+    // every time. Player-only knob.
+    int manifest_poll_interval_ms = 1000;
 
     int parseJsonConf(json_object*);
 
@@ -355,7 +361,8 @@ struct ExtractorReaderConf
         return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
                " archive_scan_interval_secs: " + std::to_string(archive_scan_interval_secs) +
                " archive_window_secs: " + std::to_string(archive_window_secs) +
-               " manifest_enabled: " + (manifest_enabled ? "true" : "false") + "]";
+               " manifest_enabled: " + (manifest_enabled ? "true" : "false") +
+               " manifest_poll_interval_ms: " + std::to_string(manifest_poll_interval_ms) + "]";
     }
 };
 

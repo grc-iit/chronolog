@@ -89,13 +89,15 @@ public:
                                      bool use_polling = true,
                                      std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
                                      uint64_t archive_window_secs = 30,
-                                     bool manifest_enabled = true)
+                                     bool manifest_enabled = true,
+                                     std::chrono::milliseconds manifest_poll_interval = std::chrono::milliseconds(1000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
         , archive_window_secs_(archive_window_secs)
         , shutdown_requested_(false)
         , manifest_enabled_(manifest_enabled)
+        , manifest_poll_interval_(manifest_poll_interval)
     {}
 
     ~HDF5ArchiveReadingAgent() { shutdown(); }
@@ -114,7 +116,11 @@ public:
                      archive_path_);
             createStartTimeFileNameMap();
         }
-        else if(loadIndexFromManifest() != 0)
+        else if(loadIndexFromManifest() == 0)
+        {
+            manifest_mode_ = true;
+        }
+        else
         {
             // Worth a warning rather than a note: the Grapher writes the manifest
             // into chrono_grapher's "hdf5_archive_dir" and the Player reads it from
@@ -143,6 +149,12 @@ public:
         archive_dir_monitoring_thread_->join();
         return 0;
     }
+
+    // Applies manifest records appended since the last call and returns how many
+    // were consumed. Public because the monitoring thread is not the only sensible
+    // driver: a test wants to step it, and stepping it is what makes the
+    // byte-offset bookkeeping observable at all.
+    int pollManifestTail();
 
     int readStoryChunkFile(const ChronicleName&,
                            const StoryName&,
@@ -547,6 +559,22 @@ private:
     std::atomic<bool> shutdown_requested_;
     // ArchiveReaders.manifest_enabled: false always indexes by directory scan
     bool manifest_enabled_ = true;
+    // True once the index was built from the manifest; that is what decides
+    // whether the monitoring thread polls the log or walks the directory.
+    bool manifest_mode_ = false;
+    // Tick used instead of monitoring_interval_ once the index is manifest-backed:
+    // reading an append-only tail is cheap enough to do far more often than the
+    // directory listing it replaces.
+    std::chrono::milliseconds manifest_poll_interval_{1000};
+    // Bytes of the manifest log already applied. Only ever advanced past a
+    // COMPLETE line: the Grapher appends without holding a lock the Player can
+    // see, so a poll can land mid-record.
+    std::streamoff manifest_log_offset_ = 0;
+    // Last observed write time of the log. Size alone cannot detect a compaction:
+    // it truncates the log and the Grapher immediately appends again, so the file
+    // can be back at exactly the offset already consumed while holding entirely
+    // different records.
+    std::filesystem::file_time_type manifest_log_mtime_{};
     // set once the archive directory has been listed: until then a story
     // missing from the map means "not looked yet", not "nothing archived"
     std::atomic<bool> initial_scan_done_{false};

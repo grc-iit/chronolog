@@ -48,14 +48,16 @@ public:
                         std::string const& archive_path,
                         int archive_scan_interval_secs = 5,
                         int archive_window_secs = 30,
-                        bool manifest_enabled = true)
+                        bool manifest_enabled = true,
+                        int manifest_poll_interval_ms = 1000)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
         , theReadingAgent(archive_path,
                           true, // Default to polling mode
                           std::chrono::milliseconds(archive_scan_interval_secs * 1000),
                           static_cast<uint64_t>(archive_window_secs),
-                          manifest_enabled)
+                          manifest_enabled,
+                          std::chrono::milliseconds(manifest_poll_interval_ms))
     {}
 
     ~ArchiveReadingAgent();

@@ -228,7 +228,8 @@
       "story_files_dir": "/tmp",
       "archive_scan_interval_secs": 5,
       "archive_window_secs": 30,
-      "manifest_enabled": true
+      "manifest_enabled": true,
+      "manifest_poll_interval_ms": 1000
     }
 }
 }

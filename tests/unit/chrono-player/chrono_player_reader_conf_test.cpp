@@ -65,3 +65,21 @@ TEST(PlayerReaderConf, ZeroWindowIsAllowedAndTurnsProbingOff)
     ASSERT_EQ(parseInto(conf, R"({"ArchiveReaders": {"archive_window_secs": 0}})"), chl::CL_SUCCESS);
     EXPECT_EQ(conf.READER_CONF.archive_window_secs, 0);
 }
+
+TEST(PlayerReaderConf, ReadsTheManifestKnobs)
+{
+    chl::PlayerConfiguration conf;
+    EXPECT_TRUE(conf.READER_CONF.manifest_enabled);
+    EXPECT_EQ(conf.READER_CONF.manifest_poll_interval_ms, 1000);
+    ASSERT_EQ(parseInto(conf, R"({"ArchiveReaders": {"manifest_enabled": false, "manifest_poll_interval_ms": 250}})"),
+              chl::CL_SUCCESS);
+    EXPECT_FALSE(conf.READER_CONF.manifest_enabled);
+    EXPECT_EQ(conf.READER_CONF.manifest_poll_interval_ms, 250);
+}
+
+TEST(PlayerReaderConf, RejectsAManifestPollIntervalOfZero)
+{
+    // the monitoring thread would spin on the manifest log
+    chl::PlayerConfiguration conf;
+    EXPECT_EQ(parseInto(conf, R"({"ArchiveReaders": {"manifest_poll_interval_ms": 0}})"), chl::CL_ERR_INVALID_CONF);
+}
