@@ -1,6 +1,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <set>
 #include <sstream>
 
@@ -233,8 +236,9 @@ std::vector<chronolog::ArchiveManifestRecord> chronolog::ArchiveManifest::record
     return theRecords;
 }
 
-chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root)
-    : theArchiveRoot(archive_root)
+chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root, bool fsync_each_append)
+    : theFsyncEachAppend(fsync_each_append)
+    , theArchiveRoot(archive_root)
     , theLogPath((fs::path(archive_root) / LOG_FILE_NAME).string())
     , theSnapshotPath((fs::path(archive_root) / SNAPSHOT_FILE_NAME).string())
 {}
@@ -254,6 +258,22 @@ int chronolog::ArchiveManifest::append(chronolog::ArchiveManifestRecord const& r
     {
         LOG_ERROR("[ArchiveManifest] Failed to append a record to {}", theLogPath);
         return chronolog::CL_ERR_UNKNOWN;
+    }
+
+    if(theFsyncEachAppend)
+    {
+        // ofstream::flush only pushes to the OS; the record is not on the platter
+        // until the descriptor is synced.
+        int const fd = ::open(theLogPath.c_str(), O_WRONLY | O_APPEND);
+        if(fd >= 0)
+        {
+            ::fsync(fd);
+            ::close(fd);
+        }
+        else
+        {
+            LOG_WARNING("[ArchiveManifest] manifest_fsync is on but {} could not be opened to sync", theLogPath);
+        }
     }
 
     theRecords.push_back(record);

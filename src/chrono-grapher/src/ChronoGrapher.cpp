@@ -182,9 +182,15 @@ int main(int argc, char** argv)
     }();
 
     std::unique_ptr<chronolog::ArchiveManifest> theArchiveManifest;
-    if(!archive_dir.empty())
+    if(!GRAPHER_CONF.DATA_STORE_CONF.manifest_enabled)
     {
-        theArchiveManifest = std::make_unique<chronolog::ArchiveManifest>(archive_dir);
+        LOG_WARNING("[ChronoGrapher] manifest_enabled is false: no archive manifest will be written, so a restart "
+                    "cannot restore persisted watermarks and players index the archive by directory scan");
+    }
+    else if(!archive_dir.empty())
+    {
+        theArchiveManifest =
+                std::make_unique<chronolog::ArchiveManifest>(archive_dir, GRAPHER_CONF.DATA_STORE_CONF.manifest_fsync);
         theArchiveManifest->load();
         // Recover the windows the previous run persisted, so each story's W picks
         // up where that run left it instead of starting again at the story's
@@ -230,7 +236,9 @@ int main(int argc, char** argv)
     // The data store's collection loop owns manifest compaction: it already runs
     // at ~1 Hz alongside the watermark publish, and the manifest must not be
     // compacted from an extraction stream that is concurrently appending to it.
-    theDataStore.attachArchiveManifest(theArchiveManifest.get());
+    theDataStore.attachArchiveManifest(
+            theArchiveManifest.get(),
+            static_cast<std::size_t>(GRAPHER_CONF.DATA_STORE_CONF.manifest_snapshot_threshold_entries));
 
     tl::engine* dataAdminEngine = nullptr;
 

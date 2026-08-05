@@ -155,7 +155,10 @@
       "story_chunk_duration_secs": 30,
       "acceptance_window_secs": 60,
       "inactive_story_delay_secs": 300,
-      "watermark_report_interval_secs": 1
+      "watermark_report_interval_secs": 1,
+      "manifest_enabled": true,
+      "manifest_snapshot_threshold_entries": 10000,
+      "manifest_fsync": false
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
@@ -224,7 +227,8 @@
     "ArchiveReaders": {
       "story_files_dir": "/tmp",
       "archive_scan_interval_secs": 5,
-      "archive_window_secs": 30
+      "archive_window_secs": 30,
+      "manifest_enabled": true
     }
 }
 }
