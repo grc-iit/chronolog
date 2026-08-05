@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -39,13 +40,20 @@ struct ArchiveManifestRecord
     //            still recorded, because it was persisted vacuously and dropping
     //            it would leave a hole that truncates the contiguous run and make
     //            restored W regress below its pre-restart value.
-    // deleted:   the file was removed (destroy story/chronicle). Its window stops
-    //            counting as persisted.
+    // deleted:   the file was removed (destroy story/chronicle). Because the log
+    //            is append-only, this arrives as a LATER record naming the same
+    //            file, and it supersedes that file's publication rather than
+    //            merely being skipped -- otherwise a file that is gone from disk
+    //            would still be claimed as persisted.
+    // failed:    the HDF5 write failed, so nothing was published. Recorded because
+    //            an operator wants to see it, but it must never advance W: unlike
+    //            "empty", its window was NOT persisted.
     enum class State : uint8_t
     {
         PUBLISHED = 0,
         EMPTY = 1,
-        DELETED = 2
+        DELETED = 2,
+        FAILED = 3
     };
 
     uint32_t version = CURRENT_VERSION;
@@ -91,6 +99,10 @@ public:
 
     // Appends one record to the log and keeps it in memory. Returns CL_SUCCESS,
     // or CL_ERR_UNKNOWN if the log could not be written.
+    //
+    // Thread-safe: the grapher's extraction module publishes from several streams
+    // into one manifest, so appends interleave. Without serialization the writes
+    // tear each other's lines on disk and race on the in-memory vector.
     int append(ArchiveManifestRecord const& record);
 
     // Replaces the in-memory state with the snapshot followed by the log. A
@@ -98,7 +110,9 @@ public:
     // with no records.
     int load();
 
-    std::vector<ArchiveManifestRecord> const& records() const { return theRecords; }
+    // A snapshot by value: returning a reference would hand out a container that
+    // a concurrent append can reallocate underneath the caller.
+    std::vector<ArchiveManifestRecord> records() const;
 
     // Compacts: writes every in-memory record to <snapshot>.tmp, renames it over
     // the snapshot, then truncates the log. The rename is what makes the swap
@@ -118,6 +132,7 @@ public:
     std::string const& snapshotPath() const { return theSnapshotPath; }
 
 private:
+    mutable std::mutex theMutex;
     std::string theArchiveRoot;
     std::string theLogPath;
     std::string theSnapshotPath;
