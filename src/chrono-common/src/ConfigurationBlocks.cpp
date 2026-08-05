@@ -317,6 +317,34 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             watermark_report_interval_secs = json_object_get_int(val);
         }
+        else if(strcmp(key, "manifest_enabled") == 0)
+        {
+            if(!json_object_is_type(val, json_type_boolean))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'manifest_enabled': expected boolean" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            manifest_enabled = json_object_get_boolean(val);
+        }
+        else if(strcmp(key, "manifest_snapshot_threshold_entries") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'manifest_snapshot_threshold_entries': expected integer"
+                          << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            manifest_snapshot_threshold_entries = json_object_get_int(val);
+        }
+        else if(strcmp(key, "manifest_fsync") == 0)
+        {
+            if(!json_object_is_type(val, json_type_boolean))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'manifest_fsync': expected boolean" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            manifest_fsync = json_object_get_boolean(val);
+        }
         else
         {
             std::cerr << "[DataStoreConf] Unknown DataStoreInternals configuration: " << key << std::endl;

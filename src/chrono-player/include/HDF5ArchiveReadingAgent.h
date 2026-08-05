@@ -84,11 +84,13 @@ class HDF5ArchiveReadingAgent
 public:
     explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
                                      bool use_polling = true,
-                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
+                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
+                                     bool manifest_enabled = true)
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
         , shutdown_requested_(false)
+        , manifest_enabled_(manifest_enabled)
     {}
 
     ~HDF5ArchiveReadingAgent() { shutdown(); }
@@ -102,10 +104,24 @@ public:
         // walk of the whole archive. The scan stays as the fallback for archives
         // written before the manifest existed, or when it is unreadable -- losing
         // the manifest must degrade performance, never correctness.
-        if(loadIndexFromManifest() != 0)
+        if(!manifest_enabled_)
         {
-            LOG_INFO("[HDF5ArchiveReadingAgent] No usable archive manifest in {}; falling back to a recursive scan",
+            LOG_INFO("[HDF5ArchiveReadingAgent] manifest_enabled is false; indexing {} by directory scan",
                      archive_path_);
+            createStartTimeFileNameMap();
+        }
+        else if(loadIndexFromManifest() != 0)
+        {
+            // Worth a warning rather than a note: the Grapher writes the manifest
+            // into chrono_grapher's "hdf5_archive_dir" and the Player reads it from
+            // chrono_player's "story_files_dir". Those are independent keys, so a
+            // mismatch looks exactly like "no manifest yet" -- the Player quietly
+            // scans and never restores anything, which is the failure this message
+            // exists to make visible.
+            LOG_WARNING("[HDF5ArchiveReadingAgent] No usable archive manifest in {}; falling back to a recursive "
+                        "directory scan. If the Grapher is writing one, check that chrono_player's "
+                        "'story_files_dir' names the same directory as chrono_grapher's 'hdf5_archive_dir'",
+                        archive_path_);
             createStartTimeFileNameMap();
         }
         return setUpFsMonitoring();
@@ -478,6 +494,7 @@ private:
 
     // Thread control
     std::atomic<bool> shutdown_requested_;
+    bool manifest_enabled_ = true;
 };
 
 } // namespace chronolog

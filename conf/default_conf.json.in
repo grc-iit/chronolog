@@ -91,7 +91,10 @@
       "inactive_story_delay_secs": 120,
       "tail_capacity": 65536,
       "retention_cap_mb": 512,
-      "watermark_resend_timeout_secs": 720
+      "watermark_resend_timeout_secs": 720,
+      "manifest_enabled": true,
+      "manifest_snapshot_threshold_entries": 10000,
+      "manifest_fsync": false
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
@@ -220,7 +223,8 @@
     },
     "ArchiveReaders": {
       "story_files_dir": "/tmp",
-      "read_aux_files": false
+      "read_aux_files": false,
+      "manifest_enabled": true
     }
 }
 }

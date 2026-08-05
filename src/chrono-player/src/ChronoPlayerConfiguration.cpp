@@ -184,6 +184,15 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                     }
                     READER_CONF.read_aux_files = json_object_get_boolean(val);
                 }
+                else if(strcmp(key, "manifest_enabled") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_boolean))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'manifest_enabled': expected boolean" << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    READER_CONF.manifest_enabled = json_object_get_boolean(val);
+                }
                 else
                 {
                     std::cerr << "[ConfigurationManager] [chrono_player] Unknown ArchiveReaders configuration " << key

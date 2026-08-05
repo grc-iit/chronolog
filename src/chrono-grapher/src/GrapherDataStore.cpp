@@ -610,7 +610,7 @@ void chronolog::GrapherDataStore::compactArchiveManifest()
         return;
     }
     std::size_t const record_count = theArchiveManifest->records().size();
-    if(record_count < theRecordsAtLastCompaction + MANIFEST_COMPACTION_THRESHOLD)
+    if(record_count < theRecordsAtLastCompaction + theManifestCompactionThreshold)
     {
         return;
     }

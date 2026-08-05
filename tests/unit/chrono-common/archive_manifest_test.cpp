@@ -28,6 +28,7 @@
 #include <chronolog_errcode.h>
 
 #include <ArchiveManifest.h>
+#include <ConfigurationBlocks.h>
 
 namespace chl = chronolog;
 namespace fs = std::filesystem;
@@ -463,4 +464,61 @@ TEST_F(ArchiveManifestTest, ConcurrentAppendsAllSurvive)
     {
         EXPECT_EQ(w.at(static_cast<chl::StoryId>(t)), static_cast<uint64_t>(PER_THREAD) * NS);
     }
+}
+
+// ---- configuration ---------------------------------------------------------
+
+TEST_F(ArchiveManifestTest, ManifestKnobsParseAndDefault)
+{
+    // The grapher-side knobs live in DataStoreInternals. Defaults matter as much
+    // as parsing: manifest_enabled defaults on (a Grapher that silently stopped
+    // recording would only be discovered at the next restart, when W came back 0),
+    // and manifest_fsync defaults off (a record is appended only after its file is
+    // published, so losing trailing appends is the safe direction).
+    chl::DataStoreConf defaults;
+    EXPECT_TRUE(defaults.manifest_enabled);
+    EXPECT_FALSE(defaults.manifest_fsync);
+    EXPECT_EQ(defaults.manifest_snapshot_threshold_entries, 10000);
+
+    chl::DataStoreConf parsed;
+    json_object* conf = json_tokener_parse("{\"manifest_enabled\":false,"
+                                           "\"manifest_snapshot_threshold_entries\":42,"
+                                           "\"manifest_fsync\":true}");
+    ASSERT_NE(conf, nullptr);
+    ASSERT_EQ(parsed.parseJsonConf(conf), chl::CL_SUCCESS);
+    json_object_put(conf);
+
+    EXPECT_FALSE(parsed.manifest_enabled);
+    EXPECT_EQ(parsed.manifest_snapshot_threshold_entries, 42);
+    EXPECT_TRUE(parsed.manifest_fsync);
+}
+
+TEST_F(ArchiveManifestTest, ManifestKnobsRejectTheWrongJsonType)
+{
+    chl::DataStoreConf conf_block;
+    json_object* bad = json_tokener_parse("{\"manifest_enabled\":\"yes\"}");
+    ASSERT_NE(bad, nullptr);
+    EXPECT_EQ(conf_block.parseJsonConf(bad), chl::CL_ERR_INVALID_CONF);
+    json_object_put(bad);
+
+    json_object* bad_threshold = json_tokener_parse("{\"manifest_snapshot_threshold_entries\":\"lots\"}");
+    ASSERT_NE(bad_threshold, nullptr);
+    EXPECT_EQ(conf_block.parseJsonConf(bad_threshold), chl::CL_ERR_INVALID_CONF);
+    json_object_put(bad_threshold);
+}
+
+TEST_F(ArchiveManifestTest, FsyncingAppendsStillProducesAReadableManifest)
+{
+    // The knob changes durability, not format: a manifest written with fsync on
+    // must load exactly like one written without it.
+    {
+        chl::ArchiveManifest manifest(root.string(), /*fsync_each_append=*/true);
+        ASSERT_EQ(manifest.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+        ASSERT_EQ(manifest.append(published(1, 10 * NS, 20 * NS)), chl::CL_SUCCESS);
+    }
+
+    chl::ArchiveManifest reopened(root.string());
+    ASSERT_EQ(reopened.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reopened.records().size(), 2u);
+    EXPECT_EQ(reopened.deriveWatermarks().at(1), 20 * NS);
 }

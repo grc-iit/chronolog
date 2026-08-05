@@ -95,7 +95,12 @@ bool parseManifestLine(std::string const& line, ArchiveManifestRecord& out);
 class ArchiveManifest
 {
 public:
-    explicit ArchiveManifest(std::string const& archive_root);
+    // fsync_each_append is off by default because durability of the manifest is
+    // not what makes the archive correct: a record is appended only after its file
+    // is published, so a lost trailing append makes W under-report and the keepers
+    // re-send. Turning it on shortens that re-send window after an unclean
+    // shutdown, at the cost of a sync per published chunk.
+    explicit ArchiveManifest(std::string const& archive_root, bool fsync_each_append = false);
 
     // Appends one record to the log and keeps it in memory. Returns CL_SUCCESS,
     // or CL_ERR_UNKNOWN if the log could not be written.
@@ -141,6 +146,7 @@ public:
 
 private:
     mutable std::mutex theMutex;
+    bool theFsyncEachAppend = false;
     std::string theArchiveRoot;
     std::string theLogPath;
     std::string theSnapshotPath;

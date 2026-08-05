@@ -43,12 +43,19 @@ class ArchiveReadingAgent
 public:
     // read_aux_files: serve replay from the rotated/auxiliary archive files in
     // addition to the main one (ArchiveReaders.read_aux_files; off by default).
+    // manifest_enabled: build the archive index from the manifest rather than by
+    // scanning the archive directory (ArchiveReaders.manifest_enabled; on by
+    // default, and it falls back to scanning by itself when there is no manifest).
     ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue,
                         std::string const& archive_path,
-                        bool read_aux_files = false)
+                        bool read_aux_files = false,
+                        bool manifest_enabled = true)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
-        , theReadingAgent(archive_path, true) // Default to polling mode
+        , theReadingAgent(archive_path,
+                          true, // Default to polling mode
+                          std::chrono::milliseconds(5000),
+                          manifest_enabled)
         , readAuxFiles(read_aux_files)
     {}
 

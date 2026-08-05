@@ -125,11 +125,16 @@ public:
     // Compaction owner for the archive manifest: the append-only log grows one
     // line per published window, so it is periodically folded into the snapshot
     // from the same loop that publishes watermarks. Optional; nullptr disables it.
-    void attachArchiveManifest(ArchiveManifest* manifest) { theArchiveManifest = manifest; }
+    void attachArchiveManifest(ArchiveManifest* manifest, std::size_t snapshot_threshold_entries)
+    {
+        theArchiveManifest = manifest;
+        theManifestCompactionThreshold =
+                (snapshot_threshold_entries > 0) ? snapshot_threshold_entries : DEFAULT_MANIFEST_COMPACTION_THRESHOLD;
+    }
 
 private:
-    // Records appended since the last compaction before another one is worth it.
-    static constexpr std::size_t MANIFEST_COMPACTION_THRESHOLD = 1024;
+    // Used when the configured threshold is absent or non-positive.
+    static constexpr std::size_t DEFAULT_MANIFEST_COMPACTION_THRESHOLD = 10000;
 
     void compactArchiveManifest();
 
@@ -177,6 +182,7 @@ private:
     // Records present at the last compaction; compaction runs again once the log
     // has grown by at least this many beyond it.
     std::size_t theRecordsAtLastCompaction = 0;
+    std::size_t theManifestCompactionThreshold = DEFAULT_MANIFEST_COMPACTION_THRESHOLD;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;

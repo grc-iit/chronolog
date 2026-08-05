@@ -253,6 +253,22 @@ struct DataStoreConf
     // How often the grapher pushes dirty per-story persisted watermarks to
     // the contributing keepers. Grapher-only knob; ignored by keeper/player.
     int watermark_report_interval_secs = 1;
+    // Write the archive manifest: the durable record of every published file and
+    // the source a restarted grapher restores its watermarks from. Off means the
+    // grapher archives exactly as before, and a restart cannot recover W (every
+    // keeper then re-sends what it retained). Grapher-only knob.
+    bool manifest_enabled = true;
+    // Records appended since the last compaction before the log is folded into the
+    // snapshot. Compaction rewrites every record, so a small value turns a cheap
+    // append-only log into a quadratic rewrite; a large one only costs replay time
+    // at startup. Grapher-only knob.
+    int manifest_snapshot_threshold_entries = 10000;
+    // fsync each manifest append. Off by default because it is not needed for
+    // correctness: a record is appended only after its file is published, so losing
+    // trailing appends makes W under-report, keepers retain longer and re-send, and
+    // E <= W still holds. Turn it on only to shorten that re-send window after an
+    // unclean shutdown, at the cost of a sync per published chunk. Grapher-only.
+    bool manifest_fsync = false;
 
     DataStoreConf() {}
 
@@ -267,7 +283,10 @@ struct DataStoreConf
                " tail_capacity: " + std::to_string(tail_capacity) +
                " retention_cap_mb: " + std::to_string(retention_cap_mb) +
                " watermark_resend_timeout_secs: " + std::to_string(watermark_resend_timeout_secs) +
-               " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) + "]";
+               " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) +
+               " manifest_enabled: " + (manifest_enabled ? "true" : "false") +
+               " manifest_snapshot_threshold_entries: " + std::to_string(manifest_snapshot_threshold_entries) +
+               " manifest_fsync: " + (manifest_fsync ? "true" : "false") + "]";
     }
 };
 
@@ -281,13 +300,25 @@ struct ExtractorReaderConf
     // reading the rotations returns overlapping events that the caller must
     // de-duplicate by EventSequence.
     bool read_aux_files = false;
+    // Build the archive index from the manifest instead of walking the archive
+    // directory. Off forces the recursive scan, which is also what happens
+    // automatically when no manifest is present, so this is an escape hatch rather
+    // than a feature switch.
+    //
+    // NOTE: the Grapher writes the manifest into chrono_grapher's
+    // "hdf5_archive_dir" while the Player reads it from this component's
+    // "story_files_dir". They are independent keys naming the same directory; if
+    // they disagree the Player silently finds no manifest and falls back to
+    // scanning, so it logs a warning naming both keys when that happens.
+    bool manifest_enabled = true;
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
         return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
-               " READ_AUX_FILES: " + (read_aux_files ? "true" : "false") + "]";
+               " READ_AUX_FILES: " + (read_aux_files ? "true" : "false") +
+               " MANIFEST_ENABLED: " + (manifest_enabled ? "true" : "false") + "]";
     }
 };
 
