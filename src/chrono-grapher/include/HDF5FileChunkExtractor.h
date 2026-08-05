@@ -3,6 +3,9 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
+
+#include <ArchiveManifest.h>
 
 struct json_object;
 
@@ -44,9 +47,33 @@ public:
     // the pointer must survive moves. Optional — nullptr disables reporting.
     void attachWatermarkRegistry(StoryWatermarkRegistry* registry) { watermarkRegistry = registry; }
 
+    // Record every publish outcome (and every deletion) in the archive manifest,
+    // which is what a restarted Grapher replays to recover W and what the Player
+    // reads instead of scanning the archive tree. Same non-owning-pointer contract
+    // as the registry above; optional -- nullptr disables recording.
+    void attachArchiveManifest(ArchiveManifest* manifest) { archiveManifest = manifest; }
+
+    // The archive root an "hdf5_extractor" conf block points at, or "" if the
+    // block is absent or malformed. ChronoGrapher needs it to construct the
+    // manifest before the extraction module, without duplicating the parsing.
+    static std::string archiveDirectoryFromConf(json_object* json_block);
+
 private:
+    // Appends one record describing what just happened to a chunk. No-op when no
+    // manifest is attached.
+    void
+    recordInManifest(StoryChunk const* story_chunk, ManifestState state, std::string const& file_path, uint32_t seq);
+
+    // Appends a superseding record for each file a delete removed. story_name is
+    // empty for a chronicle-wide delete, where the caller does not know it per
+    // file; supersession keys on the file name, which is always recorded.
+    void recordDeletions(std::string const& chronicle_name,
+                         std::string const& story_name,
+                         std::vector<std::string> const& deleted_files);
+
     std::string rootDirectory;
     StoryWatermarkRegistry* watermarkRegistry = nullptr;
+    ArchiveManifest* archiveManifest = nullptr;
 };
 
 } // namespace chronolog

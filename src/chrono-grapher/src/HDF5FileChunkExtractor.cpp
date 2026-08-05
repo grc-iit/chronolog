@@ -8,6 +8,7 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileChunkExtractor.h>
+#include <ArchiveManifest.h>
 #include <StoryWatermarkRegistry.h>
 
 namespace tl = thallium;
@@ -93,7 +94,8 @@ std::string regex_escape(std::string const& in)
 int delete_matching_files(std::string const& root_directory,
                           std::regex const& filename_pattern,
                           std::string const& what,
-                          size_t* deleted_count)
+                          size_t* deleted_count,
+                          std::vector<std::string>* deleted_files)
 {
     size_t local_count = 0;
     if(!std::filesystem::exists(root_directory))
@@ -141,6 +143,10 @@ int delete_matching_files(std::string const& root_directory,
             return chl::CL_ERR_UNKNOWN;
         }
         LOG_INFO("[HDF5FileChunkExtractor] Deleted {} ({})", entry.path().string(), what);
+        if(deleted_files != nullptr)
+        {
+            deleted_files->push_back(filename);
+        }
         ++local_count;
     }
     if(deleted_count != nullptr)
@@ -161,7 +167,10 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
             regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "story " + chronicle_name + "/" + story_name;
-    return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    std::vector<std::string> deleted_files;
+    int const ret = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count, &deleted_files);
+    recordDeletions(chronicle_name, story_name, deleted_files);
+    return ret;
 }
 
 int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count)
@@ -171,7 +180,10 @@ int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const&
     std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "chronicle " + chronicle_name;
-    return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    std::vector<std::string> deleted_files;
+    int const ret = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count, &deleted_files);
+    recordDeletions(chronicle_name, std::string(), deleted_files);
+    return ret;
 }
 
 int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chunk)
@@ -196,6 +208,7 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                                                 story_chunk->getStartTime(),
                                                 story_chunk->getEndTime());
         }
+        recordInManifest(story_chunk, chl::ManifestState::EMPTY, "", 0);
         return chl::CL_SUCCESS;
     }
 
@@ -217,6 +230,9 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
         {
             watermarkRegistry->persistFailed(story_chunk->getStoryId());
         }
+        // FAILED, not EMPTY: nothing was written, so this window must never
+        // advance W. It is still recorded so the gap is explicable afterwards.
+        recordInManifest(story_chunk, chl::ManifestState::FAILED, "", 0);
         return chl::CL_ERR_UNKNOWN;
     }
     else
@@ -237,6 +253,71 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                                                 story_chunk->getStartTime(),
                                                 story_chunk->getEndTime());
         }
+        // Appended only after the file is published, so the manifest can never
+        // name a file that is not fully on disk.
+        recordInManifest(story_chunk, chl::ManifestState::PUBLISHED, write_result.file_name, write_result.seq);
         return chl::CL_SUCCESS;
     }
+}
+
+void chronolog::HDF5FileChunkExtractor::recordInManifest(chl::StoryChunk const* story_chunk,
+                                                         chl::ManifestState state,
+                                                         std::string const& file_path,
+                                                         uint32_t seq)
+{
+    if(archiveManifest == nullptr)
+    {
+        return;
+    }
+    chl::ArchiveManifestRecord record;
+    record.chronicle = story_chunk->getChronicleName();
+    record.story = story_chunk->getStoryName();
+    record.story_id = story_chunk->getStoryId();
+    // The base name only: the manifest is relative to the archive root it lives
+    // in, so it stays valid if the archive is moved.
+    record.file = file_path.empty() ? std::string() : std::filesystem::path(file_path).filename().string();
+    record.start = story_chunk->getStartTime();
+    record.end = story_chunk->getEndTime();
+    record.seq = seq;
+    record.events = story_chunk->getEventCount();
+    record.state = state;
+    record.exempt = story_chunk->isWatermarkExempt();
+    archiveManifest->append(record);
+}
+
+void chronolog::HDF5FileChunkExtractor::recordDeletions(std::string const& chronicle_name,
+                                                        std::string const& story_name,
+                                                        std::vector<std::string> const& deleted_files)
+{
+    if(archiveManifest == nullptr || deleted_files.empty())
+    {
+        return;
+    }
+    // The log is append-only, so a deletion is a new record naming the removed
+    // file rather than an edit of the old one. deriveWatermarks() matches them by
+    // file name, which is why the window fields are left at zero here: the
+    // superseded record already carries the window.
+    for(std::string const& file: deleted_files)
+    {
+        chl::ArchiveManifestRecord record;
+        record.chronicle = chronicle_name;
+        record.story = story_name;
+        record.file = file;
+        record.state = chl::ManifestState::DELETED;
+        archiveManifest->append(record);
+    }
+}
+
+std::string chronolog::HDF5FileChunkExtractor::archiveDirectoryFromConf(json_object* json_block)
+{
+    if((json_block == nullptr) || !json_object_is_type(json_block, json_type_object))
+    {
+        return std::string();
+    }
+    json_object* dir = json_object_object_get(json_block, "hdf5_archive_dir");
+    if((dir == nullptr) || !json_object_is_type(dir, json_type_string))
+    {
+        return std::string();
+    }
+    return json_object_get_string(dir);
 }

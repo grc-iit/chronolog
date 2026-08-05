@@ -21,6 +21,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <chrono_monitor.h>
@@ -351,4 +352,115 @@ TEST_F(ArchiveManifestTest, AStoryIdWrittenAsAJsonIntegerIsStillAccepted)
                                        "\"state\":\"published\",\"exempt\":false}",
                                        parsed));
     EXPECT_EQ(parsed.story_id, 77u);
+}
+
+// ---- records that supersede earlier ones -----------------------------------
+
+TEST_F(ArchiveManifestTest, ADeletedFileStopsCountingAsPublished)
+{
+    // The log is append-only, so a deletion arrives as a later record rather than
+    // by removing the earlier one. Skipping only the deleted record would leave
+    // the original publication still counted -- the file would be gone from disk
+    // and still claimed as persisted, which is the over-reporting direction.
+    chl::ArchiveManifest manifest(root.string());
+    chl::ArchiveManifestRecord first = published(1, 0 * NS, 10 * NS);
+    chl::ArchiveManifestRecord second = published(1, 10 * NS, 20 * NS);
+    ASSERT_EQ(manifest.append(first), chl::CL_SUCCESS);
+    ASSERT_EQ(manifest.append(second), chl::CL_SUCCESS);
+    ASSERT_EQ(manifest.deriveWatermarks().at(1), 20 * NS);
+
+    chl::ArchiveManifestRecord removal = second;
+    removal.state = chl::ManifestState::DELETED;
+    ASSERT_EQ(manifest.append(removal), chl::CL_SUCCESS);
+
+    EXPECT_EQ(manifest.deriveWatermarks().at(1), 10 * NS) << "a deleted file must stop contributing to W";
+}
+
+TEST_F(ArchiveManifestTest, DeletingOneRotationLeavesTheOthersAlone)
+{
+    // Deletion is matched on the file name, so removing a rotated file must not
+    // take its base sibling with it.
+    chl::ArchiveManifest manifest(root.string());
+    chl::ArchiveManifestRecord base = published(1, 0 * NS, 10 * NS, 0);
+    chl::ArchiveManifestRecord rotated = published(1, 0 * NS, 10 * NS, 1);
+    rotated.file = "c1.cpu_usage.0.vlen.1.h5";
+    ASSERT_EQ(manifest.append(base), chl::CL_SUCCESS);
+    ASSERT_EQ(manifest.append(rotated), chl::CL_SUCCESS);
+
+    chl::ArchiveManifestRecord removal = rotated;
+    removal.state = chl::ManifestState::DELETED;
+    ASSERT_EQ(manifest.append(removal), chl::CL_SUCCESS);
+
+    EXPECT_EQ(manifest.deriveWatermarks().at(1), 10 * NS) << "the surviving base file still covers the window";
+}
+
+TEST_F(ArchiveManifestTest, AFailedWriteIsRecordedWithoutAdvancingTheWatermark)
+{
+    // A failed HDF5 write produced no file, so its window is not persisted. It is
+    // still worth recording (an operator wants to see it), but recording it as
+    // "empty" would advance W over a window whose events were never written.
+    chl::ArchiveManifest manifest(root.string());
+    ASSERT_EQ(manifest.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+
+    chl::ArchiveManifestRecord failed = published(1, 10 * NS, 20 * NS);
+    failed.state = chl::ManifestState::FAILED;
+    failed.file.clear();
+    ASSERT_EQ(manifest.append(failed), chl::CL_SUCCESS);
+
+    EXPECT_EQ(manifest.deriveWatermarks().at(1), 10 * NS);
+    EXPECT_EQ(manifest.records().size(), 2u) << "the failure should still be visible in the manifest";
+}
+
+TEST_F(ArchiveManifestTest, FailedRoundTripsThroughAJsonLine)
+{
+    chl::ArchiveManifestRecord original = published(1, 0 * NS, 10 * NS);
+    original.state = chl::ManifestState::FAILED;
+
+    chl::ArchiveManifestRecord parsed;
+    ASSERT_TRUE(chl::parseManifestLine(chl::toManifestLine(original), parsed));
+    EXPECT_EQ(parsed.state, chl::ManifestState::FAILED);
+}
+
+// ---- concurrency -----------------------------------------------------------
+
+TEST_F(ArchiveManifestTest, ConcurrentAppendsAllSurvive)
+{
+    // The grapher's extraction module runs several streams, and they all publish
+    // into one manifest, so append is called concurrently. Without serialization
+    // the interleaved writes tear each other's lines and the in-memory vector
+    // races.
+    constexpr int THREADS = 8;
+    constexpr int PER_THREAD = 50;
+
+    {
+        chl::ArchiveManifest manifest(root.string());
+        std::vector<std::thread> writers;
+        for(int t = 0; t < THREADS; ++t)
+        {
+            writers.emplace_back(
+                    [&manifest, t]()
+                    {
+                        for(int i = 0; i < PER_THREAD; ++i)
+                        {
+                            manifest.append(published(static_cast<chl::StoryId>(t),
+                                                      static_cast<uint64_t>(i) * NS,
+                                                      static_cast<uint64_t>(i + 1) * NS));
+                        }
+                    });
+        }
+        for(auto& writer: writers) { writer.join(); }
+        EXPECT_EQ(manifest.records().size(), static_cast<size_t>(THREADS * PER_THREAD));
+    }
+
+    chl::ArchiveManifest reopened(root.string());
+    ASSERT_EQ(reopened.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reopened.records().size(), static_cast<size_t>(THREADS * PER_THREAD))
+            << "interleaved appends tore each other's lines";
+
+    std::map<chl::StoryId, uint64_t> const w = reopened.deriveWatermarks();
+    EXPECT_EQ(w.size(), static_cast<size_t>(THREADS));
+    for(int t = 0; t < THREADS; ++t)
+    {
+        EXPECT_EQ(w.at(static_cast<chl::StoryId>(t)), static_cast<uint64_t>(PER_THREAD) * NS);
+    }
 }

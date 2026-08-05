@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 #include <json-c/json.h>
@@ -30,6 +31,8 @@ char const* stateToString(chl::ManifestState state)
             return "empty";
         case chl::ManifestState::DELETED:
             return "deleted";
+        case chl::ManifestState::FAILED:
+            return "failed";
         default:
             return "unknown";
     }
@@ -50,6 +53,11 @@ bool stateFromString(std::string const& text, chl::ManifestState& out)
     if(text == "deleted")
     {
         out = chl::ManifestState::DELETED;
+        return true;
+    }
+    if(text == "failed")
+    {
+        out = chl::ManifestState::FAILED;
         return true;
     }
     return false;
@@ -219,6 +227,12 @@ bool chronolog::parseManifestLine(std::string const& line, chronolog::ArchiveMan
     return true;
 }
 
+std::vector<chronolog::ArchiveManifestRecord> chronolog::ArchiveManifest::records() const
+{
+    std::lock_guard<std::mutex> lock(theMutex);
+    return theRecords;
+}
+
 chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root)
     : theArchiveRoot(archive_root)
     , theLogPath((fs::path(archive_root) / LOG_FILE_NAME).string())
@@ -227,6 +241,7 @@ chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root)
 
 int chronolog::ArchiveManifest::append(chronolog::ArchiveManifestRecord const& record)
 {
+    std::lock_guard<std::mutex> lock(theMutex);
     std::ofstream log(theLogPath, std::ios::app);
     if(!log)
     {
@@ -247,6 +262,7 @@ int chronolog::ArchiveManifest::append(chronolog::ArchiveManifestRecord const& r
 
 int chronolog::ArchiveManifest::load()
 {
+    std::lock_guard<std::mutex> lock(theMutex);
     theRecords.clear();
 
     // Snapshot first, then the log on top: the log holds exactly what was
@@ -294,6 +310,7 @@ int chronolog::ArchiveManifest::load()
 
 int chronolog::ArchiveManifest::snapshot()
 {
+    std::lock_guard<std::mutex> lock(theMutex);
     std::string const tmp_path = theSnapshotPath + SNAPSHOT_TMP_SUFFIX;
     {
         std::ofstream out(tmp_path, std::ios::trunc);
@@ -340,6 +357,21 @@ std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWaterma
     // Per story, the persisted windows in start order. A std::map both sorts them
     // and collapses repeats of the same window (a re-send publishes the same
     // interval again), keeping the widest end.
+    std::lock_guard<std::mutex> lock(theMutex);
+
+    // The log is append-only, so a deletion arrives as a later record naming the
+    // same file rather than by removing the earlier one. Collect those names
+    // first: skipping only the DELETED record would leave the original
+    // publication still counted, claiming a file that is gone from disk.
+    std::set<std::string> deleted_files;
+    for(ArchiveManifestRecord const& record: theRecords)
+    {
+        if(record.state == ManifestState::DELETED && !record.file.empty())
+        {
+            deleted_files.insert(record.file);
+        }
+    }
+
     std::map<StoryId, std::map<uint64_t, uint64_t>> intervals;
 
     for(ArchiveManifestRecord const& record: theRecords)
@@ -349,6 +381,10 @@ std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWaterma
             continue;
         }
         if(record.state != ManifestState::PUBLISHED && record.state != ManifestState::EMPTY)
+        {
+            continue;
+        }
+        if(!record.file.empty() && deleted_files.count(record.file) > 0)
         {
             continue;
         }

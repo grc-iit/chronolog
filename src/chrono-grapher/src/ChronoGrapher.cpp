@@ -21,6 +21,8 @@
 #include <cmd_arg_parse.h>
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
+#include <ArchiveManifest.h>
+#include <HDF5FileChunkExtractor.h>
 #include <StoryWatermarkRegistry.h>
 #include <WatermarkReportPublisher.h>
 
@@ -167,11 +169,36 @@ int main(int argc, char** argv)
     // outlives the extractors holding a pointer to it.
     chronolog::StoryWatermarkRegistry theWatermarkRegistry;
 
+    // Durable record of everything published to the archive. Like the registry
+    // above, it is declared before the extraction module so it outlives the
+    // extractors that hold a pointer to it. Loading here rather than later means
+    // a restarted Grapher already has the previous run's records in hand.
+    std::string const archive_dir = [&]() -> std::string
+    {
+        auto extractor_iter = GRAPHER_CONF.EXTRACTION_MODULE_CONF.extractors.find("hdf5_extractor");
+        return (extractor_iter == GRAPHER_CONF.EXTRACTION_MODULE_CONF.extractors.end())
+                       ? std::string()
+                       : chronolog::HDF5FileChunkExtractor::archiveDirectoryFromConf(extractor_iter->second);
+    }();
+
+    std::unique_ptr<chronolog::ArchiveManifest> theArchiveManifest;
+    if(!archive_dir.empty())
+    {
+        theArchiveManifest = std::make_unique<chronolog::ArchiveManifest>(archive_dir);
+        theArchiveManifest->load();
+    }
+    else
+    {
+        LOG_WARNING("[ChronoGrapher] No hdf5_extractor archive directory configured; the archive manifest is "
+                    "disabled and a restart will not be able to restore watermarks from it");
+    }
+
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
     theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
                                                       GRAPHER_CONF.EXTRACTION_MODULE_CONF,
-                                                      &theWatermarkRegistry);
+                                                      &theWatermarkRegistry,
+                                                      theArchiveManifest.get());
 
     theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
@@ -231,10 +258,10 @@ int main(int argc, char** argv)
     // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
     // recording service (contributors) and the HDF5 extractor via the
     // registry; driven by the data-collection loop.
-    chronolog::WatermarkReportPublisher* watermarkPublisher = new chronolog::WatermarkReportPublisher(
-            *dataAdminEngine,
-            theWatermarkRegistry,
-            GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
+    chronolog::WatermarkReportPublisher* watermarkPublisher =
+            new chronolog::WatermarkReportPublisher(*dataAdminEngine,
+                                                    theWatermarkRegistry,
+                                                    GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
     theDataStore.attachWatermarkPublisher(watermarkPublisher);
 
     // Instantiate RecordingService

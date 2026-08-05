@@ -81,3 +81,38 @@ set_tests_properties(Functional_ChronoGrapher_DestroyFiles PROPERTIES TIMEOUT 60
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chrono_grapher_destroy_files_test DESTINATION tests)
 endif()
+
+# Archive manifest recording (GTest) — every publish outcome and every deletion
+# has to land in the manifest, since it is what a restarted Grapher replays.
+add_executable(chrono_grapher_archive_manifest_test
+    chrono_grapher_archive_manifest_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(chrono_grapher_archive_manifest_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+# GTest::gtest, not gtest_main: this target brings its own main() so Argobots is
+# initialized before any test runs.
+target_link_libraries(chrono_grapher_archive_manifest_test PRIVATE
+    GTest::gtest
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(chrono_grapher_archive_manifest_test PROPERTIES
+    OUTPUT_NAME chronolog-test-grapher-archive-manifest
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
+gtest_discover_tests(chrono_grapher_archive_manifest_test TEST_PREFIX "Functional_ChronoGrapher_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chrono_grapher_archive_manifest_test DESTINATION tests)
+endif()

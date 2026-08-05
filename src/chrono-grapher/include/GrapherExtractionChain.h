@@ -72,7 +72,8 @@ public:
 
     int activate(ServiceId const& service_id,
                  ExtractionModuleConfiguration const& extraction_conf,
-                 StoryWatermarkRegistry* watermark_registry = nullptr)
+                 StoryWatermarkRegistry* watermark_registry = nullptr,
+                 ArchiveManifest* archive_manifest = nullptr)
     {
         int ret_value = CL_SUCCESS;
 
@@ -98,6 +99,7 @@ public:
                     break;
                 }
                 hdf5_extractor.attachWatermarkRegistry(watermark_registry);
+                hdf5_extractor.attachArchiveManifest(archive_manifest);
                 theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")
