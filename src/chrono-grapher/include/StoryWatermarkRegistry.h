@@ -25,8 +25,10 @@ namespace chronolog
 // can persist out of order, and a failed HDF5 write must hold W back — keepers
 // then retain and re-send rather than freeing unpersisted data.
 //
-// W lives in memory only: a grapher restart resets it, keepers re-send
-// everything still retained, and read-side EventSequence dedup cleans the
+// W lives in memory, and a grapher whose archive keeps a manifest restores it
+// on restart from the windows the manifest records (restoreFromManifest).
+// Either way the restarted grapher's receipts start over, so keepers re-send
+// what they still retain, and read-side EventSequence dedup cleans the
 // resulting duplicates.
 //
 // W covering a keeper's chunk does not prove the chunk was written: a chunk
@@ -245,6 +247,32 @@ public:
                       end,
                       entry.w);
         }
+    }
+
+    // Seed the registry from a manifest's persisted intervals after a restart.
+    //
+    // Replays them through advancePersisted rather than assigning W directly, so
+    // the anchoring, prefix-absorption and parking rules are the ones already used
+    // at runtime -- and, crucially, so intervals sitting above a persistence gap
+    // stay parked. Assigning only the final W would forget them, and the window
+    // that later closes the gap would advance W to the gap's end rather than past
+    // everything already durable. Restored stories come back dirty so the next
+    // publish carries the restored W. It frees nothing by itself: this instance
+    // gives out receipts afresh, and a keeper frees a chunk only once a receipt
+    // from the instance reporting has settled (see receiptSettled in
+    // KeeperChunkRetentionStore).
+    void restoreFromManifest(std::map<StoryId, std::map<uint64_t, uint64_t>> const& intervals)
+    {
+        std::size_t restored_stories = 0;
+        for(auto const& story_entry: intervals)
+        {
+            for(auto const& interval: story_entry.second)
+            {
+                advancePersisted(story_entry.first, interval.first, interval.second);
+            }
+            restored_stories++;
+        }
+        LOG_INFO("[StoryWatermarkRegistry] Restored {} story watermark(s) from the archive manifest", restored_stories);
     }
 
     // Current W for the story; 0 if unknown.

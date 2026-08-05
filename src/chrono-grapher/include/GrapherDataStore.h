@@ -21,6 +21,11 @@
 
 namespace chronolog
 {
+class ArchiveManifest;
+}
+
+namespace chronolog
+{
 
 class ChronoGrapherExtractionChain;
 class StoryWatermarkRegistry;
@@ -123,6 +128,18 @@ public:
     // is created after this store) and before startDataCollection.
     void attachWatermarkPublisher(WatermarkReportPublisher* publisher) { theWatermarkPublisher = publisher; }
 
+    // Compaction owner for the archive manifest: the append-only log grows one
+    // line per published window, so it is periodically folded into the snapshot
+    // from the same loop that publishes watermarks. Optional; nullptr disables it.
+    void attachArchiveManifest(ArchiveManifest* manifest) { theArchiveManifest = manifest; }
+
+private:
+    // Records appended since the last compaction before another one is worth it.
+    static constexpr std::size_t MANIFEST_COMPACTION_THRESHOLD = 1024;
+
+    void compactArchiveManifest();
+
+public:
 private:
     GrapherDataStore(GrapherDataStore const&) = delete;
 
@@ -162,6 +179,10 @@ private:
     ChronoGrapherExtractionChain* theExtractionChain;
     StoryWatermarkRegistry* theWatermarkRegistry;
     WatermarkReportPublisher* theWatermarkPublisher = nullptr;
+    ArchiveManifest* theArchiveManifest = nullptr;
+    // Records present at the last compaction; compaction runs again once the log
+    // has grown by at least this many beyond it.
+    std::size_t theRecordsAtLastCompaction = 0;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
