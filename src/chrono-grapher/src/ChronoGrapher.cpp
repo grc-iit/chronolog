@@ -189,8 +189,21 @@ int main(int argc, char** argv)
     }
     else if(!archive_dir.empty())
     {
-        theArchiveManifest =
-                std::make_unique<chronolog::ArchiveManifest>(archive_dir, GRAPHER_CONF.DATA_STORE_CONF.manifest_fsync);
+        // The recording group id is this Grapher's manifest writer id, so each
+        // Grapher appends only to its own log. Several Graphers appending to one
+        // shared log over NFSv3 loses records -- measured at 3.2% in a live run on
+        // ares, see manifest_plan/nfs_validation.md -- because NFSv3 has no append
+        // opcode and each client picks the write offset from a cached file size.
+        //
+        // It has to be the recording group and not, say, the pid: the id must be the
+        // same after a restart or the restarted Grapher would compact into a fresh
+        // log and leave its own previous one behind forever.
+        theArchiveManifest = std::make_unique<chronolog::ArchiveManifest>(archive_dir,
+                                                                          GRAPHER_CONF.DATA_STORE_CONF.manifest_fsync,
+                                                                          std::to_string(recording_group_id));
+        // load() still merges every writer's log: reconciliation below has to know
+        // about files the other Graphers published, or it would adopt them as
+        // orphans and record them a second time.
         theArchiveManifest->load();
         // Adopt any file that was published but whose record was lost to an
         // unclean shutdown, BEFORE restoring W: an orphaned file's window would

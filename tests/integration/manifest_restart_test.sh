@@ -40,7 +40,9 @@ REPLAY_CHECK="$BUILD_DIR/tests/integration/watermark-replay/chronolog-test-repla
 PLAYER_BIN="$WORK_DIR/bin/chrono-player"
 PLAYER_CONF="$WORK_DIR/conf/chrono-player-conf-1.json"
 PLAYER_LOG="$MONITOR_DIR/chrono-player-1.log"
-MANIFEST_LOG="$OUTPUT_DIR/archive_manifest.log"
+# A glob, not a name: each Grapher writes its own archive_manifest.<group>.log
+# (see ArchiveManifest / manifest_plan/nfs_validation.md).
+MANIFEST_GLOB="$OUTPUT_DIR/archive_manifest*.log"
 
 # Short grapher windows so a chunk is sealed, persisted and recorded within the
 # test rather than minutes later.
@@ -79,8 +81,9 @@ replay_unique() { # echoes the REPLAY_UNIQUE value, or -1
     echo "${unique:--1}"
 }
 
-published_records() { # manifest records that name a file
-    grep -c '"state":"published"' "$MANIFEST_LOG" 2> /dev/null || echo 0
+published_records() { # manifest records that name a file, across every writer's log
+    # shellcheck disable=SC2086
+    grep -h '"state":"published"' $MANIFEST_GLOB 2> /dev/null | wc -l
 }
 
 # ---------------------------------------------------------------- setup ----
@@ -113,7 +116,7 @@ trap 'cleanup; restore_conf' EXIT
 kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log "$MONITOR_DIR"/chrono-player-*.log
-rm -f "$OUTPUT_DIR"/TailChronicle.*.h5 "$MANIFEST_LOG" "$OUTPUT_DIR"/archive_manifest.json
+rm -f "$OUTPUT_DIR"/TailChronicle.*.h5 "$OUTPUT_DIR"/archive_manifest*.log "$OUTPUT_DIR"/archive_manifest*.json
 
 say "deploying 1 keeper / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k 1 -r 1 > /dev/null 2>&1 || {
