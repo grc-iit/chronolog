@@ -363,6 +363,31 @@ jobs:
           # step outputs, and the ctest-results-<branch> artifact.
           exit 0
 
+      # The archive manifest's end-to-end guarantee cannot be reached by ctest:
+      # it needs a live deployment, a Player restarted against an already
+      # populated archive, and a second publish while that Player is running.
+      # The script manages its own deployment (it stops whatever is running,
+      # deploys 1 keeper / 1 recording group, and stops everything on exit), so
+      # it runs after ctest rather than sharing the stack ctest used.
+      - name: Run archive-manifest restart test
+        id: manifest-restart
+        run: |
+          CONTAINER_ID="${{ steps.create-container.outputs.container-id }}"
+          docker exec "$CONTAINER_ID" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            export WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            export BUILD_DIR=\"/home/grc-iit/chronolog-build/Release\"
+            export LD_LIBRARY_PATH=\"\${WORK_DIR}/lib:\${LD_LIBRARY_PATH:-}\"
+            if ! command -v jq > /dev/null; then
+              echo '❌ jq is required by the manifest restart test but is not installed'
+              exit 1
+            fi
+            echo '[7/8] Running the archive-manifest restart test...'
+            ./tests/integration/manifest_restart_test.sh
+          "
+
       - name: Copy ctest results from container
         if: always()
         run: |
