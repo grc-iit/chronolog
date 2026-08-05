@@ -8,6 +8,12 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileChunkExtractor.h>
+#include <set>
+
+#include <H5Cpp.h>
+
+#include <HDF5FileAccess.h>
+
 #include <ArchiveManifest.h>
 #include <StoryWatermarkRegistry.h>
 
@@ -343,4 +349,179 @@ std::string chronolog::HDF5FileChunkExtractor::archiveDirectoryFromConf(json_obj
         return std::string();
     }
     return json_object_get_string(dir);
+}
+
+namespace
+{
+
+// The identity fields of the stored compound type that adoption needs. Only these
+// are read: pulling the variable-length payload would make HDF5 allocate a buffer
+// per event that the caller then owns, and HDF5 converts compound members by
+// name, so leaving out clientId and eventIndex reads files with either the
+// 64-bit clientId of today's layout or the 32-bit one of older files.
+struct StoredIdentity
+{
+    uint64_t event_time;
+    uint64_t story_id;
+};
+
+// Recovers the story id and last event time from a published archive file. Returns
+// false when the file cannot be read as one, which is how non-archive files and
+// in-progress writes are rejected.
+bool probe_archive_file(std::string const& path, chl::StoryId& story_id, uint64_t& last_event_time)
+{
+    try
+    {
+        H5::Exception::dontPrint();
+        // locking off, as for every archive open (see HDF5FileAccess.h)
+        H5::H5File file(path, H5F_ACC_RDONLY, H5::FileCreatPropList::DEFAULT, chl::archiveFileAccess());
+        H5::DataSet dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+
+        hsize_t dims[1] = {0};
+        dataset.getSpace().getSimpleExtentDims(dims, nullptr);
+        if(dims[0] == 0)
+        {
+            return false;
+        }
+
+        H5::CompType identity_type(sizeof(StoredIdentity));
+        identity_type.insertMember("eventTime", HOFFSET(StoredIdentity, event_time), H5::PredType::NATIVE_UINT64);
+        identity_type.insertMember("storyId", HOFFSET(StoredIdentity, story_id), H5::PredType::NATIVE_UINT64);
+
+        std::vector<StoredIdentity> raw(dims[0]);
+        dataset.read(raw.data(), identity_type);
+
+        story_id = raw.front().story_id;
+        last_event_time = 0;
+        for(StoredIdentity const& event: raw)
+        {
+            if(event.event_time > last_event_time)
+            {
+                last_event_time = event.event_time;
+            }
+        }
+        return true;
+    }
+    catch(H5::Exception const&)
+    {
+        return false;
+    }
+}
+
+// "<chronicle>.<story>.<startSec>.vlen.h5", or "...vlen.<n>.h5" for a later write
+// of the same window. Chronicle and story names may contain dots, so the name is
+// read from the right, where every field has a fixed form, as the player and
+// delete_story_files() read it. The "<chronicle>.<story>" left over cannot be
+// split with certainty; it is split at its first dot for the record's
+// informational chronicle and story fields. Nothing keys on them: watermarks key
+// on the story id read from the file, and readers on the file name.
+bool parse_archive_file_name(std::string const& base_name,
+                             std::string& chronicle,
+                             std::string& story,
+                             uint64_t& start_ns,
+                             uint32_t& seq)
+{
+    static std::regex const pattern(R"(^(.+)\.([0-9]+)\.vlen(\.[0-9]+)?\.h5$)");
+    std::smatch match;
+    if(!std::regex_match(base_name, match, pattern))
+    {
+        return false;
+    }
+    std::string const story_prefix = match[1].str();
+    std::size_t const dot = story_prefix.find('.');
+    if(dot == std::string::npos || dot == 0 || dot + 1 == story_prefix.size())
+    {
+        return false;
+    }
+    chronicle = story_prefix.substr(0, dot);
+    story = story_prefix.substr(dot + 1);
+    try
+    {
+        start_ns = std::stoull(match[2].str()) * 1000000000ULL;
+    }
+    catch(std::exception const&)
+    {
+        return false;
+    }
+    seq = chl::StoryChunkWriter::rotationIndexOf(base_name);
+    return true;
+}
+
+} // namespace
+
+int chronolog::HDF5FileChunkExtractor::reconcileManifestWithDirectory()
+{
+    if(archiveManifest == nullptr)
+    {
+        return 0;
+    }
+
+    std::set<std::string> referenced;
+    for(chl::ArchiveManifestRecord const& record: archiveManifest->records())
+    {
+        if(!record.file.empty())
+        {
+            // Both published and deleted names count as "the manifest knows about
+            // this file": a deleted one must never be adopted back.
+            referenced.insert(record.file);
+        }
+    }
+
+    std::error_code ec;
+    std::filesystem::directory_iterator dir(rootDirectory, ec);
+    if(ec)
+    {
+        LOG_WARNING("[HDF5FileChunkExtractor] Cannot reconcile {}: {}", rootDirectory, ec.message());
+        return 0;
+    }
+
+    int adopted = 0;
+    for(auto const& entry: dir)
+    {
+        if(!entry.is_regular_file(ec))
+        {
+            continue;
+        }
+        std::string const base_name = entry.path().filename().string();
+        if(referenced.count(base_name) > 0)
+        {
+            continue;
+        }
+
+        chl::ArchiveManifestRecord record;
+        if(!parse_archive_file_name(base_name, record.chronicle, record.story, record.start, record.seq))
+        {
+            continue; // not an archive file name (stray files, ".partial.<host>.<pid>.<n>" writes in progress)
+        }
+        uint64_t last_event_time = 0;
+        if(!probe_archive_file(entry.path().string(), record.story_id, last_event_time))
+        {
+            LOG_WARNING("[HDF5FileChunkExtractor] {} looks like an archive file but could not be read; not adopting",
+                        base_name);
+            continue;
+        }
+
+        record.file = base_name;
+        // Only what the events prove; see the header note on why this is not the
+        // window's true end.
+        record.end = last_event_time + 1;
+        record.state = chl::ManifestState::PUBLISHED;
+
+        if(archiveManifest->append(record) == chl::CL_SUCCESS)
+        {
+            adopted++;
+            LOG_WARNING("[HDF5FileChunkExtractor] Adopted unreferenced archive file {} ({}-{}, story {}): it was "
+                        "published but its manifest record was lost, most likely to an unclean shutdown",
+                        base_name,
+                        record.start,
+                        record.end,
+                        record.story_id);
+        }
+    }
+
+    if(adopted > 0)
+    {
+        LOG_WARNING("[HDF5FileChunkExtractor] Adopted {} unreferenced archive file(s) in {}", adopted, rootDirectory);
+    }
+    return adopted;
 }

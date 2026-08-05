@@ -192,6 +192,15 @@ int main(int argc, char** argv)
         theArchiveManifest =
                 std::make_unique<chronolog::ArchiveManifest>(archive_dir, GRAPHER_CONF.DATA_STORE_CONF.manifest_fsync);
         theArchiveManifest->load();
+        // Adopt any file that was published but whose record was lost to an
+        // unclean shutdown, BEFORE restoring W: an orphaned file's window would
+        // otherwise hold the watermark back permanently, and the file would stay
+        // invisible to every reader.
+        {
+            chronolog::HDF5FileChunkExtractor reconciler(archive_dir);
+            reconciler.attachArchiveManifest(theArchiveManifest.get());
+            reconciler.reconcileManifestWithDirectory();
+        }
         // Recover the windows the previous run persisted, so each story's W picks
         // up where that run left it instead of starting again at the story's
         // next registration. Keepers still re-send what they retain, for receipts
