@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <set>
 #include <algorithm>
 #include <cctype>
 #include <list>
@@ -18,6 +19,8 @@
 #include <unistd.h> // Required for access()
 
 #include <chrono_monitor.h>
+#include <chronolog_errcode.h>
+#include <ArchiveManifest.h>
 #include <StoryChunkIngestionQueue.h>
 
 namespace tl = thallium;
@@ -25,6 +28,18 @@ namespace fs = std::filesystem;
 
 namespace chronolog
 {
+
+// One indexed archive window: its base file, and the window's end when the
+// archive manifest supplied it. end_time is 0 when the index was built by
+// scanning the directory or probing a name, because a file name carries only
+// the window start. A known end lets a read skip the window without opening
+// its files. It is the largest end the manifest records for any file of the
+// window, base or numbered, so skipping on it never hides a numbered file.
+struct ArchivedFileEntry
+{
+    std::string path;
+    uint64_t end_time = 0; // 0 == unknown
+};
 
 class HDF5ArchiveReadingAgent
 {
@@ -85,9 +100,18 @@ public:
 
     int initialize()
     {
-        LOG_INFO("[HDF5ArchiveReadingAgent] Initializing, scanning archive path {} recursively to create the map ...",
-                 archive_path_);
-        createStartTimeFileNameMap();
+        LOG_INFO("[HDF5ArchiveReadingAgent] Initializing the archive index for {} ...", archive_path_);
+        // Prefer the manifest: it names exactly what was published, carries each
+        // file's window end, and costs one sequential read instead of a recursive
+        // walk of the whole archive. The scan stays as the fallback for archives
+        // written before the manifest existed, or when it is unreadable -- losing
+        // the manifest must degrade performance, never correctness.
+        if(loadIndexFromManifest() != 0)
+        {
+            LOG_INFO("[HDF5ArchiveReadingAgent] No usable archive manifest in {}; falling back to a recursive scan",
+                     archive_path_);
+            createStartTimeFileNameMap();
+        }
         return setUpFsMonitoring();
     }
 
@@ -255,6 +279,106 @@ private:
     updateDirectoryCache(const fs::path& dir_path, int64_t last_modified_ns, int64_t check_time_ns, bool has_changes);
     void clearDirectoryCache();
 
+    // Builds the index from the archive manifest. Returns 0 on success, -1 when
+    // there is no manifest to read (the caller then scans).
+    int loadIndexFromManifest()
+    {
+        ArchiveManifest manifest(archive_path_);
+        if(manifest.load() != CL_SUCCESS)
+        {
+            return -1;
+        }
+        std::vector<ArchiveManifestRecord> const records = manifest.records();
+        if(records.empty())
+        {
+            return -1;
+        }
+
+        // A deletion arrives as a later record naming the same file, so collect
+        // those first and skip the publications they supersede -- otherwise the
+        // index would name files that are no longer on disk.
+        std::set<std::string> deleted_files;
+        for(ArchiveManifestRecord const& record: records)
+        {
+            if(record.state == ManifestState::DELETED && !record.file.empty())
+            {
+                deleted_files.insert(record.file);
+            }
+        }
+
+        // Base files first: a numbered file's record can precede its base file's
+        // when two extraction streams publish one window at once, and it only
+        // raises the end of a window that is already indexed.
+        std::size_t indexed = 0;
+        for(bool const numbered_pass: {false, true})
+        {
+            for(ArchiveManifestRecord const& record: records)
+            {
+                if(record.state != ManifestState::PUBLISHED || record.file.empty())
+                {
+                    continue; // empty/failed windows have no file to read
+                }
+                if(deleted_files.count(record.file) > 0)
+                {
+                    continue;
+                }
+                ArchiveFileName parsed;
+                if(!parseArchiveFileName(record.file, parsed) || parsed.numbered != numbered_pass)
+                {
+                    continue;
+                }
+                if(indexManifestRecord(record) == 0)
+                {
+                    indexed++;
+                }
+            }
+        }
+
+        // Success is "the manifest was readable", NOT "it produced entries". A
+        // manifest whose files have all been deleted legitimately indexes nothing,
+        // and treating that as absent would fall back to the scan and re-index the
+        // very files the deletions removed.
+        LOG_INFO("[HDF5ArchiveReadingAgent] Indexed {} archive file(s) from {} manifest record(s) in {} "
+                 "(no directory scan)",
+                 indexed,
+                 records.size(),
+                 archive_path_);
+        // the manifest has been read: from here a story missing from the index
+        // means nothing was archived for it, as after the first directory listing
+        initial_scan_done_.store(true);
+        return 0;
+    }
+
+    // Indexes one published file the manifest names. A base file goes in like a
+    // listed one, with the window end the manifest records. A numbered file is
+    // read through its window's base file (see readArchivedStory), so it only
+    // raises that window's end. Returns 0 when the file was indexed.
+    int indexManifestRecord(ArchiveManifestRecord const& record)
+    {
+        std::string const path = (fs::path(archive_path_) / record.file).string();
+        ArchiveFileName parsed;
+        if(!parseArchiveFileName(path, parsed))
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest names {}, which is not named like an archive file", path);
+            return -1;
+        }
+        if(parsed.numbered)
+        {
+            std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
+            auto story_it = start_time_file_name_map_.find(parsed.story_prefix);
+            if(story_it != start_time_file_name_map_.end())
+            {
+                auto window_it = story_it->second.find(parsed.start_time);
+                if(window_it != story_it->second.end())
+                {
+                    window_it->second.end_time = std::max(window_it->second.end_time, record.end);
+                }
+            }
+            return 0;
+        }
+        return addFileToStartTimeFileNameMap(path, record.end);
+    }
+
     int createStartTimeFileNameMap()
     {
         // iterate over the HDF5 files in the archive directory to get the list of files
@@ -309,7 +433,10 @@ private:
         }
     }
 
-    int addFileToStartTimeFileNameMap(const std::string& file_name)
+    // end_time: the window's end when the manifest supplied it, 0 when unknown.
+    // A file indexed again without an end (a probe or a directory listing
+    // finding a file the manifest already named) keeps the end it has.
+    int addFileToStartTimeFileNameMap(const std::string& file_name, uint64_t end_time = 0)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         if(!isValidArchiveFile(file_name))
@@ -329,7 +456,9 @@ private:
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
             return -1;
         }
-        start_time_file_name_map_[parsed.story_prefix][parsed.start_time] = file_name;
+        ArchivedFileEntry& entry = start_time_file_name_map_[parsed.story_prefix][parsed.start_time];
+        entry.path = file_name;
+        entry.end_time = std::max(entry.end_time, end_time);
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
 #ifndef NDEBUG
         printStartTimeFileNameMapEntryCount(parsed.story_prefix);
@@ -374,7 +503,7 @@ private:
 
     std::string archive_path_;
     // "<chronicle>.<story>" (storyPrefix) -> window start time (ns) -> the window's base file
-    std::map<std::string, std::map<uint64_t, std::string>> start_time_file_name_map_;
+    std::map<std::string, std::map<uint64_t, ArchivedFileEntry>> start_time_file_name_map_;
     std::mutex start_time_file_name_map_mutex_;
     tl::managed<tl::xstream> archive_dir_monitoring_stream_;
     tl::managed<tl::thread> archive_dir_monitoring_thread_;

@@ -399,7 +399,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
     }
 
     LOG_DEBUG("[HDF5ArchiveReadingAgent] Found the first file to read {} for story {}-{} in range {}-{}",
-              start_it->second,
+              start_it->second.path,
               chronicleName,
               storyName,
               formatWithCommas(startTime),
@@ -415,8 +415,20 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
 
     for(auto it = start_it; it != time_file_map.end() && it->first < endTime; ++it)
     {
+        // The manifest records each window's end, so a window that ends at or
+        // before the requested start is skipped without opening its files.
+        // Entries built by the directory scan or a probe carry end_time 0 (a file
+        // name has no end) and are read exactly as before.
+        if(it->second.end_time != 0 && it->second.end_time <= startTime)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Skipping {}: window ends at {}, before the requested {}",
+                      it->second.path,
+                      formatWithCommas(it->second.end_time),
+                      formatWithCommas(startTime));
+            continue;
+        }
         // {chronicleName}.{storyName}.{startTime}.vlen.h5
-        fs::path const file_full_path(it->second);
+        fs::path const file_full_path(it->second.path);
         if(readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_full_path.string()) < 0)
         {
             read_status = CL_ERR_UNKNOWN;
