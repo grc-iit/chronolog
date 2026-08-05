@@ -292,7 +292,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
     }
 
     LOG_DEBUG("[HDF5ArchiveReadingAgent] Found the first file to read {} for story {}-{} in range {}-{}",
-              start_it->second,
+              start_it->second.path,
               chronicleName,
               storyName,
               formatWithCommas(startTime),
@@ -304,7 +304,28 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
 
     for(auto it = start_it; it != time_file_map.end(); ++it)
     {
-        file_full_path = fs::path(it->second);
+        // The manifest records each file's window end, so a file that ends at or
+        // before the requested start can be skipped without being opened. Entries
+        // built by the directory scan carry end_time 0 (a file name has no end),
+        // and fall through to being read exactly as before.
+        if(it->second.end_time != 0 && it->second.end_time <= startTime)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Skipping {}: window ends at {}, before the requested {}",
+                      it->second.path,
+                      formatWithCommas(it->second.end_time),
+                      formatWithCommas(startTime));
+            continue;
+        }
+        // Likewise, once a file starts at or after the requested end there is
+        // nothing later to find: the index is ordered by start time.
+        if(it->first >= endTime)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping at {}: window starts at or after the requested end {}",
+                      it->second.path,
+                      formatWithCommas(endTime));
+            break;
+        }
+        file_full_path = fs::path(it->second.path);
 
         // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
         file_name = file_full_path.string();

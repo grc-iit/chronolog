@@ -1,6 +1,9 @@
 #ifndef CHRONOLOG_HDF5ARCHIVEREADINGAGENT_H
 #define CHRONOLOG_HDF5ARCHIVEREADINGAGENT_H
 
+#include <set>
+
+#include <ArchiveManifest.h>
 #include <cstdlib>
 #include <fstream>
 #include <algorithm>
@@ -24,6 +27,16 @@ namespace fs = std::filesystem;
 
 namespace chronolog
 {
+
+// One indexed archive file. end_time comes from the archive manifest; it is 0
+// when the index was built by scanning the directory, because a file name carries
+// only the window start. A known end lets a read skip a file without opening it,
+// which is the difference between one HDF5 open per candidate file and none.
+struct ArchivedFileEntry
+{
+    std::string path;
+    uint64_t end_time = 0; // 0 == unknown
+};
 
 class HDF5ArchiveReadingAgent
 {
@@ -84,7 +97,17 @@ public:
     {
         LOG_INFO("[HDF5ArchiveReadingAgent] Initializing, scanning archive path {} recursively to create the map ...",
                  archive_path_);
-        createStartTimeFileNameMap();
+        // Prefer the manifest: it names exactly what was published, carries each
+        // file's window end, and costs one sequential read instead of a recursive
+        // walk of the whole archive. The scan stays as the fallback for archives
+        // written before the manifest existed, or when it is unreadable -- losing
+        // the manifest must degrade performance, never correctness.
+        if(loadIndexFromManifest() != 0)
+        {
+            LOG_INFO("[HDF5ArchiveReadingAgent] No usable archive manifest in {}; falling back to a recursive scan",
+                     archive_path_);
+            createStartTimeFileNameMap();
+        }
         return setUpFsMonitoring();
     }
 
@@ -239,6 +262,62 @@ private:
     updateDirectoryCache(const fs::path& dir_path, int64_t last_modified_ns, int64_t check_time_ns, bool has_changes);
     void clearDirectoryCache();
 
+    // Builds the index from the archive manifest. Returns 0 on success, -1 when
+    // there is no manifest to read (the caller then scans).
+    int loadIndexFromManifest()
+    {
+        ArchiveManifest manifest(archive_path_);
+        if(manifest.load() != CL_SUCCESS)
+        {
+            return -1;
+        }
+        std::vector<ArchiveManifestRecord> const records = manifest.records();
+        if(records.empty())
+        {
+            return -1;
+        }
+
+        // A deletion arrives as a later record naming the same file, so collect
+        // those first and skip the publications they supersede -- otherwise the
+        // index would name files that are no longer on disk.
+        std::set<std::string> deleted_files;
+        for(ArchiveManifestRecord const& record: records)
+        {
+            if(record.state == ManifestState::DELETED && !record.file.empty())
+            {
+                deleted_files.insert(record.file);
+            }
+        }
+
+        std::size_t indexed = 0;
+        for(ArchiveManifestRecord const& record: records)
+        {
+            if(record.state != ManifestState::PUBLISHED || record.file.empty())
+            {
+                continue; // empty/failed windows have no file to read
+            }
+            if(deleted_files.count(record.file) > 0)
+            {
+                continue;
+            }
+            if(addFileToStartTimeFileNameMap((fs::path(archive_path_) / record.file).string(), record.end) == 0)
+            {
+                indexed++;
+            }
+        }
+
+        // Success is "the manifest was readable", NOT "it produced entries". A
+        // manifest whose files have all been deleted legitimately indexes nothing,
+        // and treating that as absent would fall back to the scan and re-index the
+        // very files the deletions removed.
+        LOG_INFO("[HDF5ArchiveReadingAgent] Indexed {} archive file(s) from {} manifest record(s) in {} "
+                 "(no directory scan)",
+                 indexed,
+                 records.size(),
+                 archive_path_);
+        return 0;
+    }
+
     int createStartTimeFileNameMap()
     {
         // iterate over the HDF5 files in the archive directory to get the list of files
@@ -294,7 +373,7 @@ private:
         }
     }
 
-    int addFileToStartTimeFileNameMap(const std::string& file_name)
+    int addFileToStartTimeFileNameMap(const std::string& file_name, uint64_t end_time = 0)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         if(!isValidArchiveFile(file_name))
@@ -320,7 +399,8 @@ private:
 #endif
             return -1; // Skip files that already exist in the map
         }
-        start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] = file_name;
+        start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] =
+                ArchivedFileEntry{file_name, end_time};
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
 #ifndef NDEBUG
         printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
@@ -378,7 +458,7 @@ private:
     }
 
     std::string archive_path_;
-    std::map<std::pair<std::string, std::string>, std::map<uint64_t, std::string>> start_time_file_name_map_;
+    std::map<std::pair<std::string, std::string>, std::map<uint64_t, ArchivedFileEntry>> start_time_file_name_map_;
     std::mutex start_time_file_name_map_mutex_;
     tl::managed<tl::xstream> archive_dir_monitoring_stream_;
     tl::managed<tl::thread> archive_dir_monitoring_thread_;
