@@ -152,6 +152,30 @@ public:
     }
 
     // Current W for the story; 0 if unknown.
+    // Seed the registry from a manifest's persisted intervals after a restart.
+    //
+    // Replays them through advancePersisted rather than assigning W directly, so
+    // the anchoring, prefix-absorption and parking rules are the ones already used
+    // at runtime -- and, crucially, so intervals sitting above a persistence gap
+    // stay parked. Assigning only the final W would forget them, and the window
+    // that later closes the gap would advance W to the gap's end rather than past
+    // everything already durable, forcing keepers to re-send chunks that are
+    // safely on disk. Restored stories come back dirty so the next publish tells
+    // the keepers what they may release.
+    void restoreFromManifest(std::map<StoryId, std::map<uint64_t, uint64_t>> const& intervals)
+    {
+        std::size_t restored_stories = 0;
+        for(auto const& story_entry: intervals)
+        {
+            for(auto const& interval: story_entry.second)
+            {
+                advancePersisted(story_entry.first, interval.first, interval.second);
+            }
+            restored_stories++;
+        }
+        LOG_INFO("[StoryWatermarkRegistry] Restored {} story watermark(s) from the archive manifest", restored_stories);
+    }
+
     uint64_t getPersisted(StoryId const& story_id) const
     {
         std::lock_guard<std::mutex> lock(mtx);

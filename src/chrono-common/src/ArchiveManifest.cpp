@@ -352,11 +352,8 @@ int chronolog::ArchiveManifest::snapshot()
     return chronolog::CL_SUCCESS;
 }
 
-std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWatermarks() const
+std::map<chronolog::StoryId, std::map<uint64_t, uint64_t>> chronolog::ArchiveManifest::persistedIntervals() const
 {
-    // Per story, the persisted windows in start order. A std::map both sorts them
-    // and collapses repeats of the same window (a re-send publishes the same
-    // interval again), keeping the widest end.
     std::lock_guard<std::mutex> lock(theMutex);
 
     // The log is append-only, so a deletion arrives as a later record naming the
@@ -372,8 +369,10 @@ std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWaterma
         }
     }
 
+    // A std::map per story both sorts the windows and collapses repeats of the
+    // same one (a re-send publishes the same interval again), keeping the widest
+    // end.
     std::map<StoryId, std::map<uint64_t, uint64_t>> intervals;
-
     for(ArchiveManifestRecord const& record: theRecords)
     {
         if(record.exempt || record.end <= record.start)
@@ -395,12 +394,16 @@ std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWaterma
             emplaced.first->second = record.end;
         }
     }
+    return intervals;
+}
 
+std::map<chronolog::StoryId, uint64_t> chronolog::ArchiveManifest::deriveWatermarks() const
+{
     // Same prefix rule the grapher's registry applies at runtime: anchor at the
-    // story's earliest window and absorb while the next one starts at or below
-    // the current W. One forward pass suffices because the intervals are sorted.
+    // story's earliest window and absorb while the next one starts at or below the
+    // current W. One forward pass suffices because the intervals are sorted.
     std::map<StoryId, uint64_t> watermarks;
-    for(auto const& story_entry: intervals)
+    for(auto const& story_entry: persistedIntervals())
     {
         auto const& story_intervals = story_entry.second;
         if(story_intervals.empty())

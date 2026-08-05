@@ -186,6 +186,11 @@ int main(int argc, char** argv)
     {
         theArchiveManifest = std::make_unique<chronolog::ArchiveManifest>(archive_dir);
         theArchiveManifest->load();
+        // Recover what the previous run persisted. Without this every story's W
+        // starts at 0 after a restart and the keepers re-send everything they
+        // still retain, which is exactly the retention the watermark exists to
+        // release.
+        theWatermarkRegistry.restoreFromManifest(theArchiveManifest->persistedIntervals());
     }
     else
     {
@@ -221,6 +226,11 @@ int main(int argc, char** argv)
                                              GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
                                              &grapherExtractionChain,
                                              &theWatermarkRegistry);
+
+    // The data store's collection loop owns manifest compaction: it already runs
+    // at ~1 Hz alongside the watermark publish, and the manifest must not be
+    // compacted from an extraction stream that is concurrently appending to it.
+    theDataStore.attachArchiveManifest(theArchiveManifest.get());
 
     tl::engine* dataAdminEngine = nullptr;
 

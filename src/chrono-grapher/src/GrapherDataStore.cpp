@@ -1,3 +1,4 @@
+#include <ArchiveManifest.h>
 #include <unistd.h>
 #include <map>
 #include <mutex>
@@ -521,7 +522,9 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
     // on-demand pipeline to retire so it does not leak.
     std::deque<chl::StoryChunk*> orphan_chunks = theIngestionQueue.extractOrphanChunks();
     if(orphan_chunks.empty())
-    { return; }
+    {
+        return;
+    }
 
     std::unordered_set<chl::StoryId> adopted_stories;
     std::size_t discarded = 0;
@@ -549,8 +552,7 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
     // Schedule each on-demand pipeline to retire (now + inactive_pipeline_delay)
     // so it is not left resident forever. A subsequent real acquisition rescues
     // it from the waiting list; further stragglers re-adopt and reset the timer.
-    for(chl::StoryId const& story_id: adopted_stories)
-    { stopStoryRecording(story_id); }
+    for(chl::StoryId const& story_id: adopted_stories) { stopStoryRecording(story_id); }
 
     LOG_WARNING("[GrapherDataStore] Adopted orphan chunk(s) for {} story(ies) from the chunks' own chronicle/story "
                 "identity; discarded {} chunk(s) for destroyed stories.",
@@ -589,8 +591,33 @@ void chronolog::GrapherDataStore::dataCollectionTask()
             // registry's dirty snapshot
             theWatermarkPublisher->publish();
         }
+        compactArchiveManifest();
     }
     LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
+}
+
+////////////////////////
+
+// Fold the append-only log into the snapshot once it has grown enough since the
+// last compaction. Threshold-based rather than every tick because compaction
+// rewrites every record: doing it each second would turn a cheap append-only log
+// into a quadratic rewrite. Crash-safe either way -- the snapshot is published by
+// rename, and the log is only truncated afterwards.
+void chronolog::GrapherDataStore::compactArchiveManifest()
+{
+    if(theArchiveManifest == nullptr)
+    {
+        return;
+    }
+    std::size_t const record_count = theArchiveManifest->records().size();
+    if(record_count < theRecordsAtLastCompaction + MANIFEST_COMPACTION_THRESHOLD)
+    {
+        return;
+    }
+    if(theArchiveManifest->snapshot() == chronolog::CL_SUCCESS)
+    {
+        theRecordsAtLastCompaction = record_count;
+    }
 }
 
 ////////////////////////

@@ -120,6 +120,14 @@ public:
     // new snapshot plus a log that is still a suffix of it.
     int snapshot();
 
+    // Per-story persisted windows, sorted by start with duplicates collapsed.
+    //
+    // This is the record-filtering rule in one place: exempt and failed records
+    // never count, and a file that a later record deleted stops counting even
+    // though its publication is still in the append-only log. Every exclusion is
+    // in the under-reporting direction, which E <= W absorbs.
+    std::map<StoryId, std::map<uint64_t, uint64_t>> persistedIntervals() const;
+
     // Per-story W: the end of the longest contiguous run of persisted windows
     // starting at that story's earliest recorded window.
     //

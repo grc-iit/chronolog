@@ -4,6 +4,10 @@
 // runs multiple drain streams, so windows of one story can persist out of
 // order; a plain max(end) would report unpersisted gaps as durable.
 
+#include <filesystem>
+
+#include <ArchiveManifest.h>
+#include <chronolog_errcode.h>
 #include <gtest/gtest.h>
 
 #include <thread>
@@ -248,15 +252,132 @@ TEST(StoryWatermarkRegistry, ConcurrentAdvanceConvergesToPrefixEnd)
         threads.emplace_back(
                 [&registry, t]()
                 {
-                    for(uint64_t w = t; w < kWindows; w += kThreads)
-                    {
-                        registry.advancePersisted(kStory, w, w + 1);
-                    }
+                    for(uint64_t w = t; w < kWindows; w += kThreads) { registry.advancePersisted(kStory, w, w + 1); }
                 });
     }
-    for(auto& th: threads)
-    {
-        th.join();
-    }
+    for(auto& th: threads) { th.join(); }
     EXPECT_EQ(registry.getPersisted(kStory), kWindows);
+}
+
+// ---- restoring W from the archive manifest ---------------------------------
+//
+// A restarted Grapher has no memory of what it persisted; without the manifest
+// every story's W starts at 0 and every keeper re-sends everything it retained.
+// Restoration replays the manifest's persisted intervals through advancePersisted
+// rather than assigning W directly, which matters for what it preserves: the
+// intervals parked above a gap. Assigning only the final W would forget them, and
+// the window that later closes the gap would advance W to the gap's end instead of
+// past everything already on disk -- forcing a re-send of chunks that are durable.
+
+TEST(StoryWatermarkRegistryRestore, RestoredWatermarkMatchesThePreRestartValue)
+{
+    chl::StoryWatermarkRegistry before;
+    before.registerStory(1, 0);
+    before.advancePersisted(1, 0, 10);
+    before.advancePersisted(1, 10, 20);
+    before.advancePersisted(1, 20, 30);
+    uint64_t const w_before = before.getPersisted(1);
+    ASSERT_EQ(w_before, 30u);
+
+    // What the manifest would hold for that story.
+    std::map<chl::StoryId, std::map<uint64_t, uint64_t>> intervals;
+    intervals[1] = {{0, 10}, {10, 20}, {20, 30}};
+
+    chl::StoryWatermarkRegistry after;
+    after.restoreFromManifest(intervals);
+
+    EXPECT_EQ(after.getPersisted(1), w_before);
+}
+
+TEST(StoryWatermarkRegistryRestore, RestoreParksIntervalsAboveAGapInsteadOfLosingThem)
+{
+    std::map<chl::StoryId, std::map<uint64_t, uint64_t>> intervals;
+    intervals[1] = {{0, 10}, {20, 30}}; // 10..20 never persisted
+
+    chl::StoryWatermarkRegistry restored;
+    restored.restoreFromManifest(intervals);
+    ASSERT_EQ(restored.getPersisted(1), 10u) << "W must stop at the gap";
+
+    // The window that closes the gap arrives after the restart. If 20..30 had been
+    // forgotten, W would stop at 20 and that chunk would have to be re-sent.
+    restored.advancePersisted(1, 10, 20);
+    EXPECT_EQ(restored.getPersisted(1), 30u) << "the parked interval was lost on restore";
+}
+
+TEST(StoryWatermarkRegistryRestore, RestoreAnchorsAStoryAtItsOwnFirstWindow)
+{
+    // Stories do not start at 0; anchoring at 0 would make every story look like it
+    // had an unpersisted prefix stretching back to the epoch.
+    std::map<chl::StoryId, std::map<uint64_t, uint64_t>> intervals;
+    intervals[7] = {{1000, 1010}, {1010, 1020}};
+
+    chl::StoryWatermarkRegistry restored;
+    restored.restoreFromManifest(intervals);
+
+    EXPECT_EQ(restored.getPersisted(7), 1020u);
+}
+
+TEST(StoryWatermarkRegistryRestore, RestoringNothingLeavesTheRegistryEmpty)
+{
+    chl::StoryWatermarkRegistry restored;
+    restored.restoreFromManifest({});
+    EXPECT_EQ(restored.getPersisted(1), 0u);
+}
+
+TEST(StoryWatermarkRegistryRestore, RestoredStoriesArePublishedToKeepers)
+{
+    // The point of restoring is to tell keepers they can release what is already
+    // durable, so restored stories have to come back dirty.
+    std::map<chl::StoryId, std::map<uint64_t, uint64_t>> intervals;
+    intervals[1] = {{0, 10}};
+    intervals[2] = {{5, 25}};
+
+    chl::StoryWatermarkRegistry restored;
+    restored.restoreFromManifest(intervals);
+
+    std::map<chl::StoryId, uint64_t> const dirty = restored.snapshotDirty();
+    EXPECT_EQ(dirty.size(), 2u);
+    EXPECT_EQ(dirty.at(1), 10u);
+    EXPECT_EQ(dirty.at(2), 25u);
+}
+
+// The end-to-end shape: publish through a manifest, then restore from what it
+// recorded and compare against the registry that did the publishing.
+TEST(StoryWatermarkRegistryRestore, WatermarkSurvivesARoundTripThroughTheManifest)
+{
+    namespace fs = std::filesystem;
+    fs::path const root = fs::temp_directory_path() / ("chronolog_w_restore_" + std::to_string(::getpid()));
+    fs::create_directories(root);
+
+    chl::StoryWatermarkRegistry before;
+    chl::ArchiveManifest manifest(root.string());
+
+    auto publish = [&](chl::StoryId sid, uint64_t start, uint64_t end, chl::ManifestState state)
+    {
+        chl::ArchiveManifestRecord record;
+        record.chronicle = "c1";
+        record.story = "s1";
+        record.story_id = sid;
+        record.file = (state == chl::ManifestState::EMPTY) ? "" : "c1.s1." + std::to_string(start) + ".vlen.h5";
+        record.start = start;
+        record.end = end;
+        record.state = state;
+        manifest.append(record);
+        before.advancePersisted(sid, start, end);
+    };
+
+    publish(1, 0, 10, chl::ManifestState::PUBLISHED);
+    publish(1, 10, 20, chl::ManifestState::EMPTY); // an idle gap still counts
+    publish(1, 20, 30, chl::ManifestState::PUBLISHED);
+    uint64_t const w_before = before.getPersisted(1);
+
+    chl::ArchiveManifest reloaded(root.string());
+    ASSERT_EQ(reloaded.load(), chl::CL_SUCCESS);
+    chl::StoryWatermarkRegistry after;
+    after.restoreFromManifest(reloaded.persistedIntervals());
+
+    EXPECT_EQ(after.getPersisted(1), w_before);
+
+    std::error_code ec;
+    fs::remove_all(root, ec);
 }
