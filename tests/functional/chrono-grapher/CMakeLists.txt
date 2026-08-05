@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 find_package(GTest REQUIRED)
 find_package(Thallium REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSONC json-c)
+pkg_check_modules(JSONC REQUIRED json-c)
 include(GoogleTest)
 
 find_package(HDF5 REQUIRED COMPONENTS C CXX)
@@ -59,6 +59,10 @@ target_include_directories(chrono_grapher_destroy_files_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
     ${HDF5_INCLUDE_DIRS}
     ${JSONC_INCLUDE_DIRS}
+)
+
+target_link_directories(chrono_grapher_destroy_files_test PRIVATE
+    ${JSONC_LIBRARY_DIRS}
 )
 
 target_link_libraries(chrono_grapher_destroy_files_test PRIVATE
