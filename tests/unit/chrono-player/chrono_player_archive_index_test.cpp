@@ -313,3 +313,165 @@ TEST_F(ArchiveIndexTest, ARotationDeletedFromTheManifestIsNotRead)
 
     agent.shutdown();
 }
+
+// ---- keeping the index current from the manifest tail ----------------------
+//
+// The index is built once at startup, but the Grapher keeps publishing. Until now
+// the Player noticed by diffing the whole archive directory every 5 s, which costs
+// a full walk per tick and scales with the archive rather than with what changed.
+//
+// The manifest log is append-only, so the same information is a read of the bytes
+// past the last offset. These tests drive that read directly rather than waiting on
+// the monitoring thread: the interesting cases are byte-offset bookkeeping, and a
+// sleep-based test would be both slower and flakier.
+
+TEST_F(ArchiveIndexTest, ManifestRecordsAppendedAfterStartupAreIndexed)
+{
+    std::string const first = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifest(first, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tail and the consumed-record counts below are a coin
+    // flip. pollManifestTail() does not consult the shutdown flag.
+    agent.shutdown();
+    ASSERT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 0u) << "not published yet";
+
+    // The Grapher publishes another window while the Player is running.
+    std::string const second = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    recordInManifest(second, BASE + 20 * NS, BASE + 30 * NS);
+
+    EXPECT_GT(agent.pollManifestTail(), 0) << "the new record was not picked up";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u);
+
+    agent.shutdown();
+}
+
+TEST_F(ArchiveIndexTest, PollingConsumesEachRecordExactlyOnce)
+{
+    std::string const first = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifest(first, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tail and the consumed-record counts below are a coin
+    // flip. pollManifestTail() does not consult the shutdown flag.
+    agent.shutdown();
+
+    std::string const second = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    recordInManifest(second, BASE + 20 * NS, BASE + 30 * NS);
+
+    EXPECT_EQ(agent.pollManifestTail(), 1) << "expected exactly the one new record";
+    EXPECT_EQ(agent.pollManifestTail(), 0) << "a second poll re-read records it had already consumed";
+}
+
+TEST_F(ArchiveIndexTest, APartiallyWrittenRecordIsNotConsumedUntilComplete)
+{
+    std::string const first = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifest(first, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tail and the consumed-record counts below are a coin
+    // flip. pollManifestTail() does not consult the shutdown flag.
+    agent.shutdown();
+
+    // The Grapher is mid-append: bytes are there, the newline is not. Consuming
+    // them would skip the record permanently once the rest arrived.
+    std::string const second = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    std::string const line = chl::toManifestLine(
+            [&]
+            {
+                chl::ArchiveManifestRecord r;
+                r.chronicle = "c1";
+                r.story = "s1";
+                r.story_id = STORY_ID;
+                r.file = second;
+                r.start = BASE + 20 * NS;
+                r.end = BASE + 30 * NS;
+                r.state = chl::ManifestState::PUBLISHED;
+                return r;
+            }());
+    {
+        std::ofstream log(root / "archive_manifest.log", std::ios::app);
+        log << line.substr(0, line.size() / 2); // no trailing newline
+    }
+
+    EXPECT_EQ(agent.pollManifestTail(), 0) << "a torn line was consumed";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 0u);
+
+    // The rest of the record lands.
+    {
+        std::ofstream log(root / "archive_manifest.log", std::ios::app);
+        log << line.substr(line.size() / 2) << "\n";
+    }
+
+    EXPECT_EQ(agent.pollManifestTail(), 1) << "the completed record was never picked up";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u);
+
+    agent.shutdown();
+}
+
+TEST_F(ArchiveIndexTest, ADeletionAppendedAfterStartupRemovesTheFile)
+{
+    std::string const file = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifest(file, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tail and the consumed-record counts below are a coin
+    // flip. pollManifestTail() does not consult the shutdown flag.
+    agent.shutdown();
+    ASSERT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u);
+
+    {
+        chl::ArchiveManifest manifest(root.string());
+        chl::ArchiveManifestRecord removal;
+        removal.chronicle = "c1";
+        removal.story = "s1";
+        removal.story_id = STORY_ID;
+        removal.file = file;
+        removal.state = chl::ManifestState::DELETED;
+        manifest.append(removal);
+    }
+
+    EXPECT_GT(agent.pollManifestTail(), 0);
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 0u) << "a deleted file is still being read";
+
+    agent.shutdown();
+}
+
+TEST_F(ArchiveIndexTest, CompactionTruncatingTheLogDoesNotLoseTheIndex)
+{
+    // Compaction folds the log into the snapshot and truncates it, so the log
+    // SHRINKS. A poller that only ever advanced its offset would then read past
+    // the end, or treat the new short log as unread tail and re-apply nothing.
+    std::string const first = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifest(first, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tail and the consumed-record counts below are a coin
+    // flip. pollManifestTail() does not consult the shutdown flag.
+    agent.shutdown();
+    ASSERT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u);
+
+    {
+        chl::ArchiveManifest manifest(root.string());
+        ASSERT_EQ(manifest.load(), chl::CL_SUCCESS);
+        ASSERT_EQ(manifest.snapshot(), chl::CL_SUCCESS); // truncates the log
+    }
+    std::string const second = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    recordInManifest(second, BASE + 20 * NS, BASE + 30 * NS);
+
+    EXPECT_GE(agent.pollManifestTail(), 1) << "records after a compaction were not picked up";
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u) << "the pre-compaction file was lost from the index";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u);
+
+    agent.shutdown();
+}

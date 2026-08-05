@@ -193,6 +193,16 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                     }
                     READER_CONF.manifest_enabled = json_object_get_boolean(val);
                 }
+                else if(strcmp(key, "manifest_poll_interval_ms") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'manifest_poll_interval_ms': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    READER_CONF.manifest_poll_interval_ms = json_object_get_int(val);
+                }
                 else
                 {
                     std::cerr << "[ConfigurationManager] [chrono_player] Unknown ArchiveReaders configuration " << key

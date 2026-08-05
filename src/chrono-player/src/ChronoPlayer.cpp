@@ -287,7 +287,8 @@ int main(int argc, char** argv)
     archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue,
                                                              archive_path,
                                                              PLAYER_CONF.READER_CONF.read_aux_files,
-                                                             PLAYER_CONF.READER_CONF.manifest_enabled);
+                                                             PLAYER_CONF.READER_CONF.manifest_enabled,
+                                                             PLAYER_CONF.READER_CONF.manifest_poll_interval_ms);
 
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...

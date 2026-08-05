@@ -224,7 +224,8 @@
     "ArchiveReaders": {
       "story_files_dir": "/tmp",
       "read_aux_files": false,
-      "manifest_enabled": true
+      "manifest_enabled": true,
+      "manifest_poll_interval_ms": 1000
     }
 }
 }

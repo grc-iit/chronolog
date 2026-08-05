@@ -311,6 +311,11 @@ struct ExtractorReaderConf
     // they disagree the Player silently finds no manifest and falls back to
     // scanning, so it logs a warning naming both keys when that happens.
     bool manifest_enabled = true;
+    // How often the Player re-reads the tail of the manifest log to pick up files
+    // the Grapher published since startup. Cheap because the log is append-only:
+    // a tick costs the size of what changed, not a walk of the archive, which is
+    // what the directory diff it replaces cost every time.
+    int manifest_poll_interval_ms = 1000;
 
     int parseJsonConf(json_object*);
 
@@ -318,7 +323,8 @@ struct ExtractorReaderConf
     {
         return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
                " READ_AUX_FILES: " + (read_aux_files ? "true" : "false") +
-               " MANIFEST_ENABLED: " + (manifest_enabled ? "true" : "false") + "]";
+               " MANIFEST_ENABLED: " + (manifest_enabled ? "true" : "false") +
+               " MANIFEST_POLL_INTERVAL_MS: " + std::to_string(manifest_poll_interval_ms) + "]";
     }
 };
 

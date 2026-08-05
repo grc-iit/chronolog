@@ -90,12 +90,14 @@ public:
     explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
                                      bool use_polling = true,
                                      std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
-                                     bool manifest_enabled = true)
+                                     bool manifest_enabled = true,
+                                     std::chrono::milliseconds manifest_poll_interval = std::chrono::milliseconds(1000))
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
         , shutdown_requested_(false)
         , manifest_enabled_(manifest_enabled)
+        , manifest_poll_interval_(manifest_poll_interval)
     {}
 
     ~HDF5ArchiveReadingAgent() { shutdown(); }
@@ -115,7 +117,11 @@ public:
                      archive_path_);
             createStartTimeFileNameMap();
         }
-        else if(loadIndexFromManifest() != 0)
+        else if(loadIndexFromManifest() == 0)
+        {
+            manifest_mode_ = true;
+        }
+        else
         {
             // Worth a warning rather than a note: the Grapher writes the manifest
             // into chrono_grapher's "hdf5_archive_dir" and the Player reads it from
@@ -144,6 +150,12 @@ public:
         archive_dir_monitoring_thread_->join();
         return 0;
     }
+
+    // Applies manifest records appended since the last call and returns how many
+    // were consumed. Public because the monitoring thread is not the only sensible
+    // driver: a test wants to step it, and stepping it is what makes the
+    // byte-offset bookkeeping observable at all.
+    int pollManifestTail();
 
     int readStoryChunkFile(const ChronicleName&,
                            const StoryName&,
@@ -445,7 +457,10 @@ private:
         return 0;
     }
 
-    int removeFileFromStartTimeFileNameMap(const std::string& file_name)
+    // is_rotation mirrors the add path: the manifest knows a rotation belongs to a
+    // window, so a deletion it reports removes just that file and leaves the
+    // window's other files indexed.
+    int removeFileFromStartTimeFileNameMap(const std::string& file_name, bool is_rotation = false)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         std::string chronicle_name = getChronicleName(file_name);
@@ -458,7 +473,7 @@ private:
             return -1; // Skip files with invalid start time
         }
         std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
-        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        if(!is_rotation && std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
 #ifndef NDEBUG
@@ -470,7 +485,18 @@ private:
         auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
         if(chronicle_story_it != start_time_file_name_map_.end())
         {
-            chronicle_story_it->second.erase(start_time);
+            auto window_it = chronicle_story_it->second.find(start_time);
+            if(window_it != chronicle_story_it->second.end())
+            {
+                std::vector<std::string>& paths = window_it->second.paths;
+                paths.erase(std::remove(paths.begin(), paths.end(), file_name), paths.end());
+                // The window entry only goes when nothing is left to read from it;
+                // dropping it while a sibling rotation survived would hide that file.
+                if(paths.empty())
+                {
+                    chronicle_story_it->second.erase(window_it);
+                }
+            }
             // Remove the chronicle-story entry if no more files exist for it
             if(chronicle_story_it->second.empty())
             {
@@ -516,6 +542,22 @@ private:
     // Thread control
     std::atomic<bool> shutdown_requested_;
     bool manifest_enabled_ = true;
+    // True once the index was built from the manifest; that is what decides
+    // whether the monitoring thread polls the log or walks the directory.
+    bool manifest_mode_ = false;
+    // Tick used instead of monitoring_interval_ once the index is manifest-backed:
+    // reading an append-only tail is cheap enough to do far more often than the
+    // directory diff it replaces.
+    std::chrono::milliseconds manifest_poll_interval_{1000};
+    // Bytes of the manifest log already applied. Only ever advanced past a
+    // COMPLETE line: the Grapher appends without holding a lock the Player can
+    // see, so a poll can land mid-record.
+    std::streamoff manifest_log_offset_ = 0;
+    // Last observed write time of the log. Size alone cannot detect a compaction:
+    // it truncates the log and the Grapher immediately appends again, so the file
+    // can be back at exactly the offset already consumed while holding entirely
+    // different records.
+    std::filesystem::file_time_type manifest_log_mtime_{};
 };
 
 } // namespace chronolog

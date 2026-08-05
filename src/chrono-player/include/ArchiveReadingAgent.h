@@ -49,13 +49,15 @@ public:
     ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue,
                         std::string const& archive_path,
                         bool read_aux_files = false,
-                        bool manifest_enabled = true)
+                        bool manifest_enabled = true,
+                        int manifest_poll_interval_ms = 1000)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
         , theReadingAgent(archive_path,
                           true, // Default to polling mode
                           std::chrono::milliseconds(5000),
-                          manifest_enabled)
+                          manifest_enabled,
+                          std::chrono::milliseconds(manifest_poll_interval_ms))
         , readAuxFiles(read_aux_files)
     {}
 

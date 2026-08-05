@@ -109,6 +109,108 @@ void mergeChunksForWindow(std::list<chronolog::StoryChunk*>& chunks, std::size_t
 }
 } // namespace
 
+
+// Applies whatever the Grapher appended to the manifest log since the last call.
+//
+// Cheap by construction: the log is append-only, so "what changed" is the bytes
+// past the offset we already applied -- no directory walk, and the cost is the
+// size of the delta rather than the size of the archive.
+//
+// Two states have to be handled beyond the ordinary append. A COMPACTION folds the
+// log into the snapshot and truncates it, so the file gets SHORTER than the offset;
+// the offset is then reset, and re-applying records is harmless because both
+// mutators are idempotent. A TORN line is the Grapher caught mid-append: the offset
+// stops at the last newline so the record is applied once, when it is complete.
+int chronolog::HDF5ArchiveReadingAgent::pollManifestTail()
+{
+    std::string const log_path = (fs::path(archive_path_) / "archive_manifest.log").string();
+
+    std::error_code ec;
+    auto const size = static_cast<std::streamoff>(fs::file_size(log_path, ec));
+    if(ec)
+    {
+        return 0; // no log yet, or unreadable: nothing to apply
+    }
+    auto const mtime = fs::last_write_time(log_path, ec);
+    if(ec)
+    {
+        return 0;
+    }
+
+    if(size < manifest_log_offset_)
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log shrank ({} < {}), assuming compaction; re-reading from 0",
+                  size,
+                  manifest_log_offset_);
+        manifest_log_offset_ = 0;
+    }
+    else if(size == manifest_log_offset_)
+    {
+        if(mtime == manifest_log_mtime_)
+        {
+            return 0; // genuinely nothing appended
+        }
+        // Same length, different write time: the log was compacted away and
+        // refilled to coincidentally the same size. Treating this as "nothing new"
+        // would drop every record written after the compaction.
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log rewritten at the same size; re-reading from 0");
+        manifest_log_offset_ = 0;
+    }
+    manifest_log_mtime_ = mtime;
+
+    std::ifstream log(log_path, std::ios::binary);
+    if(!log)
+    {
+        return 0;
+    }
+    log.seekg(manifest_log_offset_);
+    std::string tail((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+
+    // Only whole lines: everything after the last newline is a record still being
+    // written, and consuming it would skip it for good.
+    std::size_t const last_newline = tail.rfind('\n');
+    if(last_newline == std::string::npos)
+    {
+        return 0;
+    }
+
+    int applied = 0;
+    std::istringstream complete(tail.substr(0, last_newline + 1));
+    std::string line;
+    while(std::getline(complete, line))
+    {
+        if(line.empty())
+        {
+            continue;
+        }
+        ArchiveManifestRecord record;
+        if(!parseManifestLine(line, record) || record.file.empty())
+        {
+            continue; // empty/failed windows name no file; a bad line is skipped
+        }
+        std::string const path = (fs::path(archive_path_) / record.file).string();
+        if(record.state == ManifestState::PUBLISHED)
+        {
+            addFileToStartTimeFileNameMap(path, record.end, /*is_rotation=*/true);
+            applied++;
+        }
+        else if(record.state == ManifestState::DELETED)
+        {
+            removeFileFromStartTimeFileNameMap(path, /*is_rotation=*/true);
+            applied++;
+        }
+    }
+
+    manifest_log_offset_ += static_cast<std::streamoff>(last_newline + 1);
+    if(applied > 0)
+    {
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Applied {} manifest record(s) from the log tail; offset now {}",
+                  applied,
+                  manifest_log_offset_);
+    }
+    return applied;
+}
+
 int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& chronicleName,
                                                            const StoryName& storyName,
                                                            uint64_t startTime,
@@ -537,7 +639,7 @@ int chronolog::HDF5ArchiveReadingAgent::inotifyMonitoringThreadFunc()
             if(errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 // No data available, sleep for monitoring interval and check shutdown flag
-                std::this_thread::sleep_for(monitoring_interval_);
+                std::this_thread::sleep_for(manifest_mode_ ? manifest_poll_interval_ : monitoring_interval_);
                 continue;
             }
             LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to read inotify events: {}", strerror(errno));
@@ -547,7 +649,7 @@ int chronolog::HDF5ArchiveReadingAgent::inotifyMonitoringThreadFunc()
         if(length == 0)
         {
             // No data available, sleep for monitoring interval and check shutdown flag
-            std::this_thread::sleep_for(monitoring_interval_);
+            std::this_thread::sleep_for(manifest_mode_ ? manifest_poll_interval_ : monitoring_interval_);
             continue;
         }
 
@@ -630,24 +732,42 @@ int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
     // Set the initial scan time BEFORE the initial scan
     last_scan_time_ = std::chrono::system_clock::now();
 
-    // Initial scan to establish baseline
-    scanFileSystem();
+    if(manifest_mode_)
+    {
+        // The index already reflects the manifest as of initialize(); the offset
+        // is caught up here so the first tick only sees genuinely new records.
+        pollManifestTail();
+    }
+    else
+    {
+        // Initial scan to establish baseline
+        scanFileSystem();
+    }
 
     while(!shutdown_requested_.load())
     {
-        std::this_thread::sleep_for(monitoring_interval_);
+        std::this_thread::sleep_for(manifest_mode_ ? manifest_poll_interval_ : monitoring_interval_);
 
         if(shutdown_requested_.load())
         {
             break;
         }
 
-        // Always scan the file system to detect deletions, modifications, and additions
-        // The hasFileSystemChanged() method cannot reliably detect file deletions since
-        // directory iteration only shows existing files
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Performing periodic file system scan...");
-        updateFileState();
-        scanFileSystem();
+        if(manifest_mode_)
+        {
+            // Append-only log: reading its tail is O(what changed) rather than the
+            // O(archive) the directory diff below costs on every tick.
+            pollManifestTail();
+        }
+        else
+        {
+            // Always scan the file system to detect deletions, modifications, and additions
+            // The hasFileSystemChanged() method cannot reliably detect file deletions since
+            // directory iteration only shows existing files
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Performing periodic file system scan...");
+            updateFileState();
+            scanFileSystem();
+        }
     }
 
     return 0;
