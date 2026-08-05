@@ -535,6 +535,112 @@ jobs:
             echo "PERF_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # The distributed counterpart of the local pipeline's manifest restart test.
+      # It is deliberately NOT the same script: that one calls deploy_local.sh and
+      # kills processes in its own container, which here would tear down the
+      # multi-container deployment and replace it with a single-host one. This uses
+      # the deployment already up.
+      #
+      # It is also the only place two Graphers share one manifest (c4/c5 both write
+      # into the shared_home volume), which is the case the manifest's reconciliation
+      # and de-duplication are designed around and which the local pipeline cannot
+      # reach.
+      #
+      # NOT gating yet: unlike the local test, this orchestration has never been
+      # executed against a runner. Flip continue-on-error to false once it has gone
+      # green once.
+      - name: Run archive-manifest restart test (distributed)
+        id: manifest-restart-distributed
+        continue-on-error: true
+        run: |
+          set -e
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -u
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            BUILD_DIR=\"/home/grc-iit/chronolog-build/Release\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            OUTPUT_DIR=\"\${WORK_DIR}/output\"
+            MANIFEST=\"\${OUTPUT_DIR}/archive_manifest.log\"
+            TAIL_EXAMPLE=\"\${BUILD_DIR}/client/cpp/examples/chrono-client-example-tail-reader\"
+            REPLAY_CHECK=\"\${BUILD_DIR}/tests/integration/watermark-replay/chronolog-test-replay-split-check\"
+            PASS=0; FAIL=0
+            ok()  { echo \"PASS: \$*\"; PASS=\$((PASS+1)); }
+            bad() { echo \"FAIL: \$*\"; FAIL=\$((FAIL+1)); }
+
+            cd \"\${REPO_DIR}\"
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p . 2>/dev/null || true
+            export LD_LIBRARY_PATH=\"\${WORK_DIR}/lib:\${LD_LIBRARY_PATH:-}\"
+
+            [ -x \"\${TAIL_EXAMPLE}\" ] || { echo 'tail-reader example missing'; exit 2; }
+            [ -x \"\${REPLAY_CHECK}\" ] || { echo 'replay probe missing'; exit 2; }
+
+            echo '--- publishing ---'
+            timeout 200 \"\${TAIL_EXAMPLE}\" --config \"\${WORK_DIR}/conf/default-chrono-client-conf.json\" \
+              > /tmp/dist_manifest_writer.out 2>&1 || true
+
+            waited=0
+            while [ \"\${waited}\" -lt 180 ]; do
+              if [ -f \"\${MANIFEST}\" ] && grep -q '\"state\":\"published\"' \"\${MANIFEST}\"; then break; fi
+              sleep 5; waited=\$((waited+5))
+            done
+
+            if [ -f \"\${MANIFEST}\" ] && grep -q '\"state\":\"published\"' \"\${MANIFEST}\"; then
+              ok \"publish: \$(grep -c '\"state\":\"published\"' \"\${MANIFEST}\") published record(s) in the shared manifest\"
+            else
+              bad 'publish: nothing reached the archive manifest'
+              echo \"result: \${PASS} passed, \${FAIL} failed\"; exit 1
+            fi
+
+            BEFORE=\$(\"\${REPLAY_CHECK}\" --config \"\${WORK_DIR}/conf/default-chrono-client-conf.json\" \
+                      TailChronicle TailStory 2>&1 | sed -n 's/^REPLAY_UNIQUE \\([0-9]*\\)\$/\\1/p')
+            BEFORE=\${BEFORE:--1}
+            if [ \"\${BEFORE}\" -gt 0 ]; then
+              ok \"replay before restart: \${BEFORE} unique event(s)\"
+            else
+              bad 'replay before restart returned nothing'
+              echo \"result: \${PASS} passed, \${FAIL} failed\"; exit 1
+            fi
+
+            echo '--- restarting the players on their own hosts ---'
+            # Each player is relaunched from its OWN recorded command line, so this
+            # needs no knowledge of the per-host conf naming the deploy chose.
+            parallel-ssh -h \"\${WORK_DIR}/conf/hosts_player\" -i -t 120 \"
+              CMD=\\\$(ps -eo args | grep '[c]hrono-player --config' | head -1)
+              [ -n \\\"\\\$CMD\\\" ] || exit 3
+              pkill -f 'chrono-player --config' || true
+              sleep 3
+              cd \${WORK_DIR} && setsid \\\$CMD > /dev/null 2>&1 < /dev/null &
+              sleep 1
+            \" || bad 'restart: relaunching the players over ssh reported an error'
+            sleep 15
+
+            echo '--- assertions ---'
+            if grep -lq '(no directory scan)' \${WORK_DIR}/monitor/chrono-player-*.log 2>/dev/null; then
+              ok 'restart: at least one player built its index from the shared manifest'
+            else
+              bad 'restart: no player reported a manifest-built index'
+            fi
+
+            if grep -hq 'falling back to a recursive' \${WORK_DIR}/monitor/chrono-player-*.log 2>/dev/null; then
+              bad 'restart: a player fell back to a recursive directory scan'
+            else
+              ok 'restart: no player ran a recursive directory scan'
+            fi
+
+            AFTER=\$(\"\${REPLAY_CHECK}\" --config \"\${WORK_DIR}/conf/default-chrono-client-conf.json\" \
+                     TailChronicle TailStory 2>&1 | sed -n 's/^REPLAY_UNIQUE \\([0-9]*\\)\$/\\1/p')
+            AFTER=\${AFTER:--1}
+            if [ \"\${AFTER}\" = \"\${BEFORE}\" ]; then
+              ok \"replay after restart: \${AFTER} unique event(s), unchanged\"
+            else
+              bad \"replay after restart returned \${AFTER}, expected \${BEFORE}\"
+            fi
+
+            echo \"result: \${PASS} passed, \${FAIL} failed\"
+            [ \"\${FAIL}\" -eq 0 ]
+          "
+
       - name: Stop ChronoLog
         if: always()
         run: |
