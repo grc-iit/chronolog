@@ -218,3 +218,98 @@ int main(int argc, char** argv)
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+// ---- rotated files and de-duplication --------------------------------------
+//
+// A rotated file ("<...>.vlen.<n>.h5") is never part 2 of a chunk: the writer
+// rotates only when the base name is already taken, so it is always a SECOND write
+// of the same story and the same window start. Two kinds occur, and until now
+// neither default was correct:
+//
+//   re-send   a keeper stall or grapher restart re-publishes the same window.
+//             Reading it returns every event twice.
+//   salvage   events that could not be merged into the main window because the
+//             timeline had already moved past them. Skipping it silently DROPS
+//             those events -- they exist nowhere else.
+//
+// The manifest lists rotations against the same (chronicle, story, start) key, and
+// a window's files are read into one StoryChunk, which is keyed by EventSequence.
+// That makes the re-send case collapse and the salvage case union, using the same
+// key the hot path already de-duplicates on.
+
+TEST_F(ArchiveIndexTest, ARepublishedWindowIsReturnedOnce)
+{
+    // Same window, same events, written twice: the second lands as a rotation.
+    std::string const first = writeChunk(BASE, BASE + 10 * NS, 3);
+    std::string const second = writeChunk(BASE, BASE + 10 * NS, 3);
+    ASSERT_NE(first, second) << "the second write should have rotated";
+    recordInManifest(first, BASE, BASE + 10 * NS);
+    recordInManifest(second, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u) << "a re-sent window was returned more than once";
+
+    agent.shutdown();
+}
+
+TEST_F(ArchiveIndexTest, SalvagedEventsInARotatedFileAreReturned)
+{
+    // The salvage case: the rotation holds events the main file never got. They
+    // exist nowhere else, so not reading it loses them outright.
+    chl::StoryChunk main_chunk("c1", "s1", STORY_ID, BASE, BASE + 10 * NS);
+    for(int i = 0; i < 3; i++)
+    {
+        main_chunk.insertEvent(chl::LogEvent(STORY_ID, BASE + (uint64_t)(i + 1), 7, (chl::chrono_index)i, "main"));
+    }
+    chl::StoryChunk salvage_chunk("c1", "s1", STORY_ID, BASE, BASE + 10 * NS);
+    for(int i = 0; i < 2; i++)
+    {
+        // Different client id, so these are distinct EventSequences, not repeats.
+        salvage_chunk.insertEvent(
+                chl::LogEvent(STORY_ID, BASE + (uint64_t)(i + 1), 9, (chl::chrono_index)i, "salvaged"));
+    }
+
+    chl::StoryChunkWriter writer(root.string() + "/", "story_chunks", "data");
+    chl::StoryChunkWriteResult const main_result = writer.writeStoryChunk(main_chunk);
+    chl::StoryChunkWriteResult const salvage_result = writer.writeStoryChunk(salvage_chunk);
+    ASSERT_GT(main_result.file_size, 0u);
+    ASSERT_GT(salvage_result.file_size, 0u);
+    recordInManifest(fs::path(main_result.file_name).filename().string(), BASE, BASE + 10 * NS);
+    recordInManifest(fs::path(salvage_result.file_name).filename().string(), BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 5u)
+            << "salvaged events in the rotated file were dropped (3 main + 2 salvaged expected)";
+
+    agent.shutdown();
+}
+
+TEST_F(ArchiveIndexTest, ARotationDeletedFromTheManifestIsNotRead)
+{
+    std::string const first = writeChunk(BASE, BASE + 10 * NS, 3);
+    std::string const second = writeChunk(BASE, BASE + 10 * NS, 3);
+    recordInManifest(first, BASE, BASE + 10 * NS);
+    recordInManifest(second, BASE, BASE + 10 * NS);
+    {
+        chl::ArchiveManifest manifest(root.string());
+        chl::ArchiveManifestRecord removal;
+        removal.chronicle = "c1";
+        removal.story = "s1";
+        removal.story_id = STORY_ID;
+        removal.file = second;
+        removal.state = chl::ManifestState::DELETED;
+        manifest.append(removal);
+    }
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+
+    // Still 3: the surviving base file covers the window on its own.
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u);
+
+    agent.shutdown();
+}

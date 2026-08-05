@@ -80,6 +80,35 @@ herr_t error_walker(unsigned int n, const H5E_error2_t* err_desc, void* client_d
     return 0;
 }
 
+namespace
+{
+// Reading one window can produce several StoryChunks -- one per file. They cover
+// the same window, so fold them into the first: StoryChunk is a
+// map<EventSequence, LogEvent>, so a re-sent event overwrites its twin and a
+// salvaged one is added. Anything beyond the first is then freed.
+void mergeChunksForWindow(std::list<chronolog::StoryChunk*>& chunks, std::size_t first_index)
+{
+    if(chunks.size() <= first_index + 1)
+    {
+        return; // 0 or 1 chunk for this window: nothing to fold
+    }
+    auto iter = chunks.begin();
+    std::advance(iter, first_index);
+    chronolog::StoryChunk* target = *iter;
+    ++iter;
+    while(iter != chunks.end())
+    {
+        chronolog::StoryChunk* extra = *iter;
+        for(auto event_iter = extra->begin(); event_iter != extra->end(); ++event_iter)
+        {
+            target->insertEvent(event_iter->second);
+        }
+        delete extra;
+        iter = chunks.erase(iter);
+    }
+}
+} // namespace
+
 int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& chronicleName,
                                                            const StoryName& storyName,
                                                            uint64_t startTime,
@@ -292,7 +321,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
     }
 
     LOG_DEBUG("[HDF5ArchiveReadingAgent] Found the first file to read {} for story {}-{} in range {}-{}",
-              start_it->second.path,
+              start_it->second.paths.front(),
               chronicleName,
               storyName,
               formatWithCommas(startTime),
@@ -311,7 +340,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
         if(it->second.end_time != 0 && it->second.end_time <= startTime)
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Skipping {}: window ends at {}, before the requested {}",
-                      it->second.path,
+                      it->second.paths.front(),
                       formatWithCommas(it->second.end_time),
                       formatWithCommas(startTime));
             continue;
@@ -321,20 +350,36 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
         if(it->first >= endTime)
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Stopping at {}: window starts at or after the requested end {}",
-                      it->second.path,
+                      it->second.paths.front(),
                       formatWithCommas(endTime));
             break;
         }
-        file_full_path = fs::path(it->second.path);
+        file_full_path = fs::path(it->second.paths.front());
 
-        // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
-        file_name = file_full_path.string();
-        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
+        // Every file the manifest lists for this window, base file first, then any
+        // rotations. They all describe the SAME window -- the writer rotates only
+        // when the base name is taken -- so reading them together is what makes the
+        // salvage case visible (its events exist nowhere else) and the re-send case
+        // harmless. De-duplication is not a separate pass: each file's events land
+        // in a StoryChunk keyed by EventSequence, the same key the hot path uses,
+        // so a repeat collapses and a genuinely new event does not.
+        std::size_t const chunks_before = listOfChunks.size();
+        int result = 0;
+        for(std::string const& window_file: it->second.paths)
+        {
+            result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, window_file);
+            if(result == 1)
+            {
+                break;
+            }
+        }
+        mergeChunksForWindow(listOfChunks, chunks_before);
         if(result == 1)
         {
             has_no_more_files_to_read = true;
             break;
         }
+        file_name = file_full_path.string();
 
         if(readAuxFiles)
         {

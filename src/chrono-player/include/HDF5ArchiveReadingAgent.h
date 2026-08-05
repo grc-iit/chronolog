@@ -34,8 +34,13 @@ namespace chronolog
 // which is the difference between one HDF5 open per candidate file and none.
 struct ArchivedFileEntry
 {
-    std::string path;
-    uint64_t end_time = 0; // 0 == unknown
+    // Every file published for this window, in the order the manifest records
+    // them: the base file first, then any rotations. A rotation is never part 2 of
+    // a chunk -- the writer rotates only when the base name is taken -- so these
+    // all describe the SAME window and are read together into one StoryChunk,
+    // which is keyed by EventSequence and therefore de-duplicates them.
+    std::vector<std::string> paths;
+    uint64_t end_time = 0; // 0 == unknown (a scanned file name carries no end)
 };
 
 class HDF5ArchiveReadingAgent
@@ -316,7 +321,12 @@ private:
             {
                 continue;
             }
-            if(addFileToStartTimeFileNameMap((fs::path(archive_path_) / record.file).string(), record.end) == 0)
+            // is_rotation: the manifest is authoritative about what belongs to a
+            // window, so a rotation it lists is indexed alongside the base file
+            // rather than skipped by the file-name heuristic.
+            if(addFileToStartTimeFileNameMap((fs::path(archive_path_) / record.file).string(),
+                                             record.end,
+                                             /*is_rotation=*/true) == 0)
             {
                 indexed++;
             }
@@ -389,7 +399,11 @@ private:
         }
     }
 
-    int addFileToStartTimeFileNameMap(const std::string& file_name, uint64_t end_time = 0)
+    // is_rotation says the file is an additional write of a window already indexed
+    // (or about to be); it is appended to that window's list rather than replacing
+    // it. Scanned files never set it: the scan path keeps its historical behaviour
+    // of indexing only base files.
+    int addFileToStartTimeFileNameMap(const std::string& file_name, uint64_t end_time = 0, bool is_rotation = false)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
         if(!isValidArchiveFile(file_name))
@@ -407,7 +421,7 @@ private:
             return -1; // Skip files with invalid start time
         }
         std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
-        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        if(!is_rotation && std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
         {
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
 #ifndef NDEBUG
@@ -415,8 +429,15 @@ private:
 #endif
             return -1; // Skip files that already exist in the map
         }
-        start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] =
-                ArchivedFileEntry{file_name, end_time};
+        ArchivedFileEntry& entry = start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time];
+        if(std::find(entry.paths.begin(), entry.paths.end(), file_name) == entry.paths.end())
+        {
+            entry.paths.push_back(file_name);
+        }
+        if(end_time != 0)
+        {
+            entry.end_time = end_time;
+        }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
 #ifndef NDEBUG
         printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
