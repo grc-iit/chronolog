@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <set>
 #include <sstream>
 
@@ -236,12 +237,55 @@ std::vector<chronolog::ArchiveManifestRecord> chronolog::ArchiveManifest::record
     return theRecords;
 }
 
-chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root, bool fsync_each_append)
+chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root,
+                                            bool fsync_each_append,
+                                            std::string const& writer_id)
     : theFsyncEachAppend(fsync_each_append)
     , theArchiveRoot(archive_root)
-    , theLogPath((fs::path(archive_root) / LOG_FILE_NAME).string())
-    , theSnapshotPath((fs::path(archive_root) / SNAPSHOT_FILE_NAME).string())
-{}
+    , theWriterId(writer_id)
+{
+    if(writer_id.empty())
+    {
+        // No writer id: the unsuffixed pair. That is what a single-writer archive
+        // and every pre-split archive already use, and what a reader compacting
+        // nothing would fall back to. load() merges across writers either way.
+        theLogPath = (fs::path(archive_root) / LOG_FILE_NAME).string();
+        theSnapshotPath = (fs::path(archive_root) / SNAPSHOT_FILE_NAME).string();
+    }
+    else
+    {
+        theLogPath = (fs::path(archive_root) / ("archive_manifest." + writer_id + ".log")).string();
+        theSnapshotPath = (fs::path(archive_root) / ("archive_manifest." + writer_id + ".json")).string();
+    }
+}
+
+// Matches this writer's own pair, every other writer's, and the unsuffixed pair an
+// archive written before the per-writer split still carries.
+std::vector<std::string> chronolog::ArchiveManifest::discoverLogs(std::string const& archive_root)
+{
+    std::vector<std::string> logs;
+    std::error_code ec;
+    fs::directory_iterator dir(archive_root, ec);
+    if(ec)
+    {
+        return logs;
+    }
+    for(auto const& entry: dir)
+    {
+        if(!entry.is_regular_file(ec))
+        {
+            continue;
+        }
+        std::string const name = entry.path().filename().string();
+        if(name.rfind("archive_manifest", 0) == 0 && name.size() > 4 && name.compare(name.size() - 4, 4, ".log") == 0)
+        {
+            logs.push_back(entry.path().string());
+        }
+    }
+    // Deterministic order so a merged read is reproducible.
+    std::sort(logs.begin(), logs.end());
+    return logs;
+}
 
 int chronolog::ArchiveManifest::append(chronolog::ArchiveManifestRecord const& record)
 {
@@ -277,6 +321,7 @@ int chronolog::ArchiveManifest::append(chronolog::ArchiveManifestRecord const& r
     }
 
     theRecords.push_back(record);
+    theOwnRecords.push_back(record);
     return chronolog::CL_SUCCESS;
 }
 
@@ -284,12 +329,29 @@ int chronolog::ArchiveManifest::load()
 {
     std::lock_guard<std::mutex> lock(theMutex);
     theRecords.clear();
+    theOwnRecords.clear();
 
-    // Snapshot first, then the log on top: the log holds exactly what was
-    // appended after the last compaction.
-    std::size_t discarded = 0;
-    for(std::string const& path: {theSnapshotPath, theLogPath})
+    // Every writer's pair, snapshot before its log: a writer's log holds exactly
+    // what it appended after its own last compaction. Readers merge across writers;
+    // duplicate records between sources are harmless because deriveWatermarks
+    // collapses identical windows and the Player's index dedups by file name.
+    std::vector<std::string> sources;
+    for(std::string const& log: discoverLogs(theArchiveRoot))
     {
+        // <name>.log -> <name>.json
+        sources.push_back(log.substr(0, log.size() - 4) + ".json");
+        sources.push_back(log);
+    }
+    // Our own snapshot counts even if our log has been removed.
+    if(std::find(sources.begin(), sources.end(), theSnapshotPath) == sources.end())
+    {
+        sources.push_back(theSnapshotPath);
+    }
+
+    std::size_t discarded = 0;
+    for(std::string const& path: sources)
+    {
+        bool const own = (path == theLogPath || path == theSnapshotPath);
         std::ifstream input(path);
         if(!input)
         {
@@ -306,6 +368,10 @@ int chronolog::ArchiveManifest::load()
             if(parseManifestLine(line, record))
             {
                 theRecords.push_back(record);
+                if(own)
+                {
+                    theOwnRecords.push_back(record);
+                }
             }
             else
             {
@@ -324,7 +390,10 @@ int chronolog::ArchiveManifest::load()
                     theArchiveRoot,
                     theRecords.size());
     }
-    LOG_INFO("[ArchiveManifest] Loaded {} record(s) from {}", theRecords.size(), theArchiveRoot);
+    LOG_INFO("[ArchiveManifest] Loaded {} record(s) from {} manifest source(s) in {}",
+             theRecords.size(),
+             sources.size(),
+             theArchiveRoot);
     return chronolog::CL_SUCCESS;
 }
 
@@ -339,7 +408,10 @@ int chronolog::ArchiveManifest::snapshot()
             LOG_ERROR("[ArchiveManifest] Failed to open {} for the snapshot", tmp_path);
             return chronolog::CL_ERR_UNKNOWN;
         }
-        for(ArchiveManifestRecord const& record: theRecords) { out << toManifestLine(record) << "\n"; }
+        // theOwnRecords, not theRecords: after a merged load theRecords also holds
+        // other writers' entries, and writing those into our snapshot while their
+        // logs still carry them would duplicate a record on every compaction.
+        for(ArchiveManifestRecord const& record: theOwnRecords) { out << toManifestLine(record) << "\n"; }
         out.flush();
         if(!out)
         {
@@ -368,7 +440,7 @@ int chronolog::ArchiveManifest::snapshot()
         LOG_WARNING("[ArchiveManifest] Snapshot written but the log {} could not be truncated", theLogPath);
     }
 
-    LOG_INFO("[ArchiveManifest] Compacted {} record(s) into {}", theRecords.size(), theSnapshotPath);
+    LOG_INFO("[ArchiveManifest] Compacted {} record(s) into {}", theOwnRecords.size(), theSnapshotPath);
     return chronolog::CL_SUCCESS;
 }
 

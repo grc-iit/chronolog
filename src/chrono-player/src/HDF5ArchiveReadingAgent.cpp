@@ -110,7 +110,23 @@ void mergeChunksForWindow(std::list<chronolog::StoryChunk*>& chunks, std::size_t
 } // namespace
 
 
-// Applies whatever the Grapher appended to the manifest log since the last call.
+// Applies whatever the Graphers appended to the manifest since the last call.
+//
+// There is one log per Grapher (see ArchiveManifest), so this follows every tail in
+// the archive directory and keeps a separate cursor for each. Re-listing the
+// directory each tick is what lets a Grapher that started after the Player be
+// picked up at all.
+int chronolog::HDF5ArchiveReadingAgent::pollManifestTail()
+{
+    int applied = 0;
+    for(std::string const& log_path: ArchiveManifest::discoverLogs(archive_path_))
+    {
+        applied += pollOneManifestLog(log_path);
+    }
+    return applied;
+}
+
+// Applies whatever one Grapher appended to its log since the last call.
 //
 // Cheap by construction: the log is append-only, so "what changed" is the bytes
 // past the offset we already applied -- no directory walk, and the cost is the
@@ -121,49 +137,65 @@ void mergeChunksForWindow(std::list<chronolog::StoryChunk*>& chunks, std::size_t
 // the offset is then reset, and re-applying records is harmless because both
 // mutators are idempotent. A TORN line is the Grapher caught mid-append: the offset
 // stops at the last newline so the record is applied once, when it is complete.
-int chronolog::HDF5ArchiveReadingAgent::pollManifestTail()
+int chronolog::HDF5ArchiveReadingAgent::pollOneManifestLog(std::string const& log_path)
 {
-    std::string const log_path = (fs::path(archive_path_) / "archive_manifest.log").string();
-
-    std::error_code ec;
-    auto const size = static_cast<std::streamoff>(fs::file_size(log_path, ec));
-    if(ec)
+    // The open() comes FIRST, before anything is decided about whether the file
+    // changed. Over NFS a client only revalidates a file's cached size and mtime
+    // when the file is OPENED (close-to-open consistency); a stat() of the path is
+    // answered from the attribute cache, which acregmax keeps for up to 60 s by
+    // default. Deciding "unchanged" from that cache and returning without ever
+    // opening the file means the cache is never revalidated and the poll can stay
+    // blind indefinitely. Measured on ares: statting first delayed a published
+    // record by 120.14 s, matching the mount's acregmax=120 exactly. Opening first
+    // brings it back to the poll interval. See manifest_plan/nfs_validation.md.
+    std::ifstream log(log_path, std::ios::binary);
+    if(!log)
     {
         return 0; // no log yet, or unreadable: nothing to apply
     }
+
+    // Size taken from the open stream, not from the path, for the same reason.
+    log.seekg(0, std::ios::end);
+    auto const size = static_cast<std::streamoff>(log.tellg());
+    if(size < 0)
+    {
+        return 0;
+    }
+    // Safe to stat by path now: the open above already revalidated this inode's
+    // attributes, so the cache the stat reads from is fresh.
+    std::error_code ec;
     auto const mtime = fs::last_write_time(log_path, ec);
     if(ec)
     {
         return 0;
     }
 
-    if(size < manifest_log_offset_)
+    ManifestLogCursor& cursor = manifest_log_cursors_[log_path];
+
+    if(size < cursor.offset)
     {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log shrank ({} < {}), assuming compaction; re-reading from 0",
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log {} shrank ({} < {}), assuming compaction; re-reading from 0",
+                  log_path,
                   size,
-                  manifest_log_offset_);
-        manifest_log_offset_ = 0;
+                  cursor.offset);
+        cursor.offset = 0;
     }
-    else if(size == manifest_log_offset_)
+    else if(size == cursor.offset)
     {
-        if(mtime == manifest_log_mtime_)
+        if(mtime == cursor.mtime)
         {
             return 0; // genuinely nothing appended
         }
         // Same length, different write time: the log was compacted away and
         // refilled to coincidentally the same size. Treating this as "nothing new"
         // would drop every record written after the compaction.
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log rewritten at the same size; re-reading from 0");
-        manifest_log_offset_ = 0;
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Manifest log {} rewritten at the same size; re-reading from 0", log_path);
+        cursor.offset = 0;
     }
-    manifest_log_mtime_ = mtime;
+    cursor.mtime = mtime;
 
-    std::ifstream log(log_path, std::ios::binary);
-    if(!log)
-    {
-        return 0;
-    }
-    log.seekg(manifest_log_offset_);
+    log.clear();
+    log.seekg(cursor.offset);
     std::string tail((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
 
     // Only whole lines: everything after the last newline is a record still being
@@ -201,12 +233,13 @@ int chronolog::HDF5ArchiveReadingAgent::pollManifestTail()
         }
     }
 
-    manifest_log_offset_ += static_cast<std::streamoff>(last_newline + 1);
+    cursor.offset += static_cast<std::streamoff>(last_newline + 1);
     if(applied > 0)
     {
-        LOG_DEBUG("[HDF5ArchiveReadingAgent] Applied {} manifest record(s) from the log tail; offset now {}",
+        LOG_DEBUG("[HDF5ArchiveReadingAgent] Applied {} manifest record(s) from the tail of {}; offset now {}",
                   applied,
-                  manifest_log_offset_);
+                  log_path,
+                  cursor.offset);
     }
     return applied;
 }

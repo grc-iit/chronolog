@@ -71,7 +71,13 @@ protected:
 
     void recordInManifest(std::string const& file, uint64_t start, uint64_t end)
     {
-        chl::ArchiveManifest manifest(root.string());
+        recordInManifestFor("", file, start, end);
+    }
+
+    // writer == "" is the legacy unsuffixed log; anything else is one Grapher's own.
+    void recordInManifestFor(std::string const& writer, std::string const& file, uint64_t start, uint64_t end)
+    {
+        chl::ArchiveManifest manifest(root.string(), false, writer);
         chl::ArchiveManifestRecord record;
         record.chronicle = "c1";
         record.story = "s1";
@@ -474,4 +480,69 @@ TEST_F(ArchiveIndexTest, CompactionTruncatingTheLogDoesNotLoseTheIndex)
     EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u);
 
     agent.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Several Graphers, several manifest logs.
+//
+// Each Grapher writes its own log because sharing one over NFSv3 loses records
+// (manifest_plan/nfs_validation.md). That only works if the Player treats the set
+// of logs as the manifest, both at startup and while polling.
+// ---------------------------------------------------------------------------
+
+TEST_F(ArchiveIndexTest, IndexIsBuiltFromEveryGraphersManifest)
+{
+    std::string const from_first = writeChunk(BASE, BASE + 10 * NS);
+    std::string const from_second = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    recordInManifestFor("1", from_first, BASE, BASE + 10 * NS);
+    recordInManifestFor("2", from_second, BASE + 20 * NS, BASE + 30 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    agent.shutdown();
+
+    EXPECT_EQ(eventsInRange(agent, BASE, BASE + 10 * NS), 3u) << "the first Grapher's window is missing";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u) << "the second Grapher's window is missing";
+}
+
+TEST_F(ArchiveIndexTest, PollingFollowsEveryGraphersLog)
+{
+    std::string const seed = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifestFor("1", seed, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Stop the monitoring thread before stepping the poll by hand: otherwise it
+    // races for the same tails and the consumed-record counts below are a coin flip.
+    agent.shutdown();
+
+    std::string const from_first = writeChunk(BASE + 20 * NS, BASE + 30 * NS);
+    std::string const from_second = writeChunk(BASE + 40 * NS, BASE + 50 * NS);
+    recordInManifestFor("1", from_first, BASE + 20 * NS, BASE + 30 * NS);
+    recordInManifestFor("2", from_second, BASE + 40 * NS, BASE + 50 * NS);
+
+    EXPECT_EQ(agent.pollManifestTail(), 2) << "one poll must drain every Grapher's tail";
+    EXPECT_EQ(eventsInRange(agent, BASE + 20 * NS, BASE + 30 * NS), 3u);
+    EXPECT_EQ(eventsInRange(agent, BASE + 40 * NS, BASE + 50 * NS), 3u);
+    // Offsets are per log: one shared offset would make the shorter log look
+    // already-consumed and silently skip its records.
+    EXPECT_EQ(agent.pollManifestTail(), 0) << "a second poll re-read records it had already consumed";
+}
+
+TEST_F(ArchiveIndexTest, AGrapherThatStartsAfterThePlayerIsPickedUp)
+{
+    std::string const seed = writeChunk(BASE, BASE + 10 * NS);
+    recordInManifestFor("1", seed, BASE, BASE + 10 * NS);
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    agent.shutdown();
+
+    // A log that did not exist when the Player started. Discovering logs once at
+    // startup would leave this Grapher's output invisible for the Player's lifetime.
+    std::string const latecomer = writeChunk(BASE + 60 * NS, BASE + 70 * NS);
+    recordInManifestFor("9", latecomer, BASE + 60 * NS, BASE + 70 * NS);
+
+    EXPECT_EQ(agent.pollManifestTail(), 1) << "a manifest log created after startup was never noticed";
+    EXPECT_EQ(eventsInRange(agent, BASE + 60 * NS, BASE + 70 * NS), 3u);
 }

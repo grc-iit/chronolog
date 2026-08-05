@@ -522,3 +522,123 @@ TEST_F(ArchiveManifestTest, FsyncingAppendsStillProducesAReadableManifest)
     EXPECT_EQ(reopened.records().size(), 2u);
     EXPECT_EQ(reopened.deriveWatermarks().at(1), 20 * NS);
 }
+
+// ---- one log per writer ----------------------------------------------------
+//
+// Measured on ares (manifest_plan/nfs_validation.md): appending to one shared log
+// from several nodes over NFSv3 loses 3.2% of records in a live two-Grapher run and
+// up to 66% under load, because NFSv3 WRITE carries an explicit offset -- there is
+// no append opcode -- so each client computes EOF itself and two clients readily
+// compute the same one. The decisive datum is that six processes on ONE node lost
+// nothing while six processes on six nodes lost 66%: the failure is cross-client,
+// not concurrent-writer.
+//
+// So each writer gets its own log, named for its recording group, and readers merge
+// every log they find. Within one writer the process-local mutex still serialises
+// appends, and one writer means one NFS client, which is the configuration that
+// measured zero loss.
+
+TEST_F(ArchiveManifestTest, EachWriterAppendsToItsOwnLog)
+{
+    chl::ArchiveManifest first(root.string(), false, "1");
+    chl::ArchiveManifest second(root.string(), false, "2");
+
+    ASSERT_EQ(first.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+    ASSERT_EQ(second.append(published(2, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+
+    EXPECT_NE(first.logPath(), second.logPath()) << "two writers must not share a log file";
+    EXPECT_TRUE(fs::exists(first.logPath()));
+    EXPECT_TRUE(fs::exists(second.logPath()));
+}
+
+TEST_F(ArchiveManifestTest, AReaderMergesEveryWritersLog)
+{
+    {
+        chl::ArchiveManifest first(root.string(), false, "1");
+        chl::ArchiveManifest second(root.string(), false, "2");
+        ASSERT_EQ(first.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+        ASSERT_EQ(first.append(published(1, 10 * NS, 20 * NS)), chl::CL_SUCCESS);
+        ASSERT_EQ(second.append(published(2, 50 * NS, 60 * NS)), chl::CL_SUCCESS);
+    }
+
+    // A reader has no writer identity: it takes whatever is in the directory.
+    chl::ArchiveManifest reader(root.string());
+    ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reader.records().size(), 3u) << "a reader must see every writer's records";
+
+    std::map<chl::StoryId, uint64_t> const w = reader.deriveWatermarks();
+    EXPECT_EQ(w.at(1), 20 * NS);
+    EXPECT_EQ(w.at(2), 60 * NS);
+}
+
+TEST_F(ArchiveManifestTest, CompactionLeavesOtherWritersLogsAlone)
+{
+    chl::ArchiveManifest first(root.string(), false, "1");
+    chl::ArchiveManifest second(root.string(), false, "2");
+    ASSERT_EQ(first.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+    ASSERT_EQ(second.append(published(2, 50 * NS, 60 * NS)), chl::CL_SUCCESS);
+
+    ASSERT_EQ(first.snapshot(), chl::CL_SUCCESS);
+
+    EXPECT_EQ(fs::file_size(first.logPath()), 0u) << "the compacting writer truncates its own log";
+    EXPECT_GT(fs::file_size(second.logPath()), 0u) << "another writer's log must not be touched";
+
+    chl::ArchiveManifest reader(root.string());
+    ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reader.records().size(), 2u) << "compaction must not lose records from either writer";
+}
+
+TEST_F(ArchiveManifestTest, ALegacySingleLogIsStillRead)
+{
+    // Archives written before the per-writer split carry an unsuffixed
+    // archive_manifest.log. It has to keep loading, or upgrading silently orphans
+    // every file already published.
+    {
+        std::ofstream legacy(root / "archive_manifest.log");
+        legacy << chl::toManifestLine(published(9, 0 * NS, 10 * NS)) << "\n";
+    }
+
+    chl::ArchiveManifest reader(root.string());
+    ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
+    ASSERT_EQ(reader.records().size(), 1u) << "a pre-split manifest was ignored";
+    EXPECT_EQ(reader.deriveWatermarks().at(9), 10 * NS);
+}
+
+TEST_F(ArchiveManifestTest, LegacyAndPerWriterLogsCoexist)
+{
+    {
+        std::ofstream legacy(root / "archive_manifest.log");
+        legacy << chl::toManifestLine(published(9, 0 * NS, 10 * NS)) << "\n";
+    }
+    chl::ArchiveManifest writer(root.string(), false, "1");
+    ASSERT_EQ(writer.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+
+    chl::ArchiveManifest reader(root.string());
+    ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reader.records().size(), 2u);
+}
+
+TEST_F(ArchiveManifestTest, CompactingAfterAMergedLoadDoesNotAbsorbTheOtherWriter)
+{
+    // The Grapher's real sequence: load() at startup (which merges every writer's
+    // records, because reconciliation needs the whole archive), append, compact.
+    // Compaction must still write back only what this writer owns -- the other
+    // writer's log is untouched and still holds its records, so copying them into
+    // our snapshot duplicates one record per compaction, forever.
+    {
+        chl::ArchiveManifest first(root.string(), false, "1");
+        chl::ArchiveManifest second(root.string(), false, "2");
+        ASSERT_EQ(first.append(published(1, 0 * NS, 10 * NS)), chl::CL_SUCCESS);
+        ASSERT_EQ(second.append(published(2, 50 * NS, 60 * NS)), chl::CL_SUCCESS);
+    }
+
+    chl::ArchiveManifest restarted(root.string(), false, "1");
+    ASSERT_EQ(restarted.load(), chl::CL_SUCCESS);
+    ASSERT_EQ(restarted.records().size(), 2u) << "startup load must see both writers";
+    ASSERT_EQ(restarted.append(published(1, 10 * NS, 20 * NS)), chl::CL_SUCCESS);
+    ASSERT_EQ(restarted.snapshot(), chl::CL_SUCCESS);
+
+    chl::ArchiveManifest reader(root.string());
+    ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reader.records().size(), 3u) << "compaction duplicated the other writer's record";
+}

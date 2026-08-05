@@ -560,7 +560,8 @@ jobs:
             BUILD_DIR=\"/home/grc-iit/chronolog-build/Release\"
             REPO_DIR=\"/home/grc-iit/chronolog-repo\"
             OUTPUT_DIR=\"\${WORK_DIR}/output\"
-            MANIFEST=\"\${OUTPUT_DIR}/archive_manifest.log\"
+            # A glob: each Grapher writes its own archive_manifest.<group>.log.
+            MANIFEST_GLOB=\"\${OUTPUT_DIR}/archive_manifest*.log\"
             TAIL_EXAMPLE=\"\${BUILD_DIR}/client/cpp/examples/chrono-client-example-tail-reader\"
             REPLAY_CHECK=\"\${BUILD_DIR}/tests/integration/watermark-replay/chronolog-test-replay-split-check\"
             PASS=0; FAIL=0
@@ -579,14 +580,16 @@ jobs:
             timeout 200 \"\${TAIL_EXAMPLE}\" --config \"\${WORK_DIR}/conf/default-chrono-client-conf.json\" \
               > /tmp/dist_manifest_writer.out 2>&1 || true
 
+            published() { grep -h '\"state\":\"published\"' \${MANIFEST_GLOB} 2>/dev/null | wc -l; }
+
             waited=0
             while [ \"\${waited}\" -lt 180 ]; do
-              if [ -f \"\${MANIFEST}\" ] && grep -q '\"state\":\"published\"' \"\${MANIFEST}\"; then break; fi
+              if [ \"\$(published)\" -gt 0 ]; then break; fi
               sleep 5; waited=\$((waited+5))
             done
 
-            if [ -f \"\${MANIFEST}\" ] && grep -q '\"state\":\"published\"' \"\${MANIFEST}\"; then
-              ok \"publish: \$(grep -c '\"state\":\"published\"' \"\${MANIFEST}\") published record(s) in the shared manifest\"
+            if [ \"\$(published)\" -gt 0 ]; then
+              ok \"publish: \$(published) published record(s) across \$(ls -1 \${MANIFEST_GLOB} 2>/dev/null | wc -l) manifest log(s)\"
             else
               bad 'publish: nothing reached the archive manifest'
               echo \"result: \${PASS} passed, \${FAIL} failed\"; exit 1

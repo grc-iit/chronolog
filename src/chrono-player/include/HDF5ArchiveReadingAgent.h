@@ -157,6 +157,9 @@ public:
     // byte-offset bookkeeping observable at all.
     int pollManifestTail();
 
+    // One log's worth of pollManifestTail.
+    int pollOneManifestLog(std::string const& log_path);
+
     int readStoryChunkFile(const ChronicleName&,
                            const StoryName&,
                            uint64_t,
@@ -549,15 +552,22 @@ private:
     // reading an append-only tail is cheap enough to do far more often than the
     // directory diff it replaces.
     std::chrono::milliseconds manifest_poll_interval_{1000};
-    // Bytes of the manifest log already applied. Only ever advanced past a
-    // COMPLETE line: the Grapher appends without holding a lock the Player can
-    // see, so a poll can land mid-record.
-    std::streamoff manifest_log_offset_ = 0;
-    // Last observed write time of the log. Size alone cannot detect a compaction:
-    // it truncates the log and the Grapher immediately appends again, so the file
-    // can be back at exactly the offset already consumed while holding entirely
-    // different records.
-    std::filesystem::file_time_type manifest_log_mtime_{};
+    // How much of one manifest log has already been applied.
+    struct ManifestLogCursor
+    {
+        // Only ever advanced past a COMPLETE line: the Grapher appends without
+        // holding a lock the Player can see, so a poll can land mid-record.
+        std::streamoff offset = 0;
+        // Size alone cannot detect a compaction: it truncates the log and the
+        // Grapher immediately appends again, so the file can be back at exactly the
+        // offset already consumed while holding entirely different records.
+        std::filesystem::file_time_type mtime{};
+    };
+
+    // One cursor per manifest log, keyed by path. There is a log per Grapher (see
+    // ArchiveManifest), so the Player follows several tails at once and each has
+    // its own position.
+    std::map<std::string, ManifestLogCursor> manifest_log_cursors_;
 };
 
 } // namespace chronolog

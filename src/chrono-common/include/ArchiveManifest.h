@@ -20,10 +20,26 @@ namespace chronolog
 // all to recover each story's persisted watermark W. The manifest replaces the
 // scan with a read, and makes W durable.
 //
-// On disk, in the archive root:
+// On disk, in the archive root, ONE PAIR PER WRITER:
 //
-//   archive_manifest.log    append-only, one JSON object per line
-//   archive_manifest.json   compacted snapshot, replaced by atomic rename
+//   archive_manifest.<writer>.log    append-only, one JSON object per line
+//   archive_manifest.<writer>.json   compacted snapshot, replaced by atomic rename
+//
+// A reader merges every pair it finds; a writer only ever appends to its own.
+//
+// The split is not organisational tidiness, it is required for correctness on NFS.
+// Measured on ares (manifest_plan/nfs_validation.md): several Graphers appending to
+// ONE shared log over NFSv3 lost 3.2% of records in a live run and up to 66% under
+// load. NFSv3 WRITE carries an explicit offset -- the protocol has no append opcode
+// -- so each client computes EOF itself, and with a 120 s attribute cache a client's
+// notion of EOF can be minutes stale. Two clients then write at the same offset and
+// one record is overwritten, sometimes leaving a zero-filled hole.
+//
+// The decisive measurement is that six processes on ONE node lost nothing while six
+// processes on six nodes lost 66%: the failure is cross-client, not
+// concurrent-writer. One log per writer makes every log single-client, which is the
+// configuration that measured zero loss -- it removes the failure mode rather than
+// narrowing its window (which is all flock or fsync would do).
 //
 // Ordering rule: a record is appended only AFTER the rename that publishes its
 // file, so the manifest can never name a partially written file. The cost of
@@ -100,7 +116,13 @@ public:
     // is published, so a lost trailing append makes W under-report and the keepers
     // re-send. Turning it on shortens that re-send window after an unclean
     // shutdown, at the cost of a sync per published chunk.
-    explicit ArchiveManifest(std::string const& archive_root, bool fsync_each_append = false);
+    // writer_id names this process's own log; readers leave it empty and get a
+    // merged view of every writer's. It must be STABLE across restarts (the
+    // recording group id is, a pid is not), or each restart would strand its
+    // predecessor's log under a name nothing writes to again.
+    explicit ArchiveManifest(std::string const& archive_root,
+                             bool fsync_each_append = false,
+                             std::string const& writer_id = std::string());
 
     // Appends one record to the log and keeps it in memory. Returns CL_SUCCESS,
     // or CL_ERR_UNKNOWN if the log could not be written.
@@ -140,17 +162,26 @@ public:
     // exclusion is in the under-reporting direction, which E <= W absorbs.
     std::map<StoryId, uint64_t> deriveWatermarks() const;
 
+    // This writer's own log/snapshot. Empty for a reader, which has no single one.
     std::string const& logPath() const { return theLogPath; }
 
     std::string const& snapshotPath() const { return theSnapshotPath; }
+
+    // Every manifest log in the archive root, this writer's included, sorted. The
+    // Player polls each of these and tracks an offset per file.
+    static std::vector<std::string> discoverLogs(std::string const& archive_root);
 
 private:
     mutable std::mutex theMutex;
     bool theFsyncEachAppend = false;
     std::string theArchiveRoot;
+    std::string theWriterId;
     std::string theLogPath;
     std::string theSnapshotPath;
     std::vector<ArchiveManifestRecord> theRecords;
+    // The subset of theRecords that came from THIS writer's log/snapshot. Only
+    // these are compacted, so one writer never absorbs another writer's records.
+    std::vector<ArchiveManifestRecord> theOwnRecords;
 };
 
 } // namespace chronolog

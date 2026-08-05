@@ -360,3 +360,91 @@ Two operational notes for whoever runs this next:
   `story_chunk_duration_secs` or the Grapher discards their chunks as orphans
   ("Refusing to adopt orphan chunk for destroyed StoryId") and every manifest record
   comes out `state:"empty"`.
+
+---
+
+## Resolution — what was implemented
+
+Both failing assumptions were addressed, along the lines the recommendation above
+argued for. Nothing here narrows a race window; both changes remove the mechanism
+that produced the failure.
+
+### Assumption 1 — one manifest log per Grapher
+
+`ArchiveManifest` takes a writer id and derives its own file names from it:
+
+| | before | after |
+| --- | --- | --- |
+| log | `archive_manifest.log` | `archive_manifest.<group>.log` |
+| snapshot | `archive_manifest.json` | `archive_manifest.<group>.json` |
+
+The writer id is the **recording group id** (`GRAPHER_CONF.RECORDING_GROUP`). It has
+to be stable across restarts — a pid would leave every restart's log stranded under
+a name nothing writes to or compacts again — and the recording group is.
+
+Every log is now written by exactly one client, which is the configuration that
+measured **0% loss** in test 1a (6 procs on 1 node). The 66% figure came from 6
+procs on 6 *nodes*; the split makes that arrangement unreachable rather than
+unlikely.
+
+Readers merge. `ArchiveManifest::load()` globs `archive_manifest*.log` plus each
+one's snapshot and reads them all, so:
+
+- the Player's startup index covers every Grapher's output;
+- the Grapher's own startup load still sees the whole archive, which reconciliation
+  needs or it would adopt another Grapher's files as orphans and record them twice;
+- an archive written before the split still loads — the unsuffixed pair matches the
+  same glob, and a manifest constructed without a writer id keeps using it.
+
+Compaction stays private to the writer. `snapshot()` writes back only the records
+that came from *this* writer's log or snapshot, tracked separately from the merged
+set. Compacting the merged set instead would copy another writer's records into our
+snapshot while their log still holds them, duplicating a record on every compaction.
+
+### Assumption 2 — open before deciding
+
+`pollManifestTail` used to `stat()` the path, compare size and mtime against what it
+had already applied, and return early if unchanged — opening the file only after
+deciding something had changed. Over NFS the early return is self-perpetuating: a
+client revalidates cached attributes on **open**, and a `stat()` of the path is
+answered from the attribute cache, so a poll that never opens the file never
+refreshes the cache it is reading. That is the 120.14 s observed in test 2, matching
+the mount's `acregmax=120` exactly.
+
+The poll now opens the log first, takes the size from the open stream, and only then
+decides. The `stat()` for mtime stays, but it now runs against attributes the open
+just revalidated.
+
+The poll also follows several logs at once, with a cursor per log, and re-lists the
+directory each tick so a Grapher that starts after the Player is still picked up.
+
+### Verification
+
+Local (`Debug`, ext4):
+
+- `chronolog-test-common-archive-manifest` — 33 tests, all pass. 6 cover the split:
+  separate logs per writer, merged reads, compaction isolation (including after a
+  merged load), legacy-only archives, legacy and per-writer coexisting.
+- `chronolog-test-player-archive-index` — 17 tests, all pass. 3 new: index built
+  from every Grapher's manifest, one poll draining every tail with independent
+  offsets, a log created after startup being noticed.
+- Mutation-checked. Ignoring the writer id, dropping the cross-writer merge,
+  compacting the merged set, polling only a shared log, and sharing one offset
+  across logs each fail at least one test.
+- `tests/integration/manifest_restart_test.sh` — 9/9. The deployment writes
+  `archive_manifest.1.log` and the restarted Player indexes from it with no scan.
+- `watermark_loop_test.sh`, `watermark_replay_split_test.sh` — all assertions pass.
+
+Both watermark scripts now delete the manifest along with the HDF5 files they
+already removed. They did not before, so a second run started against a manifest
+describing files that were gone, restored a stale watermark, and failed the
+retention assertions for an unrelated reason.
+
+**Still to confirm on the cluster.** Local runs cannot exercise either fix: ext4 has
+no attribute cache to go stale and no cross-client writers. Re-run the probes in
+*Reproducing* below against this build. What should change:
+
+- test 1b (two Graphers, live): expect 0 lost records, and two logs in the archive
+  dir instead of one.
+- test 2 (detection lag): expect the lag to drop from ~120 s to about the poll
+  interval (`manifest_poll_interval_ms`, default 1000).

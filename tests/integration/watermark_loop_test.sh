@@ -130,6 +130,10 @@ kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log
 rm -f "$OUTPUT_DIR"/TailChronicle.*.h5
+# The manifest goes with them. Leaving it behind makes the next run start from a
+# manifest describing files that are no longer there, which restores a stale
+# watermark and makes the retention assertions below fail for the wrong reason.
+rm -f "$OUTPUT_DIR"/archive_manifest*.log "$OUTPUT_DIR"/archive_manifest*.json
 
 say "deploying 2 keepers / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k 2 -r 1 > /dev/null 2>&1 || { say "deploy failed"; exit 2; }
