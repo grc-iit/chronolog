@@ -30,6 +30,7 @@
 #include <ArchiveManifest.h>
 #include <HDF5FileChunkExtractor.h>
 #include <StoryChunk.h>
+#include <StoryChunkWriter.h>
 
 namespace chl = chronolog;
 namespace fs = std::filesystem;
@@ -77,6 +78,34 @@ protected:
 
     fs::path root;
 };
+
+} // namespace
+
+
+namespace
+{
+
+// Runs reconciliation through an extractor pointed at the same directory, which is
+// how the Grapher does it at startup.
+int reconcile(chl::ArchiveManifest& manifest, fs::path const& root)
+{
+    chl::HDF5FileChunkExtractor extractor;
+    EXPECT_EQ(extractor.reset(root.string() + "/"), chl::CL_SUCCESS);
+    extractor.attachArchiveManifest(&manifest);
+    return extractor.reconcileManifestWithDirectory();
+}
+
+chl::ArchiveManifestRecord publishedRecord(chl::StoryId story_id, uint64_t start, uint64_t end)
+{
+    chl::ArchiveManifestRecord record;
+    record.chronicle = "c1";
+    record.story = "cpu_usage";
+    record.story_id = story_id;
+    record.start = start;
+    record.end = end;
+    record.state = chl::ManifestState::PUBLISHED;
+    return record;
+}
 
 } // namespace
 
@@ -200,6 +229,146 @@ TEST_F(GrapherArchiveManifestTest, WorksWithNoManifestAttached)
     size_t deleted = 0;
     EXPECT_EQ(extractor.delete_story_files("c1", "cpu_usage", &deleted), chl::CL_SUCCESS);
     EXPECT_EQ(deleted, 1u);
+}
+
+
+// ---- adopting files the manifest does not know about -----------------------
+//
+// A record is appended only AFTER its file is published, so a crash in between
+// leaves an HDF5 file on disk that the manifest never mentions. Nothing repairs
+// that on its own: the file stays unreferenced, invisible to every reader, and its
+// window keeps W held back forever.
+//
+// Reconciliation is the Grapher's job rather than each reader's, because the
+// manifest is the Grapher's artifact. Repairing it once fixes every reader AND
+// restores W, whereas a reader-side directory scan papers over the gap for that
+// reader only and leaves the manifest permanently wrong.
+//
+// What an adopted record may claim is bounded by what the file itself proves. The
+// name gives chronicle, story and window start; the events inside give the story id
+// and the last event time. The window's true END is unknowable -- it may have
+// extended past the last event -- so `end` is taken as last_event + 1. That is
+// always <= the truth, which under-reports W and skips only files whose events are
+// genuinely all below a query, both of which are the safe direction.
+
+namespace
+{
+
+// Writes a real archive file the way the Grapher would, and returns its base name.
+std::string writeArchiveFile(fs::path const& root, chl::StoryId story_id, uint64_t start, uint64_t end, int events)
+{
+    chl::StoryChunk chunk("c1", "cpu_usage", story_id, start, end);
+    for(int i = 0; i < events; i++)
+    {
+        chunk.insertEvent(chl::LogEvent(story_id, start + (uint64_t)(i + 1), 7, (chl::chrono_index)i, "payload"));
+    }
+    chl::StoryChunkWriter writer(root.string() + "/", "story_chunks", "data");
+    chl::StoryChunkWriteResult const result = writer.writeStoryChunk(chunk);
+    EXPECT_GT(result.file_size, 0u);
+    return fs::path(result.file_name).filename().string();
+}
+
+} // namespace
+
+TEST_F(GrapherArchiveManifestTest, AnUnrecordedFileIsAdopted)
+{
+    // The crash case: the file was published, the append never happened.
+    std::string const orphan = writeArchiveFile(root, 55, 100 * NS, 110 * NS, 3);
+
+    chl::ArchiveManifest manifest(root.string());
+    ASSERT_EQ(manifest.load(), chl::CL_SUCCESS);
+    ASSERT_TRUE(manifest.records().empty());
+
+    EXPECT_EQ(reconcile(manifest, root), 1);
+
+    std::vector<chl::ArchiveManifestRecord> const records = manifest.records();
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].file, orphan);
+    EXPECT_EQ(records[0].state, chl::ManifestState::PUBLISHED);
+    EXPECT_EQ(records[0].story_id, 55u) << "the story id has to come from the file, not from hashing its name";
+    EXPECT_EQ(records[0].start, 100 * NS);
+    EXPECT_GT(records[0].end, records[0].start);
+    EXPECT_LE(records[0].end, 110 * NS) << "end must not claim more than the events prove";
+
+    // and it survives a reload, i.e. it really was appended
+    chl::ArchiveManifest reloaded(root.string());
+    ASSERT_EQ(reloaded.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reloaded.records().size(), 1u);
+}
+
+TEST_F(GrapherArchiveManifestTest, AdoptionRestoresTheWatermarkForTheOrphanedWindow)
+{
+    std::string const orphan = writeArchiveFile(root, 55, 100 * NS, 110 * NS, 3);
+
+    chl::ArchiveManifest manifest(root.string());
+    ASSERT_EQ(manifest.load(), chl::CL_SUCCESS);
+    EXPECT_TRUE(manifest.deriveWatermarks().empty()) << "nothing is known before reconciliation";
+
+    ASSERT_EQ(reconcile(manifest, root), 1);
+
+    std::map<chl::StoryId, uint64_t> const w = manifest.deriveWatermarks();
+    ASSERT_EQ(w.count(55), 1u) << "the whole point of repairing the manifest is that W comes back";
+    EXPECT_GT(w.at(55), 100 * NS);
+}
+
+TEST_F(GrapherArchiveManifestTest, AlreadyRecordedFilesAreNotAdoptedAgain)
+{
+    std::string const known = writeArchiveFile(root, 55, 100 * NS, 110 * NS, 3);
+
+    chl::ArchiveManifest manifest(root.string());
+    chl::ArchiveManifestRecord record = publishedRecord(55, 100 * NS, 110 * NS);
+    record.file = known;
+    ASSERT_EQ(manifest.append(record), chl::CL_SUCCESS);
+
+    EXPECT_EQ(reconcile(manifest, root), 0);
+    EXPECT_EQ(manifest.records().size(), 1u);
+}
+
+TEST_F(GrapherArchiveManifestTest, ReconciliationIsIdempotent)
+{
+    // Every Grapher sharing the archive directory reconciles at startup, so this
+    // runs repeatedly and concurrently over the same files.
+    writeArchiveFile(root, 55, 100 * NS, 110 * NS, 3);
+
+    chl::ArchiveManifest manifest(root.string());
+    ASSERT_EQ(manifest.load(), chl::CL_SUCCESS);
+    ASSERT_EQ(reconcile(manifest, root), 1);
+    EXPECT_EQ(reconcile(manifest, root), 0) << "a second pass adopted the same file twice";
+    EXPECT_EQ(manifest.records().size(), 1u);
+}
+
+TEST_F(GrapherArchiveManifestTest, ADeletedFileIsNotResurrectedByAdoption)
+{
+    // If a delete removed the record but the unlink did not finish, the bytes are
+    // still there. Adopting them would undo the deletion.
+    std::string const removed = writeArchiveFile(root, 55, 100 * NS, 110 * NS, 3);
+
+    chl::ArchiveManifest manifest(root.string());
+    chl::ArchiveManifestRecord record = publishedRecord(55, 100 * NS, 110 * NS);
+    record.file = removed;
+    ASSERT_EQ(manifest.append(record), chl::CL_SUCCESS);
+    chl::ArchiveManifestRecord removal = record;
+    removal.state = chl::ManifestState::DELETED;
+    ASSERT_EQ(manifest.append(removal), chl::CL_SUCCESS);
+
+    EXPECT_EQ(reconcile(manifest, root), 0) << "a deleted file was adopted back into the manifest";
+    EXPECT_TRUE(manifest.deriveWatermarks().empty());
+}
+
+TEST_F(GrapherArchiveManifestTest, NonArchiveFilesAreIgnored)
+{
+    {
+        std::ofstream stray(root / "notes.txt");
+        stray << "not an archive file";
+    }
+    {
+        std::ofstream partial(root / "c1.cpu_usage.100.vlen.h5.1234.0.tmp");
+        partial << "an in-progress write";
+    }
+
+    chl::ArchiveManifest manifest(root.string());
+    ASSERT_EQ(manifest.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(reconcile(manifest, root), 0) << "reconciliation must not index non-archive files";
 }
 
 // process_chunk logs thallium::thread::self_id(), so Argobots has to be running

@@ -53,6 +53,32 @@ public:
     // as the registry above; optional -- nullptr disables recording.
     void attachArchiveManifest(ArchiveManifest* manifest) { archiveManifest = manifest; }
 
+    // Adopts archive files that are on disk but absent from the manifest, and
+    // returns how many were adopted.
+    //
+    // A record is appended only AFTER its file is published, so a crash in between
+    // leaves a file nothing references: invisible to every reader, and its window
+    // holds W back forever. Repairing it here rather than in each reader is the
+    // point -- the manifest is the Grapher's artifact, so one repair fixes every
+    // reader AND restores W, while a reader-side directory scan papers over the gap
+    // for that reader alone and leaves the manifest permanently wrong.
+    //
+    // It lives on the extractor rather than on ArchiveManifest because adopting a
+    // file means reading it: the name gives chronicle, story and window start, but
+    // the story id and the last event time come from the events inside. Putting
+    // that on ArchiveManifest would drag HDF5 into every component that merely
+    // reads the manifest.
+    //
+    // An adopted record claims only what the file proves. The window's true end is
+    // unknowable -- it may extend past the last event -- so `end` is last_event + 1,
+    // always <= the truth, which under-reports W and skips only files whose events
+    // are all genuinely below a query. Both are the safe direction.
+    //
+    // Idempotent, and safe to run concurrently from several Graphers sharing one
+    // archive directory: adoption is keyed on the file name, and a file a DELETED
+    // record superseded is never adopted back.
+    int reconcileManifestWithDirectory();
+
     // The archive root an "hdf5_extractor" conf block points at, or "" if the
     // block is absent or malformed. ChronoGrapher needs it to construct the
     // manifest before the extraction module, without duplicating the parsing.

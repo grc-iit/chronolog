@@ -8,6 +8,10 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileChunkExtractor.h>
+#include <set>
+
+#include <H5Cpp.h>
+
 #include <ArchiveManifest.h>
 #include <StoryWatermarkRegistry.h>
 
@@ -320,4 +324,186 @@ std::string chronolog::HDF5FileChunkExtractor::archiveDirectoryFromConf(json_obj
         return std::string();
     }
     return json_object_get_string(dir);
+}
+
+namespace
+{
+
+// The identity fields of the stored compound type. Only these are read: pulling the
+// variable-length payload would make HDF5 allocate a buffer per event that the
+// caller then owns, and nothing here needs payloads.
+struct StoredIdentity
+{
+    uint64_t event_time;
+    uint32_t client_id;
+    uint32_t event_index;
+    uint64_t story_id;
+};
+
+// Recovers the story id and last event time from a published archive file. Returns
+// false when the file cannot be read as one, which is how non-archive files and
+// in-progress writes are rejected.
+bool probe_archive_file(std::string const& path, chl::StoryId& story_id, uint64_t& last_event_time)
+{
+    try
+    {
+        H5::Exception::dontPrint();
+        H5::H5File file(path, H5F_ACC_RDONLY);
+        H5::DataSet dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+
+        hsize_t dims[1] = {0};
+        dataset.getSpace().getSimpleExtentDims(dims, nullptr);
+        if(dims[0] == 0)
+        {
+            return false;
+        }
+
+        H5::CompType identity_type(sizeof(StoredIdentity));
+        identity_type.insertMember("eventTime", HOFFSET(StoredIdentity, event_time), H5::PredType::NATIVE_UINT64);
+        identity_type.insertMember("clientId", HOFFSET(StoredIdentity, client_id), H5::PredType::NATIVE_UINT32);
+        identity_type.insertMember("eventIndex", HOFFSET(StoredIdentity, event_index), H5::PredType::NATIVE_UINT32);
+        identity_type.insertMember("storyId", HOFFSET(StoredIdentity, story_id), H5::PredType::NATIVE_UINT64);
+
+        std::vector<StoredIdentity> raw(dims[0]);
+        dataset.read(raw.data(), identity_type);
+
+        story_id = raw.front().story_id;
+        last_event_time = 0;
+        for(StoredIdentity const& event: raw)
+        {
+            if(event.event_time > last_event_time)
+            {
+                last_event_time = event.event_time;
+            }
+        }
+        return true;
+    }
+    catch(H5::Exception const&)
+    {
+        return false;
+    }
+}
+
+// "<chronicle>.<story>.<startSec>.vlen.h5", or "...vlen.<n>.h5" for a rotation.
+bool parse_archive_file_name(std::string const& base_name,
+                             std::string& chronicle,
+                             std::string& story,
+                             uint64_t& start_ns,
+                             uint32_t& seq)
+{
+    if(base_name.size() < 4 || base_name.substr(base_name.size() - 3) != ".h5")
+    {
+        return false;
+    }
+    std::size_t const first = base_name.find('.');
+    if(first == std::string::npos)
+    {
+        return false;
+    }
+    std::size_t const second = base_name.find('.', first + 1);
+    if(second == std::string::npos)
+    {
+        return false;
+    }
+    std::size_t const third = base_name.find('.', second + 1);
+    if(third == std::string::npos)
+    {
+        return false;
+    }
+    chronicle = base_name.substr(0, first);
+    story = base_name.substr(first + 1, second - first - 1);
+    std::string const start_text = base_name.substr(second + 1, third - second - 1);
+    if(start_text.empty() || start_text.find_first_not_of("0123456789") != std::string::npos)
+    {
+        return false;
+    }
+    try
+    {
+        start_ns = std::stoull(start_text) * 1000000000ULL;
+    }
+    catch(std::exception const&)
+    {
+        return false;
+    }
+    seq = chl::StoryChunkWriter::rotationIndexOf(base_name);
+    return true;
+}
+
+} // namespace
+
+int chronolog::HDF5FileChunkExtractor::reconcileManifestWithDirectory()
+{
+    if(archiveManifest == nullptr)
+    {
+        return 0;
+    }
+
+    std::set<std::string> referenced;
+    for(chl::ArchiveManifestRecord const& record: archiveManifest->records())
+    {
+        if(!record.file.empty())
+        {
+            // Both published and deleted names count as "the manifest knows about
+            // this file": a deleted one must never be adopted back.
+            referenced.insert(record.file);
+        }
+    }
+
+    std::error_code ec;
+    std::filesystem::directory_iterator dir(rootDirectory, ec);
+    if(ec)
+    {
+        LOG_WARNING("[HDF5FileChunkExtractor] Cannot reconcile {}: {}", rootDirectory, ec.message());
+        return 0;
+    }
+
+    int adopted = 0;
+    for(auto const& entry: dir)
+    {
+        if(!entry.is_regular_file(ec))
+        {
+            continue;
+        }
+        std::string const base_name = entry.path().filename().string();
+        if(referenced.count(base_name) > 0)
+        {
+            continue;
+        }
+
+        chl::ArchiveManifestRecord record;
+        if(!parse_archive_file_name(base_name, record.chronicle, record.story, record.start, record.seq))
+        {
+            continue; // not an archive file name (stray files, in-progress .tmp writes)
+        }
+        uint64_t last_event_time = 0;
+        if(!probe_archive_file(entry.path().string(), record.story_id, last_event_time))
+        {
+            LOG_WARNING("[HDF5FileChunkExtractor] {} looks like an archive file but could not be read; not adopting",
+                        base_name);
+            continue;
+        }
+
+        record.file = base_name;
+        // Only what the events prove; see the header note on why this is not the
+        // window's true end.
+        record.end = last_event_time + 1;
+        record.state = chl::ManifestState::PUBLISHED;
+
+        if(archiveManifest->append(record) == chl::CL_SUCCESS)
+        {
+            adopted++;
+            LOG_WARNING("[HDF5FileChunkExtractor] Adopted unreferenced archive file {} ({}-{}, story {}): it was "
+                        "published but its manifest record was lost, most likely to an unclean shutdown",
+                        base_name,
+                        record.start,
+                        record.end,
+                        record.story_id);
+        }
+    }
+
+    if(adopted > 0)
+    {
+        LOG_WARNING("[HDF5FileChunkExtractor] Adopted {} unreferenced archive file(s) in {}", adopted, rootDirectory);
+    }
+    return adopted;
 }
