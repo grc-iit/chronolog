@@ -1,19 +1,51 @@
-# Archive manifest on NFS — what to validate before trusting it there
+# Archive manifest on NFS — validation results
 
-The manifest was designed, built and tested on a local filesystem. Three of its
+The manifest was designed, built and tested on a local filesystem. Five of its
 mechanisms make assumptions that are true on ext4/xfs and **not guaranteed on NFS**,
 and one of them became load-bearing only when the distributed layout put two
-Graphers on one manifest. This is the list of what to test on a real NFS mount,
-what "pass" looks like, and what to do if a test fails.
+Graphers on one manifest. This document listed what to test; it now records what
+the tests found.
 
-Nothing here is a known bug. It is a list of assumptions that have not been checked
-on the filesystem the cluster actually uses.
+**Status: tested 2026-08-05 on the ares cluster. Assumptions 1 and 2 fail.**
+They are no longer hypothetical risks — both are reproduced, with a diagnosis and
+a confirmed fix direction. Assumptions 3, 4 and 5 hold.
 
-**Before running tests 2 and 3**, set the Player's log level to `debug` — the lines
-they grep for (`Applied N manifest record(s)`, `Manifest log shrank`, `Manifest log
-rewritten`) are all `LOG_DEBUG`, so at `info` the greps return nothing and the tests
-look like failures. The local deployment already runs the Player at `debug`; a
-cluster deployment may not.
+| # | Assumption | Verdict | Measured |
+| --- | --- | --- | --- |
+| 1 | concurrent `O_APPEND` is atomic | **FAIL** | 66.1% record loss synthetic; 3.2% in a live two-Grapher run |
+| 2 | `stat` reflects recent writes promptly | **FAIL** | 120.1 s detection lag, not the 1 s poll interval |
+| 3 | compaction is detectable | **PASS** | detected via mtime; late, never lost |
+| 4 | `link()` fails rather than clobbers | **PASS** | `EEXIST`, target inode preserved |
+| 5 | `readdir` sees recently created files | **PASS** | no persistent `UNRECORDED` across restart |
+
+The fix is **option 2 — per-Grapher manifests** (see [Recommendation](#recommendation)).
+The evidence for it is stronger than "multi-writer is risky": the failure is
+*exclusively cross-client*, and per-Grapher manifests make every writer single-client.
+
+---
+
+## Test environment
+
+Everything below was run on `ares-comp-[03-08]` (Slurm job 22778) against
+`/mnt/common`, which is where `~` and the archive directory live:
+
+```
+172.25.1.1:/mnt/common on /mnt/common type nfs
+  (rw,vers=3,rsize=1048576,wsize=1048576,
+   acregmin=120,acregmax=120,acdirmin=120,acdirmax=120,
+   hard,proto=tcp,nconnect=8,timeo=600,retrans=2,local_lock=none)
+```
+
+Two properties of this mount dominate every result:
+
+- **NFSv3**, not v4. There is no atomic-append primitive in the protocol.
+- **`acregmin=acregmax=acdirmin=acdirmax=120`** — a flat **120-second** attribute
+  cache. The original version of this document guessed "commonly 3–30 s for files,
+  up to 60 s for directories". The real mount is 2–4× worse than that worst case,
+  and it is the single biggest amplifier of both failures.
+
+`local_lock=none` means advisory locks go to the server, which is why the `flock`
+mitigation works (see 1a variants).
 
 ---
 
@@ -29,11 +61,11 @@ group. So in any multi-recording-group deployment:
 - all of them through whatever filesystem the archive directory lives on
 
 On one node that is a local filesystem and the assumptions hold. On a cluster the
-archive directory is normally NFS, and it does not.
+archive directory is normally NFS, and — as measured below — it does not.
 
 ---
 
-## Assumption 1 — concurrent `O_APPEND` is atomic (**highest risk**)
+## Assumption 1 — concurrent `O_APPEND` is atomic — **FAIL**
 
 `ArchiveManifest::append` (`src/chrono-common/src/ArchiveManifest.cpp`) takes a
 **process-local** mutex and then appends with `std::ofstream(path, std::ios::app)`
@@ -42,218 +74,289 @@ processes, correctness rests entirely on the kernel making an `O_APPEND` write
 atomic.
 
 On a local filesystem it is: the offset is resolved and the write applied under the
-inode lock. **On NFS it is not.** The client resolves the append offset itself, so
-two clients can compute the same offset and the second write lands on top of the
-first. The failure mode is not interleaved text — it is a **silently lost record**.
+inode lock. **On NFS it is not**, and the failure is far from rare.
 
-A lost record is the same failure the design already treats as survivable (W
-under-reports, keepers retain longer and re-send, `E <= W` still holds, and
-reconciliation adopts an orphaned file at the next Grapher start). So this is a
-degradation, not corruption. But if it happens at any rate above "rare", the
-manifest stops being the cheap authority it is meant to be and every Player start
-leans on reconciliation instead.
+### Test 1a — bare filesystem probe
 
-### Test 1a — bare filesystem probe (no ChronoLog needed)
+6 nodes, 2000 appends each to one shared file, synchronised to a common start second
+via a spin-wait on `date +%s`.
 
-Run this **on the NFS mount that will hold the archive directory**, ideally from
-two or more different cluster nodes at once.
+| Variant | Expected | Got | Loss |
+| --- | --- | --- | --- |
+| 6 nodes, tight loop | 12000 | 4071 | **66.1%** |
+| 6 nodes, 200 ms apart | 600 | 261 | **56.5%** |
+| **6 procs on 1 node** | 12000 | **12000** | **0%** |
+| 6 nodes + `flock` | 3000 | **3000** | **0%** |
+| 6 nodes, `manifest_fsync` emulated | 6000 | 2146 | **64.2%** |
 
-```bash
-# On each of N nodes, against the SAME shared path:
-SHARED=/path/on/nfs/append_probe
-: > "$SHARED/log"          # once, from one node only
+The probe is a faithful proxy: `echo >>` opens with `O_APPEND`, writes once and
+closes, which is exactly what `ofstream(app)` + `flush()` + destructor does for a
+~200-byte line. This was confirmed by reading `ArchiveManifest::append` rather than
+assumed.
 
-# then on every node simultaneously:
-NODE=$(hostname -s)
-for i in $(seq 1 2000); do
-  echo "{\"node\":\"$NODE\",\"i\":$i}" >> "$SHARED/log"
-done
+Surviving lines were all well-formed — the loss is invisible from inside the file.
+But the file was not clean:
+
+```
+first NUL at byte offset: 30 of 132637
+context before: b'{"node":"ares-comp-05","i":1}\n'
+NUL run length: 30
+context after : b'{"node":"ares-comp-04","i":1}\n...'
 ```
 
-Pass: `wc -l < "$SHARED/log"` equals `2000 * <number of nodes>`, and
-
-```bash
-sort "$SHARED/log" | uniq -d        # expect no output
-grep -cv '^{.*}$' "$SHARED/log"     # expect 0 (no torn lines)
-```
-
-Fail: fewer lines than expected (**lost appends** — assumption 1 is violated), or
-lines that are not well-formed JSON objects (**torn writes**, which the loader
-discards, so they show up as loss too).
-
-Note `echo >>` is a faithful proxy: it opens with `O_APPEND` and writes once, which
-is what `ofstream` + `flush()` does for a ~200-byte line.
+A **30-byte NUL run exactly where one 30-byte record belonged**. The file was
+extended to hold the record but the data never landed. Across the run: 475 NUL bytes
+and 40 blank lines. So a lost append does not always vanish silently — sometimes it
+leaves a hole that a strict JSON check would see as a torn line.
 
 ### Test 1b — the real thing, two Graphers
 
-Deploy with **two recording groups** so two Graphers share the archive directory,
-write for a few minutes, then stop cleanly and check:
+Deployed from binaries built off this branch: Visor c03, **Grapher c04 (RG1) +
+Grapher c05 (RG2) on different nodes sharing one NFS archive directory**, Keepers
+c06/c07, Players c03/c08. `story_chunk_duration_secs` lowered to 15 to get a useful
+number of chunks; 13.1 MB written across 8 long-lived stories.
 
-```bash
-ARCHIVE=/path/to/archive
-# every line parses
-grep -cv '^{.*}$' "$ARCHIVE/archive_manifest.log"     # expect 0
-# every published record names a file that exists
-grep '"state":"published"' "$ARCHIVE/archive_manifest.log" |
-  sed -n 's/.*"file":"\([^"]*\)".*/\1/p' | sort -u |
-  while read -r f; do [ -f "$ARCHIVE/$f" ] || echo "MISSING $f"; done
-# every archive file is named by some record  <-- the loss detector
-ls "$ARCHIVE"/*.h5 2>/dev/null | xargs -n1 basename |
-  while read -r f; do
-    grep -q "\"file\":\"$f\"" "$ARCHIVE/archive_manifest.log" || echo "UNRECORDED $f"
-  done
+```
+manifest lines              : 182
+unparsable / torn lines     : 0
+NUL bytes in manifest       : 0
+published records           : 91
+deleted records             : 90
+files the Graphers created  : 94        <- ground truth, from Grapher logs
+UNRECORDED (created, never recorded as published) : 3     (3.2%)
+MISSING (recorded, never on disk)                 : 0
 ```
 
-Pass: no `MISSING`, no `UNRECORDED`, no unparsable lines.
+The three lost records are not ambiguous. Each names a file that has a **`deleted`
+record but no `published` record**:
 
-`UNRECORDED` output is the signal that matters. It means a file was published whose
-record was lost — exactly what assumption 1 protects against, and exactly what
-`reconcileManifestWithDirectory()` will adopt at the next Grapher start. A handful
-after an unclean shutdown is expected and fine. A steady stream during normal
-operation means `O_APPEND` is not holding.
+```
+chronicle_5_0.story_5_0.1785963915.vlen.h5   records: ['deleted']   <- c04
+chronicle_6_0.story_6_0.1785963930.vlen.h5   records: ['deleted']   <- c04
+chronicle_7_0.story_7_0.1785963870.vlen.h5   records: ['deleted']   <- c05
+```
 
-### If it fails
+A file cannot be deleted without first having been published. The Grapher appended a
+`published` record, NFS dropped it, and the later `deleted` append for the same file
+survived. Both Graphers lost records, so this is not one misbehaving node.
 
-In increasing order of cost:
-
-1. **Turn on `manifest_fsync`** (`chrono_grapher.DataStoreInternals.manifest_fsync`).
-   This does **not** fix lost appends — it flushes to the server, it does not make
-   the offset resolution atomic. Try it only to see whether it changes the rate;
-   do not treat it as the fix.
-2. **Give each Grapher its own manifest.** The cleanest fix, and it removes the
-   multi-writer assumption entirely: make the archive directory (or at least the
-   manifest name) per recording group, and have the Player load and merge all
-   `archive_manifest*.log` it finds. Readers already tolerate duplicate records
-   across sources, so merging is additive. This is a real change, not a knob.
-3. **Serialise appends with an advisory lock.** `flock` on NFSv4 works; on NFSv3 it
-   needs `lockd` and is widely distrusted. Adds a network round trip per published
-   chunk.
-4. **Accept it and lean on reconciliation.** Already implemented and idempotent: the
-   Grapher adopts unrecorded files at startup, so the manifest converges. The cost
-   is that Players started between the loss and the next Grapher restart miss those
-   files, and W stays low until the keeper re-sends.
-
-Option 2 is what I would do if Test 1 fails.
+Note the manifest itself is **intact and fully parseable** — 182/182 lines valid, no
+NULs. Every integrity check the original plan proposed passes. Only the
+cross-reference against what the Graphers actually did reveals the loss. Any future
+check for this must compare against external ground truth; the file cannot detect
+its own missing records.
 
 ---
 
-## Assumption 2 — `stat` reflects recent writes promptly
+## Assumption 2 — `stat` reflects recent writes promptly — **FAIL**
 
 `HDF5ArchiveReadingAgent::pollManifestTail` decides there is new data by comparing
-`fs::file_size` and `fs::last_write_time` against what it applied last. Both are
-`stat` results, and NFS caches attributes (`acregmin`/`acregmax`, commonly 3–30 s for
-files, up to 60 s for directories). The **data** is fine — the poller re-opens the
-log each tick, so close-to-open consistency gives it fresh bytes — but it may not
-*notice* there are bytes to read.
-
-Consequence: a Player can lag behind newly published files by the attribute cache
-timeout instead of `manifest_poll_interval_ms` (default 1000). Replay of a very
-recent window would fall back to the keepers' hot path, which is correct but
-slower, or return nothing if the keepers already released it.
+`fs::file_size` and `fs::last_write_time` against what it applied last.
 
 ### Test 2
 
-With a Player running against an NFS archive:
+Writer on c03 appended 30 manifest-sized records, 1 s apart (done by t≈33 s). A
+poller on c04 replicated `pollManifestTail`'s detection exactly — `stat()` the path
+every 250 ms, compare size and mtime:
 
-```bash
-# note the time, publish a window, then poll for it to become replayable
-date +%s
-# ... write events, wait for the grapher to archive one chunk ...
-grep '"state":"published"' "$ARCHIVE/archive_manifest.log" | tail -1   # note its file
-# then time how long until the player's log shows it applied
-grep 'Applied .* manifest record' "$WORK_DIR/monitor/chrono-player-1.log" | tail -3
+```
+t=   0.00s  size=0
+t= 120.14s  size=5400      <- all 30 records appear at once
 ```
 
-Pass: the gap between the record appearing in the log and the Player applying it is
-on the order of `manifest_poll_interval_ms`, not tens of seconds.
+**120.14 seconds**, matching `acregmax=120` precisely, against a
+`manifest_poll_interval_ms` of 1000.
 
-Fail: consistently tens of seconds. Mitigations: mount the archive with
-`actimeo=1` (or `noac`, heavier), or accept the lag — it is a latency issue, never a
-correctness one.
+### Diagnosis
+
+The original text suspected the attribute cache but expected "tens of seconds" and
+noted the poller "re-opens the log each tick, so close-to-open consistency gives it
+fresh bytes". The measurement shows why that reasoning does not rescue detection:
+
+```cpp
+auto const size  = fs::file_size(log_path, ec);        // stat() on the PATH
+auto const mtime = fs::last_write_time(log_path, ec);  // stat() on the PATH
+...                                                     // decide there is new data
+std::ifstream log(log_path, std::ios::binary);          // only NOW is it opened
+```
+
+Both calls `stat()` the **path** without opening the file. Close-to-open consistency
+revalidates on `open()` — but the `open()` never happens unless the `stat()` has
+already reported a change. The data path is fine; the **detection path is governed
+entirely by the attribute cache**, and on this mount that is a flat 120 s.
+
+Consequence: a Player on a different node from the Grapher is blind to newly
+published archive files for up to two minutes. Replay of a recent window falls back
+to the keepers' hot path — correct but slower — or returns nothing if the keepers
+already released it. This is a latency failure, never a correctness one.
+
+Mitigations: mount the archive with `actimeo=1` (or `noac`, heavier), or have the
+poller `open()` the log before deciding — an `open()` forces revalidation, which
+would make detection track the poll interval instead of the cache timeout. The
+latter is a small change and worth considering independently of assumption 1.
 
 ---
 
-## Assumption 3 — compaction is detectable
+## Assumption 3 — compaction is detectable — **PASS**
 
 `snapshot()` writes `archive_manifest.json.tmp`, `rename`s it over the snapshot, then
 **truncates the log**. The Player detects that truncation by size shrinking, or — when
 the log has already been refilled to coincidentally the same length — by the mtime
-having changed (`CompactionTruncatingTheLogDoesNotLoseTheIndex` covers this).
-
-On NFS both signals come from cached attributes, so the detection can be late. It
-cannot be *wrong* in a damaging direction: a missed truncation makes the Player
-re-read from a stale offset, and because both index mutators are idempotent the
-worst case is re-applying records it already has.
+having changed.
 
 ### Test 3
 
-Force a compaction by setting `manifest_snapshot_threshold_entries` low (say 50),
-publish past it, and confirm from the Player log that it keeps applying records
-afterwards rather than going quiet:
+The dangerous case was reproduced directly: write 450 bytes, then truncate and refill
+to **exactly 450 bytes** from another node, so only mtime distinguishes old from new.
 
-```bash
-grep -E 'Manifest log (shrank|rewritten)|Applied .* manifest record' \
-  "$WORK_DIR/monitor/chrono-player-1.log" | tail -10
+```
+writer c03:  t=  0.00s  initial write, size=450
+             t=150.05s  truncated -> 0, refilled -> 450   (same_size_as_before: true)
+
+poller c04:  t=  0.00s  size=  0
+             t=120.14s  size=450  mtime=...097
+             t=240.28s  size=450  mtime=...247    <- compaction detected via mtime
 ```
 
-Pass: the Player logs the shrink/rewrite detection and keeps applying records.
+The `size == offset && mtime != mtime_` branch fires and the Player re-reads from 0.
+This works because the server preserves **nanosecond mtime granularity** — a rewrite
+50 ms later still changes mtime:
 
-Fail: the Player stops applying records after the compaction. That is the one
-outcome worth reporting as a bug rather than tuning — it would mean neither signal
-survived the cache.
+```
+rewrite 0: mtime delta = 52001384 ns  (CHANGED)
+```
+
+Had the server quantised mtime to 1 s, a fast truncate-and-refill to an identical
+size would have been undetectable — that would have been the "report as a bug"
+outcome. It is worth knowing this passes *because of a server property*, not because
+of anything the code guarantees.
+
+Detection is still 120 s late, and because both index mutators are idempotent the
+worst case is re-applying records already held. Correctness holds; only latency
+suffers, and it suffers the same 120 s as assumption 2.
 
 ---
 
-## Assumption 4 — `link()` fails rather than clobbers
+## Assumption 4 — `link()` fails rather than clobbers — **PASS**
 
 `StoryChunkWriter::publishFile` publishes an archive file with `link()` precisely
-because it fails with `EEXIST` instead of replacing an existing file (`rename` would
-replace it, and with several extraction streams that would silently destroy an
-already-archived chunk).
-
-`link()` returning `EEXIST` atomically is one of the older NFS guarantees — it was
-the standard NFS locking primitive for exactly this reason — so this is expected to
-hold. It is listed because it is now on the critical path for data retention, not
-because it is suspected.
+because it fails with `EEXIST` instead of replacing an existing file.
 
 ### Test 4
 
-On the NFS mount:
+```
+$ python3 -c "import os;os.link('src','taken')"
+FileExistsError: [Errno 17] File exists: 'src' -> 'taken'
 
-```bash
-cd /path/on/nfs && : > src && : > taken
-python3 -c "import os;os.link('src','taken')" 2>&1   # expect FileExistsError
+taken inode 32724437574   (unchanged)
+src   inode 32724437573
 ```
 
-Pass: `FileExistsError`. Fail: it succeeds, or replaces `taken` — in which case
-`publishFile` must switch to `open(O_CREAT|O_EXCL)` plus a copy, and the
-non-clobbering test in `story_chunk_writer_test.cpp` will need a matching change.
+`EEXIST` as required, and the target keeps its own inode — no clobber. As expected:
+this is one of the oldest NFS guarantees, and it holds here.
 
 ---
 
-## Assumption 5 — `readdir` sees recently created files
+## Assumption 5 — `readdir` sees recently created files — **PASS**
 
 `reconcileManifestWithDirectory()` lists the archive directory to find files the
-manifest does not name. NFS directory attribute caching can hide a file created
-moments earlier by another node.
-
-Impact is small and self-correcting: a file missed by one reconciliation pass is
-adopted by the next Grapher start, and until then the keeper re-send path covers it.
-No test needed beyond noticing whether `UNRECORDED` entries from Test 1b persist
-across a Grapher restart. If they do, the directory cache is the likely reason and
-`actimeo` tuning applies.
+manifest does not name. No separate test was needed: the three `UNRECORDED` entries
+from Test 1b are explained by lost appends (each has a `deleted` record proving the
+file was known), not by directory-cache staleness, and none persisted as phantom
+entries. `acdirmax=120` still applies, so a reconciliation pass running within two
+minutes of another node creating a file may miss it — self-correcting at the next
+Grapher start.
 
 ---
 
-## Summary
+## Diagnosis — why assumption 1 fails, and what actually fixes it
 
-| # | Assumption | Risk | If it fails |
-| --- | --- | --- | --- |
-| 1 | concurrent `O_APPEND` is atomic | **high** — silent record loss | per-Grapher manifests (option 2) |
-| 2 | `stat` is prompt | medium — Player lag, not incorrect | `actimeo=1`, or accept |
-| 3 | compaction is detectable | low — idempotent either way | report as a bug |
-| 4 | `link()` returns `EEXIST` | low — expected to hold | `O_CREAT\|O_EXCL` + copy |
-| 5 | `readdir` is prompt | low — self-correcting | `actimeo` tuning |
+**The failure is cross-client, not concurrent-writer.** This is the central finding
+and it is what makes the fix cheap to reason about:
 
-Test 1 is the one that decides whether the current design is usable unchanged on a
-cluster. The other four are tuning or confirmation.
+- 6 processes on **one node** → **0 loss out of 12000**
+- 6 processes on **six nodes** → **66% loss out of 12000**
+
+One NFS client resolves the append offset once and serialises its own writers through
+the inode; within a client, `O_APPEND` behaves exactly as it does on ext4. Across
+clients there is nothing to serialise them. NFSv3's `WRITE` carries an **explicit
+offset** — there is no append opcode — so each client computes EOF itself and two
+clients readily compute the same one. The second write lands on top of the first.
+
+The 120 s attribute cache makes this much worse than a narrow race: a client's notion
+of EOF can be two minutes stale, so it is not that writers occasionally collide, it is
+that they can be persistently wrong about where the file ends. That is why the
+zero-filled holes appear — a client writing at an offset derived from a stale size
+leaves a gap the server zero-fills.
+
+**Loss scales with how often appends overlap.** The synthetic tests (6 writers at
+30–2000 appends/s) lost 56–66%; the live two-Grapher run (2 writers, ~91 records over
+4 minutes, well under 1 append/s) lost 3.2%. Sparse appends collide less often. But
+3.2% is not "rare" in the sense the original document was willing to tolerate — the
+bar it set was *"a steady stream during normal operation means `O_APPEND` is not
+holding"*, and three losses in a four-minute run is a steady stream.
+
+**`manifest_fsync` does not help, as predicted.** 64.2% loss with it versus 66.1%
+without — indistinguishable. It flushes data to the server; it does nothing about
+offset resolution. The prediction in the original plan was correct and the knob should
+not be presented as a mitigation for this.
+
+**`flock` does work here** — 3000/3000, zero loss, ~25 s for 3000 locked appends
+across 6 nodes (≈8 ms each, including forking `flock` and a shell per iteration; the
+in-process cost would be lower). `local_lock=none` sends locks to the server and
+NFSv3 `lockd` is functioning on this mount. It is a smaller change than restructuring
+the manifest, but it adds a network round trip per published chunk and depends on
+`lockd` being healthy — widely distrusted on NFSv3 for good reason.
+
+### Recommendation
+
+**Option 2 — give each Grapher its own manifest.** Make the archive directory (or at
+least the manifest filename) per recording group, and have the Player load and merge
+every `archive_manifest*.log` it finds. Readers already tolerate duplicate records
+across sources, so merging is additive.
+
+The same-node result is the argument: single-client appends lose nothing, so removing
+the multi-writer-across-nodes property removes the failure mode outright rather than
+narrowing its window. `flock` (option 3) narrows the window at a per-chunk cost;
+`manifest_fsync` (option 1) does nothing; accepting it (option 4) leaves Players
+missing files until the next Grapher restart.
+
+Independently, consider making `pollManifestTail` `open()` the log before deciding
+whether it changed. That addresses assumption 2, is a few lines, and is orthogonal to
+the manifest layout.
+
+---
+
+## Reproducing
+
+Probe scripts are in `/mnt/common/kfeng/nfs_manifest_probe/`:
+
+| Script | What it measures |
+| --- | --- |
+| `probe.sh` | 1a tight-loop concurrent append (synchronised start) |
+| `probe_rate.sh` | 1a at a realistic publish cadence |
+| `probe_local.sh` | same-node multi-process control |
+| `probe_flock.sh` | `flock`-serialised append (option 3) |
+| `probe_fsync.sh` | `manifest_fsync` emulation (option 1) |
+| `stat_poller.py` / `stat_writer.py` | assumption 2 detection lag |
+| `compaction_writer.py` | assumption 3 truncate-and-refill |
+
+Read the manifest with `dd iflag=direct` when checking results from a node that did
+not write it — a cached `stat`/read can be up to 120 s stale and will misreport
+counts.
+
+Two operational notes for whoever runs this next:
+
+- **Cluster deploys could not start Keepers** until `8e34054f`. `f02a2c6e` removed
+  `csv_tier_extractor` from the keeper conf template but left the `jq` line in
+  `deploy_cluster.sh` that writes into it, producing an extractor with no `"type"`;
+  `ExtractionModuleConfiguration` rejects it and every keeper exits at startup. Fixed
+  on this branch by the one-line removal in `8e34054f`. `origin/watermark-feedback`
+  still carries the breakage.
+- **`chrono-bench -t` is `--story_count`, not threads** (CLAUDE.md is wrong on this),
+  and `perf_bench.cpp` computes `story_count / chronicle_count` with integer division.
+  `-t 1 -h 4` therefore yields zero stories, writes nothing, and still prints a
+  throughput table. Keep `-t` ≥ `-h`. Stories must also outlive
+  `story_chunk_duration_secs` or the Grapher discards their chunks as orphans
+  ("Refusing to adopt orphan chunk for destroyed StoryId") and every manifest record
+  comes out `state:"empty"`.
