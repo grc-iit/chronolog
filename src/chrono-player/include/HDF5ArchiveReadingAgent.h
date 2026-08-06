@@ -160,6 +160,12 @@ public:
     // One log's worth of pollManifestTail.
     int pollOneManifestLog(std::string const& log_path);
 
+    // Adopts the manifest if one has appeared since initialize(). Returns true only
+    // on the transition, so the caller can poll it every tick. Public for the same
+    // reason pollManifestTail is: the monitoring thread is not the only sensible
+    // driver, and stepping it by hand is what makes the transition testable.
+    bool adoptManifestIfAvailable();
+
     int readStoryChunkFile(const ChronicleName&,
                            const StoryName&,
                            uint64_t,

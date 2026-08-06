@@ -546,3 +546,43 @@ TEST_F(ArchiveIndexTest, AGrapherThatStartsAfterThePlayerIsPickedUp)
     EXPECT_EQ(agent.pollManifestTail(), 1) << "a manifest log created after startup was never noticed";
     EXPECT_EQ(eventsInRange(agent, BASE + 60 * NS, BASE + 70 * NS), 3u);
 }
+
+TEST_F(ArchiveIndexTest, AManifestAppearingAfterStartupIsAdopted)
+{
+    // A Player on a fresh cluster starts before any Grapher has published, so the
+    // archive directory holds no manifest at all and the index comes from a scan.
+    writeChunk(BASE, BASE + 10 * NS);
+    ASSERT_TRUE(chl::ArchiveManifest::discoverLogs(root.string()).empty());
+
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    // Step adoption by hand rather than racing the monitoring thread for it.
+    agent.shutdown();
+
+    EXPECT_FALSE(agent.adoptManifestIfAvailable()) << "there is no manifest yet, so there is nothing to adopt";
+
+    // The first Grapher publishes. Deciding the mode once at startup strands this
+    // record -- and every later one -- for the rest of the Player's lifetime.
+    std::string const published = writeChunk(BASE + 60 * NS, BASE + 70 * NS);
+    recordInManifestFor("1", published, BASE + 60 * NS, BASE + 70 * NS);
+
+    EXPECT_TRUE(agent.adoptManifestIfAvailable()) << "a manifest that appeared after startup was never adopted";
+    EXPECT_EQ(eventsInRange(agent, BASE + 60 * NS, BASE + 70 * NS), 3u)
+            << "adopting the manifest did not index what it names";
+}
+
+TEST_F(ArchiveIndexTest, AdoptingAManifestLeavesNothingForTheNextPollToReapply)
+{
+    writeChunk(BASE, BASE + 10 * NS);
+    chl::HDF5ArchiveReadingAgent agent(root.string(), true, std::chrono::milliseconds(50));
+    ASSERT_EQ(agent.initialize(), 0);
+    agent.shutdown();
+
+    std::string const published = writeChunk(BASE + 60 * NS, BASE + 70 * NS);
+    recordInManifestFor("1", published, BASE + 60 * NS, BASE + 70 * NS);
+    ASSERT_TRUE(agent.adoptManifestIfAvailable());
+
+    // Adoption indexes the whole manifest, so the cursor has to end up past those
+    // records. Leaving it at 0 would make the very next tick re-read the entire log.
+    EXPECT_EQ(agent.pollManifestTail(), 0) << "adoption left the cursor at 0, so the poll re-applied indexed records";
+}

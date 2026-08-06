@@ -126,6 +126,32 @@ int chronolog::HDF5ArchiveReadingAgent::pollManifestTail()
     return applied;
 }
 
+// A Player that starts before any Grapher has published finds no manifest and
+// indexes by scan. Deciding the mode once, in initialize(), would strand it there
+// for the whole process lifetime -- and on a fresh cluster the Player always starts
+// first, so that is the normal ordering rather than the exceptional one: the
+// manifest would never be used at all. Re-checking costs one directory listing per
+// tick, which is strictly less than the recursive scan it replaces.
+bool chronolog::HDF5ArchiveReadingAgent::adoptManifestIfAvailable()
+{
+    if(manifest_mode_)
+    {
+        return false; // already adopted; there is no transition to report
+    }
+    if(loadIndexFromManifest() != 0)
+    {
+        return false; // still nothing readable to adopt
+    }
+    manifest_mode_ = true;
+    // The load above indexed every record but left the cursors at zero. Catch them
+    // up so the next tick sees only genuinely new records rather than re-reading
+    // each log from the start.
+    pollManifestTail();
+    LOG_INFO("[HDF5ArchiveReadingAgent] A manifest appeared in {} after startup; indexing from it instead of scanning",
+             archive_path_);
+    return true;
+}
+
 // Applies whatever one Grapher appended to its log since the last call.
 //
 // Cheap by construction: the log is append-only, so "what changed" is the bytes
@@ -786,7 +812,9 @@ int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
             break;
         }
 
-        if(manifest_mode_)
+        // The adoption attempt is second so it is only paid while scanning, and it
+        // short-circuits into the poll on the tick it succeeds.
+        if(manifest_mode_ || adoptManifestIfAvailable())
         {
             // Append-only log: reading its tail is O(what changed) rather than the
             // O(archive) the directory diff below costs on every tick.
