@@ -6,21 +6,30 @@ and one of them became load-bearing only when the distributed layout put two
 Graphers on one manifest. This document listed what to test; it now records what
 the tests found.
 
-**Status: tested 2026-08-05 on the ares cluster. Assumptions 1 and 2 fail.**
-They are no longer hypothetical risks — both are reproduced, with a diagnosis and
-a confirmed fix direction. Assumptions 3, 4 and 5 hold.
+**Status: tested 2026-08-05 on the ares cluster. Assumptions 1 and 2 failed; both are
+now fixed and the fixes are re-verified on the same cluster.** Assumptions 3, 4 and 5
+held throughout. The failures and their diagnoses are kept below rather than deleted:
+they are the evidence for why the design changed, and the probes that found them are
+what a future change has to be re-checked against.
 
-| # | Assumption | Verdict | Measured |
-| --- | --- | --- | --- |
-| 1 | concurrent `O_APPEND` is atomic | **FAIL** | 66.1% record loss synthetic; 3.2% in a live two-Grapher run |
-| 2 | `stat` reflects recent writes promptly | **FAIL** | 120.1 s detection lag, not the 1 s poll interval |
-| 3 | compaction is detectable | **PASS** | detected via mtime; late, never lost |
-| 4 | `link()` fails rather than clobbers | **PASS** | `EEXIST`, target inode preserved |
-| 5 | `readdir` sees recently created files | **PASS** | no persistent `UNRECORDED` across restart |
+| # | Assumption | As found | Measured then | After the fix |
+| --- | --- | --- | --- | --- |
+| 1 | concurrent `O_APPEND` is atomic | **FAIL** | 66.1% record loss synthetic; 3.2% live | 0 lost, 96/96 records |
+| 2 | `stat` reflects recent writes promptly | **FAIL** | 120.1 s detection lag | max 1.00 s, at the poll interval |
+| 3 | compaction is detectable | **PASS** | detected via mtime; late, never lost | unchanged |
+| 4 | `link()` fails rather than clobbers | **PASS** | `EEXIST`, target inode preserved | unchanged |
+| 5 | `readdir` sees recently created files | **PASS** | no persistent `UNRECORDED` | unchanged |
 
-The fix is **option 2 — per-Grapher manifests** (see [Recommendation](#recommendation)).
-The evidence for it is stronger than "multi-writer is risky": the failure is
-*exclusively cross-client*, and per-Grapher manifests make every writer single-client.
+The fix for assumption 1 was **option 2 — per-Grapher manifests** (see
+[Recommendation](#recommendation)). The evidence for it is stronger than
+"multi-writer is risky": the failure is *exclusively cross-client*, and per-Grapher
+manifests make every writer single-client — the one arrangement measured at zero
+loss. Assumption 2 was fixed by opening the log before deciding whether it changed.
+
+Re-verifying those two surfaced a third defect that neither had exposed: the Player
+never left directory-scan mode on a fresh deployment, so the manifest read path was
+inert regardless. See
+[the `manifest_mode_` latch](#a-third-bug-the-re-verification-exposed).
 
 ---
 
@@ -440,11 +449,102 @@ already removed. They did not before, so a second run started against a manifest
 describing files that were gone, restored a stale watermark, and failed the
 retention assertions for an unrelated reason.
 
-**Still to confirm on the cluster.** Local runs cannot exercise either fix: ext4 has
-no attribute cache to go stale and no cross-client writers. Re-run the probes in
-*Reproducing* below against this build. What should change:
+Local runs cannot exercise either fix: ext4 has no attribute cache to go stale and no
+cross-client writers. Both were therefore re-run on the cluster.
 
-- test 1b (two Graphers, live): expect 0 lost records, and two logs in the archive
-  dir instead of one.
-- test 2 (detection lag): expect the lag to drop from ~120 s to about the poll
-  interval (`manifest_poll_interval_ms`, default 1000).
+---
+
+## Cluster re-verification
+
+Rebuilt `Debug` (`LOG_DEBUG` is compiled out of `Release`, and the lines these tests
+grep for are all `LOG_DEBUG`), reinstalled, and redeployed the same layout that
+failed: Visor c03, **Grapher c04 (RG1) + Grapher c05 (RG2) on different nodes sharing
+one NFS archive directory**, Keepers c06/c07, Players c03/c08.
+
+### Assumption 1 — was 3 lost records, now none
+
+```
+archive_manifest.1.log :  87 lines, 0 unparsable, 0 NUL, 48 published
+archive_manifest.2.log : 105 lines, 0 unparsable, 0 NUL, 48 published
+intersection           :   0      <- each file is named by exactly one writer's log
+files created          :  96      <- ground truth, from the Graphers' own logs
+published records      :  96
+UNRECORDED             :   0      (was 3)
+deleted-but-never-published : 0   (was 3)
+```
+
+The zero intersection is the point: 48 + 48 with no overlap means every log has a
+single writer, which is the arrangement that measured zero loss in test 1a. Repeated
+on two further fresh deployments (67/67 and 39/39 files, 0 `UNRECORDED` each).
+
+### Assumption 2 — was 120.14 s, now bounded by the poll interval
+
+Across 35 publishes, measuring each record from the Grapher's publish to the Player's
+`Applied ... manifest record(s)`:
+
+| | before | after |
+| --- | --- | --- |
+| min | — | 0.03 s |
+| median | — | 0.19 s |
+| **max** | **120.14 s** | **1.00 s** |
+
+Bounded by `manifest_poll_interval_ms=1000`, as intended. A later run measured
+median 0.14 s / max 0.97 s over 39 publishes.
+
+The merge across writers also works end to end:
+`Loaded 192 record(s) from 5 manifest source(s)`, then
+`Indexed ... (no directory scan)`.
+
+### A third bug the re-verification exposed
+
+The first re-verification measured **zero** `Applied` lines and could only be made to
+work by restarting the Player. `manifest_mode_` was a one-shot latch, set only in
+`initialize()`: a Player that starts against an empty archive directory finds no
+manifest, falls back to the directory scan, and `pollManifestTail()` is then never
+called again for the life of the process.
+
+That is not an edge case — on a fresh cluster the Player *always* starts before any
+Grapher has published, so the default ordering left the entire manifest read path
+inert and every fix above unreachable. It is also older than the split; the latch
+predates it and was simply never exercised, because the local tests all seed a
+manifest before starting the Player.
+
+`adoptManifestIfAvailable()` now re-checks while scanning and flips on the
+transition, catching the per-log cursors up so the next tick sees only new records.
+Confirmed on a fresh deployment, with no restart:
+
+```
+21:52:06  both Players: "No usable archive manifest ... falling back to scan"
+21:54:06  last periodic file system scan
+21:54:11  "A manifest appeared in ... after startup; indexing from it instead of scanning"
+          Applied lines: c03=4, c08=2      (were 0)
+```
+
+The scan stopping at the same moment adoption happens is the observable part: the
+Player moves from an O(archive) walk per tick to an O(delta) tail read, in place.
+
+### Log audit
+
+Debug build, all six components, logs raised to 256 MB × 10 so nothing rotated away
+(at the stock 1 MB × 3 the Graphers' debug output discards the very lines a loss
+check needs for ground truth — worth setting before any run that has to be audited).
+
+**No errors and no criticals anywhere.** 32 warnings, all accounted for:
+
+- **21 orphan chunks discarded** (`Refusing to adopt orphan chunk for destroyed
+  StoryId`) — every one timestamped *after* the workload ended, while all 67
+  publishes happened at teardown. These are chunks still draining from the Keepers
+  after the benchmark destroyed its stories, not a mid-run leak. Checked
+  specifically, because mid-run discards would have been a real defect.
+- **2 × "No usable archive manifest"** — the latch, above; expected on a fresh
+  deployment and now followed by an adoption line.
+
+Two things that are not warnings but are worth knowing:
+
+- The Player feeds its own manifests to the HDF5 scanner and rejects them
+  (`archive_manifest.1.log is not an HDF5 file. Skipping`). Harmless, but the scanner
+  has no exclusion for `archive_manifest*`, so the noise and the wasted open+probe
+  per tick now scale with the number of Graphers.
+- `queue is empty. No actions taken.` accounts for 13–19% of the Grapher and Keeper
+  debug logs (~3 lines/s each). Debug-only, but it is what makes the default
+  `filesize`/`filenum` too small to audit against.
