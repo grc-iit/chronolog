@@ -24,6 +24,9 @@ namespace
 constexpr char LOG_FILE_NAME[] = "archive_manifest.log";
 constexpr char SNAPSHOT_FILE_NAME[] = "archive_manifest.json";
 constexpr char SNAPSHOT_TMP_SUFFIX[] = ".tmp";
+constexpr char NAME_PREFIX[] = "archive_manifest";
+constexpr char LOG_SUFFIX[] = ".log";
+constexpr char SNAPSHOT_SUFFIX[] = ".json";
 
 char const* stateToString(chl::ManifestState state)
 {
@@ -261,6 +264,24 @@ chronolog::ArchiveManifest::ArchiveManifest(std::string const& archive_root,
 
 // Matches this writer's own pair, every other writer's, and the unsuffixed pair an
 // archive written before the per-writer split still carries.
+bool chronolog::ArchiveManifest::isManifestArtifact(std::string const& file_name)
+{
+    if(file_name.rfind(NAME_PREFIX, 0) != 0)
+    {
+        return false;
+    }
+    // The prefix alone is not enough. A chronicle may legitimately be called
+    // "archive_manifest", and its archive files -- "archive_manifest.<story>.<t>.vlen.h5"
+    // -- carry the same prefix while being exactly the content a scanner must index.
+    // The suffix is what separates the manifest's bookkeeping from archive content.
+    auto const ends_with = [&file_name](std::string const& suffix) {
+        return file_name.size() > suffix.size() &&
+               file_name.compare(file_name.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    return ends_with(LOG_SUFFIX) || ends_with(SNAPSHOT_SUFFIX) ||
+           ends_with(std::string(SNAPSHOT_SUFFIX) + SNAPSHOT_TMP_SUFFIX);
+}
+
 std::vector<std::string> chronolog::ArchiveManifest::discoverLogs(std::string const& archive_root)
 {
     std::vector<std::string> logs;

@@ -642,3 +642,28 @@ TEST_F(ArchiveManifestTest, CompactingAfterAMergedLoadDoesNotAbsorbTheOtherWrite
     ASSERT_EQ(reader.load(), chl::CL_SUCCESS);
     EXPECT_EQ(reader.records().size(), 3u) << "compaction duplicated the other writer's record";
 }
+
+// The Player's directory scanner shares the archive directory with the manifest, so
+// it needs to tell the manifest's own files apart from archive content. Naming that
+// test once here keeps the two from drifting: discoverLogs already encodes half of
+// it, and the scanner would otherwise re-derive the other half by hand.
+TEST_F(ArchiveManifestTest, ManifestArtifactsAreRecognisedByName)
+{
+    EXPECT_TRUE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.log")) << "the legacy unsuffixed log";
+    EXPECT_TRUE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.1.log")) << "one writer's log";
+    EXPECT_TRUE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.json")) << "the legacy snapshot";
+    EXPECT_TRUE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.2.json")) << "one writer's snapshot";
+    // snapshot() renames this over the snapshot, so it exists briefly and a scanner
+    // watching for renames will see it appear and disappear.
+    EXPECT_TRUE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.2.json.tmp")) << "the snapshot temporary";
+}
+
+TEST_F(ArchiveManifestTest, ArchiveFilesAreNotMistakenForManifestArtifacts)
+{
+    EXPECT_FALSE(chl::ArchiveManifest::isManifestArtifact("c1.s1.1736800000.vlen.h5")) << "an ordinary archive file";
+    EXPECT_FALSE(chl::ArchiveManifest::isManifestArtifact("c1.s1.1736800000.vlen.1.h5")) << "a rotation";
+    // Excluding by prefix alone would swallow a chronicle that happens to be named
+    // after the manifest, and its archive files must still be indexed.
+    EXPECT_FALSE(chl::ArchiveManifest::isManifestArtifact("archive_manifest.s1.1736800000.vlen.h5"))
+            << "a chronicle named archive_manifest still produces real archive files";
+}

@@ -1136,6 +1136,19 @@ std::vector<chronolog::HDF5ArchiveReadingAgent::FileInfo> chronolog::HDF5Archive
             }
             else
             {
+                // The manifest lives in this directory but is bookkeeping, not
+                // archive content. Tracking it costs on every tick: its logs change
+                // with every published chunk, so they are the entries most often
+                // reported modified, they inflate both sides of the O(current x
+                // previous) deletion scan below, and they offer the rename matcher
+                // -- which pairs on size and mtime alone -- a partner it can never
+                // legitimately be paired with. The index itself was never wrong,
+                // since adding a file re-checks that it is an archive file.
+                if(ArchiveManifest::isManifestArtifact(entry.path().filename().string()))
+                {
+                    continue;
+                }
+
                 // For files, get detailed info
                 auto last_write = fs::last_write_time(entry.path(), ec);
                 if(ec)
