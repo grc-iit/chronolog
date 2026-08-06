@@ -171,6 +171,11 @@ public:
     // Player polls each of these and tracks an offset per file.
     static std::vector<std::string> discoverLogs(std::string const& archive_root);
 
+    // True for the manifest's own files -- its logs, its snapshots, and the
+    // temporary a snapshot is renamed from. Anything sharing the archive directory
+    // needs this to tell the bookkeeping apart from the archive content itself.
+    static bool isManifestArtifact(std::string const& file_name);
+
 private:
     mutable std::mutex theMutex;
     bool theFsyncEachAppend = false;
