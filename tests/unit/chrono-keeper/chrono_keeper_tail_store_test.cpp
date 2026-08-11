@@ -280,11 +280,72 @@ TEST(KeeperTailStore, AgedOutChunkIsNoLongerServedFromTheTail)
     store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
     ASSERT_EQ(store.getTailSequences(1, 10).size(), 5u);
 
-    store.ageOutChunks(5000);
-    // Ownership passed to the extraction queue; the index must not keep pointing
-    // at a chunk the drain thread is about to free.
+    // That read pinned the chunk, so release takes kPinTicks ticks rather than one
+    // (PhaseOneAnswerPinsItsChunkAgainstAgeOut covers the deferral itself). What
+    // matters here is what happens after: ownership passes to the extraction queue
+    // and the index must not keep pointing at a chunk the drain thread will free.
+    for(unsigned tick = 0; tick < chl::KeeperTailStore::kPinTicks; ++tick) { store.ageOutChunks(5000); }
     EXPECT_TRUE(store.getTailSequences(1, 10).empty()) << "tail index still references a handed-over chunk";
     EXPECT_EQ(drainQueue(q), 1u);
+}
+
+// ---- phase-1 pinning (two-phase tail-read consistency) ----------------------
+
+// The tail read is two RPCs: phase 1 answers "which sequences do you hold",
+// phase 2 fetches those payloads. Nothing stops the tail from releasing those
+// events in between -- and getTailEvents skips an index miss silently -- so the
+// client would get a short reply that looks exactly like "the story has fewer
+// events". A phase-1 answer therefore pins the chunks it named.
+TEST(KeeperTailStore, PhaseOneAnswerPinsItsChunkAgainstAgeOut)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
+    std::vector<chl::EventSequence> promised = store.getTailSequences(1, 10); // phase 1
+    ASSERT_EQ(promised.size(), 5u);
+
+    // A maintenance tick lands between the two phases, well past the retention
+    // window. The promised events must survive it.
+    store.ageOutChunks(5000);
+    EXPECT_EQ(drainQueue(q), 0u) << "a chunk promised by phase 1 was archived before phase 2 could read it";
+    EXPECT_EQ(store.getTailEvents(1, promised).size(), 5u) << "phase 2 lost events that phase 1 promised";
+}
+
+TEST(KeeperTailStore, PinnedChunkIsArchivedOnceTheGraceLapses)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
+    ASSERT_EQ(store.getTailSequences(1, 10).size(), 5u);
+
+    // A pin defers archival; it must not cancel it. Once the grace lapses the
+    // chunk is handed over exactly as an unpinned one would have been.
+    for(unsigned tick = 0; tick < chl::KeeperTailStore::kPinTicks; ++tick) { store.ageOutChunks(5000); }
+    EXPECT_EQ(drainQueue(q), 1u) << "a pinned chunk was never archived -- the pin outlived its grace";
+    EXPECT_TRUE(store.getTailSequences(1, 10).empty());
+}
+
+// The deliberate boundary of the pin: it defers age-out, which is a policy timer,
+// but never capacity eviction, which is a memory bound. A client polling faster
+// than pins lapse would otherwise pin the whole tail forever and grow it without
+// limit. A read racing capacity eviction can therefore still be truncated -- the
+// client reports that as CL_ERR_PARTIAL_RESULT rather than hiding it.
+TEST(KeeperTailStore, CapacityEvictionIsNotDeferredByAPin)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, /*tail_capacity=*/2, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 2, 7, "a"));
+    ASSERT_EQ(store.getTailSequences(1, 10).size(), 2u); // pins chunk "a"
+
+    store.ingestSealedChunk(1, makeChunk(1, 200, 300, 200, 2, 7, "b")); // pushes past capacity
+    EXPECT_EQ(drainQueue(q), 1u) << "a pin must not hold the tail above tail_capacity";
+    EXPECT_EQ(store.getTailSequences(1, 10).size(), 2u) << "tail must be back within capacity";
 }
 
 TEST(KeeperTailStore, AgeOutLeavesYoungerStoriesAlone)

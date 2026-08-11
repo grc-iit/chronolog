@@ -207,6 +207,26 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
     events.reserve(assembled.size());
     for(auto const& entry: assembled) { events.push_back(entry.second); }
 
+    // Every keeper answered, yet fewer payloads came back than phase 1 named. Note
+    // that `take` is derived from phase 1's answer, not from n, so a story holding
+    // fewer than n events produces a complete (merely shorter) result and never
+    // reaches here. Getting here means events were released from a keeper tail
+    // between the two phases. Keeper-side pinning removes the common cause (age-out
+    // firing on a maintenance tick mid-read); what remains is capacity eviction,
+    // which pins deliberately do not defer because tail_capacity is a memory bound,
+    // and a phase 2 slower than the pin grace. Report it either way: a truncated
+    // tail must not be indistinguishable from a whole one, or callers poll forever
+    // on a result that can never complete.
+    if((timeouts + errors) == 0 && assembled.size() < take)
+    {
+        LOG_ERROR("[KeeperTailReader] gather_story_tail: story {} - phase 2 returned {} of the {} event(s) phase 1 "
+                  "promised; the rest left the keeper tail between the two phases",
+                  story_id,
+                  assembled.size(),
+                  take);
+        return CL_ERR_PARTIAL_RESULT;
+    }
+
     LOG_DEBUG("[KeeperTailReader] gather_story_tail(n={}) for story {} returned {} events", n, story_id, events.size());
     return CL_SUCCESS;
 }
