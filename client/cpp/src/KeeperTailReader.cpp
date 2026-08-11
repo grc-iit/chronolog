@@ -162,8 +162,8 @@ int chronolog::gather_story_tail(std::vector<KeeperRecordingClient*> const& keep
             ++responded;
             for(auto const& le: logEvents)
             {
-                EventSequence seq{le.time(), le.getClientId(), le.index()};
-                assembled[seq] = Event(le.time(), le.getClientId(), le.index(), le.getRecord());
+                Event event(le.time(), le.getClientId(), le.index(), le.getRecord());
+                assembled[event.sequence()] = event;
             }
         }
         catch(thallium::timeout const&)

@@ -78,30 +78,6 @@ public:
                 .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, n);
     }
 
-    // Blocking convenience wrapper around getTailSequencesAsync(): a timeout or
-    // any RPC error degrades this keeper to an empty tail so one bad keeper does
-    // not fail (or hang) the whole playback().
-    std::vector<EventSequence> getTailSequences(StoryId const& story_id, uint64_t n)
-    {
-        try
-        {
-            return getTailSequencesAsync(story_id, n).wait();
-        }
-        catch(thallium::timeout const&)
-        {
-            LOG_WARNING("[KeeperRecordingClient] getTailSequences to {} timed out after {} ms; treating as empty tail",
-                        to_string(recordingServiceId),
-                        kTailReadRpcTimeoutMs);
-        }
-        catch(thallium::exception const& ex)
-        {
-            LOG_ERROR("[KeeperRecordingClient] getTailSequences to {} failed: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
-        }
-        return std::vector<EventSequence>{};
-    }
-
     // Tail-read phase 2 (async): issue tail_get_events without blocking and return
     // a handle to wait on, so payloads can be fetched from all of a story's
     // keepers concurrently. wait() yields the payloads, or throws
@@ -111,29 +87,6 @@ public:
     {
         return tail_get_events.on(service_ph)
                 .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
-    }
-
-    // Blocking convenience wrapper around getTailEventsAsync(): a timeout or any
-    // RPC error degrades this keeper to no payloads.
-    std::vector<LogEvent> getTailEvents(StoryId const& story_id, std::vector<EventSequence> const& seqs)
-    {
-        try
-        {
-            return getTailEventsAsync(story_id, seqs).wait();
-        }
-        catch(thallium::timeout const&)
-        {
-            LOG_WARNING("[KeeperRecordingClient] getTailEvents to {} timed out after {} ms; treating as no payloads",
-                        to_string(recordingServiceId),
-                        kTailReadRpcTimeoutMs);
-        }
-        catch(thallium::exception const& ex)
-        {
-            LOG_ERROR("[KeeperRecordingClient] getTailEvents to {} failed: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
-        }
-        return std::vector<LogEvent>{};
     }
 
     ~KeeperRecordingClient()
