@@ -2,8 +2,7 @@
 
 Notes on how LDMS samplers/aggregators are deployed in production HPC systems,
 and how the collected data is consumed (tail vs archive reads). Relevant to
-choosing/sizing a storage backend (see [`REPORT.md`](./REPORT.md) for the
-Kafka vs ChronoLog comparison).
+choosing and sizing a storage backend for the `store_chronolog` plugin.
 
 ## Roles & topology
 
@@ -70,7 +69,7 @@ deployment-dependent. The honest framing:
 ### Why this matters for backend choice
 - A **tail-heavy** read profile favors a log/streaming-tier model — Kafka
   consumers, or ChronoLog's keeper/recent tier (the low-latency synchronous
-  write path measured in `REPORT.md`).
+  write path).
 - The minority **archive** reads favor a columnar/file tier — ChronoLog's
   player → HDF5 archive (or LDMS SOS). Kafka itself is not a query engine, so
   archive queries require offloading Kafka topics to object/columnar storage.
@@ -80,8 +79,8 @@ deployment-dependent. The honest framing:
 ## Storage placement & producer concurrency (fit for ChronoLog)
 
 Where the `strgp` (storage policy) runs determines how many concurrent writers
-the storage backend sees — which is decisive for ChronoLog (it scales with
-independent writers; see `REPORT.md`).
+the storage backend sees — which is decisive for ChronoLog, since it scales
+with independent writers.
 
 ### Factor-check of the common assumptions
 

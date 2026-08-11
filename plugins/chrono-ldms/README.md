@@ -113,7 +113,7 @@ The tail-read half is why the plugin lives on the tail-read development line
 
 ## Benchmarks
 
-The Kafka-vs-ChronoLog storage-backend benchmarks and the read/tail-latency
-harnesses used to characterize this integration live under
-[`tests/unit/chrono-ldms`](../../tests/unit/chrono-ldms) (standalone, built
-against installed ChronoLog / LDMS / librdkafka — see the README there).
+For the deployment topology and read patterns this integration is sized
+against, see [`LDMS-ARCHITECTURE.md`](./LDMS-ARCHITECTURE.md). Write and
+tail-read throughput for the ChronoLog path itself is measured by
+`chrono-bench` (see the benchmark section of the repo-root `CLAUDE.md`).
