@@ -251,6 +251,28 @@ static std::size_t drainQueue(chl::StoryChunkExtractionQueue& q)
     return drained;
 }
 
+// ---- shutdown flush --------------------------------------------------------
+
+// Retained chunks must reach the extraction queue while it can still drain them.
+// The keeper flushes between shutting down data collection and shutting down
+// extraction; leaving it to ~KeeperTailStore loses the data, because by then the
+// queue's own shutdown only frees what it is holding.
+TEST(KeeperTailStore, FlushForwardsEveryRetainedChunkForArchival)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "a"));
+    store.ingestSealedChunk(2, makeChunk(2, 100, 200, 100, 3, 8, "b"));
+    ASSERT_EQ(drainQueue(q), 0u) << "nothing should be forwarded while inside the retention window";
+
+    store.flushRetainedChunks();
+    EXPECT_EQ(drainQueue(q), 2u) << "a clean shutdown dropped retained chunks instead of archiving them";
+    EXPECT_TRUE(store.getTailSequences(1, 10).empty());
+    EXPECT_TRUE(store.getTailSequences(2, 10).empty());
+}
+
 TEST(KeeperTailStore, SealedChunkIsForwardedForArchivalOnceItsRetentionWindowPasses)
 {
     ensureLogger();

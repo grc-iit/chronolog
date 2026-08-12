@@ -74,20 +74,47 @@ public:
         , tailRetentionNs(tail_retention_ns)
     {}
 
-    ~KeeperTailStore()
+    // Hand every retained chunk to the extraction queue for archival.
+    //
+    // main() must call this while extraction is still running -- after data
+    // collection stops, before shutdownExtraction(). Doing it from the destructor
+    // alone is too late: shutdownExtraction() has by then drained the queue and
+    // joined the extraction xstreams, and StoryChunkExtractionQueue::shutDown()
+    // simply deletes whatever is still queued. Everything the tail was holding
+    // (up to tail_retention_secs of sealed data per story) would be freed rather
+    // than archived, on every clean shutdown.
+    //
+    // Idempotent: a second call finds nothing retained.
+    void flushRetainedChunks()
     {
-        // Forward any still-retained chunks to the extraction queue so their
-        // data is archived rather than silently dropped on shutdown.
         std::lock_guard<std::mutex> lock(tailMutex);
+        std::size_t flushed = 0;
         for(auto& story_entry: storyTails)
         {
-            for(auto& chunk_entry: story_entry.second.liveCounts)
+            StoryTail& tail = story_entry.second;
+            for(auto& chunk_entry: tail.liveCounts)
             {
                 theExtractionQueue.stashStoryChunk(chunk_entry.first);
+                ++flushed;
             }
-            story_entry.second.liveCounts.clear();
-            story_entry.second.index.clear();
+            tail.liveCounts.clear();
+            tail.index.clear();
+            tail.pinnedTicks.clear();
+            tail.pinDeferredTicks = 0;
         }
+        if(flushed > 0)
+        {
+            LOG_INFO("[KeeperTailStore] Flushed {} retained chunk(s) to the extraction queue", flushed);
+        }
+    }
+
+    ~KeeperTailStore()
+    {
+        // Safety net for paths that never reached main()'s flush. By the time a
+        // destructor runs in the normal shutdown path extraction has already
+        // stopped, so anything still here is freed rather than archived -- which is
+        // exactly why the flush above is not left to this.
+        flushRetainedChunks();
     }
 
     // Take ownership of a freshly sealed chunk and fold its events into the tail.
