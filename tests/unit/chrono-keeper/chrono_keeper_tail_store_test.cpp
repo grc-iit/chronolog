@@ -313,6 +313,28 @@ TEST(KeeperTailStore, PhaseOneAnswerPinsItsChunkAgainstAgeOut)
     EXPECT_EQ(store.getTailEvents(1, promised).size(), 5u) << "phase 2 lost events that phase 1 promised";
 }
 
+// A pin must bound how long it defers archival, not merely how long since the last
+// read. A dashboard polling playback() re-pins on every read, and when n exceeds
+// the tail size (Grafana defaults to 100, the reader example asks 1000) the answer
+// covers every chunk including the oldest -- so an unbounded honour starves
+// ageOutChunks completely and the story is never archived while anyone watches it.
+// That is exactly the volume-driven regression tail_retention_secs exists to fix.
+TEST(KeeperTailStore, APollingClientCannotStarveArchival)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 5, 7, "e"));
+
+    for(int poll = 0; poll < 10; ++poll)
+    {
+        store.getTailSequences(1, 100); // re-pins every chunk, every time
+        store.ageOutChunks(5000);       // well past end(200) + retention(1000)
+    }
+    EXPECT_EQ(drainQueue(q), 1u) << "a story under continuous tail reads is never archived";
+}
+
 TEST(KeeperTailStore, PinnedChunkIsArchivedOnceTheGraceLapses)
 {
     ensureLogger();

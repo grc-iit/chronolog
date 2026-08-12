@@ -51,8 +51,10 @@ public:
     // second (KeeperDataStore::dataCollectionTask), so this is a ~3s grace against a
     // phase-2 fetch that normally follows within milliseconds.
     //
-    // A pin defers age-out only, never capacity eviction -- see enforceCapacity for
-    // why the memory bound has to win.
+    // Two bounds keep this from becoming a way to stop archival altogether: a pin
+    // defers age-out only, never capacity eviction (see enforceCapacity for why the
+    // memory bound has to win), and it defers age-out for at most this many
+    // CONSECUTIVE ticks per story however often reads re-pin (see ageOutChunks).
     static constexpr unsigned kPinTicks = 3;
 
     // tail_retention_ns bounds how long a sealed chunk may sit in the tail before it
@@ -132,6 +134,7 @@ public:
             // index is ordered by EventSequence (event time first) and chunks are
             // time-partitioned, so the oldest entry belongs to the oldest chunk;
             // stop at the first chunk still inside its window.
+            bool deferred_by_pin = false;
             while(!tail.index.empty())
             {
                 StoryChunk* oldest_chunk = tail.index.begin()->second;
@@ -140,14 +143,21 @@ public:
                     break;
                 }
                 // Promised to an in-flight tail read: archiving it now would make
-                // that client's phase-2 fetch come back short. Deferring archival by
-                // a few ticks is the cheaper of the two failures.
-                if(isPinned(tail, oldest_chunk))
+                // that client's phase-2 fetch come back short. Honour the pin -- but
+                // for a BOUNDED number of consecutive ticks, not merely while reads
+                // keep arriving. A client re-pins on every phase 1, and once n
+                // reaches the tail size that answer covers every chunk including the
+                // oldest, so honouring pins indefinitely would stop archival
+                // completely for exactly the stories someone is watching. Archival
+                // must not depend on whether anyone is reading.
+                if(isPinned(tail, oldest_chunk) && tail.pinDeferredTicks < kPinTicks)
                 {
+                    deferred_by_pin = true;
                     break;
                 }
                 releaseOldestIndexedEvent(tail);
             }
+            tail.pinDeferredTicks = deferred_by_pin ? tail.pinDeferredTicks + 1 : 0;
         }
     }
 
@@ -321,6 +331,9 @@ private:
         // protects it from release. Absent (or 0) means evictable. Entries are only
         // ever inserted with a non-zero count.
         std::unordered_map<StoryChunk*, unsigned> pinnedTicks;
+        // Consecutive maintenance ticks on which a pin has held archival back for
+        // this story. Caps the total deferral: see ageOutChunks.
+        unsigned pinDeferredTicks = 0;
     };
 
     // A chunk named by a phase-1 answer whose grace has not lapsed yet.
