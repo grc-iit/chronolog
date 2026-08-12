@@ -288,7 +288,20 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'tail_capacity': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            tail_capacity = json_object_get_int(val);
+            // Range-checked because the keeper widens this to std::size_t: a negative
+            // value would wrap (-1 becomes SIZE_MAX), enforceCapacity would never
+            // fire, and the tail would grow until the keeper is OOM-killed. 0 is
+            // rejected too -- it evicts every event as soon as a chunk is ingested,
+            // so every tail read returns empty with CL_SUCCESS and callers poll
+            // forever with nothing to show for it.
+            int const parsed_tail_capacity = json_object_get_int(val);
+            if(parsed_tail_capacity <= 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'tail_capacity': must be greater than 0, got "
+                          << parsed_tail_capacity << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            tail_capacity = parsed_tail_capacity;
         }
         else if(strcmp(key, "live_tail_read") == 0)
         {
@@ -306,7 +319,18 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            tail_retention_secs = json_object_get_int(val);
+            // Range-checked because the keeper widens this to uint64_t and scales it
+            // to nanoseconds: a negative value would wrap into a garbage retention
+            // window. 0 is valid and documented -- it disables age-out, leaving
+            // capacity eviction and the shutdown flush as the archival paths.
+            int const parsed_tail_retention = json_object_get_int(val);
+            if(parsed_tail_retention < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': must not be negative, got "
+                          << parsed_tail_retention << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            tail_retention_secs = parsed_tail_retention;
         }
         else
         {
