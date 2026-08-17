@@ -221,7 +221,12 @@ generate_config_files() {
         local new_port_keeper_record=$((base_port_keeper_record + i))
         local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
         local grapher_index=$((i % num_recording_groups + 1))
+        # The keeper drains to BOTH halves of its recording group, so each endpoint
+        # has to follow that group's grapher/player rather than keep the template's
+        # fixed port. These mirror the ports assigned above: grapher i listens on
+        # base_port_grapher_drain + i, player i on base_port_player_recording + i.
         local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
+        local new_port_keeper_player_drain=$((base_port_player_recording + grapher_index - 1))
 
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
@@ -230,15 +235,17 @@ generate_config_files() {
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
+            --argjson new_port_keeper_player_drain $new_port_keeper_player_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
             --argjson grapher_index "$grapher_index" \
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.grapher_receiving_endpoint.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.player_receiving_endpoint.service_base_port = $new_port_keeper_player_drain |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
-        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain, player $new_port_keeper_player_drain"
     done
 
     echo "Generating visor configuration file ..."

@@ -35,6 +35,28 @@ namespace chronolog
 class KeeperTailStore
 {
 public:
+    // How many maintenance ticks a phase-1 answer protects the chunks it named.
+    //
+    // A tail read is two RPCs: getTailSequences promises a set of sequences, then
+    // getTailEvents fetches their payloads. Between the two, enforceCapacity or
+    // ageOutChunks can hand a promised chunk to the extraction queue, and
+    // getTailEvents skips an index miss silently -- so the client receives a short
+    // reply indistinguishable from "the story holds fewer events". Pinning the
+    // chunks a phase-1 answer drew from closes that window.
+    //
+    // Counted in ticks rather than nanoseconds on purpose: ageOutChunks compares
+    // against the current_time its caller supplies precisely so the tail shares the
+    // pipeline's clock basis, and sampling a second clock here to build a deadline
+    // is the epoch trap that choice avoids. The maintenance loop ticks about once a
+    // second (KeeperDataStore::dataCollectionTask), so this is a ~3s grace against a
+    // phase-2 fetch that normally follows within milliseconds.
+    //
+    // Two bounds keep this from becoming a way to stop archival altogether: a pin
+    // defers age-out only, never capacity eviction (see enforceCapacity for why the
+    // memory bound has to win), and it defers age-out for at most this many
+    // CONSECUTIVE ticks per story however often reads re-pin (see ageOutChunks).
+    static constexpr unsigned kPinTicks = 3;
+
     // tail_retention_ns bounds how long a sealed chunk may sit in the tail before it
     // is forwarded for archival. Without it the ONLY forwarding paths are capacity
     // eviction and shutdown, which makes archival volume-driven: a story producing
@@ -52,20 +74,47 @@ public:
         , tailRetentionNs(tail_retention_ns)
     {}
 
-    ~KeeperTailStore()
+    // Hand every retained chunk to the extraction queue for archival.
+    //
+    // main() must call this while extraction is still running -- after data
+    // collection stops, before shutdownExtraction(). Doing it from the destructor
+    // alone is too late: shutdownExtraction() has by then drained the queue and
+    // joined the extraction xstreams, and StoryChunkExtractionQueue::shutDown()
+    // simply deletes whatever is still queued. Everything the tail was holding
+    // (up to tail_retention_secs of sealed data per story) would be freed rather
+    // than archived, on every clean shutdown.
+    //
+    // Idempotent: a second call finds nothing retained.
+    void flushRetainedChunks()
     {
-        // Forward any still-retained chunks to the extraction queue so their
-        // data is archived rather than silently dropped on shutdown.
         std::lock_guard<std::mutex> lock(tailMutex);
+        std::size_t flushed = 0;
         for(auto& story_entry: storyTails)
         {
-            for(auto& chunk_entry: story_entry.second.liveCounts)
+            StoryTail& tail = story_entry.second;
+            for(auto& chunk_entry: tail.liveCounts)
             {
                 theExtractionQueue.stashStoryChunk(chunk_entry.first);
+                ++flushed;
             }
-            story_entry.second.liveCounts.clear();
-            story_entry.second.index.clear();
+            tail.liveCounts.clear();
+            tail.index.clear();
+            tail.pinnedTicks.clear();
+            tail.pinDeferredTicks = 0;
         }
+        if(flushed > 0)
+        {
+            LOG_INFO("[KeeperTailStore] Flushed {} retained chunk(s) to the extraction queue", flushed);
+        }
+    }
+
+    ~KeeperTailStore()
+    {
+        // Safety net for paths that never reached main()'s flush. By the time a
+        // destructor runs in the normal shutdown path extraction has already
+        // stopped, so anything still here is freed rather than archived -- which is
+        // exactly why the flush above is not left to this.
+        flushRetainedChunks();
     }
 
     // Take ownership of a freshly sealed chunk and fold its events into the tail.
@@ -98,26 +147,44 @@ public:
     // tail_retention_ns == 0 disables age-out (capacity/shutdown only).
     void ageOutChunks(uint64_t current_time)
     {
-        if(tailRetentionNs == 0)
-        {
-            return;
-        }
         std::lock_guard<std::mutex> lock(tailMutex);
         for(auto& story_entry: storyTails)
         {
             StoryTail& tail = story_entry.second;
+            // This is the tick pins are counted in, so age them here -- before the
+            // tail_retention_ns check, so pins still lapse when age-out is disabled.
+            decayPins(tail);
+            if(tailRetentionNs == 0)
+            {
+                continue;
+            }
             // index is ordered by EventSequence (event time first) and chunks are
             // time-partitioned, so the oldest entry belongs to the oldest chunk;
             // stop at the first chunk still inside its window.
+            bool deferred_by_pin = false;
             while(!tail.index.empty())
             {
-                StoryChunk const* oldest_chunk = tail.index.begin()->second;
+                StoryChunk* oldest_chunk = tail.index.begin()->second;
                 if(oldest_chunk->getEndTime() + tailRetentionNs > current_time)
                 {
                     break;
                 }
+                // Promised to an in-flight tail read: archiving it now would make
+                // that client's phase-2 fetch come back short. Honour the pin -- but
+                // for a BOUNDED number of consecutive ticks, not merely while reads
+                // keep arriving. A client re-pins on every phase 1, and once n
+                // reaches the tail size that answer covers every chunk including the
+                // oldest, so honouring pins indefinitely would stop archival
+                // completely for exactly the stories someone is watching. Archival
+                // must not depend on whether anyone is reading.
+                if(isPinned(tail, oldest_chunk) && tail.pinDeferredTicks < kPinTicks)
+                {
+                    deferred_by_pin = true;
+                    break;
+                }
                 releaseOldestIndexedEvent(tail);
             }
+            tail.pinDeferredTicks = deferred_by_pin ? tail.pinDeferredTicks + 1 : 0;
         }
     }
 
@@ -243,7 +310,8 @@ private:
         {
             return result;
         }
-        auto& index = story_it->second.index;
+        StoryTail& tail = story_it->second;
+        auto& index = tail.index;
         std::size_t take = (n < index.size()) ? n : index.size();
         result.reserve(take);
         // Position `take` entries back from end() -- O(take) -- rather than
@@ -252,7 +320,15 @@ private:
         // then walk forward to end() so the result comes out ascending.
         auto it = index.end();
         for(std::size_t i = 0; i < take; ++i) { --it; }
-        for(; it != index.end(); ++it) { result.push_back(it->first); }
+        // Pin every chunk this answer draws from: the caller is expected to come
+        // back for these payloads (phase 2), and releasing them in between would
+        // silently truncate that read. Re-pinning on each answer refreshes the
+        // grace for a client that is polling.
+        for(; it != index.end(); ++it)
+        {
+            result.push_back(it->first);
+            tail.pinnedTicks[it->second] = kPinTicks;
+        }
         return result; // ascending order
     }
 
@@ -278,7 +354,40 @@ private:
         // Keyed by the chunk pointer (unique per live chunk); a chunk is forwarded
         // to the extraction queue and dropped once its count reaches 0.
         std::unordered_map<StoryChunk*, std::size_t> liveCounts;
+        // chunk -> maintenance ticks remaining during which a recent phase-1 answer
+        // protects it from release. Absent (or 0) means evictable. Entries are only
+        // ever inserted with a non-zero count.
+        std::unordered_map<StoryChunk*, unsigned> pinnedTicks;
+        // Consecutive maintenance ticks on which a pin has held archival back for
+        // this story. Caps the total deferral: see ageOutChunks.
+        unsigned pinDeferredTicks = 0;
     };
+
+    // A chunk named by a phase-1 answer whose grace has not lapsed yet.
+    static bool isPinned(StoryTail const& tail, StoryChunk* chunk)
+    {
+        auto pin = tail.pinnedTicks.find(chunk);
+        return pin != tail.pinnedTicks.end() && pin->second > 0;
+    }
+
+    // Age every pin by one maintenance tick, dropping those that have lapsed.
+    // Runs even when age-out is disabled: otherwise a pin taken while
+    // tail_retention_secs is 0 would never lapse and would block enforceCapacity
+    // permanently, letting the tail grow without bound.
+    static void decayPins(StoryTail& tail)
+    {
+        for(auto pin = tail.pinnedTicks.begin(); pin != tail.pinnedTicks.end();)
+        {
+            if(--pin->second == 0)
+            {
+                pin = tail.pinnedTicks.erase(pin);
+            }
+            else
+            {
+                ++pin;
+            }
+        }
+    }
 
     // Drop the oldest indexed event; when that was a chunk's last indexed event the
     // chunk has no readers left, so ownership passes to the extraction queue (which
@@ -294,11 +403,18 @@ private:
         {
             theExtractionQueue.stashStoryChunk(chunk); // archive + free downstream
             tail.liveCounts.erase(lc);
+            tail.pinnedTicks.erase(chunk); // the pointer is about to be freed
         }
     }
 
     // Evict oldest events until the tail is within capacity; once a retained
     // chunk has no indexed events left, forward it to the extraction queue.
+    // Deliberately ignores pins. tailCapacity is a memory bound, and a reader's
+    // convenience must not be allowed to breach it: a client polling faster than
+    // pins lapse would otherwise hold the whole tail resident indefinitely and grow
+    // it without limit. So a tail read racing capacity eviction can still come back
+    // short -- that is the residual case KeeperTailReader reports as
+    // CL_ERR_PARTIAL_RESULT rather than passing off as a complete read.
     void enforceCapacity(StoryTail& tail)
     {
         while(tail.index.size() > tailCapacity) { releaseOldestIndexedEvent(tail); }

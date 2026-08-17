@@ -385,6 +385,12 @@ int main(int argc, char** argv)
     delete keeperDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
+    // Hand the tail store's retained chunks over BEFORE extraction stops: data
+    // collection has finished, so nothing new will seal, and the extraction module
+    // is still draining. Leaving this to ~KeeperTailStore would run it after
+    // shutdownExtraction() below, at which point the queue only frees what it holds
+    // -- silently dropping up to tail_retention_secs of sealed data per story.
+    theTailStore.flushRetainedChunks();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
