@@ -102,6 +102,17 @@ On-Demand Tail Read provides:
 - **Two-Phase Scatter/Gather Protocol**: Minimal network transfer — exactly $N$ payloads cross the wire across the entire keeper group.
 - **Writer-Mode Compatibility**: Clients instantiated in writer-only mode (`ClientPortalServiceConf` only) can perform tail reads without configuring query endpoints.
 
+:::tip Trying it without writing code
+The interactive CLI exposes this path as `-p <num_events>`, which tail-reads the Story you currently hold:
+
+```
+-a -s my_chronicle my_story
+-p 10
+```
+
+See the [CLI API Reference](../../client/cli/api.md). Remember that an Event is only visible once its chunk seals, so allow ~25–30 s after writing (or enable `live_tail_read`).
+:::
+
 ---
 
 ## 2. In-Memory Retention & Single Payload Model
