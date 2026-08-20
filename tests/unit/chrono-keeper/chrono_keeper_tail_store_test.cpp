@@ -392,6 +392,30 @@ TEST(KeeperTailStore, CapacityEvictionIsNotDeferredByAPin)
     EXPECT_EQ(store.getTailSequences(1, 10).size(), 2u) << "tail must be back within capacity";
 }
 
+// A per-story tail entry exists only to hold that story's retained chunks. Once
+// the last one is handed over the entry is a husk -- and ageOutChunks scans every
+// entry on every maintenance tick, so keeping husks makes that scan grow with the
+// number of stories the keeper has EVER seen and never shrink. Entries are created
+// on demand by ingestSealedChunk, so a story that seals again just gets a fresh one.
+TEST(KeeperTailStore, EmptiedStoryEntriesAreReclaimed)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperTailStore store(q, 65536, /*live_tail_read=*/false, /*tail_retention_ns=*/1000);
+
+    store.ingestSealedChunk(1, makeChunk(1, 100, 200, 100, 3, 7, "old"));
+    store.ingestSealedChunk(2, makeChunk(2, 4000, 5000, 4000, 3, 8, "new"));
+    ASSERT_EQ(store.retainedStoryCount(), 2u);
+
+    // Past story 1's window (1200) but inside story 2's (6000).
+    store.ageOutChunks(2000);
+    EXPECT_EQ(drainQueue(q), 1u);
+    EXPECT_EQ(store.retainedStoryCount(), 1u) << "the emptied story entry was never reclaimed";
+
+    // ...and the story still holding a chunk keeps its entry.
+    EXPECT_EQ(store.getTailSequences(2, 10).size(), 3u);
+}
+
 TEST(KeeperTailStore, AgeOutLeavesYoungerStoriesAlone)
 {
     ensureLogger();
