@@ -657,6 +657,67 @@ jobs:
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
+      - name: Run Python Tail Read Test (writer on c2, reader on c3)
+        id: py-tail-read
+        run: |
+          set -e
+          _start=$(date +%s)
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+          REPO_DIR="/home/grc-iit/chronolog-repo"
+          # Prefer the interpreter the module was built against; the .so carries a
+          # cpython-<ver> ABI tag and only imports under a matching interpreter.
+          PY="${REPO_DIR}/.spack-env/view/bin/python3"
+          if ! docker exec --user grc-iit chronolog-c2 test -x "${PY}"; then
+            PY=python3
+            echo "ℹ️ spack python not found in the view; falling back to ${PY}"
+          fi
+          EXAMPLE="${REPO_DIR}/client/python/examples/tail_reader_client.py"
+          CLIENT_CONF="${WORK_DIR}/conf/default-chrono-client-conf.json"
+          # Writer and reader run on DIFFERENT containers, so this exercises the
+          # Python binding over the network and proves playback() serves a client
+          # that did not write the events.
+          WRITER=chronolog-c2
+          READER=chronolog-c3
+          CHRONICLE=py_tail_ci
+          STORY=py_tail_story
+
+          # The writer HOLDS the story: releasing it retires the pipeline, and a
+          # retired pipeline hands its chunks straight to the extraction queue
+          # instead of the tail, leaving the reader nothing to find.
+          echo "--- [1/2] Python writer on ${WRITER} (holds the story) ---"
+          docker exec -d --user grc-iit "${WRITER}" bash -c "
+            export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
+            export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            ${PY} -u ${EXAMPLE} --config ${CLIENT_CONF} --mode write \
+              --chronicle ${CHRONICLE} --story ${STORY} --events 40 --hold 300 \
+              > /tmp/py_tail_writer.log 2>&1
+          "
+
+          echo "--- [2/2] Python reader on ${READER} (polls the keeper tail) ---"
+          # Poll rather than read once: an event sits in the tail only between its
+          # chunk sealing (chunk_duration + acceptance_window) and ageing out
+          # (tail_retention_secs from the chunk end), so the readable window is
+          # about tail_retention_secs - acceptance_window_secs and a single shot
+          # can land either side of it.
+          RC=0
+          docker exec --user grc-iit "${READER}" bash -c "
+            export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
+            export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            ${PY} -u ${EXAMPLE} --config ${CLIENT_CONF} --mode read \
+              --chronicle ${CHRONICLE} --story ${STORY} \
+              --playback-n 10 --expect-min 1 --read-timeout 180
+          " > /tmp/py_tail_reader.log 2>&1 || RC=$?
+          cat /tmp/py_tail_reader.log || true
+
+          if [ $RC -ne 0 ]; then
+            echo "❌ Python tail read failed (exit ${RC}): playback() returned fewer events than expected"
+            echo '--- writer log ---'
+            docker exec --user grc-iit "${WRITER}" cat /tmp/py_tail_writer.log 2>/dev/null | tail -20 || true
+            exit 1
+          fi
+          echo "✅ Python tail read: playback() on ${READER} returned events written by ${WRITER}"
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
       - name: Clean up archive output directory
         if: always()
         run: |
@@ -669,7 +730,7 @@ jobs:
             else
               echo 'ℹ️ No output directory to clean'
             fi
-            rm -f /tmp/chronolog_replay.csv /tmp/reader_to_csv.log /tmp/tail_read_output.log /tmp/telemetry_writer.log 2>/dev/null || true
+            rm -f /tmp/chronolog_replay.csv /tmp/reader_to_csv.log /tmp/tail_read_output.log /tmp/telemetry_writer.log /tmp/py_tail_writer.log /tmp/py_tail_reader.log 2>/dev/null || true
           " || echo "⚠️ Output cleanup had errors but continuing"
 
       - name: Stop ChronoLog
