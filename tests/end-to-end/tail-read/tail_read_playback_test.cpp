@@ -192,7 +192,14 @@ int main(int argc, char** argv)
     {
         events.clear();
         last_rc = handle->playback(static_cast<size_t>(event_count), events);
-        if(last_rc == chronolog::CL_SUCCESS && events.size() >= static_cast<size_t>(event_count))
+        // CL_ERR_PARTIAL_RESULT is a usable answer, not a failure: every keeper
+        // replied but some events were released from a tail between the read's
+        // two phases. The events that did arrive are valid, so if they already
+        // cover what we are waiting for, the read succeeded for our purposes --
+        // treating -18 as fatal here would poll to the deadline over a routine
+        // eviction race.
+        bool const usable = (last_rc == chronolog::CL_SUCCESS || last_rc == chronolog::CL_ERR_PARTIAL_RESULT);
+        if(usable && events.size() >= static_cast<size_t>(event_count))
         {
             got_all = true;
             break;
@@ -206,7 +213,12 @@ int main(int argc, char** argv)
         std::cerr << "[tail-read-e2e] FAIL: playback() returned " << events.size() << "/" << event_count
                   << " events within " << max_wait_sec << "s"
                   << " (last status: " << chronolog::to_string_client(last_rc) << ")\n";
-        if(last_rc != chronolog::CL_SUCCESS)
+        if(last_rc == chronolog::CL_ERR_PARTIAL_RESULT)
+        {
+            std::cerr << "[tail-read-e2e]       the last read was TRUNCATED -- events left a keeper tail between "
+                         "the read's two phases; check tail_capacity and the write rate, not the seal window\n";
+        }
+        else if(last_rc != chronolog::CL_SUCCESS)
         {
             std::cerr << "[tail-read-e2e]       the last read FAILED rather than returning an empty tail -- check "
                          "keeper reachability, not the seal window\n";

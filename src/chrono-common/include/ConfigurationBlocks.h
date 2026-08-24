@@ -248,7 +248,13 @@ struct DataStoreConf
     // defaults false to preserve the sealed-only, final-result semantics.
     bool live_tail_read = false;
     // Upper bound (seconds) on how long a sealed chunk may sit in the keeper tail
-    // before it is forwarded for archival. Archival must not depend on write
+    // before it is forwarded for archival. NOTE this is measured from the chunk's
+    // END time, and a chunk only enters the tail once it decays at
+    // end_time + acceptance_window_secs -- so the window in which events are
+    // actually readable by playback() is
+    //     tail_retention_secs - acceptance_window_secs
+    // and the value must exceed acceptance_window_secs for the tail to hold
+    // anything at all. parseJsonConf warns when it does not. Archival must not depend on write
     // volume: without this, a story producing fewer than tail_capacity events is
     // only handed to the grapher at keeper shutdown, so its data never reaches
     // HDF5 while the keeper runs. 0 disables age-out. Keeper-only knob.

@@ -29,7 +29,11 @@ class KeeperRecordingClient;
 //   CL_ERR_NO_KEEPERS      - `keepers` is empty
 //   CL_ERR_QUERY_TIMED_OUT - no keeper answered, and at least one timed out
 //   CL_ERR_UNKNOWN         - no keeper answered, all with non-timeout RPC errors
-//   CL_SUCCESS             - at least one keeper answered; `events` holds what was
+//   CL_ERR_PARTIAL_RESULT  - every keeper answered but fewer payloads came back
+//                            than phase 1 promised: events were released from a
+//                            keeper tail between the two phases. `events` holds
+//                            what did arrive, so the result is usable but short.
+//   CL_SUCCESS             - the read is complete; `events` holds what was
 //                            retrieved, ascending by EventSequence (duplicates across
 //                            keepers collapse). Zero events means the story genuinely
 //                            has no sealed tail yet, or n == 0.

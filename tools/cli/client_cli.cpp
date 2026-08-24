@@ -69,6 +69,15 @@ static uint64_t get_uint64_t_from_string(const std::string& str)
 // argument parsing but would drop an interactive session over a typo.
 static bool parse_positive_count(const std::string& str, size_t& out)
 {
+    // strtoull silently wraps a negative literal to a huge unsigned value --
+    // "-1" comes back as ULLONG_MAX with errno==0 and the whole string consumed,
+    // so every check below would pass and playback() would be asked for
+    // SIZE_MAX events. Reject the sign explicitly before parsing.
+    if(!str.empty() && str[0] == '-')
+    {
+        std::cerr << "Only positive number is allowed: " << str << std::endl;
+        return false;
+    }
     char* endptr = nullptr;
     errno = 0;
     unsigned long long value = strtoull(str.c_str(), &endptr, 10);

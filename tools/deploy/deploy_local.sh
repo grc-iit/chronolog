@@ -393,8 +393,18 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
+    # Keeper first, while the grapher and player are both still up: on SIGTERM it
+    # runs flushRetainedChunks(), handing every retained tail chunk to the
+    # extraction queue, which drains over RDMA to BOTH of those peers. Stopping
+    # them first would leave that drain without a destination.
+    #
+    # Its grace is larger than the others' because it is the only service with
+    # real shutdown work: a full tail is up to tail_capacity events per story and
+    # can take well over 30s to drain. The grace is a ceiling, not a fixed wait --
+    # stop_service polls every 1s and returns as soon as the process is gone -- so
+    # a fast shutdown still costs about a second.
+    stop_service "${KEEPER_BIN}" 120
     stop_service "${PLAYER_BIN}" 30
-    stop_service "${KEEPER_BIN}" 30
     stop_service "${GRAPHER_BIN}" 30
     stop_service "${VISOR_BIN}" 30
     echo -e "${INFO}All ChronoLog processes stopped.${NC}"
