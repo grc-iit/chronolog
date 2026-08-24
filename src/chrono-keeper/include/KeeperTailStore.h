@@ -148,44 +148,66 @@ public:
     void ageOutChunks(uint64_t current_time)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
-        for(auto& story_entry: storyTails)
+        for(auto story_iter = storyTails.begin(); story_iter != storyTails.end();)
         {
-            StoryTail& tail = story_entry.second;
+            StoryTail& tail = story_iter->second;
             // This is the tick pins are counted in, so age them here -- before the
             // tail_retention_ns check, so pins still lapse when age-out is disabled.
             decayPins(tail);
-            if(tailRetentionNs == 0)
+            if(tailRetentionNs != 0)
             {
-                continue;
+                // index is ordered by EventSequence (event time first) and chunks are
+                // time-partitioned, so the oldest entry belongs to the oldest chunk;
+                // stop at the first chunk still inside its window.
+                bool deferred_by_pin = false;
+                while(!tail.index.empty())
+                {
+                    StoryChunk* oldest_chunk = tail.index.begin()->second;
+                    if(oldest_chunk->getEndTime() + tailRetentionNs > current_time)
+                    {
+                        break;
+                    }
+                    // Promised to an in-flight tail read: archiving it now would make
+                    // that client's phase-2 fetch come back short. Honour the pin -- but
+                    // for a BOUNDED number of consecutive ticks, not merely while reads
+                    // keep arriving. A client re-pins on every phase 1, and once n
+                    // reaches the tail size that answer covers every chunk including the
+                    // oldest, so honouring pins indefinitely would stop archival
+                    // completely for exactly the stories someone is watching. Archival
+                    // must not depend on whether anyone is reading.
+                    if(isPinned(tail, oldest_chunk) && tail.pinDeferredTicks < kPinTicks)
+                    {
+                        deferred_by_pin = true;
+                        break;
+                    }
+                    releaseOldestIndexedEvent(tail);
+                }
+                tail.pinDeferredTicks = deferred_by_pin ? tail.pinDeferredTicks + 1 : 0;
             }
-            // index is ordered by EventSequence (event time first) and chunks are
-            // time-partitioned, so the oldest entry belongs to the oldest chunk;
-            // stop at the first chunk still inside its window.
-            bool deferred_by_pin = false;
-            while(!tail.index.empty())
+            // Reclaim the per-story entry once its last chunk has been handed over.
+            // ingestSealedChunk recreates it on demand, so a story that seals again
+            // just gets a fresh one -- whereas keeping the husk would make this scan,
+            // which runs on every maintenance tick, grow with the number of stories
+            // the keeper has EVER seen and never shrink. That per-tick cost matters
+            // more than the bytes on a long-lived keeper with high story turnover.
+            if(tail.index.empty() && tail.liveCounts.empty())
             {
-                StoryChunk* oldest_chunk = tail.index.begin()->second;
-                if(oldest_chunk->getEndTime() + tailRetentionNs > current_time)
-                {
-                    break;
-                }
-                // Promised to an in-flight tail read: archiving it now would make
-                // that client's phase-2 fetch come back short. Honour the pin -- but
-                // for a BOUNDED number of consecutive ticks, not merely while reads
-                // keep arriving. A client re-pins on every phase 1, and once n
-                // reaches the tail size that answer covers every chunk including the
-                // oldest, so honouring pins indefinitely would stop archival
-                // completely for exactly the stories someone is watching. Archival
-                // must not depend on whether anyone is reading.
-                if(isPinned(tail, oldest_chunk) && tail.pinDeferredTicks < kPinTicks)
-                {
-                    deferred_by_pin = true;
-                    break;
-                }
-                releaseOldestIndexedEvent(tail);
+                story_iter = storyTails.erase(story_iter);
             }
-            tail.pinDeferredTicks = deferred_by_pin ? tail.pinDeferredTicks + 1 : 0;
+            else
+            {
+                ++story_iter;
+            }
         }
+    }
+
+    // Number of per-story tail entries currently held. An entry exists only while
+    // the story has retained chunks: ageOutChunks reclaims it once the last chunk
+    // is handed over, so this does not grow with stories merely seen.
+    std::size_t retainedStoryCount()
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        return storyTails.size();
     }
 
     // Register/unregister the active (unsealed) timeline source for a story. Only
