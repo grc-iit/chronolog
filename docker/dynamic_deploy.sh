@@ -107,6 +107,8 @@ for i in $(seq 1 $NUM_CONTAINERS); do
     container_name: chronolog-c$i
     volumes:
       - shared_home:/home/grc-iit
+    environment:
+      NUM_CONTAINERS: $NUM_CONTAINERS
 EOF
 
     # Add dependencies starting from the second container
@@ -118,10 +120,7 @@ EOF
     fi
 done
 
-# Add the setup command for the last container
 cat >>dynamic-compose.yaml <<EOF
-    environment:
-      NUM_CONTAINERS: $NUM_CONTAINERS
 
 networks:
   chronolog_net:
@@ -134,39 +133,74 @@ EOF
 docker compose -f dynamic-compose.yaml up -d
 
 # Prepare SSH keys and known hosts
-docker exec -it chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
-docker exec -it chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
-docker exec -it chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
-docker exec -it chronolog-c1 bash -c "chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
-docker exec -it chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
+docker exec chronolog-c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' || true"
+docker exec chronolog-c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
+docker exec chronolog-c1 bash -c "for i in \$(seq 1 $NUM_CONTAINERS); do ssh-keyscan -t rsa,ed25519 c\$i >> /home/grc-iit/.ssh/known_hosts 2>/dev/null; done"
+docker exec chronolog-c1 bash -c "chmod 700 /home/grc-iit/.ssh && chmod 600 /home/grc-iit/.ssh/id_rsa && chmod 644 /home/grc-iit/.ssh/id_rsa.pub && chmod 600 /home/grc-iit/.ssh/authorized_keys"
+docker exec chronolog-c1 bash -c "echo 'export USER=grc-iit' >> ~/.bashrc"
+# Restart sshd in each container. This used to background a `sleep infinity` per
+# container and then `wait` on them, which never returns -- everything below
+# (hosts files, deployment) was unreachable. The containers are already kept
+# alive by the compose `command`, so this only needs to bounce the service.
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec -it chronolog-c$i bash -c "sudo service ssh restart && sleep infinity" &
+    docker exec chronolog-c$i bash -c "sudo service ssh restart" || {
+        echo "Error: could not restart ssh in chronolog-c$i"
+        exit 1
+    }
 done
-wait
 
-CHRONOLOG_CONF=~/chronolog-release-install/chronolog/conf
-CHRONOLOG_TOOLS=~/chronolog-release-install/chronolog/tools
+# Absolute container paths. These must NOT use `~`: the shell expands it on the
+# HOST before docker exec ever sees it, producing the host user's home
+# (/home/<you>/...) instead of the container's /home/grc-iit, so every path below
+# pointed somewhere that does not exist inside the container.
+#
+# The prefix is detected rather than hardcoded: it was pinned to
+# `chronolog-release-install`, but the published image installs to
+# `chronolog-install`, so every hosts-file write and the deploy call landed on a
+# path that does not exist -- and the script still exited 0 reporting success.
+CHRONOLOG_HOME=/home/grc-iit
+CHRONOLOG_PREFIX=""
+for candidate in chronolog-install chronolog-release-install; do
+    if docker exec chronolog-c1 test -x "${CHRONOLOG_HOME}/${candidate}/chronolog/tools/deploy_cluster.sh" 2>/dev/null; then
+        CHRONOLOG_PREFIX="${CHRONOLOG_HOME}/${candidate}/chronolog"
+        break
+    fi
+done
+if [ -z "$CHRONOLOG_PREFIX" ]; then
+    echo "Error: no ChronoLog install found in chronolog-c1."
+    echo "       Looked for <prefix>/chronolog/tools/deploy_cluster.sh under:"
+    echo "         ${CHRONOLOG_HOME}/chronolog-install"
+    echo "         ${CHRONOLOG_HOME}/chronolog-release-install"
+    echo "       Does image '${IMAGE_NAME}' actually contain a built ChronoLog?"
+    exit 1
+fi
+echo "Using ChronoLog install prefix: ${CHRONOLOG_PREFIX}"
+CHRONOLOG_CONF=${CHRONOLOG_PREFIX}/conf
+CHRONOLOG_TOOLS=${CHRONOLOG_PREFIX}/tools
 
 # Prepare hosts files
-docker exec -it chronolog-c1 bash -c "rm -rf $CHRONOLOG_CONF/hosts_*"
-docker exec -it chronolog-c1 bash -c "echo c1 > $CHRONOLOG_CONF/hosts_visor"
+docker exec chronolog-c1 bash -c "rm -rf $CHRONOLOG_CONF/hosts_*"
+docker exec chronolog-c1 bash -c "echo c1 > $CHRONOLOG_CONF/hosts_visor"
 for i in $(seq 2 $(($NUM_KEEPERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_keeper"
+    docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_keeper"
 done
 for i in $(seq $(($NUM_KEEPERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_grapher"
+    docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_grapher"
 done
 for i in $(seq $(($NUM_KEEPERS + $NUM_GRAPHERS + 2)) $(($NUM_KEEPERS + $NUM_GRAPHERS + $NUM_PLAYERS + 1))); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_player"
+    docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_player"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_clients"
+    docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_clients"
 done
 for i in $(seq 1 $NUM_CONTAINERS); do
-    docker exec -it chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_all"
+    docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_all"
 done
 
 # Deploy ChronoLog (pre-built in image, no build/install needed)
-docker exec -it chronolog-c1 bash -c "$CHRONOLOG_TOOLS/deploy_cluster.sh --start"
+if ! docker exec chronolog-c1 bash -c "$CHRONOLOG_TOOLS/deploy_cluster.sh --start"; then
+    echo "Error: deploy_cluster.sh --start failed; the cluster is NOT running."
+    exit 1
+fi
 
 echo "Deployed $NUM_CONTAINERS ChronoLog containers (1 for ChronoVisor, $NUM_KEEPERS for ChronoKeeper, $NUM_GRAPHERS for ChronoGrapher, and $NUM_PLAYERS for ChronoPlayer)"
