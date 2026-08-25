@@ -603,7 +603,11 @@ jobs:
               tools/benchmark/chrono-bench --config \${CLIENT_CONF} \
               -l -n 64 -t 1 -h 1 -a 4096 -s 4096 -b 4096 -e 500 -m 120 \
               > /tmp/tail_read_output.log 2>&1 || RC=\$?
-            grep -A4 'Latency (send' /tmp/tail_read_output.log || true
+            # chrono-bench heads this block 'Tail-read latency / cost results' with
+            # rows named 'send->visible'; the previous pattern 'Latency (send' matched
+            # nothing, and `|| true` hid that, so a regression showed the assertion
+            # failure with no latency numbers next to it.
+            grep -E 'Tail-read latency|send->visible|playback\(\) call' /tmp/tail_read_output.log || true
             if [ \$RC -ne 0 ]; then
               echo \"❌ tail read (chrono-bench -l) failed (exit \${RC})\"
               tail -30 /tmp/tail_read_output.log || true
@@ -654,6 +658,50 @@ jobs:
             echo \"✅ archive read: replayed \${ROWS} event(s) from \${CHRONICLE}/\${STORY}\"
             head -3 \${CSV}
             echo '✅ Read path test completed (write -> tail read -> archive read)'
+          "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      # Each recording group is an independent keeper->grapher path. The archive
+      # read above only proves that ONE story reached HDF5, which a deployment
+      # where every keeper drains into grapher 1 would also satisfy -- exactly the
+      # deploy_local.sh defect where the per-group drain port was written to a key
+      # nothing reads. Assert instead that EVERY grapher archived something.
+      - name: Verify every recording group archived data
+        id: group-coverage
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            # HDF5FileChunkExtractor logs this at INFO only when a chunk is actually
+            # written out, so it is evidence of data arriving, not merely of a
+            # grapher being alive.
+            MARKER='HDF5FileChunkExtractor'
+            EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_grapher)
+            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null || true)
+            if [ -z \"\${LOGS}\" ]; then
+              echo '❌ no grapher logs found under monitor/'
+              ls -la \${WORK_DIR}/monitor/ 2>/dev/null | head -20 || true
+              exit 1
+            fi
+            ACTIVE=0
+            for f in \${LOGS}; do
+              if grep -q \"\${MARKER}.*processing chunk\" \"\$f\" 2>/dev/null; then
+                echo \"  ✅ \$(basename \$f): archived chunks\"
+                ACTIVE=\$(( ACTIVE + 1 ))
+              else
+                echo \"  ❌ \$(basename \$f): never archived a chunk\"
+              fi
+            done
+            echo \"graphers that archived data: \${ACTIVE} / \${EXPECTED}\"
+            if [ \"\${ACTIVE}\" -lt \"\${EXPECTED}\" ]; then
+              echo '❌ at least one recording group never received data -- keepers may all be'
+              echo '   draining into the same grapher (check the per-group drain endpoints in'
+              echo '   each keeper conf: ExtractionModule.extractors.extractor_to_grapher).'
+              exit 1
+            fi
+            echo '✅ every recording group received and archived data'
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
@@ -716,6 +764,68 @@ jobs:
             exit 1
           fi
           echo "✅ Python tail read: playback() on ${READER} returned events written by ${WRITER}"
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      # A keeper holds sealed-but-unarchived chunks in its tail. On SIGTERM it must
+      # hand them to the extraction queue while extraction is still draining --
+      # flushRetainedChunks(). Before that existed the destructor stashed them into
+      # an already-shut-down queue, which freed them instead: silent loss of
+      # everything sealed in the last tail_retention_secs. Nothing else in this
+      # pipeline covers that path, because every other test lets data age out
+      # normally rather than killing a keeper with a populated tail.
+      - name: Verify keeper shutdown flushes its tail
+        id: shutdown-flush
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            MPIEXEC=\${REPO_DIR}/.spack-env/view/bin/mpiexec
+            [ -x \"\$MPIEXEC\" ] || MPIEXEC=\$(command -v mpiexec)
+            export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            cd \${WORK_DIR}
+
+            SEAL=\$(( \$(jq -r '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs' conf/default-chrono-conf.json 2>/dev/null || echo 10) + \$(jq -r '.chrono_keeper.DataStoreInternals.acceptance_window_secs' conf/default-chrono-conf.json 2>/dev/null || echo 15) + 10 ))
+            echo \"writing a burst, then waiting \${SEAL}s for it to seal into the keeper tail ...\"
+            timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
+              examples/chrono-client-example-distributed-telemetry-writer \
+              --config conf/default-chrono-client-conf.json -d 15 -i 3 >/dev/null 2>&1 || true
+            sleep \${SEAL}
+
+            BEFORE=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
+            echo \"HDF5 files before keeper shutdown: \${BEFORE}\"
+
+            # SIGTERM only the keepers: the graphers must stay up to receive the
+            # flushed chunks. SIGKILL would bypass the flush entirely.
+            parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
+            for i in \$(seq 1 40); do
+              REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
+              [ \"\${REMAIN}\" = \"0\" ] && break
+              sleep 3
+            done
+            sleep 10   # let the extraction queue drain what the flush handed over
+
+            FLUSHED=\$(grep -h 'Flushed .* retained chunk' \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | tail -5 || true)
+            AFTER=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
+            echo \"HDF5 files after keeper shutdown : \${AFTER}\"
+
+            if [ -n \"\${FLUSHED}\" ]; then
+              echo \"\${FLUSHED}\" | sed 's/^/  /'
+              echo '✅ keeper flushed its retained tail on shutdown'
+            else
+              echo '❌ no keeper logged a tail flush on shutdown.'
+              echo '   Either flushRetainedChunks() did not run before extraction stopped,'
+              echo \"   or the tail was already empty (retention window: check that the burst\"
+              echo \"   sealed within tail_retention_secs of the shutdown).\"
+              tail -20 \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null || true
+              exit 1
+            fi
+          "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
       - name: Clean up archive output directory
