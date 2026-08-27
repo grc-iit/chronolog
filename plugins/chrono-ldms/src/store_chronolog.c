@@ -112,9 +112,22 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
     ovis_log(ldmsd_plug_log_get(handle), OVIS_LINFO, PNAME ": closed a story\n");
 }
 
-static int constructor(ldmsd_plug_handle_t handle) { return 0; }
+static int constructor(ldmsd_plug_handle_t handle)
+{
+    (void)handle;
+    clog_plugin_attach();
+    return 0;
+}
 
-static void destructor(ldmsd_plug_handle_t handle) { clog_disconnect(); }
+/* Only the LAST instance's detach tears down the shared connection; see
+ * clog_plugin_attach/detach. This used to call the process-wide clog_disconnect()
+ * unconditionally, so terminating one instance freed the client and every
+ * StoryHandle while another instance's open stories still pointed at them. */
+static void destructor(ldmsd_plug_handle_t handle)
+{
+    (void)handle;
+    clog_plugin_detach();
+}
 
 struct ldmsd_store ldmsd_plugin_interface = {
         .base =

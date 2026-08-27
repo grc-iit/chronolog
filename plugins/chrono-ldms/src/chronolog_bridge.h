@@ -57,8 +57,20 @@ extern "C"
     /* Release the story and free the handle. */
     void clog_close(clog_story_t story);
 
-    /* Disconnect and destroy the shared client (best effort). */
-    void clog_disconnect(void);
+    /*
+ * Register/unregister one ldmsd plugin instance. The newer OVIS plugin API is
+ * per-instance (each `load name=... plugin=store_chronolog` gets its own
+ * handle), but the ChronoLog client, its connection and every acquired story
+ * are process-wide. Call attach from the plugin constructor and detach from the
+ * destructor: the connection is dropped only when the LAST instance detaches,
+ * so terminating one instance cannot pull the client out from under another.
+ *
+ * detach never destroys the client object itself -- see the note in
+ * clog_plugin_detach() -- so a plugin reload reconnects rather than reusing
+ * freed memory.
+ */
+    void clog_plugin_attach(void);
+    void clog_plugin_detach(void);
 
     /*
  * Human-readable description of the most recent failure on the calling thread.

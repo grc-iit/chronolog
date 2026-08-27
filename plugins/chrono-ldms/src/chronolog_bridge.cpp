@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <map>
 #include <mutex>
 #include <new>
 #include <cerrno>
@@ -26,6 +27,18 @@ struct Shared
     std::mutex lock;
     chronolog::Client* client = nullptr;
     bool connected = false;
+    /* Number of live ldmsd plugin instances (constructor/destructor pairs). The
+     * newer OVIS plug API is per-instance, but everything below is process-wide,
+     * so one instance's destructor must not tear down state another still uses.
+     * The connection is dropped only when the last instance detaches. */
+    unsigned instances = 0;
+    /* Acquired stories, keyed by chronicle + '/' + story, each refcounted.
+     * ChronoLog's AcquireStory returns the SAME StoryHandle* for a repeat
+     * acquisition and ReleaseStory deletes it outright
+     * (StorytellerClient::removeAcquiredStoryHandle), so without a refcount two
+     * storage policies over one container/schema share a handle and the first
+     * strgp_stop frees it under the second. */
+    std::map<std::string, struct Story*> stories;
     /* The portal the client was constructed with. A ChronoLog client is a
      * process-wide singleton whose endpoint is fixed at first construction
      * (ChronologClientImpl::GetClientImplInstance returns the existing instance
@@ -36,13 +49,16 @@ struct Shared
 };
 Shared g_shared;
 
-/* Per-story handle returned to the C glue as an opaque clog_story_t. */
+/* Per-story handle returned to the C glue as an opaque clog_story_t. Shared by
+ * every storage policy writing the same chronicle/story, hence the refcount. */
 struct Story
 {
     std::mutex lock;
+    std::string key;
     std::string chronicle;
     std::string story;
     chronolog::StoryHandle* handle = nullptr;
+    unsigned refs = 0; /* guarded by g_shared.lock, not by Story::lock */
 };
 
 thread_local std::string t_last_error;
@@ -318,6 +334,17 @@ extern "C"
             return nullptr;
         }
 
+        /* Two storage policies over the same container/schema is an ordinary
+         * ldmsd configuration, and both land here. Share one refcounted Story
+         * rather than handing out two owners of one StoryHandle. */
+        const std::string key = std::string(chronicle) + "/" + story;
+        auto it = g_shared.stories.find(key);
+        if(it != g_shared.stories.end())
+        {
+            ++it->second->refs;
+            return it->second;
+        }
+
         int rc = g_shared.client->CreateChronicle(chronicle);
         if(rc != chronolog::CL_SUCCESS && rc != chronolog::CL_ERR_CHRONICLE_EXISTS)
         {
@@ -336,13 +363,18 @@ extern "C"
         Story* s = new(std::nothrow) Story();
         if(!s)
         {
+            /* Safe to release here: the registry lookup above proved no other
+             * Story owns this handle yet. */
             g_shared.client->ReleaseStory(chronicle, story);
             set_error("out of memory allocating story handle");
             return nullptr;
         }
+        s->key = key;
         s->chronicle = chronicle;
         s->story = story;
         s->handle = acq.second;
+        s->refs = 1;
+        g_shared.stories.emplace(key, s);
         return s;
     }
 
@@ -374,25 +406,63 @@ extern "C"
         Story* s = static_cast<Story*>(_s);
         if(!s)
             return;
+
+        std::lock_guard<std::mutex> g(g_shared.lock);
+        if(s->refs > 0 && --s->refs > 0)
         {
-            std::lock_guard<std::mutex> g(g_shared.lock);
-            if(g_shared.client && g_shared.connected)
-                g_shared.client->ReleaseStory(s->chronicle, s->story);
+            /* Another storage policy is still writing this story. Releasing now
+             * would delete the StoryHandle out from under it -- ReleaseStory
+             * destroys the handle rather than dropping a reference. */
+            return;
         }
+        if(g_shared.client && g_shared.connected)
+            g_shared.client->ReleaseStory(s->chronicle, s->story);
+        g_shared.stories.erase(s->key);
         delete s;
     }
 
-    void clog_disconnect(void)
+    void clog_plugin_attach(void)
     {
         std::lock_guard<std::mutex> g(g_shared.lock);
-        if(g_shared.client)
+        ++g_shared.instances;
+    }
+
+    void clog_plugin_detach(void)
+    {
+        std::lock_guard<std::mutex> g(g_shared.lock);
+        if(g_shared.instances > 0 && --g_shared.instances > 0)
         {
-            if(g_shared.connected)
-                g_shared.client->Disconnect();
-            delete g_shared.client;
-            g_shared.client = nullptr;
+            /* Another plugin instance is still loaded. The client, the
+             * connection and every acquired story are process-wide, so tearing
+             * them down here would leave that instance's Story pointers
+             * dangling on its next sample. */
+            return;
+        }
+        /* Release anything still acquired before dropping the connection, so a
+         * later reload re-acquires cleanly. Disconnect() itself does NOT release
+         * stories (it only issues the visor RPC and marks the client
+         * SHUTTING_DOWN), and ~StorytellerClient's handle-delete loop is
+         * commented out, so entries left here would survive as stale registry
+         * hits and clog_open() would hand back a handle for a story this process
+         * no longer holds. */
+        if(g_shared.client && g_shared.connected)
+        {
+            for(auto& entry: g_shared.stories)
+            {
+                g_shared.client->ReleaseStory(entry.second->chronicle, entry.second->story);
+                delete entry.second;
+            }
+            g_shared.stories.clear();
+            g_shared.client->Disconnect();
             g_shared.connected = false;
         }
+        /* Deliberately NOT `delete g_shared.client`. ChronologClientImpl is a
+         * process-wide singleton whose static instance pointer is never cleared
+         * by its destructor, so deleting the Client leaves that static dangling
+         * and the next clog_connect() -- after an ordinary plugin reload --
+         * would get the freed object back from GetClientImplInstance(). Keeping
+         * the object for the process lifetime costs one idle client; Connect()
+         * accepts a reconnect from the disconnected state, so a reload works. */
     }
 
     const char* clog_last_error(void) { return t_last_error.c_str(); }
