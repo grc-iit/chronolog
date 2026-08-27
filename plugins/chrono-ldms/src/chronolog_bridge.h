@@ -13,7 +13,25 @@
 #define STORE_CHRONOLOG_BRIDGE_H
 
 #include <stddef.h>
+
+/* ldms.h must be included with C linkage from the C++ bridge TU. The header
+ * comment above asserts ldms.h is "C++-safe", but nothing in this repository
+ * verifies that: the plugin links no LDMS library (the ldms_* symbols are
+ * resolved by ldmsd at dlopen time), so a mangling mismatch would not surface at
+ * build time -- it would surface as `undefined symbol: _Z18ldms_metric_get_u64...`
+ * when ldmsd loads libstore_chronolog.so. Wrapping the include is a no-op if
+ * ldms.h already guards itself, and is what makes the assertion true if it does
+ * not. */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #include "ldms.h"
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef __cplusplus
 extern "C"

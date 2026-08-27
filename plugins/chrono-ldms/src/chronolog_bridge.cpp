@@ -8,6 +8,8 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <cmath>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <new>
@@ -79,12 +81,21 @@ std::string portal_to_string(chronolog::ClientPortalServiceConf const& p)
 
 /* ---- JSON serialization ---------------------------------------------- */
 
-void json_string(std::ostringstream& out, const char* s)
+/* Emit a JSON string.
+ *
+ * max_len bounds how far the source may be read. An LDMS char-array metric is a
+ * fixed-size buffer that is NOT guaranteed NUL-terminated: a sampler writing a
+ * string that exactly fills the declared size leaves no terminator, and scanning
+ * for one then walks into the following metric's bytes (or past the set) until a
+ * zero byte happens to appear, emitting adjacent data into the event. Callers
+ * with a NUL-terminated C string (metric names, single chars) pass the default
+ * and get the old behaviour. */
+void json_string(std::ostringstream& out, const char* s, size_t max_len = SIZE_MAX)
 {
     out << '"';
     if(s)
     {
-        for(const char* p = s; *p; ++p)
+        for(const char* p = s; (size_t)(p - s) < max_len && *p; ++p)
         {
             unsigned char c = (unsigned char)*p;
             switch(c)
@@ -118,6 +129,22 @@ void json_string(std::ostringstream& out, const char* s)
         }
     }
     out << '"';
+}
+
+/* JSON has no NaN or Infinity literal. Streaming a non-finite double emits the
+ * bare tokens `nan` / `-nan` / `inf`, which makes the whole event unparseable --
+ * and because ChronoLog stores events as opaque strings nothing rejects it at
+ * write time, so the sample is corrupt forever. Non-finite values become null,
+ * which every JSON reader accepts. Derived/rate samplers produce these routinely
+ * (first sample, division by zero). */
+void json_number(std::ostringstream& out, double v, int precision)
+{
+    if(!std::isfinite(v))
+    {
+        out << "null";
+        return;
+    }
+    out << std::setprecision(precision) << v;
 }
 
 void json_scalar(std::ostringstream& out, ldms_set_t set, int idx, enum ldms_value_type type)
@@ -155,10 +182,10 @@ void json_scalar(std::ostringstream& out, ldms_set_t set, int idx, enum ldms_val
             out << ldms_metric_get_s64(set, idx);
             break;
         case LDMS_V_F32:
-            out << std::setprecision(9) << ldms_metric_get_float(set, idx);
+            json_number(out, ldms_metric_get_float(set, idx), 9);
             break;
         case LDMS_V_D64:
-            out << std::setprecision(17) << ldms_metric_get_double(set, idx);
+            json_number(out, ldms_metric_get_double(set, idx), 17);
             break;
         default:
             out << "null";
@@ -170,7 +197,9 @@ void json_array(std::ostringstream& out, ldms_set_t set, int idx, enum ldms_valu
 {
     if(type == LDMS_V_CHAR_ARRAY)
     {
-        json_string(out, ldms_metric_array_get_str(set, idx));
+        /* Bounded by the metric's declared length -- the buffer need not be
+         * NUL-terminated (see json_string). */
+        json_string(out, ldms_metric_array_get_str(set, idx), (size_t)ldms_metric_array_get_len(set, idx));
         return;
     }
     int n = ldms_metric_array_get_len(set, idx);
@@ -206,10 +235,10 @@ void json_array(std::ostringstream& out, ldms_set_t set, int idx, enum ldms_valu
                 out << ldms_metric_array_get_s64(set, idx, j);
                 break;
             case LDMS_V_F32_ARRAY:
-                out << std::setprecision(9) << ldms_metric_array_get_float(set, idx, j);
+                json_number(out, ldms_metric_array_get_float(set, idx, j), 9);
                 break;
             case LDMS_V_D64_ARRAY:
-                out << std::setprecision(17) << ldms_metric_array_get_double(set, idx, j);
+                json_number(out, ldms_metric_array_get_double(set, idx, j), 17);
                 break;
             default:
                 out << "null";
