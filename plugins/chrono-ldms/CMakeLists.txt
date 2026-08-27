@@ -37,20 +37,53 @@ endif()
 #   -DLDMS_PREFIX=/path/to/ldms-install        (CMake cache), or
 #   LDMS_PREFIX=/path/to/ldms-install <cmake>  (environment)
 # ---------------------------------------------------------------------------
-set(LDMS_PREFIX "$ENV{LDMS_PREFIX}" CACHE PATH
-    "Path to an LDMS/OVIS install that contains include/ldms/ldmsd.h")
+# `set(<var> ... CACHE ...)` only seeds the cache on the FIRST configure of a
+# build tree. Because the deploy scripts reuse ~/chronolog-build/<type>, seeding
+# it from $ENV{LDMS_PREFIX} alone meant the environment variable was read once
+# and silently ignored on every later configure -- so the documented
+# `LDMS_PREFIX=... local_single_user_deploy.sh -b` recipe did nothing on an
+# existing build tree and the plugin was skipped with no hint why. Declare the
+# cache entry empty and consult the environment on every configure, so an
+# explicit -DLDMS_PREFIX still wins and the env var keeps working.
+set(LDMS_PREFIX "" CACHE PATH
+    "Path to an LDMS/OVIS install that contains include/ldms/ldmsd_plug_api.h")
+if(NOT LDMS_PREFIX AND DEFINED ENV{LDMS_PREFIX})
+    set(LDMS_PREFIX "$ENV{LDMS_PREFIX}")
+    message(STATUS "chrono-ldms: using LDMS_PREFIX from the environment: ${LDMS_PREFIX}")
+endif()
 
+# Gate on ldmsd_plug_api.h, not ldmsd.h. This plugin targets the NEWER OVIS
+# plugin ABI -- ldmsd_plug_handle_t, ldmsd_plug_log_get(), ovis_log(), and a
+# `struct ldmsd_store ldmsd_plugin_interface` object. Older OVIS (4.3/4.4) ships
+# ldmsd.h but none of that, so gating on ldmsd.h reported the dependency as
+# found and then failed the build with a wall of errors from unknown types.
 find_path(LDMS_INCLUDE_DIR
-    NAMES ldmsd.h
+    NAMES ldmsd_plug_api.h
     HINTS ${LDMS_PREFIX}
     PATH_SUFFIXES include/ldms include ldms
 )
 
 if(NOT LDMS_INCLUDE_DIR)
-    message(STATUS
-        "chrono-ldms: LDMS headers (ldmsd.h) not found -- skipping the "
-        "store_chronolog plugin (the round-trip example is still built). "
-        "Set -DLDMS_PREFIX=<ldms-install> to build the plugin.")
+    # Distinguish "no OVIS at all" from "OVIS too old" -- the second is the
+    # confusing one, so name it explicitly.
+    find_path(LDMS_LEGACY_INCLUDE_DIR
+        NAMES ldmsd.h
+        HINTS ${LDMS_PREFIX}
+        PATH_SUFFIXES include/ldms include ldms
+    )
+    if(LDMS_LEGACY_INCLUDE_DIR)
+        message(STATUS
+            "chrono-ldms: found ldmsd.h in ${LDMS_LEGACY_INCLUDE_DIR} but no ldmsd_plug_api.h -- "
+            "this OVIS/LDMS install predates the plugin ABI store_chronolog targets "
+            "(ldmsd_plug_handle_t / ovis_log / ldmsd_plugin_interface). Skipping the "
+            "store_chronolog plugin; the round-trip example is still built. Upgrade OVIS or "
+            "point -DLDMS_PREFIX at a newer install to build it.")
+    else()
+        message(STATUS
+            "chrono-ldms: LDMS headers (ldmsd_plug_api.h) not found -- skipping the "
+            "store_chronolog plugin (the round-trip example is still built). "
+            "Set -DLDMS_PREFIX=<ldms-install> to build the plugin.")
+    endif()
     return()
 endif()
 message(STATUS "chrono-ldms: building store_chronolog (LDMS headers: ${LDMS_INCLUDE_DIR})")

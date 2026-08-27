@@ -188,6 +188,15 @@ build_project() {
     if [[ -n "$install_tests" ]]; then
         cmake_args+=(-DCHRONOLOG_INSTALL_TESTS="${install_tests}")
     fi
+    # LDMS/OVIS is an EXTERNAL dependency (a site already running LDMS), never
+    # part of the Spack env. Forward LDMS_PREFIX as an explicit -D for the same
+    # reason as CHRONOLOG_INSTALL_TESTS above: this build tree is reused, so a
+    # bare env var would be read only on the first configure and silently ignored
+    # afterwards -- leaving the store_chronolog plugin quietly unbuilt.
+    if [[ -n "${LDMS_PREFIX:+x}" ]]; then
+        echo -e "${DEBUG}LDMS_PREFIX=${LDMS_PREFIX} (from environment); store_chronolog will be built if the headers are there.${NC}"
+        cmake_args+=(-DLDMS_PREFIX="${LDMS_PREFIX}")
+    fi
     if [[ -n "$EXTRA_CXX_FLAGS" ]]; then
         echo -e "${DEBUG}Extra CXX flags: ${EXTRA_CXX_FLAGS}${NC}"
         cmake_args+=(-DCMAKE_CXX_FLAGS="${EXTRA_CXX_FLAGS}")

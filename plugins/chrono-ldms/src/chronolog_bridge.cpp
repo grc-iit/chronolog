@@ -26,6 +26,13 @@ struct Shared
     std::mutex lock;
     chronolog::Client* client = nullptr;
     bool connected = false;
+    /* The portal the client was constructed with. A ChronoLog client is a
+     * process-wide singleton whose endpoint is fixed at first construction
+     * (ChronologClientImpl::GetClientImplInstance returns the existing instance
+     * and ignores the portal argument), so this is the endpoint this process is
+     * committed to for its lifetime. Kept so a later, conflicting client_conf
+     * can be rejected loudly instead of silently ignored. */
+    chronolog::ClientPortalServiceConf portal;
 };
 Shared g_shared;
 
@@ -41,6 +48,18 @@ struct Story
 thread_local std::string t_last_error;
 
 void set_error(const std::string& msg) { t_last_error = msg; }
+
+/* Endpoint identity for the client-portal conf, used to detect an operator
+ * asking for an endpoint this process can no longer switch to. */
+bool same_portal(chronolog::ClientPortalServiceConf const& a, chronolog::ClientPortalServiceConf const& b)
+{
+    return a.PROTO_CONF == b.PROTO_CONF && a.IP == b.IP && a.PORT == b.PORT && a.PROVIDER_ID == b.PROVIDER_ID;
+}
+
+std::string portal_to_string(chronolog::ClientPortalServiceConf const& p)
+{
+    return p.PROTO_CONF + "://" + p.IP + ":" + std::to_string(p.PORT) + "@" + std::to_string(p.PROVIDER_ID);
+}
 
 /* ---- JSON serialization ---------------------------------------------- */
 
@@ -229,17 +248,18 @@ extern "C"
     int clog_connect(const char* client_conf_path)
     {
         std::lock_guard<std::mutex> g(g_shared.lock);
-        if(g_shared.connected)
-            return 0;
+
+        /* An explicit client_conf is an operator instruction and must never be
+         * silently dropped. A NULL/empty path is the open_store() fallback
+         * ("reached without config -- use defaults") and must NOT override an
+         * endpoint an earlier config() already established. */
+        const bool explicit_conf = (client_conf_path && client_conf_path[0]);
 
         chronolog::ClientConfiguration conf;
-        if(client_conf_path && client_conf_path[0])
+        if(explicit_conf && !conf.load_from_file(client_conf_path))
         {
-            if(!conf.load_from_file(client_conf_path))
-            {
-                set_error(std::string("failed to load client_conf '") + client_conf_path + "'");
-                return EINVAL;
-            }
+            set_error(std::string("failed to load client_conf '") + client_conf_path + "'");
+            return EINVAL;
         }
 
         chronolog::ClientPortalServiceConf portal;
@@ -248,7 +268,26 @@ extern "C"
         portal.PORT = conf.PORTAL_CONF.PORT;
         portal.PROVIDER_ID = conf.PORTAL_CONF.PROVIDER_ID;
 
-        if(!g_shared.client)
+        if(g_shared.client)
+        {
+            /* The endpoint is fixed for the life of the process (see Shared::portal).
+             * If the operator is now asking for a different one, say so instead of
+             * connecting to the old address and reporting success -- in a
+             * distributed deployment that is the difference between reaching the
+             * real ChronoVisor and silently talking to 127.0.0.1 forever. */
+            if(explicit_conf && !same_portal(g_shared.portal, portal))
+            {
+                set_error("client_conf '" + std::string(client_conf_path) + "' requests " + portal_to_string(portal) +
+                          " but this process is already bound to " + portal_to_string(g_shared.portal) +
+                          "; the ChronoLog client endpoint cannot be changed once created. Configure "
+                          "store_chronolog before starting any storage policy, and restart ldmsd to change it.");
+                return EINVAL;
+            }
+            if(g_shared.connected)
+                return 0;
+            /* Client exists but the previous Connect() failed -- retry it below. */
+        }
+        else
         {
             g_shared.client = new(std::nothrow) chronolog::Client(portal);
             if(!g_shared.client)
@@ -256,12 +295,14 @@ extern "C"
                 set_error("out of memory creating ChronoLog client");
                 return ENOMEM;
             }
+            g_shared.portal = portal;
         }
 
         int rc = g_shared.client->Connect();
         if(rc != chronolog::CL_SUCCESS)
         {
-            set_error("ChronoLog Connect() failed rc=" + std::to_string(rc));
+            set_error("ChronoLog Connect() to " + portal_to_string(g_shared.portal) +
+                      " failed rc=" + std::to_string(rc));
             return EIO;
         }
         g_shared.connected = true;
@@ -314,7 +355,17 @@ extern "C"
         std::string json = serialize_set(set, metric_arry, metric_count);
 
         std::lock_guard<std::mutex> g(s->lock);
-        s->handle->log_event(json);
+        /* log_event() returns the event's timestamp on success and 0 on failure
+         * -- both when no keeper could be chosen and when the send itself failed
+         * (StoryHandleImpl::log_event). Swallowing that told ldmsd every sample
+         * was stored, so a dead keeper silently discarded the whole metric
+         * stream: no log, no retry, no strgp failure. */
+        if(s->handle->log_event(json) == 0)
+        {
+            set_error("log_event failed for story '" + s->chronicle + "/" + s->story +
+                      "' (no keeper available, or the send failed)");
+            return EIO;
+        }
         return 0;
     }
 

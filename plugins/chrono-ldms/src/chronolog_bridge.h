@@ -24,9 +24,20 @@ extern "C"
     typedef void* clog_story_t;
 
     /*
- * Create (if needed) and connect the shared ChronoLog client. Idempotent:
- * after the first successful connect, subsequent calls are no-ops. Pass the
- * path to a ChronoLog client config JSON, or NULL/"" to use client defaults.
+ * Create (if needed) and connect the shared ChronoLog client. Pass the path to
+ * a ChronoLog client config JSON, or NULL/"" to use client defaults.
+ *
+ * A NULL/"" path never overrides an endpoint an earlier call established -- it
+ * is the open_store() fallback for "reached without config". A non-empty path
+ * that names a DIFFERENT endpoint than the one this process is already bound to
+ * fails with EINVAL rather than being ignored: the ChronoLog client is a
+ * process-wide singleton whose endpoint is fixed at first construction, so the
+ * request genuinely cannot be honoured and silently keeping the old address
+ * would point the plugin at the wrong ChronoVisor.
+ *
+ * Otherwise idempotent: after a successful connect, matching calls are no-ops,
+ * and a call after a failed connect retries it.
+ *
  * Returns 0 on success, errno-style code on failure.
  */
     int clog_connect(const char* client_conf_path);

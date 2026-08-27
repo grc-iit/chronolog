@@ -53,8 +53,11 @@ LDMS_PREFIX=$HOME/ldms-install tools/deploy/local_single_user_deploy.sh -b -t De
 cmake -DLDMS_PREFIX=$HOME/ldms-install ...
 ```
 
-When `ldmsd.h` is not found the plugin is skipped with a status message and the
-rest of ChronoLog builds unchanged. The build produces `libstore_chronolog.so`
+The plugin targets the newer OVIS plugin ABI (`ldmsd_plug_api.h`,
+`ldmsd_plug_handle_t`, `ovis_log`, `struct ldmsd_store ldmsd_plugin_interface`);
+an OVIS generation that ships `ldmsd.h` without `ldmsd_plug_api.h` is too old and
+is reported as such. When those headers are not found the plugin is skipped with
+a status message and the rest of ChronoLog builds unchanged. The build produces `libstore_chronolog.so`
 in the ChronoLog lib dir; add that directory to `LDMSD_PLUGIN_LIBPATH` (or
 copy/symlink the `.so` into the ldmsd plugin dir) so `ldmsd` can
 `load name=store_chronolog`.
