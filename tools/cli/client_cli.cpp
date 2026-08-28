@@ -10,6 +10,7 @@
 #include <cctype>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -90,6 +91,22 @@ static bool parse_positive_count(const std::string& str, size_t& out)
     {
         std::cerr << "Only positive number is allowed: " << str << std::endl;
         return false;
+    }
+    // strtoull yields unsigned long long, which is WIDER than size_t on 32-bit
+    // targets, so the cast below can truncate silently: "4294967297" becomes 1
+    // with errno==0, the whole string consumed and a non-zero result -- every
+    // check above passes and playback() is asked for a count the user never
+    // typed. ERANGE only catches values above ULLONG_MAX, not above SIZE_MAX.
+    // Guarded with `if constexpr` so the comparison is not compiled at all where
+    // the two types are the same width (the usual 64-bit build), which would
+    // otherwise make it a tautological always-false compare.
+    if constexpr(sizeof(size_t) < sizeof(unsigned long long))
+    {
+        if(value > static_cast<unsigned long long>(std::numeric_limits<size_t>::max()))
+        {
+            std::cerr << "Number too large: " << str << std::endl;
+            return false;
+        }
     }
     out = static_cast<size_t>(value);
     return true;
