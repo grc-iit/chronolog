@@ -38,8 +38,11 @@ extern "C"
 {
 #endif
 
-    /* Opaque per-story handle returned by clog_open(). */
-    typedef void* clog_story_t;
+    /* Opaque per-storage-policy handle returned by clog_open(). One strgp covers
+     * every producer feeding its container/schema; the ChronoLog story is keyed
+     * per producer, so this handle fans out to one story per producer, acquired
+     * lazily on that producer's first sample. */
+    typedef void* clog_store_t;
 
     /*
  * Create (if needed) and connect the shared ChronoLog client. Pass the path to
@@ -64,16 +67,16 @@ extern "C"
  * Ensure the chronicle exists and acquire the story. Returns an opaque handle
  * to be passed to clog_store()/clog_close(), or NULL on failure.
  */
-    clog_story_t clog_open(const char* chronicle, const char* story);
+    clog_store_t clog_open(const char* chronicle, const char* schema);
 
     /*
  * Serialize the selected metrics of `set` to a JSON line and log it as one
  * ChronoLog event on the story. Returns 0 on success, errno-style on failure.
  */
-    int clog_store(clog_story_t story, ldms_set_t set, int* metric_arry, size_t metric_count);
+    int clog_store(clog_store_t story, ldms_set_t set, int* metric_arry, size_t metric_count);
 
     /* Release the story and free the handle. */
-    void clog_close(clog_story_t story);
+    void clog_close(clog_store_t story);
 
     /*
  * Register/unregister one ldmsd plugin instance. The newer OVIS plugin API is

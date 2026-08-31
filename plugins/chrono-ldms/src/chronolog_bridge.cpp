@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -51,7 +52,7 @@ struct Shared
 };
 Shared g_shared;
 
-/* Per-story handle returned to the C glue as an opaque clog_story_t. Shared by
+/* Per-story handle returned to the C glue as an opaque clog_store_t. Shared by
  * every storage policy writing the same chronicle/story, hence the refcount. */
 struct Story
 {
@@ -62,6 +63,44 @@ struct Story
     chronolog::StoryHandle* handle = nullptr;
     unsigned refs = 0; /* guarded by g_shared.lock, not by Story::lock */
 };
+
+/* What the C glue holds for one storage policy. A strgp covers every producer
+ * feeding its container/schema, but the ChronoLog story is per producer, so one
+ * StoreHandle fans out to many Story objects, acquired lazily on the first
+ * sample seen from each producer (open_store has no producer to work with --
+ * that only arrives per sample, from ldms_set_producer_name_get). */
+struct StoreHandle
+{
+    std::mutex lock; /* guards byProducer only; never held across log_event */
+    std::string chronicle;
+    std::string schema;
+    std::map<std::string, Story*> byProducer;
+};
+
+/* Make a producer name safe to appear in a ChronoLog story name.
+ *
+ * The archive filename is built by direct concatenation --
+ *   <root><chronicle>.<story>.<startSec>.vlen.h5   (StoryChunkWriter)
+ * -- with no sanitisation anywhere, and the grapher's file-discovery pattern
+ * matches the story field as [^.]+. So a '/' in a story name becomes a path
+ * separator into a directory that does not exist (archival fails outright), and
+ * a '.' breaks discovery. LDMS producer names are typically hostnames, which
+ * routinely contain dots, so both hazards are live. Anything outside
+ * [A-Za-z0-9_-] is folded to '_'. */
+std::string sanitize_producer(const char* producer)
+{
+    std::string out;
+    if(producer == nullptr)
+    {
+        return out;
+    }
+    for(const char* p = producer; *p; ++p)
+    {
+        const unsigned char c = (unsigned char)*p;
+        out.push_back((std::isalnum(c) || c == '_' || c == '-') ? (char)c : '_');
+    }
+    return out;
+}
 
 thread_local std::string t_last_error;
 
@@ -354,19 +393,11 @@ extern "C"
         return 0;
     }
 
-    clog_story_t clog_open(const char* chronicle, const char* story)
+    /* Acquire (or share) the Story for one chronicle/story pair. Caller holds
+     * g_shared.lock. Returns nullptr and sets the error string on failure. */
+    static Story* acquire_story_locked(const std::string& chronicle, const std::string& story)
     {
-        std::lock_guard<std::mutex> g(g_shared.lock);
-        if(!g_shared.connected || !g_shared.client)
-        {
-            set_error("clog_open before successful clog_connect");
-            return nullptr;
-        }
-
-        /* Two storage policies over the same container/schema is an ordinary
-         * ldmsd configuration, and both land here. Share one refcounted Story
-         * rather than handing out two owners of one StoryHandle. */
-        const std::string key = std::string(chronicle) + "/" + story;
+        const std::string key = chronicle + "/" + story;
         auto it = g_shared.stories.find(key);
         if(it != g_shared.stories.end())
         {
@@ -377,23 +408,22 @@ extern "C"
         int rc = g_shared.client->CreateChronicle(chronicle);
         if(rc != chronolog::CL_SUCCESS && rc != chronolog::CL_ERR_CHRONICLE_EXISTS)
         {
-            set_error(std::string("CreateChronicle('") + chronicle + "') failed rc=" + std::to_string(rc));
+            set_error("CreateChronicle('" + chronicle + "') failed rc=" + std::to_string(rc));
             return nullptr;
         }
 
         auto acq = g_shared.client->AcquireStory(chronicle, story);
         if(acq.first != chronolog::CL_SUCCESS || !acq.second)
         {
-            set_error(std::string("AcquireStory('") + chronicle + "/" + story +
-                      "') failed rc=" + std::to_string(acq.first));
+            set_error("AcquireStory('" + key + "') failed rc=" + std::to_string(acq.first));
             return nullptr;
         }
 
         Story* s = new(std::nothrow) Story();
         if(!s)
         {
-            /* Safe to release here: the registry lookup above proved no other
-             * Story owns this handle yet. */
+            /* Safe to release: the registry lookup above proved no other Story
+             * owns this handle yet. */
             g_shared.client->ReleaseStory(chronicle, story);
             set_error("out of memory allocating story handle");
             return nullptr;
@@ -407,14 +437,99 @@ extern "C"
         return s;
     }
 
-    int clog_store(clog_story_t _s, ldms_set_t set, int* metric_arry, size_t metric_count)
+    /* Drop one reference to a Story; release it when the last one goes. Caller
+     * holds g_shared.lock. */
+    static void release_story_locked(Story* s)
     {
-        Story* s = static_cast<Story*>(_s);
-        if(!s || !s->handle)
+        if(s->refs > 0 && --s->refs > 0)
+        {
+            return;
+        }
+        if(g_shared.client && g_shared.connected)
+        {
+            g_shared.client->ReleaseStory(s->chronicle, s->story);
+        }
+        g_shared.stories.erase(s->key);
+        delete s;
+    }
+
+    clog_store_t clog_open(const char* chronicle, const char* schema)
+    {
+        std::lock_guard<std::mutex> g(g_shared.lock);
+        if(!g_shared.connected || !g_shared.client)
+        {
+            set_error("clog_open before successful clog_connect");
+            return nullptr;
+        }
+
+        /* No story is acquired here: the story is per PRODUCER and open_store
+         * does not know the producers -- each one appears later, on its first
+         * sample. Create the chronicle now so a misconfigured container fails at
+         * strgp_start rather than on the first sample. */
+        int rc = g_shared.client->CreateChronicle(chronicle);
+        if(rc != chronolog::CL_SUCCESS && rc != chronolog::CL_ERR_CHRONICLE_EXISTS)
+        {
+            set_error(std::string("CreateChronicle('") + chronicle + "') failed rc=" + std::to_string(rc));
+            return nullptr;
+        }
+
+        StoreHandle* sh = new(std::nothrow) StoreHandle();
+        if(!sh)
+        {
+            set_error("out of memory allocating store handle");
+            return nullptr;
+        }
+        sh->chronicle = chronicle;
+        sh->schema = schema;
+        return sh;
+    }
+
+    int clog_store(clog_store_t _sh, ldms_set_t set, int* metric_arry, size_t metric_count)
+    {
+        StoreHandle* sh = static_cast<StoreHandle*>(_sh);
+        if(!sh)
             return EINVAL;
+
+        /* One story per producer per schema. With story=schema alone, every
+         * producer feeding this strgp funnels through a single StoryHandle and
+         * one mutex, re-serialising the aggregator's concurrency: an L2 pulling
+         * 200 nodes' meminfo would queue all 200 samples per interval behind one
+         * lock, and because store() runs synchronously on the updtr thread that
+         * backpressure turns into missed updates upstream. Keying by producer
+         * gives N independent stories that proceed in parallel. */
+        const std::string producer = sanitize_producer(ldms_set_producer_name_get(set));
+        const std::string story = producer.empty() ? sh->schema : sh->schema + "_" + producer;
+
+        Story* s = nullptr;
+        {
+            std::lock_guard<std::mutex> g(sh->lock);
+            auto it = sh->byProducer.find(story);
+            if(it != sh->byProducer.end())
+            {
+                s = it->second;
+            }
+            else
+            {
+                std::lock_guard<std::mutex> gg(g_shared.lock);
+                if(!g_shared.connected || !g_shared.client)
+                {
+                    set_error("clog_store before successful clog_connect");
+                    return EINVAL;
+                }
+                s = acquire_story_locked(sh->chronicle, story);
+                if(!s)
+                {
+                    return EIO;
+                }
+                sh->byProducer.emplace(story, s);
+            }
+        }
 
         std::string json = serialize_set(set, metric_arry, metric_count);
 
+        /* The per-producer Story lock is taken here, with sh->lock released, so
+         * samples from different producers of the same schema do not serialise
+         * against each other. */
         std::lock_guard<std::mutex> g(s->lock);
         /* log_event() returns the event's timestamp on success and 0 on failure
          * -- both when no keeper could be chosen and when the send itself failed
@@ -430,24 +545,21 @@ extern "C"
         return 0;
     }
 
-    void clog_close(clog_story_t _s)
+    void clog_close(clog_store_t _sh)
     {
-        Story* s = static_cast<Story*>(_s);
-        if(!s)
+        StoreHandle* sh = static_cast<StoreHandle*>(_sh);
+        if(!sh)
             return;
 
-        std::lock_guard<std::mutex> g(g_shared.lock);
-        if(s->refs > 0 && --s->refs > 0)
+        /* Scope the locks: destroying a std::mutex while it is held is undefined,
+         * so sh->lock must be released before sh is deleted. */
         {
-            /* Another storage policy is still writing this story. Releasing now
-             * would delete the StoryHandle out from under it -- ReleaseStory
-             * destroys the handle rather than dropping a reference. */
-            return;
+            std::lock_guard<std::mutex> g(sh->lock);
+            std::lock_guard<std::mutex> gg(g_shared.lock);
+            for(auto& entry: sh->byProducer) { release_story_locked(entry.second); }
+            sh->byProducer.clear();
         }
-        if(g_shared.client && g_shared.connected)
-            g_shared.client->ReleaseStory(s->chronicle, s->story);
-        g_shared.stories.erase(s->key);
-        delete s;
+        delete sh;
     }
 
     void clog_plugin_attach(void)

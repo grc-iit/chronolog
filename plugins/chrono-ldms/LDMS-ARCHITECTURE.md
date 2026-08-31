@@ -92,10 +92,17 @@ with independent writers.
      (≈25k ev/s @ 1 KB, ~95× behind Kafka).
    - Caveats: (a) ldmsd has a worker-thread pool (`-P/worker_threads`,
      `ev_thread_count`), so `store()` is invoked from multiple threads in that
-     one process — but `store_chronolog` shares **one** ChronoLog `Client`
-     across them and that client is multi-thread-unstable (`HG_FAULT`), so safe
-     concurrency ≈ 1 regardless. (b) With `chronicle=container, story=schema`,
-     all sets of a schema funnel through **one** `StoryHandle` (one mutex).
+     one process, and `store_chronolog` shares one ChronoLog `Client` across
+     them. An earlier revision of this note claimed that client was
+     multi-thread-unstable (`HG_FAULT`) and capped safe concurrency at ≈1. That
+     was unsupported and is withdrawn: the write path takes no client-wide lock,
+     the per-event index is a lock-free `std::atomic`, the keeper-choice policy
+     is stateless, the engine is built with a progress thread, and the tree ships
+     multi-threaded client integration tests (pthread, OpenMP, Argobots). The
+     shared client is not the limit. (b) The real limit was
+     `chronicle=container, story=schema`, which funnelled all sets of a schema
+     through **one** `StoryHandle` and one mutex — fixed by keying the story per
+     producer (see below), giving one story per node-per-schema.
 2. **"sampler → L1 → L2(opt) → L3(opt) → storage."** *Correct as the common
    path; tiers are optional and storage attaches wherever the `strgp` lives — it
    need not be the top.* `LDMSD_PRDCR_TYPE_LOCAL` ("producer is local to this
@@ -146,7 +153,7 @@ per-compute-node 1:1 over-rotates. Sweet spot:
 **Concrete plugin fix this exposes:** with many writers, `story=schema` makes
 every aggregator writing the same schema acquire the **same** story →
 re-serializing the concurrency. Key the story by producer — e.g.
-`chronicle=container, story=schema + "/" + producer`
+`chronicle=container, story=schema + "_" + sanitized(producer)`
 (`ldms_set_producer_name_get()`) → one story per node-per-schema → N independent
 stories.
 

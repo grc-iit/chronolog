@@ -64,7 +64,7 @@ static ldmsd_store_handle_t open_store(ldmsd_plug_handle_t handle,
                                        struct ldmsd_strgp_metric_list* metric_list)
 {
     ovis_log_t log = ldmsd_plug_log_get(handle);
-    clog_story_t s;
+    clog_store_t s;
 
     if(!container || !schema)
     {
@@ -94,7 +94,7 @@ store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh, ldms_set_t set, int*
 {
     if(!_sh)
         return EINVAL;
-    return clog_store((clog_story_t)_sh, set, metric_arry, metric_count);
+    return clog_store((clog_store_t)_sh, set, metric_arry, metric_count);
 }
 
 static int flush_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
@@ -108,7 +108,7 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
 {
     if(!_sh)
         return;
-    clog_close((clog_story_t)_sh);
+    clog_close((clog_store_t)_sh);
     ovis_log(ldmsd_plug_log_get(handle), OVIS_LINFO, PNAME ": closed a story\n");
 }
 
