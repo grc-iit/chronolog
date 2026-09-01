@@ -55,6 +55,13 @@ container/schema/producer share one refcounted story handle.
 
 ## Building
 
+### Requirements
+
+| | |
+| --- | --- |
+| **OVIS/LDMS ≥ 4.5.1** | `ldmsd_plug_api.h` — and the plugin ABI it declares — first appears in [v4.5.1](https://github.com/ovis-hpc/ldms/releases/tag/v4.5.1) (Oct 2025). It is absent in v4.4.6 and earlier. Verified against v4.5.3. |
+| **jansson** development headers | `ldmsd.h` includes `<jansson.h>` unconditionally. The plugin's CMake does not search for it, so it must resolve from a default include path — normally true on any host with OVIS installed, since OVIS requires jansson itself. |
+
 The plugin is part of the ChronoLog superbuild but, because it depends on the
 external OVIS/LDMS development headers, it is built **only when those headers
 are found**. Point the build at an LDMS/OVIS install:
@@ -67,14 +74,21 @@ LDMS_PREFIX=$HOME/ldms-install tools/deploy/local_single_user_deploy.sh -b -t De
 cmake -DLDMS_PREFIX=$HOME/ldms-install ...
 ```
 
-The plugin targets the newer OVIS plugin ABI (`ldmsd_plug_api.h`,
-`ldmsd_plug_handle_t`, `ovis_log`, `struct ldmsd_store ldmsd_plugin_interface`);
-an OVIS generation that ships `ldmsd.h` without `ldmsd_plug_api.h` is too old and
-is reported as such. When those headers are not found the plugin is skipped with
-a status message and the rest of ChronoLog builds unchanged. The build produces `libstore_chronolog.so`
-in the ChronoLog lib dir; add that directory to `LDMSD_PLUGIN_LIBPATH` (or
-copy/symlink the `.so` into the ldmsd plugin dir) so `ldmsd` can
-`load name=store_chronolog`.
+Detection gates on `ldmsd_plug_api.h` rather than `ldmsd.h`, so an OVIS that
+predates the targeted ABI is named as such instead of failing later with a wall
+of unknown-type errors. When the headers are not found the plugin is skipped
+with a status message and the rest of ChronoLog builds unchanged. The build
+produces `libstore_chronolog.so` in the ChronoLog lib dir; add that directory to
+`LDMSD_PLUGIN_LIBPATH` (or copy/symlink the `.so` into the ldmsd plugin dir) so
+`ldmsd` can `load name=store_chronolog`.
+
+> **Do not set `CMAKE_C_EXTENSIONS OFF`.** `CMakeLists.txt` sets
+> `CMAKE_CXX_EXTENSIONS OFF` but deliberately leaves the C setting at CMake's
+> default of ON, so the C glue is compiled as `-std=gnu11`. Under strict
+> `-std=c11` glibc hides `pthread_rwlock_t`, and OVIS's own `ovis_thrstats.h`
+> (reached transitively from `ldms.h`) fails to compile. The asymmetry between
+> the two languages is load-bearing, not an oversight. The C++ side is
+> unaffected: g++ defines `_GNU_SOURCE` itself on glibc regardless of `-std`.
 
 ## Configuring ldmsd
 
@@ -91,6 +105,28 @@ strgp_start name=sp
 
 `client_conf` is an optional ChronoLog client config JSON describing the
 ChronoVisor portal; omit it to use the client defaults (127.0.0.1:5555).
+
+### Storage policies must not use decomposition
+
+`struct ldmsd_store` has two mutually exclusive delivery paths, and this plugin
+implements only one of them:
+
+| strgp | ldmsd calls | store_chronolog |
+| --- | --- | --- |
+| no `decomposition=` | `store()` — the whole metric set | **supported** |
+| `decomposition=<...>` | `commit()` — decomposed rows | **not implemented** |
+
+Adding a `decomposition=` to the storage policy is silently ineffective rather
+than fatal: `ldmsd` NULL-checks the entry point (`ldmsd_strgp.c`, the
+`strgp->store->api->commit != NULL` guard), so nothing crashes — it logs
+
+```
+store plugin "store_chronolog" does not support decomposition commit()
+```
+
+and stores nothing at all. If a storage policy is producing no ChronoLog events
+while the plugin loaded and connected cleanly, check for a `decomposition=` on
+the strgp first.
 
 ## Round-trip example (record → tail read → archive read)
 

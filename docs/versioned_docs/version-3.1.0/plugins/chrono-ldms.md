@@ -5,7 +5,7 @@ title: "LDMS Store"
 
 # LDMS Store
 
-`store_chronolog` is a **store plugin for `ldmsd`**, the daemon of the [OVIS/LDMS](https://github.com/ovis-hpc/ovis) monitoring system. It persists aggregated metric-set samples into ChronoLog: an LDMS aggregator routes matching metric sets to the plugin, and each sample is appended to a ChronoLog Story as one JSON event.
+`store_chronolog` is a **store plugin for `ldmsd`**, the daemon of the [OVIS/LDMS](https://github.com/ovis-hpc/ldms) monitoring system. It persists aggregated metric-set samples into ChronoLog: an LDMS aggregator routes matching metric sets to the plugin, and each sample is appended to a ChronoLog Story as one JSON event.
 
 The result is that cluster telemetry lands in the same tiered log as application data, and is readable through the same paths — the low-latency in-memory tail (`playback()`) for live monitoring, and the HDF5 archive (`ReplayStory()`) for historical analysis.
 
