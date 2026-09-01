@@ -5,10 +5,13 @@
 //
 //   1. RECORD  -- write a handful of LDMS-shaped JSON metric samples, exactly
 //                 as the store_chronolog ldmsd plugin emits them when an LDMS
-//                 aggregator (e.g. an L2) routes metric sets to it. store_chronolog
-//                 maps container -> Chronicle, schema -> Story, one sample ->
-//                 one Event, so here we AcquireStory(container, schema) and
-//                 log_event() one JSON record per sample.
+//                 aggregator (e.g. an L2) routes metric sets to it.
+//                 store_chronolog maps container -> Chronicle and one sample ->
+//                 one Event; its story name is "<schema>_<producer>", one per
+//                 producer feeding the storage policy. This example has no
+//                 producers to fan out over, so it uses the schema alone as the
+//                 story name -- the event payloads are identical, only the story
+//                 name differs from a live plugin deployment.
 //
 //   2. TAIL READ  -- read the samples straight from the keepers' in-memory tail
 //                    via StoryHandle::playback(), and VERIFY the payloads read
@@ -17,11 +20,13 @@
 //                    It needs only the keeper/portal (no player).
 //
 //   3. ARCHIVE READ -- best-effort probe of Client::ReplayStory() over the
-//                      player / query service. On this tail-read build a sealed
-//                      chunk stays in the keeper tail until it is evicted
-//                      (capacity-driven), so a small run's samples are readable
-//                      via the tail but usually not yet via the archive. This
-//                      leg is informational only and never affects the exit code.
+//                      player / query service. A sealed chunk stays in the keeper
+//                      tail until it leaves it: after tail_retention_secs
+//                      (default 60) beyond the chunk's end time, or earlier under
+//                      tail_capacity pressure. A small run hits the former, so
+//                      its samples are readable via the tail well before they
+//                      reach the archive. This leg is informational only and
+//                      never affects the exit code.
 //
 // Each sample carries a per-run tag so the verification is robust to data left
 // in the story by previous runs (playback returns the most-recent `count`
@@ -235,11 +240,11 @@ int main(int argc, char** argv)
     print_events("archive", archive_events);
     if(arc == chronolog::CL_SUCCESS && archive_events.empty())
     {
-        std::cout << "  (archive empty is expected for a small run on this tail-read build: a sealed\n"
-                     "   chunk stays resident in the keeper tail -- served by playback() above -- and\n"
-                     "   is only forwarded to the grapher/player archive once it is evicted from the\n"
-                     "   tail (capacity-driven). Recent samples are readable via the tail but not yet\n"
-                     "   via the archive.)\n";
+        std::cout << "  (archive empty is expected this soon after writing: a sealed chunk stays\n"
+                     "   resident in the keeper tail -- served by playback() above -- and reaches the\n"
+                     "   grapher/player archive only once it leaves the tail, after tail_retention_secs\n"
+                     "   (default 60) beyond the chunk's end time or earlier under tail_capacity\n"
+                     "   pressure. Re-run the archive read after that window to see these samples.)\n";
     }
 
     client.ReleaseStory(container, schema);

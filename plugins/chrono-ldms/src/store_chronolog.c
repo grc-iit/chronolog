@@ -3,9 +3,14 @@
  * into ChronoLog as time-series "events".
  *
  * Mapping:
- *      LDMS strgp container  ->  ChronoLog Chronicle
- *      LDMS strgp schema     ->  ChronoLog Story
- *      one LDMS sample       ->  one ChronoLog Event (a JSON line)
+ *      LDMS strgp container       ->  ChronoLog Chronicle
+ *      strgp schema + producer    ->  ChronoLog Story ("<schema>_<producer>")
+ *      one LDMS sample            ->  one ChronoLog Event (a JSON line)
+ *
+ * The story is keyed per producer, not per storage policy: one strgp covers
+ * every producer feeding its container/schema, and funnelling them through a
+ * single story handle would serialise the aggregator's concurrency behind one
+ * mutex. See clog_store() in chronolog_bridge.cpp.
  *
  * This file is the C ldmsd glue (ldmsd.h is not C++-safe). All ChronoLog and
  * serialization work lives in the C++ chronolog_bridge translation unit, which
@@ -30,9 +35,9 @@
 static const char* usage(ldmsd_plug_handle_t handle)
 {
     return "    config name=<inst> [client_conf=<path>]\n"
-           "        Store LDMS metric sets into ChronoLog. Each strgp maps to a\n"
-           "        ChronoLog Story (chronicle=container, story=schema); each sample\n"
-           "        becomes a JSON event logged to that story.\n"
+           "        Store LDMS metric sets into ChronoLog. chronicle=container and\n"
+           "        story=<schema>_<producer>, so each producer feeding the strgp gets\n"
+           "        its own story; each sample becomes a JSON event logged to it.\n"
            "        client_conf  Path to a ChronoLog client config JSON describing the\n"
            "                     ChronoVisor portal to connect to. Optional; if omitted\n"
            "                     the ChronoLog client defaults (127.0.0.1:5555) apply.\n";
@@ -85,7 +90,10 @@ static ldmsd_store_handle_t open_store(ldmsd_plug_handle_t handle,
         ovis_log(log, OVIS_LERROR, PNAME ": open '%s/%s' failed: %s\n", container, schema, clog_last_error());
         return NULL;
     }
-    ovis_log(log, OVIS_LINFO, PNAME ": opened story '%s/%s'\n", container, schema);
+    /* Not "opened story": clog_open() has no producer to work with, so it only
+	 * records the chronicle/schema. The stories themselves are acquired lazily,
+	 * one per producer, on that producer's first sample. */
+    ovis_log(log, OVIS_LINFO, PNAME ": opened store for '%s/%s'\n", container, schema);
     return (ldmsd_store_handle_t)s;
 }
 
@@ -109,7 +117,7 @@ static void close_store(ldmsd_plug_handle_t handle, ldmsd_store_handle_t _sh)
     if(!_sh)
         return;
     clog_close((clog_store_t)_sh);
-    ovis_log(ldmsd_plug_log_get(handle), OVIS_LINFO, PNAME ": closed a story\n");
+    ovis_log(ldmsd_plug_log_get(handle), OVIS_LINFO, PNAME ": closed a store (releasing its per-producer stories)\n");
 }
 
 static int constructor(ldmsd_plug_handle_t handle)

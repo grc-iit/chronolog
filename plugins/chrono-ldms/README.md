@@ -8,11 +8,23 @@ and it appends each sample as a ChronoLog event.
 
 ## Data model mapping
 
-| LDMS                              | ChronoLog             |
-| --------------------------------- | --------------------- |
-| storage policy `container=`       | Chronicle             |
-| storage policy `schema=`          | Story                 |
-| one metric-set sample             | one Event (JSON line) |
+| LDMS                                            | ChronoLog             |
+| ----------------------------------------------- | --------------------- |
+| storage policy `container=`                     | Chronicle             |
+| storage policy `schema=` + the sample's producer | Story                 |
+| one metric-set sample                           | one Event (JSON line) |
+
+A storage policy covers every producer feeding its container/schema, but the
+story is keyed **per producer**: `<schema>_<producer>`, falling back to
+`<schema>` alone for a set that carries no producer name. Keying by schema
+alone would funnel every producer through one story handle and one mutex — an
+L2 aggregator pulling 200 nodes' `meminfo` would queue all 200 samples per
+interval behind one lock, and since `store()` runs synchronously on the updtr
+thread that backpressure becomes missed updates upstream. Producer names are
+sanitized to `[A-Za-z0-9_-]` because archive filenames are built by direct
+concatenation (`<chronicle>.<story>.<startSec>.vlen.h5`): a `/` would become a
+path separator into a directory that does not exist, and a `.` would break the
+grapher's file discovery.
 
 Each `store()` call serializes the selected metrics of the set into a single
 JSON object and appends it to the story via `StoryHandle::log_event()`:
@@ -36,8 +48,10 @@ split across two translation units joined by a small C ABI:
   per-story handles, and the set→JSON serialization. It includes only the
   C++-safe `ldms.h` (for the metric accessors) plus the ChronoLog headers.
 
-A single ChronoLog `Client` connection is shared by every storage policy; each
-policy holds its own acquired story.
+A single ChronoLog `Client` connection is shared by every storage policy. Each
+policy holds one handle per producer it has seen, acquired lazily on that
+producer's first sample; two policies covering the same
+container/schema/producer share one refcounted story handle.
 
 ## Building
 
@@ -105,14 +119,16 @@ runs stay verifiable), it runs against a fresh deployment with no ldmsd needed.
 The tail-read half is why the plugin lives on the tail-read development line
 (keeper-side `playback()` API).
 
-> **Note on the archive read for small runs.** On this tail-read build a sealed
-> chunk stays resident in the keeper tail (where `playback()` serves it) and is
-> only forwarded to the grapher/player archive once it is *evicted* from the
-> tail (capacity-driven, default 65536 events/story). A small example run's
-> recent samples are therefore readable via the tail but not yet via the
-> archive, so `ReplayStory()` returns 0 until they age out of the tail and are
-> extracted. The example prints this explicitly; it is expected behavior, not a
-> failure of the archive-read call.
+> **Note on the archive read timing.** A sealed chunk stays resident in the
+> keeper tail (where `playback()` serves it) and is forwarded to the
+> grapher/player archive only when it leaves the tail. Two bounds release it:
+> **age-out** after `tail_retention_secs` (default 60) beyond the chunk's end
+> time, and **capacity eviction** once the story exceeds `tail_capacity`
+> (default 65536 events). A small run hits the first, not the second, so its
+> samples are readable via the tail immediately on sealing but only reach the
+> archive about a retention window later — `ReplayStory()` returning 0 before
+> then is expected, not a failure of the archive-read call. The example prints
+> this explicitly and never fails on it.
 
 ## Benchmarks
 
