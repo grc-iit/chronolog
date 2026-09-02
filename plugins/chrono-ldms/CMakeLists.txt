@@ -92,6 +92,36 @@ message(STATUS "chrono-ldms: building store_chronolog (LDMS headers: ${LDMS_INCL
 # parent include dir, so both <prefix>/include/ldms and <prefix>/include are needed.
 get_filename_component(LDMS_INCLUDE_PARENT "${LDMS_INCLUDE_DIR}" DIRECTORY)
 
+# The OVIS headers pull in third-party headers of their own: ldms.h includes
+# <openssl/sha.h> and ldmsd.h includes <jansson.h>. OVIS located those through
+# its own configure; nothing carries them onto this target, and the plugin calls
+# neither library -- it needs the headers only to satisfy the OVIS ones, so the
+# include path is required but no link is.
+#
+# On a host with the distro -devel packages installed both resolve silently from
+# /usr/include and the omission is invisible. It is not invisible where OpenSSL
+# comes from somewhere else, which is exactly ChronoLog's own situation: the
+# spack environment supplies openssl (already pinned in spack.yaml as a cmake
+# dependency, so this adds nothing to install), /usr/include has no openssl at
+# all, and the build fails in ldms.h with "openssl/sha.h: No such file or
+# directory".
+#
+# Not REQUIRED: a missing OpenSSL skips this optional plugin the same way a
+# missing or too-old OVIS does, rather than failing the whole ChronoLog
+# configure over it.
+#
+# jansson is not searched for here because it is installed alongside OVIS often
+# enough that LDMS_INCLUDE_PARENT covers it. If a build fails on <jansson.h>,
+# add its include dir the same way.
+find_package(OpenSSL)
+if(NOT OPENSSL_FOUND)
+    message(STATUS
+        "chrono-ldms: OpenSSL headers not found -- skipping the store_chronolog "
+        "plugin (the round-trip example is still built). ldms.h includes "
+        "<openssl/sha.h>, so the plugin cannot compile without them.")
+    return()
+endif()
+
 # ldmsd loads the plugin by base name 'store_chronolog' -> libstore_chronolog.so.
 # MODULE = a dlopen()-only shared object (nothing links against it).
 add_library(store_chronolog MODULE
@@ -103,6 +133,8 @@ target_include_directories(store_chronolog PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${LDMS_INCLUDE_DIR}
     ${LDMS_INCLUDE_PARENT}
+    # Headers only -- see the find_package(OpenSSL) note above.
+    ${OPENSSL_INCLUDE_DIR}
     # chronolog_client public headers (chronolog_client.h, ClientConfiguration.h,
     # chronolog_types.h) -- consumed privately by the C++ bridge.
     $<TARGET_PROPERTY:chronolog_client,INTERFACE_INCLUDE_DIRECTORIES>
