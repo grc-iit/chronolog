@@ -71,6 +71,13 @@ Floats are emitted with 9 significant digits and doubles with 17, so a round tri
 
 ## Building
 
+### Requirements
+
+| Requirement | Why |
+|---|---|
+| **OVIS/LDMS ≥ 4.5.1** | `ldmsd_plug_api.h`, and the plugin ABI it declares, first appear in [v4.5.1](https://github.com/ovis-hpc/ldms/releases/tag/v4.5.1) (October 2025). It is absent in v4.4.6 and earlier. Verified against v4.5.3. |
+| **jansson development headers** | `ldmsd.h` includes `<jansson.h>` unconditionally, and the plugin's build does not search for it — so it has to resolve from a default include path. That is normally the case on any host with OVIS installed, since OVIS depends on jansson itself. |
+
 The plugin depends on external OVIS/LDMS development headers, so it is **self-gating**: it builds only when those headers are found, and the rest of ChronoLog builds unchanged when they are not. Point the build at an LDMS/OVIS install with `LDMS_PREFIX`:
 
 ```bash
@@ -81,7 +88,7 @@ LDMS_PREFIX=$HOME/ldms-install tools/deploy/local_single_user_deploy.sh -b -t De
 cmake -DLDMS_PREFIX=$HOME/ldms-install ...
 ```
 
-Detection keys on `ldmsd_plug_api.h`, not `ldmsd.h`. The plugin targets the newer OVIS plugin ABI (`ldmsd_plug_handle_t`, `ovis_log`, `struct ldmsd_store ldmsd_plugin_interface`); an OVIS generation that ships `ldmsd.h` without `ldmsd_plug_api.h` is too old, and CMake reports that case explicitly rather than failing later with unknown-type errors. When the headers are absent the plugin is skipped with a status message — the round-trip example is still built.
+Detection keys on `ldmsd_plug_api.h`, not `ldmsd.h`, because that is what distinguishes a supported OVIS from one that merely has LDMS headers. An install that ships `ldmsd.h` without it predates the targeted ABI (`ldmsd_plug_handle_t`, `ovis_log`, `struct ldmsd_store ldmsd_plugin_interface`), and the build reports that case by name rather than failing later with a wall of unknown-type errors. When the headers are absent entirely the plugin is skipped with a status message — the round-trip example is still built.
 
 A successful build produces `libstore_chronolog.so` in the ChronoLog lib directory. Add that directory to `LDMSD_PLUGIN_LIBPATH` (or copy the `.so` into the `ldmsd` plugin directory) so `ldmsd` can load it, and put it on `LD_LIBRARY_PATH` so the ChronoLog client library it links against resolves:
 
@@ -113,6 +120,25 @@ strgp_start name=chronolog_meminfo
 | `client_conf` | client defaults (ChronoVisor portal at `127.0.0.1:5555`) | Path to a ChronoLog client config JSON describing the ChronoVisor portal to connect to. Optional. |
 
 The connection is made eagerly at `config` time so that connection errors surface there rather than on the first sample. A complete, ready-to-adapt recipe ships as `plugins/chrono-ldms/examples/ldmsd_store_chronolog.conf`.
+
+### Storage policies must not use decomposition
+
+An `ldmsd` store plugin can receive samples by either of two entry points, and `store_chronolog` implements only one:
+
+| Storage policy | `ldmsd` calls | `store_chronolog` |
+|---|---|---|
+| No `decomposition=` | `store()` — the whole metric set | **Supported** |
+| With `decomposition=` | `commit()` — decomposed rows | **Not implemented** |
+
+:::warning
+Adding a `decomposition=` to the storage policy is **silently ineffective, not fatal**. `ldmsd` NULL-checks the entry point before calling it, so nothing crashes — it logs
+
+```
+store plugin "store_chronolog" does not support decomposition commit()
+```
+
+and stores nothing at all. If a storage policy is producing no ChronoLog events even though the plugin loaded and connected cleanly, check the strgp for a `decomposition=` first.
+:::
 
 :::note
 The ChronoLog client is a process-wide singleton whose endpoint is fixed when it is first constructed. A `client_conf` naming a *different* endpoint than the one `ldmsd` is already bound to fails with `EINVAL` rather than being silently ignored — otherwise the plugin would quietly write to the wrong ChronoVisor. Omitting `client_conf` never overrides an endpoint an earlier configuration established.
