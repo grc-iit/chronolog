@@ -13,6 +13,7 @@
 #include <chronolog_types.h>
 
 #include "KeeperRecordingClient.h"
+#include "KeeperTailReader.h"
 #include "StorytellerClient.h"
 #include "PlaybackQueryRpcClient.h"
 
@@ -33,22 +34,21 @@ chronolog::StoryHandle::~StoryHandle() {}
 ////////////////////
 template <class KeeperChoicePolicy>
 // = chronolog::RoundRobinKeeperChoice>
-chronolog::StoryWritingHandle<KeeperChoicePolicy>::~StoryWritingHandle()
+chronolog::StoryHandleImpl<KeeperChoicePolicy>::~StoryHandleImpl()
 {
     delete keeperChoicePolicy;
 }
 
 ////////////////////
 template <class KeeperChoicePolicy>
-void chronolog::StoryWritingHandle<KeeperChoicePolicy>::addRecordingClient(
-        chronolog::KeeperRecordingClient* keeperClient)
+void chronolog::StoryHandleImpl<KeeperChoicePolicy>::addRecordingClient(chronolog::KeeperRecordingClient* keeperClient)
 {
     storyKeepers.push_back(keeperClient);
 }
 
 ///////////////////
 template <class KeeperChoicePolicy>
-void chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(
+void chronolog::StoryHandleImpl<KeeperChoicePolicy>::removeRecordingClient(
         chronolog::ServiceId const& keeper_service_id)
 {
     // this should only be called when the ChronoKeeper process unexpectedly exits
@@ -65,7 +65,7 @@ void chronolog::StoryWritingHandle<KeeperChoicePolicy>::removeRecordingClient(
 
 //////////////////
 template <class KeeperChoicePolicy>
-uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::string const& event_record)
+uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record)
 {
     chronolog::LogEvent log_event(storyId,
                                   theClient.getTimestamp(),
@@ -76,7 +76,7 @@ uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::strin
     auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
     if(nullptr == keeperRecordingClient) //very unlikely...
     {
-        LOG_WARNING("[StoryWritingHandle] No keeper selected for logging event: {}", event_record);
+        LOG_WARNING("[StoryHandleImpl] No keeper selected for logging event: {}", event_record);
         return 0;
     }
 
@@ -88,6 +88,14 @@ uint64_t chronolog::StoryWritingHandle<KeeperChoicePolicy>::log_event(std::strin
     {
         return 0;
     }
+}
+/////////////////////
+
+// Tail read: delegate to the two-phase scatter/gather over this story's keepers.
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::playback(size_t n, std::vector<Event>& events)
+{
+    return gather_story_tail(storyKeepers, storyId, n, events);
 }
 /////////////////////
 
@@ -183,22 +191,22 @@ int chronolog::StorytellerClient::removeKeeperRecordingClient(chronolog::Service
 }
 
 ///////////////////////////
-chronolog::StoryHandle* chronolog::StorytellerClient::findStoryWritingHandle(ChronicleName const& chronicle,
-                                                                             StoryName const& story)
+chronolog::StoryHandle* chronolog::StorytellerClient::findStoryHandle(ChronicleName const& chronicle,
+                                                                      StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'.",
+        LOG_DEBUG("[StorytellerClient::findStoryHandle] Found StoryHandle for Chronicle: '{}' and Story: '{}'.",
                   chronicle,
                   story);
         return ((*story_record_iter).second);
     }
     else
     {
-        LOG_DEBUG("[StorytellerClient::findStoryWritingHandle] StoryHandle not found for Chronicle: '{}' and Story: "
+        LOG_DEBUG("[StorytellerClient::findStoryHandle] StoryHandle not found for Chronicle: '{}' and Story: "
                   "'{}'.",
                   chronicle,
                   story);
@@ -209,11 +217,11 @@ chronolog::StoryHandle* chronolog::StorytellerClient::findStoryWritingHandle(Chr
 /////////////
 
 chronolog::StoryHandle*
-chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const& chronicle,
-                                                           StoryName const& story,
-                                                           StoryId const& story_id,
-                                                           std::vector<ServiceId> const& vectorOfKeepers,
-                                                           chl::ServiceId const& player_card)
+chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronicle,
+                                                    StoryName const& story,
+                                                    StoryId const& story_id,
+                                                    std::vector<ServiceId> const& vectorOfKeepers,
+                                                    chl::ServiceId const& player_card)
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
@@ -227,9 +235,9 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const& 
         return story_record_iter->second;
     }
 
-    // create new StoryWritingHandle & initialize it's keeperClients vector
-    chronolog::StoryWritingHandle<RoundRobinKeeperChoice>* storyWritingHandle =
-            new StoryWritingHandle<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
+    // create new StoryHandleImpl & initialize its keeperClients vector
+    chronolog::StoryHandleImpl<RoundRobinKeeperChoice>* storyHandle =
+            new StoryHandleImpl<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
 
     for(ServiceId const& keeper_service_id: vectorOfKeepers)
     {
@@ -247,26 +255,26 @@ chronolog::StorytellerClient::initializeStoryWritingHandle(ChronicleName const& 
         }
         keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
 
-        storyWritingHandle->addRecordingClient((*keeper_client_iter).second);
+        storyHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
     auto insert_return =
             acquiredStoryHandles.insert(std::pair<std::pair<std::string, std::string>, chronolog::StoryHandle*>(
                     std::pair<std::string, std::string>(chronicle, story),
-                    storyWritingHandle));
+                    storyHandle));
     if(!insert_return.second)
     {
-        LOG_ERROR("[StorytellerClient] Failed to insert StoryWritingHandle for Chronicle: '{}' and Story: '{}'.",
+        LOG_ERROR("[StorytellerClient] Failed to insert StoryHandleImpl for Chronicle: '{}' and Story: '{}'.",
                   chronicle,
                   story);
-        delete storyWritingHandle;
+        delete storyHandle;
         return nullptr;
     }
 
-    LOG_INFO("[StorytellerClient] Successfully initialized StoryWritingHandle for Chronicle: '{}' and Story: '{}'.",
+    LOG_INFO("[StorytellerClient] Successfully initialized StoryHandleImpl for Chronicle: '{}' and Story: '{}'.",
              chronicle,
              story);
-    return storyWritingHandle;
+    return storyHandle;
     /*
     // now check the state of the handle:
     // it's possible the other thread is still pending the acquisition response from the Vizor,

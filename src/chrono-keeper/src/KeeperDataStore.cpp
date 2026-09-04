@@ -5,6 +5,8 @@
 #include <string>
 #include <cstdint>
 #include <memory>
+#include <deque>
+#include <unordered_set>
 #include <thallium.hpp>
 
 #include <chronolog_errcode.h>
@@ -52,6 +54,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::KeeperStoryPipeline*>(story_id,
                                                                new chl::KeeperStoryPipeline(theExtractionQueue,
+                                                                                            theTailStore,
                                                                                             chronicle,
                                                                                             story,
                                                                                             story_id,
@@ -145,6 +148,11 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
     {
         (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
     }
+
+    // Chunks sealed above went into the tail store, which forwards them for
+    // archival only on capacity eviction or shutdown. Age them out on the same
+    // clock reading so a low-volume story is still archived while the keeper runs.
+    theTailStore.ageOutChunks(current_time);
 }
 ////////////////////////
 
@@ -168,6 +176,11 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             {
                 //current_time >= pipeline exit_time
                 KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
+                // remember the story's names before the pipeline is gone so that
+                // any late orphaned events (which carry only a storyId) can still
+                // be sealed with the correct chronicle/story identity.
+                retiredStoryNames[pipeline->getStoryId()] =
+                        std::make_pair(pipeline->getChronicleName(), pipeline->getStoryName());
                 theMapOfStoryPipelines.erase(pipeline->getStoryId());
                 theIngestionQueue.removeIngestionHandle(pipeline->getStoryId());
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
@@ -179,6 +192,13 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             }
         }
     }
+
+    // Rescue any events stranded in the ingestion orphan queue for stories that
+    // were just retired (or retired earlier) and seal them for archival before
+    // they are lost. Invoked here so a direct retireDecayedPipelines() call --
+    // including the per-tick one -- always performs the rescue.
+    sealOrphanedEvents();
+
     //swipe through pipelineswaiting and remove all those with nullptr
     LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
@@ -187,6 +207,76 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
 }
+
+void chronolog::KeeperDataStore::sealOrphanedEvents()
+{
+    // Late events that arrived after their story's pipeline was retired can no
+    // longer be re-homed into a live ingestion handle (drainOrphanEvents only
+    // re-homes to existing handles). Rather than let them languish in the
+    // orphan queue and be dropped at shutdown, seal them into a recovery
+    // StoryChunk -- using the story's retained names -- and hand it to the
+    // extraction queue for archival.
+    std::unordered_set<chl::StoryId> orphan_story_ids = theIngestionQueue.orphanStoryIds();
+    if(orphan_story_ids.empty())
+    {
+        return;
+    }
+
+    std::lock_guard storeLock(dataStoreMutex);
+    for(chl::StoryId const& story_id: orphan_story_ids)
+    {
+        // Active stories: the tick's drainOrphanEvents re-homes their events
+        // into the live handle, so leave those alone.
+        if(theMapOfStoryPipelines.find(story_id) != theMapOfStoryPipelines.end())
+        {
+            continue;
+        }
+        // Stories never acquired on this keeper: keep buffering (an acquisition
+        // may still be in flight) and we have no names to seal them with anyway.
+        auto name_iter = retiredStoryNames.find(story_id);
+        if(name_iter == retiredStoryNames.end())
+        {
+            continue;
+        }
+
+        std::deque<chl::LogEvent> orphans = theIngestionQueue.extractOrphansForStory(story_id);
+        if(orphans.empty())
+        {
+            continue;
+        }
+
+        uint64_t min_time = orphans.front().time();
+        uint64_t max_time = orphans.front().time();
+        for(auto const& orphan_event: orphans)
+        {
+            min_time = std::min(min_time, orphan_event.time());
+            max_time = std::max(max_time, orphan_event.time());
+        }
+        // StoryChunk end_time is exclusive; +1 so the latest event fits.
+        chl::StoryChunk* recovery_chunk = new chl::StoryChunk(name_iter->second.first,
+                                                              name_iter->second.second,
+                                                              story_id,
+                                                              min_time,
+                                                              max_time + 1,
+                                                              orphans.size());
+        for(auto const& orphan_event: orphans) { recovery_chunk->insertEvent(orphan_event); }
+
+        if(recovery_chunk->empty())
+        {
+            delete recovery_chunk;
+        }
+        else
+        {
+            LOG_WARNING("[KeeperDataStore] Sealed {} late orphaned event(s) for retired story {} into a recovery "
+                        "chunk for archival.",
+                        recovery_chunk->getEventCount(),
+                        story_id);
+            theExtractionQueue.stashStoryChunk(recovery_chunk);
+        }
+    }
+}
+
+////////////////////////
 
 void chronolog::KeeperDataStore::dataCollectionTask()
 {

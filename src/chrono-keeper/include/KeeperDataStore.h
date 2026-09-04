@@ -34,6 +34,7 @@ class KeeperDataStore
 public:
     KeeperDataStore(IngestionQueue& ingestion_queue,
                     StoryChunkExtractionQueue& extraction_queue,
+                    KeeperTailStore& tail_store,
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 30,
                     uint32_t acceptance_window_secs = 60,
@@ -41,6 +42,7 @@ public:
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
+        , theTailStore(tail_store)
         , story_chunk_size(max_chunk_size)
         , story_chunk_duration_secs(story_chunk_duration_secs)
         , acceptance_window_secs(acceptance_window_secs)
@@ -68,6 +70,11 @@ public:
 
     void retireDecayedPipelines();
 
+    // Seal late/orphaned events for already-retired stories into recovery
+    // StoryChunks handed to the extraction queue, so they are archived instead
+    // of stranded in the ingestion orphan queue and dropped at shutdown.
+    void sealOrphanedEvents();
+
     void startDataCollection(int stream_count);
 
     void shutdownDataCollection();
@@ -83,6 +90,7 @@ private:
     std::mutex dataStoreStateMutex;
     IngestionQueue& theIngestionQueue;
     StoryChunkExtractionQueue& theExtractionQueue;
+    KeeperTailStore& theTailStore;
 
     uint32_t story_chunk_size;
     uint32_t story_chunk_duration_secs;
@@ -95,6 +103,11 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map<StoryId, KeeperStoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<KeeperStoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+    // Names of stories that have been retired, retained so that late/orphaned
+    // events (which carry only a storyId) can still be sealed into a correctly
+    // named recovery chunk. Grows with the number of distinct retired stories;
+    // a bounded cache is a possible future refinement.
+    std::unordered_map<StoryId, std::pair<ChronicleName, StoryName>> retiredStoryNames;
 };
 
 } // namespace chronolog

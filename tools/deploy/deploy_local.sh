@@ -66,33 +66,59 @@ stop_service() {
     local bin="$1"
     local name
     name=$(basename "$bin")
-    local timeout="$2"
+    # Grace period (seconds) to wait for a clean SIGTERM shutdown before
+    # escalating to SIGKILL. Defaults to 30s when not supplied.
+    local timeout="${2:-30}"
+    # Poll interval (seconds). Kept small so that a fast graceful shutdown is
+    # detected almost immediately instead of being rounded up to the interval.
+    local poll_interval=1
 
-    local start_time
-    start_time=$(date +%s)
-    echo -e "${DEBUG}Stopping ${name} ...${NC}"
+    # Nothing to do if the service is not running.
+    if ! pgrep -f "${bin}" >/dev/null; then
+        echo -e "${DEBUG}${name} is not running.${NC}"
+        echo ""
+        return 0
+    fi
+
+    echo -e "${DEBUG}Stopping ${name} (SIGTERM, up to ${timeout}s) ...${NC}"
     pkill -f "${bin}" || true
 
-    while true; do
-        if pgrep -f "${bin}" >/dev/null; then
-            echo -e "${DEBUG}Waiting for ${name} to stop...${NC}"
-        else
+    # Wait for graceful shutdown, polling frequently and giving up after the
+    # grace period. Using an elapsed-time bound (rather than a fixed number of
+    # sleeps) keeps the total wait honest even if a poll takes longer than
+    # expected.
+    local waited=0
+    while (( waited < timeout )); do
+        if ! pgrep -f "${bin}" >/dev/null; then
             echo -e "${DEBUG}All ${name} processes stopped gracefully.${NC}"
-            break
+            echo ""
+            return 0
         fi
-        sleep 10
-        local current_time
-        current_time=$(date +%s)
-        if (( current_time - start_time >= timeout )); then
-            echo -e "${DEBUG}Timeout reached while stopping ${name}. Forcing termination.${NC}"
-            if pgrep -f "${bin}" >/dev/null; then
-                kill_service "${bin}"
-                echo -e "${DEBUG}Killed: ${name} ${NC}"
-            fi
-            break
-        fi
+        sleep "${poll_interval}"
+        waited=$(( waited + poll_interval ))
     done
+
+    # Grace period expired: the service ignored SIGTERM or is stuck in
+    # shutdown. Escalate to SIGKILL and confirm the processes are gone.
+    echo -e "${DEBUG}Timeout (${timeout}s) reached while stopping ${name}. Forcing termination.${NC}"
+    kill_service "${bin}"
+
+    local kill_waited=0
+    while (( kill_waited < 5 )); do
+        if ! pgrep -f "${bin}" >/dev/null; then
+            echo -e "${DEBUG}Killed: ${name}.${NC}"
+            echo ""
+            return 0
+        fi
+        sleep "${poll_interval}"
+        kill_waited=$(( kill_waited + poll_interval ))
+    done
+
+    # Still present after SIGKILL -- typically an uninterruptible (D-state)
+    # process. Report it but do not block the rest of the shutdown sequence.
+    echo -e "${ERR}${name} still present after SIGKILL (possibly stuck in uninterruptible I/O).${NC}"
     echo ""
+    return 0
 }
 
 generate_config_files() {
@@ -195,7 +221,12 @@ generate_config_files() {
         local new_port_keeper_record=$((base_port_keeper_record + i))
         local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
         local grapher_index=$((i % num_recording_groups + 1))
+        # The keeper drains to BOTH halves of its recording group, so each endpoint
+        # has to follow that group's grapher/player rather than keep the template's
+        # fixed port. These mirror the ports assigned above: grapher i listens on
+        # base_port_grapher_drain + i, player i on base_port_player_recording + i.
         local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
+        local new_port_keeper_player_drain=$((base_port_player_recording + grapher_index - 1))
 
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
@@ -204,16 +235,17 @@ generate_config_files() {
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
+            --argjson new_port_keeper_player_drain $new_port_keeper_player_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
             --argjson grapher_index "$grapher_index" \
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.csv_tier_extractor.csv_archive_dir = ($output_dir + "/") |
-            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.grapher_receiving_endpoint.service_base_port = $new_port_keeper_drain |
+            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.player_receiving_endpoint.service_base_port = $new_port_keeper_player_drain |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
-        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, and $new_port_keeper_drain"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain, player $new_port_keeper_player_drain"
     done
 
     echo "Generating visor configuration file ..."
@@ -361,10 +393,20 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    stop_service "${PLAYER_BIN}" 100
-    stop_service "${KEEPER_BIN}" 100
-    stop_service "${GRAPHER_BIN}" 100
-    stop_service "${VISOR_BIN}" 100
+    # Keeper first, while the grapher and player are both still up: on SIGTERM it
+    # runs flushRetainedChunks(), handing every retained tail chunk to the
+    # extraction queue, which drains over RDMA to BOTH of those peers. Stopping
+    # them first would leave that drain without a destination.
+    #
+    # Its grace is larger than the others' because it is the only service with
+    # real shutdown work: a full tail is up to tail_capacity events per story and
+    # can take well over 30s to drain. The grace is a ceiling, not a fixed wait --
+    # stop_service polls every 1s and returns as soon as the process is gone -- so
+    # a fast shutdown still costs about a second.
+    stop_service "${KEEPER_BIN}" 120
+    stop_service "${PLAYER_BIN}" 30
+    stop_service "${GRAPHER_BIN}" 30
+    stop_service "${VISOR_BIN}" 30
     echo -e "${INFO}All ChronoLog processes stopped.${NC}"
 }
 

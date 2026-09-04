@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -6,6 +7,7 @@
 #include <chrono>
 #include <ctime>
 #include <memory>
+#include <tuple>
 
 #include <StoryChunk.h>
 #include <KeeperStoryPipeline.h>
@@ -21,6 +23,7 @@ namespace chl = chronolog;
 ////////////////////////
 
 chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& extractionQueue,
+                                                    KeeperTailStore& tail_store,
                                                     std::string const& chronicle_name,
                                                     std::string const& story_name,
                                                     chronolog::StoryId const& story_id,
@@ -28,6 +31,7 @@ chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& e
                                                     uint32_t chunk_granularity,
                                                     uint32_t acceptance_window)
     : theExtractionQueue(extractionQueue)
+    , theTailStore(tail_store)
     , storyId(story_id)
     , chronicleName(chronicle_name)
     , storyName(story_name)
@@ -74,6 +78,11 @@ chronolog::KeeperStoryPipeline::KeeperStoryPipeline(StoryChunkExtractionQueue& e
              std::ctime(&time_t_story_end),
              chunkGranularity / 1000000000,
              acceptanceWindow / 1000000000);
+
+    // Expose this pipeline's active timeline to the tail store so live_tail_read
+    // queries can serve the unsealed window. No-op on the read path when the knob
+    // is disabled.
+    theTailStore.registerActiveSource(storyId, this);
 }
 ///////////////////////
 
@@ -83,6 +92,11 @@ chl::StoryIngestionHandle* chl::KeeperStoryPipeline::getActiveIngestionHandle() 
 chronolog::KeeperStoryPipeline::~KeeperStoryPipeline()
 {
     LOG_DEBUG("[KeeperStoryPipeline] Destructor called for StoryID={}", storyId);
+    // Unregister BEFORE finalize(): unregister takes only activeSourcesMutex and a
+    // concurrent tail read holds that mutex across its whole active-timeline call,
+    // so this blocks until any in-flight read finishes (keeping `this` alive), and
+    // it never nests activeSourcesMutex inside sequencingMutex (finalize's lock).
+    theTailStore.unregisterActiveSource(storyId, this);
     finalize();
 }
 ///////////////////////
@@ -214,6 +228,73 @@ void chronolog::KeeperStoryPipeline::collectIngestedEvents()
     LOG_TRACE("[KeeperStoryPipeline] Collected ingested events for StoryID={}", storyId);
 }
 
+//////////////////////
+// ActiveTailSource: serve the most-recent events of the active (unsealed)
+// timeline. Both hold sequencingMutex, mutually exclusive with the background
+// merge/decay/finalize operations that mutate storyTimelineMap and the chunks.
+//
+// Note: these do NOT drain the ingestion deque (collectIngestedEvents swaps and
+// pops it without a lock, so it is unsafe to trigger from a read thread). Events
+// still in the ≤1s ingestion backlog therefore become visible only after the
+// next background collection tick merges them into the open chunk.
+
+std::vector<chronolog::EventSequence> chronolog::KeeperStoryPipeline::activeTailSequences(std::size_t n)
+{
+    std::vector<EventSequence> collected; // newest-first, capped at n
+    if(n == 0)
+    {
+        return collected;
+    }
+    std::lock_guard<std::mutex> lock(sequencingMutex);
+    // Walk chunks newest -> oldest, and within each chunk events newest -> oldest,
+    // until we have n sequences.
+    for(auto chunk_it = storyTimelineMap.rbegin(); chunk_it != storyTimelineMap.rend() && collected.size() < n;
+        ++chunk_it)
+    {
+        StoryChunk* chunk = chunk_it->second;
+        if(chunk == nullptr || chunk->empty())
+        {
+            continue;
+        }
+        auto ev_begin = chunk->begin();
+        auto ev_it = chunk->end();
+        while(ev_it != ev_begin && collected.size() < n)
+        {
+            --ev_it;
+            collected.push_back(ev_it->first);
+        }
+    }
+    std::reverse(collected.begin(), collected.end()); // -> ascending
+    return collected;
+}
+
+bool chronolog::KeeperStoryPipeline::findActiveEvent(chronolog::EventSequence const& seq, chronolog::LogEvent& out)
+{
+    uint64_t event_time = std::get<0>(seq); // EventSequence = (chrono_time, clientId, index)
+    std::lock_guard<std::mutex> lock(sequencingMutex);
+    // storyTimelineMap is keyed by chunk startTime; the chunk covering event_time
+    // is the last one whose start <= event_time, i.e. the predecessor of the first
+    // chunk with start > event_time.
+    auto chunk_it = storyTimelineMap.upper_bound(event_time);
+    if(chunk_it == storyTimelineMap.begin())
+    {
+        return false;
+    }
+    --chunk_it;
+    StoryChunk* chunk = chunk_it->second;
+    if(chunk == nullptr)
+    {
+        return false;
+    }
+    LogEvent const* event = chunk->findEvent(seq);
+    if(event == nullptr)
+    {
+        return false;
+    }
+    out = *event; // copy payload out under lock
+    return true;
+}
+
 void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_time)
 {
 #ifdef TRACE_CHUNK_EXTRACTION
@@ -266,7 +347,11 @@ void chronolog::KeeperStoryPipeline::extractDecayedStoryChunks(uint64_t current_
             }
             else
             {
-                theExtractionQueue.stashStoryChunk(extractedChunk);
+                // Hand the sealed chunk to the TailStore. It retains the chunk
+                // (indexing its events into the per-story last-N tail) and only
+                // forwards it to the extraction queue once its events age out of
+                // the tail window — so tail reads are served from keeper memory.
+                theTailStore.ingestSealedChunk(storyId, extractedChunk);
             }
         }
     }

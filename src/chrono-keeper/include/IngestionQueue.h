@@ -3,8 +3,10 @@
 
 #include <deque>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -127,6 +129,39 @@ public:
         return (orphanEventQueue.empty() && storyIngestionHandles.empty());
     }
 
+    // Distinct story ids that currently have orphaned (un-routable) events.
+    // The DataStore uses this to find late events for retired stories that can
+    // no longer be re-homed into a live ingestion handle, so it can seal them
+    // for archival instead of leaving them to be dropped.
+    std::unordered_set<StoryId> orphanStoryIds() const
+    {
+        std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+        std::unordered_set<StoryId> ids;
+        for(auto const& orphan_event: orphanEventQueue) { ids.insert(orphan_event.storyId); }
+        return ids;
+    }
+
+    // Remove and return all orphaned events for a single story (used by the
+    // DataStore right before it seals them into a recovery StoryChunk).
+    std::deque<LogEvent> extractOrphansForStory(StoryId const& story_id)
+    {
+        std::deque<LogEvent> extracted;
+        std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+        for(auto iter = orphanEventQueue.begin(); iter != orphanEventQueue.end();)
+        {
+            if((*iter).storyId == story_id)
+            {
+                extracted.push_back(*iter);
+                iter = orphanEventQueue.erase(iter);
+            }
+            else
+            {
+                ++iter;
+            }
+        }
+        return extracted;
+    }
+
     void shutDown()
     {
         {
@@ -138,6 +173,34 @@ public:
         }
         // last attempt to drain orphanEventQueue into known ingestionHandles
         drainOrphanEvents();
+
+        // Any events still orphaned here belong to stories that have no
+        // ingestion handle (retired and never re-acquired, or never acquired),
+        // so they can no longer be sealed and would otherwise be dropped
+        // silently when this queue is destroyed. We cannot re-home or archive
+        // them (an orphan LogEvent carries only its storyId, not the
+        // chronicle/story names needed to build an archivable StoryChunk), so
+        // at minimum surface the loss with an error rather than dropping it
+        // silently.
+        {
+            std::lock_guard<std::mutex> orphanLock(orphanQueueMutex);
+            if(!orphanEventQueue.empty())
+            {
+                std::unordered_map<StoryId, std::size_t> per_story;
+                for(auto const& orphan_event: orphanEventQueue) { per_story[orphan_event.storyId]++; }
+                std::stringstream story_breakdown;
+                for(auto const& entry: per_story)
+                {
+                    story_breakdown << " story=" << entry.first << ":" << entry.second;
+                }
+                LOG_ERROR("[IngestionQueue] Shutdown is dropping {} un-drainable orphan event(s) across {} "
+                          "story(ies) that had no ingestion handle to seal them:{}",
+                          orphanEventQueue.size(),
+                          per_story.size(),
+                          story_breakdown.str());
+            }
+        }
+
         // disengage all handles
         std::unique_lock<std::shared_mutex> lock(handleMapMutex);
         storyIngestionHandles.clear();

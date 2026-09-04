@@ -10,6 +10,7 @@
 #include <cctype>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -64,6 +65,53 @@ static uint64_t get_uint64_t_from_string(const std::string& str)
     return value;
 }
 
+// Parse a positive count without killing the shell on bad input.
+// get_uint64_t_from_string() exits the process, which is fine for one-shot
+// argument parsing but would drop an interactive session over a typo.
+static bool parse_positive_count(const std::string& str, size_t& out)
+{
+    // strtoull silently wraps a negative literal to a huge unsigned value --
+    // "-1" comes back as ULLONG_MAX with errno==0 and the whole string consumed,
+    // so every check below would pass and playback() would be asked for
+    // SIZE_MAX events. Reject the sign explicitly before parsing.
+    if(!str.empty() && str[0] == '-')
+    {
+        std::cerr << "Only positive number is allowed: " << str << std::endl;
+        return false;
+    }
+    char* endptr = nullptr;
+    errno = 0;
+    unsigned long long value = strtoull(str.c_str(), &endptr, 10);
+    if(endptr == str.c_str() || *endptr != '\0')
+    {
+        std::cerr << "Invalid number: " << str << std::endl;
+        return false;
+    }
+    if(errno == ERANGE || value == 0)
+    {
+        std::cerr << "Only positive number is allowed: " << str << std::endl;
+        return false;
+    }
+    // strtoull yields unsigned long long, which is WIDER than size_t on 32-bit
+    // targets, so the cast below can truncate silently: "4294967297" becomes 1
+    // with errno==0, the whole string consumed and a non-zero result -- every
+    // check above passes and playback() is asked for a count the user never
+    // typed. ERANGE only catches values above ULLONG_MAX, not above SIZE_MAX.
+    // Guarded with `if constexpr` so the comparison is not compiled at all where
+    // the two types are the same width (the usual 64-bit build), which would
+    // otherwise make it a tautological always-false compare.
+    if constexpr(sizeof(size_t) < sizeof(unsigned long long))
+    {
+        if(value > static_cast<unsigned long long>(std::numeric_limits<size_t>::max()))
+        {
+            std::cerr << "Number too large: " << str << std::endl;
+            return false;
+        }
+    }
+    out = static_cast<size_t>(value);
+    return true;
+}
+
 static std::string parse_config_arg(int argc, char** argv)
 {
     int opt;
@@ -111,6 +159,16 @@ static uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std
     uint64_t ret = story_handle->log_event(event_payload);
     assert(ret > 0);
     return ret;
+}
+
+// Deliberately unlike the other test_ wrappers, this one does not assert on the
+// return code: a tail read legitimately reports CL_ERR_PARTIAL_RESULT when events
+// leave the keeper tail between its two phases, and CL_ERR_QUERY_TIMED_OUT when a
+// keeper is unreachable. Those are outcomes to report, not invariants to abort on.
+static int
+test_playback_story(chronolog::StoryHandle* story_handle, size_t n, std::vector<chronolog::Event>& playback_events)
+{
+    return story_handle->playback(n, playback_events);
 }
 
 static int test_replay_story(chronolog::Client& client,
@@ -355,6 +413,44 @@ static void interactive_write_event(std::vector<std::string>& tokens, chronolog:
     }
 }
 
+static void interactive_playback_story(std::vector<std::string>& tokens, chronolog::StoryHandle* story_handle)
+{
+    if(tokens.size() != 2)
+    {
+        std::cerr << "Usage: -p <num_events>" << std::endl;
+        return;
+    }
+    size_t num_events = 0;
+    if(!parse_positive_count(tokens[1], num_events))
+    {
+        return;
+    }
+    std::vector<chronolog::Event> playback_events;
+    int ret_i = test_playback_story(story_handle, num_events, playback_events);
+    if(ret_i == chronolog::CL_SUCCESS || ret_i == chronolog::CL_ERR_PARTIAL_RESULT)
+    {
+        // A partial result still carries whatever was retrieved, so print it rather
+        // than discarding a usable answer -- but say so, because a short result is
+        // otherwise indistinguishable from the story simply holding fewer events.
+        std::cout << "Playback returned " << playback_events.size() << " event(s) of the last " << num_events
+                  << " requested" << std::endl;
+        for(const auto& event: playback_events) { std::cout << event.to_string() << std::endl; }
+        if(ret_i == chronolog::CL_ERR_PARTIAL_RESULT)
+        {
+            std::cout << "Note: result is incomplete, some events left the keeper tail between the two read phases"
+                      << " (return code: " << chronolog::to_string_client(ret_i) << ")" << std::endl;
+        }
+    }
+    else if(ret_i == chronolog::CL_ERR_NO_KEEPERS)
+    {
+        std::cout << "No ChronoKeepers are assigned to this Story; there is no in-memory tail to read" << std::endl;
+    }
+    else
+    {
+        std::cout << "Failed to play back Story, return code: " << chronolog::to_string_client(ret_i) << std::endl;
+    }
+}
+
 static void interactive_replay_story(std::vector<std::string>& tokens, chronolog::Client& client)
 {
     if(tokens.size() != 5)
@@ -557,6 +653,8 @@ int main(int argc, char** argv)
               << "\t-c <chronicle_name> , create a Chronicle <chronicle_name>\n"
               << "\t-a -s <chronicle_name> <story_name>, acquire Story <story_name> in Chronicle <chronicle_name>\n"
               << "\t-w <event_string>, write Event with <event_string> as payload\n"
+              << "\t-p <num_events>, play back the most recent <num_events> Events of the acquired Story straight "
+                 "from ChronoKeeper memory (tail read)\n"
               << "\t-r <chronicle_name> <story_name> <start_time> <end_time>, read Events in Story <story_name> of "
                  "Chronicle <chronicle_name> from <start_time> to <end_time>\n"
               << "\t-q -s <chronicle_name> <story_name>, release Story <story_name> in Chronicle <chronicle_name>\n"
@@ -594,6 +692,16 @@ int main(int argc, char** argv)
                      return;
                  }
                  interactive_write_event(command_subs, story_handle);
+             }},
+            {"-p",
+             [&](std::vector<std::string>& command_subs)
+             {
+                 if(story_handle == nullptr)
+                 {
+                     std::cerr << "Error: No story acquired. Use '-a -s <chronicle> <story>' first." << std::endl;
+                     return;
+                 }
+                 interactive_playback_story(command_subs, story_handle);
              }},
             {"-r", [&](std::vector<std::string>& command_subs) { interactive_replay_story(command_subs, client); }},
             {"-l",

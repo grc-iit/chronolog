@@ -535,6 +535,314 @@ jobs:
             echo "PERF_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Exercises the read side of the data flow, which the write-only perf test
+      # above does not cover:
+      #   1. write   - distributed telemetry writer produces real events and, unlike
+      #                chrono-bench, leaves its chronicles/stories in place.
+      #   2. tail read   - chrono-bench -l polls StoryHandle::playback() until each
+      #                event it logged is visible in the keeper tail.
+      #   3. archive read - reader-to-csv replays the telemetry story through the
+      #                player/HDF5 archive and must return rows.
+      # The archive read is only satisfiable once the events have been sealed,
+      # extracted and archived AND have aged past the player's acceptance window
+      # (get_active_window_boundary() clamps a query's end to now - acceptance_window,
+      # 300 s by default), so it is polled with a generous deadline rather than
+      # attempted once.
+      - name: Run Client Read Path Test
+        id: read-path
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+
+            MPIEXEC_BIN=\"\"
+            if [ -x \"\${REPO_DIR}/.spack-env/view/bin/mpiexec\" ]; then
+              MPIEXEC_BIN=\"\${REPO_DIR}/.spack-env/view/bin/mpiexec\"
+            elif command -v mpiexec &> /dev/null; then
+              MPIEXEC_BIN=\$(which mpiexec)
+            else
+              MPIEXEC_BIN=\$(find /home/grc-iit/spack/opt/spack -name mpiexec \\( -type f -o -type l \\) -executable 2>/dev/null | head -1)
+            fi
+            if [ -z \"\${MPIEXEC_BIN}\" ] || [ ! -x \"\${MPIEXEC_BIN}\" ]; then
+              echo '❌ mpiexec not found'
+              exit 1
+            fi
+
+            export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            cd \${WORK_DIR}
+            CLIENT_CONF=conf/default-chrono-client-conf.json
+            # The telemetry writer names each rank's chronicle after its hostname,
+            # so rank 0 (on c1) writes the chronicle we read back below.
+            CHRONICLE=\$(hostname)
+            STORY=cpu_usage
+            CSV=/tmp/chronolog_replay.csv
+
+            echo '--- [1/3] write path: distributed telemetry writer (data is kept) ---'
+            # Capture to a log and test the command's own status: piping into tail
+            # would make the pipeline status tail's, hiding a writer failure.
+            RC=0
+            timeout 240 \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+              examples/chrono-client-example-distributed-telemetry-writer \
+              --config \${CLIENT_CONF} -d 30 -i 5 > /tmp/telemetry_writer.log 2>&1 || RC=\$?
+            tail -8 /tmp/telemetry_writer.log || true
+            if [ \$RC -ne 0 ]; then
+              echo \"❌ telemetry writer failed (exit \${RC})\"
+              exit 1
+            fi
+            echo \"✅ telemetry written (chronicles c1..c4; stories cpu_usage/memory_usage/network_usage)\"
+
+            echo '--- [2/3] tail read: chrono-bench -l (playback from the keeper tail) ---'
+            RC=0
+            timeout 300 \${MPIEXEC_BIN} -n 4 -f conf/hosts_client \
+              tools/benchmark/chrono-bench --config \${CLIENT_CONF} \
+              -l -n 64 -t 1 -h 1 -a 4096 -s 4096 -b 4096 -e 500 -m 120 \
+              > /tmp/tail_read_output.log 2>&1 || RC=\$?
+            # chrono-bench heads this block 'Tail-read latency / cost results' with
+            # rows named 'send->visible'; the previous pattern 'Latency (send' matched
+            # nothing, and `|| true` hid that, so a regression showed the assertion
+            # failure with no latency numbers next to it.
+            grep -E 'Tail-read latency|send->visible|playback\(\) call' /tmp/tail_read_output.log || true
+            if [ \$RC -ne 0 ]; then
+              echo \"❌ tail read (chrono-bench -l) failed (exit \${RC})\"
+              tail -30 /tmp/tail_read_output.log || true
+              exit 1
+            fi
+            # Assert a NON-ZERO logged count as well as zero never-seen. never_seen is
+            # computed as logged - seen, so a run where every log_event() failed prints
+            # \"Events logged: 0, seen: 0, never seen (unsealed/evicted): 0\" and would
+            # otherwise satisfy this gate without the read path ever being exercised.
+            LATENCY_LINE=\$(grep -E '^Events logged: ' /tmp/tail_read_output.log | tail -1)
+            if ! echo \"\${LATENCY_LINE}\" | grep -qE 'Events logged: [1-9][0-9]*, seen: [0-9]+, never seen \\(unsealed/evicted\\): 0\$'; then
+              echo '❌ tail read: expected a non-zero logged count with every event visible via playback()'
+              echo \"   got: \${LATENCY_LINE:-<no 'Events logged:' line in the output>}\"
+              tail -30 /tmp/tail_read_output.log || true
+              exit 1
+            fi
+            echo \"✅ tail read: \${LATENCY_LINE}\"
+
+            echo '--- [3/3] archive read: reader-to-csv (ReplayStory over the HDF5 archive) ---'
+            echo \"Replaying \${CHRONICLE}/\${STORY}; waiting for archival + the player acceptance window ...\"
+            DEADLINE=\$(( SECONDS + 480 ))
+            ROWS=0
+            while [ \$SECONDS -lt \$DEADLINE ]; do
+              # reader-to-csv appends, so start from a clean file each attempt.
+              rm -f \${CSV}
+              examples/chrono-client-example-reader-to-csv \
+                --config \${CLIENT_CONF} --chronicle \${CHRONICLE} --story \${STORY} \
+                --interval 3600 --output_file \${CSV} > /tmp/reader_to_csv.log 2>&1 || true
+              if [ -f \${CSV} ]; then
+                ROWS=\$(wc -l < \${CSV})
+              else
+                ROWS=0
+              fi
+              if [ \"\${ROWS}\" -gt 0 ]; then
+                break
+              fi
+              sleep 15
+            done
+            # reader-to-csv exits 0 even when it replays nothing, so gate on rows.
+            if [ \"\${ROWS}\" -le 0 ]; then
+              echo \"❌ archive read returned no events for \${CHRONICLE}/\${STORY} within the deadline\"
+              echo '--- archive dir ---'
+              ls -la \${WORK_DIR}/output 2>/dev/null | head -20 || true
+              echo '--- reader-to-csv log ---'
+              tail -30 /tmp/reader_to_csv.log 2>/dev/null || true
+              exit 1
+            fi
+            echo \"✅ archive read: replayed \${ROWS} event(s) from \${CHRONICLE}/\${STORY}\"
+            head -3 \${CSV}
+            echo '✅ Read path test completed (write -> tail read -> archive read)'
+          "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      # Each recording group is an independent keeper->grapher path. The archive
+      # read above only proves that ONE story reached HDF5, which a deployment
+      # where every keeper drains into grapher 1 would also satisfy -- exactly the
+      # deploy_local.sh defect where the per-group drain port was written to a key
+      # nothing reads. Assert instead that EVERY grapher archived something.
+      - name: Verify every recording group archived data
+        id: group-coverage
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            # HDF5FileChunkExtractor logs this at INFO only when a chunk is actually
+            # written out, so it is evidence of data arriving, not merely of a
+            # grapher being alive.
+            MARKER='HDF5FileChunkExtractor'
+            EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_grapher)
+            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null || true)
+            if [ -z \"\${LOGS}\" ]; then
+              echo '❌ no grapher logs found under monitor/'
+              ls -la \${WORK_DIR}/monitor/ 2>/dev/null | head -20 || true
+              exit 1
+            fi
+            ACTIVE=0
+            for f in \${LOGS}; do
+              if grep -q \"\${MARKER}.*processing chunk\" \"\$f\" 2>/dev/null; then
+                echo \"  ✅ \$(basename \$f): archived chunks\"
+                ACTIVE=\$(( ACTIVE + 1 ))
+              else
+                echo \"  ❌ \$(basename \$f): never archived a chunk\"
+              fi
+            done
+            echo \"graphers that archived data: \${ACTIVE} / \${EXPECTED}\"
+            if [ \"\${ACTIVE}\" -lt \"\${EXPECTED}\" ]; then
+              echo '❌ at least one recording group never received data -- keepers may all be'
+              echo '   draining into the same grapher (check the per-group drain endpoints in'
+              echo '   each keeper conf: ExtractionModule.extractors.extractor_to_grapher).'
+              exit 1
+            fi
+            echo '✅ every recording group received and archived data'
+          "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      - name: Run Python Tail Read Test (writer on c2, reader on c3)
+        id: py-tail-read
+        run: |
+          set -e
+          _start=$(date +%s)
+          WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
+          REPO_DIR="/home/grc-iit/chronolog-repo"
+          # Prefer the interpreter the module was built against; the .so carries a
+          # cpython-<ver> ABI tag and only imports under a matching interpreter.
+          PY="${REPO_DIR}/.spack-env/view/bin/python3"
+          if ! docker exec --user grc-iit chronolog-c2 test -x "${PY}"; then
+            PY=python3
+            echo "ℹ️ spack python not found in the view; falling back to ${PY}"
+          fi
+          EXAMPLE="${REPO_DIR}/client/python/examples/tail_reader_client.py"
+          CLIENT_CONF="${WORK_DIR}/conf/default-chrono-client-conf.json"
+          # Writer and reader run on DIFFERENT containers, so this exercises the
+          # Python binding over the network and proves playback() serves a client
+          # that did not write the events.
+          WRITER=chronolog-c2
+          READER=chronolog-c3
+          CHRONICLE=py_tail_ci
+          STORY=py_tail_story
+
+          # The writer HOLDS the story: releasing it retires the pipeline, and a
+          # retired pipeline hands its chunks straight to the extraction queue
+          # instead of the tail, leaving the reader nothing to find.
+          echo "--- [1/2] Python writer on ${WRITER} (holds the story) ---"
+          docker exec -d --user grc-iit "${WRITER}" bash -c "
+            export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
+            export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            ${PY} -u ${EXAMPLE} --config ${CLIENT_CONF} --mode write \
+              --chronicle ${CHRONICLE} --story ${STORY} --events 40 --hold 300 \
+              > /tmp/py_tail_writer.log 2>&1
+          "
+
+          echo "--- [2/2] Python reader on ${READER} (polls the keeper tail) ---"
+          # Poll rather than read once: an event sits in the tail only between its
+          # chunk sealing (chunk_duration + acceptance_window) and ageing out
+          # (tail_retention_secs from the chunk end), so the readable window is
+          # about tail_retention_secs - acceptance_window_secs and a single shot
+          # can land either side of it.
+          RC=0
+          docker exec --user grc-iit "${READER}" bash -c "
+            export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
+            export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            ${PY} -u ${EXAMPLE} --config ${CLIENT_CONF} --mode read \
+              --chronicle ${CHRONICLE} --story ${STORY} \
+              --playback-n 10 --expect-min 1 --read-timeout 180
+          " > /tmp/py_tail_reader.log 2>&1 || RC=$?
+          cat /tmp/py_tail_reader.log || true
+
+          if [ $RC -ne 0 ]; then
+            echo "❌ Python tail read failed (exit ${RC}): playback() returned fewer events than expected"
+            echo '--- writer log ---'
+            docker exec --user grc-iit "${WRITER}" cat /tmp/py_tail_writer.log 2>/dev/null | tail -20 || true
+            exit 1
+          fi
+          echo "✅ Python tail read: playback() on ${READER} returned events written by ${WRITER}"
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      # A keeper holds sealed-but-unarchived chunks in its tail. On SIGTERM it must
+      # hand them to the extraction queue while extraction is still draining --
+      # flushRetainedChunks(). Before that existed the destructor stashed them into
+      # an already-shut-down queue, which freed them instead: silent loss of
+      # everything sealed in the last tail_retention_secs. Nothing else in this
+      # pipeline covers that path, because every other test lets data age out
+      # normally rather than killing a keeper with a populated tail.
+      - name: Verify keeper shutdown flushes its tail
+        id: shutdown-flush
+        run: |
+          set -e
+          _start=$(date +%s)
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            set -e
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            REPO_DIR=\"/home/grc-iit/chronolog-repo\"
+            cd \${REPO_DIR}
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+            MPIEXEC=\${REPO_DIR}/.spack-env/view/bin/mpiexec
+            [ -x \"\$MPIEXEC\" ] || MPIEXEC=\$(command -v mpiexec)
+            export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+            cd \${WORK_DIR}
+
+            SEAL=\$(( \$(jq -r '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs' conf/default-chrono-conf.json 2>/dev/null || echo 10) + \$(jq -r '.chrono_keeper.DataStoreInternals.acceptance_window_secs' conf/default-chrono-conf.json 2>/dev/null || echo 15) + 10 ))
+            echo \"writing a burst, then waiting \${SEAL}s for it to seal into the keeper tail ...\"
+            timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
+              examples/chrono-client-example-distributed-telemetry-writer \
+              --config conf/default-chrono-client-conf.json -d 15 -i 3 >/dev/null 2>&1 || true
+            sleep \${SEAL}
+
+            BEFORE=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
+            echo \"HDF5 files before keeper shutdown: \${BEFORE}\"
+
+            # SIGTERM only the keepers: the graphers must stay up to receive the
+            # flushed chunks. SIGKILL would bypass the flush entirely.
+            parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
+            for i in \$(seq 1 40); do
+              REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
+              [ \"\${REMAIN}\" = \"0\" ] && break
+              sleep 3
+            done
+            sleep 10   # let the extraction queue drain what the flush handed over
+
+            FLUSHED=\$(grep -h 'Flushed .* retained chunk' \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | tail -5 || true)
+            AFTER=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
+            echo \"HDF5 files after keeper shutdown : \${AFTER}\"
+
+            if [ -n \"\${FLUSHED}\" ]; then
+              echo \"\${FLUSHED}\" | sed 's/^/  /'
+              echo '✅ keeper flushed its retained tail on shutdown'
+            else
+              echo '❌ no keeper logged a tail flush on shutdown.'
+              echo '   Either flushRetainedChunks() did not run before extraction stopped,'
+              echo \"   or the tail was already empty (retention window: check that the burst\"
+              echo \"   sealed within tail_retention_secs of the shutdown).\"
+              tail -20 \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null || true
+              exit 1
+            fi
+          "
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+
+      - name: Clean up archive output directory
+        if: always()
+        run: |
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
+            if [ -d \"\${WORK_DIR}/output\" ]; then
+              echo 'Removing archive files produced by the read path test...'
+              find \"\${WORK_DIR}/output\" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+              echo \"✅ Output directory cleaned (\$(ls -A \"\${WORK_DIR}/output\" 2>/dev/null | wc -l) entries remain)\"
+            else
+              echo 'ℹ️ No output directory to clean'
+            fi
+            rm -f /tmp/chronolog_replay.csv /tmp/reader_to_csv.log /tmp/tail_read_output.log /tmp/telemetry_writer.log /tmp/py_tail_writer.log /tmp/py_tail_reader.log 2>/dev/null || true
+          " || echo "⚠️ Output cleanup had errors but continuing"
+
       - name: Stop ChronoLog
         if: always()
         run: |
@@ -573,6 +881,8 @@ jobs:
           DEPLOY_D=${{ steps.deploy.outputs.duration || 0 }}
           PERF_D=${{ steps.perf-test.outputs.duration || 0 }}
           PERF_OUTCOME="${{ steps.perf-test.outcome }}"
+          READ_D=${{ steps.read-path.outputs.duration || 0 }}
+          READ_OUTCOME="${{ steps.read-path.outcome }}"
           PERF_OUTPUT=$(cat <<'PERF_SUMMARY_EOF'
           ${{ steps.perf-test.outputs.output }}
           PERF_SUMMARY_EOF
@@ -584,6 +894,12 @@ jobs:
             success) PERF_ICON="✅" ;;
             failure) PERF_ICON="❌" ;;
             *)       PERF_ICON="⚠️" ;;
+          esac
+
+          case "$READ_OUTCOME" in
+            success) READ_ICON="✅" ;;
+            failure) READ_ICON="❌" ;;
+            *)       READ_ICON="⚠️" ;;
           esac
 
           {
@@ -610,6 +926,11 @@ jobs:
             echo "| Build + install ChronoLog | $(fmt_duration "$BUILD_D") |"
             echo "| Deploy ChronoLog (distributed) | $(fmt_duration "$DEPLOY_D") |"
             echo "| Client performance test | $(fmt_duration "$PERF_D") |"
+            echo "| Client read path test | $(fmt_duration "$READ_D") |"
+            echo ""
+            echo "### 🔎 Client read path test"
+            echo ""
+            echo "${READ_ICON} Outcome: \`${READ_OUTCOME}\` — write (telemetry writer) → tail read (\`chrono-bench -l\`, \`playback()\`) → archive read (reader-to-csv, \`ReplayStory\`)"
             echo ""
             echo "### 🚀 Client performance test"
             echo ""

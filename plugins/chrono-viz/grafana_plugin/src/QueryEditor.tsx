@@ -1,10 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
-import { InlineField, Input, Select, InlineFieldRow } from '@grafana/ui';
+import { InlineField, Input, Select, InlineFieldRow, RadioButtonGroup } from '@grafana/ui';
 import { DataSource } from './datasource';
-import { ChronoLogDataSourceOptions, ChronoLogQuery } from './types';
+import { ChronoLogDataSourceOptions, ChronoLogQuery, ChronoLogQueryType, DEFAULT_NUM_EVENTS } from './types';
 
 type Props = QueryEditorProps<DataSource, ChronoLogQuery, ChronoLogDataSourceOptions>;
+
+/** Exclusive fetch modes: archive replay vs keeper-tail playback */
+const QUERY_TYPE_OPTIONS: Array<SelectableValue<ChronoLogQueryType>> = [
+  {
+    label: 'Replay (archive)',
+    value: 'replay',
+    description: 'Read archived events over the dashboard time range (ReplayStory)',
+  },
+  {
+    label: 'Tail (playback)',
+    value: 'playback',
+    description: 'Read the most recent N events from keeper memory (playback); time range is ignored',
+  },
+];
 
 /**
  * Query Editor component for ChronoLog data source
@@ -138,6 +152,32 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     [onRunQuery]
   );
 
+  // Exclusive selection between the two fetch modes; unset means 'replay'
+  // so pre-existing dashboards keep their behavior.
+  const queryType: ChronoLogQueryType = query.queryType || 'replay';
+
+  const onQueryTypeChange = useCallback(
+    (value: ChronoLogQueryType) => {
+      onChange({
+        ...query,
+        queryType: value,
+      });
+      onRunQuery();
+    },
+    [onChange, onRunQuery, query]
+  );
+
+  const onNumEventsChange = useCallback(
+    (event: React.FormEvent<HTMLInputElement>) => {
+      const parsed = parseInt(event.currentTarget.value, 10);
+      onChange({
+        ...query,
+        numEvents: isNaN(parsed) ? undefined : Math.max(1, parsed),
+      });
+    },
+    [onChange, query]
+  );
+
   // Get current selections
   const selectedChronicle = chronicles.find((c) => c.value === query.chronicleName) || {
     label: query.chronicleName || '',
@@ -151,6 +191,36 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
 
   return (
     <div className="gf-form-group">
+      <InlineFieldRow>
+        <InlineField
+          label="Mode"
+          labelWidth={14}
+          tooltip="How to fetch events: Replay reads archived data over the dashboard time range; Tail reads the most recent N events directly from keeper memory (time range ignored). Exactly one mode applies per query."
+        >
+          <RadioButtonGroup options={QUERY_TYPE_OPTIONS} value={queryType} onChange={onQueryTypeChange} />
+        </InlineField>
+      </InlineFieldRow>
+
+      {queryType === 'playback' && (
+        <InlineFieldRow>
+          <InlineField
+            label="Last N"
+            labelWidth={14}
+            tooltip="Number of most recent events to fetch from the keeper tail. Events become visible once their chunk seals (chunk duration + acceptance window)."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={query.numEvents ?? DEFAULT_NUM_EVENTS}
+              onChange={onNumEventsChange}
+              onKeyDown={onKeyDown}
+              placeholder={String(DEFAULT_NUM_EVENTS)}
+              width={20}
+            />
+          </InlineField>
+        </InlineFieldRow>
+      )}
+
       <InlineFieldRow>
         <InlineField
           label="Chronicle"
@@ -222,7 +292,10 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
 
       {query.chronicleName && query.storyName && (
         <div style={{ marginTop: '8px', fontSize: '12px', color: '#8e8e8e' }}>
-          Querying: <strong>{query.chronicleName}</strong> / <strong>{query.storyName}</strong>
+          Querying: <strong>{query.chronicleName}</strong> / <strong>{query.storyName}</strong>{' '}
+          {queryType === 'playback'
+            ? `— tail read, last ${query.numEvents ?? DEFAULT_NUM_EVENTS} events`
+            : '— archive replay over the dashboard time range'}
         </div>
       )}
     </div>

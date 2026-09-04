@@ -123,7 +123,7 @@ python chronolog_service.py
   ```
 
 ### Data Queries
-- **POST** `/query` - Query events from a story
+- **POST** `/query` - Replay archived events from a story over a time range (`Client.ReplayStory`)
   - Automatically handles acquire/release lifecycle
   ```json
   {
@@ -134,6 +134,16 @@ python chronolog_service.py
   }
   ```
   - Times are in nanoseconds since epoch
+- **POST** `/playback` - Tail-read the most recent events of a story (`StoryHandle.playback`)
+  - Automatically handles acquire/release lifecycle
+  - Served from the keepers' in-memory tail (sealed-but-not-yet-archived chunks); no time range — events are returned ascending, at most `num_events` of the newest ones
+  ```json
+  {
+    "chronicle_name": "my_chronicle",
+    "story_name": "my_story",
+    "num_events": 100
+  }
+  ```
 
 ### Grafana Integration
 - **GET** `/` - Root endpoint (service info)

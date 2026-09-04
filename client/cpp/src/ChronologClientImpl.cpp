@@ -376,7 +376,7 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
     // this function can be called from any client thread, so before sending an rpc request to the Visor
     // we check if the story acquisition request has been already granted to the process on some other thread
     //
-    chronolog::StoryHandle* storyHandle = storyteller->findStoryWritingHandle(chronicle_name, story_name);
+    chronolog::StoryHandle* storyHandle = storyteller->findStoryHandle(chronicle_name, story_name);
     if(storyHandle != nullptr)
     {
         LOG_INFO("[ChronoLogClientImpl] Story '{}' from chronicle '{}' is already acquired.",
@@ -403,11 +403,11 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
     //successfull AcquireStoryResponse carries Visor generated StoryId & vector<ServiceId>
     // for the Keepers assigned to record the acquired story
 
-    storyHandle = storyteller->initializeStoryWritingHandle(chronicle_name,
-                                                            story_name,
-                                                            acquireStoryResponse.getStoryId(),
-                                                            acquireStoryResponse.getKeepers(),
-                                                            acquireStoryResponse.getPlayer());
+    storyHandle = storyteller->initializeStoryHandle(chronicle_name,
+                                                     story_name,
+                                                     acquireStoryResponse.getStoryId(),
+                                                     acquireStoryResponse.getKeepers(),
+                                                     acquireStoryResponse.getPlayer());
 
     if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
     {
@@ -457,7 +457,7 @@ int chronolog::ChronologClientImpl::ReleaseStory(std::string const& chronicle_na
     // if we storyteller has active WritingHandle for this story
     // it should be cleared regardless of the Visor connection state
 
-    if(nullptr == storyteller || nullptr == storyteller->findStoryWritingHandle(chronicle_name, story_name))
+    if(nullptr == storyteller || nullptr == storyteller->findStoryHandle(chronicle_name, story_name))
     {
         LOG_WARNING("[ChronoLogClientImpl] No active writing handle found for story '{}' in chronicle '{}'.",
                     story_name,
