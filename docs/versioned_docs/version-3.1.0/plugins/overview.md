@@ -43,6 +43,7 @@ When you call a plugin operation, it serializes the call arguments into a Chrono
 | [ChronoKVS](./chronokvs.md) | Multi-version key-value store | State auditing, configuration history, temporal lookups |
 | [ChronoStream](./chronostream.md) | Event stream consumer | Real-time processing, ordered delivery, stream replay |
 | [ChronoViz](./chronoviz.md) | Grafana data source | Dashboard visualization, interactive exploration, time-range queries |
+| [LDMS Store](./chrono-ldms.md) | `ldmsd` store plugin | Cluster telemetry capture, HPC monitoring, metric archival |
 
 ## Choosing a plugin
 
@@ -52,4 +53,6 @@ Use **ChronoStream** when your application produces or consumes a continuous flo
 
 Use **ChronoViz** when you want to explore and visualize ChronoLog data interactively through Grafana dashboards. It connects Grafana directly to a running ChronoLog service, letting you browse chronicles and stories, query events over arbitrary time ranges, and render the results in any Grafana panel without writing custom export scripts.
 
-If neither plugin fits your use case, the raw ChronoLog [C++ client API](../client/cpp/overview.md) is always available and provides full control over record layout and storage semantics.
+Use the **LDMS Store** when you already run [OVIS/LDMS](https://github.com/ovis-hpc/ldms) for cluster monitoring and want its metric streams to land in ChronoLog. Unlike the other plugins, it is not an API your application calls: it is an `ldmsd` store plugin that an LDMS aggregator drives, so adopting it is a configuration change on the monitoring side rather than a code change on yours. It is a good fit for capturing node-level telemetry alongside application data in the same tiered log.
+
+If no plugin fits your use case, the raw ChronoLog [C++ client API](../client/cpp/overview.md) is always available and provides full control over record layout and storage semantics.
