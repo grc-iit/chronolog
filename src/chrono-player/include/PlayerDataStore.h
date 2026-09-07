@@ -33,7 +33,7 @@ public:
     PlayerDataStore(StoryChunkIngestionQueue& ingestion_queue,
                     uint32_t max_chunk_size = 4096,
                     uint32_t story_chunk_duration_secs = 60,
-                    uint32_t acceptance_window_secs = 180,
+                    uint32_t acceptance_window_secs = 300,
                     uint32_t inactive_pipeline_delay_secs = 300)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
@@ -65,6 +65,13 @@ public:
 
     void dataCollectionTask();
 
+    uint64_t get_active_window_boundary() const;
+
+    int get_active_story_events(StoryId const& story_id,
+                                uint64_t start_time,
+                                uint64_t end_time,
+                                std::vector<Event>& events);
+
 private:
     PlayerDataStore(PlayerDataStore const&) = delete;
 
@@ -79,6 +86,7 @@ private:
     std::mutex dataStoreMutex;
     std::unordered_map<StoryId, StoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<StoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+
     uint32_t story_chunk_size;
     uint32_t story_chunk_duration_secs;
     uint32_t acceptance_window_secs;

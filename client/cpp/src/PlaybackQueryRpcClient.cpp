@@ -59,6 +59,7 @@ int chl::PlaybackQueryRpcClient::is_playback_service_available()
 }
 
 int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id,
+                                                             chl::StoryId const& story_id,
                                                              chl::ChronicleName const& chronicle_name,
                                                              chl::StoryName const& story_name,
                                                              uint64_t start_time,
@@ -70,12 +71,14 @@ int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id,
 
     try
     {
-        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {}{}",
+        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {} {}-{}",
                   chl::to_string(playback_service_id),
+                  story_id,
                   chronicle_name,
                   story_name);
         story_playback_request.on(playback_service_handle)(theClientQueryService.get_service_id(),
                                                            query_id,
+                                                           story_id,
                                                            chronicle_name,
                                                            story_name,
                                                            start_time,

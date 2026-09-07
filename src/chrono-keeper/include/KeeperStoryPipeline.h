@@ -12,7 +12,9 @@
 #include <chronolog_types.h>
 #include <StoryChunk.h>
 
+#include "ActiveTailSource.h"
 #include "StoryChunkExtractionQueue.h"
+#include "KeeperTailStore.h"
 
 namespace chronolog
 {
@@ -20,11 +22,15 @@ namespace chronolog
 
 class StoryIngestionHandle;
 
-class KeeperStoryPipeline
+// Implements ActiveTailSource so the KeeperTailStore can serve the most-recent
+// events straight from this pipeline's active (unsealed) timeline when
+// live_tail_read is enabled.
+class KeeperStoryPipeline: public ActiveTailSource
 {
 
 public:
     KeeperStoryPipeline(StoryChunkExtractionQueue&,
+                        KeeperTailStore&,
                         std::string const& chronicle_name,
                         std::string const& story_name,
                         StoryId const& story_id,
@@ -55,7 +61,7 @@ public:
 
     StoryName const& getStoryName() const { return storyName; }
 
-    uint16_t getAcceptanceWindow() const { return acceptanceWindow; }
+    uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
     uint64_t TimelineStart() const { return (*storyTimelineMap.begin()).first; } // storyTimelineMap is never left empty
 
@@ -64,9 +70,17 @@ public:
         return (*storyTimelineMap.rbegin()).second->getEndTime();
     } // storyTimelineMap is never left empty
 
+    // ActiveTailSource: serve the most-recent events of the active (unsealed)
+    // timeline. Both walk storyTimelineMap under sequencingMutex, so they are
+    // safe against the background ingestion-merge and decay operations.
+    std::vector<EventSequence> activeTailSequences(std::size_t n) override;
+
+    bool findActiveEvent(EventSequence const& seq, LogEvent& out) override;
+
 
 private:
     StoryChunkExtractionQueue& theExtractionQueue;
+    KeeperTailStore& theTailStore;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

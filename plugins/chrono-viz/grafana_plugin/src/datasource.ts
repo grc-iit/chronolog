@@ -13,7 +13,9 @@ import {
   ChronoLogQuery,
   ChronoLogDataSourceOptions,
   QueryResponse,
+  PlaybackResponse,
   HealthResponse,
+  DEFAULT_NUM_EVENTS,
 } from './types';
 
 /**
@@ -41,6 +43,8 @@ export class DataSource extends DataSourceApi<ChronoLogQuery, ChronoLogDataSourc
     return {
       chronicleName: this.instanceSettings.jsonData.defaultChronicleName || '',
       storyName: this.instanceSettings.jsonData.defaultStoryName || '',
+      queryType: 'replay',
+      numEvents: DEFAULT_NUM_EVENTS,
     };
   }
 
@@ -71,7 +75,11 @@ export class DataSource extends DataSourceApi<ChronoLogQuery, ChronoLogDataSourc
         }
 
         try {
-          const response = await this.queryStory(chronicleName, storyName, startTimeNs, endTimeNs);
+          // Exclusive fetch mode: tail read (playback) or archive read (replay)
+          const response =
+            (target.queryType || 'replay') === 'playback'
+              ? await this.playbackStory(chronicleName, storyName, target.numEvents || DEFAULT_NUM_EVENTS)
+              : await this.queryStory(chronicleName, storyName, startTimeNs, endTimeNs);
           return this.transformResponse(response, target);
         } catch (error) {
           console.error(`Error querying ${chronicleName}/${storyName}:`, error);
@@ -130,9 +138,51 @@ export class DataSource extends DataSourceApi<ChronoLogQuery, ChronoLogDataSourc
   }
 
   /**
-   * Transform ChronoLog events to Grafana DataFrame format
+   * Tail-read the most recent events of a story from the backend
+   * Matches backend API: POST /playback with PlaybackRequest
+   * Backend handles acquire/playback/release lifecycle automatically
    */
-  private transformResponse(response: QueryResponse, target: ChronoLogQuery): MutableDataFrame {
+  private async playbackStory(
+    chronicleName: string,
+    storyName: string,
+    numEvents: number
+  ): Promise<PlaybackResponse> {
+    try {
+      const response = await lastValueFrom(
+        getBackendSrv().fetch<PlaybackResponse>({
+          url: `${this.backendUrl}/playback`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          data: {
+            chronicle_name: chronicleName,
+            story_name: storyName,
+            num_events: numEvents,
+          },
+        })
+      );
+
+      return response.data;
+    } catch (error: any) {
+      // Handle 503 Service Unavailable (client not connected)
+      if (error?.status === 503) {
+        throw new Error('ChronoLog client not connected. Ensure backend is connected to ChronoLog services.');
+      }
+      // Handle 422 Validation Error
+      if (error?.status === 422) {
+        throw new Error('Invalid playback parameters. Check chronicle_name, story_name, and num_events.');
+      }
+      // Re-throw other errors
+      throw error;
+    }
+  }
+
+  /**
+   * Transform ChronoLog events to Grafana DataFrame format
+   * (shared by replay and playback responses)
+   */
+  private transformResponse(response: QueryResponse | PlaybackResponse, target: ChronoLogQuery): MutableDataFrame {
     const frame = new MutableDataFrame({
       refId: target.refId,
       name: `${response.chronicle_name}/${response.story_name}`,

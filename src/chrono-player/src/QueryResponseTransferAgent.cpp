@@ -74,29 +74,31 @@ bool chronolog::QueryResponseAgent::is_receiver_available() const
 
 //////////
 
-int chronolog::QueryResponseAgent::createQueryResponse(chl::ClientQueryId const& query_id)
+int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId const& query_id,
+                                                            chl::PlaybackQueryResponse* query_response,
+                                                            bool ready_to_send)
 {
-    // create the PlaybackQueryResponse object and stash it this agent's internal map of active queries
+    // stash PlaybackResponseObject into this agent's internal map of active queries
     // keyed by the ClientQueryId
     //
+    // ready_send = true means the response is compelte and ready to be send to the client
+    // ready_to_send = false means there's an archive portion of the response pending
 
     int ret_value = chl::CL_ERR_UNKNOWN;
 
     std::lock_guard<std::mutex> lock(query_mutex);
 
-    // the bool active query entry is flipped  to "true" when the archive portion of hte response is received
-    // and the PlaybackQueryResponse object is ready to be sent back to the client
-    //
     auto insert_return =
             active_queries.insert(std::pair<chl::ClientQueryId, std::pair<bool, chl::PlaybackQueryResponse*>>(
                     query_id,
-                    std::pair<bool, chl::PlaybackQueryResponse*>(false, new chl::PlaybackQueryResponse(query_id))));
+                    std::pair<bool, chl::PlaybackQueryResponse*>(ready_to_send, query_response)));
 
     if(insert_return.second)
     {
-        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}",
+        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}, ThreadID={}",
                  chl::to_string(receiver_service_id),
-                 query_id);
+                 query_id,
+                 tl::thread::self_id());
         ret_value = chl::CL_SUCCESS;
     }
 
@@ -105,33 +107,75 @@ int chronolog::QueryResponseAgent::createQueryResponse(chl::ClientQueryId const&
 
 ///////
 
-int chronolog::QueryResponseAgent::stashStoryChunks(chl::ClientQueryId const& query_id,
-                                                    std::list<chl::StoryChunk*> const& archive_chunks)
+//int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
+int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
+                                                                    std::list<chl::StoryChunk*> const& archive_chunks)
 {
+    // this function is called by ArchiveReadingAgent thread that got the ArchiveReadingRequest
+    // extract events from archive story chunks into the response->events
+
+    LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing archived events for query {} ThreadID={}",
+              chl::to_string(receiver_service_id),
+              query_id,
+              tl::thread::self_id());
+
+    std::vector<Event> archived_events;
+
+    for(auto& story_chunk: archive_chunks)
+    {
+        LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing story_chunk for query {} : story {}-{} "
+                  "ThreadID={}",
+                  chl::to_string(receiver_service_id),
+                  query_id,
+                  story_chunk->getChronicleName(),
+                  story_chunk->getStoryName(),
+                  tl::thread::self_id());
+
+        story_chunk->extractEventSeries(archived_events);
+    }
+
     std::lock_guard<std::mutex> lock(query_mutex);
 
     auto query_iter = active_queries.find(query_id);
     if(query_iter == active_queries.end())
     {
-        return chl::CL_SUCCESS;
+        return chl::CL_ERR_UNKNOWN;
     }
 
     // add the events from the StoryChunks to the response.events vector
     chronolog::PlaybackQueryResponse* response = (*query_iter).second.second;
 
-    for(auto& story_chunk: archive_chunks)
+    // if no events in query time range were found in archives
+    // just mark the response as ready to send and return
+    if(archived_events.empty())
     {
-        LOG_DEBUG(
-                "[QueryResponseAgent] agent for receiver {} processing QueryId {} story chunk, story {} StartTime: {}",
-                chl::to_string(receiver_service_id),
-                query_id,
-                story_chunk->getStoryName(),
-                story_chunk->getStartTime());
-
-        story_chunk->extractEventSeries(response->events);
+        (*query_iter).second.first = true;
+        return chl::CL_SUCCESS;
     }
 
-    //mark the query_response as ready to be sent
+    // check if the response already has the portion of the events from the active
+    // DataStore (the are added to the response before the archives are checked)
+    // and move them out the way as the events coming from archives
+    // would have earlier timestamps than those coming from active DataStore
+    std::vector<Event> temp_vector;
+    if(!response->events.empty())
+    {
+        temp_vector = std::move(response->events);
+    }
+
+    response->events = std::move(archived_events);
+
+    // now append the active DataStore events if any were present
+    // to the end of the response->events vector
+    if(!temp_vector.empty())
+    {
+        response->events.reserve(response->events.size() + temp_vector.size());
+        response->events.insert(response->events.end(),
+                                std::make_move_iterator(temp_vector.begin()),
+                                std::move_iterator(temp_vector.end()));
+    }
+
+    //mark the query_response as ready to be sent to client
     (*query_iter).second.first = true;
 
     return chl::CL_SUCCESS;
@@ -255,21 +299,14 @@ void chronolog::QueryResponseAgent::stopResponseThreads()
 ///
 void chronolog::QueryResponseAgent::drainQueryResponses()
 {
-    LOG_DEBUG("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
-              active_queries.size(),
-              thallium::thread::self_id());
-
     while(state == RUNNING)
     {
-        if(active_queries.empty())
-        {
-            sleep(2);
-            continue;
-        }
-
         PlaybackQueryResponse* query_response = nullptr;
         {
             std::lock_guard<std::mutex> lock(query_mutex);
+            LOG_TRACE("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
+                      active_queries.size(),
+                      thallium::thread::self_id());
 
             for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
             {
@@ -286,6 +323,10 @@ void chronolog::QueryResponseAgent::drainQueryResponses()
         {
             transferQueryResponseToClient(*query_response);
             delete query_response;
+        }
+        else
+        {
+            sleep(2);
         }
     }
 }

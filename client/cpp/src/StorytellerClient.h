@@ -55,13 +55,13 @@ public:
     int addKeeperRecordingClient(ServiceId const&);
     int removeKeeperRecordingClient(ServiceId const&);
 
-    StoryHandle* findStoryWritingHandle(ChronicleName const&, StoryName const&);
+    StoryHandle* findStoryHandle(ChronicleName const&, StoryName const&);
 
-    StoryHandle* initializeStoryWritingHandle(ChronicleName const&,
-                                              StoryName const&,
-                                              StoryId const&,
-                                              std::vector<ServiceId> const&,
-                                              ServiceId const&);
+    StoryHandle* initializeStoryHandle(ChronicleName const&,
+                                       StoryName const&,
+                                       StoryId const&,
+                                       std::vector<ServiceId> const&,
+                                       ServiceId const&);
 
     void removeAcquiredStoryHandle(ChronicleName const&, StoryName const&);
 
@@ -92,14 +92,16 @@ private:
 
 
 // this class definition lives in the client lib
+// Concrete StoryHandle implementation serving both paths: log_event (write) and
+// playback (keeper tail read). Templated on the write-path keeper-choice policy.
 template <class KeeperChoicePolicy>
-class StoryWritingHandle: public StoryHandle
+class StoryHandleImpl: public StoryHandle
 {
 public:
-    StoryWritingHandle(StorytellerClient& client,
-                       ChronicleName const& a_chronicle,
-                       StoryName const& a_story,
-                       StoryId const& story_id)
+    StoryHandleImpl(StorytellerClient& client,
+                    ChronicleName const& a_chronicle,
+                    StoryName const& a_story,
+                    StoryId const& story_id)
         : theClient(client)
         , chronicle(a_chronicle)
         , story(a_story)
@@ -107,12 +109,14 @@ public:
         , keeperChoicePolicy(new KeeperChoicePolicy)
     //   , playbackQueryClient(nullptr)
     {
-        LOG_DEBUG("[StoryWritingHandle] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
+        LOG_DEBUG("[StoryHandleImpl] Initialized for Chronicle: {}, Story: {}", a_chronicle, a_story);
     }
 
-    virtual ~StoryWritingHandle();
+    virtual ~StoryHandleImpl();
 
-    virtual uint64_t log_event(std::string const&);
+    virtual uint64_t log_event(std::string const&) override;
+
+    virtual int playback(size_t n, std::vector<Event>& events) override;
 
     // virtual int log_event(size_t size, void*data);
 

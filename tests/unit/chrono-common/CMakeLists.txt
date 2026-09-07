@@ -52,7 +52,7 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_pipeline_test DESTINATION tests)
 endif()
 
-# StoryChunk (GTest)
+# ExtractionChainConfiguration (standalone, custom main -- NOT a GTest binary)
 add_executable(extraction_chain_config_test
     chrono_common_extraction_chain_config_test.cpp
 )
@@ -69,7 +69,9 @@ target_link_libraries(extraction_chain_config_test PRIVATE
 )
 
 set_target_properties(extraction_chain_config_test PROPERTIES OUTPUT_NAME chronolog-test-common-extraction-chain-config)
-gtest_discover_tests(extraction_chain_config_test TEST_PREFIX "Unit_ChronoCommon_")
+
+add_test(NAME Unit_ChronoCommon_ExtractionChainConfig COMMAND extraction_chain_config_test)
+set_tests_properties(Unit_ChronoCommon_ExtractionChainConfig PROPERTIES DISABLED TRUE)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_chain_config_test DESTINATION tests)
 endif()

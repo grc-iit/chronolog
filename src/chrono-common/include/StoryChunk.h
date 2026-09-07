@@ -59,6 +59,16 @@ public:
         return logEvents.lower_bound(EventSequence{chrono_time, 0, 0});
     }
 
+    // Return a pointer to the LogEvent stored under the exact EventSequence, or
+    // nullptr if absent. std::map node addresses are stable, so the returned
+    // pointer stays valid for the lifetime of this chunk (used by the keeper
+    // TailStore to reference a retained event's payload without copying it).
+    LogEvent const* findEvent(EventSequence const& seq) const
+    {
+        auto it = logEvents.find(seq);
+        return (it == logEvents.end()) ? nullptr : &(it->second);
+    }
+
     uint64_t firstEventTime() const { return (logEvents.empty() ? 0 : (*logEvents.begin()).second.time()); }
 
     uint64_t lastEventTime() const { return (logEvents.empty() ? 0 : (*(--logEvents.end())).second.time()); }
@@ -112,6 +122,9 @@ public:
     }
 
     std::vector<Event>& extractEventSeries(std::vector<Event>& event_series);
+
+    // copy events in range [start_time, end_time) to EventSeries vector
+    std::vector<Event>& copyToEventSeries(std::vector<Event>& event_series, uint64_t start_time, uint64_t end_time);
 
 private:
     ChronicleName chronicleName;

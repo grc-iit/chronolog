@@ -51,6 +51,28 @@ set_target_properties(client_lib_reader_example PROPERTIES
     SKIP_BUILD_RPATH TRUE
 )
 
+# Tail reader example (playback() keeper-tail read)
+add_executable(client_lib_tail_reader_example
+    client_lib_tail_reader_example.cpp
+)
+
+target_include_directories(client_lib_tail_reader_example PRIVATE
+    ${CMAKE_BINARY_DIR}/client/cpp/include
+)
+
+target_link_libraries(client_lib_tail_reader_example
+    PRIVATE
+        chronolog_client
+        pthread
+        rt
+)
+
+set_target_properties(client_lib_tail_reader_example PROPERTIES
+    OUTPUT_NAME chrono-client-example-tail-reader
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+
 # Basic (read-write) example
 add_executable(client_lib_basic_example
     client_lib_basic_example.cpp
@@ -127,6 +149,7 @@ set_target_properties(client_lib_reader_to_csv_example PROPERTIES
 #------------------------------------------------------------------------------
 chronolog_install_target(client_lib_writer_example DESTINATION examples)
 chronolog_install_target(client_lib_reader_example DESTINATION examples)
+chronolog_install_target(client_lib_tail_reader_example DESTINATION examples)
 chronolog_install_target(client_lib_basic_example DESTINATION examples)
 chronolog_install_target(client_lib_distributed_telemetry_writer_example DESTINATION examples)
 chronolog_install_target(client_lib_reader_to_csv_example DESTINATION examples)

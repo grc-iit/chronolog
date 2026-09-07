@@ -236,6 +236,29 @@ struct DataStoreConf
     int story_chunk_duration_secs = 30;
     int acceptance_window_secs = 60;
     int inactive_story_delay_secs = 180;
+    // Max most-recent sealed events retained per story in the keeper tail for
+    // last-N playback before they age out to the extraction/archive path.
+    // Keeper-only knob; ignored by grapher/player.
+    int tail_capacity = 65536;
+    // When true, playback()/tail reads also serve events from the active
+    // (unsealed) timeline in addition to sealed chunks, cutting write-to-visible
+    // latency from the seal window (chunk_duration + acceptance_window) down to
+    // ~the ingestion tick. Reads inside the acceptance window are provisional
+    // (a late arrival may sort behind an already-seen event). Keeper-only knob;
+    // defaults false to preserve the sealed-only, final-result semantics.
+    bool live_tail_read = false;
+    // Upper bound (seconds) on how long a sealed chunk may sit in the keeper tail
+    // before it is forwarded for archival. NOTE this is measured from the chunk's
+    // END time, and a chunk only enters the tail once it decays at
+    // end_time + acceptance_window_secs -- so the window in which events are
+    // actually readable by playback() is
+    //     tail_retention_secs - acceptance_window_secs
+    // and the value must exceed acceptance_window_secs for the tail to hold
+    // anything at all. parseJsonConf warns when it does not. Archival must not depend on write
+    // volume: without this, a story producing fewer than tail_capacity events is
+    // only handed to the grapher at keeper shutdown, so its data never reaches
+    // HDF5 while the keeper runs. 0 disables age-out. Keeper-only knob.
+    int tail_retention_secs = 60;
 
     DataStoreConf() {}
 
@@ -246,7 +269,10 @@ struct DataStoreConf
         return "[DATA_STORE_CONF: max_story_chunk_size: " + std::to_string(max_story_chunk_size) +
                " story_chunk_duration_secs: " + std::to_string(story_chunk_duration_secs) +
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
-               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) + "]";
+               " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
+               " tail_capacity: " + std::to_string(tail_capacity) +
+               " live_tail_read: " + (live_tail_read ? "true" : "false") +
+               " tail_retention_secs: " + std::to_string(tail_retention_secs) + "]";
     }
 };
 

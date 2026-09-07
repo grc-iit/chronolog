@@ -87,12 +87,6 @@ int main(int argc, char** argv)
     }
 
     // Instantiate PlaybackService
-    std::string PLAYBACK_SERVICE_PROTOCOL = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF;
-    std::string PLAYBACK_SERVICE_IP = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP;
-    uint16_t PLAYBACK_SERVICE_PORT = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.BASE_PORT;
-    uint16_t playback_service_provider_id = PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID;
-
-    // validate ip address, instantiate Playback Service and create IdCard
 
     chronolog::ServiceId playbackServiceId(PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                                            PLAYER_CONF.PLAYBACK_SERVICE_CONF.RPC_CONF.IP,
@@ -105,10 +99,20 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    // Instantiate active PlayerDataStore
 
+    chronolog::StoryChunkIngestionQueue ingestionQueue;
+    chronolog::PlayerDataStore theDataStore(ingestionQueue,
+                                            PLAYER_CONF.DATA_STORE_CONF.max_story_chunk_size,
+                                            PLAYER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
+                                            PLAYER_CONF.DATA_STORE_CONF.acceptance_window_secs,
+                                            PLAYER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+
+    chronolog::ArchiveReadingRequestQueue readingRequestQueue;
+
+    // Instantiate Playback Service
     tl::engine* playbackEngine = nullptr;
     chronolog::PlaybackService* playbackService = nullptr;
-    chronolog::ArchiveReadingRequestQueue readingRequestQueue;
 
     try
     {
@@ -126,6 +130,7 @@ int main(int argc, char** argv)
 
         playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine,
                                                                             playbackServiceId.getProviderId(),
+                                                                            theDataStore,
                                                                             readingRequestQueue);
     }
     catch(tl::exception const& ex)
@@ -154,7 +159,6 @@ int main(int argc, char** argv)
     LOG_INFO("[ChronoPlayer] created PlayerIdCard: {}", chl::to_string(playerIdCard));
 
     // Instantiate StoryChunk Recording Service &  MemoryDataStore
-    chronolog::StoryChunkIngestionQueue ingestionQueue;
 
     chronolog::ServiceId recordingServiceId(PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.PROTO_CONF,
                                             PLAYER_CONF.RECORDING_SERVICE_CONF.RPC_CONF.IP,
@@ -205,8 +209,6 @@ int main(int argc, char** argv)
         delete playbackEngine;
         return (-1);
     }
-
-    chronolog::PlayerDataStore theDataStore(ingestionQueue);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -335,13 +337,14 @@ int main(int argc, char** argv)
     playerRegistryClient->send_unregister_msg(playerIdCard);
     delete playerRegistryClient;
 
+    // Shutdown the Data Collection
+    theDataStore.shutdownDataCollection();
     archiveReadingAgent->shutdownArchiveReading();
     delete archiveReadingAgent;
     delete playerStoreAdminService;
     delete playbackService;
     delete recordingService;
-    // Shutdown the Data Collection
-    theDataStore.shutdownDataCollection();
+
     delete dataAdminEngine;
     delete playbackEngine;
     delete recordingEngine;

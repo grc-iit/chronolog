@@ -11,6 +11,7 @@
 #include <QueryResponseTransferAgent.h>
 #include <ArchiveReadingRequestQueue.h>
 #include <PlaybackService.h>
+#include <PlayerDataStore.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -55,6 +56,8 @@ int main()
 
     chl::ServiceId queryServiceId("ofi+sockets", "127.0.0.1", 5557, 57);
 
+    chronolog::StoryChunkIngestionQueue ingestionQueue;
+    chronolog::PlayerDataStore activeDataStore(ingestionQueue);
     chl::ArchiveReadingRequestQueue readingRequestQueue;
 
     try
@@ -67,6 +70,7 @@ int main()
 
         playbackService = chl::PlaybackService::CreatePlaybackService(*localEngine,
                                                                       localServiceId.getProviderId(),
+                                                                      activeDataStore,
                                                                       readingRequestQueue);
     }
     catch(tl::exception const&)

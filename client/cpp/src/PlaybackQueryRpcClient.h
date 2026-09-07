@@ -42,6 +42,7 @@ public:
     int is_playback_service_available();
 
     int send_story_playback_request(uint32_t query_id,
+                                    StoryId const& story_id,
                                     ChronicleName const& chronicle_name,
                                     StoryName const& story_name,
                                     uint64_t start_time,

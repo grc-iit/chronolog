@@ -123,9 +123,11 @@ chrono-viz/
 1. Create a dashboard and add a panel
 2. Select **ChronoLog** as the data source
 3. Enter:
-   - **Chronicle Name**: The chronicle to query
-   - **Story Name**: The story within the chronicle
-   - Use Grafana's time picker to set the query range
+   - **Mode**: `Replay (archive)` or `Tail (playback)` — exactly one applies per query
+   - **Chronicle Name**: The chronicle to query (manual entry always possible)
+   - **Story Name**: The story within the chronicle (manual entry always possible)
+   - Replay mode: use Grafana's time picker to set the query range
+   - Tail mode: set **Last N** (most recent events from keeper memory; the time picker is ignored)
 
 ### Data Fields
 
@@ -153,7 +155,8 @@ The Python backend exposes:
 | `/disconnect` | POST | Disconnect from ChronoLog service |
 | `/acquire` | POST | Acquire a story handle |
 | `/release` | POST | Release a story handle |
-| `/query` | POST | Query events (handles acquire/release automatically) |
+| `/query` | POST | Replay archived events over a time range (handles acquire/release automatically) |
+| `/playback` | POST | Tail-read the most recent N events from keeper memory (handles acquire/release automatically) |
 
 ## Development
 

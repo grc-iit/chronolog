@@ -12,6 +12,7 @@
 #include <KeeperRegClient.h>
 #include <IngestionQueue.h>
 #include <StoryChunkExtractionQueue.h>
+#include <KeeperTailStore.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
@@ -206,10 +207,30 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    // Instantiate the TailStore (serves keeper-memory tail reads) and DataStore.
+    // tail_capacity = max number of most-recent sealed events retained per story
+    // for last-N playback before they age out to the extraction/archive path.
+    // Configurable via DataStoreInternals.tail_capacity (default 65536).
+    // live_tail_read (default false): when true, tail reads also serve events from
+    // the active/unsealed timeline, cutting write-to-visible latency below the
+    // seal window at the cost of provisional (eventually-consistent) reads.
+    const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
+    // tail_retention_secs bounds how long a sealed chunk waits in the tail before
+    // it is handed over for archival, so archival is time-driven rather than
+    // dependent on the story's write volume (DataStoreInternals.tail_retention_secs,
+    // default 60; 0 disables age-out).
+    const uint64_t keeper_tail_retention_ns =
+            static_cast<uint64_t>(KEEPER_CONF.DATA_STORE_CONF.tail_retention_secs) * 1000000000ULL;
+    chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(),
+                                            keeper_tail_capacity,
+                                            KEEPER_CONF.DATA_STORE_CONF.live_tail_read,
+                                            keeper_tail_retention_ns);
+
     // Instantiate KeeperDataStore
     chronolog::IngestionQueue ingestionQueue;
     chronolog::KeeperDataStore theDataStore(ingestionQueue,
                                             theExtractionModule.getExtractionQueue(),
+                                            theTailStore,
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
@@ -275,7 +296,8 @@ int main(int argc, char** argv)
         keeperRecordingService =
                 chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
                                                                                 recording_service_provider_id,
-                                                                                ingestionQueue);
+                                                                                ingestionQueue,
+                                                                                theTailStore);
     }
     catch(tl::exception const&)
     {
@@ -363,6 +385,12 @@ int main(int argc, char** argv)
     delete keeperDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
+    // Hand the tail store's retained chunks over BEFORE extraction stops: data
+    // collection has finished, so nothing new will seal, and the extraction module
+    // is still draining. Leaving this to ~KeeperTailStore would run it after
+    // shutdownExtraction() below, at which point the queue only frees what it holds
+    // -- silently dropping up to tail_retention_secs of sealed data per story.
+    theTailStore.flushRetainedChunks();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
