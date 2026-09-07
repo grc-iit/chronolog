@@ -42,8 +42,13 @@ static void ensureLogger()
 // Build a sealed chunk for `sid` spanning [start,end) with `count` events at
 // times first_time, first_time+1, ... (clientId=client, index=0..count-1,
 // record = "<tag>#<i>"). Ownership passes to whoever ingests it.
-static chl::StoryChunk* makeChunk(chl::StoryId sid, uint64_t start, uint64_t end, uint64_t first_time, int count,
-                                  chl::ClientId client, std::string const& tag)
+static chl::StoryChunk* makeChunk(chl::StoryId sid,
+                                  uint64_t start,
+                                  uint64_t end,
+                                  uint64_t first_time,
+                                  int count,
+                                  chl::ClientId client,
+                                  std::string const& tag)
 {
     auto* chunk = new chl::StoryChunk("chron", "story", sid, start, end, 64);
     for(int i = 0; i < count; i++)
@@ -56,8 +61,8 @@ static chl::StoryChunk* makeChunk(chl::StoryId sid, uint64_t start, uint64_t end
 
 // Simulate one full drain iteration for the oldest stashed chunk: eject the
 // pointer from the queue and deliver the transfer outcome to the store.
-static chl::StoryChunk* drainOne(chl::StoryChunkExtractionQueue& q, chl::KeeperChunkRetentionStore& store,
-                                 bool transfer_ok)
+static chl::StoryChunk*
+drainOne(chl::StoryChunkExtractionQueue& q, chl::KeeperChunkRetentionStore& store, bool transfer_ok)
 {
     chl::StoryChunk* chunk = q.ejectStoryChunk();
     if(chunk == nullptr)
@@ -245,7 +250,7 @@ TEST(KeeperChunkRetentionStore, CapacityEvictionKeepsChunkRetainedUntilDurable)
     chl::KeeperChunkRetentionStore store(q, 10); // capacity: 10 events
     chl::StoryId sid = 7;
     store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 10, 1, "A")); // fills the tail
-    EXPECT_EQ(q.size(), 1); // ship-on-seal
+    EXPECT_EQ(q.size(), 1);                                                  // ship-on-seal
     EXPECT_EQ(store.getTailSequences(sid, 100).size(), 10u);
 
     // B and C evict all of A's events from the tail index...
@@ -297,7 +302,7 @@ TEST(KeeperChunkRetentionStore, FreeOrderWatermarkThenShippedThenTailRelease)
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
 
     ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // then shipped
-    EXPECT_EQ(store.retainedChunkCount(sid), 1u); // tail still references it
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);                 // tail still references it
 
     store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 10, 1, "B"));
     EXPECT_EQ(store.retainedChunkCount(sid), 1u); // A freed, B retained
@@ -375,6 +380,55 @@ TEST(KeeperChunkRetentionStore, MarkSendFailedKeepsChunkReadableAndResendable)
     store.markSendFailed(chunk); // close the drain protocol so nothing dangles
 }
 
+// ---- shutdown flush --------------------------------------------------------
+
+// A chunk whose transfer failed sits unshipped until the stall timer re-sends it,
+// and watermark_resend_timeout_secs defaults to 720s -- so a keeper shutting down
+// inside that window still holds it. The destructor has a last-chance stash for
+// exactly this, but it runs after shutdownExtraction(), by which point the queue
+// has been drained and joined and its own shutdown merely frees what is left. That
+// data was silently lost. flushUnshippedChunks() hands it over while extraction can
+// still drain it.
+TEST(KeeperChunkRetentionStore, FlushHandsUnshippedChunksOverWhileExtractionRuns)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    chl::StoryChunk* chunk = drainOne(q, store, /*transfer_ok=*/false); // the send failed
+    ASSERT_NE(chunk, nullptr);
+    ASSERT_EQ(q.size(), 0) << "precondition: the chunk is waiting on the stall timer, not queued";
+
+    EXPECT_EQ(store.flushUnshippedChunks(), 1u) << "an unshipped chunk was not handed over for archival";
+    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(q.ejectStoryChunk(), chunk) << "the flushed pointer must be the retained chunk";
+    store.markSendFailed(chunk); // close the drain protocol so nothing dangles
+}
+
+// The flush must not hand a chunk over twice. Both guards matter: a chunk already
+// in the queue is owned by it, and a shipped chunk needs no archival -- and the
+// destructor skips in_queue chunks on the same contract, so a double handoff here
+// would become a double free there.
+TEST(KeeperChunkRetentionStore, FlushSkipsQueuedAndShippedChunks)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+
+    // ship-on-seal already put this one in the queue
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    ASSERT_EQ(q.size(), 1);
+    EXPECT_EQ(store.flushUnshippedChunks(), 0u) << "flushed a chunk the queue already owns";
+    EXPECT_EQ(q.size(), 1) << "the queue must not have gained a duplicate";
+
+    chl::StoryChunk* chunk = drainOne(q, store, /*transfer_ok=*/true); // now shipped
+    ASSERT_NE(chunk, nullptr);
+    EXPECT_EQ(store.flushUnshippedChunks(), 0u) << "flushed an already-shipped chunk";
+    EXPECT_EQ(q.size(), 0);
+}
+
 TEST(KeeperChunkRetentionStore, RequeueStalledSkipsQueuedCoveredAndFreshChunks)
 {
     ensureLogger();
@@ -401,7 +455,7 @@ TEST(KeeperChunkRetentionStore, RequeueStalledSkipsQueuedCoveredAndFreshChunks)
     chl::StoryChunk* c3 = q.ejectStoryChunk();
     EXPECT_EQ(c3->getStartTime(), 300u); // c3, stashed at seal
     EXPECT_EQ(q.ejectStoryChunk(), c1);  // the re-send
-    store.markSendFailed(c3); // close the drain protocol so nothing dangles
+    store.markSendFailed(c3);            // close the drain protocol so nothing dangles
     store.markSendFailed(c1);
 }
 
@@ -488,10 +542,7 @@ TEST(KeeperChunkRetentionStore, FetchRangeSpansMultipleChunksAscending)
     EXPECT_EQ(events.front().getRecord(), "A#2");
     EXPECT_EQ(events.back().time(), 301u);
     EXPECT_EQ(events.back().getRecord(), "C#1");
-    for(std::size_t i = 1; i < events.size(); ++i)
-    {
-        EXPECT_LT(events[i - 1].time(), events[i].time());
-    }
+    for(std::size_t i = 1; i < events.size(); ++i) { EXPECT_LT(events[i - 1].time(), events[i].time()); }
     EXPECT_EQ(hot_floor, 100u); // oldest retained tick
     EXPECT_FALSE(truncated);
 }

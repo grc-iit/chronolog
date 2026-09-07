@@ -26,9 +26,10 @@ class KeeperRecordingService: public tl::provider<KeeperRecordingService>
 {
 public:
     // KeeperRecordingService should be created on the heap not the stack thus the constructor is private...
-    static KeeperRecordingService*
-    CreateKeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
-                                 KeeperChunkRetentionStore& tail_store)
+    static KeeperRecordingService* CreateKeeperRecordingService(tl::engine& tl_engine,
+                                                                uint16_t service_provider_id,
+                                                                IngestionQueue& ingestion_queue,
+                                                                KeeperChunkRetentionStore& tail_store)
     {
         return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store);
     }
@@ -71,8 +72,11 @@ public:
     // keeper's hot floor and last-seen persisted watermark. The player fans
     // this out over the story's keeper roster and splits replay at
     // B = min(hot_floor).
-    void story_range_fetch(tl::request const& request, StoryId const& story_id, uint64_t start_time,
-                           uint64_t end_time, uint64_t max_events)
+    void story_range_fetch(tl::request const& request,
+                           StoryId const& story_id,
+                           uint64_t start_time,
+                           uint64_t end_time,
+                           uint64_t max_events)
     {
         HotRangeResponse response;
         response.events = theTailStore.fetchRange(story_id,
@@ -95,7 +99,9 @@ public:
     }
 
 private:
-    KeeperRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, IngestionQueue& ingestion_queue,
+    KeeperRecordingService(tl::engine& tl_engine,
+                           uint16_t service_provider_id,
+                           IngestionQueue& ingestion_queue,
                            KeeperChunkRetentionStore& tail_store)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)

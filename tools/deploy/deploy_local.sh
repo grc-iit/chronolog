@@ -394,9 +394,9 @@ stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
     # Keeper first, while the grapher and player are both still up: on SIGTERM it
-    # runs flushRetainedChunks(), handing every retained tail chunk to the
-    # extraction queue, which drains over RDMA to BOTH of those peers. Stopping
-    # them first would leave that drain without a destination.
+    # runs flushUnshippedChunks(), handing every retained chunk whose send has not
+    # been acked to the extraction queue, which drains over RDMA to BOTH of those
+    # peers. Stopping them first would leave that drain without a destination.
     #
     # Its grace is larger than the others' because it is the only service with
     # real shutdown work: a full tail is up to tail_capacity events per story and

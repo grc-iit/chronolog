@@ -4,12 +4,14 @@
 #include <chrono>
 #include <map>
 #include <mutex>
+#include <set>
 #include <vector>
 #include <unordered_map>
 
 #include <chronolog_types.h>
 #include <StoryChunk.h>
 
+#include "ActiveTailSource.h"
 #include "StoryChunkExtractionQueue.h"
 
 namespace chronolog
@@ -46,12 +48,58 @@ namespace chronolog
 class KeeperChunkRetentionStore
 {
 public:
-    KeeperChunkRetentionStore(StoryChunkExtractionQueue& extraction_queue, std::size_t tail_capacity,
-                              std::size_t retention_cap_mb = 0)
+    KeeperChunkRetentionStore(StoryChunkExtractionQueue& extraction_queue,
+                              std::size_t tail_capacity,
+                              std::size_t retention_cap_mb = 0,
+                              bool live_tail_read = false)
         : theExtractionQueue(extraction_queue)
         , tailCapacity(tail_capacity)
         , retentionCapBytes(retention_cap_mb * 1024 * 1024)
+        , liveTailRead(live_tail_read)
     {}
+
+    // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
+    // still running. main() calls this after data collection stops and before
+    // shutdownExtraction().
+    //
+    // The destructor already has a last-chance handoff for these, but it runs too
+    // late to help: by then shutdownExtraction() has drained the queue and joined
+    // the extraction xstreams, and StoryChunkExtractionQueue::shutDown() simply
+    // deletes whatever is still queued. Everything sealed but not yet shipped was
+    // therefore freed rather than archived, on every clean shutdown.
+    //
+    // Marking in_queue is the same contract requeueStalled() uses when it re-stashes:
+    // the queue owns the pointer from here on, the drain callbacks clear the flag,
+    // and the destructor's `if(state.in_queue) continue` skips what we handed over,
+    // so nothing is double-freed. Idempotent: a second call finds nothing unshipped.
+    std::size_t flushUnshippedChunks()
+    {
+        std::vector<StoryChunk*> to_stash;
+        {
+            std::lock_guard<std::mutex> lock(tailMutex);
+            for(auto& story_entry: storyRetention)
+            {
+                for(auto& chunk_entry: story_entry.second.chunks)
+                {
+                    ChunkState& state = chunk_entry.second;
+                    if(state.in_queue || state.shipped)
+                    {
+                        continue;
+                    }
+                    to_stash.push_back(chunk_entry.first);
+                    state.in_queue = true;
+                }
+            }
+        }
+        // stash outside the lock, as requeueStalled does
+        for(auto* chunk: to_stash) { theExtractionQueue.stashStoryChunk(chunk); }
+        if(!to_stash.empty())
+        {
+            LOG_INFO("[KeeperChunkRetentionStore] Flushed {} unshipped chunk(s) to the extraction queue",
+                     to_stash.size());
+        }
+        return to_stash.size();
+    }
 
     ~KeeperChunkRetentionStore()
     {
@@ -240,8 +288,7 @@ public:
                     // past window for it (prepend path); without the re-send
                     // it would sit retained forever, unfreeable for lack of
                     // the ack.
-                    if(state.in_queue ||
-                       (state.shipped && chunk->getEndTime() <= story_entry.second.known_w))
+                    if(state.in_queue || (state.shipped && chunk->getEndTime() <= story_entry.second.known_w))
                     {
                         continue;
                     }
@@ -262,10 +309,7 @@ public:
                 }
             }
         }
-        for(auto* chunk: to_stash)
-        {
-            theExtractionQueue.stashStoryChunk(chunk);
-        }
+        for(auto* chunk: to_stash) { theExtractionQueue.stashStoryChunk(chunk); }
         return to_stash.size();
     }
 
@@ -277,8 +321,12 @@ public:
     // keeper still retains for the story (UINT64_MAX if none): everything
     // below it has been freed, which the free condition only permits once it
     // is durable in the archive.
-    std::vector<LogEvent> fetchRange(StoryId const& story_id, uint64_t start, uint64_t end, std::size_t max_events,
-                                     uint64_t& hot_floor, bool& truncated)
+    std::vector<LogEvent> fetchRange(StoryId const& story_id,
+                                     uint64_t start,
+                                     uint64_t end,
+                                     std::size_t max_events,
+                                     uint64_t& hot_floor,
+                                     bool& truncated)
     {
         std::vector<LogEvent> result;
         hot_floor = UINT64_MAX;
@@ -323,8 +371,67 @@ public:
         return (story_it == storyRetention.end()) ? 0 : story_it->second.chunks.size();
     }
 
+    // A live story's pipeline registers itself here so tail reads can also serve the
+    // active (unsealed) window when live_tail_read is enabled. The pipeline
+    // unregisters in its destructor, before finalize(), so a query can never reach a
+    // freed pipeline (see the activeSourcesMutex hold in the query paths).
+    void registerActiveSource(StoryId const& story_id, ActiveTailSource* source)
+    {
+        if(source == nullptr)
+        {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(activeSourcesMutex);
+        activeSources[story_id] = source;
+    }
+
+    void unregisterActiveSource(StoryId const& story_id, ActiveTailSource* source)
+    {
+        std::lock_guard<std::mutex> lock(activeSourcesMutex);
+        auto it = activeSources.find(story_id);
+        if(it != activeSources.end() && it->second == source)
+        {
+            activeSources.erase(it);
+        }
+    }
+
     // Phase 1: this keeper's most recent (up to n) EventSequences for the story.
+    //
+    // With live_tail_read enabled the sealed-tail last-N is unioned with the active
+    // timeline's last-N. Deliberately holds NO lock itself: the sealed and active
+    // halves each take their own mutex and release it before the other is consulted,
+    // so tailMutex and the pipeline's sequencingMutex are never held together. That
+    // preserves the seal path's pipeline->store lock order and keeps this read path
+    // from inverting it.
     std::vector<EventSequence> getTailSequences(StoryId const& story_id, std::size_t n)
+    {
+        std::vector<EventSequence> sealed = getSealedTailSequences(story_id, n);
+
+        if(!liveTailRead)
+        {
+            return sealed; // already ascending, capped at n
+        }
+
+        std::vector<EventSequence> active = getActiveTailSequences(story_id, n);
+        if(active.empty())
+        {
+            return sealed;
+        }
+
+        // Union sealed + active, dedup, keep the globally most-recent n (ascending).
+        std::set<EventSequence> merged(sealed.begin(), sealed.end());
+        merged.insert(active.begin(), active.end());
+        std::size_t take = (n < merged.size()) ? n : merged.size();
+        std::vector<EventSequence> result;
+        result.reserve(take);
+        auto it = merged.end();
+        for(std::size_t i = 0; i < take; ++i) { --it; }
+        for(; it != merged.end(); ++it) { result.push_back(*it); }
+        return result; // ascending order
+    }
+
+    // The sealed half of the tail: everything this store actually retains.
+    std::vector<EventSequence> getSealedTailSequences(StoryId const& story_id, std::size_t n)
     {
         std::vector<EventSequence> result;
         std::lock_guard<std::mutex> lock(tailMutex);
@@ -336,40 +443,71 @@ public:
         auto& index = story_it->second.index;
         std::size_t take = (n < index.size()) ? n : index.size();
         result.reserve(take);
-        // walk from the newest (largest) key backwards, collect `take` of them
-        std::size_t skip = index.size() - take;
-        auto it = index.begin();
-        std::advance(it, skip);
-        for(; it != index.end(); ++it)
-        {
-            result.push_back(it->first);
-        }
+        // Position `take` entries back from end() -- O(take) -- rather than
+        // advancing O(index.size() - take) forward from begin() (which costs
+        // ~tailCapacity node-steps to fetch the last few events of a full tail),
+        // then walk forward to end() so the result comes out ascending.
+        auto it = index.end();
+        for(std::size_t i = 0; i < take; ++i) { --it; }
+        for(; it != index.end(); ++it) { result.push_back(it->first); }
         return result; // ascending order
     }
 
     // Phase 2: payloads for the requested EventSequences this keeper still holds.
+    //
+    // A sequence that is not in the retained index is, with live_tail_read enabled,
+    // looked up in the active timeline (an event whose chunk has not sealed yet).
+    // Note the story-not-retained case does not return early: a story whose chunks
+    // have all been freed -- or which has not sealed one yet -- can still have
+    // servable active events.
     std::vector<LogEvent> getTailEvents(StoryId const& story_id, std::vector<EventSequence> const& seqs)
     {
         std::vector<LogEvent> result;
-        std::lock_guard<std::mutex> lock(tailMutex);
-        auto story_it = storyRetention.find(story_id);
-        if(story_it == storyRetention.end())
-        {
-            return result;
-        }
-        auto& index = story_it->second.index;
         result.reserve(seqs.size());
-        for(auto const& seq: seqs)
+        std::vector<EventSequence> misses;
+
         {
-            auto idx_it = index.find(seq);
-            if(idx_it == index.end())
+            std::lock_guard<std::mutex> lock(tailMutex);
+            auto story_it = storyRetention.find(story_id);
+            auto* index = (story_it == storyRetention.end()) ? nullptr : &story_it->second.index;
+            for(auto const& seq: seqs)
             {
-                continue;
+                LogEvent const* event = nullptr;
+                if(index != nullptr)
+                {
+                    auto idx_it = index->find(seq);
+                    if(idx_it != index->end())
+                    {
+                        event = idx_it->second->findEvent(seq);
+                    }
+                }
+                if(event != nullptr)
+                {
+                    result.push_back(*event);
+                }
+                else if(liveTailRead)
+                {
+                    misses.push_back(seq);
+                }
             }
-            LogEvent const* event = idx_it->second->findEvent(seq);
-            if(event != nullptr)
+        }
+
+        // Resolve remaining seqs from the active timeline without holding tailMutex
+        // (preserves the pipeline->store lock order used by the seal/decay path).
+        if(liveTailRead && !misses.empty())
+        {
+            std::lock_guard<std::mutex> lock(activeSourcesMutex);
+            auto src_it = activeSources.find(story_id);
+            if(src_it != activeSources.end())
             {
-                result.push_back(*event);
+                for(auto const& seq: misses)
+                {
+                    LogEvent event;
+                    if(src_it->second->findActiveEvent(seq, event))
+                    {
+                        result.push_back(event);
+                    }
+                }
             }
         }
         return result;
@@ -477,13 +615,33 @@ private:
         }
     }
 
+    // The active (unsealed) half of the tail, served by the story's live pipeline.
+    // Holds activeSourcesMutex across the call so the pipeline cannot be unregistered
+    // and freed while its timeline is being walked. Takes no other lock, so the
+    // pipeline's own mutex is only ever acquired with tailMutex released.
+    std::vector<EventSequence> getActiveTailSequences(StoryId const& story_id, std::size_t n)
+    {
+        std::lock_guard<std::mutex> lock(activeSourcesMutex);
+        auto src_it = activeSources.find(story_id);
+        if(src_it == activeSources.end())
+        {
+            return {};
+        }
+        return src_it->second->activeTailSequences(n);
+    }
+
     StoryChunkExtractionQueue& theExtractionQueue;
     std::size_t tailCapacity;
     std::size_t retentionCapBytes;
     std::size_t retainedBytes = 0;
     bool capWarned = false;
+    bool liveTailRead = false;
     mutable std::mutex tailMutex;
     std::unordered_map<StoryId, StoryRetention> storyRetention;
+
+    // Guarded independently of tailMutex; see the lock-order note on getTailSequences.
+    std::mutex activeSourcesMutex;
+    std::unordered_map<StoryId, ActiveTailSource*> activeSources;
 };
 
 } // namespace chronolog

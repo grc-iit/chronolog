@@ -345,15 +345,6 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
         }
     }
 
-    // Cross-field check: these two knobs jointly decide how long a sealed chunk is
-    // readable. A chunk only ENTERS the tail once it decays, at
-    // end_time + acceptance_window, and LEAVES it at end_time + tail_retention --
-    // so the readable window is the difference, not tail_retention itself. When
-    // acceptance_window >= tail_retention a chunk is evicted on the same
-    // maintenance tick that admits it and the sealed tail is permanently empty:
-    // playback() then returns 0 events with CL_SUCCESS forever, which is
-    // indistinguishable from a story that simply has nothing yet. Warn rather than
-    // reject, since a deployment that never issues tail reads is unaffected.
 
     return chronolog::CL_SUCCESS;
 }

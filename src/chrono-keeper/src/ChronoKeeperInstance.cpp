@@ -217,11 +217,15 @@ int main(int argc, char** argv)
     // retention_cap_mb = soft cap on retained-chunk memory; on exceed the store
     // WARNs (watermark lagging) but never drops unpersisted data
     // (DataStoreInternals.retention_cap_mb, default 512, 0 disables the warning).
+    // live_tail_read (default false): when true, tail reads also serve events from
+    // the active/unsealed timeline, cutting write-to-visible latency below the
+    // seal window at the cost of provisional (eventually-consistent) reads.
     const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
     const std::size_t keeper_retention_cap_mb = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.retention_cap_mb);
     chronolog::KeeperChunkRetentionStore theTailStore(theExtractionModule.getExtractionQueue(),
                                                       keeper_tail_capacity,
-                                                      keeper_retention_cap_mb);
+                                                      keeper_retention_cap_mb,
+                                                      KEEPER_CONF.DATA_STORE_CONF.live_tail_read);
 
     // The extraction chain reports every drain outcome (grapher ack / transfer
     // failure) back to the store; chunks are never freed by the drain loop.
@@ -387,12 +391,13 @@ int main(int argc, char** argv)
     delete keeperDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
-    // Hand the tail store's retained chunks over BEFORE extraction stops: data
-    // collection has finished, so nothing new will seal, and the extraction module
-    // is still draining. Leaving this to ~KeeperTailStore would run it after
-    // shutdownExtraction() below, at which point the queue only frees what it holds
-    // -- silently dropping up to tail_retention_secs of sealed data per story.
-    theTailStore.flushRetainedChunks();
+    // Hand any not-yet-shipped retained chunks over BEFORE extraction stops: data
+    // collection has finished so nothing new will seal, and the extraction module
+    // is still draining. Leaving this to ~KeeperChunkRetentionStore runs it after
+    // shutdownExtraction() below, where the queue only frees what it holds -- so a
+    // chunk whose send failed (in_queue cleared, shipped still false, waiting on
+    // requeueStalled) would be dropped rather than archived.
+    theTailStore.flushUnshippedChunks();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
