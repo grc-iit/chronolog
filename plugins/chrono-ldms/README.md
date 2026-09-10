@@ -171,4 +171,5 @@ The tail-read half is why the plugin lives on the tail-read development line
 For the deployment topology and read patterns this integration is sized
 against, see [`LDMS-ARCHITECTURE.md`](./LDMS-ARCHITECTURE.md). Write and
 tail-read throughput for the ChronoLog path itself is measured by
-`chrono-bench` (see the benchmark section of the repo-root `CLAUDE.md`).
+`chrono-bench` (`tools/benchmark/`; run it with `--usage` for the full
+option list).

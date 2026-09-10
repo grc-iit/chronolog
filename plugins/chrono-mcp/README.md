@@ -17,7 +17,7 @@ uvx clio-kit mcp-server chronolog
 ## Documentation
 
 - **Full Documentation**: [CLIO Kit Website](https://docs.iowarp.ai/)
-- **Installation Guide**: See [INSTALLATION.md](../../../CLAUDE.md#setup--installation)
+- **Installation Guide**: See the [Quick Start](#quick-start) above and the [CLIO Kit Website](https://docs.iowarp.ai/)
 - **Contributing**: See [Contribution Guide](https://github.com/iowarp/clio-kit/wiki/Contribution)
 
 ---

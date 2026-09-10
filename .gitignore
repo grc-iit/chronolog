@@ -73,6 +73,10 @@ coverage/
 .chat/
 .conversations/
 
+# Per-developer agent instruction files — keep local, never commit
+CLAUDE.md
+CLAUDE.local.md
+
 # --------------------------
 # Docusaurus (docs/)
 # --------------------------
