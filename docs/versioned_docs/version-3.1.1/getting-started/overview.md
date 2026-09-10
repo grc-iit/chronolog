@@ -106,7 +106,7 @@ ChronoLog is a scalable, high-performance distributed shared log store designed 
 ## Core Features
 
 - **Multi-Tiered Storage:** Leverages multiple storage tiers (e.g., persistent memory, flash storage) to scale log capacity and optimize performance.
-- **On-Demand In-Memory Tail Reads (3.1.0+):** High-speed millisecond-scale retrieval of the most recent $N$ events directly from ChronoKeeper RAM (`playback`), bypassing the persistent archive path for real-time monitoring and streaming.
+- **On-Demand In-Memory Tail Reads (3.1+):** High-speed millisecond-scale retrieval of the most recent $N$ events directly from ChronoKeeper RAM (`playback`), bypassing the persistent archive path for real-time monitoring and streaming.
 - **High Concurrency:** Supports multiple writers and multiple readers (MWMR) for efficient concurrent access to the log.
 - **Partial Data Retrieval:** Enables efficient range queries for partial log processing, enhancing data exploration capabilities.
 - **Total Ordering:** Guarantees strict ordering of log entries across distributed environments, eliminating the need for costly synchronization.
