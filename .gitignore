@@ -58,12 +58,21 @@ coverage/
 .codeium/
 .copilot/
 .github/copilot/
-.continue/          # Continue.dev
+# Continue.dev
+.continue/
 .kite/
 .tabnine/
 .llm/
 .ai/
 .prompts/
+.codex/
+.gemini/
+.junie/
+.roo/
+.cline/
+.goose/
+.opencode/
+.qodo/
 
 # Some agents/editors create these
 .mcp/
@@ -72,6 +81,23 @@ coverage/
 .sessions/
 .chat/
 .conversations/
+
+# Per-developer agent instruction and rules files — keep local, never commit.
+# Deliberately NOT listed: .mcp.json and .claude-plugin/, which are shipped
+# files of plugins/chrono-mcp.
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+AGENTS.local.md
+GEMINI.md
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.windsurfrules
+.clinerules
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
 
 # --------------------------
 # Docusaurus (docs/)
