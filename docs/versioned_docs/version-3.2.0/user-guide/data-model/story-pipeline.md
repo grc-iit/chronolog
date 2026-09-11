@@ -450,8 +450,8 @@ The lifecycle of a single StoryChunk follows these phases:
 
 1. **Chunk Duration** — During the chunk's time window (default: 30 seconds), the ChronoKeeper groups arriving events into the chunk by StoryId and timestamp.
 2. **Keeper Acceptance Window** — After the chunk's time range ends, the Keeper continues accepting late events for a configurable window (default: 60 seconds from chunk start) to tolerate network delays.
-3. **Keeper Tail Store Retention (ChronoLog 3.1)** — When the acceptance window expires, the sealed chunk is handed to the `KeeperTailStore`. Chunks are retained in keeper memory to serve low-latency `playback()` (tail-read) queries directly from RAM until they age out (`tail_retention_secs`), are evicted by capacity limits (`tail_capacity`), or are flushed on shutdown.
-4. **Extract and Transfer** — Upon aging out or capacity eviction from the tail store, the Keeper serializes the partial StoryChunk and sends it to the ChronoGrapher via RDMA bulk transfer.
+3. **Extract and Transfer** — When the acceptance window expires, the chunk seals and the Keeper sends the partial StoryChunk to the ChronoGrapher via RDMA bulk transfer. A chunk whose transfer fails is sent again.
+4. **Keeper Retention** — The Keeper keeps the sealed chunk in memory, where it serves low-latency `playback()` (tail-read) queries and the recent part of replays, until the ChronoGrapher confirms it is written to HDF5. See [Durable Chunk Retention](../architecture/durable-retention.md).
 5. **Grapher Acceptance Window** — The ChronoGrapher holds the chunk in its own pipeline (default: 180 seconds), during which it merges partial chunks from different Keepers into complete StoryChunks.
 6. **Archive** — When the Grapher's acceptance window expires, the complete StoryChunk is extracted and written to HDF5 persistent storage.
 
@@ -462,7 +462,7 @@ All timing parameters are configurable per deployment to balance between latency
 The distributed Story Pipeline model provides several key advantages for high-throughput event collection in HPC environments:
 
 - **Parallelized ingestion** — Using a group of ChronoKeepers running on different HPC nodes to record individual events for the same story distributes the immediate ingestion workload and parallelizes early sequencing of events into partial StoryChunks across compute nodes.
-- **On-demand in-memory tail reads** — Retaining decayed chunks in `KeeperTailStore` before extraction enables client applications to read the most recent $N$ events directly from keeper RAM (`playback`) with millisecond-scale response times (~0.4 ms median), without waiting for the Grapher/HDF5 archive path.
+- **On-demand in-memory tail reads** — Keeping sealed chunks in `KeeperChunkRetentionStore` until they are persisted enables client applications to read the most recent $N$ events directly from keeper RAM (`playback`) with millisecond-scale response times (~0.4 ms median), without waiting for the Grapher/HDF5 archive path.
 - **Batch data movement** — Moving events in presorted batches (StoryChunks) between compute and storage nodes, rather than forwarding individual events, provides significantly higher overall throughput across the network.
 - **Progressive ordering** — Events are first locally sorted within each Keeper, then globally merged at the Grapher. This two-phase approach avoids the bottleneck of a centralized sequencer.
 - **Network delay tolerance** — Configurable acceptance windows at each tier ensure that late-arriving events are correctly placed, without sacrificing pipeline throughput.

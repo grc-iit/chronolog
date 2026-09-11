@@ -1,7 +1,7 @@
 #!/bin/bash
 # Integration test for the keeper <-> grapher watermark feedback loop.
 #
-# Scenarios (the protocol is described in watermark_plan/watermark_protocol.md):
+# Scenarios (see docs/versioned_docs/version-3.2.0/user-guide/architecture/durable-retention.md):
 #   1. Normal path: a writer runs twice; afterwards every chunk a keeper
 #      retained is freed within the deadline (ship-on-seal -> grapher persists
 #      -> watermark report -> gated eviction), except the one holding that

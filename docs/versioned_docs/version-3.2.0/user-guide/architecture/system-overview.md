@@ -112,7 +112,7 @@ A **Recording Group** is a logical grouping of recording processes that work tog
 2. Client library timestamps the Event → sends to ChronoVisor
 3. ChronoVisor assigns the Story to a Recording Group → notifies all group processes
 4. ChronoKeeper ingests Events into in-memory Story Pipeline → groups into partial StoryChunks
-5. Retired chunks are drained via RDMA bulk transfer to ChronoGrapher
+5. Sealed chunks are sent via RDMA bulk transfer to ChronoGrapher; each keeper keeps a chunk until ChronoGrapher reports it written (see [Durable Chunk Retention](./durable-retention.md))
 6. ChronoGrapher merges partials from all Keepers → archives complete StoryChunks to HDF5 archive files
 
 ### Read path
@@ -189,7 +189,7 @@ A **Recording Group** is a logical grouping of recording processes that work tog
   <text x="126" y="444" fill="#9ca3b0" fontSize="7">{"Bulk transfer back to client → merged, time-ordered event stream"}</text>
 </svg>
 
-The Player maintains an in-memory copy of the most recent story segments (the same chunks sent to ChronoGrapher), so recent events can be served before they are fully committed to the archive tier.
+For the most recent part of a range, the Player asks the story's ChronoKeepers, which hold every chunk until it is written, so recent events are served before they reach the archive tier.
 
 ## Communication Model
 

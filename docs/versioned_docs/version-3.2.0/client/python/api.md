@@ -188,7 +188,7 @@ StoryHandle.log_event(event_string: str) -> int
 StoryHandle.playback(n: int, events: EventList) -> int
 ```
 
-- **On-Demand Tail Read**: Retrieve the most recent `n` events of this story directly from ChronoKeeper in-memory buffers (`KeeperTailStore`), bypassing the ChronoPlayer/HDF5 archive path.
+- **On-Demand Tail Read**: Retrieve the most recent `n` events of this story directly from ChronoKeeper in-memory buffers (`KeeperChunkRetentionStore`), bypassing the ChronoPlayer/HDF5 archive path.
 - `events` is an `EventList` instance populated in place with the returned `Event` objects in ascending order.
 - Returns `0` (`CL_SUCCESS`) on success, `-7` (`CL_ERR_NO_KEEPERS`), `-12` (`CL_ERR_QUERY_TIMED_OUT`), `-18` (`CL_ERR_PARTIAL_RESULT`), or `-1` (`CL_ERR_UNKNOWN`).
 - Supported in writer-only client mode (`ClientPortalServiceConf` only).

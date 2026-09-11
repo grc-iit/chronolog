@@ -143,7 +143,7 @@ int main(int argc, char** argv)
 | **AcquireStory** | Opens (and creates if necessary) a story within the chronicle. The returned `StoryHandle*` is used for all subsequent writes. |
 | **log_event** | Appends an event record to the story. The call is non-blocking; events are buffered and flushed in the background. |
 | **sleep(120)** | Waits for background persistence to complete before issuing a replay. See the note in the code above. |
-| **ReplayStory** | Fetches all persisted events in the given time range. Requires the client to have been constructed with a `ClientQueryServiceConf` (READER mode). |
+| **ReplayStory** | Fetches every event in the given time range, from the archive and, for the most recent ones, from keeper memory. Requires the client to have been constructed with a `ClientQueryServiceConf` (READER mode). |
 | **ReleaseStory** | Flushes buffered events and releases the story handle. Must be called before `DestroyStory`. |
 | **DestroyStory / DestroyChronicle** | Permanently removes the story and chronicle. Both fail with `CL_ERR_ACQUIRED` if the resource is still held by any client. |
 

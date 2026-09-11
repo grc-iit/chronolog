@@ -100,7 +100,7 @@ When adding or editing the ChronoLog data source inside Grafana, the only requir
 2. Select **ChronoLog** as the data source.
 3. Configure the query fields:
    - **Mode**:
-     - **Replay (Default)**: Archive read across persistent storage over the dashboard time range (`Client.ReplayStory`).
+     - **Replay (Default)**: Range read over the dashboard time range (`Client.ReplayStory`), served from the HDF5 archive plus the keepers' most recent events.
      - **Tail (Playback)**: High-speed tail read of the most recent $N$ events directly from ChronoKeeper memory (`StoryHandle.playback`). The dashboard time range is ignored.
    - **Last N**: In Tail mode, specify how many most-recent events to fetch (default: `100`).
    - **Chronicle Name** — the chronicle to query.

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integration test for the player's watermark-based replay split
-# (the protocol is described in watermark_plan/watermark_protocol.md).
+# (see docs/versioned_docs/version-3.2.0/user-guide/architecture/durable-retention.md).
 #
 # The player fans story_range_fetch out over the story's keeper roster and
 # splits replay at B = min(hot_floor): [start, B) comes from the HDF5 archive,

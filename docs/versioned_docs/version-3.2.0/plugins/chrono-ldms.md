@@ -149,7 +149,7 @@ The ChronoLog client is a process-wide singleton whose endpoint is fixed when it
 Stored samples are ordinary ChronoLog events, so both read paths apply:
 
 - **Tail read** — `StoryHandle::playback()` returns the last *N* events straight from ChronoKeeper memory, in milliseconds. This is the path for live monitoring and alerting. See [On-Demand Tail Read](../user-guide/architecture/on-demand-tail-read.md).
-- **Archive read** — `Client::ReplayStory()` replays a time range from the HDF5 archive via the player, for batch analytics and reporting.
+- **Archive read** — `Client::ReplayStory()` replays a time range via the player, from the HDF5 archive plus the keepers' not-yet-persisted events, for batch analytics and reporting.
 
 [ChronoViz](./chronoviz.md) exposes both to Grafana, so an LDMS-fed chronicle can be explored in a dashboard without any export step.
 
@@ -161,7 +161,7 @@ chrono-ldms-example-roundtrip -c <chrono-client-conf.json> ldms meminfo 10 90
 ```
 
 :::note Timing
-An event is visible to `playback()` only once its chunk seals — roughly `story_chunk_duration_secs + acceptance_window_secs` (~25s with shipped defaults), unless the keeper has `live_tail_read` enabled. It becomes visible to `ReplayStory()` later still, once the sealed chunk leaves the keeper tail and is archived: after `tail_retention_secs` (default 60) beyond the chunk's end time, or earlier if the story exceeds `tail_capacity` (default 65536 events). Allow for both windows when checking that samples arrived; the round-trip example's `max_settle_seconds` argument exists for exactly this.
+An event is visible to `playback()` only once its chunk seals — roughly `story_chunk_duration_secs + acceptance_window_secs` (~25s with shipped defaults), unless the keeper has `live_tail_read` enabled. It becomes visible to `ReplayStory()` at the same point, because replay reads events that are not yet persisted from keeper memory (see [Durable Chunk Retention](../user-guide/architecture/durable-retention.md)). Allow for that window when checking that samples arrived; the round-trip example's `max_settle_seconds` argument exists for exactly this.
 :::
 
 ## Behavior notes
