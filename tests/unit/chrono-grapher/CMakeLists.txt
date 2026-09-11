@@ -61,3 +61,35 @@ gtest_discover_tests(hdf5_file_chunk_extractor_test TEST_PREFIX "Unit_ChronoGrap
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(hdf5_file_chunk_extractor_test DESTINATION tests)
 endif()
+
+# Grapher -> keeper watermark report transport (GTest) — the real publisher and
+# the keeper's real DataStoreAdminService over ofi+sockets on 127.0.0.1
+add_executable(watermark_report_transport_test
+    watermark_report_transport_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+)
+
+# src/ lets the test name the keeper's DataStoreAdminService.h, which shares
+# its file name with the grapher's
+target_include_directories(watermark_report_transport_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(watermark_report_transport_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(watermark_report_transport_test PROPERTIES OUTPUT_NAME chronolog-test-watermark-report-transport)
+gtest_discover_tests(watermark_report_transport_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(watermark_report_transport_test DESTINATION tests)
+endif()
