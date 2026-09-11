@@ -109,4 +109,7 @@ TEST(KeeperExtractionChain, FailedDrainRetainsChunkForResend)
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
     EXPECT_EQ(store.requeueStalled(std::chrono::seconds(0)), 1u);
     EXPECT_EQ(q.ejectStoryChunk(), chunk);
+    // close the drain protocol: the store skips a queued chunk at shutdown,
+    // so one taken off the queue must be handed back or it leaks
+    chain.dispose_chunk(chunk, chl::CL_ERR_UNKNOWN);
 }
