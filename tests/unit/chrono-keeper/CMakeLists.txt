@@ -31,6 +31,30 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_retention_store_test DESTINATION tests)
 endif()
 
+# KeeperChunkRetentionStore retention cap (GTest) — its own binary because the
+# chrono logger's level is process-wide and these tests need warnings on
+add_executable(keeper_retention_cap_test
+    chrono_keeper_retention_cap_test.cpp
+)
+
+target_include_directories(keeper_retention_cap_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_retention_cap_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(keeper_retention_cap_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-retention-cap)
+gtest_discover_tests(keeper_retention_cap_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_retention_cap_test DESTINATION tests)
+endif()
+
 # Keeper extraction-chain disposal seam (GTest) — dispose_chunk routes drain
 # outcomes into the retention store; shim mode (expects_watermarks()==false)
 # frees on ack. Pulls DualEndpointChunkExtractorRDMA.cpp directly because it is
