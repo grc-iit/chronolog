@@ -2,16 +2,19 @@
 # Integration test for the keeper <-> grapher watermark feedback loop.
 #
 # Scenarios (the protocol is described in watermark_plan/watermark_protocol.md):
-#   1. Normal path: after a writer stops, every keeper's retained chunk count
-#      returns to 0 within the deadline (ship-on-seal -> grapher persists ->
-#      watermark report -> gated eviction). Keeper tail_capacity is set to 0
-#      for the run so tail retention does not mask the watermark gate.
+#   1. Normal path: a writer runs twice; afterwards every chunk a keeper
+#      retained is freed within the deadline (ship-on-seal -> grapher persists
+#      -> watermark report -> gated eviction), except the one holding that
+#      keeper's newest event of the story. Keeper tail_capacity is set to 1,
+#      the smallest the config accepts, so the tail keeps only that chunk and
+#      every other one is freed by the watermark gate alone.
 #   2. No premature free: every "freeing" log line's triggering watermark W
 #      must be >= the freed chunk's end time.
 #   3. Transient grapher outage: SIGSTOP the grapher before a writer runs,
 #      SIGCONT it later; keepers must retain the chunks through the outage,
-#      the loop must catch up afterwards (all chunks freed), and every written
-#      event must be durable in HDF5 (duplicates allowed, loss is failure).
+#      the loop must catch up afterwards (every chunk below the tail freed),
+#      and every written event must reach HDF5 (duplicates allowed, loss is
+#      failure).
 #
 # The writer is the tail-reader example (30 events, release, NO destroy).
 # chrono-bench is deliberately not used here: it destroys its stories
@@ -83,14 +86,30 @@ totals() { # -> "retained freed" summed over keepers
     echo "$r $f"
 }
 
-wait_all_freed() { # $1 = deadline seconds from now; passes if retained==freed per keeper
-    local deadline=$((SECONDS + $1)) log r f all
+# chunks a keeper retained and has not freed, other than the one holding its
+# newest event of each story -- the only chunk a 1-event tail may keep
+unfreed_below_tail() {
+    awk '/\[KeeperChunkRetentionStore\] retaining StoryId/ {
+             match($0, /StoryId=[0-9]+/); s = substr($0, RSTART + 8, RLENGTH - 8)
+             match($0, /chunk [0-9]+-[0-9]+/); c = substr($0, RSTART + 6, RLENGTH - 6)
+             kept[s " " c] = 1
+             split(c, bounds, "-")
+             if(!(s in newest) || bounds[1] + 0 > newest_start[s]) { newest[s] = c; newest_start[s] = bounds[1] + 0 }
+         }
+         /\[KeeperChunkRetentionStore\] freeing StoryId/ {
+             match($0, /StoryId=[0-9]+/); s = substr($0, RSTART + 8, RLENGTH - 8)
+             match($0, /chunk [0-9]+-[0-9]+/); delete kept[s " " substr($0, RSTART + 6, RLENGTH - 6)]
+         }
+         END { n = 0; for(k in kept) { split(k, key, " "); if(key[2] != newest[key[1]]) n++ } print n }' "$1"
+}
+
+wait_freed_but_tail() { # $1 = deadline seconds from now; passes once no keeper holds a chunk below its tail
+    local deadline=$((SECONDS + $1)) log all
     while [ $SECONDS -lt $deadline ]; do
         all=1
         for log in "$MONITOR_DIR"/chrono-keeper-*.log; do
             [ -f "$log" ] || continue
-            r=$(retained_count "$log"); f=$(freed_count "$log")
-            [ "${r:-0}" -ne "${f:-0}" ] && all=0
+            [ "$(unfreed_below_tail "$log")" -ne 0 ] && all=0
         done
         [ $all -eq 1 ] && return 0
         sleep 5
@@ -110,13 +129,13 @@ h5_story_events() { # total events across TailChronicle.TailStory files
 }
 
 # ---------------------------------------------------------------- setup ----
-say "patching installed conf template (keeper tail_capacity=0, resend=${RESEND_SECS}s; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
+say "patching installed conf template (keeper tail_capacity=1, resend=${RESEND_SECS}s; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
 command -v jq >/dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wmark_test_backup"
-jq ".chrono_keeper.DataStoreInternals.tail_capacity = 0 |
+jq ".chrono_keeper.DataStoreInternals.tail_capacity = 1 |
     .chrono_keeper.DataStoreInternals.watermark_resend_timeout_secs = $RESEND_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
@@ -139,19 +158,23 @@ if [ "$(pgrep -c -f "$WORK_DIR/bin/chrono-")" -lt 5 ]; then
 fi
 
 # ------------------------------------------------- scenario 1: normal path ----
-say "scenario 1: write 30 events (no destroy), wait up to ${FREE_DEADLINE}s for keepers to free everything"
+say "scenario 1: write 30 events twice (no destroy), wait up to ${FREE_DEADLINE}s for keepers to free all but their tail chunk"
+# Two runs, so every keeper retains a chunk besides the one its 1-event tail
+# keeps. The example holds the story ~40 s after writing, so the second run's
+# events land in later chunks.
+"$TAIL_EXAMPLE" --config "$CLIENT_CONF" > /dev/null 2>&1
 "$TAIL_EXAMPLE" --config "$CLIENT_CONF" > /dev/null 2>&1
 
-if wait_all_freed "$FREE_DEADLINE"; then
+if wait_freed_but_tail "$FREE_DEADLINE"; then
     read -r r f <<< "$(totals)"
-    if [ "$r" -gt 0 ]; then
-        ok "normal path: all $r retained chunk(s) freed by watermark reports"
+    if [ "$f" -gt 0 ]; then
+        ok "normal path: $f of $r retained chunk(s) freed by watermark reports; each keeper keeps only its tail chunk"
     else
-        bad "normal path: no chunks were retained at all (writer produced nothing?)"
+        bad "normal path: nothing was freed (retained=$r); the writer runs left no chunk below the tail"
     fi
 else
     read -r r f <<< "$(totals)"
-    bad "normal path: retained=$r freed=$f after ${FREE_DEADLINE}s deadline"
+    bad "normal path: retained=$r freed=$f after ${FREE_DEADLINE}s deadline; chunks below the tail still held"
 fi
 
 # --------------------------------------------- scenario 2: no premature free ----
@@ -195,22 +218,30 @@ kill -CONT "$grapher_pid"
 say "grapher resumed; waiting for re-send + persistence + reports"
 wait "$example_pid" 2>/dev/null
 
-if wait_all_freed $((RESEND_SECS + FREE_DEADLINE + 30)); then
-    ok "outage: watermark loop caught up, all retained chunks freed"
+if wait_freed_but_tail $((RESEND_SECS + FREE_DEADLINE + 30)); then
+    ok "outage: every chunk below each keeper's tail freed after the grapher resumed"
 else
     for log in "$MONITOR_DIR"/chrono-keeper-*.log; do
-        say "  $(basename "$log"): retained=$(retained_count "$log") freed=$(freed_count "$log")"
+        say "  $(basename "$log"): retained=$(retained_count "$log") freed=$(freed_count "$log") held below tail=$(unfreed_below_tail "$log")"
     done
-    bad "outage: keepers still hold unfreed chunks after catch-up deadline"
+    bad "outage: keepers still hold chunks below the tail after the catch-up deadline"
 fi
 
-# durability: both runs wrote 30 events each; every one must be on disk
-# (TailChronicle.TailStory.*.vlen.h5, possibly rotated; duplicates allowed)
+# durability: the three runs wrote 30 events each; every one must reach disk
+# (TailChronicle.TailStory.*.vlen.h5, possibly rotated; duplicates allowed).
+# The tail keeps each keeper's newest chunk in memory whether or not it is
+# persisted, so poll the archive rather than infer it from frees; the last
+# run's chunks reach the grapher only through the re-send after the outage.
+deadline=$((SECONDS + RESEND_SECS + FREE_DEADLINE + 30))
 h5_events=$(h5_story_events)
-if [ "$h5_events" -ge 60 ]; then
-    ok "durability: $h5_events event(s) on disk for TailStory (>= 60 written; duplicates allowed)"
+while [ "$h5_events" -lt 90 ] && [ $SECONDS -lt $deadline ]; do
+    sleep 5
+    h5_events=$(h5_story_events)
+done
+if [ "$h5_events" -ge 90 ]; then
+    ok "durability: $h5_events event(s) on disk for TailStory (>= 90 written; duplicates allowed)"
 else
-    bad "durability: only $h5_events event(s) on disk for TailStory, 60 were written across both runs"
+    bad "durability: only $h5_events event(s) on disk for TailStory, 90 were written across three runs"
 fi
 
 # ------------------------------------------------------------------ report ----
