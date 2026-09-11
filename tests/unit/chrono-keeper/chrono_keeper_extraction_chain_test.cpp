@@ -1,10 +1,9 @@
 // Unit tests for the ChronoKeeperExtractionChain disposal seam: after the
 // extraction module processes a chunk, dispose_chunk routes the transfer
 // outcome into the KeeperChunkRetentionStore instead of deleting the chunk.
-// In shim mode (expects_watermarks() == false — no grapher-bound extractor in
-// the chain, or Task 2's transitional default) a successful send also counts
-// as persisted, reproducing today's free-on-ack behavior so every commit
-// stays deployable.
+// In shim mode (expects_watermarks() == false: no grapher-bound extractor in
+// the chain) a successful send also counts as persisted, so a keeper that
+// only archives to CSV or logs still frees chunks on ack.
 
 #include <gtest/gtest.h>
 
@@ -57,7 +56,7 @@ TEST(KeeperExtractionChain, ShimModeFreesOnAckOnceTailReleased)
     chl::KeeperChunkRetentionStore store(q, 0); // capacity 0: tail releases at ingest
     chl::ChronoKeeperExtractionChain chain;
     chain.attachRetentionStore(&store);
-    ASSERT_FALSE(chain.expects_watermarks()); // Task 2 shim: no watermark loop yet
+    ASSERT_FALSE(chain.expects_watermarks()); // no grapher-bound extractor, so no reports
 
     chl::StoryId sid = 7;
     store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 5));

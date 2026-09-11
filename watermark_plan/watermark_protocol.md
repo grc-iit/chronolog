@@ -1,8 +1,7 @@
 # Watermark Feedback Protocol (Keeper ↔ Grapher ↔ Player)
 
 Engineering note for the durability-gated retention that replaces ack-less
-story-chunk deletion in the keeper. Companion to the implementation plan
-(`watermark_feedback_impl_plan.md`); this documents the protocol as built.
+story-chunk deletion in the keeper: the protocol as built.
 
 ## The problem it solves
 

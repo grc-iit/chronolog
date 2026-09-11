@@ -1,7 +1,7 @@
 #!/bin/bash
 # Integration test for the keeper <-> grapher watermark feedback loop.
 #
-# Scenarios (see watermark_plan/watermark_feedback_impl_plan.md, Task 3):
+# Scenarios (the protocol is described in watermark_plan/watermark_protocol.md):
 #   1. Normal path: after a writer stops, every keeper's retained chunk count
 #      returns to 0 within the deadline (ship-on-seal -> grapher persists ->
 #      watermark report -> gated eviction). Keeper tail_capacity is set to 0
