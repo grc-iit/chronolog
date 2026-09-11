@@ -18,7 +18,8 @@
 #                       new = hot), and tail playback (playback(10)) still
 #                       works off the retention store's index.
 #
-# The keeper tail_capacity is patched to 20 (< N=30) so the oldest chunk is
+# The keeper tail_capacity is patched to 10, below the ~15 events each of the
+# 2 keepers gets from a writer run of N=30, so the oldest chunk is
 # tail-released and actually freed by the watermark loop mid-test — forcing a
 # real archive+hot split — while the newest events keep backing tail reads.
 #
@@ -45,7 +46,7 @@ G_CHUNK_SECS=10
 G_ACCEPT_SECS=20
 REPORT_SECS=1
 RESEND_SECS=40
-TAIL_CAP=20 # < the 30 events one writer run produces
+TAIL_CAP=10 # < the ~15 events each of the 2 keepers gets from one writer run
 
 PASS=0
 FAIL=0
@@ -71,6 +72,8 @@ cleanup() {
 # PROBE_QUERY_PORT (default 5561).
 PROBE_QUERY_PORT="${PROBE_QUERY_PORT:-5561}"
 PROBE_CLIENT_CONF="/tmp/wmark_replay_probe_client_conf.json"
+# writer and probe output, removed on exit
+RUN_DIR=$(mktemp -d /tmp/wmark_replay.XXXXXX)
 
 replay_unique() { # runs the probe, echoes the REPLAY_UNIQUE value (or -1); raw output tee'd to $1
     local raw_out="${1:-/dev/null}"
@@ -101,7 +104,7 @@ jq ".chrono_keeper.DataStoreInternals.tail_capacity = $TAIL_CAP |
     "$CONF_TEMPLATE.wmark_replay_backup" > "$CONF_TEMPLATE" || { say "conf patch failed"; exit 2; }
 
 restore_conf() { mv -f "$CONF_TEMPLATE.wmark_replay_backup" "$CONF_TEMPLATE"; }
-trap 'cleanup; restore_conf' EXIT
+trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
 
 kill_daemons
 sleep 2
@@ -126,7 +129,7 @@ jq ".chrono_client.ClientQueryService.rpc.service_base_port = $PROBE_QUERY_PORT"
 # acceptance) but before the writer releases the story — so the data is hot
 # and the story is still live. Anchoring to the "Holding" marker (rather than
 # a fixed sleep from launch) keeps probe 1 clear of the release/teardown race.
-WRITER1_OUT=/home/kfeng/.claude/jobs/d384eb51/tmp/replay_writer1.out
+WRITER1_OUT="$RUN_DIR/replay_writer1.out"
 say "writer run 1: 30 events (tail-reader example, no destroy)"
 : > "$WRITER1_OUT"
 "$TAIL_EXAMPLE" --config "$CLIENT_CONF" > "$WRITER1_OUT" 2>&1 &
@@ -141,11 +144,11 @@ say "writer holding; waiting for the keeper seal, then probing during the hold"
 sleep 30 # events sealed (~25s), writer still holds for ~10s more
 
 # ------------------------------------------------- probe 1: hot side ----
-u1=$(replay_unique /home/kfeng/.claude/jobs/d384eb51/tmp/replay_probe1.out)
+u1=$(replay_unique "$RUN_DIR/replay_probe1.out")
 if [ "$u1" -eq 30 ]; then
     ok "probe 1 (hot): replay returned exactly 30 unique events"
 else
-    say "probe 1 raw output: $(tr '\n' '|' < /home/kfeng/.claude/jobs/d384eb51/tmp/replay_probe1.out)"
+    say "probe 1 raw output: $(tr '\n' '|' < "$RUN_DIR/replay_probe1.out")"
     bad "probe 1 (hot): expected 30 unique events, got $u1"
 fi
 if [ "$(hot_event_lines)" -gt 0 ]; then
@@ -181,12 +184,12 @@ else
 fi
 
 # ------------------------------ probe 3: mixed + tail playback intact ----
-# run 2's 30 events evict run 1's from the 20-event tail, tail-releasing the
+# run 2's events evict run 1's from each keeper's 10-event tail, tail-releasing the
 # run-1 chunks; the watermark (which already covers them) then frees them —
 # the archive+hot split below is real, not hot-only
 say "writer run 2: 30 more events; also validates tail playback"
-"$TAIL_EXAMPLE" --config "$CLIENT_CONF" > /home/kfeng/.claude/jobs/d384eb51/tmp/replay_writer2.out 2>&1
-if grep -q "playback(10) returned: CL_SUCCESS with 10 event" /home/kfeng/.claude/jobs/d384eb51/tmp/replay_writer2.out; then
+"$TAIL_EXAMPLE" --config "$CLIENT_CONF" > "$RUN_DIR/replay_writer2.out" 2>&1
+if grep -q "playback(10) returned: CL_SUCCESS with 10 event" "$RUN_DIR/replay_writer2.out"; then
     ok "probe 3 (mixed): tail playback still serves the last-N tail"
 else
     bad "probe 3 (mixed): tail playback broken (see replay_writer2.out)"
