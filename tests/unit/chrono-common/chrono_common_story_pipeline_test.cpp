@@ -5,6 +5,7 @@
 
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
+#include <StoryChunkExtractionQueue.h>
 
 namespace chl = chronolog;
 
@@ -419,7 +420,69 @@ TEST(StoryPipeline_MergeEvents, testMultipleAppend)
 }
 
 /* ----------------------------------
-  Tests on prependStoryChunk() 
+  Tests on the prepend-failure path of mergeEvents()
+  ---------------------------------- */
+
+// mergeEvents() falls back to salvaging (or, with no queue attached,
+// discarding) events below the timeline only when prependStoryChunk() fails,
+// i.e. when the key TimelineStart() - granularity is already taken. Every
+// window key is a multiple of the granularity, so that happens only once the
+// timeline wraps past 2^64: a pipeline started two windows below the largest
+// representable window start has its third window wrap to a start below one
+// granularity, which becomes TimelineStart(), and prepending below it wraps
+// onto the second window's key.
+static uint64_t wrappingPipelineStart()
+{
+    uint64_t const last_window_start = (std::numeric_limits<uint64_t>::max() / NS) * NS;
+    return last_window_start - NS;
+}
+
+// The salvage chunk must be watermark-exempt: it holds one keeper's rescued
+// events, not a merged timeline window, so the grapher's HDF5 extractor must
+// not advance the persisted watermark W over its interval.
+TEST(StoryPipeline_PrependFailure, testSalvagedEventsAreStashedWatermarkExempt)
+{
+    initLogger();
+    chl::StoryChunkExtractionQueue queue;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachExtractionQueue(&queue);
+    uint64_t const timeline_start = p.TimelineStart();
+    ASSERT_GT(timeline_start, 0u);
+    ASSERT_LT(timeline_start, NS);
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    p.mergeEvents(late);
+
+    EXPECT_TRUE(late.empty());
+    ASSERT_EQ(queue.size(), 1);
+    chl::StoryChunk* salvage = queue.ejectStoryChunk();
+    ASSERT_NE(salvage, nullptr);
+    EXPECT_TRUE(salvage->isWatermarkExempt());
+    EXPECT_EQ(salvage->getEventCount(), 1);
+    EXPECT_EQ(salvage->firstEventTime(), timeline_start / 2);
+    delete salvage;
+}
+
+// With no queue attached the events are discarded; the merge must still
+// return once the incoming chunk has been drained.
+TEST(StoryPipeline_PrependFailure, testDiscardDrainsIncomingChunkAndReturns)
+{
+    initLogger();
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    uint64_t const timeline_start = p.TimelineStart();
+    ASSERT_LT(timeline_start, NS);
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    p.mergeEvents(late);
+
+    EXPECT_TRUE(late.empty());
+    EXPECT_EQ(p.TimelineStart(), timeline_start);
+}
+
+/* ----------------------------------
+  Tests on prependStoryChunk()
   ---------------------------------- */
 
 // Basic test where there is no chunk at start and we insert valid
@@ -483,10 +546,7 @@ static std::size_t countNonEmpty(std::vector<chl::StoryChunk*> const& q)
 
 static void freeChunks(std::vector<chl::StoryChunk*>& q)
 {
-    for(auto* chunk: q)
-    {
-        delete chunk;
-    }
+    for(auto* chunk: q) { delete chunk; }
     q.clear();
 }
 

@@ -354,7 +354,9 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                  TimelineEnd(),
                  acceptanceWindow / 1000000000);
 
-        while(other_chunk.firstEventTime() < TimelineStart())
+        // firstEventTime() of an empty chunk is 0, so stop once salvaging or
+        // discarding has drained the chunk or the loop never ends
+        while(!other_chunk.empty() && other_chunk.firstEventTime() < TimelineStart())
         {
             chunk_to_merge_iter = chl::StoryPipeline::prependStoryChunk();
             if(chunk_to_merge_iter == storyTimelineMap.end())
@@ -368,11 +370,8 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                     // as a rotated file. Watermark-exempt — it is one keeper's
                     // salvaged events, not a merged timeline window, so its
                     // interval must not advance W.
-                    auto* salvage_chunk = new StoryChunk(chronicleName,
-                                                         storyName,
-                                                         storyId,
-                                                         other_chunk.getStartTime(),
-                                                         salvage_end);
+                    auto* salvage_chunk =
+                            new StoryChunk(chronicleName, storyName, storyId, other_chunk.getStartTime(), salvage_end);
                     salvage_chunk->setWatermarkExempt(true);
                     salvage_chunk->mergeEvents(other_chunk);
                     if(!other_chunk.empty() && other_chunk.firstEventTime() < salvage_end)

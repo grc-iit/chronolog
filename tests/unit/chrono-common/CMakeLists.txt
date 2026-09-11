@@ -47,7 +47,9 @@ target_link_libraries(story_pipeline_test PRIVATE
 )
 
 set_target_properties(story_pipeline_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-pipeline)
-gtest_discover_tests(story_pipeline_test TEST_PREFIX "Unit_ChronoCommon_")
+# mergeEvents regressions show up as hangs; fail them fast instead of at the
+# ctest default of 1500 s
+gtest_discover_tests(story_pipeline_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 60)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_pipeline_test DESTINATION tests)
 endif()
