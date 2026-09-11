@@ -12,6 +12,7 @@
 #include <ServiceId.h>
 
 #include <ArchiveReadingRequestQueue.h>
+#include <HotRangeSplit.h>
 #include <KeeperHotFetchClient.h>
 #include <PlayerDataStore.h>
 

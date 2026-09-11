@@ -70,3 +70,32 @@ add_test(NAME Unit_ChronoPlayer_FileSystemMonitoring COMMAND fs_monitoring_test)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(fs_monitoring_test DESTINATION tests)
 endif()
+
+#------------------------------------------------------------------------------
+
+# HotRangeSplit (GTest) — the replay split between archive and keepers;
+# header-only, no network needed
+find_package(GTest REQUIRED)
+include(GoogleTest)
+
+add_executable(hot_range_split_test
+    chrono_player_hot_range_split_test.cpp
+)
+
+target_include_directories(hot_range_split_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(hot_range_split_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    thallium
+)
+
+set_target_properties(hot_range_split_test PROPERTIES OUTPUT_NAME chronolog-test-player-hot-range-split)
+gtest_discover_tests(hot_range_split_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(hot_range_split_test DESTINATION tests)
+endif()

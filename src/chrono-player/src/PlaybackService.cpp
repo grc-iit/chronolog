@@ -41,10 +41,7 @@ chronolog::PlaybackService::~PlaybackService()
 
     {
         std::lock_guard<std::mutex> lock(hotFetchMutex);
-        for(auto& client: hotFetchClients)
-        {
-            delete client.second;
-        }
+        for(auto& client: hotFetchClients) { delete client.second; }
         hotFetchClients.clear();
     }
 
@@ -144,21 +141,15 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     // The hot portion of the response comes straight from the story's keepers
     // (on-demand pull over the roster the visor delivered at story start),
-    // and the split boundary B = min over keepers of their hot floor — the
-    // oldest tick each keeper still retains. Every keeper frees a chunk only
-    // once it is durable in the archive and frees proceed oldest-first, so
-    // everything below B is guaranteed on disk; this is a completeness
-    // argument, not an optimization. A keeper retaining nothing reports
-    // hot_floor=UINT64_MAX and drops out of the min; a keeper that fails to
-    // respond does the same, which only raises B (archive overlap is the
-    // failure-safe direction). No keepers at all -> archive-only (degraded,
-    // correct for persisted data).
+    // and replay splits at B = min over keepers of their hot floor; see
+    // HotRangeSplit.h for why that boundary is complete. No keepers at all ->
+    // archive-only (degraded, correct for persisted data).
     constexpr uint64_t kHotFetchMaxEvents = 262144;
 
     std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
 
-    uint64_t hot_boundary = end_time; // B, clamped to the requested range
-    std::map<chl::EventSequence, chl::LogEvent> merged_hot_events; // cross-keeper dedup for free
+    std::vector<chl::HotRangeResponse> hot_responses;
+    hot_responses.reserve(story_keepers.size());
     for(auto const& keeper_service_id: story_keepers)
     {
         chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
@@ -166,8 +157,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         {
             continue; // unreachable keeper: drops out of the min, B only rises
         }
-        chl::HotRangeResponse hot = fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents);
-        if(hot.truncated)
+        hot_responses.push_back(fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents));
+        if(hot_responses.back().truncated)
         {
             LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
                         query_id,
@@ -175,16 +166,8 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                         chl::to_string(keeper_service_id),
                         kHotFetchMaxEvents);
         }
-        if(hot.hot_floor < hot_boundary)
-        {
-            hot_boundary = hot.hot_floor;
-        }
-        for(auto& log_event: hot.events)
-        {
-            merged_hot_events.emplace(chl::EventSequence{log_event.time(), log_event.clientId, log_event.index()},
-                                      std::move(log_event));
-        }
     }
+    chl::HotRangeSplit split = chl::splitHotRange(hot_responses, start_time, end_time);
 
     LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",
               query_id,
@@ -192,25 +175,17 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
               start_time,
               end_time,
               story_keepers.size(),
-              hot_boundary,
-              merged_hot_events.size());
+              split.boundary,
+              split.hotEvents.size());
 
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
 
     chl::PlaybackQueryResponse* query_response = new chl::PlaybackQueryResponse(query_id);
 
-    // hot side: merged keeper events at or above B. Events below B are
-    // dropped — they are guaranteed archive-covered (E <= W) and the archive
-    // portion of this same query returns them; keeping both would duplicate
-    // them in the response.
-    for(auto const& sequenced_event: merged_hot_events)
+    // hot side: merged keeper events at or above B
+    for(auto const& log_event: split.hotEvents)
     {
-        chl::LogEvent const& log_event = sequenced_event.second;
-        if(log_event.time() < hot_boundary)
-        {
-            continue;
-        }
         query_response->events.push_back(
                 chl::Event{log_event.eventTime, log_event.clientId, log_event.eventIndex, log_event.logRecord});
     }
@@ -223,7 +198,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     // archive side covers [start_time, B); complete without it only when the
     // hot side reaches back to start_time
-    bool response_is_complete = (hot_boundary <= start_time);
+    bool response_is_complete = split.complete;
 
     if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
     {
@@ -244,7 +219,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                                                chronicle_name,
                                                                                story_name,
                                                                                start_time,
-                                                                               hot_boundary);
+                                                                               split.boundary);
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }
