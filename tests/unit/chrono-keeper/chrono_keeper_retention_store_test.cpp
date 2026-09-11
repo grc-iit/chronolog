@@ -14,8 +14,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -621,4 +623,178 @@ TEST(KeeperChunkRetentionStore, FetchRangeFloorRisesAsChunksFree)
     auto events = store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
     ASSERT_EQ(events.size(), 5u);
     EXPECT_EQ(hot_floor, 200u); // floor rises with the free: below it is durable
+}
+
+// ---- concurrency: seal, drain, watermark, re-send and reads at once --------
+//
+// In the keeper these run on different threads against one store: the seal
+// path ingests, the extraction streams deliver drain outcomes, the admin
+// service applies watermark reports, the data-collection loop re-sends stalled
+// chunks, and recording-service threads serve tail and range reads. A chunk
+// freed by one path while another still holds it is a use-after-free or a
+// double free. This drives all of them together, checks that every read sees
+// intact events, and that the store drains down to the tail once W covers
+// everything. Run under AddressSanitizer to turn a lifetime bug into a report.
+
+TEST(KeeperChunkRetentionStore, ConcurrentSealDrainConfirmResendAndReads)
+{
+    ensureLogger();
+    constexpr int kStories = 2;
+    constexpr int kChunksPerStory = 300;
+    constexpr int kEventsPerChunk = 8;
+    constexpr std::size_t kTailCapacity = 16; // the last two chunks of a story
+    constexpr uint64_t kSpan = 100;
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, kTailCapacity);
+
+    std::atomic<bool> producing{true};
+    std::atomic<bool> stop{false};
+    std::atomic<int> read_errors{0};
+    std::atomic<uint64_t> deliveries{0};
+    std::atomic<uint64_t> sealed_end[kStories];
+    for(auto& end: sealed_end) { end = 0; }
+
+    // chunk i of a story spans [i*kSpan, (i+1)*kSpan); event e sits at
+    // i*kSpan + e with record "c<i>#<e>", so a read can check each event
+    auto checkEvent = [&](chl::LogEvent const& event)
+    {
+        uint64_t const time = event.time();
+        if(event.getRecord() != "c" + std::to_string(time / kSpan) + "#" + std::to_string(time % kSpan))
+        {
+            read_errors++;
+        }
+    };
+
+    std::vector<std::thread> writers;
+    for(int s = 0; s < kStories; ++s)
+    {
+        writers.emplace_back(
+                [&, s]
+                {
+                    chl::StoryId const sid = 100 + s;
+                    for(int i = 0; i < kChunksPerStory; ++i)
+                    {
+                        uint64_t const start = kSpan * i;
+                        store.ingestSealedChunk(sid,
+                                                makeChunk(sid,
+                                                          start,
+                                                          start + kSpan,
+                                                          start,
+                                                          kEventsPerChunk,
+                                                          1,
+                                                          "c" + std::to_string(i)));
+                        sealed_end[s] = start + kSpan;
+                    }
+                });
+    }
+
+    std::vector<std::thread> workers;
+    for(int d = 0; d < 2; ++d)
+    {
+        workers.emplace_back(
+                [&]
+                {
+                    while(!stop)
+                    {
+                        chl::StoryChunk* chunk = q.ejectStoryChunk();
+                        if(chunk == nullptr)
+                        {
+                            std::this_thread::sleep_for(std::chrono::microseconds(50));
+                            continue;
+                        }
+                        // a third of the deliveries fail while the writers run
+                        if(producing && deliveries.fetch_add(1) % 3 == 0)
+                        {
+                            store.markSendFailed(chunk);
+                        }
+                        else
+                        {
+                            store.markShipped(chunk);
+                        }
+                    }
+                });
+    }
+    workers.emplace_back(
+            [&]
+            {
+                // W trails the seal point; every seventh report lags behind
+                // what was already reported and must be ignored
+                for(uint64_t report = 1; !stop; ++report)
+                {
+                    for(int s = 0; s < kStories; ++s)
+                    {
+                        uint64_t const w = sealed_end[s];
+                        store.confirmPersisted(100 + s, (report % 7 == 0) ? w / 2 : w);
+                    }
+                    std::this_thread::sleep_for(std::chrono::microseconds(200));
+                }
+            });
+    workers.emplace_back(
+            [&]
+            {
+                while(!stop)
+                {
+                    store.requeueStalled(std::chrono::seconds(0));
+                    std::this_thread::sleep_for(std::chrono::microseconds(500));
+                }
+            });
+    for(int r = 0; r < 2; ++r)
+    {
+        workers.emplace_back(
+                [&, r]
+                {
+                    chl::StoryId const sid = 100 + r % kStories;
+                    while(!stop)
+                    {
+                        for(auto const& event: store.getTailEvents(sid, store.getTailSequences(sid, kTailCapacity)))
+                        {
+                            checkEvent(event);
+                        }
+                        uint64_t hot_floor = 0;
+                        bool truncated = false;
+                        auto events = store.fetchRange(sid, 0, UINT64_MAX, 100000, hot_floor, truncated);
+                        for(std::size_t i = 0; i < events.size(); ++i)
+                        {
+                            checkEvent(events[i]);
+                            if(i > 0 && events[i - 1].time() >= events[i].time())
+                            {
+                                read_errors++;
+                            }
+                        }
+                        if(!events.empty() && hot_floor > events.front().time())
+                        {
+                            read_errors++;
+                        }
+                    }
+                });
+    }
+
+    for(auto& writer: writers) { writer.join(); }
+    producing = false;
+
+    // failed sends are re-sent and shipped, W covers every sealed chunk, and
+    // all but the chunks the tail still indexes get freed
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    bool drained = false;
+    while(!drained && std::chrono::steady_clock::now() < deadline)
+    {
+        drained = true;
+        for(int s = 0; s < kStories; ++s)
+        {
+            drained = drained && store.retainedChunkCount(100 + s) == kTailCapacity / kEventsPerChunk;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    stop = true;
+    for(auto& worker: workers) { worker.join(); }
+    // hand back anything a last re-send left in the queue
+    while(chl::StoryChunk* chunk = q.ejectStoryChunk()) { store.markShipped(chunk); }
+
+    EXPECT_TRUE(drained);
+    EXPECT_EQ(read_errors, 0);
+    for(int s = 0; s < kStories; ++s)
+    {
+        EXPECT_EQ(store.retainedChunkCount(100 + s), kTailCapacity / kEventsPerChunk);
+        EXPECT_EQ(store.knownPersisted(100 + s), kSpan * kChunksPerStory);
+    }
 }

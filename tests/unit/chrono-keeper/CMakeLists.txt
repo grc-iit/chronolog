@@ -26,7 +26,8 @@ target_link_libraries(keeper_retention_store_test PRIVATE
 )
 
 set_target_properties(keeper_retention_store_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-retention-store)
-gtest_discover_tests(keeper_retention_store_test TEST_PREFIX "Unit_ChronoKeeper_")
+# the concurrency test would show a lifetime bug as a hang as often as a crash
+gtest_discover_tests(keeper_retention_store_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_retention_store_test DESTINATION tests)
 endif()
