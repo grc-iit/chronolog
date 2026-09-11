@@ -73,13 +73,13 @@ target_link_libraries(extraction_chain_config_test PRIVATE
 set_target_properties(extraction_chain_config_test PROPERTIES OUTPUT_NAME chronolog-test-common-extraction-chain-config)
 
 add_test(NAME Unit_ChronoCommon_ExtractionChainConfig COMMAND extraction_chain_config_test)
-set_tests_properties(Unit_ChronoCommon_ExtractionChainConfig PROPERTIES DISABLED TRUE)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_chain_config_test DESTINATION tests)
 endif()
 
 #------------------------------------------------------------------------------
-# chrono_common standalone tests (Thallium/Margo)
+# StoryChunkExtractionModule (GTest) — the drain loop's contract with its
+# chain; Argobots only, no network needed
 #------------------------------------------------------------------------------
 
 add_executable(extraction_module_test
@@ -92,19 +92,15 @@ target_include_directories(extraction_module_test PRIVATE
 )
 
 target_link_libraries(extraction_module_test PRIVATE
+    GTest::gtest_main
     chrono_common
     chronolog_client
     thallium
 )
 
-set_target_properties(extraction_module_test PROPERTIES
-    OUTPUT_NAME chronolog-test-common-extraction-module
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-add_test(NAME Unit_ChronoCommon_ExtractionModule COMMAND extraction_module_test)
-set_tests_properties(Unit_ChronoCommon_ExtractionModule PROPERTIES DISABLED TRUE)
+set_target_properties(extraction_module_test PROPERTIES OUTPUT_NAME chronolog-test-common-extraction-module)
+# a lost chunk or a missed wakeup in the drain loop shows up as a hang
+gtest_discover_tests(extraction_module_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 60)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_module_test DESTINATION tests)
 endif()

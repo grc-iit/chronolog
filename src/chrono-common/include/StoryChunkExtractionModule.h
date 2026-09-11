@@ -10,6 +10,7 @@
 
 #include <chronolog_types.h>
 #include <chronolog_errcode.h>
+#include <ServiceId.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
 #include <ExtractionModuleConfiguration.h>

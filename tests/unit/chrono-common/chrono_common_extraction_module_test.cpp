@@ -1,207 +1,229 @@
+// Unit tests for StoryChunkExtractionModule, the drain loop shared by the
+// keeper and the grapher. The module owns the extraction queue and the drain
+// threads; the chain decides each chunk's fate. The contract under test:
+//  - initialization refuses an inactive chain, and extraction does not start
+//    before initialization;
+//  - every stashed chunk is processed and then disposed exactly once, with the
+//    status its processing returned, whether a drain thread or the shutdown
+//    drain picks it up;
+//  - the module never frees a chunk itself (the keeper's chain hands it to the
+//    retention store, the grapher's deletes it);
+//  - shutdown drains what is still queued, then flushes the outage buffers.
+//
+// The chain here only records calls; the keeper chain's real disposal is
+// covered by chrono_keeper_extraction_chain_test.
+
+#include <gtest/gtest.h>
+
+#include <atomic>
 #include <chrono>
-#include <iostream>
-#include <signal.h>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
 #include <thread>
-#include <variant>
 #include <vector>
 
+#include <abt.h>
+
 #include <chrono_monitor.h>
-#include <ServiceId.h>
+#include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionModule.h>
-#include <ChunkLoggingExtractor.h>
-#include <ChunkExtractorCSV.h>
-#include <ChunkExtractorRDMA.h>
 
-namespace tl = thallium;
 namespace chl = chronolog;
 
-bool keep_running = true;
-void sigterm_handler(int)
+namespace
 {
-    std::cout << "Received SIGTERM signal. Initiating shutdown procedure." << std::endl;
-    keep_running = false;
-    return;
-}
+constexpr int kChunks = 200;
 
-static constexpr uint64_t NS = 1000000000ULL;
-
-void chunk_contributor_thread(chl::StoryChunkExtractionQueue* extractionQueue, uint32_t thread_id)
+void ensureLogger()
 {
-    LOG_INFO("[ExtractionModuleTest] starting contributing thread {} ", thread_id);
-
-    for(unsigned int k = 0; k < 10; ++k)
+    static bool done = false;
+    if(!done)
     {
-        auto time_now = std::chrono::high_resolution_clock::now();
-        uint64_t chunk_starttime = time_now.time_since_epoch().count();
-        uint64_t chunk_endtime = (time_now + std::chrono::seconds(5)).time_since_epoch().count();
-
-        chl::StoryChunk* story_chunk =
-                new chl::StoryChunk("Chronicle", "Story" + std::to_string(k), k, chunk_starttime, chunk_endtime);
-
-        for(unsigned int i = 0; i < 10; ++i)
-        {
-            story_chunk->insertEvent(
-                    chl::LogEvent{k,
-                                  chunk_starttime + i,
-                                  thread_id,
-                                  1,
-                                  "thread " + std::to_string(thread_id) + " line " + std::to_string(i)});
-        }
-
-        extractionQueue->stashStoryChunk(story_chunk);
+        chl::chrono_monitor::initialize("console", "", chl::LogLevel::err, "extraction_module_test_logger");
+        done = true;
     }
-
-
-    LOG_INFO("[ExtractionModuleTest] exiting contributing thread {} ", thread_id);
 }
 
-using Extractor = std::variant<chl::LoggingExtractor, chl::StoryChunkExtractorCSV, chl::StoryChunkExtractorRDMA>;
-
-class TestExtractionChain
+// The drain threads are Argobots ULTs on their own execution streams.
+void ensureArgobots()
 {
-    std::vector<Extractor> theExtractors;
+    static bool done = false;
+    if(!done)
+    {
+        ABT_init(0, nullptr);
+        done = true;
+    }
+}
 
+// Odd story ids fail to process and even ones succeed, so each disposal must
+// carry its own chunk's status.
+int statusFor(chl::StoryId story_id) { return (story_id % 2 == 0) ? chl::CL_SUCCESS : chl::CL_ERR_UNKNOWN; }
+
+chl::StoryChunk* makeChunk(chl::StoryId story_id)
+{
+    auto* chunk = new chl::StoryChunk("chron", "story", story_id, 100, 200);
+    chunk->insertEvent(chl::LogEvent(story_id, 150, 1, 0, "event"));
+    return chunk;
+}
+
+class RecordingChain
+{
 public:
-    TestExtractionChain() {}
-
-    ~TestExtractionChain() { theExtractors.clear(); }
-
-    int activate(chl::ServiceId const& recording_service_id,
-                 tl::engine* extraction_engine,
-                 chl::ExtractionModuleConfiguration const& configuration)
+    struct Disposal
     {
-        theExtractors.push_back(std::move(chl::LoggingExtractor()));
-        theExtractors.push_back(std::move(chl::StoryChunkExtractorCSV(recording_service_id)));
-        theExtractors.push_back(std::move(
-                chl::StoryChunkExtractorRDMA(extraction_engine, chl::ServiceId("ofi+sockets", "127.0.0.1", 3333, 33))));
-        return chl::CL_SUCCESS;
-    }
+        chl::StoryId story_id;
+        int status;
+        int times_processed;
+    };
+
+    bool active = true;
+
+    bool is_active_chain() const { return active; }
 
     int process_chunk(chl::StoryChunk* chunk)
     {
-        int ret_value = chl::CL_SUCCESS;
-        for(auto& e: theExtractors)
-        {
-            int rc = std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
-            if(rc != chl::CL_SUCCESS && ret_value == chl::CL_SUCCESS)
-            {
-                ret_value = rc;
-            }
-        }
-        return ret_value;
+        std::lock_guard<std::mutex> lock(mtx);
+        processed[chunk]++;
+        return statusFor(chunk->getStoryId());
     }
 
-    void dispose_chunk(chl::StoryChunk* chunk, int /*status*/) { delete chunk; }
-
-    bool is_active_chain() const
+    // Takes ownership, as the real chains do: the module must not touch the
+    // chunk after this.
+    void dispose_chunk(chl::StoryChunk* chunk, int status)
     {
-        if(theExtractors.empty())
+        std::lock_guard<std::mutex> lock(mtx);
+        disposals.push_back({chunk->getStoryId(), status, processed[chunk]});
+        if(++timesDisposed[chunk] == 1)
+        {
+            owned.emplace_back(chunk);
+        }
+    }
+
+    void flush_outage_buffers() { flushes++; }
+
+    std::size_t disposedCount()
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        return disposals.size();
+    }
+
+    std::mutex mtx;
+    std::map<chl::StoryChunk*, int> processed;
+    std::map<chl::StoryChunk*, int> timesDisposed;
+    std::vector<Disposal> disposals;
+    std::vector<std::unique_ptr<chl::StoryChunk>> owned;
+    std::atomic<int> flushes{0};
+};
+
+using Module = chl::StoryChunkExtractionModule<RecordingChain>;
+
+void stashChunks(Module& module)
+{
+    for(int i = 0; i < kChunks; ++i) { module.getExtractionQueue().stashStoryChunk(makeChunk(i)); }
+}
+
+// every chunk of story ids [0, kChunks) was processed once and then disposed
+// once with its own status
+void expectEachDisposedOnce(RecordingChain& chain)
+{
+    std::lock_guard<std::mutex> lock(chain.mtx);
+    ASSERT_EQ(chain.disposals.size(), (std::size_t)kChunks);
+    std::set<chl::StoryId> stories;
+    for(auto const& disposal: chain.disposals)
+    {
+        EXPECT_EQ(disposal.status, statusFor(disposal.story_id)) << "story " << disposal.story_id;
+        EXPECT_EQ(disposal.times_processed, 1) << "story " << disposal.story_id;
+        stories.insert(disposal.story_id);
+    }
+    EXPECT_EQ(stories.size(), (std::size_t)kChunks);
+}
+
+bool waitFor(std::function<bool()> const& condition, std::chrono::milliseconds timeout = std::chrono::seconds(10))
+{
+    auto const deadline = std::chrono::steady_clock::now() + timeout;
+    while(!condition())
+    {
+        if(std::chrono::steady_clock::now() > deadline)
         {
             return false;
         }
-
-        for(const auto& e: theExtractors)
-        {
-            bool active = std::visit([](const auto& extractor) -> bool { return extractor.is_active(); }, e);
-
-            // if any single extractor is NOT active, the whole chain fails
-            if(!active)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    return true;
+}
+} // namespace
 
-    void flush_outage_buffers()
-    {
-        //TODO #635
-    }
-};
-
-int main()
+TEST(ExtractionModule, InitializeRefusesAnInactiveChain)
 {
-    int contributor_threads = 5;
-    int extraction_threads = 2;
+    ensureLogger();
+    ensureArgobots();
+    Module module;
+    module.getExtractionChain().active = false;
 
-    signal(SIGTERM, sigterm_handler);
+    EXPECT_EQ(module.initialize(2), chl::CL_ERR_INVALID_CONF);
+    EXPECT_FALSE(module.is_initialized());
+    module.startExtraction();
+    EXPECT_FALSE(module.is_running());
+}
 
-    int result = chronolog::chrono_monitor::initialize(
-            "file" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGTYPE
-            ,
-            "/tmp/extraction_test.log" //, confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILE
-            ,
-            chronolog::LogLevel::trace // confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGLEVEL
-            ,
-            "ExtractionModuleTest" //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGNAME
-            ,
-            100000000 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILESIZE
-            ,
-            2 //confManager.CLIENT_CONF.CLIENT_LOG_CONF.LOGFILENUM
-            ,
-            chronolog::LogLevel::trace //confManager.CLIENT_CONF.CLIENT_LOG_CONF.FLUSHLEVEL);
-    );
+TEST(ExtractionModule, ExtractionDoesNotStartBeforeInitialize)
+{
+    ensureLogger();
+    ensureArgobots();
+    Module module;
 
+    module.startExtraction();
+    EXPECT_FALSE(module.is_running());
+}
 
-    chl::ServiceId localServiceId("ofi+sockets", "127.0.0.1", 2225, 25);
+TEST(ExtractionModule, DrainThreadsDisposeEveryChunkOnceWithItsStatus)
+{
+    ensureLogger();
+    ensureArgobots();
+    Module module;
+    ASSERT_EQ(module.initialize(2), chl::CL_SUCCESS);
+    module.startExtraction();
+    ASSERT_TRUE(module.is_running());
 
-    std::string LOCAL_SERVICE_NA_STRING;
-    localServiceId.get_service_as_string(LOCAL_SERVICE_NA_STRING);
+    stashChunks(module);
+    ASSERT_TRUE(waitFor([&] { return module.getExtractionChain().disposedCount() == (std::size_t)kChunks; }));
+    module.shutdownExtraction();
 
-    tl::engine* localEngine = nullptr;
+    expectEachDisposedOnce(module.getExtractionChain());
+}
 
-    try
-    {
-        margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_CLIENT_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
-    }
-    catch(tl::exception const&)
-    {
-        return (-1);
-    }
+TEST(ExtractionModule, ShutdownDrainsWhatIsQueuedThenFlushes)
+{
+    ensureLogger();
+    ensureArgobots();
+    Module module;
+    ASSERT_EQ(module.initialize(2), chl::CL_SUCCESS);
+    // never started: the shutdown drain is the only consumer
+    stashChunks(module);
 
-    // 2. Test chained ExtractionModule instantiation with chained logging extractor & csv extractor
-    chronolog::StoryChunkExtractionModule<TestExtractionChain> extractionModule;
+    module.shutdownExtraction();
 
-    extractionModule.getExtractionChain().activate(localServiceId, localEngine, chl::ExtractionModuleConfiguration());
-    extractionModule.initialize(localServiceId, chl::ExtractionModuleConfiguration());
+    expectEachDisposedOnce(module.getExtractionChain());
+    EXPECT_EQ(module.getExtractionChain().flushes, 1);
+}
 
-    // 3. Start extraction threads
-    chl::StoryChunkExtractionQueue& extractionQueue = extractionModule.getExtractionQueue();
+TEST(ExtractionModule, ShutdownRacingDrainThreadsDisposesEveryChunkOnce)
+{
+    ensureLogger();
+    ensureArgobots();
+    Module module;
+    ASSERT_EQ(module.initialize(2), chl::CL_SUCCESS);
+    module.startExtraction();
 
-    extractionModule.startExtraction();
+    // shut down with the queue full: the shutdown drain and the running drain
+    // threads race for the same chunks
+    stashChunks(module);
+    module.shutdownExtraction();
 
-    // 4. create chunk contributing threads
-    std::thread contributors[contributor_threads];
-
-    static uint32_t thread_id = 0;
-    while(true == keep_running)
-    {
-        LOG_INFO("[ExtractionModuleTest] ExtractionChainTest is running");
-
-        // now the main thread will start a few contributor threads, that would stash a few StoryChunks on the extractionQueue,
-        // than fall asleep until it's time to wake up and start some more contributor threads...
-
-        // the StoryChunkExtraction module is expected to run in the background and take care of the extruction duties
-
-        for(short int i = 0; i < contributor_threads; ++i, ++thread_id)
-        {
-            std::thread t{chunk_contributor_thread, &extractionQueue, thread_id};
-            contributors[i] = std::move(t);
-        }
-        for(int i = 0; i < contributor_threads; ++i) { contributors[i].join(); }
-
-        std::this_thread::sleep_for(std::chrono::seconds(20));
-    }
-
-
-    // 5. Test ExtractionModule shutdown
-    LOG_INFO("[ExtractionModuleTest] Shutting down StoryChunkExtractionModule for {}", chl::to_string(localServiceId));
-
-    extractionModule.shutdownExtraction();
-
-    delete localEngine;
-    return 1;
+    expectEachDisposedOnce(module.getExtractionChain());
+    EXPECT_EQ(module.getExtractionChain().flushes, 1);
 }
