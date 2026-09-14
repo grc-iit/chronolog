@@ -31,7 +31,8 @@ class StoryWatermarkRegistry;
 class WatermarkReportPublisher
 {
 public:
-    WatermarkReportPublisher(tl::engine& tl_engine, StoryWatermarkRegistry& registry,
+    WatermarkReportPublisher(tl::engine& tl_engine,
+                             StoryWatermarkRegistry& registry,
                              uint32_t report_interval_secs = 1);
     ~WatermarkReportPublisher();
 
@@ -46,7 +47,8 @@ public:
     void publish();
 
 private:
-    void sendReport(std::string const& endpoint_key, ServiceId const& keeper_id,
+    void sendReport(std::string const& endpoint_key,
+                    ServiceId const& keeper_id,
                     std::map<StoryId, uint64_t> const& watermarks);
 
     static std::string endpointKey(ServiceId const& service_id)

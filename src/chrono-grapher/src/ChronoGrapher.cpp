@@ -231,10 +231,10 @@ int main(int argc, char** argv)
     // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
     // recording service (contributors) and the HDF5 extractor via the
     // registry; driven by the data-collection loop.
-    chronolog::WatermarkReportPublisher* watermarkPublisher = new chronolog::WatermarkReportPublisher(
-            *dataAdminEngine,
-            theWatermarkRegistry,
-            GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
+    chronolog::WatermarkReportPublisher* watermarkPublisher =
+            new chronolog::WatermarkReportPublisher(*dataAdminEngine,
+                                                    theWatermarkRegistry,
+                                                    GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
     theDataStore.attachWatermarkPublisher(watermarkPublisher);
 
     // Instantiate RecordingService

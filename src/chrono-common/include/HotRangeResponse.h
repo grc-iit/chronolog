@@ -23,7 +23,7 @@ namespace chronolog
 // from the archive — a completeness argument, not an optimization.
 struct HotRangeResponse
 {
-    std::vector<LogEvent> events; // ascending EventSequence order
+    std::vector<LogEvent> events;    // ascending EventSequence order
     uint64_t hot_floor = UINT64_MAX; // oldest retained tick; UINT64_MAX if none retained
     uint64_t known_W = 0;            // keeper's last-seen persisted watermark (0 if none)
     bool truncated = false;          // max_events cap hit; caller may re-request with a higher start

@@ -28,7 +28,8 @@ class GrapherRecordingService: public tl::provider<GrapherRecordingService>
 {
 public:
     // RecordingService should be created on the heap not the stack thus the constructor is private...
-    static GrapherRecordingService* CreateRecordingService(tl::engine& tl_engine, uint16_t service_provider_id,
+    static GrapherRecordingService* CreateRecordingService(tl::engine& tl_engine,
+                                                           uint16_t service_provider_id,
                                                            ChunkIngestionQueue& ingestion_queue,
                                                            WatermarkReportPublisher* watermark_publisher = nullptr)
     {
@@ -121,7 +122,9 @@ public:
     }
 
 private:
-    GrapherRecordingService(tl::engine& tl_engine, uint16_t service_provider_id, ChunkIngestionQueue& ingestion_queue,
+    GrapherRecordingService(tl::engine& tl_engine,
+                            uint16_t service_provider_id,
+                            ChunkIngestionQueue& ingestion_queue,
                             WatermarkReportPublisher* watermark_publisher)
         : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)

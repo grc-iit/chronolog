@@ -105,10 +105,7 @@ int main(int argc, char** argv)
     std::cout << "REPLAY_STATUS " << chronolog::to_string_client(ret) << std::endl;
 
     std::set<std::string> unique_events;
-    for(auto const& event: events)
-    {
-        unique_events.insert(event.to_string());
-    }
+    for(auto const& event: events) { unique_events.insert(event.to_string()); }
     std::cout << "REPLAY_COUNT " << events.size() << std::endl;
     std::cout << "REPLAY_UNIQUE " << unique_events.size() << std::endl;
 

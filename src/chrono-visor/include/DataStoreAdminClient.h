@@ -98,11 +98,8 @@ public:
             LOG_DEBUG("[DataStoreAdminClient] START Story Recording (with {} keeper(s)) for StoryID={}",
                       keeper_services.size(),
                       story_id);
-            status = start_story_recording_with_keepers.on(service_handle)(chronicle_name,
-                                                                           story_name,
-                                                                           story_id,
-                                                                           start_time,
-                                                                           keeper_services);
+            status = start_story_recording_with_keepers.on(
+                    service_handle)(chronicle_name, story_name, story_id, start_time, keeper_services);
         }
         catch(tl::exception const& ex)
         {}

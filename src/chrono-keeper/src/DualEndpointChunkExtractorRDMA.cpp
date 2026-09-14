@@ -249,8 +249,8 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
             }
         }
 
-        transfer_return = rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk,
-                                                                                   reporter_service_id);
+        transfer_return =
+                rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk, reporter_service_id);
 
         if(transfer_return == chl::CL_SUCCESS)
         {

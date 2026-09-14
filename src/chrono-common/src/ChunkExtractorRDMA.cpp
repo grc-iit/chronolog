@@ -245,8 +245,8 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
         oarchive(*story_chunk);
         std::string serialized_story_chunk = oss.str();
 
-        auto transfer_return = rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk,
-                                                                            reporter_service_id);
+        auto transfer_return =
+                rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk, reporter_service_id);
 
         if(transfer_return == chl::CL_SUCCESS)
         {

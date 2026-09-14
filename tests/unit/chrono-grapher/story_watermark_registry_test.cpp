@@ -248,15 +248,9 @@ TEST(StoryWatermarkRegistry, ConcurrentAdvanceConvergesToPrefixEnd)
         threads.emplace_back(
                 [&registry, t]()
                 {
-                    for(uint64_t w = t; w < kWindows; w += kThreads)
-                    {
-                        registry.advancePersisted(kStory, w, w + 1);
-                    }
+                    for(uint64_t w = t; w < kWindows; w += kThreads) { registry.advancePersisted(kStory, w, w + 1); }
                 });
     }
-    for(auto& th: threads)
-    {
-        th.join();
-    }
+    for(auto& th: threads) { th.join(); }
     EXPECT_EQ(registry.getPersisted(kStory), kWindows);
 }
