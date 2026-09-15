@@ -281,6 +281,10 @@ if [ "${SKIP_BUILD}" = "1" ]; then
 else
     dex_root c1 bash -c "mkdir -p ${REPO_DIR} && cp -r /workspace/. ${REPO_DIR}/ 2>/dev/null; chown -R grc-iit:grc-iit /home/grc-iit" \
         || stage_fail "copying the working tree into c1 failed"
+    # build.sh compiles with one job per nproc, and nproc in a container
+    # counts every host core, not the 2-CPU limit. On a many-core host that
+    # many compilers exceed the 4 GB memory limit and get OOM-killed. GNU
+    # nproc honors OMP_NUM_THREADS; 4 matches the GitHub runner.
     dex c1 bash -c "
         set -e
         cd ${REPO_DIR}
@@ -291,7 +295,7 @@ else
             spack concretize --force
         fi
         mkdir -p ${INSTALL_DIR}
-        ./tools/deploy/local_single_user_deploy.sh -b -I ${INSTALL_DIR}
+        OMP_NUM_THREADS=4 ./tools/deploy/local_single_user_deploy.sh -b -I ${INSTALL_DIR}
         ./tools/deploy/local_single_user_deploy.sh -i -I ${INSTALL_DIR}
     " || stage_fail "build/install failed"
 fi
