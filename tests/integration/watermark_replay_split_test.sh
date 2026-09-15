@@ -3,9 +3,10 @@
 # (see docs/versioned_docs/version-3.2.0/user-guide/architecture/durable-retention.md).
 #
 # The player fans story_range_fetch out over the story's keeper roster and
-# splits replay at B = min(hot_floor): [start, B) comes from the HDF5 archive,
-# [B, end) from the keepers' retained chunks. This script probes one story's
-# events through the phases of their life:
+# splits replay at B, the highest persisted watermark any keeper reports:
+# [start, B) comes from the HDF5 archive, [B, end) from the keepers' retained
+# chunks, plus any retained events the grapher has not confirmed written. This
+# script probes one story's events through the phases of their life:
 #
 #   probe 1 (hot):      right after the keepers seal the chunks, before/while
 #                       the grapher persists them -> served (at least partly)
