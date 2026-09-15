@@ -171,15 +171,18 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             {
                 //current_time >= pipeline exit_time
                 KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
+                chl::StoryId const story_id = pipeline->getStoryId();
                 // remember the story's names before the pipeline is gone so that
                 // any late orphaned events (which carry only a storyId) can still
                 // be sealed with the correct chronicle/story identity.
-                retiredStoryNames[pipeline->getStoryId()] =
-                        std::make_pair(pipeline->getChronicleName(), pipeline->getStoryName());
-                theMapOfStoryPipelines.erase(pipeline->getStoryId());
-                theIngestionQueue.removeIngestionHandle(pipeline->getStoryId());
+                retiredStoryNames[story_id] = std::make_pair(pipeline->getChronicleName(), pipeline->getStoryName());
+                theMapOfStoryPipelines.erase(story_id);
+                theIngestionQueue.removeIngestionHandle(story_id);
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
+                // deleting the pipeline seals its last chunks into the retention
+                // store; after that nothing records the story here
                 delete pipeline;
+                theTailStore.releaseStoryTail(story_id);
             }
             else
             {
@@ -270,6 +273,9 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
             // queue itself) so the recovery data gets the same durability
             // gating as a regular sealed chunk
             theTailStore.ingestSealedChunk(story_id, recovery_chunk);
+            // the story is retired: nothing reads its tail, and without the
+            // release the recovery chunk would never be freed
+            theTailStore.releaseStoryTail(story_id);
         }
     }
 }

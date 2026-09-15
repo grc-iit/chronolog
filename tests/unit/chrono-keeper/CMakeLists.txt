@@ -112,6 +112,33 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_release_dataloss_test DESTINATION tests)
 endif()
 
+# Story retirement releases the story's tail so its durable chunks can be freed.
+# Same in-process KeeperDataStore setup as the data-loss test above.
+add_executable(keeper_story_retirement_test
+    chrono_keeper_story_retirement_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
+)
+
+target_include_directories(keeper_story_retirement_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_story_retirement_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_story_retirement_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-story-retirement)
+gtest_discover_tests(keeper_story_retirement_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_story_retirement_test DESTINATION tests)
+endif()
+
 # Orphan recovery (GTest) — IngestionQueue orphan helpers + seal-to-extraction flow
 add_executable(keeper_orphan_recovery_test
     chrono_keeper_orphan_recovery_test.cpp

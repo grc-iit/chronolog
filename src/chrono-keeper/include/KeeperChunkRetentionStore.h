@@ -371,6 +371,30 @@ public:
         return (story_it == storyRetention.end()) ? 0 : story_it->second.chunks.size();
     }
 
+    // The story is no longer recorded on this keeper, so its tail stops serving
+    // playback. Without this, tail_capacity eviction is the only way events
+    // leave the index, and a story that retires with fewer events than that
+    // keeps its chunks until the keeper restarts. Drops the story's index and
+    // frees every chunk that is already durable; the others free when the
+    // watermark reaches them. The story's known watermark stays: replay relies
+    // on it to know what this keeper may have freed.
+    void releaseStoryTail(StoryId const& story_id)
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        auto story_it = storyRetention.find(story_id);
+        if(story_it == storyRetention.end())
+        {
+            return;
+        }
+        StoryRetention& story = story_it->second;
+        story.index.clear();
+        for(auto chunk_iter = story.chunks.begin(); chunk_iter != story.chunks.end();)
+        {
+            chunk_iter->second.indexed_count = 0;
+            chunk_iter = maybeFreeChunk(story, chunk_iter);
+        }
+    }
+
     // A live story's pipeline registers itself here so tail reads can also serve the
     // active (unsealed) window when live_tail_read is enabled. The pipeline
     // unregisters in its destructor, before finalize(), so a query can never reach a
