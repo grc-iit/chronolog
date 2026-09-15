@@ -16,7 +16,6 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     for(const auto& start: story_chunk) { data.push_back(start.second); }
     std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-    hsize_t ret = 0;
     std::unique_ptr<H5::H5File> file;
     try
     {
@@ -24,25 +23,28 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
         file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
+    return 0;
 }
 
 std::string StoryChunkWriter::getStoryChunkFileName(std::string const& root_dir, std::string const& base_file_name)
@@ -129,7 +131,6 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
     std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
     //    file_name = fs::path(rootDirectory) / fs::path(file_name);
-    hsize_t ret = 0;
     std::unique_ptr<H5::H5File> file;
     try
     {
@@ -140,25 +141,28 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
-        ret = file_size;
+        return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
+    return 0;
 }
 
 hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)

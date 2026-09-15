@@ -8,10 +8,17 @@
 
 #include <gtest/gtest.h>
 
+#include <csignal>
 #include <filesystem>
+#include <iostream>
 #include <string>
+#include <typeinfo>
+#include <vector>
+#include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <H5Cpp.h>
 #include <thallium.hpp>
 
 #include <chronolog_errcode.h>
@@ -203,4 +210,151 @@ TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteKeepsItsReceiptsPending)
     auto snapshot = registry.snapshotDirty();
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+}
+
+// ---- a write that runs out of room ------------------------------------------
+//
+// A write can fail at any step: creating the file, writing the dataset,
+// flushing or closing the file. Whichever step fails, the extractor must return
+// an error rather than throw, and W must not move past a window whose events
+// cannot be read back. The test caps how many bytes may be written to a file,
+// so that each step in turn runs out of room. Each write runs in a child
+// process, which alone carries the cap.
+
+namespace
+{
+// The number of events read back from the HDF5 file under dir, or -1 if there
+// is no file or it cannot be read in full.
+long readableEventCount(fs::path const& dir)
+{
+    for(auto const& entry: fs::directory_iterator(dir))
+    {
+        if(entry.path().extension() != ".h5")
+        {
+            continue;
+        }
+        try
+        {
+            H5::H5File file(entry.path().string(), H5F_ACC_RDONLY);
+            H5::DataSet dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+            H5::DataSpace space = dataset.getSpace();
+            hsize_t count = 0;
+            space.getSimpleExtentDims(&count);
+            H5::DataType file_type = dataset.getDataType();
+            hid_t const memory_type = H5Tget_native_type(file_type.getId(), H5T_DIR_ASCEND);
+            std::vector<char> buffer(H5Tget_size(memory_type) * count);
+            herr_t const status = H5Dread(dataset.getId(), memory_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+            if(status >= 0)
+            {
+                H5Dvlen_reclaim(memory_type, space.getId(), H5P_DEFAULT, buffer.data());
+            }
+            H5Tclose(memory_type);
+            return (status < 0) ? -1 : static_cast<long>(count);
+        }
+        catch(H5::Exception const&)
+        {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+enum class CappedWrite
+{
+    HeldW,
+    MovedW,
+    Threw,
+    Crashed
+};
+
+// Writes a window of `events` events to dir with the extractor, in a child
+// process that may write at most `cap` bytes to a file. A write past the cap
+// fails with EFBIG instead of raising SIGXFSZ.
+CappedWrite writeUnderCap(fs::path const& dir, rlim_t cap, long events)
+{
+    pid_t const child = ::fork();
+    if(child == 0)
+    {
+        int outcome = 3;
+        try
+        {
+            chl::StoryWatermarkRegistry capped_registry;
+            chl::HDF5FileChunkExtractor capped_extractor;
+            capped_extractor.reset(dir.string());
+            capped_extractor.attachWatermarkRegistry(&capped_registry);
+            capped_registry.registerStory(kStory, T0);
+            chl::StoryChunk window("C", "S", kStory, T0, T1);
+            for(long i = 0; i < events; ++i)
+            {
+                window.insertEvent(chl::LogEvent(kStory, T0 + 1 + i, 1, i, std::string(200, 'x')));
+            }
+            std::signal(SIGXFSZ, SIG_IGN);
+            rlimit const capped{cap, cap};
+            ::setrlimit(RLIMIT_FSIZE, &capped);
+            capped_extractor.process_chunk(&window);
+            outcome = (capped_registry.getPersisted(kStory) == T1) ? 1 : 0;
+        }
+        catch(H5::Exception const& error)
+        {
+            std::cout << "cap " << cap << " child threw " << typeid(error).name() << " in " << error.getFuncName()
+                      << ": " << error.getDetailMsg() << std::endl;
+            outcome = 2;
+        }
+        catch(std::exception const& error)
+        {
+            std::cout << "cap " << cap << " child threw " << typeid(error).name() << ": " << error.what() << std::endl;
+            outcome = 2;
+        }
+        catch(...)
+        {
+            std::cout << "cap " << cap << " child threw something else" << std::endl;
+            outcome = 2;
+        }
+        ::_exit(outcome);
+    }
+    int status = 0;
+    ::waitpid(child, &status, 0);
+    if(!WIFEXITED(status))
+    {
+        return CappedWrite::Crashed;
+    }
+    switch(WEXITSTATUS(status))
+    {
+        case 0:
+            return CappedWrite::HeldW;
+        case 1:
+            return CappedWrite::MovedW;
+        case 2:
+            return CappedWrite::Threw;
+        default:
+            return CappedWrite::Crashed;
+    }
+}
+} // namespace
+
+TEST_F(HDF5FileChunkExtractorWatermark, WMovesOnlyPastAWindowThatReadsBack)
+{
+    constexpr long kEvents = 64;
+    std::size_t moved = 0;
+    std::size_t held = 0;
+    for(rlim_t cap = 0; cap <= 64 * 1024; cap += 512)
+    {
+        fs::path const dir = archiveDir / std::to_string(cap);
+        fs::create_directories(dir);
+        CappedWrite const outcome = writeUnderCap(dir, cap, kEvents);
+        EXPECT_NE(outcome, CappedWrite::Threw) << "file size cap " << cap << " bytes";
+        EXPECT_NE(outcome, CappedWrite::Crashed) << "file size cap " << cap << " bytes";
+        if(outcome == CappedWrite::MovedW)
+        {
+            ++moved;
+            EXPECT_EQ(readableEventCount(dir), kEvents) << "file size cap " << cap << " bytes";
+        }
+        else if(outcome == CappedWrite::HeldW)
+        {
+            ++held;
+        }
+    }
+    // the sweep covers both a cap too small to write and one large enough
+    EXPECT_GT(held, 0u);
+    EXPECT_GT(moved, 0u);
 }
