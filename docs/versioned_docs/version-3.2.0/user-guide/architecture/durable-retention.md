@@ -61,10 +61,10 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
   plus `acceptance_window_secs`), without waiting for the grapher to write it.
 - A keeper that does not answer within 5 seconds is left out. Events held only by that keeper and not
   yet written are missing from that replay and appear once they are persisted.
-- Nothing removes duplicates between the archive and the keepers, or between archive files. An event
-  can appear twice in a replay when the grapher has written its chunk but the keeper has not received
-  the report yet (up to `watermark_report_interval_secs`), or when a re-sent chunk was written to a
-  second file.
+- The player merges the archive's events with the keepers' and returns each event once, identified by
+  time, client id and index. An event can reach it twice: from a keeper and from the archive when the
+  grapher has written the keeper's chunk but the keeper has not received the report yet, or twice
+  from the archive when a re-sent chunk was written to a second file. The second copy stays on disk.
 
 ---
 
@@ -72,8 +72,8 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 
 | Situation | What happens |
 |---|---|
-| Grapher paused or unreachable for a while | Keepers keep the chunks they cannot deliver, warn once memory passes `retention_cap_mb`, and send them again when the grapher is back. No events are lost; a chunk that reached the grapher before the outage can be written twice, and replays then return its events twice. |
-| Grapher restarts | The watermark and the receipts live in grapher memory and start over. Keepers send again the chunks they still hold, since the new process's reports confirm none of the old receipts; events both processes wrote appear twice in replays. |
+| Grapher paused or unreachable for a while | Keepers keep the chunks they cannot deliver, warn once memory passes `retention_cap_mb`, and send them again when the grapher is back. No events are lost; a chunk that reached the grapher before the outage can be written twice, and a replay returns its events once. |
+| Grapher restarts | The watermark and the receipts live in grapher memory and start over. Keepers send again the chunks they still hold, since the new process's reports confirm none of the old receipts; events both processes wrote are on disk twice and a replay returns them once. |
 | An HDF5 write fails | The story's watermark stops advancing, and the receipts of the chunks in that write stay unconfirmed. Keepers keep the affected chunks and send them again until a write succeeds. |
 | Keeper crashes | Chunks that keeper held and the grapher had not yet written are lost. Chunks are not replicated across keepers. |
 | Story destroyed before its last chunks are written | Nothing ever confirms those chunks, so the keepers hold them until the keeper restarts. |
