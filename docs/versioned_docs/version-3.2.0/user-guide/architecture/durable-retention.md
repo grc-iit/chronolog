@@ -66,6 +66,10 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
   plus `acceptance_window_secs`), without waiting for the grapher to write it.
 - A keeper that does not answer within 5 seconds is left out. Events held only by that keeper and not
   yet written are missing from that replay and appear once they are persisted.
+- The archive side reads every file written for a window. When keeper chunks for a window arrive after
+  the grapher has written it, the grapher writes the window again to a numbered file
+  (`{chronicle}.{story}.{start second}.vlen.1.h5`, then `.2`, and so on). Once the keepers free those
+  chunks, the numbered file is the only copy of their events.
 - The player merges the archive's events with the keepers' and returns each event once, identified by
   time, client id and index. An event can reach it twice: from a keeper and from the archive when the
   grapher has written the keeper's chunk but the keeper has not received the report yet, or twice

@@ -108,12 +108,16 @@ public:
                            std::list<StoryChunk*>&,
                            const std::string&);
 
+    // readAuxFiles: also read the numbered files ({...}.vlen.1.h5, .2, ...) a
+    // grapher writes when a window it already wrote gets more events, from a
+    // late or re-sent keeper chunk. Once the keepers free those chunks, the
+    // numbered files are the only copy of their events.
     int readArchivedStory(const ChronicleName&,
                           const StoryName&,
                           uint64_t,
                           uint64_t,
                           std::list<StoryChunk*>&,
-                          bool = false);
+                          bool readAuxFiles = true);
 
     static std::string getChronicleName(const std::string& file_name)
     {

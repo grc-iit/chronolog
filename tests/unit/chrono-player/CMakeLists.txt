@@ -222,6 +222,37 @@ endif()
 
 #------------------------------------------------------------------------------
 
+# Numbered archive files (GTest): a replay reads every write of a window, the
+# .vlen.N.h5 files as well as the first one
+add_executable(archive_numbered_files_test
+    chrono_player_archive_numbered_files_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_numbered_files_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_numbered_files_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_numbered_files_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_numbered_files_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-numbered-files)
+gtest_discover_tests(archive_numbered_files_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_numbered_files_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
 # Pipeline retirement (GTest): a stopped story keeps its player pipeline for the
 # whole inactive delay
 add_executable(player_pipeline_retirement_test

@@ -331,76 +331,30 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
               formatWithCommas(startTime),
               formatWithCommas(endTime));
 
-    fs::path file_full_path;
-    std::string file_name, next_file_name, next_file_number_str;
-    bool has_no_more_files_to_read = false;
-
-    for(auto it = start_it; it != time_file_map.end(); ++it)
+    // A file holds no event earlier than the start second in its name, so a
+    // file starting at or after endTime has nothing in range. Stopping at the
+    // first file with an event past endTime instead would skip the numbered
+    // files of that same window.
+    for(auto it = start_it; it != time_file_map.end() && it->first < endTime; ++it)
     {
-        file_full_path = fs::path(it->second);
-
-        // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
-        file_name = file_full_path.string();
-        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
-        if(result == 1)
-        {
-            has_no_more_files_to_read = true;
-            break;
-        }
+        // {chronicleName}.{storyName}.{startTime}.vlen.h5
+        fs::path const file_full_path(it->second);
+        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_full_path.string());
 
         if(readAuxFiles)
         {
-            // next_file_name should be in the format of {chronicleName}.{storyName}.{startTime}.vlen.{number}.h5
-            next_file_name = StoryChunkWriter::getStoryChunkFileName(archive_path_, file_full_path.filename().string());
-            next_file_number_str = fs::path(next_file_name).replace_extension("").extension().string().substr(1);
-            if(next_file_number_str == "vlen")
+            // StoryChunkWriter numbers a window's later writes .vlen.1.h5, .vlen.2.h5, ...
+            // in order, so read them until one is missing
+            std::string const numbered_prefix = (file_full_path.parent_path() / file_full_path.stem()).string();
+            for(int number = 1;; ++number)
             {
-                // should not happen, but just in case
-                LOG_ERROR("[HDF5ArchiveReadingAgent] getStoryChunkFileName returned a file name without a number: {},"
-                          " indicating main story chunk file {} does not exist. ",
-                          next_file_name,
-                          file_name);
-                return -1;
-            }
-            else if(std::all_of(next_file_number_str.begin(), next_file_number_str.end(), ::isdigit))
-            {
-                // next_file_name is a numbered file, then read from .1 to .next_file_number_str-1
-                for(int i = 1; i < std::stoi(next_file_number_str); ++i)
+                std::string const numbered_file = numbered_prefix + "." + std::to_string(number) + ".h5";
+                if(!fs::exists(numbered_file))
                 {
-                    file_name = file_full_path.parent_path() / fs::path(file_full_path).replace_extension("").string();
-                    file_name += "." + std::to_string(i) + ".h5";
-                    // file_name should be /path/to/output/chronicleName.storyName.startTime.vlen.{i}.h5 now
-                    if(fs::exists(file_name))
-                    {
-                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", file_name);
-                        int result = readStoryChunkFile(chronicleName,
-                                                        storyName,
-                                                        startTime,
-                                                        endTime,
-                                                        listOfChunks,
-                                                        file_name);
-                        if(result == 1)
-                        {
-                            has_no_more_files_to_read = true;
-                        }
-                    }
-                    else
-                    {
-                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Numbered file {} does not exist, skipping.", file_name);
-                        continue; // Skip if the numbered file does not exist
-                    }
+                    break;
                 }
-            }
-            else
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] Something went wrong with file name: {}.", file_name);
-            }
-            if(has_no_more_files_to_read)
-            {
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events in this file are outside range {}-{}, break the loop",
-                          formatWithCommas(startTime),
-                          formatWithCommas(endTime));
-                break;
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", numbered_file);
+                readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, numbered_file);
             }
         }
     }
