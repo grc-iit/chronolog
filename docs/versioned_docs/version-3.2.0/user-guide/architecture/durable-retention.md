@@ -80,6 +80,7 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 | Grapher paused or unreachable for a while | Keepers keep the chunks they cannot deliver, warn once memory passes `retention_cap_mb`, and send them again when the grapher is back. No events are lost; a chunk that reached the grapher before the outage can be written twice, and a replay returns its events once. |
 | Grapher restarts | The watermark and the receipts live in grapher memory and start over. Keepers send again the chunks they still hold, since the new process's reports confirm none of the old receipts; events both processes wrote are on disk twice and a replay returns them once. |
 | An HDF5 write fails | The story's watermark stops advancing, and the receipts of the chunks in that write stay unconfirmed. Keepers keep the affected chunks and send them again until a write succeeds. |
+| Keeper stopped with SIGTERM | The keeper stops accepting events, seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. It logs any chunk still unconfirmed and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
 | Keeper crashes | Chunks that keeper held and the grapher had not yet written are lost. Chunks are not replicated across keepers. |
 | Story destroyed before its last chunks are written | Nothing ever confirms those chunks, so the keepers hold them until the keeper restarts. |
 
@@ -108,8 +109,9 @@ retires.
 | `watermark_resend_timeout_secs` | keeper | `720` | How long a keeper waits for a chunk to be confirmed written before sending it again. Keep it well above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs`, or healthy chunks are sent twice. |
 | `archive_visibility_delay_secs` | keeper | `70` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. Cover the player's 5-second archive scan plus the time the shared file system takes to list a new file on another node (NFS caches directory listings for up to 60 seconds by default). `0` frees the chunk on confirmation. |
 | `retention_cap_mb` | keeper | `512` | Retained-memory level that triggers a warning. `0` turns the warning off. |
+| `shutdown_confirm_timeout_secs` | keeper | `300` | How long a keeper stopped with SIGTERM waits for the grapher to confirm its chunks written. Cover the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs`: a chunk that has just arrived is written only after both. `0` exits without waiting. |
 
-All four live in the component's `DataStoreInternals` block; see
+All five live in the component's `DataStoreInternals` block; see
 [Server Configuration](../configuration/server-configuration.md#datastoreinternals--story-chunk-tuning).
 `tail_retention_secs` is gone: chunks are freed by the watermark, not by age.
 

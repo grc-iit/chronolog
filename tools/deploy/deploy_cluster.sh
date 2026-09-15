@@ -507,6 +507,8 @@ parallel_remote_launch_processes() {
 parallel_remote_stop_processes() {
   local hosts_file=$1
   local bin_path=$2
+  # seconds to wait for a graceful exit before SIGKILL
+  local grace_secs=${3:-300}
 
   local bin_name
   bin_name=$(basename "${bin_path}")
@@ -516,8 +518,8 @@ parallel_remote_stop_processes() {
     echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
     sleep 10
     timer=$((timer + 10))
-    if [[ ${timer} -gt 300 ]]; then
-      echo -e "${ERR}Killing ${bin_name} processes after 5 minutes ...${NC}" >&2
+    if [[ ${timer} -gt ${grace_secs} ]]; then
+      echo -e "${ERR}Killing ${bin_name} processes after ${grace_secs} seconds ...${NC}" >&2
       parallel_remote_kill_processes ${hosts_file} ${bin_path}
       echo -e "${ERR}${bin_name} processes are killed${NC}" >&2
     fi
@@ -625,7 +627,9 @@ stop() {
   parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
 
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} &
+  # a keeper waits up to shutdown_confirm_timeout_secs (default 300) for the
+  # grapher, which is stopped only after the keepers, to confirm its chunks
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 420 &
 
   wait
 

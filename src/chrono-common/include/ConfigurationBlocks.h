@@ -258,6 +258,11 @@ struct DataStoreConf
     // attributes for up to 60 s by default). 0 frees on the report.
     // Keeper-only knob.
     int archive_visibility_delay_secs = 70;
+    // How long a keeper stopped with SIGTERM waits for the grapher to confirm
+    // every chunk it holds written, sending unacked chunks again meanwhile.
+    // Cover the grapher's story_chunk_duration + acceptance_window (the
+    // template's 60+180). 0 exits without waiting. Keeper-only knob.
+    int shutdown_confirm_timeout_secs = 300;
     // How often the grapher pushes dirty per-story persisted watermarks to
     // the contributing keepers. Grapher-only knob; ignored by keeper/player.
     int watermark_report_interval_secs = 1;
@@ -283,6 +288,7 @@ struct DataStoreConf
                " retention_cap_mb: " + std::to_string(retention_cap_mb) +
                " watermark_resend_timeout_secs: " + std::to_string(watermark_resend_timeout_secs) +
                " archive_visibility_delay_secs: " + std::to_string(archive_visibility_delay_secs) +
+               " shutdown_confirm_timeout_secs: " + std::to_string(shutdown_confirm_timeout_secs) +
                " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) +
                " live_tail_read: " + (live_tail_read ? "true" : "false") + "]";
     }

@@ -93,6 +93,7 @@
       "retention_cap_mb": 512,
       "watermark_resend_timeout_secs": 720,
       "archive_visibility_delay_secs": 70,
+      "shutdown_confirm_timeout_secs": 300,
       "live_tail_read": false
     },
     "ExtractionModule": {

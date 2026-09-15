@@ -390,17 +390,17 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    # Keeper first, while the grapher and player are both still up: on SIGTERM it
-    # runs flushUnshippedChunks(), handing every retained chunk whose send has not
-    # been acked to the extraction queue, which drains over RDMA to BOTH of those
-    # peers. Stopping them first would leave that drain without a destination.
+    # Keeper first, while the grapher is still up: on SIGTERM it sends again every
+    # chunk the grapher has not acked, then waits until the grapher confirms every
+    # chunk written, for up to shutdown_confirm_timeout_secs (default 300).
+    # Stopping the grapher first would leave nothing to send to or confirm.
     #
     # Its grace is larger than the others' because it is the only service with
-    # real shutdown work: a full tail is up to tail_capacity events per story and
-    # can take well over 30s to drain. The grace is a ceiling, not a fixed wait --
-    # stop_service polls every 1s and returns as soon as the process is gone -- so
-    # a fast shutdown still costs about a second.
-    stop_service "${KEEPER_BIN}" 120
+    # real shutdown work: sealing and sending what it holds, then that wait. The
+    # grace is a ceiling, not a fixed wait -- stop_service polls every 1s and
+    # returns as soon as the process is gone -- so a fast shutdown still costs
+    # about a second.
+    stop_service "${KEEPER_BIN}" 420
     stop_service "${PLAYER_BIN}" 30
     stop_service "${GRAPHER_BIN}" 30
     stop_service "${VISOR_BIN}" 30

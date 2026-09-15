@@ -346,6 +346,22 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             archive_visibility_delay_secs = parsed_delay;
         }
+        else if(strcmp(key, "shutdown_confirm_timeout_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'shutdown_confirm_timeout_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            int const parsed_timeout = json_object_get_int(val);
+            if(parsed_timeout < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'shutdown_confirm_timeout_secs': must not be negative, got "
+                          << parsed_timeout << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            shutdown_confirm_timeout_secs = parsed_timeout;
+        }
         else if(strcmp(key, "watermark_report_interval_secs") == 0)
         {
             if(!json_object_is_type(val, json_type_int))

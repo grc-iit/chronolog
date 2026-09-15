@@ -331,8 +331,8 @@ Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as s
    `tail_retention_secs` is removed. A low-volume story is archived anyway, because its chunks are sent at seal.
 3. **Between the Two Phases**:
    Sequences returned by Phase 1 are not pinned. If new events push a sequence out of the tail index before Phase 2 arrives, Phase 2 skips it and the read returns fewer than $N$ events.
-4. **Shutdown Flush (`flushUnshippedChunks`)**:
-   During clean shutdown, chunks that ChronoGrapher has not acknowledged are handed to the extraction queue before the extraction threads stop.
+4. **Shutdown Wait (`waitUntilDurable`)**:
+   During clean shutdown, before the extraction threads stop, the keeper sends again every chunk ChronoGrapher has not acknowledged and waits until ChronoGrapher confirms every chunk written, or `shutdown_confirm_timeout_secs` passes.
 
 ---
 

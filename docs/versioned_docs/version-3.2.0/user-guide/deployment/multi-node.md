@@ -80,7 +80,7 @@ Exactly one mode must be specified per invocation:
 | Mode | Description |
 |------|-------------|
 | `--start` | Start all ChronoLog processes across the cluster |
-| `--stop` | Stop all ChronoLog processes gracefully (force-kills after 5 minutes) |
+| `--stop` | Stop all ChronoLog processes gracefully. Keepers stop first and get 7 minutes, since each waits for ChronoGrapher to confirm its chunks written; other processes are force-killed after 5 minutes. |
 | `--clean` | Remove generated config files, per-group host files, logs, and output. All processes must be stopped first. |
 
 ## Options

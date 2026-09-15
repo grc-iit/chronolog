@@ -750,6 +750,98 @@ TEST(KeeperChunkRetentionStore, DelayedReportFromTheSameGrapherDoesNotUndoANewer
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);                            // A freed, B queued
 }
 
+// ---- shutdown -----------------------------------------------------------------
+//
+// A keeper frees everything it holds when it exits. An acked chunk may still
+// exist only in the grapher's memory, and a send can fail after the keeper
+// handed the chunk to the extraction queue. So on SIGTERM the keeper sends again
+// whatever is not acked and waits, with extraction and watermark reports still
+// running, until the grapher has confirmed every chunk written.
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitEndsWhenTheGrapherConfirmsEveryChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1); // acked, not written yet
+
+    std::atomic<bool> reporting{false};
+    std::thread grapher(
+            [&]
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                reporting = true;
+                store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+            });
+    bool const confirmed = store.waitUntilDurable(std::chrono::seconds(5), std::chrono::milliseconds(10));
+    bool const returned_after_report = reporting;
+    grapher.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_TRUE(returned_after_report);
+    // confirmed is enough: the tail may keep the chunk
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitSendsAgainAChunkWhoseSendFails)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+
+    // the drain thread: the first send fails once the wait is under way, the
+    // second is acked and the grapher confirms it
+    std::thread drain(
+            [&]
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                int attempts = 0;
+                auto const give_up = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+                while(attempts < 2 && std::chrono::steady_clock::now() < give_up)
+                {
+                    chl::StoryChunk* chunk = q.ejectStoryChunk();
+                    if(chunk == nullptr)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    if(++attempts == 1)
+                    {
+                        store.markSendFailed(chunk);
+                        continue;
+                    }
+                    chunk->setGrapherReceipt(kGrapher, 1);
+                    store.markShipped(chunk);
+                    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+                }
+            });
+    bool const confirmed = store.waitUntilDurable(std::chrono::seconds(3), std::chrono::milliseconds(10));
+    drain.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitGivesUpAtTheTimeout)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1); // the grapher never confirms it
+
+    auto const started = std::chrono::steady_clock::now();
+    EXPECT_FALSE(store.waitUntilDurable(std::chrono::milliseconds(300), std::chrono::milliseconds(10)));
+    auto const waited = std::chrono::steady_clock::now() - started;
+    EXPECT_GE(waited, std::chrono::milliseconds(300));
+    EXPECT_LT(waited, std::chrono::seconds(3));
+}
+
 TEST(KeeperChunkRetentionStore, ChunkShippedWithoutAReceiptFreesOnTheWatermarkAlone)
 {
     ensureLogger();

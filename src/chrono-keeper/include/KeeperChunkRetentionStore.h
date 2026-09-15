@@ -5,6 +5,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <thread>
 #include <vector>
 #include <unordered_map>
 
@@ -65,8 +66,8 @@ public:
     {}
 
     // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
-    // still running. main() calls this after data collection stops and before
-    // shutdownExtraction().
+    // still running. waitUntilDurable() calls this on every round of the keeper's
+    // shutdown wait, after data collection stops and before shutdownExtraction().
     //
     // The destructor already has a last-chance handoff for these, but it runs too
     // late to help: by then shutdownExtraction() has drained the queue and joined
@@ -107,6 +108,30 @@ public:
         return to_stash.size();
     }
 
+    // Keeper shutdown, after data collection has stopped and while extraction
+    // and watermark reports still run. Hands every chunk the grapher has not
+    // acked to the extraction queue again, every poll_interval, until the
+    // grapher has confirmed every chunk written or timeout passes. A send that
+    // fails after one round is picked up by the next. Returns whether every
+    // chunk was confirmed; the destructor logs and frees the rest.
+    bool waitUntilDurable(std::chrono::milliseconds timeout, std::chrono::milliseconds poll_interval)
+    {
+        auto const deadline = std::chrono::steady_clock::now() + timeout;
+        while(true)
+        {
+            flushUnshippedChunks();
+            if(unconfirmedChunkCount() == 0)
+            {
+                return true;
+            }
+            if(std::chrono::steady_clock::now() >= deadline)
+            {
+                return false;
+            }
+            std::this_thread::sleep_for(poll_interval);
+        }
+    }
+
     ~KeeperChunkRetentionStore()
     {
         std::lock_guard<std::mutex> lock(tailMutex);
@@ -116,8 +141,7 @@ public:
             {
                 StoryChunk* chunk = chunk_entry.first;
                 ChunkState& state = chunk_entry.second;
-                bool const durable = state.shipped && receiptSettled(story_entry.second, state) &&
-                                     (chunk->getEndTime() <= story_entry.second.known_w);
+                bool const durable = confirmedWritten(story_entry.second, chunk, state);
                 if(!durable)
                 {
                     LOG_WARNING("[KeeperChunkRetentionStore] shutdown with unconfirmed StoryId={} chunk {}-{} "
@@ -321,8 +345,7 @@ public:
                     // past window for it (prepend path); without the re-send
                     // it would sit retained forever, unfreeable for lack of
                     // the ack.
-                    if(state.in_queue || (state.shipped && receiptSettled(story_entry.second, state) &&
-                                          chunk->getEndTime() <= story_entry.second.known_w))
+                    if(state.in_queue || confirmedWritten(story_entry.second, chunk, state))
                     {
                         continue;
                     }
@@ -647,6 +670,29 @@ private:
             bytes += it->second.logRecord.size() + 64; // payload + per-event bookkeeping estimate
         }
         return bytes;
+    }
+
+    // The grapher has acked the chunk, settled its receipt, and W covers it.
+    static bool confirmedWritten(StoryRetention const& story, StoryChunk const* chunk, ChunkState const& state)
+    {
+        return state.shipped && receiptSettled(story, state) && chunk->getEndTime() <= story.known_w;
+    }
+
+    std::size_t unconfirmedChunkCount() const
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        std::size_t count = 0;
+        for(auto const& story_entry: storyRetention)
+        {
+            for(auto const& chunk_entry: story_entry.second.chunks)
+            {
+                if(!confirmedWritten(story_entry.second, chunk_entry.first, chunk_entry.second))
+                {
+                    ++count;
+                }
+            }
+        }
+        return count;
     }
 
     // A grapher never moves a receipt back to pending or reuses its number, so

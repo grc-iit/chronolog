@@ -393,16 +393,24 @@ int main(int argc, char** argv)
     LOG_INFO("[ChronoKeeperInstance] Initiating shutdown procedures.");
     // Stop recording events
     delete keeperRecordingService;
-    delete keeperDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
-    // Hand any not-yet-shipped retained chunks over BEFORE extraction stops: data
-    // collection has finished so nothing new will seal, and the extraction module
-    // is still draining. Leaving this to ~KeeperChunkRetentionStore runs it after
-    // shutdownExtraction() below, where the queue only frees what it holds -- so a
-    // chunk whose send failed (in_queue cleared, shipped still false, waiting on
-    // requeueStalled) would be dropped rather than archived.
-    theTailStore.flushUnshippedChunks();
+    // Data collection has finished, so nothing new will seal. Before extraction
+    // stops, wait for the grapher to confirm every chunk this keeper holds
+    // written: an acked chunk may still exist only in the grapher's memory, and a
+    // send can fail after its chunk was handed over. The wait sends unacked
+    // chunks again, so the extraction module must still be draining, and it
+    // learns of confirmations through watermark reports, so the data admin
+    // service stays up until it ends. ~KeeperChunkRetentionStore logs and frees
+    // whatever is still unconfirmed.
+    const int shutdown_confirm_timeout_secs = KEEPER_CONF.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
+    if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs), std::chrono::seconds(1)))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
+                    "shutdown_confirm_timeout_secs={}",
+                    shutdown_confirm_timeout_secs);
+    }
+    delete keeperDataAdminService;
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
