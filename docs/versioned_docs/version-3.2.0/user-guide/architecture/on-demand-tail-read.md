@@ -324,7 +324,7 @@ The client merges all returned keys into a single globally-ordered collection, p
 Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as soon as it seals, and stays in keeper memory until ChronoGrapher confirms it is written to HDF5 (see [Durable Chunk Retention](./durable-retention.md)). The tail index is bounded on its own:
 
 1. **Capacity Eviction (`tail_capacity`, default 65536)**:
-   When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted.
+   When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted and `archive_visibility_delay_secs` has passed (see [Durable Chunk Retention](./durable-retention.md)).
 2. **Release at Retirement**:
    When a story retires on the keeper (no client has it acquired and its acceptance window has passed), its whole tail index is released and `playback` returns nothing more from this keeper. A low-volume story that never fills `tail_capacity` therefore keeps its last events in memory only while it is recorded.
 3. **No Time-Based Age-Out**:

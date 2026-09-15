@@ -31,6 +31,8 @@ outage therefore lost every chunk sent during it, with nothing recording the los
    - the reported watermark has reached the end of the chunk;
    - the grapher reports the chunk's receipt as written. A restarted grapher starts numbering
      receipts again, so its reports never confirm a receipt the previous grapher process gave out;
+   - `archive_visibility_delay_secs` have passed since the keeper learned the chunk is written, so
+     players have had time to find the new archive file;
    - none of the chunk's events is still in the tail index that `playback` reads from;
    - the chunk is not waiting to be sent again.
 4. **Re-send.** A chunk whose send failed, or that is still unconfirmed after
@@ -39,7 +41,7 @@ outage therefore lost every chunk sent during it, with nothing recording the los
 Events leave a story's tail index when the story holds more than `tail_capacity` events there, or
 when the story retires on the keeper: no client has it acquired and its acceptance window has
 passed. After that, `playback` no longer returns them from this keeper, and their chunks are freed
-as soon as the grapher confirms them.
+once the grapher confirms them and `archive_visibility_delay_secs` has passed.
 
 A keeper decides chunk by chunk. If one keeper's chunk failed to reach the grapher, that keeper keeps
 it and sends it again, however far other keepers' data has moved the watermark.
@@ -56,7 +58,10 @@ not cover, so every event at or above `B` is still in some keeper's memory. If n
 a watermark yet, no keeper has freed anything, and `B` is the oldest event time any keeper holds.
 
 - Events in a chunk the grapher has not yet confirmed written come from the keeper even below `B`,
-  since the archive may not have them.
+  since the archive may not have them. So do events in a chunk confirmed less than
+  `archive_visibility_delay_secs` ago: a player finds a new archive file only on its next scan of
+  the archive directory, every 5 seconds, and on NFS a file written on one node can take up to a
+  minute to appear in a directory listing on another.
 - A replay sees an event once its chunk has sealed on the keeper (about `story_chunk_duration_secs`
   plus `acceptance_window_secs`), without waiting for the grapher to write it.
 - A keeper that does not answer within 5 seconds is left out. Events held only by that keeper and not
@@ -86,6 +91,9 @@ Keeper memory grows while the grapher falls behind, since nothing is freed until
 `retention_cap_mb` does not limit that: it logs a warning each time retained memory crosses it, and
 drops nothing. Size keeper memory for the longest grapher outage you want to ride out.
 
+A chunk also stays in memory for `archive_visibility_delay_secs` after it is confirmed written, so
+a keeper holds about that many more seconds of its incoming data than it would otherwise.
+
 While a story is recorded, up to `tail_capacity` of its events stay in memory for tail reads even
 after they are written, together with the chunks holding them. They are released when the story
 retires.
@@ -98,9 +106,10 @@ retires.
 |---|---|---|---|
 | `watermark_report_interval_secs` | grapher | `1` | How often the grapher sends changed watermarks and receipts to the keepers. |
 | `watermark_resend_timeout_secs` | keeper | `720` | How long a keeper waits for a chunk to be confirmed written before sending it again. Keep it well above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs`, or healthy chunks are sent twice. |
+| `archive_visibility_delay_secs` | keeper | `70` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. Cover the player's 5-second archive scan plus the time the shared file system takes to list a new file on another node (NFS caches directory listings for up to 60 seconds by default). `0` frees the chunk on confirmation. |
 | `retention_cap_mb` | keeper | `512` | Retained-memory level that triggers a warning. `0` turns the warning off. |
 
-All three live in the component's `DataStoreInternals` block; see
+All four live in the component's `DataStoreInternals` block; see
 [Server Configuration](../configuration/server-configuration.md#datastoreinternals--story-chunk-tuning).
 `tail_retention_secs` is gone: chunks are freed by the watermark, not by age.
 
