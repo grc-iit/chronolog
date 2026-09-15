@@ -117,7 +117,10 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                     file_name);
             return CL_ERR_UNKNOWN;
         }
-        if(probed_data_type != defined_comp_type)
+        // a file written before client ids were widened has a 32-bit clientId;
+        // reading it through the current type widens the id
+        if(probed_data_type != defined_comp_type &&
+           probed_data_type != StoryChunkWriter::createLegacyEventCompoundType())
         {
             LOG_WARNING("[HDF5ArchiveReadingAgent]Error reading dataset {} : Compound type mismatch", file_name);
             return CL_ERR_UNKNOWN;

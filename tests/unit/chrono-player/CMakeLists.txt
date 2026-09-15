@@ -128,3 +128,34 @@ gtest_discover_tests(keeper_hot_fetch_client_test TEST_PREFIX "Unit_ChronoPlayer
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_hot_fetch_client_test DESTINATION tests)
 endif()
+
+#------------------------------------------------------------------------------
+
+# Client ids in the HDF5 archive (GTest): written and read back at full width,
+# and files with the old 32-bit layout still readable
+add_executable(archive_client_id_test
+    chrono_player_archive_client_id_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_client_id_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_client_id_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_client_id_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_client_id_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-client-id)
+gtest_discover_tests(archive_client_id_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_client_id_test DESTINATION tests)
+endif()
