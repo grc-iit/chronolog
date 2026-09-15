@@ -93,3 +93,34 @@ gtest_discover_tests(watermark_report_transport_test TEST_PREFIX "Unit_ChronoGra
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(watermark_report_transport_test DESTINATION tests)
 endif()
+
+# Watermark reports published from the grapher's data-collection loop (GTest):
+# the real GrapherDataStore and publisher, with stand-in keeper providers
+add_executable(grapher_data_collection_report_test
+    grapher_data_collection_report_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/GrapherDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(grapher_data_collection_report_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(grapher_data_collection_report_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(grapher_data_collection_report_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(grapher_data_collection_report_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-data-collection-report)
+gtest_discover_tests(grapher_data_collection_report_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_data_collection_report_test DESTINATION tests)
+endif()

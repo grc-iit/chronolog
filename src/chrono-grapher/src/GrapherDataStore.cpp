@@ -611,7 +611,15 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            // Sleep in slices and yield between them. This stream runs other
+            // data-collection threads, and one of them may be waiting on an
+            // RPC (a watermark report send) that resumes only when the
+            // stream schedules it again; a plain sleep() never lets it.
+            for(int slice = 0; slice < 10; ++slice)
+            {
+                usleep(100000);
+                tl::thread::yield();
+            }
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
