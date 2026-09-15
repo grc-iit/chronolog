@@ -55,11 +55,13 @@ public:
     KeeperChunkRetentionStore(StoryChunkExtractionQueue& extraction_queue,
                               std::size_t tail_capacity,
                               std::size_t retention_cap_mb = 0,
-                              bool live_tail_read = false)
+                              bool live_tail_read = false,
+                              std::chrono::milliseconds archive_visibility_delay = std::chrono::milliseconds(0))
         : theExtractionQueue(extraction_queue)
         , tailCapacity(tail_capacity)
         , retentionCapBytes(retention_cap_mb * 1024 * 1024)
         , liveTailRead(live_tail_read)
+        , archiveVisibilityDelay(archive_visibility_delay)
     {}
 
     // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
@@ -344,11 +346,34 @@ public:
         return to_stash.size();
     }
 
+    // Free every chunk the free condition allows now. A chunk that is durable
+    // but was written less than the archive visibility delay ago survives the
+    // report that made it durable, and no later report has to come for it;
+    // the data-collection loop calls this to free it once the delay has
+    // passed. Returns the number of chunks freed.
+    std::size_t freeDurableChunks()
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        std::size_t freed = 0;
+        for(auto& story_entry: storyRetention)
+        {
+            auto& chunks = story_entry.second.chunks;
+            for(auto chunk_iter = chunks.begin(); chunk_iter != chunks.end();)
+            {
+                std::size_t const before = chunks.size();
+                chunk_iter = maybeFreeChunk(story_entry.second, chunk_iter);
+                freed += before - chunks.size();
+            }
+        }
+        return freed;
+    }
+
     // Serve a replay range from every retained chunk (not only tail-indexed
     // events: a chunk evicted from the tail but still awaiting W holds events
-    // that may exist nowhere else). Events from chunks the grapher has
-    // acknowledged under a settled receipt go to events, the rest to
-    // unconfirmed_events: the archive may not have those however far W moves. Both lists are in ascending
+    // that may exist nowhere else). Events from chunks visible in the archive
+    // (acknowledged under a settled receipt at least the archive visibility
+    // delay ago) go to events, the rest to unconfirmed_events: a player may
+    // not find those in the archive however far W moves. Both lists are in ascending
     // EventSequence order and together capped at max_events (truncated if the
     // cap cut the range short). hot_floor is the oldest event tick this keeper
     // still retains for the story (UINT64_MAX if none) and known_W the
@@ -364,13 +389,13 @@ public:
             return response;
         }
         response.known_W = story_it->second.known_w;
-        // event -> (payload, held by an acknowledged chunk)
+        auto const now = std::chrono::steady_clock::now();
+        // event -> (payload, held by a chunk visible in the archive)
         std::map<EventSequence, std::pair<LogEvent const*, bool>> merged;
-        for(auto const& chunk_entry: story_it->second.chunks)
+        for(auto& chunk_entry: story_it->second.chunks)
         {
             StoryChunk const* chunk = chunk_entry.first;
-            bool const acknowledged =
-                    chunk_entry.second.shipped && receiptSettled(story_it->second, chunk_entry.second);
+            bool const acknowledged = visibleInArchive(story_it->second, chunk_entry.second, now);
             if(!chunk->empty() && chunk->firstEventTime() < response.hot_floor)
             {
                 response.hot_floor = chunk->firstEventTime();
@@ -593,6 +618,9 @@ private:
         // receipt the grapher returned for the last successful delivery (0: none)
         uint64_t receipt_instance = 0;
         uint64_t receipt = 0;
+        // when the keeper first saw the chunk shipped under a settled receipt
+        bool written = false;
+        std::chrono::steady_clock::time_point written_at;
     };
 
     struct StoryRetention
@@ -630,18 +658,38 @@ private:
                 story.pending_receipts.count(state.receipt) == 0);
     }
 
-    // THE free condition, called from every mutating path (caller holds
-    // tailMutex). Frees the chunk and erases its state when it is shipped
-    // under a settled receipt, covered by the known watermark, tail-released,
-    // and not queued. Returns the iterator following the (possibly erased)
-    // entry.
+    // Whether a player can be expected to find the chunk in the archive: it is
+    // shipped under a settled receipt, and the keeper first saw it so at least
+    // archiveVisibilityDelay ago. Records that first sighting (caller holds
+    // tailMutex).
+    bool
+    visibleInArchive(StoryRetention const& story, ChunkState& state, std::chrono::steady_clock::time_point now) const
+    {
+        if(!state.shipped || !receiptSettled(story, state))
+        {
+            return false;
+        }
+        if(!state.written)
+        {
+            state.written = true;
+            state.written_at = now;
+        }
+        return now - state.written_at >= archiveVisibilityDelay;
+    }
+
+    // THE free condition, called from every mutating path and from
+    // freeDurableChunks (caller holds tailMutex). Frees the chunk and erases
+    // its state when it is visible in the archive, covered by the known
+    // watermark, tail-released, and not queued. Returns the iterator following
+    // the (possibly erased) entry.
     std::unordered_map<StoryChunk*, ChunkState>::iterator
     maybeFreeChunk(StoryRetention& story, std::unordered_map<StoryChunk*, ChunkState>::iterator chunk_iter)
     {
         StoryChunk* chunk = chunk_iter->first;
-        ChunkState const& state = chunk_iter->second;
-        if(!state.shipped || !receiptSettled(story, state) || state.in_queue || state.indexed_count != 0 ||
-           chunk->getEndTime() > story.known_w)
+        ChunkState& state = chunk_iter->second;
+        // checked first, so the sighting is recorded whatever else keeps the chunk
+        bool const visible = visibleInArchive(story, state, std::chrono::steady_clock::now());
+        if(!visible || state.in_queue || state.indexed_count != 0 || chunk->getEndTime() > story.known_w)
         {
             return ++chunk_iter;
         }
@@ -720,6 +768,9 @@ private:
     std::size_t retainedBytes = 0;
     bool capWarned = false;
     bool liveTailRead = false;
+    // how long after the keeper learns a chunk is written a player may still
+    // not see its archive file
+    std::chrono::milliseconds archiveVisibilityDelay;
     mutable std::mutex tailMutex;
     std::unordered_map<StoryId, StoryRetention> storyRetention;
 

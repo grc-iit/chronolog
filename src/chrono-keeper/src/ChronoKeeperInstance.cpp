@@ -222,10 +222,15 @@ int main(int argc, char** argv)
     // seal window at the cost of provisional (eventually-consistent) reads.
     const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
     const std::size_t keeper_retention_cap_mb = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.retention_cap_mb);
+    // archive_visibility_delay_secs (default 70): how long after the grapher
+    // reports a chunk written the store keeps it and serves it as unconfirmed,
+    // so a player that has not listed the new archive file yet still replays it.
+    const int archive_visibility_delay_secs = KEEPER_CONF.DATA_STORE_CONF.archive_visibility_delay_secs;
     chronolog::KeeperChunkRetentionStore theTailStore(theExtractionModule.getExtractionQueue(),
                                                       keeper_tail_capacity,
                                                       keeper_retention_cap_mb,
-                                                      KEEPER_CONF.DATA_STORE_CONF.live_tail_read);
+                                                      KEEPER_CONF.DATA_STORE_CONF.live_tail_read,
+                                                      std::chrono::seconds(archive_visibility_delay_secs));
 
     // The extraction chain reports every drain outcome (grapher ack / transfer
     // failure) back to the store; chunks are never freed by the drain loop.

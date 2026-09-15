@@ -330,6 +330,22 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             watermark_resend_timeout_secs = json_object_get_int(val);
         }
+        else if(strcmp(key, "archive_visibility_delay_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'archive_visibility_delay_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            int const parsed_delay = json_object_get_int(val);
+            if(parsed_delay < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'archive_visibility_delay_secs': must not be negative, got "
+                          << parsed_delay << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            archive_visibility_delay_secs = parsed_delay;
+        }
         else if(strcmp(key, "watermark_report_interval_secs") == 0)
         {
             if(!json_object_is_type(val, json_type_int))

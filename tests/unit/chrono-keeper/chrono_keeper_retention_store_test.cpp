@@ -776,6 +776,76 @@ TEST(KeeperChunkRetentionStore, FetchRangeSeparatesEventsTheGrapherHasNotAcknowl
     EXPECT_EQ(response.hot_floor, 100u);
 }
 
+// ---- archive visibility ------------------------------------------------------
+//
+// A report that a chunk is written does not mean a player can read it yet: a
+// player finds new archive files only when it next scans the archive
+// directory, and on a shared file system its listing can lag the grapher's
+// write further. For the archive visibility delay after the keeper learns a
+// chunk is written, the keeper keeps the chunk and serves its events as
+// unconfirmed, so a replay takes them from the keeper.
+
+TEST(KeeperChunkRetentionStore, WrittenChunkIsServedUnconfirmedUntilTheVisibilityDelayPasses)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+
+    auto just_written = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(just_written.events.empty());
+    EXPECT_EQ(just_written.unconfirmed_events.size(), 3u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    auto visible = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_EQ(visible.events.size(), 3u);
+    EXPECT_TRUE(visible.unconfirmed_events.empty());
+}
+
+TEST(KeeperChunkRetentionStore, VisibilityDelayStartsWhenTheChunkIsWritten)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    // sealed well before the grapher acknowledges it
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(response.events.empty());
+    EXPECT_EQ(response.unconfirmed_events.size(), 3u);
+}
+
+TEST(KeeperChunkRetentionStore, DurableChunkIsFreedOnlyOnceTheVisibilityDelayHasPassed)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+    store.releaseStoryTail(sid);
+
+    // durable, but a player may not see the file yet
+    EXPECT_EQ(store.freeDurableChunks(), 0u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    // waiting out the delay is not a stall
+    EXPECT_EQ(store.requeueStalled(std::chrono::seconds(0)), 0u);
+    EXPECT_EQ(q.size(), 0);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    // no further report comes for this chunk; the sweep frees it
+    EXPECT_EQ(store.freeDurableChunks(), 1u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
 // ---- concurrency: seal, drain, watermark, re-send and reads at once --------
 //
 // In the keeper these run on different threads against one store: the seal

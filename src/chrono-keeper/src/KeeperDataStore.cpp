@@ -321,6 +321,9 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         // arrived (transient grapher outage); the store's mutex makes the
         // call safe and idempotent across the data-collection ULTs
         theTailStore.requeueStalled(std::chrono::seconds(watermark_resend_timeout_secs));
+        // free durable chunks the archive visibility delay kept past the
+        // report that made them durable
+        theTailStore.freeDurableChunks();
     }
     LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }

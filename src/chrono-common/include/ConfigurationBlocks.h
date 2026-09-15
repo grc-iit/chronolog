@@ -250,6 +250,14 @@ struct DataStoreConf
     // acceptance_window + story_chunk_duration by a healthy multiple (the
     // template's grapher values 180+60 suggest ~3x = 720). Keeper-only knob.
     int watermark_resend_timeout_secs = 720;
+    // After the grapher reports a chunk written, the keeper keeps the chunk
+    // and serves its events as unconfirmed for this long, so a replay does not
+    // depend on the player already seeing the new archive file. Cover the
+    // player's archive rescan interval (5 s) plus how long the shared file
+    // system can take to list a new file on another node (NFS caches directory
+    // attributes for up to 60 s by default). 0 frees on the report.
+    // Keeper-only knob.
+    int archive_visibility_delay_secs = 70;
     // How often the grapher pushes dirty per-story persisted watermarks to
     // the contributing keepers. Grapher-only knob; ignored by keeper/player.
     int watermark_report_interval_secs = 1;
@@ -274,6 +282,7 @@ struct DataStoreConf
                " tail_capacity: " + std::to_string(tail_capacity) +
                " retention_cap_mb: " + std::to_string(retention_cap_mb) +
                " watermark_resend_timeout_secs: " + std::to_string(watermark_resend_timeout_secs) +
+               " archive_visibility_delay_secs: " + std::to_string(archive_visibility_delay_secs) +
                " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) +
                " live_tail_read: " + (live_tail_read ? "true" : "false") + "]";
     }
