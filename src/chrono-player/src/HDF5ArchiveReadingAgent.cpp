@@ -130,6 +130,36 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         std::vector<LogEventHVL> data;
         data.resize(dims_out[0]);
         dataset.read(data.data(), defined_comp_type);
+        // HDF5 allocates each variable-length record with malloc. Give the
+        // buffers back to HDF5 on the way out of this scope and detach them,
+        // or ~LogEventHVL frees them with delete[].
+        struct VlenRecordReclaim
+        {
+            std::vector<LogEventHVL>& records;
+            H5::CompType const& type;
+            H5::DataSpace const& space;
+
+            ~VlenRecordReclaim()
+            {
+                if(records.empty())
+                {
+                    return;
+                }
+                try
+                {
+                    H5::DataSet::vlenReclaim(records.data(), type, space);
+                }
+                catch(H5::Exception const&)
+                {
+                    LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to reclaim variable-length records");
+                }
+                for(auto& record: records)
+                {
+                    record.logRecord.p = nullptr;
+                    record.logRecord.len = 0;
+                }
+            }
+        } reclaim_records{data, defined_comp_type, dataspace};
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...",
                   chronicleName,
