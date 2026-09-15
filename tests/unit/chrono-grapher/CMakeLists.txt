@@ -124,3 +124,34 @@ gtest_discover_tests(grapher_data_collection_report_test TEST_PREFIX "Unit_Chron
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(grapher_data_collection_report_test DESTINATION tests)
 endif()
+
+# Pipeline retirement (GTest): a stopped story keeps its pipeline for the whole
+# inactive delay before the grapher writes it out
+add_executable(grapher_pipeline_retirement_test
+    grapher_pipeline_retirement_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/GrapherDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(grapher_pipeline_retirement_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(grapher_pipeline_retirement_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(grapher_pipeline_retirement_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(grapher_pipeline_retirement_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-pipeline-retirement)
+gtest_discover_tests(grapher_pipeline_retirement_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_pipeline_retirement_test DESTINATION tests)
+endif()

@@ -143,8 +143,9 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
+        // widen first: the delay is 32-bit, and 5 s or more wraps in 32-bit nanoseconds
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
-                             inactive_pipeline_delay_secs * 1000000000;
+                             static_cast<uint64_t>(inactive_pipeline_delay_secs) * 1000000000ULL;
         // (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));

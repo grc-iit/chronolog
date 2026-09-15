@@ -219,3 +219,31 @@ gtest_discover_tests(replay_event_merge_test TEST_PREFIX "Unit_ChronoPlayer_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(replay_event_merge_test DESTINATION tests)
 endif()
+
+#------------------------------------------------------------------------------
+
+# Pipeline retirement (GTest): a stopped story keeps its player pipeline for the
+# whole inactive delay
+add_executable(player_pipeline_retirement_test
+    player_pipeline_retirement_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp
+)
+
+target_include_directories(player_pipeline_retirement_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(player_pipeline_retirement_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(player_pipeline_retirement_test PROPERTIES OUTPUT_NAME chronolog-test-player-pipeline-retirement)
+gtest_discover_tests(player_pipeline_retirement_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(player_pipeline_retirement_test DESTINATION tests)
+endif()
