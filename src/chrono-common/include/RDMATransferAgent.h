@@ -6,6 +6,7 @@
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <ChunkReceipt.h>
 #include <ServiceId.h>
 
 namespace tl = thallium;
@@ -40,8 +41,11 @@ public:
     // Ship one serialized chunk. reporter identifies the sender's
     // DataStoreAdminService so the receiver (grapher) knows where to push
     // watermark reports; pass a default ServiceId for receivers that do not
-    // report (player).
-    int transfer_serialized_story_chunk(std::string const& chunk, ServiceId const& reporter = ServiceId());
+    // report (player). On success, receipt (if given) gets the receiver's
+    // answer: a grapher's receipt for the chunk, or zeros.
+    int transfer_serialized_story_chunk(std::string const& chunk,
+                                        ServiceId const& reporter = ServiceId(),
+                                        ChunkReceipt* receipt = nullptr);
     bool is_receiver_available() const;
 
 private:

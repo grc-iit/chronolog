@@ -10,6 +10,7 @@
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
 #include <StoryChunkExtractionQueue.h>
+#include <ReceiptTracker.h>
 
 //#define TRACE_CHUNKING
 //#define TRACE_CHUNK_EXTRACTION
@@ -300,6 +301,31 @@ void chronolog::StoryPipeline::extractDecayedStoryChunks(uint64_t current_time,
 }
 
 //////////////////////
+// Put the receipts other_chunk carries on holder when any of other_chunk's
+// events falls in holder's range, and report each new hold. Called before the
+// events move, so an event the holder already has still counts: a re-sent
+// chunk's receipt has to wait for the same write as the first copy's.
+void chronolog::StoryPipeline::holdReceipts(chronolog::StoryChunk& holder, chronolog::StoryChunk const& other_chunk)
+{
+    if(theReceiptTracker == nullptr || other_chunk.carriedReceipts().empty())
+    {
+        return;
+    }
+    auto first_in_range = other_chunk.lower_bound(holder.getStartTime());
+    if(first_in_range == other_chunk.end() || first_in_range->second.time() >= holder.getEndTime())
+    {
+        return;
+    }
+    for(uint64_t receipt: other_chunk.carriedReceipts())
+    {
+        if(holder.carryReceipt(receipt))
+        {
+            theReceiptTracker->holdReceipt(storyId, receipt);
+        }
+    }
+}
+
+//////////////////////
 // Merge the StoryChunk obtained from external source into the StoryPipeline
 // Note that the granularity of the StoryChunk being merged may be
 // different from that of the StoryPipeline
@@ -314,6 +340,10 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
     }
 
     std::lock_guard<std::mutex> lock(sequencingMutex);
+
+    // set when some of other_chunk's events find no place and are dropped: the
+    // receipts it carries must then never settle
+    bool discarded = false;
 
     LOG_DEBUG("[StoryPipeline] StoryId {} timeline {}-{} : Merging in StoryChunk {}-{} eventCount {} 1stEventTime {}",
               storyId,
@@ -373,6 +403,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                     auto* salvage_chunk =
                             new StoryChunk(chronicleName, storyName, storyId, other_chunk.getStartTime(), salvage_end);
                     salvage_chunk->setWatermarkExempt(true);
+                    holdReceipts(*salvage_chunk, other_chunk);
                     salvage_chunk->mergeEvents(other_chunk);
                     if(!other_chunk.empty() && other_chunk.firstEventTime() < salvage_end)
                     {
@@ -386,6 +417,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                                   TimelineEnd(),
                                   other_chunk.firstEventTime(),
                                   salvage_end);
+                        discarded = true;
                         other_chunk.eraseEvents(other_chunk.firstEventTime(), salvage_end);
                     }
                     if(salvage_chunk->empty())
@@ -415,6 +447,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                               TimelineEnd(),
                               other_chunk.getStartTime(),
                               salvage_end);
+                    discarded = true;
                     other_chunk.eraseEvents(other_chunk.firstEventTime(), salvage_end);
                 }
                 chunk_to_merge_iter = storyTimelineMap.begin();
@@ -501,6 +534,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                   other_chunk.getEndTime(),
                   (*chunk_to_merge_iter).second->getStartTime(),
                   (*chunk_to_merge_iter).second->getEndTime());
+        holdReceipts(*(*chunk_to_merge_iter).second, other_chunk);
         (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         chunk_to_merge_iter++;
     }
@@ -532,6 +566,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                       other_chunk.getEndTime(),
                       (*chunk_to_merge_iter).second->getStartTime(),
                       (*chunk_to_merge_iter).second->getEndTime());
+            holdReceipts(*(*chunk_to_merge_iter).second, other_chunk);
             (*chunk_to_merge_iter).second->mergeEvents(other_chunk);
         }
     }
@@ -555,7 +590,13 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                   other_chunk.getEventCount(),
                   other_chunk.to_string());
 #endif
+        discarded = true;
         other_chunk.eraseEvents(other_chunk.getStartTime(), other_chunk.getEndTime());
+    }
+
+    if(theReceiptTracker != nullptr && !discarded)
+    {
+        for(uint64_t receipt: other_chunk.carriedReceipts()) { theReceiptTracker->receiptMerged(storyId, receipt); }
     }
 
     return;

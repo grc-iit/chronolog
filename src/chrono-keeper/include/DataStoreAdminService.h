@@ -63,15 +63,16 @@ public:
         request.respond(return_code);
     }
 
-    // One-way (grapher publishes with disable_response): everything below
-    // watermarks[story] is durable in the archive; the data store forwards to
-    // the retention store which frees covered, acked, tail-released chunks.
-    void ReportStoryWatermarks(tl::request const&, std::map<StoryId, uint64_t> const& watermarks)
+    // One-way (grapher publishes with disable_response): per story, the
+    // persisted watermark and the grapher's unwritten receipts; the data store
+    // forwards to the retention store, which frees the chunks that are covered,
+    // settled and tail-released.
+    void ReportStoryWatermarks(tl::request const&, std::map<StoryId, StoryWatermarkReport> const& reports)
     {
-        LOG_DEBUG("[DataStoreAdminService] Received watermark report for {} story(ies)", watermarks.size());
-        for(auto const& story_watermark: watermarks)
+        LOG_DEBUG("[DataStoreAdminService] Received watermark report for {} story(ies)", reports.size());
+        for(auto const& story_report: reports)
         {
-            theDataStore.applyWatermarkReport(story_watermark.first, story_watermark.second);
+            theDataStore.applyWatermarkReport(story_report.first, story_report.second);
         }
     }
 

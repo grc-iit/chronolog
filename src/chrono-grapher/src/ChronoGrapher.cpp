@@ -257,7 +257,8 @@ int main(int argc, char** argv)
                 chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
                                                                            recordingServiceId.getProviderId(),
                                                                            ingestionQueue,
-                                                                           watermarkPublisher);
+                                                                           watermarkPublisher,
+                                                                           &theWatermarkRegistry);
     }
     catch(tl::exception const&)
     {

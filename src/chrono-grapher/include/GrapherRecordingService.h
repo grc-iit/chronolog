@@ -18,6 +18,7 @@
 #include <StoryChunk.h>
 
 #include "ChunkIngestionQueue.h"
+#include "StoryWatermarkRegistry.h"
 #include "WatermarkReportPublisher.h"
 
 namespace tl = thallium;
@@ -31,9 +32,14 @@ public:
     static GrapherRecordingService* CreateRecordingService(tl::engine& tl_engine,
                                                            uint16_t service_provider_id,
                                                            ChunkIngestionQueue& ingestion_queue,
-                                                           WatermarkReportPublisher* watermark_publisher = nullptr)
+                                                           WatermarkReportPublisher* watermark_publisher = nullptr,
+                                                           StoryWatermarkRegistry* watermark_registry = nullptr)
     {
-        return new GrapherRecordingService(tl_engine, service_provider_id, ingestion_queue, watermark_publisher);
+        return new GrapherRecordingService(tl_engine,
+                                           service_provider_id,
+                                           ingestion_queue,
+                                           watermark_publisher,
+                                           watermark_registry);
     }
 
     ~GrapherRecordingService()
@@ -84,7 +90,9 @@ public:
                 delete story_chunk;
                 ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
                 LOG_ERROR("[GrapherRecordingService] Discarding the story chunk, responding {} to Keeper", ret);
-                request.respond(ret);
+                ChunkReceipt failure;
+                failure.bytes = ret;
+                request.respond(failure);
                 return;
             }
 #ifndef NDEBUG
@@ -105,7 +113,17 @@ public:
                 theWatermarkPublisher->recordContributor(story_chunk->getStoryId(), reporter);
             }
 
-            request.respond(b.size());
+            // The receipt ties this delivery to the writes of its events and
+            // travels with the chunk into the pipeline; see ChunkReceipt.h.
+            ChunkReceipt answer;
+            answer.bytes = b.size();
+            if(theWatermarkRegistry != nullptr)
+            {
+                answer.grapher_instance = theWatermarkRegistry->instanceId();
+                answer.receipt = theWatermarkRegistry->assignReceipt(story_chunk->getStoryId());
+                story_chunk->carryReceipt(answer.receipt);
+            }
+            request.respond(answer);
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -116,7 +134,9 @@ public:
         {
             LOG_ERROR("[GrapherRecordingService] Failed to allocate memory for StoryChunk data, ThreadID={}",
                       tl::thread::self_id());
-            request.respond(20000000 + tl::thread::self_id());
+            ChunkReceipt failure;
+            failure.bytes = 20000000 + tl::thread::self_id();
+            request.respond(failure);
             return;
         }
     }
@@ -125,10 +145,12 @@ private:
     GrapherRecordingService(tl::engine& tl_engine,
                             uint16_t service_provider_id,
                             ChunkIngestionQueue& ingestion_queue,
-                            WatermarkReportPublisher* watermark_publisher)
+                            WatermarkReportPublisher* watermark_publisher,
+                            StoryWatermarkRegistry* watermark_registry)
         : tl::provider<GrapherRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
         , theWatermarkPublisher(watermark_publisher)
+        , theWatermarkRegistry(watermark_registry)
     {
         define("receive_story_chunk", &GrapherRecordingService::receive_story_chunk);
         //set up callback for the case when the engine is being finalized while this provider is still alive
@@ -178,6 +200,7 @@ private:
 
     ChunkIngestionQueue& theIngestionQueue;
     WatermarkReportPublisher* theWatermarkPublisher; // not owned; may be null
+    StoryWatermarkRegistry* theWatermarkRegistry;    // not owned; may be null
 };
 
 } // namespace chronolog

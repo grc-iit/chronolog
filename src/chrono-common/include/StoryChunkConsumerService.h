@@ -4,6 +4,8 @@
 #include <iostream>
 #include <margo.h>
 #include <thallium.hpp>
+
+#include <ChunkReceipt.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <cereal/archives/binary.hpp>
 
@@ -77,7 +79,9 @@ public:
                 delete story_chunk;
                 ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
                 LOG_ERROR("[StoryChunkConsumerService] Discarding the story chunk, responding {} to Keeper", ret);
-                request.respond(ret);
+                ChunkReceipt failure;
+                failure.bytes = ret;
+                request.respond(failure);
                 return;
             }
 #ifndef NDEBUG
@@ -93,7 +97,10 @@ public:
                       story_chunk->getEventCount(),
                       tl::thread::self_id());
 
-            request.respond(b.size());
+            // the player tracks no durability: no receipt
+            ChunkReceipt answer;
+            answer.bytes = b.size();
+            request.respond(answer);
             LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -104,7 +111,9 @@ public:
         {
             LOG_ERROR("[StoryChunkConsumerService] Failed to allocate memory for StoryChunk data, ThreadID={}",
                       tl::thread::self_id());
-            request.respond(20000000 + tl::thread::self_id());
+            ChunkReceipt failure;
+            failure.bytes = 20000000 + tl::thread::self_id();
+            request.respond(failure);
             return;
         }
     }

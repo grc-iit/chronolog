@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include <chronolog_types.h>
+#include <ChunkReceipt.h>
 #include <HotRangeResponse.h>
 #include <StoryChunk.h>
 
@@ -31,8 +32,10 @@ namespace chronolog
 // Single free condition, checked by one helper from every mutating path:
 //
 //   shipped (grapher acked) AND chunk.endTime <= known W (report received)
-//   AND tail released (no indexed events left) AND not sitting in the
-//   extraction queue (a re-send in flight must never dangle).
+//   AND the ack's receipt is settled (the grapher reported the chunk's events
+//   written; a chunk shipped without a receipt counts as settled) AND tail
+//   released (no indexed events left) AND not sitting in the extraction queue
+//   (a re-send in flight must never dangle).
 //
 // Stale watermark views cause only extra retention or redundant re-sends
 // (deduplicated by the grapher / on read), never data loss: E <= W.
@@ -111,7 +114,8 @@ public:
             {
                 StoryChunk* chunk = chunk_entry.first;
                 ChunkState& state = chunk_entry.second;
-                bool const durable = state.shipped && (chunk->getEndTime() <= story_entry.second.known_w);
+                bool const durable = state.shipped && receiptSettled(story_entry.second, state) &&
+                                     (chunk->getEndTime() <= story_entry.second.known_w);
                 if(!durable)
                 {
                     LOG_WARNING("[KeeperChunkRetentionStore] shutdown with unconfirmed StoryId={} chunk {}-{} "
@@ -204,6 +208,9 @@ public:
         chunk_it->second.shipped = true;
         chunk_it->second.in_queue = false;
         chunk_it->second.last_activity = std::chrono::steady_clock::now();
+        // the receipt of this delivery; a re-send replaces the earlier one
+        chunk_it->second.receipt_instance = chunk->getGrapherInstance();
+        chunk_it->second.receipt = chunk->getGrapherReceipt();
         maybeFreeChunk(story_it->second, chunk_it);
     }
 
@@ -236,22 +243,44 @@ public:
         maybeFreeChunk(story_it->second, chunk_it);
     }
 
-    // Watermark report: everything below w for this story is durable in the
-    // archive. Records max(known_w, w) and frees every chunk meeting the free
-    // condition. A regression (w below known_w) frees nothing and is logged.
+    // A watermark without receipt information: everything below w for this
+    // story is durable. Used where durability is local (an extraction chain
+    // with no grapher) and by tests; a chunk shipped under a grapher receipt
+    // still waits for applyReport to settle it.
     void confirmPersisted(StoryId const& story_id, uint64_t w)
+    {
+        StoryWatermarkReport report;
+        report.watermark = w;
+        applyReport(story_id, report);
+    }
+
+    // The grapher's report for one story: everything below the watermark is
+    // written, and so is every receipt of grapher_instance up to
+    // highest_receipt except the pending ones. Records the watermark (a
+    // regression frees nothing and is logged) and, if the report names a
+    // grapher instance, replaces the story's receipt view; then frees every
+    // chunk meeting the free condition. A receipt never goes back to pending,
+    // so a report that arrives late can delay a free but not cause a wrong one.
+    void applyReport(StoryId const& story_id, StoryWatermarkReport const& report)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
         StoryRetention& story = storyRetention[story_id];
-        if(w < story.known_w)
+        if(report.watermark < story.known_w)
         {
             LOG_WARNING("[KeeperChunkRetentionStore] StoryId={} watermark regression {} < known {} ignored",
                         story_id,
-                        w,
+                        report.watermark,
                         story.known_w);
             return;
         }
-        story.known_w = w;
+        story.known_w = report.watermark;
+        if(report.grapher_instance != 0)
+        {
+            story.report_instance = report.grapher_instance;
+            story.highest_receipt = report.highest_receipt;
+            story.pending_receipts.clear();
+            story.pending_receipts.insert(report.pending_receipts.begin(), report.pending_receipts.end());
+        }
         for(auto chunk_iter = story.chunks.begin(); chunk_iter != story.chunks.end();)
         {
             chunk_iter = maybeFreeChunk(story, chunk_iter);
@@ -282,14 +311,15 @@ public:
                 {
                     StoryChunk* chunk = chunk_entry.first;
                     ChunkState& state = chunk_entry.second;
-                    // covered-by-W only excuses a chunk that was acked: an
+                    // covered-by-W only excuses a chunk acked under a settled receipt: an
                     // unshipped chunk below W is the classic straggler (other
                     // keepers pushed W past its range while its own transfer
                     // kept failing) and must re-send — the grapher re-opens a
                     // past window for it (prepend path); without the re-send
                     // it would sit retained forever, unfreeable for lack of
                     // the ack.
-                    if(state.in_queue || (state.shipped && chunk->getEndTime() <= story_entry.second.known_w))
+                    if(state.in_queue || (state.shipped && receiptSettled(story_entry.second, state) &&
+                                          chunk->getEndTime() <= story_entry.second.known_w))
                     {
                         continue;
                     }
@@ -317,8 +347,8 @@ public:
     // Serve a replay range from every retained chunk (not only tail-indexed
     // events: a chunk evicted from the tail but still awaiting W holds events
     // that may exist nowhere else). Events from chunks the grapher has
-    // acknowledged go to events, the rest to unconfirmed_events: the archive
-    // cannot have those however far W moves. Both lists are in ascending
+    // acknowledged under a settled receipt go to events, the rest to
+    // unconfirmed_events: the archive may not have those however far W moves. Both lists are in ascending
     // EventSequence order and together capped at max_events (truncated if the
     // cap cut the range short). hot_floor is the oldest event tick this keeper
     // still retains for the story (UINT64_MAX if none) and known_W the
@@ -339,7 +369,8 @@ public:
         for(auto const& chunk_entry: story_it->second.chunks)
         {
             StoryChunk const* chunk = chunk_entry.first;
-            bool const acknowledged = chunk_entry.second.shipped;
+            bool const acknowledged =
+                    chunk_entry.second.shipped && receiptSettled(story_it->second, chunk_entry.second);
             if(!chunk->empty() && chunk->firstEventTime() < response.hot_floor)
             {
                 response.hot_floor = chunk->firstEventTime();
@@ -559,6 +590,9 @@ private:
         bool in_queue = false;
         std::size_t approx_bytes = 0;
         std::chrono::steady_clock::time_point last_activity;
+        // receipt the grapher returned for the last successful delivery (0: none)
+        uint64_t receipt_instance = 0;
+        uint64_t receipt = 0;
     };
 
     struct StoryRetention
@@ -569,6 +603,11 @@ private:
         std::unordered_map<StoryChunk*, ChunkState> chunks;
         // highest persisted watermark reported by the grapher for this story
         uint64_t known_w = 0;
+        // the latest report's receipt view: receipts of report_instance up to
+        // highest_receipt are written, except pending_receipts
+        uint64_t report_instance = 0;
+        uint64_t highest_receipt = 0;
+        std::set<uint64_t> pending_receipts;
     };
 
     static std::size_t approxChunkBytes(StoryChunk const* chunk)
@@ -581,16 +620,28 @@ private:
         return bytes;
     }
 
+    // A chunk shipped without a receipt (no grapher on the path) is settled by
+    // its ack. Otherwise the story's latest report has to come from the same
+    // grapher instance, reach the receipt, and not list it as pending.
+    static bool receiptSettled(StoryRetention const& story, ChunkState const& state)
+    {
+        return state.receipt == 0 ||
+               (state.receipt_instance == story.report_instance && state.receipt <= story.highest_receipt &&
+                story.pending_receipts.count(state.receipt) == 0);
+    }
+
     // THE free condition, called from every mutating path (caller holds
-    // tailMutex). Frees the chunk and erases its state when it is shipped,
-    // covered by the known watermark, tail-released, and not queued. Returns
-    // the iterator following the (possibly erased) entry.
+    // tailMutex). Frees the chunk and erases its state when it is shipped
+    // under a settled receipt, covered by the known watermark, tail-released,
+    // and not queued. Returns the iterator following the (possibly erased)
+    // entry.
     std::unordered_map<StoryChunk*, ChunkState>::iterator
     maybeFreeChunk(StoryRetention& story, std::unordered_map<StoryChunk*, ChunkState>::iterator chunk_iter)
     {
         StoryChunk* chunk = chunk_iter->first;
         ChunkState const& state = chunk_iter->second;
-        if(!state.shipped || state.in_queue || state.indexed_count != 0 || chunk->getEndTime() > story.known_w)
+        if(!state.shipped || !receiptSettled(story, state) || state.in_queue || state.indexed_count != 0 ||
+           chunk->getEndTime() > story.known_w)
         {
             return ++chunk_iter;
         }

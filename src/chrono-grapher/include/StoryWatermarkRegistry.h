@@ -1,13 +1,17 @@
 #ifndef CHRONOLOG_STORY_WATERMARK_REGISTRY_H
 #define CHRONOLOG_STORY_WATERMARK_REGISTRY_H
 
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <random>
 #include <set>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <ChunkReceipt.h>
+#include <ReceiptTracker.h>
 
 namespace chronolog
 {
@@ -24,7 +28,14 @@ namespace chronolog
 // W lives in memory only: a grapher restart resets it, keepers re-send
 // everything still retained, and read-side EventSequence dedup cleans the
 // resulting duplicates.
-class StoryWatermarkRegistry
+//
+// W covering a keeper's chunk does not prove the chunk was written: a chunk
+// merged after its range persisted lands in a reopened window or a salvage
+// file, neither of which moves W. So every arriving chunk gets a receipt,
+// numbered per story, which settles once the chunk is merged and every chunk
+// holding its events is written. Reports carry the unsettled receipts next to
+// W (see ChunkReceipt.h).
+class StoryWatermarkRegistry: public ReceiptTracker
 {
 public:
     // Anchor for contiguity. Called from GrapherDataStore::startStoryRecording.
@@ -159,18 +170,81 @@ public:
         return (iter == stories.end()) ? 0 : iter->second.w;
     }
 
-    // Stories whose W changed since the last snapshot, with their current W;
-    // clears the dirty set.
-    std::map<StoryId, uint64_t> snapshotDirty()
+    // Id of this grapher process: nonzero and drawn at random, so a keeper can
+    // tell a restarted grapher's receipts from the previous instance's.
+    uint64_t instanceId() const { return instance; }
+
+    // A chunk for the story arrived. Receipts are numbered from 1 per story and
+    // stay pending until the chunk is merged and every chunk holding its events
+    // is written.
+    uint64_t assignReceipt(StoryId const& story_id)
     {
         std::lock_guard<std::mutex> lock(mtx);
-        std::map<StoryId, uint64_t> snapshot;
+        StoryReceipts& story = receipts[story_id];
+        uint64_t const receipt = ++story.last_assigned;
+        story.pending.emplace(receipt, ReceiptState{});
+        return receipt;
+    }
+
+    // A timeline window or salvage chunk now holds events of the receipt.
+    void holdReceipt(StoryId const& story_id, uint64_t receipt) override
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        ReceiptState* state = findPending(story_id, receipt);
+        if(state != nullptr)
+        {
+            state->holders++;
+        }
+    }
+
+    // One chunk holding events of the receipt was written.
+    void releaseReceipt(StoryId const& story_id, uint64_t receipt) override
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        ReceiptState* state = findPending(story_id, receipt);
+        if(state != nullptr && state->holders > 0)
+        {
+            state->holders--;
+            settleIfWritten(story_id, receipt, *state);
+        }
+    }
+
+    // The receipt's chunk is merged and none of its events was discarded.
+    void receiptMerged(StoryId const& story_id, uint64_t receipt) override
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        ReceiptState* state = findPending(story_id, receipt);
+        if(state != nullptr)
+        {
+            state->merged = true;
+            settleIfWritten(story_id, receipt, *state);
+        }
+    }
+
+    // Reports for the stories that changed since the last snapshot; clears the
+    // dirty set.
+    std::map<StoryId, StoryWatermarkReport> snapshotDirty()
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::map<StoryId, StoryWatermarkReport> snapshot;
         for(auto const& story_id: dirty)
         {
             auto iter = stories.find(story_id);
             if(iter != stories.end())
             {
-                snapshot.emplace(story_id, iter->second.w);
+                StoryWatermarkReport report;
+                report.watermark = iter->second.w;
+                report.grapher_instance = instance;
+                auto receipts_iter = receipts.find(story_id);
+                if(receipts_iter != receipts.end())
+                {
+                    report.highest_receipt = receipts_iter->second.last_assigned;
+                    for(auto const& pending: receipts_iter->second.pending)
+                    {
+                        report.pending_receipts.push_back(pending.first);
+                    }
+                }
+                snapshot.emplace(story_id, std::move(report));
             }
         }
         dirty.clear();
@@ -208,8 +282,55 @@ private:
         }
     }
 
+    struct ReceiptState
+    {
+        // chunks holding events of the receipt that are not written yet
+        uint32_t holders = 0;
+        // every event of the receipt's chunk went into a holding chunk
+        bool merged = false;
+    };
+
+    // Kept apart from Entry: a chunk can arrive before its story registers,
+    // and an Entry created then would anchor W at 0.
+    struct StoryReceipts
+    {
+        uint64_t last_assigned = 0;
+        std::map<uint64_t, ReceiptState> pending;
+    };
+
+    ReceiptState* findPending(StoryId const& story_id, uint64_t receipt)
+    {
+        auto story_iter = receipts.find(story_id);
+        if(story_iter == receipts.end())
+        {
+            return nullptr;
+        }
+        auto receipt_iter = story_iter->second.pending.find(receipt);
+        return (receipt_iter == story_iter->second.pending.end()) ? nullptr : &receipt_iter->second;
+    }
+
+    void settleIfWritten(StoryId const& story_id, uint64_t receipt, ReceiptState const& state)
+    {
+        if(!state.merged || state.holders != 0)
+        {
+            return;
+        }
+        receipts[story_id].pending.erase(receipt);
+        dirty.insert(story_id);
+    }
+
+    static uint64_t drawInstanceId()
+    {
+        std::random_device device;
+        uint64_t const id = ((static_cast<uint64_t>(device()) << 32) | device()) ^
+                            static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        return (id == 0) ? 1 : id;
+    }
+
+    uint64_t const instance = drawInstanceId();
     mutable std::mutex mtx;
     std::map<StoryId, Entry> stories;
+    std::map<StoryId, StoryReceipts> receipts;
     std::set<StoryId> dirty;
 };
 

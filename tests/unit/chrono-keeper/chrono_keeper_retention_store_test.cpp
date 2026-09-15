@@ -624,6 +624,136 @@ TEST(KeeperChunkRetentionStore, FetchRangeFloorRisesAsChunksFree)
     EXPECT_EQ(response.known_W, 200u);
 }
 
+// ---- receipts: chunks the grapher merged late -------------------------------
+//
+// The grapher acknowledges a chunk when it arrives and decides only later where
+// its events go. A chunk that arrives after W already covers its range lands in
+// a reopened past window or a salvage file, and neither moves W. So the ack
+// carries a receipt, the grapher's report lists the receipts whose events are
+// not written yet, and a chunk frees only once W covers it and its receipt is
+// settled.
+
+static chl::StoryWatermarkReport
+watermarkReport(uint64_t w, uint64_t instance, uint64_t highest_receipt, std::vector<uint64_t> pending = {})
+{
+    chl::StoryWatermarkReport report;
+    report.watermark = w;
+    report.grapher_instance = instance;
+    report.highest_receipt = highest_receipt;
+    report.pending_receipts = std::move(pending);
+    return report;
+}
+
+// Ship the oldest queued chunk under the receipt a grapher returned for it, as
+// the RDMA extractor records it.
+static void shipWithReceipt(chl::StoryChunkExtractionQueue& q,
+                            chl::KeeperChunkRetentionStore& store,
+                            uint64_t grapher_instance,
+                            uint64_t receipt)
+{
+    chl::StoryChunk* chunk = q.ejectStoryChunk();
+    ASSERT_NE(chunk, nullptr);
+    chunk->setGrapherReceipt(grapher_instance, receipt);
+    store.markShipped(chunk);
+}
+
+constexpr uint64_t kGrapher = 9;
+
+TEST(KeeperChunkRetentionStore, ChunkAckedUnderACoveringWatermarkWaitsForItsReceipt)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(300, kGrapher, 4));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    shipWithReceipt(q, store, kGrapher, 5);
+
+    // acked and covered by W, but the grapher has not said its events are written
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5, {5}));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5));
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, ReceiptAboveTheReportedHighestIsNotSettled)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    shipWithReceipt(q, store, kGrapher, 5);
+
+    // built before the grapher assigned receipt 5, delivered after the ack
+    store.applyReport(sid, watermarkReport(300, kGrapher, 4));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, ReceiptFromAnotherGrapherInstanceIsNotSettled)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    shipWithReceipt(q, store, kGrapher, 5);
+
+    // the grapher restarted: its receipts start over and say nothing about ours
+    store.applyReport(sid, watermarkReport(300, kGrapher + 1, 50));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, ChunkShippedWithoutAReceiptFreesOnTheWatermarkAlone)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "local"));
+    // an extractor that does not talk to a grapher returns no receipt
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+
+    store.applyReport(sid, watermarkReport(300, kGrapher, 50));
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, RequeueStalledResendsAnUnsettledChunkUnderTheWatermark)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(300, kGrapher, 4));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    shipWithReceipt(q, store, kGrapher, 5);
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5, {5}));
+
+    // covered by W but never confirmed written: the stall re-send must not skip it
+    EXPECT_EQ(store.requeueStalled(std::chrono::seconds(0)), 1u);
+    EXPECT_EQ(q.size(), 1);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeCountsAnUnsettledChunkAsUnconfirmed)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(300, kGrapher, 4));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    shipWithReceipt(q, store, kGrapher, 5);
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5, {5}));
+
+    // below W, but not written: the archive cannot serve these yet
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(response.events.empty());
+    EXPECT_EQ(response.unconfirmed_events.size(), 3u);
+}
+
 TEST(KeeperChunkRetentionStore, FetchRangeSeparatesEventsTheGrapherHasNotAcknowledged)
 {
     ensureLogger();

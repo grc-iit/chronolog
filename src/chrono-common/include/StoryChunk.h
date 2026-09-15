@@ -2,6 +2,7 @@
 #define STORY_CHUNK_H
 
 #include <map>
+#include <set>
 #include <iostream>
 #include <sstream>
 #include <thallium/serialization/stl/string.hpp>
@@ -136,6 +137,27 @@ public:
 
     void setWatermarkExempt(bool exempt) { watermarkExempt = exempt; }
 
+    // Keeper side: the receipt the grapher returned for the last delivery of
+    // this chunk (see ChunkReceipt.h); 0 if no grapher acknowledged it.
+    // Transient, not serialized.
+    void setGrapherReceipt(uint64_t grapher_instance, uint64_t receipt)
+    {
+        grapherInstance = grapher_instance;
+        grapherReceipt = receipt;
+    }
+
+    uint64_t getGrapherInstance() const { return grapherInstance; }
+
+    uint64_t getGrapherReceipt() const { return grapherReceipt; }
+
+    // Grapher side: the receipts whose events this chunk holds, from the chunk
+    // a keeper delivered to the windows and salvage chunks they were merged
+    // into. Returns true if the receipt was not carried yet. Transient, not
+    // serialized.
+    bool carryReceipt(uint64_t receipt) { return carriedReceiptSet.insert(receipt).second; }
+
+    std::set<uint64_t> const& carriedReceipts() const { return carriedReceiptSet; }
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;
@@ -145,6 +167,9 @@ private:
     uint64_t revisionTime;
     std::map<EventSequence, LogEvent> logEvents;
     bool watermarkExempt = false;
+    uint64_t grapherInstance = 0;
+    uint64_t grapherReceipt = 0;
+    std::set<uint64_t> carriedReceiptSet;
 };
 
 } // namespace chronolog

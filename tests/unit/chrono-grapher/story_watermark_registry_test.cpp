@@ -216,8 +216,8 @@ TEST(StoryWatermarkRegistry, SnapshotDirtyReturnsOnlyChangedAndClears)
     auto initial = registry.snapshotDirty();
     // Registration marks the story dirty so the very first report goes out.
     ASSERT_EQ(initial.size(), 2u);
-    EXPECT_EQ(initial.at(kStory), T0);
-    EXPECT_EQ(initial.at(kOtherStory), T0);
+    EXPECT_EQ(initial.at(kStory).watermark, T0);
+    EXPECT_EQ(initial.at(kOtherStory).watermark, T0);
 
     // Nothing changed since the snapshot: dirty set was cleared.
     EXPECT_TRUE(registry.snapshotDirty().empty());
@@ -225,12 +225,91 @@ TEST(StoryWatermarkRegistry, SnapshotDirtyReturnsOnlyChangedAndClears)
     registry.advancePersisted(kStory, T0, T1);
     auto after_advance = registry.snapshotDirty();
     ASSERT_EQ(after_advance.size(), 1u);
-    EXPECT_EQ(after_advance.at(kStory), T1);
+    EXPECT_EQ(after_advance.at(kStory).watermark, T1);
     EXPECT_TRUE(registry.snapshotDirty().empty());
 
     // A parked (non-contiguous) interval does not change W: not dirty.
     registry.advancePersisted(kStory, T2, T3);
     EXPECT_TRUE(registry.snapshotDirty().empty());
+}
+
+// ---- receipts ---------------------------------------------------------------
+//
+// W covering a keeper's chunk does not prove the grapher wrote it: a chunk
+// merged after its range was persisted lands in a reopened window or a salvage
+// file, neither of which moves W. The registry numbers every arriving chunk and
+// reports which numbers are still unwritten; a keeper frees a chunk only once
+// its receipt is off that list.
+
+TEST(StoryWatermarkRegistry, ReceiptsAreNumberedPerStoryFromOne)
+{
+    chl::StoryWatermarkRegistry registry;
+    EXPECT_EQ(registry.assignReceipt(kStory), 1u);
+    EXPECT_EQ(registry.assignReceipt(kStory), 2u);
+    EXPECT_EQ(registry.assignReceipt(kOtherStory), 1u);
+    EXPECT_NE(registry.instanceId(), 0u);
+}
+
+TEST(StoryWatermarkRegistry, ReportListsTheReceiptsNotWrittenYet)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.snapshotDirty();
+    uint64_t const first = registry.assignReceipt(kStory);
+    uint64_t const second = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, first);
+    registry.receiptMerged(kStory, first);
+    registry.holdReceipt(kStory, second);
+    registry.receiptMerged(kStory, second);
+
+    // the first chunk's window is written: its receipt settles and a report is due
+    registry.releaseReceipt(kStory, first);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.size(), 1u);
+    chl::StoryWatermarkReport const& report = snapshot.at(kStory);
+    EXPECT_EQ(report.watermark, T0);
+    EXPECT_EQ(report.grapher_instance, registry.instanceId());
+    EXPECT_EQ(report.highest_receipt, second);
+    EXPECT_EQ(report.pending_receipts, (std::vector<uint64_t>{second}));
+}
+
+TEST(StoryWatermarkRegistry, ReceiptWhoseEventsSpanTwoWindowsSettlesWhenBothAreWritten)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.snapshotDirty();
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+
+    registry.releaseReceipt(kStory, receipt);
+    // one window still unwritten: nothing settled, nothing to report
+    EXPECT_TRUE(registry.snapshotDirty().empty());
+    registry.advancePersisted(kStory, T0, T1);
+    EXPECT_EQ(registry.snapshotDirty().at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+
+    registry.releaseReceipt(kStory, receipt);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_TRUE(snapshot.at(kStory).pending_receipts.empty());
+}
+
+TEST(StoryWatermarkRegistry, ReceiptNotMergedStaysPending)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.snapshotDirty();
+    // assigned but still in the ingestion queue, or merged with some events
+    // discarded: either way never marked merged
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.releaseReceipt(kStory, receipt);
+
+    registry.advancePersisted(kStory, T0, T1);
+    auto const report = registry.snapshotDirty().at(kStory);
+    EXPECT_EQ(report.highest_receipt, receipt);
+    EXPECT_EQ(report.pending_receipts, (std::vector<uint64_t>{receipt}));
 }
 
 TEST(StoryWatermarkRegistry, ConcurrentAdvanceConvergesToPrefixEnd)

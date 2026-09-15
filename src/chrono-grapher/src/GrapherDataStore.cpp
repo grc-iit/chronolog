@@ -104,6 +104,8 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
         // give the pipeline the extraction queue as the escape hatch for
         // events whose timeline window can no longer be re-opened
         (*pipeline_iter).second->attachExtractionQueue(&theExtractionQueue);
+        // receipts of the chunks merged into this pipeline settle in the registry
+        (*pipeline_iter).second->attachReceiptTracker(theWatermarkRegistry);
         if(theWatermarkRegistry != nullptr)
         {
             // adoption is a recovery path for chunks that already exist below

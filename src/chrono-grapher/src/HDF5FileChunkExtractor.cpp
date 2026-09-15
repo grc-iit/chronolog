@@ -234,6 +234,15 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                                                 story_chunk->getStartTime(),
                                                 story_chunk->getEndTime());
         }
+        // one write fewer for every keeper chunk whose events this chunk
+        // holds, salvage chunks included: W cannot confirm those
+        if(watermarkRegistry != nullptr)
+        {
+            for(uint64_t receipt: story_chunk->carriedReceipts())
+            {
+                watermarkRegistry->releaseReceipt(story_chunk->getStoryId(), receipt);
+            }
+        }
         return chl::CL_SUCCESS;
     }
 }

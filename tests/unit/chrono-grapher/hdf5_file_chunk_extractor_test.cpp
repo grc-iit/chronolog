@@ -148,3 +148,59 @@ TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteHoldsWAndRecordsTheFailure)
     registry.registerStory(kStory, T2, /*fresh_pipeline=*/true);
     EXPECT_EQ(registry.getPersisted(kStory), T0);
 }
+
+// ---- receipts ---------------------------------------------------------------
+//
+// A written chunk releases the receipts of the keeper chunks whose events it
+// holds, whether or not it moves W: a salvage chunk is exactly the case W
+// cannot confirm. A failed write releases nothing, so those keepers keep their
+// chunks and send them again.
+
+TEST_F(HDF5FileChunkExtractorWatermark, WrittenWindowReleasesItsReceipts)
+{
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    window.carryReceipt(receipt);
+
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).highest_receipt, receipt);
+    EXPECT_TRUE(snapshot.at(kStory).pending_receipts.empty());
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, WrittenSalvageChunkReleasesItsReceipts)
+{
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk salvage("C", "S", kStory, T0, T1);
+    salvage.setWatermarkExempt(true);
+    addEvent(salvage, T0 + 1, 0);
+    salvage.carryReceipt(receipt);
+
+    ASSERT_EQ(extractor.process_chunk(&salvage), chl::CL_SUCCESS);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_TRUE(snapshot.at(kStory).pending_receipts.empty());
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteKeepsItsReceiptsPending)
+{
+    extractor.reset((archiveDir / "missing").string());
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    window.carryReceipt(receipt);
+
+    EXPECT_NE(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    // registration in SetUp left the story dirty, so a report is due
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+}

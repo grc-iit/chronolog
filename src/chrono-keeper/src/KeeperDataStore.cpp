@@ -287,6 +287,12 @@ void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& 
     theTailStore.confirmPersisted(story_id, w);
 }
 
+void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id,
+                                                      chronolog::StoryWatermarkReport const& report)
+{
+    theTailStore.applyReport(story_id, report);
+}
+
 ////////////////////////
 
 void chronolog::KeeperDataStore::dataCollectionTask()
