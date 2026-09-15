@@ -141,9 +141,9 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     // The hot portion of the response comes straight from the story's keepers
     // (on-demand pull over the roster the visor delivered at story start),
-    // and replay splits at B = min over keepers of their hot floor; see
-    // HotRangeSplit.h for why that boundary is complete. No keepers at all ->
-    // archive-only (degraded, correct for persisted data).
+    // and splitHotRange decides where the archive portion ends; see
+    // HotRangeSplit.h. No keepers at all -> archive-only (degraded, correct
+    // for persisted data).
     constexpr uint64_t kHotFetchMaxEvents = 262144;
 
     std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
@@ -155,7 +155,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
         if(fetch_client == nullptr)
         {
-            continue; // unreachable keeper: drops out of the min, B only rises
+            continue; // unreachable keeper: the split is left to the keepers that answer
         }
         hot_responses.push_back(fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents));
         if(hot_responses.back().truncated)

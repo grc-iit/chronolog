@@ -534,10 +534,10 @@ TEST(KeeperChunkRetentionStore, FetchRangeSpansMultipleChunksAscending)
     store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
     store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B"));
     store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 5, 1, "C"));
+    for(int i = 0; i < 3; ++i) { ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); }
 
-    uint64_t hot_floor = 0;
-    bool truncated = true;
-    auto events = store.fetchRange(sid, 102, 302, 1000, hot_floor, truncated);
+    auto response = store.fetchRange(sid, 102, 302, 1000);
+    auto const& events = response.events;
     // [102, 302): A#2..A#4, all of B, C#0..C#1
     ASSERT_EQ(events.size(), 10u);
     EXPECT_EQ(events.front().time(), 102u);
@@ -545,8 +545,8 @@ TEST(KeeperChunkRetentionStore, FetchRangeSpansMultipleChunksAscending)
     EXPECT_EQ(events.back().time(), 301u);
     EXPECT_EQ(events.back().getRecord(), "C#1");
     for(std::size_t i = 1; i < events.size(); ++i) { EXPECT_LT(events[i - 1].time(), events[i].time()); }
-    EXPECT_EQ(hot_floor, 100u); // oldest retained tick
-    EXPECT_FALSE(truncated);
+    EXPECT_EQ(response.hot_floor, 100u); // oldest retained tick
+    EXPECT_FALSE(response.truncated);
 }
 
 TEST(KeeperChunkRetentionStore, FetchRangeEmptyStoreReportsMaxFloor)
@@ -555,12 +555,11 @@ TEST(KeeperChunkRetentionStore, FetchRangeEmptyStoreReportsMaxFloor)
     chl::StoryChunkExtractionQueue q;
     chl::KeeperChunkRetentionStore store(q, 100);
 
-    uint64_t hot_floor = 0;
-    bool truncated = true;
-    auto events = store.fetchRange(42, 0, UINT64_MAX, 1000, hot_floor, truncated);
-    EXPECT_TRUE(events.empty());
-    EXPECT_EQ(hot_floor, UINT64_MAX); // nothing retained: drops out of the min()
-    EXPECT_FALSE(truncated);
+    auto response = store.fetchRange(42, 0, UINT64_MAX, 1000);
+    EXPECT_TRUE(response.events.empty());
+    EXPECT_EQ(response.hot_floor, UINT64_MAX); // nothing retained
+    EXPECT_EQ(response.known_W, 0u);
+    EXPECT_FALSE(response.truncated);
 }
 
 TEST(KeeperChunkRetentionStore, FetchRangeHonorsMaxEventsAndFlagsTruncation)
@@ -569,15 +568,17 @@ TEST(KeeperChunkRetentionStore, FetchRangeHonorsMaxEventsAndFlagsTruncation)
     chl::StoryChunkExtractionQueue q;
     chl::KeeperChunkRetentionStore store(q, 100);
     chl::StoryId sid = 7;
-    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 10, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 3, 1, "B"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // A acknowledged, B not sent yet
 
-    uint64_t hot_floor = 0;
-    bool truncated = false;
-    auto events = store.fetchRange(sid, 100, 200, 4, hot_floor, truncated);
-    ASSERT_EQ(events.size(), 4u);
-    EXPECT_EQ(events.front().time(), 100u); // the cap cuts the tail, not the head
-    EXPECT_EQ(events.back().time(), 103u);
-    EXPECT_TRUE(truncated);
+    // the cap counts both lists together and cuts the newest events, not the oldest
+    auto response = store.fetchRange(sid, 100, 300, 4);
+    ASSERT_EQ(response.events.size(), 3u);
+    EXPECT_EQ(response.events.front().time(), 100u);
+    ASSERT_EQ(response.unconfirmed_events.size(), 1u);
+    EXPECT_EQ(response.unconfirmed_events.front().time(), 200u);
+    EXPECT_TRUE(response.truncated);
 }
 
 TEST(KeeperChunkRetentionStore, FetchRangeServesTailEvictedChunks)
@@ -590,17 +591,17 @@ TEST(KeeperChunkRetentionStore, FetchRangeServesTailEvictedChunks)
     store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 5, 1, "B")); // evicts A from the tail
 
     // A is out of the tail index but still retained (not shipped/covered):
-    // its events may exist nowhere else, so fetchRange must serve them and
-    // hot_floor must account for them.
+    // its events may exist nowhere else, so fetchRange must serve them (as
+    // unconfirmed, since neither chunk reached the grapher) and hot_floor
+    // must account for them.
     EXPECT_TRUE(store.getTailEvents(sid, {chl::EventSequence{100, 1, 0}}).empty());
 
-    uint64_t hot_floor = 0;
-    bool truncated = true;
-    auto events = store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
-    ASSERT_EQ(events.size(), 10u);
-    EXPECT_EQ(events.front().getRecord(), "A#0");
-    EXPECT_EQ(hot_floor, 100u);
-    EXPECT_FALSE(truncated);
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(response.events.empty());
+    ASSERT_EQ(response.unconfirmed_events.size(), 10u);
+    EXPECT_EQ(response.unconfirmed_events.front().getRecord(), "A#0");
+    EXPECT_EQ(response.hot_floor, 100u);
+    EXPECT_FALSE(response.truncated);
 }
 
 TEST(KeeperChunkRetentionStore, FetchRangeFloorRisesAsChunksFree)
@@ -614,15 +615,35 @@ TEST(KeeperChunkRetentionStore, FetchRangeFloorRisesAsChunksFree)
     ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // A shipped
     ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr); // B shipped
 
-    uint64_t hot_floor = 0;
-    bool truncated = false;
-    store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
-    EXPECT_EQ(hot_floor, 100u);
+    EXPECT_EQ(store.fetchRange(sid, 0, 1000, 1000).hot_floor, 100u);
 
     store.confirmPersisted(sid, 200); // frees A only
-    auto events = store.fetchRange(sid, 0, 1000, 1000, hot_floor, truncated);
-    ASSERT_EQ(events.size(), 5u);
-    EXPECT_EQ(hot_floor, 200u); // floor rises with the free: below it is durable
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    ASSERT_EQ(response.events.size(), 5u);
+    EXPECT_EQ(response.hot_floor, 200u); // floor rises with the free
+    EXPECT_EQ(response.known_W, 200u);
+}
+
+TEST(KeeperChunkRetentionStore, FetchRangeSeparatesEventsTheGrapherHasNotAcknowledged)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 2, 1, "B"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);  // A acknowledged
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/false), nullptr); // B's send failed
+
+    // B never reached the grapher, so the archive cannot have it however far
+    // the watermark moves: the player has to take its events from this keeper
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    ASSERT_EQ(response.events.size(), 3u);
+    EXPECT_EQ(response.events.front().getRecord(), "A#0");
+    ASSERT_EQ(response.unconfirmed_events.size(), 2u);
+    EXPECT_EQ(response.unconfirmed_events.front().getRecord(), "B#0");
+    EXPECT_EQ(response.unconfirmed_events.back().getRecord(), "B#1");
+    EXPECT_EQ(response.hot_floor, 100u);
 }
 
 // ---- concurrency: seal, drain, watermark, re-send and reads at once --------
@@ -750,9 +771,8 @@ TEST(KeeperChunkRetentionStore, ConcurrentSealDrainConfirmResendAndReads)
                         {
                             checkEvent(event);
                         }
-                        uint64_t hot_floor = 0;
-                        bool truncated = false;
-                        auto events = store.fetchRange(sid, 0, UINT64_MAX, 100000, hot_floor, truncated);
+                        auto const response = store.fetchRange(sid, 0, UINT64_MAX, 100000);
+                        auto const& events = response.events;
                         for(std::size_t i = 0; i < events.size(); ++i)
                         {
                             checkEvent(events[i]);
@@ -761,7 +781,7 @@ TEST(KeeperChunkRetentionStore, ConcurrentSealDrainConfirmResendAndReads)
                                 read_errors++;
                             }
                         }
-                        if(!events.empty() && hot_floor > events.front().time())
+                        if(!events.empty() && response.hot_floor > events.front().time())
                         {
                             read_errors++;
                         }
