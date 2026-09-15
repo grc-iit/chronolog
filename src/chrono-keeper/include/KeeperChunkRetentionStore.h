@@ -258,30 +258,31 @@ public:
 
     // The grapher's report for one story: everything below the watermark is
     // written, and so is every receipt of grapher_instance up to
-    // highest_receipt except the pending ones. Records the watermark (a
-    // regression frees nothing and is logged) and, if the report names a
-    // grapher instance, replaces the story's receipt view; then frees every
-    // chunk meeting the free condition. A receipt never goes back to pending,
-    // so a report that arrives late can delay a free but not cause a wrong one.
+    // highest_receipt except the pending ones. Keeps the higher of the known
+    // and the reported watermark, folds the receipts into the story's receipt
+    // view (see mergeReceipts), then frees every chunk meeting the free
+    // condition. A lower watermark comes from a report that arrived late, or
+    // from a restarted grapher that counts W from a new start; its receipts
+    // still count, or a chunk re-sent to a restarted grapher could not settle
+    // until the new W passed the old one.
     void applyReport(StoryId const& story_id, StoryWatermarkReport const& report)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
         StoryRetention& story = storyRetention[story_id];
         if(report.watermark < story.known_w)
         {
-            LOG_WARNING("[KeeperChunkRetentionStore] StoryId={} watermark regression {} < known {} ignored",
-                        story_id,
-                        report.watermark,
-                        story.known_w);
-            return;
+            LOG_DEBUG("[KeeperChunkRetentionStore] StoryId={} reported watermark {} below known {}; keeping the known",
+                      story_id,
+                      report.watermark,
+                      story.known_w);
         }
-        story.known_w = report.watermark;
+        else
+        {
+            story.known_w = report.watermark;
+        }
         if(report.grapher_instance != 0)
         {
-            story.report_instance = report.grapher_instance;
-            story.highest_receipt = report.highest_receipt;
-            story.pending_receipts.clear();
-            story.pending_receipts.insert(report.pending_receipts.begin(), report.pending_receipts.end());
+            mergeReceipts(story, report);
         }
         for(auto chunk_iter = story.chunks.begin(); chunk_iter != story.chunks.end();)
         {
@@ -648,8 +649,43 @@ private:
         return bytes;
     }
 
+    // A grapher never moves a receipt back to pending or reuses its number, so
+    // reports from one grapher instance combine in any order: a receipt is
+    // written once any report says so. A report from another instance replaces
+    // the view, since that instance numbers its receipts afresh.
+    static void mergeReceipts(StoryRetention& story, StoryWatermarkReport const& report)
+    {
+        std::set<uint64_t> const reported_pending(report.pending_receipts.begin(), report.pending_receipts.end());
+        if(report.grapher_instance != story.report_instance)
+        {
+            story.report_instance = report.grapher_instance;
+            story.highest_receipt = report.highest_receipt;
+            story.pending_receipts = reported_pending;
+            return;
+        }
+        std::set<uint64_t> pending;
+        for(uint64_t const receipt: story.pending_receipts)
+        {
+            // pending in the view, unless the report covers it and does not list it
+            if(receipt > report.highest_receipt || reported_pending.count(receipt) != 0)
+            {
+                pending.insert(receipt);
+            }
+        }
+        for(uint64_t const receipt: reported_pending)
+        {
+            // pending in the report, unless the view already covers it as written
+            if(receipt > story.highest_receipt)
+            {
+                pending.insert(receipt);
+            }
+        }
+        story.highest_receipt = std::max(story.highest_receipt, report.highest_receipt);
+        story.pending_receipts = std::move(pending);
+    }
+
     // A chunk shipped without a receipt (no grapher on the path) is settled by
-    // its ack. Otherwise the story's latest report has to come from the same
+    // its ack. Otherwise the story's receipt view has to come from the same
     // grapher instance, reach the receipt, and not list it as pending.
     static bool receiptSettled(StoryRetention const& story, ChunkState const& state)
     {

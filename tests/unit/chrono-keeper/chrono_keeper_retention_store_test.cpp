@@ -707,6 +707,49 @@ TEST(KeeperChunkRetentionStore, ReceiptFromAnotherGrapherInstanceIsNotSettled)
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
 }
 
+TEST(KeeperChunkRetentionStore, RestartedGrapherSettlesAResentChunkBelowTheKnownWatermark)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "resent"));
+    shipWithReceipt(q, store, kGrapher, 5);
+    store.applyReport(sid, watermarkReport(500, kGrapher, 5, {5}));
+    ASSERT_EQ(store.retainedChunkCount(sid), 1u);
+
+    // the grapher restarts before writing it, and the keeper sends it again
+    ASSERT_EQ(store.requeueStalled(std::chrono::seconds(0)), 1u);
+    shipWithReceipt(q, store, kGrapher + 1, 1);
+
+    // the new instance's W starts below the one the keeper knows; its first
+    // report has receipt 1 pending, a later one has it written
+    store.applyReport(sid, watermarkReport(250, kGrapher + 1, 1, {1}));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    store.applyReport(sid, watermarkReport(260, kGrapher + 1, 1));
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    EXPECT_EQ(store.knownPersisted(sid), 500u);
+}
+
+TEST(KeeperChunkRetentionStore, DelayedReportFromTheSameGrapherDoesNotUndoANewerOne)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 10, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 5);
+    store.applyReport(sid, watermarkReport(500, kGrapher, 5)); // A settled; the tail still holds it
+
+    // sent before the report above, with receipt 5 still pending
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5, {5}));
+    // and one sent before receipt 5 was assigned
+    store.applyReport(sid, watermarkReport(200, kGrapher, 4));
+
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 10, 1, "B")); // A leaves the tail
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);                            // A freed, B queued
+}
+
 TEST(KeeperChunkRetentionStore, ChunkShippedWithoutAReceiptFreesOnTheWatermarkAlone)
 {
     ensureLogger();
