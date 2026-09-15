@@ -159,3 +159,29 @@ gtest_discover_tests(archive_client_id_test TEST_PREFIX "Unit_ChronoPlayer_" PRO
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(archive_client_id_test DESTINATION tests)
 endif()
+
+#------------------------------------------------------------------------------
+
+# ReplayEventMerge (GTest) — merging archive and keeper events into one replay
+# response; header-only, no network needed
+add_executable(replay_event_merge_test
+    chrono_player_replay_event_merge_test.cpp
+)
+
+target_include_directories(replay_event_merge_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(replay_event_merge_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    thallium
+)
+
+set_target_properties(replay_event_merge_test PROPERTIES OUTPUT_NAME chronolog-test-player-replay-event-merge)
+gtest_discover_tests(replay_event_merge_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(replay_event_merge_test DESTINATION tests)
+endif()
