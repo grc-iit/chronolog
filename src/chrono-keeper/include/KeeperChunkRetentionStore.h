@@ -114,17 +114,27 @@ public:
     // grapher has confirmed every chunk written or timeout passes. A send that
     // fails after one round is picked up by the next. Returns whether every
     // chunk was confirmed; the destructor logs and frees the rest.
-    bool waitUntilDurable(std::chrono::milliseconds timeout, std::chrono::milliseconds poll_interval)
+    //
+    // resend_age is the stall age the running keeper uses
+    // (watermark_resend_timeout_secs), NOT the poll interval: an acked chunk
+    // waits on the receipt of its last delivery, and the grapher can only
+    // settle one a whole write window later. Sending such a chunk again throws
+    // that receipt away for a younger one that has to settle from scratch, so
+    // re-sending at the poll cadence starves every wait -- nothing is ever
+    // confirmed, and each round costs the grapher another write.
+    bool waitUntilDurable(std::chrono::milliseconds timeout,
+                          std::chrono::milliseconds poll_interval,
+                          std::chrono::seconds resend_age)
     {
         auto const deadline = std::chrono::steady_clock::now() + timeout;
         while(true)
         {
             flushUnshippedChunks();
-            // and send again what was acked but never confirmed: the grapher's
-            // write may have failed, and its receipt then never settles. The
-            // stall timer that normally does this runs on the data-collection
-            // loop, which has already stopped.
-            requeueStalled(std::chrono::duration_cast<std::chrono::seconds>(poll_interval));
+            // and send again what was acked but never confirmed for longer than
+            // the stall age: the grapher's write may have failed, and its
+            // receipt then never settles. The stall timer that normally does
+            // this runs on the data-collection loop, which has already stopped.
+            requeueStalled(resend_age);
             if(unconfirmedChunkCount() == 0)
             {
                 return true;

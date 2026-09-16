@@ -36,7 +36,9 @@ outage therefore lost every chunk sent during it, with nothing recording the los
    - none of the chunk's events is still in the tail index that `playback` reads from;
    - the chunk is not waiting to be sent again.
 4. **Re-send.** A chunk whose send failed, or that is still unconfirmed after
-   `watermark_resend_timeout_secs`, is sent again.
+   `watermark_resend_timeout_secs`, is sent again. That wait matters: each delivery gets its own
+   receipt, and the grapher can only confirm one once it has written the window holding it, so a
+   chunk sent again sooner loses the receipt it was waiting on and starts over.
 
 Events leave a story's tail index when the story holds more than `tail_capacity` events there, or
 when the story retires on the keeper: no client has it acquired and its acceptance window has
@@ -90,7 +92,7 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 | Grapher paused or unreachable for a while | Keepers keep the chunks they cannot deliver, warn once memory passes `retention_cap_mb`, and send them again when the grapher is back. No events are lost; a chunk that reached the grapher before the outage can be written twice, and a replay returns its events once. |
 | Grapher restarts | The watermark and the receipts live in grapher memory and start over. Keepers send again the chunks they still hold, since the new process's reports confirm none of the old receipts; events both processes wrote are on disk twice and a replay returns them once. |
 | An HDF5 write fails | The story's watermark stops advancing, and the receipts of the chunks in that write stay unconfirmed. Keepers keep the affected chunks and send them again until a write succeeds. |
-| Keeper stopped with SIGTERM | The keeper stops accepting events, seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. It logs any chunk still unconfirmed and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
+| Keeper stopped with SIGTERM | The keeper stops accepting events, seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. A chunk the grapher did acknowledge waits for its receipt on the same `watermark_resend_timeout_secs` timer as a running keeper. It logs any chunk still unconfirmed and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
 | Keeper crashes | Chunks that keeper held and the grapher had not yet written are lost. Chunks are not replicated across keepers. |
 | Story destroyed before its last chunks are written | Nothing ever confirms those chunks, so the keepers hold them until the keeper restarts. |
 

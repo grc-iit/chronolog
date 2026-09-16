@@ -404,7 +404,9 @@ int main(int argc, char** argv)
     // service stays up until it ends. ~KeeperChunkRetentionStore logs and frees
     // whatever is still unconfirmed.
     const int shutdown_confirm_timeout_secs = KEEPER_CONF.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
-    if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs), std::chrono::seconds(1)))
+    if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs),
+                                      std::chrono::seconds(1),
+                                      std::chrono::seconds(KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs)))
     {
         LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
                     "shutdown_confirm_timeout_secs={}",
