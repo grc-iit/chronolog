@@ -168,6 +168,27 @@ TEST_F(KeeperHotFetch, LiveKeeperReturnsItsRetainedRange)
     EXPECT_EQ(response.hot_floor, 150u);
 }
 
+TEST_F(KeeperHotFetch, FetchesIssuedTogetherCostOneDeadlineNotTwo)
+{
+    // the player asks every keeper of a story; issuing the fetches before
+    // waiting on any of them keeps one silent keeper from adding its deadline
+    // to every other keeper's
+    hungClient = clientOf(kHungKeeperProvider);
+    ASSERT_NE(hungClient, nullptr);
+
+    auto const started = std::chrono::steady_clock::now();
+    tl::async_response first = hungClient->fetchRangeAsync(kStory, 0, 1000, 100);
+    tl::async_response second = hungClient->fetchRangeAsync(kStory, 0, 1000, 100);
+    chl::HotRangeResponse first_response = hungClient->waitForRange(first);
+    chl::HotRangeResponse second_response = hungClient->waitForRange(second);
+    auto const elapsed = std::chrono::steady_clock::now() - started;
+
+    EXPECT_FALSE(first_response.answered);
+    EXPECT_FALSE(second_response.answered);
+    EXPECT_GE(elapsed, kDeadline);
+    EXPECT_LT(elapsed, 2 * kDeadline);
+}
+
 TEST_F(KeeperHotFetch, HungKeeperCostsTheDeadlineAndDropsOutOfTheMin)
 {
     hungClient = clientOf(kHungKeeperProvider);

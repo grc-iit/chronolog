@@ -148,10 +148,13 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
 
-    std::vector<chl::HotRangeResponse> hot_responses;
-    hot_responses.reserve(story_keepers.size());
     bool all_keepers_answered = true;
     bool any_truncated = false;
+
+    // Issue every keeper's fetch before waiting on any of them: a keeper that
+    // never answers then costs this query one deadline in total, not one each.
+    std::vector<std::pair<chl::KeeperHotFetchClient*, tl::async_response>> pending_fetches;
+    pending_fetches.reserve(story_keepers.size());
     for(auto const& keeper_service_id: story_keepers)
     {
         chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
@@ -162,7 +165,28 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
             all_keepers_answered = false;
             continue;
         }
-        hot_responses.push_back(fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents));
+        try
+        {
+            pending_fetches.emplace_back(
+                    fetch_client,
+                    fetch_client->fetchRangeAsync(story_id, start_time, end_time, kHotFetchMaxEvents));
+        }
+        catch(tl::exception const& ex)
+        {
+            all_keepers_answered = false;
+            LOG_WARNING("[PlaybackService] query {} story {} could not issue a hot fetch to {}: {}",
+                        query_id,
+                        story_id,
+                        chl::to_string(keeper_service_id),
+                        ex.what());
+        }
+    }
+
+    std::vector<chl::HotRangeResponse> hot_responses;
+    hot_responses.reserve(pending_fetches.size());
+    for(auto& pending: pending_fetches)
+    {
+        hot_responses.push_back(pending.first->waitForRange(pending.second));
         all_keepers_answered = all_keepers_answered && hot_responses.back().answered;
         any_truncated = any_truncated || hot_responses.back().truncated;
         if(hot_responses.back().truncated)
@@ -170,7 +194,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
             LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
                         query_id,
                         story_id,
-                        chl::to_string(keeper_service_id),
+                        chl::to_string(pending.first->getKeeperServiceId()),
                         kHotFetchMaxEvents);
         }
     }

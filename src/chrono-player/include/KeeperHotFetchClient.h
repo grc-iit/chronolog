@@ -72,12 +72,51 @@ public:
                         to_string(keeperServiceId),
                         ex.what());
         }
+        return unansweredResponse();
+    }
+
+    // Issue the same fetch without waiting for it. The player asks every keeper
+    // of a story, so issuing them all before waiting on any keeps one silent
+    // keeper from adding its deadline to each of the others. The handle is
+    // waited on with waitForRange.
+    tl::async_response
+    fetchRangeAsync(StoryId const& story_id, uint64_t start_time, uint64_t end_time, uint64_t max_events)
+    {
+        return story_range_fetch.on(service_ph).timed_async(fetchDeadline, story_id, start_time, end_time, max_events);
+    }
+
+    // Wait on a handle from fetchRangeAsync, with the same failure contract as
+    // fetchRange: any failure is an empty response with answered = false.
+    HotRangeResponse waitForRange(tl::async_response& pending)
+    {
+        try
+        {
+            HotRangeResponse response = pending.wait();
+            return response;
+        }
+        catch(tl::timeout const&)
+        {
+            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} timed out after {} ms",
+                        to_string(keeperServiceId),
+                        fetchDeadline.count());
+        }
+        catch(tl::exception const& ex)
+        {
+            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} failed: {}",
+                        to_string(keeperServiceId),
+                        ex.what());
+        }
+        return unansweredResponse();
+    }
+
+    ServiceId const& getKeeperServiceId() const { return keeperServiceId; }
+
+    static HotRangeResponse unansweredResponse()
+    {
         HotRangeResponse unanswered;
         unanswered.answered = false;
         return unanswered;
     }
-
-    ServiceId const& getKeeperServiceId() const { return keeperServiceId; }
 
     ~KeeperHotFetchClient()
     {
