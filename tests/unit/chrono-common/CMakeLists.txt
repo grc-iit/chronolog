@@ -30,6 +30,28 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_chunk_test DESTINATION tests)
 endif()
 
+# DataStoreConf (GTest): the DataStoreInternals knobs and their range checks
+add_executable(data_store_conf_test
+    chrono_common_data_store_conf_test.cpp
+)
+
+target_include_directories(data_store_conf_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(data_store_conf_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(data_store_conf_test PROPERTIES OUTPUT_NAME chronolog-test-common-data-store-conf)
+gtest_discover_tests(data_store_conf_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(data_store_conf_test DESTINATION tests)
+endif()
+
 # StoryPipeline (GTest)
 add_executable(story_pipeline_test
     chrono_common_story_pipeline_test.cpp

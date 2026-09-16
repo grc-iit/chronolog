@@ -319,7 +319,17 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            retention_cap_mb = json_object_get_int(val);
+            // the keeper widens this to std::size_t and multiplies it by 1 MB, so a
+            // negative value becomes a cap no amount of retained memory can cross
+            // and the warning never fires
+            int const parsed_cap_mb = json_object_get_int(val);
+            if(parsed_cap_mb < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': must not be negative, got " << parsed_cap_mb
+                          << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            retention_cap_mb = parsed_cap_mb;
         }
         else if(strcmp(key, "watermark_resend_timeout_secs") == 0)
         {
@@ -328,7 +338,16 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            watermark_resend_timeout_secs = json_object_get_int(val);
+            // the keeper compares an age against this as seconds: a negative value
+            // makes every chunk look too young to send again, so nothing ever is
+            int const parsed_resend_secs = json_object_get_int(val);
+            if(parsed_resend_secs < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': must not be negative, got "
+                          << parsed_resend_secs << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_resend_timeout_secs = parsed_resend_secs;
         }
         else if(strcmp(key, "archive_visibility_delay_secs") == 0)
         {
@@ -369,7 +388,17 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'watermark_report_interval_secs': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            watermark_report_interval_secs = json_object_get_int(val);
+            // the grapher widens this to uint32_t seconds: a negative value becomes
+            // an interval of about 136 years, so no keeper ever hears a watermark
+            // and every keeper retains every chunk it has sealed
+            int const parsed_report_secs = json_object_get_int(val);
+            if(parsed_report_secs < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_report_interval_secs': must not be negative, got "
+                          << parsed_report_secs << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_report_interval_secs = parsed_report_secs;
         }
         else
         {
