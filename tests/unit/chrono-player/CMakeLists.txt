@@ -253,6 +253,63 @@ endif()
 
 #------------------------------------------------------------------------------
 
+# Player ArchiveReaders conf (GTest): the archive knobs and their range checks
+add_executable(player_reader_conf_test
+    chrono_player_reader_conf_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ChronoPlayerConfiguration.cpp
+)
+
+target_include_directories(player_reader_conf_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(player_reader_conf_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(player_reader_conf_test PROPERTIES OUTPUT_NAME chronolog-test-player-reader-conf)
+gtest_discover_tests(player_reader_conf_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(player_reader_conf_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Archive probe (GTest): a replay finds a file written since the last directory
+# listing by looking its name up
+add_executable(archive_probe_test
+    chrono_player_archive_probe_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_probe_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_probe_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_probe_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_probe_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-probe)
+gtest_discover_tests(archive_probe_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_probe_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
 # Pipeline retirement (GTest): a stopped story keeps its player pipeline for the
 # whole inactive delay
 add_executable(player_pipeline_retirement_test

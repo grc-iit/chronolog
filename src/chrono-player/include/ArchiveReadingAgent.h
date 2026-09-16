@@ -41,10 +41,16 @@ class ArchiveReadingAgent
 
 
 public:
-    ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue, std::string const& archive_path)
+    ArchiveReadingAgent(ArchiveReadingRequestQueue& request_queue,
+                        std::string const& archive_path,
+                        int archive_scan_interval_secs = 5,
+                        int archive_window_secs = 30)
         : theReadingRequestQueue(request_queue)
         , agentState(UNKNOWN)
-        , theReadingAgent(archive_path, true) // Default to polling mode
+        , theReadingAgent(archive_path,
+                          true, // Default to polling mode
+                          std::chrono::milliseconds(archive_scan_interval_secs * 1000),
+                          static_cast<uint64_t>(archive_window_secs))
     {}
 
     ~ArchiveReadingAgent();

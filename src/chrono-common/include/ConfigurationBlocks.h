@@ -254,12 +254,15 @@ struct DataStoreConf
     int watermark_resend_timeout_secs = 300;
     // After the grapher reports a chunk written, the keeper keeps the chunk
     // and serves its events as unconfirmed for this long, so a replay does not
-    // depend on the player already seeing the new archive file. Cover the
-    // player's archive rescan interval (5 s) plus how long the shared file
-    // system can take to list a new file on another node (NFS caches directory
-    // attributes for up to 60 s by default). 0 frees on the report.
-    // Keeper-only knob.
-    int archive_visibility_delay_secs = 70;
+    // depend on the player already seeing the new archive file. A replay now
+    // looks a missing window's file up by name rather than waiting for the
+    // player's next directory listing (ArchiveReaders.archive_window_secs), so
+    // this only has to cover the write-to-report round trip. On NFS mounted
+    // with the default lookupcache, a name a player asked for just before the
+    // file appeared can stay negative for acdirmin (30 s by default): mount
+    // with lookupcache=positive, or raise this to cover it. 0 frees on the
+    // report. Keeper-only knob.
+    int archive_visibility_delay_secs = 10;
     // How long a keeper stopped with SIGTERM waits for the grapher to confirm
     // every chunk it holds written, sending unacked chunks again meanwhile.
     // Cover the grapher's story_chunk_duration + acceptance_window (the
@@ -299,12 +302,23 @@ struct DataStoreConf
 struct ExtractorReaderConf
 {
     std::string story_files_dir;
+    // How often the player lists the archive directory to find new files.
+    // Player-only knob.
+    int archive_scan_interval_secs = 5;
+    // The grapher's story_chunk_duration_secs: the time range of one archive
+    // file, and so the step between the names a replay probes for files the
+    // last listing did not show. Set it to the grapher's value. 0 turns
+    // probing off and leaves a replay with whatever the listing has.
+    // Player-only knob.
+    int archive_window_secs = 30;
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
+        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
+               " archive_scan_interval_secs: " + std::to_string(archive_scan_interval_secs) +
+               " archive_window_secs: " + std::to_string(archive_window_secs) + "]";
     }
 };
 

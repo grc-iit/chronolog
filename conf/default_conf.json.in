@@ -92,7 +92,7 @@
       "tail_capacity": 65536,
       "retention_cap_mb": 512,
       "watermark_resend_timeout_secs": 300,
-      "archive_visibility_delay_secs": 70,
+      "archive_visibility_delay_secs": 10,
       "shutdown_confirm_timeout_secs": 150,
       "live_tail_read": false
     },
@@ -222,7 +222,9 @@
       "inactive_story_delay_secs": 300
     },
     "ArchiveReaders": {
-      "story_files_dir": "/tmp"
+      "story_files_dir": "/tmp",
+      "archive_scan_interval_secs": 5,
+      "archive_window_secs": 30
     }
 }
 }

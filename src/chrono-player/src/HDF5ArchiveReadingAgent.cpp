@@ -278,6 +278,47 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
     }
 }
 
+void chronolog::HDF5ArchiveReadingAgent::probeForRecentFiles(ChronicleName const& chronicleName,
+                                                             StoryName const& storyName,
+                                                             uint64_t startTime,
+                                                             uint64_t endTime)
+{
+    if(archive_window_secs_ == 0 || endTime == 0)
+    {
+        return;
+    }
+    uint64_t const window_ns = archive_window_secs_ * 1000000000ULL;
+
+    uint64_t newest_listed = 0;
+    {
+        std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
+        auto story_iter = start_time_file_name_map_.find(std::make_pair(chronicleName, storyName));
+        if(story_iter != start_time_file_name_map_.end() && !story_iter->second.empty())
+        {
+            newest_listed = story_iter->second.rbegin()->first;
+        }
+    }
+
+    // never more than kProbeWindows lookups: a file the listing has not shown
+    // yet was written recently, so it sits at the end of the range
+    uint64_t probe_from = (newest_listed == 0) ? startTime : newest_listed + window_ns;
+    uint64_t const horizon = (endTime > kProbeWindows * window_ns) ? endTime - kProbeWindows * window_ns : 0;
+    probe_from = std::max(probe_from, horizon);
+    probe_from -= probe_from % window_ns; // file names carry a window start
+
+    for(uint64_t candidate = probe_from; candidate < endTime; candidate += window_ns)
+    {
+        std::string const candidate_file = archive_path_ + "/" + chronicleName + "." + storyName + "." +
+                                           std::to_string(candidate / 1000000000ULL) + ".vlen.h5";
+        std::error_code ec;
+        if(fs::exists(candidate_file, ec) && !ec)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Probe found {} ahead of the directory listing", candidate_file);
+            addFileToStartTimeFileNameMap(candidate_file);
+        }
+    }
+}
+
 int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& chronicleName,
                                                           const StoryName& storyName,
                                                           uint64_t startTime,
@@ -285,6 +326,10 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                                                           std::list<StoryChunk*>& listOfChunks,
                                                           bool readAuxFiles)
 {
+    // before consulting the map, since a file written since the last listing
+    // would otherwise be missed (this takes the map mutex itself)
+    probeForRecentFiles(chronicleName, storyName, startTime, endTime);
+
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
     // return the list of StoryChunks
@@ -566,7 +611,15 @@ int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
 
     while(!shutdown_requested_.load())
     {
-        std::this_thread::sleep_for(monitoring_interval_);
+        // waited out in slices: shutdown() joins this thread, and the scan
+        // interval is configurable, so sleeping it in one go would hold a
+        // stopping player for as long as that interval
+        auto const wake_at = std::chrono::steady_clock::now() + monitoring_interval_;
+        while(!shutdown_requested_.load() && std::chrono::steady_clock::now() < wake_at)
+        {
+            std::this_thread::sleep_for(
+                    std::min<std::chrono::milliseconds>(monitoring_interval_, std::chrono::milliseconds(100)));
+        }
 
         if(shutdown_requested_.load())
         {

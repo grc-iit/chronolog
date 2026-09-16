@@ -175,6 +175,41 @@ int chronolog::PlayerConfiguration::parseJsonConf(json_object* json_conf)
                     }
                     READER_CONF.story_files_dir = json_object_get_string(val);
                 }
+                else if(strcmp(key, "archive_scan_interval_secs") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'archive_scan_interval_secs': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    int const parsed_scan_secs = json_object_get_int(val);
+                    if(parsed_scan_secs <= 0)
+                    {
+                        std::cerr
+                                << "[PlayerConfiguration] Invalid 'archive_scan_interval_secs': must be positive, got "
+                                << parsed_scan_secs << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    READER_CONF.archive_scan_interval_secs = parsed_scan_secs;
+                }
+                else if(strcmp(key, "archive_window_secs") == 0)
+                {
+                    if(!json_object_is_type(val, json_type_int))
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'archive_window_secs': expected integer"
+                                  << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    int const parsed_window_secs = json_object_get_int(val);
+                    if(parsed_window_secs < 0)
+                    {
+                        std::cerr << "[PlayerConfiguration] Invalid 'archive_window_secs': must not be negative, got "
+                                  << parsed_window_secs << std::endl;
+                        return chl::CL_ERR_INVALID_CONF;
+                    }
+                    READER_CONF.archive_window_secs = parsed_window_secs;
+                }
                 else
                 {
                     std::cerr << "[ConfigurationManager] [chrono_player] Unknown ArchiveReaders configuration " << key
