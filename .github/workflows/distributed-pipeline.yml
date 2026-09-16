@@ -832,19 +832,34 @@ jobs:
 
             EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_keeper)
             LOGS=\$(ls \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
+            # A story the client destroyed is gone: the grapher deletes its archive
+            # files and refuses every chunk that arrives afterwards, so the copy a
+            # keeper still holds can never be confirmed and is not a lost chunk.
+            # Earlier stages destroy their stories, so their last chunks land here.
+            DESTROYED=\$(grep -h -o 'destroyed StoryId=[0-9]*' \${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null | sed 's/.*=//' | sort -u | paste -sd'|')
             DONE=0
             LOST_TOTAL=0
             for f in \${LOGS}; do
               SENT=\$(grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' \"\$f\" || true)
-              LOST=\$(grep -c 'shutdown with unconfirmed' \"\$f\" || true)
+              UNCONF=\$(grep -h 'shutdown with unconfirmed' \"\$f\" || true)
+              if [ -n \"\${DESTROYED}\" ] && [ -n \"\${UNCONF}\" ]; then
+                LOST_LINES=\$(printf '%s\\n' \"\${UNCONF}\" | grep -vE \"StoryId=(\${DESTROYED}) \" || true)
+              else
+                LOST_LINES=\"\${UNCONF}\"
+              fi
+              LOST=\$(printf '%s' \"\${LOST_LINES}\" | grep -c 'shutdown with unconfirmed' || true)
+              ALL_UNCONF=\$(printf '%s' \"\${UNCONF}\" | grep -c 'shutdown with unconfirmed' || true)
               if grep -q 'ChronoKeeperInstance\\] Shutdown completed' \"\$f\"; then
                 DONE=\$(( DONE + 1 ))
                 echo \"  \$(basename \$f): shut down; \${SENT} chunk(s) delivered, \${LOST} unconfirmed at exit\"
               else
                 echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \${SENT} chunk(s) delivered, \${LOST} unconfirmed\"
               fi
+              if [ \$(( ALL_UNCONF - LOST )) -gt 0 ]; then
+                echo \"    \$(( ALL_UNCONF - LOST )) more for stories destroyed before their last chunks were written; not counted\"
+              fi
               grep -h 'Flushed .* unshipped chunk' \"\$f\" | sed 's/^/    /' || true
-              grep -h 'shutdown with unconfirmed' \"\$f\" | head -5 | sed 's/^/    /' || true
+              printf '%s' \"\${LOST_LINES}\" | grep 'shutdown with unconfirmed' | head -5 | sed 's/^/    /' || true
               LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
             done
 
