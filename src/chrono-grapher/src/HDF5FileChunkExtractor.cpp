@@ -196,6 +196,16 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                                                 story_chunk->getStartTime(),
                                                 story_chunk->getEndTime());
         }
+        // An empty window can still hold receipts: their events sorted into the
+        // neighbouring window, which holds them too. Let go here, or the
+        // receipt waits on a holder that will never be written.
+        if(watermarkRegistry != nullptr)
+        {
+            for(uint64_t receipt: story_chunk->carriedReceipts())
+            {
+                watermarkRegistry->releaseReceipt(story_chunk->getStoryId(), receipt);
+            }
+        }
         return chl::CL_SUCCESS;
     }
 

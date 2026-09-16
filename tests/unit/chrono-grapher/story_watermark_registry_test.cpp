@@ -273,6 +273,46 @@ TEST(StoryWatermarkRegistry, ReportListsTheReceiptsNotWrittenYet)
     EXPECT_EQ(report.pending_receipts, (std::vector<uint64_t>{second}));
 }
 
+// A keeper frees a chunk only when the watermark covers it AND its receipt is
+// settled, so a report need not list a pending receipt whose chunk ends above
+// the watermark: that chunk is already held back by W. Leaving it out keeps a
+// failed write, whose receipts can never settle, from growing every later
+// report for the life of the grapher.
+TEST(StoryWatermarkRegistry, ReportOmitsAPendingReceiptTheWatermarkAlreadyBlocks)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.advancePersisted(kStory, T0, T2);
+    uint64_t const below = registry.assignReceipt(kStory, T1);
+    uint64_t const above = registry.assignReceipt(kStory, T4);
+    registry.holdReceipt(kStory, below);
+    registry.holdReceipt(kStory, above);
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).watermark, T2);
+    EXPECT_EQ(snapshot.at(kStory).highest_receipt, above);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below}));
+}
+
+TEST(StoryWatermarkRegistry, ReportListsAPendingReceiptOnceTheWatermarkPassesIt)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.advancePersisted(kStory, T0, T2);
+    uint64_t const below = registry.assignReceipt(kStory, T1);
+    uint64_t const above = registry.assignReceipt(kStory, T4);
+    registry.holdReceipt(kStory, below);
+    registry.holdReceipt(kStory, above);
+    registry.snapshotDirty();
+
+    // W now covers the second receipt's chunk, so it no longer holds it back
+    registry.advancePersisted(kStory, T2, T4);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below, above}));
+}
+
 TEST(StoryWatermarkRegistry, ReceiptWhoseEventsSpanTwoWindowsSettlesWhenBothAreWritten)
 {
     chl::StoryWatermarkRegistry registry;
