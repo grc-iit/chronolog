@@ -229,17 +229,26 @@ generate_config_files() {
 
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
+        # a dual_endpoint_rdma_extractor also ships to the group's player
+        local new_port_keeper_player_drain=$((base_port_player_recording + grapher_index - 1))
 
+        # Selected by extractor TYPE, not by the template's extractor name, and
+        # covering both RDMA types: a conf that asks for dual_endpoint_rdma_extractor
+        # would otherwise keep the template's 127.0.0.1 endpoints and every keeper
+        # would drain into its own node.
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
             --argjson new_port_keeper_drain $new_port_keeper_drain \
+            --argjson new_port_keeper_player_drain $new_port_keeper_player_drain \
             --argjson new_port_keeper_datastore $new_port_keeper_datastore \
             --argjson grapher_index "$grapher_index" \
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_base_port = $new_port_keeper_drain |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "single_endpoint_rdma_extractor") | .receiving_endpoint.service_base_port) |= $new_port_keeper_drain) |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "dual_endpoint_rdma_extractor") | .grapher_receiving_endpoint.service_base_port) |= $new_port_keeper_drain) |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "dual_endpoint_rdma_extractor") | .player_receiving_endpoint.service_base_port) |= $new_port_keeper_player_drain) |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain"

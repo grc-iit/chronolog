@@ -388,7 +388,13 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+    # Selected by extractor TYPE, not by the template's extractor name, and
+    # covering both RDMA types: a conf that asks for dual_endpoint_rdma_extractor
+    # would otherwise keep the template's 127.0.0.1 endpoints and every keeper
+    # would drain into its own node.
+    jq "((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"single_endpoint_rdma_extractor\") | .receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .grapher_receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .player_receiving_endpoint.service_ip) |= \"${player_ip}\")" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
