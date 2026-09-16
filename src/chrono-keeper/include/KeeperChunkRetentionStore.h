@@ -120,6 +120,11 @@ public:
         while(true)
         {
             flushUnshippedChunks();
+            // and send again what was acked but never confirmed: the grapher's
+            // write may have failed, and its receipt then never settles. The
+            // stall timer that normally does this runs on the data-collection
+            // loop, which has already stopped.
+            requeueStalled(std::chrono::duration_cast<std::chrono::seconds>(poll_interval));
             if(unconfirmedChunkCount() == 0)
             {
                 return true;

@@ -826,6 +826,44 @@ TEST(KeeperChunkRetentionStore, ShutdownWaitSendsAgainAChunkWhoseSendFails)
     EXPECT_EQ(store.retainedChunkCount(sid), 0u);
 }
 
+TEST(KeeperChunkRetentionStore, ShutdownWaitSendsAgainAChunkTheGrapherNeverWrote)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    // acked, but the grapher's write failed: its receipt never settles, and no
+    // report will ever confirm this delivery
+    shipWithReceipt(q, store, kGrapher, 1);
+
+    // the drain thread: the wait sends the chunk again, and this time the
+    // grapher writes it and confirms
+    std::thread drain(
+            [&]
+            {
+                auto const give_up = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+                while(std::chrono::steady_clock::now() < give_up)
+                {
+                    chl::StoryChunk* chunk = q.ejectStoryChunk();
+                    if(chunk == nullptr)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    chunk->setGrapherReceipt(kGrapher, 2);
+                    store.markShipped(chunk);
+                    store.applyReport(sid, watermarkReport(200, kGrapher, 2));
+                    return;
+                }
+            });
+    bool const confirmed = store.waitUntilDurable(std::chrono::seconds(3), std::chrono::milliseconds(10));
+    drain.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
 TEST(KeeperChunkRetentionStore, ShutdownWaitGivesUpAtTheTimeout)
 {
     ensureLogger();
