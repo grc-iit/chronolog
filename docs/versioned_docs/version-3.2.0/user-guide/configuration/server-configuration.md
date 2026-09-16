@@ -105,9 +105,9 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. A chunk with events in the index stays in memory; the index is released when the story retires. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
 | `retention_cap_mb`          | integer | `512`   | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). |
-| `watermark_resend_timeout_secs` | integer | `720` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. |
+| `watermark_resend_timeout_secs` | integer | `300` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. Keep it above ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`. |
 | `archive_visibility_delay_secs` | integer | `70` | *(Keeper only)* Seconds a keeper keeps a chunk after ChronoGrapher confirms it written, so replays take its events from the keeper until players can list the new archive file. `0` frees on confirmation. See [Durable Chunk Retention](../architecture/durable-retention.md). |
-| `shutdown_confirm_timeout_secs` | integer | `300` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`. `0` exits without waiting. |
+| `shutdown_confirm_timeout_secs` | integer | `150` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`. `0` exits without waiting. |
 | `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks and unwritten receipts to the keepers. |
 
 

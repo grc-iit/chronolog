@@ -246,10 +246,12 @@ struct DataStoreConf
     // 0 disables the warning. Keeper-only knob; ignored by grapher/player.
     int retention_cap_mb = 512;
     // Re-send a retained chunk whose grapher ack or covering watermark report
-    // has not arrived after this long. Should exceed the grapher's
-    // acceptance_window + story_chunk_duration by a healthy multiple (the
-    // template's grapher values 180+60 suggest ~3x = 720). Keeper-only knob.
-    int watermark_resend_timeout_secs = 720;
+    // has not arrived after this long. Must exceed the grapher's
+    // story_chunk_duration + acceptance_window, which is how long a healthy
+    // chunk waits to be written, or healthy chunks are sent and written twice.
+    // The template's grapher windows total 90 s, so this is a little over 3x.
+    // Keeper-only knob.
+    int watermark_resend_timeout_secs = 300;
     // After the grapher reports a chunk written, the keeper keeps the chunk
     // and serves its events as unconfirmed for this long, so a replay does not
     // depend on the player already seeing the new archive file. Cover the
@@ -261,8 +263,8 @@ struct DataStoreConf
     // How long a keeper stopped with SIGTERM waits for the grapher to confirm
     // every chunk it holds written, sending unacked chunks again meanwhile.
     // Cover the grapher's story_chunk_duration + acceptance_window (the
-    // template's 60+180). 0 exits without waiting. Keeper-only knob.
-    int shutdown_confirm_timeout_secs = 300;
+    // template's 30+60). 0 exits without waiting. Keeper-only knob.
+    int shutdown_confirm_timeout_secs = 150;
     // How often the grapher pushes dirty per-story persisted watermarks to
     // the contributing keepers. Grapher-only knob; ignored by keeper/player.
     int watermark_report_interval_secs = 1;

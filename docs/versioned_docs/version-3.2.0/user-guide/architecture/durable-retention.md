@@ -113,10 +113,10 @@ retires.
 | Key | Component | Default | Meaning |
 |---|---|---|---|
 | `watermark_report_interval_secs` | grapher | `1` | How often the grapher sends changed watermarks and receipts to the keepers. |
-| `watermark_resend_timeout_secs` | keeper | `720` | How long a keeper waits for a chunk to be confirmed written before sending it again. Keep it well above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs`, or healthy chunks are sent twice. |
+| `watermark_resend_timeout_secs` | keeper | `300` | How long a keeper waits for a chunk to be confirmed written before sending it again. Keep it well above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template), or healthy chunks are sent twice. |
 | `archive_visibility_delay_secs` | keeper | `70` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. Cover the player's 5-second archive scan plus the time the shared file system takes to list a new file on another node (NFS caches directory listings for up to 60 seconds by default). `0` frees the chunk on confirmation. |
 | `retention_cap_mb` | keeper | `512` | Retained-memory level that triggers a warning. `0` turns the warning off. |
-| `shutdown_confirm_timeout_secs` | keeper | `300` | How long a keeper stopped with SIGTERM waits for the grapher to confirm its chunks written. Cover the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs`: a chunk that has just arrived is written only after both. `0` exits without waiting. |
+| `shutdown_confirm_timeout_secs` | keeper | `150` | How long a keeper stopped with SIGTERM waits for the grapher to confirm its chunks written. Cover the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template): a chunk that has just arrived is written only after both. `0` exits without waiting. |
 
 All five live in the component's `DataStoreInternals` block; see
 [Server Configuration](../configuration/server-configuration.md#datastoreinternals--story-chunk-tuning).
