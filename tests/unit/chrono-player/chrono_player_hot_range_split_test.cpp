@@ -120,6 +120,72 @@ TEST(HotRangeSplit, BoundaryIsTheHighestWatermarkAKeeperReports)
     EXPECT_FALSE(split.complete);
 }
 
+// Where the archive read goes, and whether the reply can claim to be complete.
+// A keeper that does not answer takes its watermark with it, so events it has
+// already freed can sit anywhere below the boundary the others reported: the
+// archive read has to cover the whole range, and the reply is short of
+// whatever that keeper held and the grapher had not written.
+
+TEST(ReplayPlan, ArchiveCoversUpToTheBoundaryWhenEveryKeeperAnswered)
+{
+    chl::HotRangeSplit split;
+    split.boundary = 500;
+    split.complete = false;
+
+    chl::ReplayPlan plan = chl::planReplay(split, 100, 900, /*all_keepers_answered=*/true, /*any_truncated=*/false);
+    EXPECT_TRUE(plan.archiveNeeded);
+    EXPECT_EQ(plan.archiveEnd, 500u);
+    EXPECT_TRUE(plan.complete);
+}
+
+TEST(ReplayPlan, NoArchiveReadWhenTheHotSideReachesStart)
+{
+    chl::HotRangeSplit split;
+    split.boundary = 100;
+    split.complete = true;
+
+    chl::ReplayPlan plan = chl::planReplay(split, 100, 900, /*all_keepers_answered=*/true, /*any_truncated=*/false);
+    EXPECT_FALSE(plan.archiveNeeded);
+    EXPECT_TRUE(plan.complete);
+}
+
+TEST(ReplayPlan, AKeeperThatDidNotAnswerWidensTheArchiveReadAndMarksTheReplyIncomplete)
+{
+    chl::HotRangeSplit split;
+    split.boundary = 500;
+    split.complete = false;
+
+    chl::ReplayPlan plan = chl::planReplay(split, 100, 900, /*all_keepers_answered=*/false, /*any_truncated=*/false);
+    EXPECT_TRUE(plan.archiveNeeded);
+    EXPECT_EQ(plan.archiveEnd, 900u);
+    EXPECT_FALSE(plan.complete);
+}
+
+TEST(ReplayPlan, AKeeperThatDidNotAnswerStillNeedsTheArchiveWhenTheHotSideReachesStart)
+{
+    chl::HotRangeSplit split;
+    split.boundary = 100;
+    split.complete = true;
+
+    chl::ReplayPlan plan = chl::planReplay(split, 100, 900, /*all_keepers_answered=*/false, /*any_truncated=*/false);
+    EXPECT_TRUE(plan.archiveNeeded);
+    EXPECT_EQ(plan.archiveEnd, 900u);
+    EXPECT_FALSE(plan.complete);
+}
+
+TEST(ReplayPlan, ATruncatedAnswerMarksTheReplyIncompleteWithoutWideningTheRead)
+{
+    chl::HotRangeSplit split;
+    split.boundary = 500;
+    split.complete = false;
+
+    // the cap drops the newest events, which are the ones the archive cannot serve
+    chl::ReplayPlan plan = chl::planReplay(split, 100, 900, /*all_keepers_answered=*/true, /*any_truncated=*/true);
+    EXPECT_TRUE(plan.archiveNeeded);
+    EXPECT_EQ(plan.archiveEnd, 500u);
+    EXPECT_FALSE(plan.complete);
+}
+
 TEST(HotRangeSplit, UnacknowledgedEventsBelowTheBoundaryAreKept)
 {
     // keeper A's chunk at 120 never reached the grapher, while other keepers'

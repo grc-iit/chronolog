@@ -160,6 +160,7 @@ TEST_F(KeeperHotFetch, LiveKeeperReturnsItsRetainedRange)
     ASSERT_NE(liveClient, nullptr);
 
     chl::HotRangeResponse response = liveClient->fetchRange(kStory, 0, 1000, 100);
+    EXPECT_TRUE(response.answered);
     // the chunk was never sent to a grapher, so it comes back unconfirmed
     EXPECT_TRUE(response.events.empty());
     ASSERT_EQ(response.unconfirmed_events.size(), 1u);
@@ -179,4 +180,7 @@ TEST_F(KeeperHotFetch, HungKeeperCostsTheDeadlineAndDropsOutOfTheMin)
     EXPECT_LT(elapsed, kDeadline + std::chrono::seconds(1));
     EXPECT_EQ(response.hot_floor, UINT64_MAX);
     EXPECT_TRUE(response.events.empty());
+    // the player has to tell this apart from a keeper that holds nothing: this
+    // keeper's watermark is unknown, and what it has already freed with it
+    EXPECT_FALSE(response.answered);
 }

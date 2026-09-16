@@ -150,14 +150,21 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     std::vector<chl::HotRangeResponse> hot_responses;
     hot_responses.reserve(story_keepers.size());
+    bool all_keepers_answered = true;
+    bool any_truncated = false;
     for(auto const& keeper_service_id: story_keepers)
     {
         chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
         if(fetch_client == nullptr)
         {
-            continue; // unreachable keeper: the split is left to the keepers that answer
+            // unreachable keeper: the split is left to the keepers that answer,
+            // and the reply cannot claim to hold what this one still has
+            all_keepers_answered = false;
+            continue;
         }
         hot_responses.push_back(fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents));
+        all_keepers_answered = all_keepers_answered && hot_responses.back().answered;
+        any_truncated = any_truncated || hot_responses.back().truncated;
         if(hot_responses.back().truncated)
         {
             LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
@@ -196,18 +203,28 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
               query_response->events.size(),
               story_keepers.size());
 
-    // archive side covers [start_time, B); complete without it only when the
-    // hot side reaches back to start_time
-    bool response_is_complete = split.complete;
+    // where the archive read ends, and whether this reply holds every event in
+    // the range; see planReplay in HotRangeSplit.h
+    chl::ReplayPlan const plan = chl::planReplay(split, start_time, end_time, all_keepers_answered, any_truncated);
+    query_response->complete = plan.complete;
+    if(!plan.complete)
+    {
+        LOG_WARNING("[PlaybackService] query {} story {} is answered short: keepers all answered {}, truncated {}",
+                    query_id,
+                    story_id,
+                    all_keepers_answered,
+                    any_truncated);
+    }
 
-    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
+    // the record is handed over as complete only when no archive read follows it
+    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, !plan.archiveNeeded))
     {
         delete query_response;
         request.respond(0);
         return;
     }
 
-    if(!response_is_complete)
+    if(plan.archiveNeeded)
     {
         // portion of the playback response is coming from the archived files
 
@@ -219,7 +236,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                                                chronicle_name,
                                                                                story_name,
                                                                                start_time,
-                                                                               split.boundary);
+                                                                               plan.archiveEnd);
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }

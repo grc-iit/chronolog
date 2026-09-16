@@ -102,7 +102,12 @@ int chl::ClientQueryService::dispatch_query(chl::PlaybackQuery* query, PlaybackQ
         current_time = std::chrono::steady_clock::now().time_since_epoch().count();
     }
 
-    int ret_value = (query->completed == true ? chl::CL_SUCCESS : chl::CL_ERR_QUERY_TIMED_OUT);
+    int ret_value = chl::CL_ERR_QUERY_TIMED_OUT;
+    if(query->completed)
+    {
+        // the player answered; it may have told us the series is short
+        ret_value = query->complete ? chl::CL_SUCCESS : chl::CL_ERR_PARTIAL_RESULT;
+    }
     stop_query(query->queryId);
     return ret_value;
 }
@@ -388,6 +393,7 @@ void chl::ClientQueryService::receive_query_response(tl::request const& request,
                           event_series.size(),
                           tl::thread::self_id());
             }
+            query.complete = response.complete;
             query.completed = true;
         }
 

@@ -48,8 +48,9 @@ public:
     // Fetch every event the keeper retains in [start, end), waiting at most the
     // fetch deadline. On any failure -- an RPC error or a keeper that does not
     // answer in time -- an empty response is returned (no events, known_W = 0,
-    // hot_floor = UINT64_MAX), which leaves the split boundary to the keepers
-    // that did answer.
+    // hot_floor = UINT64_MAX) with answered = false, which leaves the split
+    // boundary to the keepers that did answer and tells the player its reply
+    // may be short of what this keeper holds.
     HotRangeResponse fetchRange(StoryId const& story_id, uint64_t start_time, uint64_t end_time, uint64_t max_events)
     {
         try
@@ -71,7 +72,9 @@ public:
                         to_string(keeperServiceId),
                         ex.what());
         }
-        return HotRangeResponse{};
+        HotRangeResponse unanswered;
+        unanswered.answered = false;
+        return unanswered;
     }
 
     ServiceId const& getKeeperServiceId() const { return keeperServiceId; }

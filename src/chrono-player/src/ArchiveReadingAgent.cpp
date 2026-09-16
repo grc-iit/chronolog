@@ -72,7 +72,9 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         // notify the queryResponseAgent that archive read is completed
         // even if no events within the query time range were found
-        readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId, listOfChunks);
+        readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId,
+                                                                             listOfChunks,
+                                                                             read_status);
 
         // in case queryResponseAgent didn't recognise the query and failed to drain listOfChunks
         // drain it here

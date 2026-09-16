@@ -40,6 +40,40 @@ struct HotRangeSplit
     bool complete = false;
 };
 
+// What the player does with the rest of the replay: how far the archive read
+// goes, and whether the reply it sends can claim to hold every event in range.
+struct ReplayPlan
+{
+    bool archiveNeeded = false;
+    uint64_t archiveEnd = 0;
+    bool complete = true;
+};
+
+// A keeper that did not answer leaves its watermark unknown, so the events it
+// has already freed can lie anywhere below the boundary the others reported.
+// The archive read then covers the whole range instead of stopping at B, and
+// the reply is short of whatever that keeper still held unwritten. A truncated
+// answer costs the newest events, which the archive cannot serve, so it only
+// marks the reply incomplete.
+inline ReplayPlan planReplay(HotRangeSplit const& split,
+                             uint64_t start_time,
+                             uint64_t end_time,
+                             bool all_keepers_answered,
+                             bool any_truncated)
+{
+    ReplayPlan plan;
+    plan.complete = all_keepers_answered && !any_truncated;
+    if(!all_keepers_answered)
+    {
+        plan.archiveNeeded = true;
+        plan.archiveEnd = end_time;
+        return plan;
+    }
+    plan.archiveNeeded = !split.complete;
+    plan.archiveEnd = split.boundary;
+    return plan;
+}
+
 inline HotRangeSplit splitHotRange(std::vector<HotRangeResponse>& responses, uint64_t start_time, uint64_t end_time)
 {
     HotRangeSplit split;

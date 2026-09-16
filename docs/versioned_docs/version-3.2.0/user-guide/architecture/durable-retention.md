@@ -64,8 +64,11 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
   minute to appear in a directory listing on another.
 - A replay sees an event once its chunk has sealed on the keeper (about `story_chunk_duration_secs`
   plus `acceptance_window_secs`), without waiting for the grapher to write it.
-- A keeper that does not answer within 5 seconds is left out. Events held only by that keeper and not
-  yet written are missing from that replay and appear once they are persisted.
+- A keeper that does not answer within 5 seconds is left out. Its watermark is then unknown, so the
+  archive is read over the whole range rather than up to `B`, and the replay returns
+  `CL_ERR_PARTIAL_RESULT`: events only that keeper held, and the grapher had not written, are
+  missing and appear once they are persisted. A keeper's answer that hits the per-query cap of
+  262,144 events, and an archive file that cannot be read, return the same status.
 - The archive side reads every file written for a window. When keeper chunks for a window arrive after
   the grapher has written it, the grapher writes the window again to a numbered file
   (`{chronicle}.{story}.{start second}.vlen.1.h5`, then `.2`, and so on). Once the keepers free those
