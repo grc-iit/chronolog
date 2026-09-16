@@ -335,11 +335,18 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
     // file starting at or after endTime has nothing in range. Stopping at the
     // first file with an event past endTime instead would skip the numbered
     // files of that same window.
+    // a file that cannot be read leaves its events out of the replay, so the
+    // range comes back as an error even though the readable files are returned
+    int read_status = CL_SUCCESS;
+
     for(auto it = start_it; it != time_file_map.end() && it->first < endTime; ++it)
     {
         // {chronicleName}.{storyName}.{startTime}.vlen.h5
         fs::path const file_full_path(it->second);
-        readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_full_path.string());
+        if(readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_full_path.string()) < 0)
+        {
+            read_status = CL_ERR_UNKNOWN;
+        }
 
         if(readAuxFiles)
         {
@@ -354,12 +361,15 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                     break;
                 }
                 LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", numbered_file);
-                readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, numbered_file);
+                if(readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, numbered_file) < 0)
+                {
+                    read_status = CL_ERR_UNKNOWN;
+                }
             }
         }
     }
 
-    return 0;
+    return read_status;
 }
 
 int chronolog::HDF5ArchiveReadingAgent::setUpFsMonitoring()

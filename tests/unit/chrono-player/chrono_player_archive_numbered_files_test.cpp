@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <list>
 #include <string>
 #include <thread>
@@ -21,6 +22,7 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_errcode.h>
 #include <HDF5ArchiveReadingAgent.h>
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
@@ -75,14 +77,19 @@ protected:
         ASSERT_GT(writer.writeStoryChunk(window), 0u);
     }
 
-    // The event times a replay of [start, end) reads from the archive.
-    std::vector<uint64_t> replayedTimes(uint64_t start, uint64_t end)
+    // The event times a replay of [start, end) reads from the archive, and
+    // through status the code the reader returned for the range.
+    std::vector<uint64_t> replayedTimes(uint64_t start, uint64_t end, int* status = nullptr)
     {
         chl::HDF5ArchiveReadingAgent archive(archiveDir.string());
         archive.initialize();
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         std::list<chl::StoryChunk*> chunks;
-        archive.readArchivedStory("chron", "story", start, end, chunks);
+        int const read_status = archive.readArchivedStory("chron", "story", start, end, chunks);
+        if(status != nullptr)
+        {
+            *status = read_status;
+        }
         std::vector<uint64_t> times;
         for(chl::StoryChunk* chunk: chunks)
         {
@@ -108,6 +115,28 @@ TEST_F(ArchiveNumberedFiles, ReplayReadsEveryWriteOfAWindow)
 
     EXPECT_EQ(replayedTimes(kWindowStart, kWindowEnd),
               (std::vector<uint64_t>{kWindowStart + 1, kWindowStart + 2, kWindowStart + 3}));
+}
+
+TEST_F(ArchiveNumberedFiles, AFileThatCannotBeReadIsReported)
+{
+    writeWindow({kWindowStart + 1});
+    // a second write of the window that never completed: the name is right, the
+    // content is not
+    std::ofstream(archiveDir / "chron.story.60.vlen.1.h5") << "not an HDF5 file";
+
+    int status = chl::CL_SUCCESS;
+    EXPECT_EQ(replayedTimes(kWindowStart, kWindowEnd, &status), (std::vector<uint64_t>{kWindowStart + 1}));
+    EXPECT_NE(status, chl::CL_SUCCESS);
+}
+
+TEST_F(ArchiveNumberedFiles, ReadableFilesReportSuccess)
+{
+    writeWindow({kWindowStart + 1});
+    writeWindow({kWindowStart + 2});
+
+    int status = -1;
+    replayedTimes(kWindowStart, kWindowEnd, &status);
+    EXPECT_EQ(status, chl::CL_SUCCESS);
 }
 
 TEST_F(ArchiveNumberedFiles, ReplayReadsLaterWritesOfTheWindowThatReachesPastTheRange)
