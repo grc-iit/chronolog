@@ -353,11 +353,18 @@ int main(int argc, char** argv)
     delete grapherDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
-    // no publish() can be in flight once the data-collection ULTs are joined
-    delete watermarkPublisher;
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
+    // That drain wrote the story's remaining windows, which advanced W and
+    // settled their receipts. Send that last round before going away, or the
+    // keepers hold those chunks and send them all again to the next grapher.
+    if(watermarkPublisher != nullptr)
+    {
+        watermarkPublisher->publish(/*force=*/true);
+    }
+    // no publish() can be in flight: the data-collection ULTs are joined
+    delete watermarkPublisher;
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();

@@ -40,14 +40,14 @@ void chronolog::WatermarkReportPublisher::recordContributor(chl::StoryId const& 
     }
 }
 
-void chronolog::WatermarkReportPublisher::publish()
+void chronolog::WatermarkReportPublisher::publish(bool force)
 {
     // endpoint key -> (keeper identity, coalesced story->W report)
     std::map<std::string, std::pair<ServiceId, std::map<StoryId, StoryWatermarkReport>>> reports;
     {
         std::lock_guard<std::mutex> lock(publisherMutex);
         auto const now = std::chrono::steady_clock::now();
-        if(now - lastPublish < reportInterval)
+        if(!force && now - lastPublish < reportInterval)
         {
             return;
         }

@@ -149,3 +149,20 @@ TEST_F(GrapherDataCollectionReport, ReportRoundFromTheLoopReachesEveryKeeper)
             << "keeper1 W=" << keeper1->lastWatermark << " keeper2 W=" << keeper2->lastWatermark;
     data_store.shutdownDataCollection();
 }
+
+TEST_F(GrapherDataCollectionReport, TheLastReportGoesOutInsideTheInterval)
+{
+    // the grapher's final drain advances W after the data-collection loop has
+    // stopped; the report interval must not swallow the report that follows
+    publisher = std::make_unique<chl::WatermarkReportPublisher>(*grapherEngine, registry, 3600);
+    registry.registerStory(kStory, 100);
+    publisher->recordContributor(kStory, keeperServiceId(kKeeper1Provider));
+    registry.advancePersisted(kStory, 100, 200);
+
+    publisher->publish();
+    EXPECT_EQ(keeper1->lastWatermark, 0u) << "a report went out inside the interval";
+
+    publisher->publish(/*force=*/true);
+    EXPECT_TRUE(waitFor([&] { return keeper1->lastWatermark == 200; }, std::chrono::seconds(5)))
+            << "keeper1 W=" << keeper1->lastWatermark;
+}

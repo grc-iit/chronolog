@@ -44,8 +44,10 @@ public:
     void recordContributor(StoryId const& story_id, ServiceId const& reporter);
 
     // Rate-limited internally to one report round per report_interval_secs;
-    // safe to call from multiple data-collection ULTs.
-    void publish();
+    // safe to call from multiple data-collection ULTs. force sends the round
+    // even inside the interval: the grapher's last drain, after the loop has
+    // stopped, advances W and settles receipts that the keepers still need.
+    void publish(bool force = false);
 
 private:
     void sendReport(std::string const& endpoint_key,
