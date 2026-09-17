@@ -90,7 +90,7 @@
       "acceptance_window_secs": 15,
       "inactive_story_delay_secs": 120,
       "tail_capacity": 65536,
-      "retention_cap_mb": 512,
+      "retention_cap_mb": 4096,
       "watermark_resend_timeout_secs": 300,
       "archive_visibility_delay_secs": 10,
       "shutdown_confirm_timeout_secs": 150,

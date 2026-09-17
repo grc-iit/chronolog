@@ -244,7 +244,7 @@ struct DataStoreConf
     // the retention store WARNs (the grapher's persisted watermark is lagging,
     // e.g. an outage) but keeps retaining — unpersisted data is never dropped.
     // 0 disables the warning. Keeper-only knob; ignored by grapher/player.
-    int retention_cap_mb = 512;
+    int retention_cap_mb = 4096;
     // Re-send a retained chunk whose grapher ack or covering watermark report
     // has not arrived after this long. Must exceed the grapher's
     // story_chunk_duration + acceptance_window, which is how long a healthy

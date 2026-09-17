@@ -68,3 +68,18 @@ TEST(ConfTemplate, KeeperSealsWellInsideTheGrapherAcceptanceWindow)
             knob("chrono_keeper", "story_chunk_duration_secs") + knob("chrono_keeper", "acceptance_window_secs");
     EXPECT_LT(keeper_seal_secs, knob("chrono_grapher", "acceptance_window_secs"));
 }
+
+TEST(ConfTemplate, TheRetentionWarningIsAboveWhatAHealthyKeeperHolds)
+{
+    // A keeper holds a chunk from the moment it seals until the grapher writes
+    // it, reports it, and the archive file is visible. That is the steady state
+    // with nothing wrong, so a cap below it warns in normal operation and the
+    // warning stops meaning anything. Sized here at the 10 MB/s per-keeper
+    // reference rate the configuration docs use, with 3x headroom for a short
+    // grapher hiccup.
+    int const held_secs = knob("chrono_keeper", "story_chunk_duration_secs") +
+                          knob("chrono_keeper", "acceptance_window_secs") + writeWindowSecs() +
+                          knob("chrono_grapher", "watermark_report_interval_secs") +
+                          knob("chrono_keeper", "archive_visibility_delay_secs");
+    EXPECT_GE(knob("chrono_keeper", "retention_cap_mb"), 3 * held_secs * 10);
+}

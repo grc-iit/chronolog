@@ -110,6 +110,13 @@ Keeper memory grows while the grapher falls behind, since nothing is freed until
 `retention_cap_mb` does not limit that: it logs a warning each time retained memory crosses it, and
 drops nothing. Size keeper memory for the longest grapher outage you want to ride out.
 
+Even with nothing wrong, a keeper holds roughly **125 seconds of ingest**: 25 s until it seals and
+ships a chunk (`story_chunk_duration_secs` + `acceptance_window_secs`), up to 90 s until the grapher
+writes the window holding it (its own two windows), a report round, and `archive_visibility_delay_secs`.
+The warning should mean the grapher is behind, not that the system is working, so set the cap above
+that: about `3 × 125 s × peak per-keeper MB/s`. The template's `4096` suits a keeper taking around
+10 MB/s.
+
 A chunk also stays in memory for `archive_visibility_delay_secs` after it is confirmed written, so
 a keeper holds about that many more seconds of its incoming data than it would otherwise.
 
@@ -128,7 +135,7 @@ retires.
 | `archive_visibility_delay_secs` | keeper | `10` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. A replay looks a missing window's file up by name instead of waiting for the player's next directory listing, so this only covers the write-to-report round trip. On NFS mounted with the default `lookupcache`, a name a player asked for just before the file appeared can stay negative for `acdirmin` (30 s by default): mount with `lookupcache=positive` or raise this above it. `0` frees the chunk on confirmation. |
 | `archive_scan_interval_secs` | player | `5` | How often the player lists the archive directory for new files. |
 | `archive_window_secs` | player | `30` | The grapher's `story_chunk_duration_secs`, which is the time range of one archive file. A replay uses it to build the names of files the listing has not shown yet. `0` turns that probing off. |
-| `retention_cap_mb` | keeper | `512` | Retained-memory level that triggers a warning. `0` turns the warning off. |
+| `retention_cap_mb` | keeper | `4096` | Retained-memory level that triggers a warning; set it above the ~125 s of ingest a healthy keeper holds. `0` turns the warning off. |
 | `shutdown_confirm_timeout_secs` | keeper | `150` | How long a keeper stopped with SIGTERM waits for the grapher to confirm its chunks written. Cover the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template): a chunk that has just arrived is written only after both. `0` exits without waiting. |
 
 All five live in the component's `DataStoreInternals` block; see
