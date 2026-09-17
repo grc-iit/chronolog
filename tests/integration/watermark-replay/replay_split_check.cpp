@@ -13,7 +13,10 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
+#include <filesystem>
 #include <set>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -96,13 +99,34 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    // REPLAY_SPLIT_PAUSE_FILE: wait for this file to appear between acquiring the
+    // story and replaying it. A caller that wants to change the cluster's state
+    // around the replay alone -- freezing keepers, say -- cannot do it before the
+    // acquisition, since acquiring reaches the keepers through the visor and
+    // would block there instead. Passed in the environment because the shared
+    // cmd_arg_parse getopt rejects any flag it does not know.
+    char const* pause_file_env = std::getenv("REPLAY_SPLIT_PAUSE_FILE");
+    std::string const pause_file = (pause_file_env != nullptr) ? pause_file_env : "";
+    if(!pause_file.empty())
+    {
+        std::cout << "ACQUIRED" << std::endl;
+        while(!std::filesystem::exists(pause_file)) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+    }
+
     // full range: everything the story ever recorded
     uint64_t start_time = 1;
     uint64_t end_time = 2000000000000000000ULL;
 
     std::vector<chronolog::Event> events;
+    // timed so a caller can tell a fan-out of keeper fetches from a sequence of
+    // them: only the elapsed time distinguishes the two when keepers hang
+    auto const replay_started = std::chrono::steady_clock::now();
     ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, events);
+    auto const replay_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - replay_started)
+                    .count();
     std::cout << "REPLAY_STATUS " << chronolog::to_string_client(ret) << std::endl;
+    std::cout << "REPLAY_MS " << replay_ms << std::endl;
 
     std::set<std::string> unique_events;
     for(auto const& event: events) { unique_events.insert(event.to_string()); }
