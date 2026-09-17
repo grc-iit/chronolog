@@ -373,3 +373,74 @@ TEST(StoryWatermarkRegistry, ConcurrentAdvanceConvergesToPrefixEnd)
     for(auto& th: threads) { th.join(); }
     EXPECT_EQ(registry.getPersisted(kStory), kWindows);
 }
+
+// ---- destroyed stories ---------------------------------------------------
+//
+// A destroyed story's archive files are deleted and every chunk that arrives
+// afterwards is refused, so the copies its keepers still hold can never be
+// confirmed and would be retained for the life of the keeper process. The
+// registry answers with one last report carrying the drop watermark, which
+// tells the keepers to let the story go.
+
+TEST(StoryWatermarkRegistry, DropStoryReportsTheDropWatermarkOnce)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.advancePersisted(kStory, T0, T1);
+    uint64_t const receipt = registry.assignReceipt(kStory, T2);
+    (void)registry.snapshotDirty(); // the ordinary report; the story is clean again
+
+    registry.dropStory(kStory);
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    auto const& report = snapshot[kStory];
+    EXPECT_EQ(report.watermark, chl::kStoryDroppedWatermark);
+    // nothing is outstanding for a story that no longer exists
+    EXPECT_TRUE(report.pending_receipts.empty());
+    EXPECT_GE(report.highest_receipt, receipt);
+
+    // and the story is gone: no repeat report, and W reads as unknown
+    EXPECT_TRUE(registry.snapshotDirty().empty());
+    EXPECT_EQ(registry.getPersisted(kStory), 0u);
+}
+
+TEST(StoryWatermarkRegistry, DropStoryLeavesOtherStoriesAlone)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.registerStory(kOtherStory, T0);
+    registry.advancePersisted(kOtherStory, T0, T2);
+    (void)registry.snapshotDirty();
+
+    registry.dropStory(kStory);
+
+    auto snapshot = registry.snapshotDirty();
+    EXPECT_EQ(snapshot.count(kOtherStory), 0u);
+    EXPECT_EQ(registry.getPersisted(kOtherStory), T2);
+}
+
+TEST(StoryWatermarkRegistry, StoryRecreatedAfterADropStartsFresh)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.advancePersisted(kStory, T0, T1);
+    registry.dropStory(kStory);
+    (void)registry.snapshotDirty(); // the drop report goes out
+
+    // same story name, so the same deterministic id, acquired again
+    registry.registerStory(kStory, T2, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T2);
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot[kStory].watermark, T2);
+    EXPECT_NE(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
+}
+
+TEST(StoryWatermarkRegistry, DropOfAnUnknownStoryReportsNothing)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.dropStory(kStory);
+    EXPECT_TRUE(registry.snapshotDirty().empty());
+}

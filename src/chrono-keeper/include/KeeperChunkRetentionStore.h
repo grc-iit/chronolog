@@ -307,6 +307,11 @@ public:
     void applyReport(StoryId const& story_id, StoryWatermarkReport const& report)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
+        if(report.watermark == kStoryDroppedWatermark)
+        {
+            dropStory(story_id);
+            return;
+        }
         StoryRetention& story = storyRetention[story_id];
         if(report.watermark < story.known_w)
         {
@@ -800,6 +805,52 @@ private:
         auto next = story.chunks.erase(chunk_iter);
         delete chunk;
         return next;
+    }
+
+    // The grapher destroyed the story (kStoryDroppedWatermark): its archive
+    // files are gone and every chunk sent from now on is refused, so no receipt
+    // of this story will ever settle and no watermark will ever cover it.
+    // Holding on would keep these chunks for the life of the process, which is
+    // the one case where a keeper frees a chunk that was never written.
+    //
+    // A chunk sitting in the extraction queue is left alone — the queue owns
+    // that pointer until a drain callback returns it, and the callback finds no
+    // story and disposes of it (markShipped/markSendFailed both handle an
+    // untracked chunk). The story entry goes too, so an acquisition of the same
+    // name later starts from a zero watermark instead of inheriting this one.
+    // Caller holds tailMutex.
+    void dropStory(StoryId const& story_id)
+    {
+        auto story_it = storyRetention.find(story_id);
+        if(story_it == storyRetention.end())
+        {
+            return;
+        }
+        StoryRetention& story = story_it->second;
+        story.index.clear();
+        std::size_t freed = 0;
+        std::size_t handed_over = 0;
+        for(auto chunk_iter = story.chunks.begin(); chunk_iter != story.chunks.end();)
+        {
+            StoryChunk* chunk = chunk_iter->first;
+            ChunkState const& state = chunk_iter->second;
+            if(state.in_queue)
+            {
+                ++handed_over;
+                chunk_iter = story.chunks.erase(chunk_iter);
+                continue;
+            }
+            retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
+            chunk_iter = story.chunks.erase(chunk_iter);
+            delete chunk;
+            ++freed;
+        }
+        storyRetention.erase(story_it);
+        LOG_INFO("[KeeperChunkRetentionStore] StoryId={} was destroyed on the grapher; freed {} retained chunk(s), "
+                 "{} left to the extraction queue",
+                 story_id,
+                 freed,
+                 handed_over);
     }
 
     // Evict oldest events until the tail is within capacity. Eviction only

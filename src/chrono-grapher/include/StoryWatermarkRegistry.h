@@ -52,6 +52,23 @@ public:
     {
         std::lock_guard<std::mutex> lock(mtx);
         auto iter = stories.find(story_id);
+        if(iter != stories.end() && dropped.count(story_id) != 0)
+        {
+            // The id was destroyed and its drop has not been reported yet: this
+            // is a different incarnation that happens to hash to the same id.
+            // Start it over rather than letting it inherit the drop watermark,
+            // which would tell every keeper to free the new story's chunks.
+            // Its keepers keep the old incarnation's chunks (see dropStory).
+            LOG_INFO("[StoryWatermarkRegistry] StoryId={} registered again before its drop was reported; "
+                     "starting the new incarnation at {}",
+                     story_id,
+                     start_time);
+            stories.erase(iter);
+            receipts.erase(story_id);
+            dropped.erase(story_id);
+            dirty.erase(story_id);
+            iter = stories.end();
+        }
         if(iter == stories.end())
         {
             Entry entry;
@@ -85,6 +102,52 @@ public:
             dirty.insert(story_id);
         }
         // else: re-acquired story, W stands
+    }
+
+    // The story was destroyed: its archive files are deleted and every chunk
+    // that arrives for it from now on is refused (see
+    // GrapherDataStore::startStoryRecording), so nothing this grapher does can
+    // ever settle the receipts its keepers are holding. Report the story once
+    // more with kStoryDroppedWatermark, which tells them to free what they hold,
+    // then forget it so a later acquisition of the same name starts fresh.
+    //
+    // KNOWN GAP — recreate under the same name. Story ids are a deterministic
+    // CityHash64(chronicle + story), so destroying a story and creating it again
+    // under the same name yields the same id. Two orderings are lossy:
+    //  - the new registration reaches this grapher before the drop report is
+    //    published: registerStory re-creates the entry, the drop is never
+    //    reported, and the old chunks stay retained on the keepers exactly as
+    //    they do today (no corruption, the leak this method fixes just persists
+    //    for that story);
+    //  - the drop report arrives at a keeper after it has already sealed chunks
+    //    for the NEW story: the keeper frees those too, since it cannot tell the
+    //    two incarnations apart, and their events are then only wherever the
+    //    grapher put them.
+    // Both need the report to carry the incarnation it belongs to (a story
+    // epoch) to close properly; see the destroyed-story retention follow-up.
+    void dropStory(StoryId const& story_id)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto iter = stories.find(story_id);
+        if(iter == stories.end())
+        {
+            // never recorded here: its keepers hold nothing of ours to free
+            receipts.erase(story_id);
+            dirty.erase(story_id);
+            return;
+        }
+        iter->second.w = kStoryDroppedWatermark;
+        auto receipts_iter = receipts.find(story_id);
+        if(receipts_iter != receipts.end())
+        {
+            // no chunk of a destroyed story is ever written, so nothing stays
+            // outstanding; the report carries the story's highest receipt with
+            // an empty pending list
+            receipts_iter->second.pending.clear();
+        }
+        dropped.insert(story_id);
+        dirty.insert(story_id);
+        LOG_INFO("[StoryWatermarkRegistry] StoryId={} dropped; reporting the drop watermark once", story_id);
     }
 
     // A merged window's HDF5 write failed: its events were received but are
@@ -261,6 +324,14 @@ public:
             }
         }
         dirty.clear();
+        // A dropped story is reported once: forget it now that its report is on
+        // its way, so the id is free for a later story of the same name.
+        for(auto const& story_id: dropped)
+        {
+            stories.erase(story_id);
+            receipts.erase(story_id);
+        }
+        dropped.clear();
         return snapshot;
     }
 
@@ -347,6 +418,8 @@ private:
     std::map<StoryId, Entry> stories;
     std::map<StoryId, StoryReceipts> receipts;
     std::set<StoryId> dirty;
+    // destroyed stories whose drop report has not gone out yet
+    std::set<StoryId> dropped;
 };
 
 } // namespace chronolog

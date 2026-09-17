@@ -35,6 +35,11 @@ outage therefore lost every chunk sent during it, with nothing recording the los
      players have had time to find the new archive file;
    - none of the chunk's events is still in the tail index that `playback` reads from;
    - the chunk is not waiting to be sent again.
+
+   One case bypasses all of it: when a story is destroyed, the grapher reports it once with a
+   watermark that means *dropped*, and its keepers free everything they hold for that story. The
+   story's archive files are deleted and any chunk sent afterwards is refused, so those chunks can
+   never be written and would otherwise be held for the life of the keeper process.
 4. **Re-send.** A chunk whose send failed, or that is still unconfirmed after
    `watermark_resend_timeout_secs`, is sent again. That wait matters: each delivery gets its own
    receipt, and the grapher can only confirm one once it has written the window holding it, so a
@@ -94,7 +99,8 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 | An HDF5 write fails | The story's watermark stops advancing, and the receipts of the chunks in that write stay unconfirmed. Keepers keep the affected chunks and send them again until a write succeeds. |
 | Keeper stopped with SIGTERM | The keeper stops accepting events, seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. A chunk the grapher did acknowledge waits for its receipt on the same `watermark_resend_timeout_secs` timer as a running keeper. It logs any chunk still unconfirmed and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
 | Keeper crashes | Chunks that keeper held and the grapher had not yet written are lost. Chunks are not replicated across keepers. |
-| Story destroyed before its last chunks are written | Nothing ever confirms those chunks, so the keepers hold them until the keeper restarts. |
+| Story destroyed before its last chunks are written | Those chunks are refused by the grapher and never written; its next report tells the keepers the story is gone and they free them. Their events are lost, which is what destroying a story means. A story destroyed on a grapher that has restarted, or through `destroy_chronicle` after the grapher retired the story's pipeline, is not reported: its keepers hold those chunks until they restart. |
+| Story recreated under the same name right after a destroy | Story ids are a hash of chronicle and story name, so both incarnations share one id. If the new acquisition reaches the grapher before the drop report goes out, the drop is dropped and the old chunks stay retained; if the drop report reaches a keeper after it has sealed chunks for the new story, those are freed too. |
 
 ---
 

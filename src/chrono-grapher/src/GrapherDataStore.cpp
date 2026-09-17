@@ -197,6 +197,12 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
         // Tombstone the story so a late chunk cannot be adopted into a fresh
         // pipeline (and a fresh HDF5 file) after the destroy worker deletes files.
         destroyedStories.insert(story_id);
+        // and tell the keepers, who would otherwise hold every chunk of this
+        // story whose receipt is still open for the life of their process
+        if(theWatermarkRegistry != nullptr)
+        {
+            theWatermarkRegistry->dropStory(story_id);
+        }
         auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
         if(pipeline_iter != theMapOfStoryPipelines.end())
         {
@@ -304,6 +310,14 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
                 }
             }
             for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
+        }
+        // Release the keepers' retention for every story of the chronicle this
+        // grapher still had a pipeline for. A story that had already retired
+        // here is not in either map, so its keepers are not told — the registry
+        // indexes stories by id and does not know their chronicle.
+        if(theWatermarkRegistry != nullptr)
+        {
+            for(chl::StoryId const& sid: story_ids_to_unhook) { theWatermarkRegistry->dropStory(sid); }
         }
     }
 
