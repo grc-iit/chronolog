@@ -74,9 +74,14 @@ public:
             Entry entry;
             entry.anchor = start_time;
             entry.w = start_time;
+            // a window of this story failed to write before it was registered
+            entry.write_failed = failedBeforeRegistration.erase(story_id) != 0;
             stories.emplace(story_id, std::move(entry));
             dirty.insert(story_id);
-            LOG_INFO("[StoryWatermarkRegistry] StoryId={} registered, anchor={}", story_id, start_time);
+            LOG_INFO("[StoryWatermarkRegistry] StoryId={} registered, anchor={}{}",
+                     story_id,
+                     start_time,
+                     stories[story_id].write_failed ? " (carrying an earlier write failure)" : "");
             return;
         }
         Entry& entry = iter->second;
@@ -167,9 +172,13 @@ public:
         auto iter = stories.find(story_id);
         if(iter == stories.end())
         {
-            Entry entry;
-            entry.write_failed = true;
-            stories.emplace(story_id, std::move(entry));
+            // Held aside rather than stored as an entry. An entry here would
+            // anchor the story at 0, and because the failure also bars
+            // registerStory from covering the gap up to the story's start, W
+            // would stay at 0 for the life of this grapher -- no report would
+            // ever let the story's keepers free anything. Applied to the entry
+            // when the story does register.
+            failedBeforeRegistration.insert(story_id);
             LOG_WARNING("[StoryWatermarkRegistry] StoryId={} write failure recorded for unregistered story", story_id);
             return;
         }
@@ -437,6 +446,9 @@ private:
     std::set<StoryId> dirty;
     // destroyed stories whose drop report has not gone out yet
     std::set<StoryId> dropped;
+    // stories whose window failed to write before they were registered here;
+    // folded into the entry at registration (see persistFailed)
+    std::set<StoryId> failedBeforeRegistration;
 };
 
 } // namespace chronolog

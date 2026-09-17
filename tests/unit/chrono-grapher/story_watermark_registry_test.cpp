@@ -468,3 +468,24 @@ TEST(StoryWatermarkRegistry, DropIsReportedAgainForEachRefusedChunk)
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
 }
+
+// A write can fail for a story this grapher has not registered (a salvage or
+// adopted window). Recording that as an ordinary entry anchors the story at 0,
+// and since the failure also bars registerStory from covering the gap up to the
+// story's start, W stays at 0 for the life of the grapher and its keepers can
+// never free anything of that story.
+TEST(StoryWatermarkRegistry, WriteFailureBeforeRegistrationDoesNotPinTheWatermarkAtZero)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.persistFailed(kStory);
+
+    registry.registerStory(kStory, T2, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T2);
+
+    // and the story still carries the failure: W may only advance through
+    // intervals that were actually persisted
+    registry.registerStory(kStory, T4, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T2);
+    registry.advancePersisted(kStory, T2, T3);
+    EXPECT_EQ(registry.getPersisted(kStory), T3);
+}
