@@ -122,3 +122,38 @@ TEST_F(ArchiveProbe, ARangeTheListingAlreadyCoversStillReads)
 
     EXPECT_EQ(replayedTimes(archive, 60 * NS, 120 * NS), (std::vector<uint64_t>{60 * NS + 1, 90 * NS + 1}));
 }
+
+// A story with nothing in the archive is not a failed read. Returning an error
+// for it clears the replay's completeness flag, and the client is told
+// CL_ERR_PARTIAL_RESULT for a story whose events are all still on the keepers --
+// the normal state of any story younger than the grapher's write window.
+TEST_F(ArchiveProbe, AStoryWithNothingArchivedReadsEmptyRatherThanFailing)
+{
+    writeWindow(60); // another story's file, so the directory is not empty
+    chl::HDF5ArchiveReadingAgent archive(archiveDir.string(), true, kScanNeverRuns, kWindowSecs);
+    archive.initialize();
+
+    std::list<chl::StoryChunk*> chunks;
+    int const status = archive.readArchivedStory("chron", "hot_only_story", 60 * NS, 120 * NS, chunks);
+
+    EXPECT_EQ(status, chl::CL_SUCCESS);
+    EXPECT_TRUE(chunks.empty());
+}
+
+TEST_F(ArchiveProbe, AnArchiveDirectoryThatCannotBeListedIsNotReportedComplete)
+{
+    // misconfigured or unreadable archive path: the agent has no idea what is
+    // archived, so a story it cannot find must not read as "nothing archived"
+    chl::HDF5ArchiveReadingAgent archive((archiveDir / "no_such_directory").string(),
+                                         true,
+                                         kScanNeverRuns,
+                                         kWindowSecs);
+    archive.initialize();
+
+    std::list<chl::StoryChunk*> chunks;
+    int const status = archive.readArchivedStory("chron", "story", 60 * NS, 120 * NS, chunks);
+
+    EXPECT_NE(status, chl::CL_SUCCESS);
+    EXPECT_TRUE(chunks.empty());
+    archive.shutdown();
+}

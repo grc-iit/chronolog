@@ -356,8 +356,22 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
 
     if(chronicle_story_it == start_time_file_name_map_.end())
     {
+        // Nothing archived for this story. That is the ordinary state of any
+        // story younger than the grapher's write window, and of one whose
+        // events are all still on the keepers, so it is a successful read of
+        // zero events rather than a failure -- reporting it as a failure marks
+        // the whole replay incomplete and hands the client
+        // CL_ERR_PARTIAL_RESULT for a complete answer. Before the first
+        // listing, though, the agent cannot tell that from "not looked yet".
+        if(!initial_scan_done_.load())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Story {}-{} looked up before the first directory listing",
+                      chronicleName,
+                      storyName);
+            return CL_ERR_UNKNOWN;
+        }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{}", chronicleName, storyName);
-        return CL_ERR_UNKNOWN;
+        return CL_SUCCESS;
     }
 
     auto& time_file_map = chronicle_story_it->second;

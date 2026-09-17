@@ -284,6 +284,9 @@ private:
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries.",
                   start_time_file_name_map_.size());
+        // the directory has been read: from here a story missing from the map
+        // means nothing was archived for it, not that nobody has looked
+        initial_scan_done_.store(true);
         return 0;
     }
 
@@ -419,6 +422,9 @@ private:
 
     // Thread control
     std::atomic<bool> shutdown_requested_;
+    // set once the archive directory has been listed: until then a story
+    // missing from the map means "not looked yet", not "nothing archived"
+    std::atomic<bool> initial_scan_done_{false};
 };
 
 } // namespace chronolog
