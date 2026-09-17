@@ -47,6 +47,10 @@ G_CHUNK_SECS=10
 G_ACCEPT_SECS=20
 REPORT_SECS=1
 RESEND_SECS=40
+VISIBILITY_SECS=5
+# a chunk is freed once its window is written, reported, and the visibility
+# delay has passed; derived here so the wait follows the knobs above
+WAIT_FREE_SECS=$((G_CHUNK_SECS + G_ACCEPT_SECS + REPORT_SECS + VISIBILITY_SECS + 10))
 TAIL_CAP=10 # < the ~15 events each of the 2 keepers gets from one writer run
 
 PASS=0
@@ -99,6 +103,7 @@ say "patching installed conf template (keeper tail_capacity=$TAIL_CAP, resend=${
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wmark_replay_backup"
 jq ".chrono_keeper.DataStoreInternals.tail_capacity = $TAIL_CAP |
     .chrono_keeper.DataStoreInternals.watermark_resend_timeout_secs = $RESEND_SECS |
+    .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \
@@ -162,9 +167,10 @@ wait "$writer_pid" 2>/dev/null
 
 # ------------------------------------- probe 2: watermark-freed side ----
 # grapher windows all sealed+persisted by ~(write_end + chunk + acceptance),
-# reports at 1 Hz; give the loop time to free the tail-released chunk(s)
-say "waiting for the watermark loop to free tail-released chunks"
-sleep 70
+# reports at 1 Hz, then the visibility delay; give the loop that long to free
+# the tail-released chunk(s)
+say "waiting ${WAIT_FREE_SECS}s for the watermark loop to free tail-released chunks"
+sleep "$WAIT_FREE_SECS"
 
 u2=$(replay_unique)
 if [ "$u2" -eq 30 ]; then
