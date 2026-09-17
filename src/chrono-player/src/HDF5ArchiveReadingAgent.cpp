@@ -14,6 +14,7 @@
 
 #include <chronolog_errcode.h>
 #include <StoryChunkWriter.h>
+#include <HDF5FileAccess.h>
 #include <HDF5ArchiveReadingAgent.h>
 
 namespace tl = thallium;
@@ -95,7 +96,12 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         H5::Exception::dontPrint();
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        // locking off: the grapher writes these files from another node while
+        // this read is in flight (see HDF5FileAccess.h)
+        file = std::make_unique<H5::H5File>(file_name,
+                                            H5F_ACC_SWMR_READ,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         std::string dataset_name = "/story_chunks/data.vlen_bytes";
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", dataset_name);
