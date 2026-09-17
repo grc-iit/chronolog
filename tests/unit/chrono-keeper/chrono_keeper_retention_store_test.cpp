@@ -1347,8 +1347,10 @@ TEST(KeeperChunkRetentionStore, StoryRecreatedAfterADropRetainsAgain)
     store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 1));
     ASSERT_EQ(store.retainedChunkCount(sid), 0u);
 
-    // the same name acquired again: the keeper must hold the new chunk until
-    // the new grapher watermark covers it, not free it on the old drop
+    // the same name acquired again (start_story_recording clears the drop):
+    // the keeper must hold the new chunk until the new grapher watermark
+    // covers it, and must not treat the old drop watermark as covering it
+    store.clearDroppedStory(sid);
     store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "C"));
     shipWithReceipt(q, store, kGrapher, 2);
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
@@ -1356,4 +1358,60 @@ TEST(KeeperChunkRetentionStore, StoryRecreatedAfterADropRetainsAgain)
 
     store.applyReport(sid, watermarkReport(400, kGrapher, 2));
     EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+// A keeper keeps sealing chunks of a story for as long as its own pipeline
+// holds events, which outlives the destroy: the drop report routinely arrives
+// while events of the destroyed story are still unsealed here. Retaining what
+// seals afterwards puts the store straight back where the drop found it, since
+// the grapher refuses every one of them.
+
+TEST(KeeperChunkRetentionStore, ChunkSealedAfterADropIsNotRetained)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    EXPECT_EQ(q.size(), 0); // and not sent: the grapher would refuse it
+    EXPECT_TRUE(store.getTailSequences(sid, 10).empty());
+}
+
+TEST(KeeperChunkRetentionStore, StoryAcquiredAgainAfterADropRetainsOnceMore)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+
+    // the keeper is told to record the story again: a new incarnation of the id
+    store.clearDroppedStory(sid);
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "new"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(q.size(), 1);
+    drainOne(q, store, true);
+}
+
+TEST(KeeperChunkRetentionStore, ADropIsForgottenAfterItsTimeToLive)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    // a drop is remembered only long enough to cover the chunks still sealing
+    chl::KeeperChunkRetentionStore store(q, 10, 0, false, std::chrono::milliseconds(0), std::chrono::milliseconds(40));
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    ASSERT_EQ(store.retainedChunkCount(sid), 0u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "after"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    drainOne(q, store, true);
 }

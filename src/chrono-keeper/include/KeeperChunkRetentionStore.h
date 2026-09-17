@@ -57,12 +57,14 @@ public:
                               std::size_t tail_capacity,
                               std::size_t retention_cap_mb = 0,
                               bool live_tail_read = false,
-                              std::chrono::milliseconds archive_visibility_delay = std::chrono::milliseconds(0))
+                              std::chrono::milliseconds archive_visibility_delay = std::chrono::milliseconds(0),
+                              std::chrono::milliseconds dropped_story_ttl = std::chrono::minutes(10))
         : theExtractionQueue(extraction_queue)
         , tailCapacity(tail_capacity)
         , retentionCapBytes(retention_cap_mb * 1024 * 1024)
         , liveTailRead(live_tail_read)
         , archiveVisibilityDelay(archive_visibility_delay)
+        , droppedStoryTtl(dropped_story_ttl)
     {}
 
     // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
@@ -204,6 +206,22 @@ public:
         }
         {
             std::lock_guard<std::mutex> lock(tailMutex);
+            if(storyWasDropped(story_id))
+            {
+                // The grapher destroyed this story while these events were still
+                // unsealed here — a routine order, since the keeper's pipeline
+                // outlives the destroy. Retaining the chunk would put the store
+                // back where the drop found it: the grapher refuses every chunk
+                // of a destroyed story, so nothing would ever confirm it.
+                LOG_INFO("[KeeperChunkRetentionStore] StoryId={} was destroyed; dropping the chunk {}-{} that sealed "
+                         "afterwards (eventCount {})",
+                         story_id,
+                         sealed_chunk->getStartTime(),
+                         sealed_chunk->getEndTime(),
+                         sealed_chunk->getEventCount());
+                delete sealed_chunk;
+                return;
+            }
             StoryRetention& story = storyRetention[story_id];
             ChunkState state;
             state.indexed_count = (std::size_t)sealed_chunk->getEventCount();
@@ -821,6 +839,11 @@ private:
     // Caller holds tailMutex.
     void dropStory(StoryId const& story_id)
     {
+        // Remembered first: the drop routinely arrives before this keeper has
+        // sealed the story's last chunks (its pipeline outlives the destroy),
+        // and that is the case where there is nothing here to free yet and
+        // everything still to come. ingestSealedChunk drops those.
+        droppedStories[story_id] = std::chrono::steady_clock::now();
         auto story_it = storyRetention.find(story_id);
         if(story_it == storyRetention.end())
         {
@@ -851,6 +874,31 @@ private:
                  story_id,
                  freed,
                  handed_over);
+    }
+
+public:
+    // The keeper is recording this story again, so the id belongs to a new
+    // story: whatever the last drop said about the old one no longer applies.
+    // Called from KeeperDataStore::startStoryRecording, the one signal a keeper
+    // gets that an id is in use again.
+    void clearDroppedStory(StoryId const& story_id)
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        droppedStories.erase(story_id);
+    }
+
+private:
+    // Whether the grapher has told us this story is destroyed recently enough
+    // that chunks of it may still be sealing. Prunes what has aged out.
+    // Caller holds tailMutex.
+    bool storyWasDropped(StoryId const& story_id)
+    {
+        auto const now = std::chrono::steady_clock::now();
+        for(auto iter = droppedStories.begin(); iter != droppedStories.end();)
+        {
+            iter = (now - iter->second >= droppedStoryTtl) ? droppedStories.erase(iter) : ++iter;
+        }
+        return droppedStories.find(story_id) != droppedStories.end();
     }
 
     // Evict oldest events until the tail is within capacity. Eviction only
@@ -919,6 +967,10 @@ private:
     // how long after the keeper learns a chunk is written a player may still
     // not see its archive file
     std::chrono::milliseconds archiveVisibilityDelay;
+    // how long a destroyed story is remembered, covering the chunks of it that
+    // are still sealing here; cleared early when the id is recorded again
+    std::chrono::milliseconds droppedStoryTtl;
+    std::unordered_map<StoryId, std::chrono::steady_clock::time_point> droppedStories;
     mutable std::mutex tailMutex;
     std::unordered_map<StoryId, StoryRetention> storyRetention;
 
