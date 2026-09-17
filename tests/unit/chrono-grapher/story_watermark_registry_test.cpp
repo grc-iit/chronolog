@@ -438,9 +438,33 @@ TEST(StoryWatermarkRegistry, StoryRecreatedAfterADropStartsFresh)
     EXPECT_NE(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
 }
 
-TEST(StoryWatermarkRegistry, DropOfAnUnknownStoryReportsNothing)
+// A story this grapher never recorded still has to be reported: a chunk that
+// arrives after the destroy is refused, so the story is never registered here,
+// yet the keeper that sent it is holding that chunk and waiting. That keeper is
+// a known contributor -- the chunk did arrive -- so the report reaches it.
+TEST(StoryWatermarkRegistry, DropIsReportedForAStoryThisGrapherNeverRecorded)
 {
     chl::StoryWatermarkRegistry registry;
     registry.dropStory(kStory);
-    EXPECT_TRUE(registry.snapshotDirty().empty());
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
+    EXPECT_TRUE(snapshot[kStory].pending_receipts.empty());
+    EXPECT_TRUE(registry.snapshotDirty().empty()); // once, then forgotten
+}
+
+TEST(StoryWatermarkRegistry, DropIsReportedAgainForEachRefusedChunk)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    registry.dropStory(kStory);
+    (void)registry.snapshotDirty();
+
+    // the grapher refuses a chunk of the destroyed story: say so again, since
+    // the keeper that sent it may have missed or predated the first report
+    registry.dropStory(kStory);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
 }

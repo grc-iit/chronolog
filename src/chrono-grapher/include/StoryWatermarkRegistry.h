@@ -128,12 +128,19 @@ public:
     void dropStory(StoryId const& story_id)
     {
         std::lock_guard<std::mutex> lock(mtx);
+        dropped.insert(story_id);
+        dirty.insert(story_id);
         auto iter = stories.find(story_id);
         if(iter == stories.end())
         {
-            // never recorded here: its keepers hold nothing of ours to free
-            receipts.erase(story_id);
-            dirty.erase(story_id);
+            // Never recorded here, and still worth reporting: a chunk that
+            // arrives after the destroy is refused, so the story is never
+            // registered, yet the keeper that sent it holds that chunk and has
+            // nothing else to wait for. It is a known contributor, since its
+            // chunk did arrive, so the report reaches it.
+            LOG_INFO("[StoryWatermarkRegistry] StoryId={} dropped; reporting the drop watermark for a story this "
+                     "grapher never recorded",
+                     story_id);
             return;
         }
         iter->second.w = kStoryDroppedWatermark;
@@ -297,6 +304,16 @@ public:
         for(auto const& story_id: dirty)
         {
             auto iter = stories.find(story_id);
+            if(iter == stories.end() && dropped.count(story_id) != 0)
+            {
+                // a story destroyed before this grapher ever recorded it; its
+                // keepers still hold the chunks they sent afterwards
+                StoryWatermarkReport report;
+                report.watermark = kStoryDroppedWatermark;
+                report.grapher_instance = instance;
+                snapshot.emplace(story_id, std::move(report));
+                continue;
+            }
             if(iter != stories.end())
             {
                 StoryWatermarkReport report;

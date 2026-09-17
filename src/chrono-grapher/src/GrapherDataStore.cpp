@@ -574,6 +574,15 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
                                      &was_active);
         if(rc != chronolog::CL_SUCCESS)
         {
+            // Tell the keeper that sent it, which is holding this chunk waiting
+            // for a confirmation that will never come. Saying so again costs one
+            // report entry and covers the keeper that sealed this chunk after
+            // the destroy, or that was not yet a contributor when the story was
+            // dropped the first time.
+            if(theWatermarkRegistry != nullptr)
+            {
+                theWatermarkRegistry->dropStory(chunk->getStoryId());
+            }
             delete chunk;
             ++discarded;
             continue;
