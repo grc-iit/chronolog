@@ -586,10 +586,23 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             recording_group = (*story_iter).second;
             recording_group->getActiveKeepers(vectorOfKeepers);
 
+            // The group's player is already recording this story, but the caller
+            // still needs its service id: the client registers itself as a reader
+            // of the story only when the acquire response carries a valid player,
+            // and without that every ReplayStory it makes comes back
+            // CL_ERR_NOT_ACQUIRED. Leaving it unset here meant only the first
+            // client to acquire a story could replay it -- a reader attaching to a
+            // story someone else is already writing could not.
+            if(recording_group->playerProcess != nullptr)
+            {
+                player_service_id = recording_group->playerProcess->idCard.getPlaybackServiceId();
+            }
+
             //no need for notification , group processes are already recording this story
-            LOG_DEBUG("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}",
+            LOG_DEBUG("[ChronoProcessRegistry] RecordingGroup {} is already recording story {}, player {}",
                       recording_group->groupId,
-                      story_id);
+                      story_id,
+                      chronolog::to_string(player_service_id));
 
             return chronolog::CL_SUCCESS;
         }
