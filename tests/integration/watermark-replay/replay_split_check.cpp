@@ -91,6 +91,30 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    // Two pause points, so a caller can line the cluster up for the replay alone.
+    // Both take a file to wait for, in the environment rather than as a flag,
+    // since the shared cmd_arg_parse getopt rejects anything it does not know.
+    //
+    //   REPLAY_SPLIT_CONNECT_PAUSE_FILE  connect, announce CONNECTED, wait, then
+    //       acquire and replay. For a wait of more than a few seconds: an
+    //       acquisition left idle even 18 s replayed as CL_ERR_NOT_ACQUIRED.
+    //   REPLAY_SPLIT_PAUSE_FILE  connect and acquire, announce ACQUIRED, wait,
+    //       then replay. For a caller that must hold the story before it disturbs
+    //       the cluster -- freezing keepers, say, since acquiring reaches them
+    //       through the visor and would block. Keep that wait short.
+    auto wait_for = [](char const* env_name, char const* marker)
+    {
+        char const* path = std::getenv(env_name);
+        if(path == nullptr || *path == '\0')
+        {
+            return;
+        }
+        std::cout << marker << std::endl;
+        while(!std::filesystem::exists(path)) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+    };
+
+    wait_for("REPLAY_SPLIT_CONNECT_PAUSE_FILE", "CONNECTED");
+
     auto acquire_result = client.AcquireStory(chronicle_name, story_name);
     if(acquire_result.first != chronolog::CL_SUCCESS)
     {
@@ -99,19 +123,7 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    // REPLAY_SPLIT_PAUSE_FILE: wait for this file to appear between acquiring the
-    // story and replaying it. A caller that wants to change the cluster's state
-    // around the replay alone -- freezing keepers, say -- cannot do it before the
-    // acquisition, since acquiring reaches the keepers through the visor and
-    // would block there instead. Passed in the environment because the shared
-    // cmd_arg_parse getopt rejects any flag it does not know.
-    char const* pause_file_env = std::getenv("REPLAY_SPLIT_PAUSE_FILE");
-    std::string const pause_file = (pause_file_env != nullptr) ? pause_file_env : "";
-    if(!pause_file.empty())
-    {
-        std::cout << "ACQUIRED" << std::endl;
-        while(!std::filesystem::exists(pause_file)) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
-    }
+    wait_for("REPLAY_SPLIT_PAUSE_FILE", "ACQUIRED");
 
     // full range: everything the story ever recorded
     uint64_t start_time = 1;
