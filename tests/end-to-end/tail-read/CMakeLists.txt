@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.25)
 # StoryHandle::playback(N) until the keeper tail returns them — asserting the
 # last-N come back in ascending order with matching payloads. Exercises the real
 # two-phase tail-read RPC path across the deployed keepers, which the
-# header-only KeeperTailStore unit test cannot cover.
+# header-only KeeperChunkRetentionStore unit test cannot cover.
 #
 # Like the data-integrity group, this assumes a stack is already running; the
 # test self-injects and self-cleans, so no ctest fixture is required. The

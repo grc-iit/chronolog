@@ -1,0 +1,174 @@
+// ChronoLog ChronoKeeper (watermark-feedback branch) — class interaction (UML class diagram)
+// Render:  dot -Tsvg keeper_uml_watermark.dot -o keeper_uml_watermark.svg
+//          dot -Tpng -Gdpi=150 keeper_uml_watermark.dot -o keeper_uml_watermark.png
+//
+// Watermark deltas vs. the base keeper UML:
+//   - KeeperTailStore -> KeeperChunkRetentionStore: single owner of every sealed
+//     chunk; ship-on-seal; frees only when durable (shipped AND E <= W).
+//   - ChronoKeeperExtractionChain gains the disposal seam (dispose_chunk ->
+//     markShipped / markSendFailed) and set_watermark_reporter.
+//   - DataStoreAdminService receives report_story_watermarks; KeeperRecordingService
+//     serves tail_get_* and story_range_fetch (reads served from the store).
+digraph KeeperClassesWatermark {
+  rankdir=LR; compound=true; newrank=true;
+  graph [fontname="Helvetica", fontsize=11];
+  node  [fontname="Helvetica", shape=plaintext];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ---------- legend ----------
+  legend [shape=plaintext, fontname="DejaVu Sans", label=<
+    <table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ffffff">
+      <tr><td colspan="2" bgcolor="#e8e8e8" align="center"><b>LEGEND</b></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>relationships</b>&#160;&#160;(line: solid = structural &#183; dashed = dependency/RPC)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9670;&#9472;&#9472;</font></td><td align="left"><b>composition</b> &#8212; owner manages lifetime (by-value member, or new/delete of *)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9671;&#9472;&#9472;</font></td><td align="left"><b>aggregation</b> &#8212; holds a borrowed reference / pointer ( &amp; , * )</td></tr>
+      <tr><td align="center"><font point-size="20">&#9472;&#9472;&#9655;</font></td><td align="left"><b>generalization</b> &#8212; inherits (hollow triangle points to the base class)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><b>dependency</b> &#8212; uses / calls, in-process (dashed line)</td></tr>
+      <tr><td align="center"><font color="#1a56db" point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><font color="#1a56db"><b>cross-process RPC</b> &#8212; Thallium / Margo (dashed, blue)</font></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>node fill = architectural plane</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bcd4e6"><b>control plane</b> &#8212; RPC providers / registry client</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bfe3bf"><b>ingestion</b> &#8212; in-memory hot journal</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffdf9e"><b>retention / watermark</b> &#8212; durability-gated store (this branch)</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#f0e08c"><b>extraction</b> &#8212; drain path (chrono-common)</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#dcdcdc"><b>common data / config</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffe0b2"><b>external process</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#eeeeee"><b>library base</b> ( tl::provider&lt;T&gt; )</td></tr>
+    </table>>];
+
+  // ===================== external actors =====================
+  subgraph cluster_ext {
+    label="external processes"; style="rounded,dashed"; color="#cc8800"; fontcolor="#cc8800";
+    Client   [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>Client</b><br/><font point-size="9">&#171;storyteller / reader&#187;</font></td></tr></table>>];
+    Visor    [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoVisor</b><br/><font point-size="9">&#171;KeeperRegistry + admin&#187;</font></td></tr></table>>];
+    Grapher  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoGrapher</b><br/><font point-size="9">&#171;chunk receiver + W reporter&#187;</font></td></tr></table>>];
+    Player   [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoPlayer</b><br/><font point-size="9">&#171;chunk receiver + hot reader&#187;</font></td></tr></table>>];
+  }
+
+  tlprov [label=<<table border="1" cellborder="0" bgcolor="#eeeeee"><tr><td><b>tl::provider&lt;T&gt;</b><br/><font point-size="9">&#171;Thallium/Margo&#187;</font></td></tr></table>>];
+
+  // ===================== control plane =====================
+  subgraph cluster_ctrl {
+    label="control plane — RPC providers / client"; style="rounded,filled"; fillcolor="#eef4fb"; color="#7aa6d6";
+
+    KRS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>KeeperRecordingService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- IngestionQueue&amp; theIngestionQueue<br align="left"/>- KeeperChunkRetentionStore&amp; theTailStore<br align="left"/>+ record_event()  &#171;RPC&#187;<br align="left"/>+ tail_get_sequences() / tail_get_events()  &#171;RPC&#187;<br align="left"/>+ story_range_fetch()  &#171;RPC, hot read&#187;<br align="left"/></font></td></tr></table>>];
+
+    DSAS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>DataStoreAdminService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- KeeperDataStore&amp; theDataStore<br align="left"/>+ StartStoryRecording() / StopStoryRecording()  &#171;RPC&#187;<br align="left"/>+ ReportStoryWatermarks(map&lt;StoryId,W&gt;)  &#171;RPC, one-way&#187;<br align="left"/>+ shutdown_data_collection()  &#171;RPC&#187;<br align="left"/></font></td></tr></table>>];
+
+    KRC [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>KeeperRegistryClient</b></td></tr>
+      <tr><td align="left"><font point-size="9">- tl::provider_handle reg_service_ph<br align="left"/>+ send_register_msg() / send_stats_msg()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== ingestion / hot path =====================
+  subgraph cluster_ingest {
+    label="ingestion — hot path (in-memory journal)"; style="rounded,filled"; fillcolor="#eef7ee"; color="#7fb37f";
+
+    IQ [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>IngestionQueue</b></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;StoryId, StoryIngestionHandle*&gt; storyIngestionHandles<br align="left"/>- deque&lt;LogEvent&gt; orphanEventQueue<br align="left"/>+ ingestLogEvent() / drainOrphanEvents()<br align="left"/>+ extractOrphansForStory() / orphanStoryIds()<br align="left"/></font></td></tr></table>>];
+
+    SIH [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>StoryIngestionHandle</b></td></tr>
+      <tr><td align="left"><font point-size="9">- EventDeque* active / passiveDeque<br align="left"/>+ ingestEvent() / swapActiveDeque()<br align="left"/></font></td></tr></table>>];
+
+    KDS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>KeeperDataStore</b></td></tr>
+      <tr><td align="left"><font point-size="9">- IngestionQueue&amp; theIngestionQueue<br align="left"/>- StoryChunkExtractionQueue&amp; theExtractionQueue<br align="left"/>- KeeperChunkRetentionStore&amp; theTailStore<br align="left"/>- map&lt;StoryId, KeeperStoryPipeline*&gt; theMapOfStoryPipelines<br align="left"/>- map&lt;StoryId, pair&lt;Chronicle,Story&gt;&gt; retiredStoryNames<br align="left"/>+ start/stopStoryRecording() / collectIngestedEvents()<br align="left"/>+ extractDecayedStoryChunks() / retireDecayedPipelines()<br align="left"/>+ sealOrphanedEvents()<br align="left"/>+ applyWatermarkReport(StoryId, W)<br align="left"/>+ dataCollectionTask()  [+ requeueStalled()]<br align="left"/></font></td></tr></table>>];
+
+    KSP [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>KeeperStoryPipeline</b></td></tr>
+      <tr><td align="left"><font point-size="9">- StoryChunkExtractionQueue&amp; theExtractionQueue<br align="left"/>- KeeperChunkRetentionStore&amp; theTailStore<br align="left"/>- StoryIngestionHandle* activeIngestionHandle<br align="left"/>- map&lt;chrono_time, StoryChunk*&gt; storyTimelineMap<br align="left"/>+ collectIngestedEvents() / mergeEvents()<br align="left"/>+ extractDecayedStoryChunks()  &#8594; ingestSealedChunk()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== retention / watermark (new) =====================
+  subgraph cluster_retain {
+    label="retention / watermark — durability-gated (this branch)"; style="rounded,filled"; fillcolor="#fff6e6"; color="#d0a03a";
+
+    RS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#ffdf9e">
+      <tr><td align="center"><b>KeeperChunkRetentionStore</b><br/><font point-size="8">&#171;new&#187; single owner of every sealed chunk</font></td></tr>
+      <tr><td align="left"><font point-size="9">- StoryChunkExtractionQueue&amp; theExtractionQueue<br align="left"/>- map&lt;StoryId, StoryRetention&gt; storyRetention<br align="left"/><font point-size="8">StoryRetention: index&lt;EventSequence,StoryChunk*&gt; + chunks + known_w</font><br align="left"/>+ ingestSealedChunk()  (ship-on-seal)<br align="left"/>+ markShipped() / markSendFailed()  (disposal seam)<br align="left"/>+ confirmPersisted(W)  (frees shipped, E &#8804; W)<br align="left"/>+ requeueStalled() / fetchRange()<br align="left"/>+ getTailSequences() / getTailEvents()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== extraction / drain path =====================
+  subgraph cluster_extract {
+    label="extraction — drain path (chrono-common)"; style="rounded,filled"; fillcolor="#fbf8e9"; color="#cbb85f";
+
+    SCEQ [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>StoryChunkExtractionQueue</b></td></tr>
+      <tr><td align="left"><font point-size="9">- deque&lt;StoryChunk*&gt; extractionDeque<br align="left"/>+ stashStoryChunk() / ejectStoryChunk()<br align="left"/></font></td></tr></table>>];
+
+    SCEM [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>StoryChunkExtractionModule&lt;T&gt;</b><br/><font point-size="8">T = ChronoKeeperExtractionChain</font></td></tr>
+      <tr><td align="left"><font point-size="9">- StoryChunkExtractionQueue chunkExtractionQueue<br align="left"/>- T theExtractionChain<br align="left"/>+ drainExtractionQueue()  &#8594; process_chunk() + dispose_chunk()<br align="left"/>+ startExtraction() / shutdownExtraction()<br align="left"/></font></td></tr></table>>];
+
+    CHAIN [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>ChronoKeeperExtractionChain</b></td></tr>
+      <tr><td align="left"><font point-size="9">- vector&lt;Extractor&gt; theExtractors<br align="left"/>- KeeperChunkRetentionStore* theRetentionStore<br align="left"/>+ process_chunk(StoryChunk*)<br align="left"/>+ dispose_chunk(chunk, status)  &#8594; mark*(chunk)<br align="left"/>+ attachRetentionStore() / set_watermark_reporter()<br align="left"/>+ expects_watermarks()<br align="left"/></font></td></tr></table>>];
+
+    DUAL [label=<<table border="1" cellborder="0" bgcolor="#f7efc0"><tr><td><b>DualEndpointChunkExtractorRDMA</b><br/><font point-size="9">- RDMATransferAgent* rdma_sender_for_player / _grapher<br align="left"/>- ServiceId reporter_service_id  &#171;new&#187;<br align="left"/>+ process_chunk() / set_reporter_service_id()</font></td></tr></table>>];
+
+    RTA [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>RDMATransferAgent</b></td></tr>
+      <tr><td align="left"><font point-size="9">- tl::remote_procedure receive_story_chunk<br align="left"/>+ transfer_serialized_story_chunk(str, reporter)<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== common data carriers =====================
+  subgraph cluster_data {
+    label="common data / config (chrono-common)"; style="rounded,filled"; fillcolor="#f2f2f2"; color="#aaaaaa";
+    SC [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>StoryChunk</b><br/><font point-size="9">- map&lt;EventSequence, LogEvent&gt; logEvents<br align="left"/>+ insert/merge/extractEvents<br align="left"/>+ findEvent() / isWatermarkExempt()  &#171;new&#187;</font></td></tr></table>>];
+    LE [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>LogEvent</b><br/><font point-size="9">storyId &#183; time &#183; clientId &#183; index &#183; record</font></td></tr></table>>];
+    HRR [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>HotRangeResponse</b><br/><font point-size="9">&#171;new&#187; vector&lt;LogEvent&gt; events<br align="left"/>uint64 hot_floor &#183; known_W &#183; bool truncated</font></td></tr></table>>];
+  }
+
+  // ===================== generalization =====================
+  edge [color="#444444", arrowhead=onormal, style=solid];
+  KRS  -> tlprov;
+  DSAS -> tlprov;
+
+  // ===================== composition (filled diamond at owner) =====================
+  edge [color="#222222", dir=both, arrowtail=diamond, arrowhead=none, style=solid];
+  KDS  -> KSP   [label="owns *  (new/delete)"];
+  KSP  -> SIH   [label="activeIngestionHandle"];
+  KSP  -> SC    [label="storyTimelineMap"];
+  SC   -> LE    [label="logEvents"];
+  RS   -> SC    [label="owns retained chunks\nuntil E <= W (delete)"];
+  SCEM -> SCEQ  [label="by value"];
+  SCEM -> CHAIN [label="by value"];
+  CHAIN -> DUAL [label="variant vector"];
+  DUAL -> RTA   [label="x2 (player + grapher)"];
+
+  // ===================== aggregation (open diamond at holder) =====================
+  edge [color="#226622", dir=both, arrowtail=odiamond, arrowhead=none, style=solid];
+  KRS  -> IQ    [label="&amp;"];
+  KRS  -> RS    [label="&amp; (serves reads)"];
+  DSAS -> KDS   [label="&amp;"];
+  KDS  -> IQ    [label="&amp;"];
+  KDS  -> SCEQ  [label="&amp;"];
+  KDS  -> RS    [label="&amp;"];
+  KSP  -> SCEQ  [label="&amp;"];
+  KSP  -> RS    [label="&amp;"];
+  RS   -> SCEQ  [label="&amp; (stash on seal / stall)"];
+  CHAIN -> RS   [label="* borrowed (disposal seam)"];
+  IQ   -> SIH   [label="map of * (registered by pipeline)"];
+
+  // ===================== in-process dependency (dashed) =====================
+  edge [color="#777777", dir=forward, arrowtail=none, arrowhead=vee, style=dashed];
+  KSP   -> RS    [label="ingestSealedChunk() on decay", constraint=false];
+  KDS   -> RS    [label="applyWatermarkReport() -> confirmPersisted()", constraint=false];
+  CHAIN -> RS    [label="dispose_chunk() -> markShipped/markSendFailed", constraint=false, color="#bbbbbb"];
+  RS    -> HRR   [label="fetchRange() returns", constraint=false];
+
+  // ===================== cross-process RPC (blue dashed) =====================
+  edge [color="#1a56db", fontcolor="#1a56db", dir=forward, arrowhead=vee, style=dashed];
+  Client -> KRS   [label="record_event / tail_get_*"];
+  Player -> KRS   [label="story_range_fetch (hot pull)"];
+  Visor  -> DSAS  [label="start/stop_story_recording"];
+  Grapher -> DSAS [label="report_story_watermarks"];
+  KRC    -> Visor [label="register / stats"];
+  DUAL   -> Grapher [label="receive_story_chunk (+reporter)"];
+  DUAL   -> Player  [label="receive_story_chunk (+reporter)"];
+}

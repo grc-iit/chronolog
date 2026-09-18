@@ -662,10 +662,14 @@ jobs:
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
       # Each recording group is an independent keeper->grapher path. The archive
-      # read above only proves that ONE story reached HDF5, which a deployment
-      # where every keeper drains into grapher 1 would also satisfy -- exactly the
-      # deploy_local.sh defect where the per-group drain port was written to a key
-      # nothing reads. Assert instead that EVERY grapher archived something.
+      # read above can be answered from the keepers' retained chunks before
+      # anything reaches HDF5, and even an archive answer only proves ONE story
+      # was written -- which a deployment where every keeper drains into grapher 1,
+      # or where no keeper reaches any grapher, would also satisfy. Both happened:
+      # the per-group drain port once went to a key nothing reads, and later the
+      # deploy scripts kept patching extractor keys the template no longer had, so
+      # every keeper shipped to 127.0.0.1. Assert instead that EVERY grapher wrote
+      # a non-empty chunk to HDF5.
       - name: Verify every recording group archived data
         id: group-coverage
         run: |
@@ -674,24 +678,36 @@ jobs:
           docker exec --user grc-iit chronolog-c1 bash -c "
             set -e
             WORK_DIR=\"/home/grc-iit/chronolog-install/chronolog\"
-            # HDF5FileChunkExtractor logs this at INFO only when a chunk is actually
-            # written out, so it is evidence of data arriving, not merely of a
-            # grapher being alive.
-            MARKER='HDF5FileChunkExtractor'
+            # HDF5FileChunkExtractor logs this only after writing a non-empty chunk.
+            # Its 'processing chunk' line is not evidence: it is also logged for the
+            # empty idle-gap windows a grapher closes without receiving anything.
+            MARKER='HDF5FileChunkExtractor\\] StoryChunk written to file'
             EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_grapher)
-            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null || true)
+            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
             if [ -z \"\${LOGS}\" ]; then
               echo '❌ no grapher logs found under monitor/'
               ls -la \${WORK_DIR}/monitor/ 2>/dev/null | head -20 || true
               exit 1
             fi
-            ACTIVE=0
+            # A grapher writes a window only after story_chunk_duration_secs plus
+            # acceptance_window_secs, so poll rather than look once.
+            G_CONF=\${WORK_DIR}/conf/default-chrono-conf.json
+            G_WAIT=\$(( \$(jq -r '.chrono_grapher.DataStoreInternals.story_chunk_duration_secs' \${G_CONF} 2>/dev/null || echo 60) + \$(jq -r '.chrono_grapher.DataStoreInternals.acceptance_window_secs' \${G_CONF} 2>/dev/null || echo 180) + 120 ))
+            DEADLINE=\$(( SECONDS + G_WAIT ))
+            while :; do
+              ACTIVE=0
+              for f in \${LOGS}; do
+                if grep -q \"\${MARKER}\" \"\$f\" 2>/dev/null; then ACTIVE=\$(( ACTIVE + 1 )); fi
+              done
+              [ \"\${ACTIVE}\" -ge \"\${EXPECTED}\" ] && break
+              [ \$SECONDS -ge \$DEADLINE ] && break
+              sleep 10
+            done
             for f in \${LOGS}; do
-              if grep -q \"\${MARKER}.*processing chunk\" \"\$f\" 2>/dev/null; then
-                echo \"  ✅ \$(basename \$f): archived chunks\"
-                ACTIVE=\$(( ACTIVE + 1 ))
+              if grep -q \"\${MARKER}\" \"\$f\" 2>/dev/null; then
+                echo \"  ✅ \$(basename \$f): wrote chunks to HDF5\"
               else
-                echo \"  ❌ \$(basename \$f): never archived a chunk\"
+                echo \"  ❌ \$(basename \$f): never wrote a chunk within \${G_WAIT}s\"
               fi
             done
             echo \"graphers that archived data: \${ACTIVE} / \${EXPECTED}\"
@@ -742,11 +758,9 @@ jobs:
           "
 
           echo "--- [2/2] Python reader on ${READER} (polls the keeper tail) ---"
-          # Poll rather than read once: an event sits in the tail only between its
-          # chunk sealing (chunk_duration + acceptance_window) and ageing out
-          # (tail_retention_secs from the chunk end), so the readable window is
-          # about tail_retention_secs - acceptance_window_secs and a single shot
-          # can land either side of it.
+          # Poll rather than read once: an event becomes readable only once its
+          # chunk seals (story_chunk_duration_secs + acceptance_window_secs), so a
+          # single early read finds nothing.
           RC=0
           docker exec --user grc-iit "${READER}" bash -c "
             export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
@@ -766,14 +780,15 @@ jobs:
           echo "✅ Python tail read: playback() on ${READER} returned events written by ${WRITER}"
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
-      # A keeper holds sealed-but-unarchived chunks in its tail. On SIGTERM it must
-      # hand them to the extraction queue while extraction is still draining --
-      # flushRetainedChunks(). Before that existed the destructor stashed them into
-      # an already-shut-down queue, which freed them instead: silent loss of
-      # everything sealed in the last tail_retention_secs. Nothing else in this
-      # pipeline covers that path, because every other test lets data age out
-      # normally rather than killing a keeper with a populated tail.
-      - name: Verify keeper shutdown flushes its tail
+      # A keeper retains every sealed chunk until the grapher's persisted watermark
+      # covers it. On SIGTERM it has to deliver what is still undelivered while
+      # extraction is draining: chunks of pipelines that seal during shutdown, and
+      # chunks whose last send failed (flushUnshippedChunks()). A chunk still
+      # undelivered when the retention store is destroyed is lost, and the store
+      # logs it as 'shutdown with unconfirmed ... shipped=0'. Nothing else in
+      # this pipeline covers that path, because every other test leaves the
+      # keepers running.
+      - name: Verify keeper shutdown delivers its retained chunks
         id: shutdown-flush
         run: |
           set -e
@@ -791,7 +806,7 @@ jobs:
             cd \${WORK_DIR}
 
             SEAL=\$(( \$(jq -r '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs' conf/default-chrono-conf.json 2>/dev/null || echo 10) + \$(jq -r '.chrono_keeper.DataStoreInternals.acceptance_window_secs' conf/default-chrono-conf.json 2>/dev/null || echo 15) + 10 ))
-            echo \"writing a burst, then waiting \${SEAL}s for it to seal into the keeper tail ...\"
+            echo \"writing a burst, then waiting \${SEAL}s for it to seal on the keepers ...\"
             timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
               examples/chrono-client-example-distributed-telemetry-writer \
               --config conf/default-chrono-client-conf.json -d 15 -i 3 >/dev/null 2>&1 || true
@@ -800,31 +815,49 @@ jobs:
             BEFORE=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
             echo \"HDF5 files before keeper shutdown: \${BEFORE}\"
 
-            # SIGTERM only the keepers: the graphers must stay up to receive the
-            # flushed chunks. SIGKILL would bypass the flush entirely.
+            # SIGTERM only the keepers: the graphers must stay up to receive what the
+            # keepers send on the way out and to confirm it written. SIGKILL would
+            # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
+            # (150) for that confirmation, so allow 240s.
             parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
-            for i in \$(seq 1 40); do
+            for i in \$(seq 1 80); do
               REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
               [ \"\${REMAIN}\" = \"0\" ] && break
               sleep 3
             done
-            sleep 10   # let the extraction queue drain what the flush handed over
+            sleep 10   # let the shared file system catch up with the keepers' last log lines
 
-            FLUSHED=\$(grep -h 'Flushed .* retained chunk' \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | tail -5 || true)
             AFTER=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
             echo \"HDF5 files after keeper shutdown : \${AFTER}\"
 
-            if [ -n \"\${FLUSHED}\" ]; then
-              echo \"\${FLUSHED}\" | sed 's/^/  /'
-              echo '✅ keeper flushed its retained tail on shutdown'
-            else
-              echo '❌ no keeper logged a tail flush on shutdown.'
-              echo '   Either flushRetainedChunks() did not run before extraction stopped,'
-              echo \"   or the tail was already empty (retention window: check that the burst\"
-              echo \"   sealed within tail_retention_secs of the shutdown).\"
-              tail -20 \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null || true
+            EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_keeper)
+            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
+            DONE=0
+            LOST_TOTAL=0
+            for f in \${LOGS}; do
+              SENT=\$(grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' \"\$f\" || true)
+              LOST=\$(grep -c 'shutdown with unconfirmed' \"\$f\" || true)
+              if grep -q 'ChronoKeeperInstance\\] Shutdown completed' \"\$f\"; then
+                DONE=\$(( DONE + 1 ))
+                echo \"  \$(basename \$f): shut down; \${SENT} chunk(s) delivered, \${LOST} unconfirmed at exit\"
+              else
+                echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \${SENT} chunk(s) delivered, \${LOST} unconfirmed\"
+              fi
+              grep -h 'Flushed .* unshipped chunk' \"\$f\" | sed 's/^/    /' || true
+              grep -h 'shutdown with unconfirmed' \"\$f\" | head -5 | sed 's/^/    /' || true
+              LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
+            done
+
+            if [ \"\${DONE}\" -lt \"\${EXPECTED}\" ] || [ \"\${LOST_TOTAL}\" -ne 0 ]; then
+              echo \"❌ keepers that completed shutdown: \${DONE} / \${EXPECTED}; chunks unconfirmed at exit: \${LOST_TOTAL}\"
+              echo '   A chunk with shipped=0 never reached a grapher: check that each keeper conf'
+              echo '   (ExtractionModule.extractors.extractor_to_grapher.receiving_endpoint) points'
+              echo '   at its recording group grapher. A chunk with shipped=1 reached it but was not'
+              echo '   confirmed written within shutdown_confirm_timeout_secs.'
+              for f in \${LOGS}; do echo \"--- \$(basename \$f)\"; tail -20 \"\$f\"; done
               exit 1
             fi
+            echo '✅ every keeper shut down after its grapher confirmed all of its chunks written'
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 

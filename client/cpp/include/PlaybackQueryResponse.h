@@ -24,12 +24,17 @@ struct PlaybackQueryResponse
 
     ClientQueryId query_id;
     std::vector<Event> events;
+    // false when the player knows the series is short: a keeper of the story
+    // did not answer, a keeper's answer hit its event cap, or an archive file
+    // in the range could not be read. The client reports CL_ERR_PARTIAL_RESULT.
+    bool complete = true;
 
     template <typename SerArchiveT>
     void serialize(SerArchiveT& serT)
     {
         serT & query_id;
         serT & events;
+        serT & complete;
     }
 };
 

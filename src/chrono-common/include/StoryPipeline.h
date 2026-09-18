@@ -27,6 +27,8 @@ namespace chronolog
 
 
 class StoryChunkIngestionHandle;
+class StoryChunkExtractionQueue;
+class ReceiptTracker;
 
 class StoryPipeline
 {
@@ -78,6 +80,18 @@ public:
 
     std::vector<Event>& copyToEventSeries(std::vector<Event>&, uint64_t start, uint64_t end);
 
+    // Optional escape hatch for events that cannot be merged because the
+    // timeline can no longer be extended into the past (prepend failure in
+    // mergeEvents): when attached, such events are wrapped into a fresh
+    // watermark-exempt chunk and stashed straight to this queue instead of
+    // being discarded. Not owned.
+    void attachExtractionQueue(StoryChunkExtractionQueue* queue) { theExtractionQueue = queue; }
+
+    // Optional: when attached, mergeEvents puts the receipts an incoming chunk
+    // carries on every window or salvage chunk its events go to, and reports
+    // the holds and the completed merge to this tracker. Not owned.
+    void attachReceiptTracker(ReceiptTracker* tracker) { theReceiptTracker = tracker; }
+
 private:
     StoryId storyId;
     ChronicleName chronicleName;
@@ -103,6 +117,12 @@ private:
 
     // map of storyChunks ordered by StoryChunck.startTime
     std::map<chrono_time, StoryChunk*> storyTimelineMap;
+
+    StoryChunkExtractionQueue* theExtractionQueue = nullptr;
+    ReceiptTracker* theReceiptTracker = nullptr;
+
+    // see mergeEvents
+    void holdReceipts(StoryChunk& holder, StoryChunk const& other_chunk);
 
     // Added friend tests for the unit tests to test private functions
 

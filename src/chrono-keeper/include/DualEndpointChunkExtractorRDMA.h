@@ -30,6 +30,12 @@ public:
     ServiceId const& get_player_receiver_id() const { return player_receiver_service_id; }
     ServiceId const& get_grapher_receiver_id() const { return grapher_receiver_service_id; }
 
+    // Identity of this keeper's DataStoreAdminService, sent along with every
+    // chunk on the grapher leg so the grapher knows where to push watermark
+    // reports. The player leg sends a default ServiceId (players don't report).
+    void set_reporter_service_id(ServiceId const& reporter) { reporter_service_id = reporter; }
+    ServiceId const& get_reporter_service_id() const { return reporter_service_id; }
+
     int process_chunk(StoryChunk*);
 
     int reset_player_endpoint(ServiceId const& receiver_player);
@@ -42,6 +48,7 @@ private:
     tl::engine* sender_tl_engine;          // sender local tl::engine
     ServiceId player_receiver_service_id;  // ChronoGrapher receiving ServiceId
     ServiceId grapher_receiver_service_id; // ChronoPlayer receiving ServiceId
+    ServiceId reporter_service_id;         // this sender's watermark-report target
     RDMATransferAgent* rdma_sender_for_player;
     RDMATransferAgent* rdma_sender_for_grapher;
 

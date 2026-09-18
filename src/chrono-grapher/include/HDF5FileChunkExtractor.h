@@ -10,6 +10,7 @@ namespace chronolog
 {
 
 class StoryChunk;
+class StoryWatermarkRegistry;
 
 class HDF5FileChunkExtractor
 {
@@ -37,8 +38,15 @@ public:
     // (<chronicle>.*.vlen.h5 in rootDirectory).
     int delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count = nullptr);
 
+    // Report each successfully written merged window to the registry so the
+    // per-story persisted watermark W can advance. Raw non-owning pointer:
+    // extractors are moved into the extraction chain's std::variant vector, so
+    // the pointer must survive moves. Optional — nullptr disables reporting.
+    void attachWatermarkRegistry(StoryWatermarkRegistry* registry) { watermarkRegistry = registry; }
+
 private:
     std::string rootDirectory;
+    StoryWatermarkRegistry* watermarkRegistry = nullptr;
 };
 
 } // namespace chronolog

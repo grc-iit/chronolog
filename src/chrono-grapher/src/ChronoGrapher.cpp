@@ -21,6 +21,8 @@
 #include <cmd_arg_parse.h>
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
+#include <StoryWatermarkRegistry.h>
+#include <WatermarkReportPublisher.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -160,10 +162,16 @@ int main(int argc, char** argv)
     GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string);
     LOG_INFO("[ChronoGrapherInstance] Initializing StoryChunkExtractionModule with {}", log_string);
 
+    // Per-story persisted watermark W; fed by the HDF5 extractor, consumed by
+    // the keeper report publisher. Declared before the extraction module so it
+    // outlives the extractors holding a pointer to it.
+    chronolog::StoryWatermarkRegistry theWatermarkRegistry;
+
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
     theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
-                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF);
+                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF,
+                                                      &theWatermarkRegistry);
 
     theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
@@ -184,7 +192,8 @@ int main(int argc, char** argv)
                                              GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
                                              GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                             &grapherExtractionChain);
+                                             &grapherExtractionChain,
+                                             &theWatermarkRegistry);
 
     tl::engine* dataAdminEngine = nullptr;
 
@@ -218,6 +227,16 @@ int main(int argc, char** argv)
     }
     LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
 
+    // Watermark report publisher: pushes dirty per-story watermarks to the
+    // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
+    // recording service (contributors) and the HDF5 extractor via the
+    // registry; driven by the data-collection loop.
+    chronolog::WatermarkReportPublisher* watermarkPublisher =
+            new chronolog::WatermarkReportPublisher(*dataAdminEngine,
+                                                    theWatermarkRegistry,
+                                                    GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
+    theDataStore.attachWatermarkPublisher(watermarkPublisher);
+
     // Instantiate RecordingService
     tl::engine* recordingEngine = nullptr;
     chronolog::GrapherRecordingService* grapherRecordingService = nullptr;
@@ -237,7 +256,9 @@ int main(int argc, char** argv)
         grapherRecordingService =
                 chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
                                                                            recordingServiceId.getProviderId(),
-                                                                           ingestionQueue);
+                                                                           ingestionQueue,
+                                                                           watermarkPublisher,
+                                                                           &theWatermarkRegistry);
     }
     catch(tl::exception const&)
     {
@@ -248,6 +269,7 @@ int main(int argc, char** argv)
     if(nullptr == grapherRecordingService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -269,6 +291,7 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
         delete grapherRecordingService;
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -293,6 +316,7 @@ int main(int argc, char** argv)
         LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
         delete grapherRegistryClient;
         delete grapherRecordingService;
+        delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
     }
@@ -332,6 +356,15 @@ int main(int argc, char** argv)
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
+    // That drain wrote the story's remaining windows, which advanced W and
+    // settled their receipts. Send that last round before going away, or the
+    // keepers hold those chunks and send them all again to the next grapher.
+    if(watermarkPublisher != nullptr)
+    {
+        watermarkPublisher->publish(/*force=*/true);
+    }
+    // no publish() can be in flight: the data-collection ULTs are joined
+    delete watermarkPublisher;
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();

@@ -1,0 +1,67 @@
+%%{init: {"htmlLabels": false, "themeCSS": ".messageText{font-size:18px !important;} .loopText,.loopText tspan{font-size:18px !important;} .labelText,.labelText tspan{font-size:18px !important;} text.actor tspan,.actor{font-size:18px !important;} .noteText,.noteText tspan{font-size:24px !important;} .sectionTitle{font-size:18px !important;} .sequenceNumber{font-size:16px !important;}"}}%%
+%% ChronoPlayer — watermark replay split: hot side pulled on demand from the story's keeper roster, cold side from the archive, cut at B = min(hot_floor)
+sequenceDiagram
+  autonumber
+  participant V as ChronoVisor
+  participant K as ChronoKeeper roster (story_range_fetch + legacy chunk source)
+  box rgb(235,242,250) ChronoPlayer process
+    participant AS as PlayerStoreAdminService
+    participant DS as PlayerDataStore (roster + legacy-mirror pipeline)
+    participant PS as PlaybackService
+    participant HFC as KeeperHotFetchClient (per keeper, lazy + cached)
+    participant QRA as QueryResponseAgent (drain ULT)
+    participant RRQ as ArchiveReadingRequestQueue
+    participant RA as ArchiveReadingAgent (reading ULT)
+    participant HDF as HDF5ArchiveReadingAgent
+  end
+  actor C as Client (query requester)
+
+  Note over V,DS: 1) ACQUIRE (roster) — the visor delivers the story's keeper roster so the player can hot-fetch at replay time
+  V->>AS: start_story_recording_with_keepers(chronicle, story, story_id, t0, keeper recording ServiceIds)   [RPC]
+  AS->>DS: setStoryKeepers(story_id, keeper_services)  (replaced wholesale each story start)
+  AS->>DS: startStoryRecording(...)  (opens the legacy-mirror pipeline)
+  AS-->>V: CL_SUCCESS
+
+  Note over K,DS: 2) LEGACY MIRROR (optional config) — the player still receives pushed chunks over RDMA, but replay no longer reads this in-memory window
+  K->>DS: receive_story_chunk(bulk, reporter)   [RDMA] -> ingest -> collect / decay -> delete (archive already holds them)
+
+  Note over DS,HDF: 3) REPLAY QUERY (watermark split) — hot from the keeper roster on demand, cold from the archive, cut at B = min(hot_floor)
+  C->>PS: story_playback_request(receiver, query_id, story_id, chronicle, story, start, end)   [RPC]
+  PS->>DS: getStoryKeepers(story_id)
+  DS-->>PS: keeper roster
+  loop each keeper in the roster (hot fetch, fan-out)
+    PS->>HFC: getHotFetchClient(keeper)  (lazy, cached by endpoint)
+    PS->>HFC: fetchRange(story_id, start, end, maxEvents)
+    HFC->>K: story_range_fetch(story_id, start, end, maxEvents)   [RPC]
+    K-->>HFC: HotRangeResponse(events in range, hot_floor, known_W)
+    HFC-->>PS: response
+    PS->>PS: hot_boundary = min(hot_boundary, hot_floor), merge events (dedup by EventSequence)
+    Note right of PS: unreachable / empty keeper reports hot_floor = UINT64_MAX and drops out of the min, so B only rises (archive covers the rest)
+  end
+  PS->>PS: B = hot_boundary, keep hot events with time ≥ B (drop < B — archive-covered by E ≤ W)
+  PS->>QRA: stashQueryResponseRecord(query_id, hot response, complete = (B ≤ start))
+  PS-->>C: query_id (accepted)
+  opt archive portion needed (B > start)
+    PS->>RRQ: pushReadingRequest(ArchiveReadingRequest chronicle, story, start, B)
+  end
+
+  Note over RA,HDF: 4) ARCHIVE READ (cold) — separate reading ULT, cut at [start, B)
+  loop archiveReadingTask
+    RA->>RRQ: popReadingRequest()
+    RA->>HDF: readArchivedStory(chronicle, story, start, B)
+    HDF-->>RA: list of StoryChunk*
+    RA->>QRA: addArchivedEventsToQueryResponse(query_id, chunks)
+    QRA->>QRA: prepend archived events, mark response ready
+  end
+
+  Note over QRA,C: 5) DELIVER — QueryResponseAgent drains ready responses to the client
+  loop drainQueryResponses
+    QRA->>C: receive_query_response(serialized bulk)   [RDMA]
+    C-->>QRA: bytes_transferred
+    QRA->>QRA: delete response
+  end
+
+  Note over V,DS: 6) STOP — the visor closes the story, pipeline retirement is deferred
+  V->>AS: stop_story_recording(story_id)   [RPC]
+  AS->>DS: stopStoryRecording(story_id)  (schedule pipeline exit at now + inactive_pipeline_delay)
+  AS-->>V: CL_SUCCESS

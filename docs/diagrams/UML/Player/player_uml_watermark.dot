@@ -1,0 +1,147 @@
+// ChronoLog ChronoPlayer (watermark-feedback branch) — class interaction (UML class diagram)
+// Render:  dot -Tsvg player_uml_watermark.dot -o player_uml_watermark.svg
+//          dot -Tpng -Gdpi=150 player_uml_watermark.dot -o player_uml_watermark.png
+//
+// Watermark additions: PlaybackService fans story_range_fetch over the story's
+// keeper roster via KeeperHotFetchClient and splits replay at B = min(hot_floor);
+// PlayerDataStore stores the roster (setStoryKeepers); PlayerStoreAdminService
+// handles start_story_recording_with_keepers. The chunk-ingest pipeline is a
+// legacy mirror (kept as config), no longer read by replay.
+digraph PlayerClassesWatermark {
+  rankdir=LR; compound=true; newrank=true;
+  graph [fontname="Helvetica", fontsize=11];
+  node  [fontname="Helvetica", shape=plaintext];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  // ---------- legend ----------
+  legend [shape=plaintext, fontname="DejaVu Sans", label=<
+    <table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ffffff">
+      <tr><td colspan="2" bgcolor="#e8e8e8" align="center"><b>LEGEND</b></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>relationships</b>&#160;&#160;(line: solid = structural &#183; dashed = dependency/RPC)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9670;&#9472;&#9472;</font></td><td align="left"><b>composition</b> &#8212; owner manages lifetime (by-value member, or new/delete of *)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9671;&#9472;&#9472;</font></td><td align="left"><b>aggregation</b> &#8212; holds a borrowed reference / pointer ( &amp; , * )</td></tr>
+      <tr><td align="center"><font point-size="20">&#9472;&#9472;&#9655;</font></td><td align="left"><b>generalization</b> &#8212; inherits (hollow triangle points to the base class)</td></tr>
+      <tr><td align="center"><font point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><b>dependency</b> &#8212; uses / calls, in-process (dashed line)</td></tr>
+      <tr><td align="center"><font color="#1a56db" point-size="20">&#9548;&#9548;&#9656;</font></td><td align="left"><font color="#1a56db"><b>cross-process RPC</b> &#8212; Thallium / Margo (dashed, blue)</font></td></tr>
+      <tr><td colspan="2" bgcolor="#f5f5f5" align="left"><b>node fill = architectural plane</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bcd4e6"><b>control plane</b> &#8212; RPC providers / registry client</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffdf9e"><b>hot fetch</b> &#8212; on-demand keeper read (this branch)</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#bfe3bf"><b>data / legacy mirror</b> &#8212; roster + chunk-ingest window</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#f0e08c"><b>archive read + response</b> &#8212; cold HDF5 + RDMA reply</td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#dcdcdc"><b>common data</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#ffe0b2"><b>external process</b></td></tr>
+      <tr><td colspan="2" align="left" bgcolor="#eeeeee"><b>library base</b> ( tl::provider&lt;T&gt; )</td></tr>
+    </table>>];
+
+  // ===================== external actors =====================
+  subgraph cluster_ext {
+    label="external processes"; style="rounded,dashed"; color="#cc8800"; fontcolor="#cc8800";
+    Client [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>Client</b><br/><font point-size="9">&#171;query requester&#187;</font></td></tr></table>>];
+    Keeper [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoKeeper(s)</b><br/><font point-size="9">&#171;story_range_fetch + legacy chunk push&#187;</font></td></tr></table>>];
+    Visor  [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>ChronoVisor</b><br/><font point-size="9">&#171;registry + admin&#187;</font></td></tr></table>>];
+    FS     [label=<<table border="1" cellborder="0" bgcolor="#ffe0b2"><tr><td><b>HDF5 archive</b><br/><font point-size="9">&#171;cold store&#187;</font></td></tr></table>>];
+  }
+
+  tlprov [label=<<table border="1" cellborder="0" bgcolor="#eeeeee"><tr><td><b>tl::provider&lt;T&gt;</b><br/><font point-size="9">&#171;Thallium/Margo&#187;</font></td></tr></table>>];
+
+  // ===================== control plane =====================
+  subgraph cluster_ctrl {
+    label="control plane — RPC providers"; style="rounded,filled"; fillcolor="#eef4fb"; color="#7aa6d6";
+
+    PS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>PlaybackService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- tl::engine playbackEngine<br align="left"/>- PlayerDataStore&amp; theActiveDataStore<br align="left"/>- ArchiveReadingRequestQueue&amp; theArchiveReadingRequestQueue<br align="left"/>- map&lt;endpoint, QueryResponseAgent*&gt; responseSenders<br align="left"/>- map&lt;endpoint, KeeperHotFetchClient*&gt; hotFetchClients<br align="left"/>+ story_playback_request()  &#171;RPC&#187;<br align="left"/>+ getHotFetchClient()  (lazy, cached)<br align="left"/></font></td></tr></table>>];
+
+    ASV [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>PlayerStoreAdminService</b><br/><font point-size="8">&#171;tl::provider&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- PlayerDataStore&amp; theDataStore<br align="left"/>+ StartStoryRecording()  &#171;RPC&#187;<br align="left"/>+ StartStoryRecordingWithKeepers()  &#171;RPC, roster&#187;<br align="left"/>+ StopStoryRecording()  &#171;RPC&#187;<br align="left"/></font></td></tr></table>>];
+
+    CCS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bcd4e6">
+      <tr><td align="center"><b>StoryChunkConsumerService</b><br/><font point-size="8">&#171;tl::provider &#183; LEGACY MIRROR&#187;</font></td></tr>
+      <tr><td align="left"><font point-size="9">- StoryChunkIngestionQueue&amp; theIngestionQueue<br align="left"/>+ receive_story_chunk()  &#171;RDMA, legacy&#187;<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== hot fetch (new) =====================
+  subgraph cluster_hot {
+    label="hot fetch — on-demand keeper read (this branch)"; style="rounded,filled"; fillcolor="#fff6e6"; color="#d0a03a";
+
+    HFC [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#ffdf9e">
+      <tr><td align="center"><b>KeeperHotFetchClient</b><br/><font point-size="8">&#171;new&#187; one per keeper, cached by endpoint</font></td></tr>
+      <tr><td align="left"><font point-size="9">- ServiceId keeperServiceId<br align="left"/>- tl::provider_handle service_ph<br align="left"/>- tl::remote_procedure story_range_fetch<br align="left"/>+ fetchRange(story, start, end, max)  &#8594; HotRangeResponse<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== data / legacy mirror =====================
+  subgraph cluster_data_c {
+    label="data — roster + legacy chunk-ingest window"; style="rounded,filled"; fillcolor="#eef7ee"; color="#7fb37f";
+
+    PDS [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>PlayerDataStore</b></td></tr>
+      <tr><td align="left"><font point-size="9">- StoryChunkIngestionQueue&amp; theIngestionQueue<br align="left"/>- map&lt;StoryId, StoryPipeline*&gt; theMapOfStoryPipelines  (legacy)<br align="left"/>- map&lt;StoryId, vector&lt;ServiceId&gt;&gt; storyKeepers  &#171;roster&#187;<br align="left"/>+ setStoryKeepers() / getStoryKeepers()<br align="left"/>+ startStoryRecording() / collectIngestedEvents()  (legacy)<br align="left"/>+ get_active_window_boundary() / get_active_story_events()  (unused)<br align="left"/></font></td></tr></table>>];
+
+    SP [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#bfe3bf">
+      <tr><td align="center"><b>StoryPipeline</b><br/><font point-size="8">chrono-common (legacy mirror)</font></td></tr>
+      <tr><td align="left"><font point-size="9">+ collectIngestedEvents() / mergeEvents()<br align="left"/>+ extractDecayedStoryChunks()<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== archive read + response =====================
+  subgraph cluster_read {
+    label="archive read + response delivery"; style="rounded,filled"; fillcolor="#fbf8e9"; color="#cbb85f";
+
+    ARQ [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>ArchiveReadingRequestQueue</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ pushReadingRequest() / popReadingRequest()<br align="left"/></font></td></tr></table>>];
+
+    RA [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>ArchiveReadingAgent</b> / <b>HDF5ArchiveReadingAgent</b></td></tr>
+      <tr><td align="left"><font point-size="9">+ archiveReadingTask()<br align="left"/>+ readArchivedStory(chronicle, story, start, B)<br align="left"/></font></td></tr></table>>];
+
+    QRA [label=<<table border="1" cellborder="0" cellspacing="0" bgcolor="#f0e08c">
+      <tr><td align="center"><b>QueryResponseAgent</b></td></tr>
+      <tr><td align="left"><font point-size="9">- map&lt;query_id, PlaybackQueryResponse*&gt; active_queries<br align="left"/>+ stashQueryResponseRecord()<br align="left"/>+ addArchivedEventsToQueryResponse()<br align="left"/>+ drain &#8594; receive_query_response (RDMA)<br align="left"/></font></td></tr></table>>];
+  }
+
+  // ===================== common data =====================
+  subgraph cluster_data {
+    label="common data"; style="rounded,filled"; fillcolor="#f2f2f2"; color="#aaaaaa";
+    HRR [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>HotRangeResponse</b><br/><font point-size="9">&#171;new&#187; vector&lt;LogEvent&gt; events<br align="left"/>hot_floor &#183; known_W &#183; truncated</font></td></tr></table>>];
+    PQR [label=<<table border="1" cellborder="0" bgcolor="#dcdcdc"><tr><td><b>PlaybackQueryResponse</b><br/><font point-size="9">query_id &#183; vector&lt;Event&gt; events</font></td></tr></table>>];
+  }
+
+  // ===================== generalization =====================
+  edge [color="#444444", arrowhead=onormal, style=solid];
+  PS  -> tlprov;
+  ASV -> tlprov;
+  CCS -> tlprov;
+
+  // ===================== composition =====================
+  edge [color="#222222", dir=both, arrowtail=diamond, arrowhead=none, style=solid];
+  PS  -> HFC   [label="owns * (cached map)"];
+  PS  -> QRA   [label="owns * (per receiver)"];
+  PDS -> SP    [label="owns * (legacy)"];
+  QRA -> PQR   [label="active_queries"];
+
+  // ===================== aggregation =====================
+  edge [color="#226622", dir=both, arrowtail=odiamond, arrowhead=none, style=solid];
+  PS  -> PDS   [label="&amp;"];
+  PS  -> ARQ   [label="&amp;"];
+  ASV -> PDS   [label="&amp;"];
+  HFC -> HRR   [label="returns"];
+
+  // ===================== in-process dependency (dashed) =====================
+  edge [color="#777777", dir=forward, arrowtail=none, arrowhead=vee, style=dashed];
+  PS  -> PDS   [label="getStoryKeepers() roster", constraint=false];
+  PS  -> HFC   [label="fetchRange() per keeper", constraint=false];
+  PS  -> ARQ   [label="push [start, B)", constraint=false];
+  ARQ -> RA    [label="popReadingRequest()", constraint=false];
+  RA  -> QRA   [label="addArchivedEventsToQueryResponse()", constraint=false];
+  ASV -> PDS   [label="setStoryKeepers()", constraint=false, color="#bbbbbb"];
+
+  // ===================== cross-process RPC (blue dashed) =====================
+  edge [color="#1a56db", fontcolor="#1a56db", dir=forward, arrowhead=vee, style=dashed];
+  Client -> PS    [label="story_playback_request"];
+  HFC    -> Keeper [label="story_range_fetch (hot pull)"];
+  Visor  -> ASV   [label="start_story_recording_with_keepers (roster)"];
+  Keeper -> CCS   [label="receive_story_chunk (legacy)"];
+  QRA    -> Client [label="receive_query_response (RDMA)"];
+  RA     -> FS    [label="read HDF5", color="#15803d", fontcolor="#15803d"];
+}

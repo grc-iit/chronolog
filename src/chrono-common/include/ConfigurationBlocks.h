@@ -240,6 +240,37 @@ struct DataStoreConf
     // last-N playback before they age out to the extraction/archive path.
     // Keeper-only knob; ignored by grapher/player.
     int tail_capacity = 65536;
+    // Soft cap (MB) on the keeper's retained sealed-chunk memory. On exceed
+    // the retention store WARNs (the grapher's persisted watermark is lagging,
+    // e.g. an outage) but keeps retaining — unpersisted data is never dropped.
+    // 0 disables the warning. Keeper-only knob; ignored by grapher/player.
+    int retention_cap_mb = 4096;
+    // Re-send a retained chunk whose grapher ack or covering watermark report
+    // has not arrived after this long. Must exceed the grapher's
+    // story_chunk_duration + acceptance_window, which is how long a healthy
+    // chunk waits to be written, or healthy chunks are sent and written twice.
+    // The template's grapher windows total 90 s, so this is a little over 3x.
+    // Keeper-only knob.
+    int watermark_resend_timeout_secs = 300;
+    // After the grapher reports a chunk written, the keeper keeps the chunk
+    // and serves its events as unconfirmed for this long, so a replay does not
+    // depend on the player already seeing the new archive file. A replay now
+    // looks a missing window's file up by name rather than waiting for the
+    // player's next directory listing (ArchiveReaders.archive_window_secs), so
+    // this only has to cover the write-to-report round trip. On NFS mounted
+    // with the default lookupcache, a name a player asked for just before the
+    // file appeared can stay negative for acdirmin (30 s by default): mount
+    // with lookupcache=positive, or raise this to cover it. 0 frees on the
+    // report. Keeper-only knob.
+    int archive_visibility_delay_secs = 10;
+    // How long a keeper stopped with SIGTERM waits for the grapher to confirm
+    // every chunk it holds written, sending unacked chunks again meanwhile.
+    // Cover the grapher's story_chunk_duration + acceptance_window (the
+    // template's 30+60). 0 exits without waiting. Keeper-only knob.
+    int shutdown_confirm_timeout_secs = 150;
+    // How often the grapher pushes dirty per-story persisted watermarks to
+    // the contributing keepers. Grapher-only knob; ignored by keeper/player.
+    int watermark_report_interval_secs = 1;
     // When true, playback()/tail reads also serve events from the active
     // (unsealed) timeline in addition to sealed chunks, cutting write-to-visible
     // latency from the seal window (chunk_duration + acceptance_window) down to
@@ -247,18 +278,6 @@ struct DataStoreConf
     // (a late arrival may sort behind an already-seen event). Keeper-only knob;
     // defaults false to preserve the sealed-only, final-result semantics.
     bool live_tail_read = false;
-    // Upper bound (seconds) on how long a sealed chunk may sit in the keeper tail
-    // before it is forwarded for archival. NOTE this is measured from the chunk's
-    // END time, and a chunk only enters the tail once it decays at
-    // end_time + acceptance_window_secs -- so the window in which events are
-    // actually readable by playback() is
-    //     tail_retention_secs - acceptance_window_secs
-    // and the value must exceed acceptance_window_secs for the tail to hold
-    // anything at all. parseJsonConf warns when it does not. Archival must not depend on write
-    // volume: without this, a story producing fewer than tail_capacity events is
-    // only handed to the grapher at keeper shutdown, so its data never reaches
-    // HDF5 while the keeper runs. 0 disables age-out. Keeper-only knob.
-    int tail_retention_secs = 60;
 
     DataStoreConf() {}
 
@@ -271,20 +290,35 @@ struct DataStoreConf
                " acceptance_window_secs: " + std::to_string(acceptance_window_secs) +
                " inactive_story_delay_secs: " + std::to_string(inactive_story_delay_secs) +
                " tail_capacity: " + std::to_string(tail_capacity) +
-               " live_tail_read: " + (live_tail_read ? "true" : "false") +
-               " tail_retention_secs: " + std::to_string(tail_retention_secs) + "]";
+               " retention_cap_mb: " + std::to_string(retention_cap_mb) +
+               " watermark_resend_timeout_secs: " + std::to_string(watermark_resend_timeout_secs) +
+               " archive_visibility_delay_secs: " + std::to_string(archive_visibility_delay_secs) +
+               " shutdown_confirm_timeout_secs: " + std::to_string(shutdown_confirm_timeout_secs) +
+               " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) +
+               " live_tail_read: " + (live_tail_read ? "true" : "false") + "]";
     }
 };
 
 struct ExtractorReaderConf
 {
     std::string story_files_dir;
+    // How often the player lists the archive directory to find new files.
+    // Player-only knob.
+    int archive_scan_interval_secs = 5;
+    // The grapher's story_chunk_duration_secs: the time range of one archive
+    // file, and so the step between the names a replay probes for files the
+    // last listing did not show. Set it to the grapher's value. 0 turns
+    // probing off and leaves a replay with whatever the listing has.
+    // Player-only knob.
+    int archive_window_secs = 30;
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
+        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
+               " archive_scan_interval_secs: " + std::to_string(archive_scan_interval_secs) +
+               " archive_window_secs: " + std::to_string(archive_window_secs) + "]";
     }
 };
 

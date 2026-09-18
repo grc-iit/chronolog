@@ -1,14 +1,41 @@
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <regex>
 #include <stdexcept>
+#include <unistd.h>
 
+#include <HDF5FileAccess.h>
 #include <StoryChunkWriter.h>
 
 namespace fs = std::filesystem;
 
 namespace chronolog
 {
+namespace
+{
+// A window is written under this name and renamed into place only once it is
+// complete, so a player listing the archive directory never opens a partial
+// file, and a write that fails leaves nothing for a later replay to trip over.
+// The suffix keeps it out of the player's listing and out of the numbered-file
+// scan in getStoryChunkFileName, and pid plus a counter keep two writers from
+// sharing one temporary.
+std::string partialFileName(std::string const& final_name)
+{
+    static std::atomic<uint64_t> sequence{0};
+    return final_name + ".partial." + std::to_string(::getpid()) + "." + std::to_string(sequence++);
+}
+
+void removePartialFile(std::string const& partial_name)
+{
+    std::error_code ec;
+    fs::remove(partial_name, ec);
+    if(ec)
+    {
+        LOG_ERROR("[StoryChunkWriter] Could not remove the partial file {}: {}", partial_name, ec.message());
+    }
+}
+} // namespace
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
 {
     std::vector<LogEventHVL> data;
@@ -16,33 +43,55 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     for(const auto& start: story_chunk) { data.push_back(start.second); }
     std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-    hsize_t ret = 0;
+    std::string const partial_name = partialFileName(file_name);
     std::unique_ptr<H5::H5File> file;
     try
     {
-        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {} (as {})", file_name, partial_name);
+        file = std::make_unique<H5::H5File>(partial_name,
+                                            H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            file->close();
+            removePartialFile(partial_name);
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
+
+        // the window appears under its own name complete or not at all
+        std::error_code ec;
+        fs::rename(partial_name, file_name, ec);
+        if(ec)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}",
+                      partial_name,
+                      file_name,
+                      ec.message());
+            removePartialFile(partial_name);
+            return 0;
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
+    removePartialFile(partial_name);
+    return 0;
 }
 
 std::string StoryChunkWriter::getStoryChunkFileName(std::string const& root_dir, std::string const& base_file_name)
@@ -129,36 +178,62 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
     std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
                             std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
     //    file_name = fs::path(rootDirectory) / fs::path(file_name);
-    hsize_t ret = 0;
+    std::string partial_name;
     std::unique_ptr<H5::H5File> file;
     try
     {
         LOG_DEBUG("[StoryChunkWriter] Making sure the StoryChunk file name is unique...");
         file_name = getStoryChunkFileName(rootDirectory, file_name);
+        partial_name = partialFileName(file_name);
 
-        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {} (as {})", file_name, partial_name);
+        file = std::make_unique<H5::H5File>(partial_name,
+                                            H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            file->close();
+            removePartialFile(partial_name);
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
+
+        // the window appears under its own name complete or not at all
+        std::error_code ec;
+        fs::rename(partial_name, file_name, ec);
+        if(ec)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}",
+                      partial_name,
+                      file_name,
+                      ec.message());
+            removePartialFile(partial_name);
+            return 0;
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
-        ret = file_size;
+        return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
+    if(!partial_name.empty())
+    {
+        removePartialFile(partial_name);
+    }
+    return 0;
 }
 
 hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)

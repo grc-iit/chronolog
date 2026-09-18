@@ -4,12 +4,15 @@
 #include <string>
 #include <cstdint>
 #include <iostream>
+#include <vector>
 #include <margo.h>
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
+#include <thallium/serialization/stl/vector.hpp>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
+#include <ServiceId.h>
 
 #include "PlayerDataStore.h"
 
@@ -56,6 +59,24 @@ public:
         request.respond(return_code);
     }
 
+    // Roster-carrying variant used by the visor: same story start, plus the
+    // keeper recording services the playback service fans hot fetches to.
+    void StartStoryRecordingWithKeepers(tl::request const& request,
+                                        std::string const& chronicle_name,
+                                        std::string const& story_name,
+                                        StoryId const& story_id,
+                                        uint64_t start_time,
+                                        std::vector<ServiceId> const& keeper_services)
+    {
+        LOG_INFO("[PlayerStoreAdminService] Starting Story Recording: StoryName={}, StoryID={}, {} keeper(s)",
+                 story_name,
+                 story_id,
+                 keeper_services.size());
+        theDataStore.setStoryKeepers(story_id, keeper_services);
+        int return_code = theDataStore.startStoryRecording(chronicle_name, story_name, story_id, start_time);
+        request.respond(return_code);
+    }
+
     void StopStoryRecording(tl::request const& request, StoryId const& story_id)
     {
         LOG_INFO("[PlayerStoreAdminService] Stopping Story Recording: StoryID={}", story_id);
@@ -71,6 +92,7 @@ private:
         define("collection_service_available", &PlayerStoreAdminService::collection_service_available);
         define("shutdown_data_collection", &PlayerStoreAdminService::shutdown_data_collection);
         define("start_story_recording", &PlayerStoreAdminService::StartStoryRecording);
+        define("start_story_recording_with_keepers", &PlayerStoreAdminService::StartStoryRecordingWithKeepers);
         define("stop_story_recording", &PlayerStoreAdminService::StopStoryRecording);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });

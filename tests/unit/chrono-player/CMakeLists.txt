@@ -70,3 +70,268 @@ add_test(NAME Unit_ChronoPlayer_FileSystemMonitoring COMMAND fs_monitoring_test)
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(fs_monitoring_test DESTINATION tests)
 endif()
+
+#------------------------------------------------------------------------------
+
+# HotRangeSplit (GTest) — the replay split between archive and keepers;
+# header-only, no network needed
+find_package(GTest REQUIRED)
+include(GoogleTest)
+
+add_executable(hot_range_split_test
+    chrono_player_hot_range_split_test.cpp
+)
+
+target_include_directories(hot_range_split_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(hot_range_split_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    thallium
+)
+
+set_target_properties(hot_range_split_test PROPERTIES OUTPUT_NAME chronolog-test-player-hot-range-split)
+gtest_discover_tests(hot_range_split_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(hot_range_split_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# KeeperHotFetchClient (GTest) — the hot fetch against the keeper's real
+# recording service and against a keeper that never answers, over
+# ofi+sockets on 127.0.0.1
+add_executable(keeper_hot_fetch_client_test
+    chrono_player_keeper_hot_fetch_client_test.cpp
+)
+
+target_include_directories(keeper_hot_fetch_client_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_hot_fetch_client_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_hot_fetch_client_test PROPERTIES OUTPUT_NAME chronolog-test-player-keeper-hot-fetch-client)
+gtest_discover_tests(keeper_hot_fetch_client_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_hot_fetch_client_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Client ids in the HDF5 archive (GTest): written and read back at full width,
+# and files with the old 32-bit layout still readable
+add_executable(archive_client_id_test
+    chrono_player_archive_client_id_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_client_id_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_client_id_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_client_id_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_client_id_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-client-id)
+gtest_discover_tests(archive_client_id_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_client_id_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Archive visibility (GTest): a replay made after the grapher writes a chunk
+# but before the player has seen the new archive file still returns the
+# chunk's events. Uses the keeper's real retention store, the replay split, the
+# archive reader and the merge.
+add_executable(archive_visibility_test
+    chrono_player_archive_visibility_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_visibility_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_visibility_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_visibility_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_visibility_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-visibility)
+gtest_discover_tests(archive_visibility_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_visibility_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# ReplayEventMerge (GTest) — merging archive and keeper events into one replay
+# response; header-only, no network needed
+add_executable(replay_event_merge_test
+    chrono_player_replay_event_merge_test.cpp
+)
+
+target_include_directories(replay_event_merge_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(replay_event_merge_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+    thallium
+)
+
+set_target_properties(replay_event_merge_test PROPERTIES OUTPUT_NAME chronolog-test-player-replay-event-merge)
+gtest_discover_tests(replay_event_merge_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(replay_event_merge_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Numbered archive files (GTest): a replay reads every write of a window, the
+# .vlen.N.h5 files as well as the first one
+add_executable(archive_numbered_files_test
+    chrono_player_archive_numbered_files_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_numbered_files_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_numbered_files_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_numbered_files_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_numbered_files_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-numbered-files)
+gtest_discover_tests(archive_numbered_files_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_numbered_files_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Player ArchiveReaders conf (GTest): the archive knobs and their range checks
+add_executable(player_reader_conf_test
+    chrono_player_reader_conf_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ChronoPlayerConfiguration.cpp
+)
+
+target_include_directories(player_reader_conf_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(player_reader_conf_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(player_reader_conf_test PROPERTIES OUTPUT_NAME chronolog-test-player-reader-conf)
+gtest_discover_tests(player_reader_conf_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(player_reader_conf_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Archive probe (GTest): a replay finds a file written since the last directory
+# listing by looking its name up
+add_executable(archive_probe_test
+    chrono_player_archive_probe_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_probe_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_probe_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_probe_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_probe_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-probe)
+gtest_discover_tests(archive_probe_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_probe_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
+# Pipeline retirement (GTest): a stopped story keeps its player pipeline for the
+# whole inactive delay
+add_executable(player_pipeline_retirement_test
+    player_pipeline_retirement_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp
+)
+
+target_include_directories(player_pipeline_retirement_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(player_pipeline_retirement_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(player_pipeline_retirement_test PROPERTIES OUTPUT_NAME chronolog-test-player-pipeline-retirement)
+gtest_discover_tests(player_pipeline_retirement_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(player_pipeline_retirement_test DESTINATION tests)
+endif()

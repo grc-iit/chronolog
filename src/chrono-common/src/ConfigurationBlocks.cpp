@@ -312,25 +312,93 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
             }
             live_tail_read = json_object_get_boolean(val);
         }
-        else if(strcmp(key, "tail_retention_secs") == 0)
+        else if(strcmp(key, "retention_cap_mb") == 0)
         {
             if(!json_object_is_type(val, json_type_int))
             {
-                std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': expected integer" << std::endl;
+                std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            // Range-checked because the keeper widens this to uint64_t and scales it
-            // to nanoseconds: a negative value would wrap into a garbage retention
-            // window. 0 is valid and documented -- it disables age-out, leaving
-            // capacity eviction and the shutdown flush as the archival paths.
-            int const parsed_tail_retention = json_object_get_int(val);
-            if(parsed_tail_retention < 0)
+            // the keeper widens this to std::size_t and multiplies it by 1 MB, so a
+            // negative value becomes a cap no amount of retained memory can cross
+            // and the warning never fires
+            int const parsed_cap_mb = json_object_get_int(val);
+            if(parsed_cap_mb < 0)
             {
-                std::cerr << "[DataStoreConf] Invalid 'tail_retention_secs': must not be negative, got "
-                          << parsed_tail_retention << std::endl;
+                std::cerr << "[DataStoreConf] Invalid 'retention_cap_mb': must not be negative, got " << parsed_cap_mb
+                          << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            tail_retention_secs = parsed_tail_retention;
+            retention_cap_mb = parsed_cap_mb;
+        }
+        else if(strcmp(key, "watermark_resend_timeout_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            // the keeper compares an age against this as seconds: a negative value
+            // makes every chunk look too young to send again, so nothing ever is
+            int const parsed_resend_secs = json_object_get_int(val);
+            if(parsed_resend_secs < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': must not be negative, got "
+                          << parsed_resend_secs << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_resend_timeout_secs = parsed_resend_secs;
+        }
+        else if(strcmp(key, "archive_visibility_delay_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'archive_visibility_delay_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            int const parsed_delay = json_object_get_int(val);
+            if(parsed_delay < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'archive_visibility_delay_secs': must not be negative, got "
+                          << parsed_delay << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            archive_visibility_delay_secs = parsed_delay;
+        }
+        else if(strcmp(key, "shutdown_confirm_timeout_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'shutdown_confirm_timeout_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            int const parsed_timeout = json_object_get_int(val);
+            if(parsed_timeout < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'shutdown_confirm_timeout_secs': must not be negative, got "
+                          << parsed_timeout << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            shutdown_confirm_timeout_secs = parsed_timeout;
+        }
+        else if(strcmp(key, "watermark_report_interval_secs") == 0)
+        {
+            if(!json_object_is_type(val, json_type_int))
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_report_interval_secs': expected integer" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            // the grapher widens this to uint32_t seconds: a negative value becomes
+            // an interval of about 136 years, so no keeper ever hears a watermark
+            // and every keeper retains every chunk it has sealed
+            int const parsed_report_secs = json_object_get_int(val);
+            if(parsed_report_secs < 0)
+            {
+                std::cerr << "[DataStoreConf] Invalid 'watermark_report_interval_secs': must not be negative, got "
+                          << parsed_report_secs << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            watermark_report_interval_secs = parsed_report_secs;
         }
         else
         {
@@ -338,24 +406,6 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
         }
     }
 
-    // Cross-field check: these two knobs jointly decide how long a sealed chunk is
-    // readable. A chunk only ENTERS the tail once it decays, at
-    // end_time + acceptance_window, and LEAVES it at end_time + tail_retention --
-    // so the readable window is the difference, not tail_retention itself. When
-    // acceptance_window >= tail_retention a chunk is evicted on the same
-    // maintenance tick that admits it and the sealed tail is permanently empty:
-    // playback() then returns 0 events with CL_SUCCESS forever, which is
-    // indistinguishable from a story that simply has nothing yet. Warn rather than
-    // reject, since a deployment that never issues tail reads is unaffected.
-    if(tail_retention_secs > 0 && acceptance_window_secs >= tail_retention_secs)
-    {
-        std::cerr << "[DataStoreConf] WARNING: tail_retention_secs (" << tail_retention_secs
-                  << ") <= acceptance_window_secs (" << acceptance_window_secs
-                  << "): sealed chunks are evicted as soon as they enter the tail, so playback() will always "
-                     "return 0 events. Set tail_retention_secs above acceptance_window_secs by the tail depth "
-                     "you want (readable window = tail_retention_secs - acceptance_window_secs)."
-                  << std::endl;
-    }
 
     return chronolog::CL_SUCCESS;
 }

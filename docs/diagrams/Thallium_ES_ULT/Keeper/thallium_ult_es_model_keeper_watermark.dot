@@ -1,0 +1,100 @@
+digraph ChronoKeeperArgobotsModelWatermark {
+    /* ============================================================
+       ChronoKeeper (watermark-feedback branch) — Argobots execution model
+       Deltas vs. the base model:
+         - KeeperTailStore -> KeeperChunkRetentionStore: single owner of every
+           sealed chunk. Ship-on-seal (stash pointer to the extraction queue at
+           seal), freed only when durable (shipped AND E <= W AND tail-released).
+         - Extraction ULT drain routes the transfer outcome back through the
+           disposal seam (markShipped / markSendFailed) instead of deleting.
+         - dataAdminEngine handler also serves report_story_watermarks (grapher).
+         - recordingEngine handlers also serve tail_get_* and story_range_fetch
+           (hot reads served straight from the retention store).
+       ============================================================ */
+    rankdir=LR;
+    compound=true;
+    splines=spline;
+    nodesep=0.35;
+    ranksep=1.0;
+    bgcolor="white";
+    fontname="Helvetica";
+    labelloc="t";
+    fontsize=22;
+    label=<<b>ChronoKeeper (watermark) &mdash; Argobots Execution Streams (ES) &amp; User-Level Threads (ULT)</b><br/><font point-size="13">ship-on-seal into the KeeperChunkRetentionStore; a chunk frees only once the grapher's watermark W covers it (E &le; W)</font>>;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11 color="#475569"];
+    edge [fontname="Helvetica" fontsize=10];
+
+    /* ---------------- margo-internal ESs per engine ---------------- */
+    subgraph cluster_record_engine {
+        label=<<b>recordingEngine</b>  &mdash; margo_init(:6666, SERVER, progress=1, rpc=4)>;
+        style="rounded,filled"; color="#16a34a"; fillcolor="#f0fdf4"; fontsize=13;
+        rec_prog  [label="progress ES\n(network poll ULT)" fillcolor="#bbf7d0"];
+        rec_h     [label="4 RPC-handler ES (IngestionThreadCount=4)\nrecord_event ULTs\n+ tail_get_sequences / tail_get_events\n+ story_range_fetch  (hot reads)" fillcolor="#86efac"];
+    }
+
+    subgraph cluster_admin_engine {
+        label=<<b>dataAdminEngine</b>  &mdash; margo_init(:7777, SERVER, progress=1, rpc=1)>;
+        style="rounded,filled"; color="#2563eb"; fillcolor="#eff6ff"; fontsize=13;
+        adm_prog  [label="progress ES" fillcolor="#bfdbfe"];
+        adm_h     [label="1 RPC-handler ES\nstart/stop_story_recording\n+ report_story_watermarks  (from grapher)" fillcolor="#93c5fd"];
+    }
+
+    subgraph cluster_extract_engine {
+        label=<<b>extractionEngine</b>  &mdash; tl::engine(proto, CLIENT_MODE)>;
+        style="rounded,filled"; color="#7c3aed"; fillcolor="#faf5ff"; fontsize=13;
+        ext_prog  [label="progress ES\n(client: drives outbound RDMA)" fillcolor="#ddd6fe"];
+    }
+
+    /* ---------------- application ESs / ULTs ---------------- */
+    subgraph cluster_app {
+        label=<<b>Application ES / ULT</b>  &mdash; created in main() after <font face="Courier">tl::abt scope;</font>>;
+        style="rounded,filled"; color="#d97706"; fillcolor="#fffbeb"; fontsize=13;
+
+        dc [label="theDataStore.startDataCollection(3)\n3 app ES + 6 ULT -> dataCollectionTask()\ncollect -> seal (ship-on-seal) -> retire\n+ requeueStalled() re-send" fillcolor="#fde68a"];
+        ex [label="theExtractionModule.startExtraction()\n2 app ES + 2 ULT -> drainExtractionQueue()\nprocess_chunk() -> dispose_chunk(status)" fillcolor="#fcd34d"];
+    }
+
+    /* ---------------- the new central owner ---------------- */
+    rs  [label="KeeperChunkRetentionStore\nowns every sealed chunk (one mutex)\nfree when: shipped AND E <= W AND tail-released\nserves tail_get_* / story_range_fetch reads" shape=note fillcolor="#fef9c3" color="#ca8a04" fontsize=10];
+
+    /* ---------------- queues (cylinders) ---------------- */
+    iq  [label="IngestionQueue\n(lock-free)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+    xq  [label="StoryChunkExtractionQueue\n(lock-free)" shape=cylinder fillcolor="#e2e8f0" color="#334155"];
+
+    /* ---------------- external peers ---------------- */
+    client  [label="ChronoLog\nClient(s)" shape=component fillcolor="#dcfce7" color="#16a34a"];
+    visor   [label="ChronoVisor\nKeeperRegistryService :8888" shape=component fillcolor="#dbeafe" color="#2563eb"];
+    graph_p [label="ChronoGrapher\nGrapherRecordingService :3333\nDataStoreAdminService :4444" shape=component fillcolor="#ede9fe" color="#7c3aed"];
+    play_p  [label="ChronoPlayer\nrecv :7778 + PlaybackService :2225" shape=component fillcolor="#ede9fe" color="#7c3aed"];
+
+    /* ===================== EDGES ===================== */
+    /* inbound recording */
+    client -> rec_h [color="#16a34a" label="record_event RPC"];
+    rec_h  -> iq    [color="#16a34a" label="ingestLogEvent()"];
+
+    /* collect + seal (ship-on-seal) */
+    iq -> dc [color="#d97706" label="collectIngestedEvents()"];
+    dc -> rs [color="#ca8a04" label="ingestSealedChunk()\n(ship-on-seal)"];
+    rs -> xq [color="#ca8a04" label="stashStoryChunk()\n(seal + requeueStalled)"];
+
+    /* extraction ULTs drain -> RDMA out, then the disposal seam reports back */
+    xq -> ex       [color="#d97706" label="ejectStoryChunk()"];
+    ex -> ext_prog [color="#7c3aed" style=dashed label="RDMATransferAgent\ntransfer_serialized_story_chunk()"];
+    ext_prog -> graph_p [color="#7c3aed" penwidth=2.2 label="receive_story_chunk\n(RDMA, +reporter)"];
+    ext_prog -> play_p  [color="#7c3aed" penwidth=2.2 label="receive_story_chunk\n(RDMA, +reporter)"];
+    ex -> rs [color="#ca8a04" style=dashed label="dispose_chunk(status)\nmarkShipped / markSendFailed"];
+
+    /* watermark report in -> confirmPersisted -> free */
+    graph_p -> adm_h [color="#2563eb" style=dotted label="report_story_watermarks\n(one-way)"];
+    adm_h   -> rs    [color="#2563eb" style=dotted label="applyWatermarkReport()\n-> confirmPersisted() frees E <= W"];
+
+    /* hot reads served straight from the store */
+    play_p -> rec_h [color="#7c3aed" style=dashed label="story_range_fetch\n(hot pull)"];
+    rec_h  -> rs    [color="#ca8a04" label="fetchRange() / getTail*()"];
+
+    /* admin / registration */
+    visor    -> adm_h  [color="#2563eb" style=dotted label="start/stop_story_recording"];
+    adm_h    -> dc     [color="#2563eb" style=dotted label="startStoryRecording()"];
+    adm_prog -> visor  [color="#2563eb" label="register_keeper / stats\n(KeeperRegistryClient on same engine)"];
+}

@@ -388,8 +388,13 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.grapher_receiving_endpoint.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.player_receiving_endpoint.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+    # Selected by extractor TYPE, not by the template's extractor name, and
+    # covering both RDMA types: a conf that asks for dual_endpoint_rdma_extractor
+    # would otherwise keep the template's 127.0.0.1 endpoints and every keeper
+    # would drain into its own node.
+    jq "((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"single_endpoint_rdma_extractor\") | .receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .grapher_receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .player_receiving_endpoint.service_ip) |= \"${player_ip}\")" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
@@ -508,6 +513,8 @@ parallel_remote_launch_processes() {
 parallel_remote_stop_processes() {
   local hosts_file=$1
   local bin_path=$2
+  # seconds to wait for a graceful exit before SIGKILL
+  local grace_secs=${3:-300}
 
   local bin_name
   bin_name=$(basename "${bin_path}")
@@ -517,8 +524,8 @@ parallel_remote_stop_processes() {
     echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
     sleep 10
     timer=$((timer + 10))
-    if [[ ${timer} -gt 300 ]]; then
-      echo -e "${ERR}Killing ${bin_name} processes after 5 minutes ...${NC}" >&2
+    if [[ ${timer} -gt ${grace_secs} ]]; then
+      echo -e "${ERR}Killing ${bin_name} processes after ${grace_secs} seconds ...${NC}" >&2
       parallel_remote_kill_processes ${hosts_file} ${bin_path}
       echo -e "${ERR}${bin_name} processes are killed${NC}" >&2
     fi
@@ -626,7 +633,9 @@ stop() {
   parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
 
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} &
+  # a keeper waits up to shutdown_confirm_timeout_secs (default 150) for the
+  # grapher, which is stopped only after the keepers, to confirm its chunks
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 240 &
 
   wait
 

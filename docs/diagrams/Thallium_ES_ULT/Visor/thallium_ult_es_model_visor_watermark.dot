@@ -1,0 +1,71 @@
+digraph ChronoVisorArgobotsModelWatermark {
+    /* ============================================================
+       ChronoVisor (watermark-feedback branch) — Argobots execution model
+       Unchanged execution shape: NO application xstreams; all work runs on the
+       margo RPC-handler ULTs of two server engines.
+       Only watermark delta: the story-start admin push to the PLAYER now uses
+       start_story_recording_with_keepers, carrying the story's keeper roster
+       (recording-service ids). Keeper and Grapher keep the 4-arg start.
+       ============================================================ */
+    rankdir=LR;
+    compound=true;
+    splines=spline;
+    nodesep=0.4;
+    ranksep=1.0;
+    bgcolor="white";
+    fontname="Helvetica";
+    labelloc="t";
+    fontsize=22;
+    label=<<b>ChronoVisor (watermark) &mdash; Argobots Execution Streams (ES) &amp; ULTs</b><br/><font point-size="13">pure RPC: no application xstreams &mdash; the only delta is a roster-carrying story start to the Player</font>>;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=11 color="#475569"];
+    edge [fontname="Helvetica" fontsize=10];
+
+    /* ---------------- margo engines ---------------- */
+    subgraph cluster_portal_engine {
+        label=<<b>clientPortalEngine</b>  &mdash; margo_init(:5555, SERVER, progress=1, rpc=2)>;
+        style="rounded,filled"; color="#16a34a"; fillcolor="#f0fdf4"; fontsize=13;
+        por_prog [label="progress ES\n(network poll ULT)" fillcolor="#bbf7d0"];
+        por_h    [label="2 RPC-handler ES\nConnect / Create / Acquire /\nRelease / Destroy / Show ULTs" fillcolor="#86efac"];
+    }
+
+    subgraph cluster_registry_engine {
+        label=<<b>registryEngine</b>  &mdash; margo_init(:8888, SERVER, progress=1, rpc=2)  (server + client)>;
+        style="rounded,filled"; color="#2563eb"; fillcolor="#eff6ff"; fontsize=13;
+        reg_prog [label="progress ES\n(also drives outbound\nDataStoreAdminClient RPCs)" fillcolor="#bfdbfe"];
+        reg_h    [label="2 RPC-handler ES\nregister/unregister/\nhandle_stats_msg ULTs" fillcolor="#93c5fd"];
+    }
+
+    /* ---------------- shared in-memory state ---------------- */
+    meta     [label="ChronicleMetaDirectory\n+ ClientRegistryManager\n(in-memory metadata)" shape=note fillcolor="#f1f5f9" color="#334155"];
+    registry [label="KeeperRegistry\nrecordingGroups + keeper/grapher/player maps\n+ delayedExit lists" shape=note fillcolor="#f1f5f9" color="#334155"];
+
+    admin_client [label="DataStoreAdminClient x N\n(created on registryEngine)" fillcolor="#dbeafe" color="#2563eb"];
+
+    /* ---------------- external peers ---------------- */
+    client   [label="ChronoLog\nClient(s)" shape=component fillcolor="#dcfce7" color="#16a34a"];
+    daemons  [label="Keepers / Graphers / Players\n(register + stats senders)" shape=component fillcolor="#dbeafe" color="#2563eb"];
+    kp_admin [label="ChronoKeeper\nDataStoreAdminService :7777" shape=component fillcolor="#eff6ff" color="#2563eb"];
+    gr_admin [label="ChronoGrapher\nDataStoreAdminService :4444" shape=component fillcolor="#eff6ff" color="#2563eb"];
+    pl_admin [label="ChronoPlayer\nPlayerStoreAdminService :2222" shape=component fillcolor="#eff6ff" color="#2563eb"];
+
+    note [label="NO application xstreams.\nAll metadata + registry work runs on margo\nhandler ULTs. delayedExit reaping & liveness\nchecks happen lazily inside these handlers." shape=note fillcolor="#fffbeb" color="#d97706" fontsize=10];
+
+    /* ===================== EDGES ===================== */
+    /* client metadata plane */
+    client -> por_h [color="#16a34a" label="Connect / Acquire /\nRelease / Show RPC"];
+    por_h  -> meta  [color="#16a34a" label="create/acquire/release_story()"];
+
+    /* acquire/release notifications cross into the registry */
+    por_h  -> registry [color="#2563eb" style=dashed label="AcquireStory ->\nnotifyRecordingGroupOf\nStoryRecordingStart()"];
+
+    /* registration plane */
+    daemons -> reg_h    [color="#2563eb" label="register_* /\nhandle_stats_msg"];
+    reg_h   -> registry [color="#2563eb" label="register/update process"];
+
+    /* outbound admin push (rides registryEngine) */
+    registry     -> admin_client [color="#2563eb" style=dotted label="issue notification"];
+    admin_client -> kp_admin     [color="#2563eb" style=dotted label="start/stop_story_recording\n(4-arg, unchanged)"];
+    admin_client -> gr_admin     [color="#2563eb" style=dotted label="start/stop_story_recording\n(4-arg, unchanged)"];
+    admin_client -> pl_admin     [color="#7c3aed" style=dotted penwidth=2.0 label="start_story_recording_with_keepers\n(carries keeper roster)"];
+}

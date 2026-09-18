@@ -1,0 +1,223 @@
+digraph ChronoLogThalliumWiringWatermark {
+    /* ============================================================
+       ChronoLog (watermark-feedback branch) — Thallium engine & RPC wiring
+       Each process is a cluster; each engine node shows:
+         engine variable | proto://ip:port (margo mode) | Provider (provider_id) | RPCs
+       Watermark deltas highlighted:
+         + keeper recordingEngine: tail_get_* / story_range_fetch (hot reads)
+         + keeper dataAdminEngine: report_story_watermarks (received)
+         + grapher: StoryWatermarkRegistry + WatermarkReportPublisher -> keepers
+         + player playbackEngine: KeeperHotFetchClient (story_range_fetch fan-out)
+         + player dataAdminEngine: start_story_recording_with_keepers (roster)
+       ============================================================ */
+    rankdir=TB;
+    compound=true;
+    newrank=true;
+    splines=spline;
+    nodesep=0.45;
+    ranksep=0.95;
+    bgcolor="white";
+    fontname="Helvetica";
+    labelloc="t";
+    fontsize=22;
+    label=<<b>ChronoLog (watermark) &mdash; Thallium Engines, Providers (port/provider_id) &amp; RPC Flows</b><br/><font point-size="13">durability-gated retention: grapher reports W back to keepers; player pulls the hot range from keepers on demand</font>>;
+
+    node  [shape=plaintext fontname="Helvetica"];
+    edge  [fontname="Helvetica" fontsize=10 penwidth=1.4];
+
+    /* =================== CLIENT =================== */
+    subgraph cluster_client {
+        label=<<b>ChronoLog Client</b>  (ChronologClientImpl)>;
+        style="rounded,filled"; color="#94a3b8"; fillcolor="#f1f5f9"; fontsize=15;
+
+        cli_query [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ede9fe">
+            <tr><td bgcolor="#7c3aed"><font color="white"><b>tlEngine</b>  (single, MARGO_SERVER_MODE)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>5557</b></font></td></tr>
+            <tr><td><b>ClientQueryService</b>  (pid=<b>57</b>)</td></tr>
+            <tr><td><font point-size="10">receive_query_response  &larr; RDMA</font></td></tr>
+            <tr><td><font point-size="9"><i>same engine also drives outbound:<br/>RpcVisorClient, KeeperRecordingClient,<br/>PlaybackQueryRpcClient</i></font></td></tr>
+          </table>>];
+    }
+
+    /* =================== VISOR =================== */
+    subgraph cluster_visor {
+        label=<<b>ChronoVisor</b>  (chronovisor_instance)>;
+        style="rounded,filled"; color="#64748b"; fillcolor="#f8fafc"; fontsize=15;
+
+        vis_portal [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dcfce7">
+            <tr><td bgcolor="#16a34a"><font color="white"><b>clientPortalEngine</b></font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>5555</b>  (progress+2 ES)</font></td></tr>
+            <tr><td><b>ClientPortalService</b>  (pid=<b>55</b>)</td></tr>
+            <tr><td><font point-size="10">Connect, CreateChronicle, AcquireStory,<br/>ReleaseStory, Destroy*, Show*</font></td></tr>
+          </table>>];
+
+        vis_registry [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dbeafe">
+            <tr><td bgcolor="#2563eb"><font color="white"><b>registryEngine</b>  (server + client)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>8888</b>  (progress+2 ES)</font></td></tr>
+            <tr><td><b>KeeperRegistryService</b>  (pid=<b>88</b>)</td></tr>
+            <tr><td><font point-size="10">register/unregister/handle_stats_msg<br/>for keeper, grapher, player</font></td></tr>
+            <tr><td><font point-size="9"><i>DataStoreAdminClient: start_story_recording<br/>(keeper/grapher) + _with_keepers (player)</i></font></td></tr>
+          </table>>];
+    }
+
+    /* =================== KEEPER =================== */
+    subgraph cluster_keeper {
+        label=<<b>ChronoKeeper</b>  (ChronoKeeperInstance)>;
+        style="rounded,filled"; color="#64748b"; fillcolor="#f8fafc"; fontsize=15;
+
+        kp_record [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dcfce7">
+            <tr><td bgcolor="#16a34a"><font color="white"><b>recordingEngine</b></font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>6666</b>  (progress+<b>4</b> ES)</font></td></tr>
+            <tr><td><b>KeeperRecordingService</b>  (pid=<b>66</b>)</td></tr>
+            <tr><td><font point-size="10">record_event &rarr; IngestionQueue</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10"><b>+ tail_get_sequences / tail_get_events</b><br/><b>+ story_range_fetch</b>  (hot reads)</font></td></tr>
+          </table>>];
+
+        kp_admin [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dbeafe">
+            <tr><td bgcolor="#2563eb"><font color="white"><b>dataAdminEngine</b>  (server + client)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>7777</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>DataStoreAdminService</b>  (pid=<b>77</b>)</td></tr>
+            <tr><td><font point-size="10">start/stop_story_recording, shutdown</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10"><b>+ report_story_watermarks</b>  (from grapher)<br/>&rarr; confirmPersisted() frees E &le; W</font></td></tr>
+          </table>>];
+
+        kp_extract [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ede9fe">
+            <tr><td bgcolor="#7c3aed"><font color="white"><b>extractionEngine</b>  (THALLIUM_CLIENT_MODE)</font></td></tr>
+            <tr><td><font point-size="10">protocol = ExtractionModule.extraction_protocol<br/>(no listening port)</font></td></tr>
+            <tr><td><b>DualEndpointChunkExtractorRDMA</b> &times; 2</td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10">ship-on-seal via <b>KeeperChunkRetentionStore</b><br/>receive_story_chunk (bulk pull, <b>+reporter id</b>)</font></td></tr>
+          </table>>];
+    }
+
+    /* =================== GRAPHER =================== */
+    subgraph cluster_grapher {
+        label=<<b>ChronoGrapher</b>  (ChronoGrapher)>;
+        style="rounded,filled"; color="#64748b"; fillcolor="#f8fafc"; fontsize=15;
+
+        gr_drain [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ede9fe">
+            <tr><td bgcolor="#7c3aed"><font color="white"><b>recordingEngine</b>  (RDMA receiver)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>3333</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>GrapherRecordingService</b>  (pid=<b>33</b>)</td></tr>
+            <tr><td><font point-size="10">receive_story_chunk (<b>+reporter</b>), receiver_available</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10">recordContributor(story, reporter)</font></td></tr>
+          </table>>];
+
+        gr_admin [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dbeafe">
+            <tr><td bgcolor="#2563eb"><font color="white"><b>dataAdminEngine</b>  (server + client)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>4444</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>DataStoreAdminService</b>  (pid=<b>44</b>)</td></tr>
+            <tr><td><font point-size="10">start/stop_story_recording</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10"><b>StoryWatermarkRegistry</b> (W = contiguous prefix)<br/><b>WatermarkReportPublisher</b> &rarr; report_story_watermarks</font></td></tr>
+          </table>>];
+    }
+
+    /* =================== PLAYER =================== */
+    subgraph cluster_player {
+        label=<<b>ChronoPlayer</b>  (ChronoPlayer)>;
+        style="rounded,filled"; color="#64748b"; fillcolor="#f8fafc"; fontsize=15;
+
+        pl_playback [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ffedd5">
+            <tr><td bgcolor="#d97706"><font color="white"><b>playbackEngine</b>  (server + client)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>2225</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>PlaybackService</b>  (pid=<b>25</b>)</td></tr>
+            <tr><td><font point-size="10">story_playback_request,<br/>playback_service_available</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10">drives <b>KeeperHotFetchClient</b> (story_range_fetch)<br/>split at B = min(hot_floor); QueryResponseAgent RDMA</font></td></tr>
+          </table>>];
+
+        pl_record [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#ede9fe">
+            <tr><td bgcolor="#7c3aed"><font color="white"><b>recordingEngine</b>  (RDMA receiver, LEGACY MIRROR)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>7778</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>StoryChunkConsumerService</b>  (pid=<b>78</b>)</td></tr>
+            <tr><td><font point-size="10">receive_story_chunk  (legacy, not read by replay)</font></td></tr>
+          </table>>];
+
+        pl_admin [label=<
+          <table border="0" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#dbeafe">
+            <tr><td bgcolor="#2563eb"><font color="white"><b>dataAdminEngine</b>  (server + client)</font></td></tr>
+            <tr><td><font point-size="10">ofi+sockets://127.0.0.1:<b>2222</b>  (progress+1 ES)</font></td></tr>
+            <tr><td><b>PlayerStoreAdminService</b>  (pid=<b>22</b>)</td></tr>
+            <tr><td><font point-size="10">start/stop_story_recording</font></td></tr>
+            <tr><td bgcolor="#fef9c3"><font point-size="10"><b>+ start_story_recording_with_keepers</b><br/>setStoryKeepers(roster)</font></td></tr>
+          </table>>];
+    }
+
+    /* ===================== EDGES ===================== */
+
+    /* ---- client data plane (green / orange) ---- */
+    cli_query -> vis_portal   [color="#16a34a" fontcolor="#15803d" label="Connect / Create /\nAcquire / Release / Show"];
+    cli_query -> kp_record    [color="#16a34a" fontcolor="#15803d" label="record_event"];
+    cli_query -> pl_playback  [color="#d97706" fontcolor="#b45309" label="story_playback_request"];
+    pl_playback -> cli_query  [color="#7c3aed" fontcolor="#6d28d9" style=dashed label="receive_query_response\n(RDMA bulk)"];
+
+    /* ---- registration: daemons -> visor (blue) ---- */
+    kp_admin -> vis_registry  [color="#2563eb" fontcolor="#1d4ed8" label="register_keeper /\nhandle_stats_msg"];
+    gr_admin -> vis_registry  [color="#2563eb" fontcolor="#1d4ed8" label="register_grapher /\nstats"];
+    pl_admin -> vis_registry  [color="#2563eb" fontcolor="#1d4ed8" label="register_player /\nstats"];
+
+    /* ---- visor admin push -> daemons (blue, dotted; player gets the roster) ---- */
+    vis_registry -> kp_admin  [color="#2563eb" fontcolor="#1d4ed8" style=dotted label="start/stop_story_recording"];
+    vis_registry -> gr_admin  [color="#2563eb" fontcolor="#1d4ed8" style=dotted label="start/stop_story_recording"];
+    vis_registry -> pl_admin  [color="#7c3aed" fontcolor="#6d28d9" style=dotted penwidth=2.0 label="start_story_recording_with_keepers\n(keeper roster)"];
+
+    /* ---- keeper drain -> grapher & player (purple, bold RDMA, +reporter) ---- */
+    kp_extract -> gr_drain    [color="#7c3aed" fontcolor="#6d28d9" penwidth=2.4 label="receive_story_chunk\n(RDMA, +reporter)"];
+    kp_extract -> pl_record   [color="#7c3aed" fontcolor="#6d28d9" penwidth=1.8 style=dashed label="receive_story_chunk\n(RDMA, legacy mirror)"];
+
+    /* ---- watermark feedback: grapher -> keeper (blue, dotted, bold) ---- */
+    gr_admin -> kp_admin      [color="#2563eb" fontcolor="#1d4ed8" penwidth=2.2 style=dotted label="report_story_watermarks\n(one-way, ~1 Hz)"];
+
+    /* ---- player hot fetch: player -> keeper (purple) ---- */
+    pl_playback -> kp_record  [color="#7c3aed" fontcolor="#6d28d9" penwidth=2.2 label="story_range_fetch\n(hot range pull, per roster keeper)"];
+
+    /* ===================== LEGEND ===================== */
+    subgraph cluster_legend {
+        label=<<b>Legend</b>>; fontsize=14; labeljust="l";
+        style="rounded,filled"; color="#cbd5e1"; fillcolor="#ffffff";
+
+        legend_key [shape=plaintext margin=0 label=<
+          <table border="0" cellborder="0" cellspacing="3" cellpadding="2">
+            <tr><td fixedsize="true" width="22" height="13" bgcolor="#16a34a"> </td><td align="left">event ingest plane (record_event)</td></tr>
+            <tr><td fixedsize="true" width="22" height="13" bgcolor="#d97706"> </td><td align="left">playback query plane</td></tr>
+            <tr><td fixedsize="true" width="22" height="13" bgcolor="#2563eb"> </td><td align="left">control plane (register / admin / watermark report)</td></tr>
+            <tr><td fixedsize="true" width="22" height="13" bgcolor="#7c3aed"> </td><td align="left">RDMA / hot-fetch (chunk, query result, story_range_fetch)</td></tr>
+            <tr><td fixedsize="true" width="22" height="13" bgcolor="#fef9c3"> </td><td align="left">watermark-protocol addition (this branch)</td></tr>
+            <tr><td colspan="2" align="left"><font point-size="10">progress+N&nbsp;ES = 1 margo progress ES + N RPC-handler ES (= IngestionThreadCount)</font></td></tr>
+          </table>>];
+
+        node [shape=point width=0.045];
+        edge [arrowsize=0.7];
+
+        sa [color="#475569"]; sb [color="#475569"];
+        da [color="#2563eb"]; db [color="#2563eb"];
+        ha [color="#7c3aed"]; hb [color="#7c3aed"];
+
+        sa -> sb [style=solid  color="#475569" penwidth=1.7];
+        da -> db [style=dotted color="#2563eb" penwidth=1.7];
+        ha -> hb [style=dashed color="#7c3aed" penwidth=1.7];
+
+        st [shape=plaintext label="solid &mdash; request (client &rarr; service RPC)"];
+        dt [shape=plaintext label="dotted &mdash; admin / watermark push"];
+        ht [shape=plaintext label="dashed &mdash; RDMA reply / bulk transfer"];
+
+        sb -> st [style=invis]; db -> dt [style=invis]; hb -> ht [style=invis];
+
+        legend_key -> sa [style=invis];
+        st -> da [style=invis]; dt -> ha [style=invis];
+        { rank=same; legend_key; sa; sb; st; da; db; dt; ha; hb; ht; }
+    }
+
+    /* anchor the legend strip BELOW the graph so it does not widen the canvas */
+    gr_drain  -> legend_key [style=invis];
+    gr_admin  -> legend_key [style=invis];
+    pl_record -> legend_key [style=invis];
+}

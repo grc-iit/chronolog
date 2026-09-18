@@ -1,0 +1,157 @@
+cmake_minimum_required(VERSION 3.25)
+
+find_package(GTest REQUIRED)
+include(GoogleTest)
+
+#------------------------------------------------------------------------------
+# chrono_grapher unit tests
+#------------------------------------------------------------------------------
+
+# StoryWatermarkRegistry (GTest) — header-only registry, no network needed
+add_executable(story_watermark_registry_test
+    story_watermark_registry_test.cpp
+)
+
+target_include_directories(story_watermark_registry_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(story_watermark_registry_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(story_watermark_registry_test PROPERTIES OUTPUT_NAME chronolog-test-story-watermark-registry)
+gtest_discover_tests(story_watermark_registry_test TEST_PREFIX "Unit_ChronoGrapher_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(story_watermark_registry_test DESTINATION tests)
+endif()
+
+# HDF5FileChunkExtractor (GTest) — which chunks advance W; writes real HDF5
+# files into a per-test temp directory, no network needed
+find_package(Thallium REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
+
+add_executable(hdf5_file_chunk_extractor_test
+    hdf5_file_chunk_extractor_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(hdf5_file_chunk_extractor_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(hdf5_file_chunk_extractor_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(hdf5_file_chunk_extractor_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(hdf5_file_chunk_extractor_test PROPERTIES OUTPUT_NAME chronolog-test-hdf5-file-chunk-extractor)
+gtest_discover_tests(hdf5_file_chunk_extractor_test TEST_PREFIX "Unit_ChronoGrapher_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(hdf5_file_chunk_extractor_test DESTINATION tests)
+endif()
+
+# Grapher -> keeper watermark report transport (GTest) — the real publisher and
+# the keeper's real DataStoreAdminService over ofi+sockets on 127.0.0.1
+add_executable(watermark_report_transport_test
+    watermark_report_transport_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+)
+
+# src/ lets the test name the keeper's DataStoreAdminService.h, which shares
+# its file name with the grapher's
+target_include_directories(watermark_report_transport_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(watermark_report_transport_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(watermark_report_transport_test PROPERTIES OUTPUT_NAME chronolog-test-watermark-report-transport)
+gtest_discover_tests(watermark_report_transport_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(watermark_report_transport_test DESTINATION tests)
+endif()
+
+# Watermark reports published from the grapher's data-collection loop (GTest):
+# the real GrapherDataStore and publisher, with stand-in keeper providers
+add_executable(grapher_data_collection_report_test
+    grapher_data_collection_report_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/GrapherDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(grapher_data_collection_report_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(grapher_data_collection_report_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(grapher_data_collection_report_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(grapher_data_collection_report_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-data-collection-report)
+gtest_discover_tests(grapher_data_collection_report_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_data_collection_report_test DESTINATION tests)
+endif()
+
+# Pipeline retirement (GTest): a stopped story keeps its pipeline for the whole
+# inactive delay before the grapher writes it out
+add_executable(grapher_pipeline_retirement_test
+    grapher_pipeline_retirement_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/GrapherDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(grapher_pipeline_retirement_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(grapher_pipeline_retirement_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(grapher_pipeline_retirement_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(grapher_pipeline_retirement_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-pipeline-retirement)
+gtest_discover_tests(grapher_pipeline_retirement_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_pipeline_retirement_test DESTINATION tests)
+endif()

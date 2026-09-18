@@ -71,10 +71,12 @@ class HDF5ArchiveReadingAgent
 public:
     explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
                                      bool use_polling = true,
-                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
+                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
+                                     uint64_t archive_window_secs = 30)
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
+        , archive_window_secs_(archive_window_secs)
         , shutdown_requested_(false)
     {}
 
@@ -108,12 +110,25 @@ public:
                            std::list<StoryChunk*>&,
                            const std::string&);
 
+    // readAuxFiles: also read the numbered files ({...}.vlen.1.h5, .2, ...) a
+    // grapher writes when a window it already wrote gets more events, from a
+    // late or re-sent keeper chunk. Once the keepers free those chunks, the
+    // numbered files are the only copy of their events.
     int readArchivedStory(const ChronicleName&,
                           const StoryName&,
                           uint64_t,
                           uint64_t,
                           std::list<StoryChunk*>&,
-                          bool = false);
+                          bool readAuxFiles = true);
+
+    // The directory listing this agent keeps can be stale: on a shared file
+    // system a client caches directory attributes, so a file the grapher wrote
+    // on another node is invisible here for as long as that cache lives. A
+    // lookup by name does not go through it. For the windows a replay needs
+    // beyond the newest file listed for the story, this asks the file system
+    // for the name the grapher would have written, and adds what it finds to
+    // the map. Bounded to the last few windows of the range.
+    void probeForRecentFiles(ChronicleName const&, StoryName const&, uint64_t start_time, uint64_t end_time);
 
     static std::string getChronicleName(const std::string& file_name)
     {
@@ -269,6 +284,9 @@ private:
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries.",
                   start_time_file_name_map_.size());
+        // the directory has been read: from here a story missing from the map
+        // means nothing was archived for it, not that nobody has looked
+        initial_scan_done_.store(true);
         return 0;
     }
 
@@ -386,6 +404,12 @@ private:
     // Feature flag and monitoring configuration
     bool use_polling_;
     std::chrono::milliseconds monitoring_interval_;
+    // the grapher's story_chunk_duration_secs: the width of one archive file's
+    // range, and so the step between the file names a probe tries. 0 disables
+    // probing.
+    uint64_t archive_window_secs_ = 30;
+    // how far back from the end of a replay a probe reaches, in windows
+    static constexpr uint64_t kProbeWindows = 4;
     std::chrono::system_clock::time_point last_scan_time_;
 
     // File system state tracking for polling
@@ -398,6 +422,9 @@ private:
 
     // Thread control
     std::atomic<bool> shutdown_requested_;
+    // set once the archive directory has been listed: until then a story
+    // missing from the map means "not looked yet", not "nothing archived"
+    std::atomic<bool> initial_scan_done_{false};
 };
 
 } // namespace chronolog

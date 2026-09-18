@@ -10,6 +10,8 @@
 #include <chronolog_errcode.h>
 #include <GrapherDataStore.h>
 #include <GrapherExtractionChain.h>
+#include <StoryWatermarkRegistry.h>
+#include <WatermarkReportPublisher.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -77,6 +79,12 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
             pipelinesWaitingForExit.erase(waiting_iter);
         }
 
+        if(theWatermarkRegistry != nullptr)
+        {
+            // live pipeline: its open windows may hold unpersisted events, so
+            // the registry must not treat [W, start_time) as covered
+            theWatermarkRegistry->registerStory(story_id, start_time, /*fresh_pipeline=*/false);
+        }
         return chronolog::CL_SUCCESS;
     }
 
@@ -93,6 +101,17 @@ int chronolog::GrapherDataStore::startStoryRecording(std::string const& chronicl
     {
         LOG_INFO("[GrapherDataStore] New StoryPipeline created successfully. StoryId {}", story_id);
         pipeline_iter = result.first;
+        // give the pipeline the extraction queue as the escape hatch for
+        // events whose timeline window can no longer be re-opened
+        (*pipeline_iter).second->attachExtractionQueue(&theExtractionQueue);
+        // receipts of the chunks merged into this pipeline settle in the registry
+        (*pipeline_iter).second->attachReceiptTracker(theWatermarkRegistry);
+        if(theWatermarkRegistry != nullptr)
+        {
+            // adoption is a recovery path for chunks that already exist below
+            // start_time — never let it cover the gap up to start_time
+            theWatermarkRegistry->registerStory(story_id, start_time, /*fresh_pipeline=*/!is_adoption);
+        }
         //engage StoryPipeline with the IngestionQueue
         chl::StoryChunkIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
@@ -124,8 +143,9 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
+        // widen first: the delay is 32-bit, and 5 s or more wraps in 32-bit nanoseconds
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
-                             inactive_pipeline_delay_secs * 1000000000;
+                             static_cast<uint64_t>(inactive_pipeline_delay_secs) * 1000000000ULL;
         // (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
@@ -177,6 +197,12 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
         // Tombstone the story so a late chunk cannot be adopted into a fresh
         // pipeline (and a fresh HDF5 file) after the destroy worker deletes files.
         destroyedStories.insert(story_id);
+        // and tell the keepers, who would otherwise hold every chunk of this
+        // story whose receipt is still open for the life of their process
+        if(theWatermarkRegistry != nullptr)
+        {
+            theWatermarkRegistry->dropStory(story_id);
+        }
         auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
         if(pipeline_iter != theMapOfStoryPipelines.end())
         {
@@ -284,6 +310,14 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
                 }
             }
             for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
+        }
+        // Release the keepers' retention for every story of the chronicle this
+        // grapher still had a pipeline for. A story that had already retired
+        // here is not in either map, so its keepers are not told — the registry
+        // indexes stories by id and does not know their chronicle.
+        if(theWatermarkRegistry != nullptr)
+        {
+            for(chl::StoryId const& sid: story_ids_to_unhook) { theWatermarkRegistry->dropStory(sid); }
         }
     }
 
@@ -540,6 +574,15 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
                                      &was_active);
         if(rc != chronolog::CL_SUCCESS)
         {
+            // Tell the keeper that sent it, which is holding this chunk waiting
+            // for a confirmation that will never come. Saying so again costs one
+            // report entry and covers the keeper that sealed this chunk after
+            // the destroy, or that was not yet a contributor when the story was
+            // dropped the first time.
+            if(theWatermarkRegistry != nullptr)
+            {
+                theWatermarkRegistry->dropStory(chunk->getStoryId());
+            }
             delete chunk;
             ++discarded;
             continue;
@@ -592,11 +635,25 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            // Sleep in slices and yield between them. This stream runs other
+            // data-collection threads, and one of them may be waiting on an
+            // RPC (a watermark report send) that resumes only when the
+            // stream schedules it again; a plain sleep() never lets it.
+            for(int slice = 0; slice < 10; ++slice)
+            {
+                usleep(100000);
+                tl::thread::yield();
+            }
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
         adoptOrphanChunks();
+        if(theWatermarkPublisher != nullptr)
+        {
+            // rate-limited inside the publisher; coalescing comes from the
+            // registry's dirty snapshot
+            theWatermarkPublisher->publish();
+        }
     }
     LOG_DEBUG("[GrapherDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }

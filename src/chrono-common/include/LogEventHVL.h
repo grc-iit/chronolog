@@ -16,7 +16,7 @@ class LogEventHVL
 public:
     uint64_t storyId;
     uint64_t eventTime{};
-    uint32_t clientId{};
+    uint64_t clientId{};
     uint32_t eventIndex{};
     hvl_t logRecord{};
 
@@ -30,7 +30,7 @@ public:
         logRecord.p = nullptr;
     };
 
-    LogEventHVL(uint64_t story_id, uint64_t event_time, uint32_t client_id, uint32_t event_index, hvl_t log_record)
+    LogEventHVL(uint64_t story_id, uint64_t event_time, uint64_t client_id, uint32_t event_index, hvl_t log_record)
         : storyId(story_id)
         , eventTime(event_time)
         , clientId(client_id)

@@ -1,9 +1,9 @@
 // End-to-end tail-read (playback) test.
 //
 // Exercises the real two-phase tail-read RPC path — client
-// StoryHandle::playback(N) → keeper KeeperTailStore across the story's assigned
+// StoryHandle::playback(N) → keeper KeeperChunkRetentionStore across the story's assigned
 // keepers — against a running ChronoLog deployment. This is coverage the
-// header-only KeeperTailStore unit test cannot provide (it never touches the
+// header-only KeeperChunkRetentionStore unit test cannot provide (it never touches the
 // network or a live keeper).
 //
 // Like the data-integrity group, it assumes a stack is already running (the CI

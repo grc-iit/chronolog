@@ -31,6 +31,11 @@ public:
     tl::engine* get_sender_engine() const { return sender_tl_engine; }
     ServiceId const& get_receiver_service_id() const { return receiver_service_id; }
 
+    // Identity of this keeper's DataStoreAdminService, sent along with every
+    // chunk so the grapher knows where to push watermark reports.
+    void set_reporter_service_id(ServiceId const& reporter) { reporter_service_id = reporter; }
+    ServiceId const& get_reporter_service_id() const { return reporter_service_id; }
+
     int process_chunk(StoryChunk*);
 
     int reset(ServiceId const&);
@@ -41,6 +46,7 @@ public:
 private:
     tl::engine* sender_tl_engine;  // local tl::engine
     ServiceId receiver_service_id; // receiving ServiceId
+    ServiceId reporter_service_id; // this sender's watermark-report target
     RDMATransferAgent* rdma_sender;
 
     void restart_rdma_sender(ServiceId const&);
