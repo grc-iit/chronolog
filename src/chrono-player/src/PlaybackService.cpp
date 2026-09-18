@@ -144,6 +144,13 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     // and splitHotRange decides where the archive portion ends; see
     // HotRangeSplit.h. No keepers at all -> archive-only (degraded, correct
     // for persisted data).
+    // TODO(replay paging): a keeper stops at this many events and sets
+    // truncated, and the reply is then marked incomplete so the client gets
+    // CL_ERR_PARTIAL_RESULT -- honest, but short. Fetch again from the last
+    // EventSequence returned until the range is exhausted, so a range holding
+    // more than the cap on one keeper comes back complete instead. The response
+    // already carries what paging needs (truncated, and the events in order);
+    // what is missing is the loop here and a keeper-side start-after argument.
     constexpr uint64_t kHotFetchMaxEvents = 262144;
 
     std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
