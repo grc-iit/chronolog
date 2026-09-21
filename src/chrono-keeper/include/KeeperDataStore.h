@@ -40,7 +40,7 @@ public:
                     uint32_t story_chunk_duration_secs = 30,
                     uint32_t acceptance_window_secs = 60,
                     uint32_t inactive_pipeline_delay_secs = 300,
-                    uint32_t watermark_resend_timeout_secs = 720)
+                    uint32_t watermark_resend_timeout_secs = 300)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)

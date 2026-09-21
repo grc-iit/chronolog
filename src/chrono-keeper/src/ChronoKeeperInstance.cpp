@@ -216,7 +216,7 @@ int main(int argc, char** argv)
     // for last-N playback (DataStoreInternals.tail_capacity, default 65536).
     // retention_cap_mb = soft cap on retained-chunk memory; on exceed the store
     // WARNs (watermark lagging) but never drops unpersisted data
-    // (DataStoreInternals.retention_cap_mb, default 512, 0 disables the warning).
+    // (DataStoreInternals.retention_cap_mb, default 4096, 0 disables the warning).
     // live_tail_read (default false): when true, tail reads also serve events from
     // the active/unsealed timeline, cutting write-to-visible latency below the
     // seal window at the cost of provisional (eventually-consistent) reads.

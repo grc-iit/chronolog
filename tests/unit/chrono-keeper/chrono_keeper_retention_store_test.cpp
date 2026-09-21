@@ -385,7 +385,7 @@ TEST(KeeperChunkRetentionStore, MarkSendFailedKeepsChunkReadableAndResendable)
 // ---- shutdown flush --------------------------------------------------------
 
 // A chunk whose transfer failed sits unshipped until the stall timer re-sends it,
-// and watermark_resend_timeout_secs defaults to 720s -- so a keeper shutting down
+// and watermark_resend_timeout_secs defaults to 300s -- so a keeper shutting down
 // inside that window still holds it. The destructor has a last-chance stash for
 // exactly this, but it runs after shutdownExtraction(), by which point the queue
 // has been drained and joined and its own shutdown merely frees what is left. That
