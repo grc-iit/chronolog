@@ -538,37 +538,40 @@ dex c1 bash -c "
     sleep \$SEAL
 
     # SIGTERM only the keepers: the graphers must stay up to receive what the
-    # keepers deliver on the way out. SIGKILL would bypass shutdown entirely.
+    # keepers send on the way out and to confirm it written. SIGKILL would
+    # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
+    # (150) for that confirmation, so allow 240s.
     parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
-    for i in \$(seq 1 40); do
+    for i in \$(seq 1 80); do
         REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
         [ \"\$REMAIN\" = 0 ] && break
         sleep 3
     done
     sleep 10
 
-    # A chunk still undelivered when the retention store is destroyed never
-    # reached a grapher; the store logs it as 'shutdown with unconfirmed ... shipped=0'.
+    # Every chunk the retention store still holds when it is destroyed is logged
+    # as 'shutdown with unconfirmed'. shipped=0 never reached a grapher; shipped=1
+    # reached it but was not confirmed written. Both count, as in CI.
     EXPECTED=\$(wc -l < conf/hosts_keeper)
     LOGS=\$(ls monitor/chrono-keeper*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
     DONE=0
     LOST_TOTAL=0
     for f in \$LOGS; do
         SENT=\$(grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' \"\$f\" || true)
-        LOST=\$(grep -c 'shutdown with unconfirmed .*shipped=0' \"\$f\" || true)
+        LOST=\$(grep -c 'shutdown with unconfirmed' \"\$f\" || true)
         if grep -q 'ChronoKeeperInstance\\] Shutdown completed' \"\$f\"; then
             DONE=\$(( DONE + 1 ))
-            echo \"  \$(basename \$f): shut down; \$SENT chunk(s) delivered, \$LOST undelivered at exit\"
+            echo \"  \$(basename \$f): shut down; \$SENT chunk(s) delivered, \$LOST unconfirmed at exit\"
         else
-            echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \$SENT chunk(s) delivered, \$LOST undelivered\"
+            echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \$SENT chunk(s) delivered, \$LOST unconfirmed\"
         fi
         grep -h 'Flushed .* unshipped chunk' \"\$f\" | sed 's/^/    /' || true
-        grep -h 'shutdown with unconfirmed .*shipped=0' \"\$f\" | head -5 | sed 's/^/    /' || true
+        grep -h 'shutdown with unconfirmed' \"\$f\" | head -5 | sed 's/^/    /' || true
         LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
     done
-    echo \"  keepers that completed shutdown: \$DONE / \$EXPECTED; chunks undelivered at exit: \$LOST_TOTAL\"
+    echo \"  keepers that completed shutdown: \$DONE / \$EXPECTED; chunks unconfirmed at exit: \$LOST_TOTAL\"
     [ \$DONE -ge \$EXPECTED ] && [ \$LOST_TOTAL -eq 0 ]
-" || stage_fail "a keeper exited without delivering its retained chunks"
+" || stage_fail "a keeper exited with chunks its grapher never confirmed written"
 stage_ok
 
 # --------------------------------------------------- 12. stop -----------------
