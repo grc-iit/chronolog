@@ -403,6 +403,18 @@ int main(int argc, char** argv)
     // learns of confirmations through watermark reports, so the data admin
     // service stays up until it ends. ~KeeperChunkRetentionStore logs and frees
     // whatever is still unconfirmed.
+    // TODO(shutdown recovery): with the template values (shutdown 150 s, resend
+    // 300 s) a chunk acked shortly before SIGTERM stays younger than the stall
+    // age for the whole wait, so requeueStalled never fires here. Settling
+    // deliveries already in flight works -- that is the common case -- but a
+    // delivery whose grapher-side write failed cannot be rescued: its receipt
+    // never settles, the wait times out, and the destructor frees the last copy
+    // with a warning. Recovering it needs the wait to outlast a stall age plus a
+    // write window (resend_age + write_window <= shutdown_confirm, so >= 390 s
+    // with today's numbers), or a shorter stall age used only during shutdown --
+    // which the keeper cannot derive, since the grapher's window is not in its
+    // configuration. Documented rather than changed; see the shutdown-wait
+    // recovery follow-up.
     const int shutdown_confirm_timeout_secs = KEEPER_CONF.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
     if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs),
                                       std::chrono::seconds(1),
