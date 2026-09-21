@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -227,6 +229,45 @@ TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteKeepsItsReceiptsPending)
     auto snapshot = registry.snapshotDirty();
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+}
+
+// A late chunk -- one that arrived after the story's W had already passed its
+// range -- lands in a reopened past window below W. For it E <= W already holds,
+// so W cannot hold it back: the receipt is the only thing telling the keeper its
+// events are not on disk. If that window's write fails, the receipt must stay
+// pending; a keeper that saw it as settled would free the chunk once the
+// visibility delay passed, and the events would exist nowhere.
+TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteOfALateChunkKeepsItsReceiptPending)
+{
+    // the story's W is already past the late chunk's range
+    registry.advancePersisted(kStory, T0, T2);
+    ASSERT_GE(registry.getPersisted(kStory), T1);
+
+    extractor.reset((archiveDir / "missing").string());
+    uint64_t const receipt = registry.assignReceipt(kStory, T1);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk reopened("C", "S", kStory, T0, T1);
+    addEvent(reopened, T0 + 1, 0);
+    reopened.carryReceipt(receipt);
+    (void)registry.snapshotDirty();
+
+    EXPECT_NE(extractor.process_chunk(&reopened), chl::CL_SUCCESS);
+
+    // W still covers the chunk -- nothing moves it back -- so everything rests on
+    // the receipt being reported as unwritten
+    EXPECT_GE(registry.getPersisted(kStory), T1);
+    auto snapshot = registry.snapshotDirty();
+    auto const report = snapshot.find(kStory);
+    bool const reported_pending =
+            report != snapshot.end() &&
+            std::find(report->second.pending_receipts.begin(), report->second.pending_receipts.end(), receipt) !=
+                    report->second.pending_receipts.end();
+    // with no fresh report, the keeper keeps the last one it had, which listed it
+    bool const never_cleared = report == snapshot.end();
+    EXPECT_TRUE(reported_pending || never_cleared)
+            << "the receipt of a late chunk whose write failed was cleared; its keeper would free events that are "
+               "on disk nowhere";
 }
 
 // ---- a write that runs out of room ------------------------------------------
