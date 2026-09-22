@@ -156,9 +156,10 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
                                                           size_t* deleted_count)
 {
     // Matches the filename layout produced by StoryChunkWriter::writeStoryChunk:
-    //   <chronicle>.<story>.<startSec>.vlen.h5 (and rotated <...>.<n>.vlen.h5).
+    //   <chronicle>.<story>.<startSec>.vlen.h5, and <...>.vlen.<n>.h5 for a
+    //   later write of the same window.
     std::string const pattern_str =
-            regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
+            regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "story " + chronicle_name + "/" + story_name;
     return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
@@ -167,8 +168,8 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
 int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count)
 {
     // Matches any story under the chronicle:
-    //   <chronicle>.<anyStory>.<startSec>(.<n>)?.vlen.h5
-    std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
+    //   <chronicle>.<anyStory>.<startSec>.vlen(.<n>)?.h5
+    std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "chronicle " + chronicle_name;
     return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);

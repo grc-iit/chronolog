@@ -5,7 +5,7 @@
 // filters by filename and calls std::filesystem::remove — so we drop empty
 // files matching ChronoGrapher's per-chunk naming convention
 //   <chronicle>.<story>.<startSec>.vlen.h5
-// (and the rotated <...>.<n>.vlen.h5 form) into a temp directory, run the
+// (and the numbered <...>.vlen.<n>.h5 form) into a temp directory, run the
 // deletion helpers, and check that exactly the expected files survive.
 
 #include <filesystem>
@@ -46,8 +46,8 @@ TEST(HDF5FileChunkExtractor, DeleteStoryFilesRemovesOnlyMatching)
     // Target story files.
     touch(dir / "myChronicle.myStory.1700000000.vlen.h5");
     touch(dir / "myChronicle.myStory.1700000060.vlen.h5");
-    // Rotated variant produced by StoryChunkWriter when the base name collides.
-    touch(dir / "myChronicle.myStory.1700000000.1.vlen.h5");
+    // A later write of the same window, numbered as StoryChunkWriter names it.
+    touch(dir / "myChronicle.myStory.1700000000.vlen.1.h5");
 
     // Other story in same chronicle — must survive a per-story delete.
     touch(dir / "myChronicle.otherStory.1700000000.vlen.h5");
@@ -79,6 +79,7 @@ TEST(HDF5FileChunkExtractor, DeleteChronicleFilesRemovesAllStoriesInChronicle)
     touch(dir / "myChronicle.storyA.1700000000.vlen.h5");
     touch(dir / "myChronicle.storyA.1700000060.vlen.h5");
     touch(dir / "myChronicle.storyB.1700000000.vlen.h5");
+    touch(dir / "myChronicle.storyB.1700000000.vlen.1.h5");
 
     // Other chronicle's files must survive.
     touch(dir / "otherChronicle.storyA.1700000000.vlen.h5");
@@ -87,7 +88,7 @@ TEST(HDF5FileChunkExtractor, DeleteChronicleFilesRemovesAllStoriesInChronicle)
     chronolog::HDF5FileChunkExtractor ext(dir.string());
     size_t deleted = 0;
     ASSERT_EQ(0, ext.delete_chronicle_files("myChronicle", &deleted));
-    EXPECT_EQ(3u, deleted);
+    EXPECT_EQ(4u, deleted);
 
     auto remaining = dir_contents(dir);
     EXPECT_EQ(remaining.count("otherChronicle.storyA.1700000000.vlen.h5"), 1u);
