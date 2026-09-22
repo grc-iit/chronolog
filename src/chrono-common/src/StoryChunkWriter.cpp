@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <regex>
 #include <stdexcept>
 #include <unistd.h>
@@ -20,10 +21,36 @@ namespace
 // The suffix keeps it out of the player's listing and out of the numbered-file
 // scan in getStoryChunkFileName, and pid plus a counter keep two writers from
 // sharing one temporary.
-std::string partialFileName(std::string const& final_name)
+std::string partialFileName(std::string const& base_path)
 {
     static std::atomic<uint64_t> sequence{0};
-    return final_name + ".partial." + std::to_string(::getpid()) + "." + std::to_string(sequence++);
+    return base_path + ".partial." + std::to_string(::getpid()) + "." + std::to_string(sequence++);
+}
+
+// A window's final name is chosen once its file is complete, together with the
+// rename, under one lock. Two writes of one window can be in flight at once --
+// more than one extraction stream, and a late or re-sent chunk writes its window
+// again -- and a name chosen before writing is free for both: the second rename
+// would replace the first file, whose write has already reported success. One
+// grapher process writes a story's files, so a lock within the process is
+// enough. Sets file_name to the name the window got.
+std::mutex publishMutex;
+
+bool publishFile(std::string const& partial_name,
+                 std::string const& root_dir,
+                 std::string const& base_file_name,
+                 std::string& file_name)
+{
+    std::lock_guard<std::mutex> lock(publishMutex);
+    file_name = StoryChunkWriter::getStoryChunkFileName(root_dir, base_file_name);
+    std::error_code ec;
+    fs::rename(partial_name, file_name, ec);
+    if(ec)
+    {
+        LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}", partial_name, file_name, ec.message());
+        return false;
+    }
+    return true;
 }
 
 void removePartialFile(std::string const& partial_name)
@@ -41,8 +68,9 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
     for(const auto& start: story_chunk) { data.push_back(start.second); }
-    std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
-                            std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    std::string const base_file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
+                                       std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    std::string file_name = (fs::path(rootDirectory) / base_file_name).string();
     std::string const partial_name = partialFileName(file_name);
     std::unique_ptr<H5::H5File> file;
     try
@@ -68,14 +96,8 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
         file->close();
 
         // the window appears under its own name complete or not at all
-        std::error_code ec;
-        fs::rename(partial_name, file_name, ec);
-        if(ec)
+        if(!publishFile(partial_name, rootDirectory, base_file_name, file_name))
         {
-            LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}",
-                      partial_name,
-                      file_name,
-                      ec.message());
             removePartialFile(partial_name);
             return 0;
         }
@@ -175,17 +197,13 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
                           event.second.index(),
                           log_record);
     }
-    std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
-                            std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-    //    file_name = fs::path(rootDirectory) / fs::path(file_name);
-    std::string partial_name;
+    std::string const base_file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
+                                       std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    std::string file_name = (fs::path(rootDirectory) / base_file_name).string();
+    std::string const partial_name = partialFileName(file_name);
     std::unique_ptr<H5::H5File> file;
     try
     {
-        LOG_DEBUG("[StoryChunkWriter] Making sure the StoryChunk file name is unique...");
-        file_name = getStoryChunkFileName(rootDirectory, file_name);
-        partial_name = partialFileName(file_name);
-
         LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {} (as {})", file_name, partial_name);
         file = std::make_unique<H5::H5File>(partial_name,
                                             H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE,
@@ -207,14 +225,8 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         file->close();
 
         // the window appears under its own name complete or not at all
-        std::error_code ec;
-        fs::rename(partial_name, file_name, ec);
-        if(ec)
+        if(!publishFile(partial_name, rootDirectory, base_file_name, file_name))
         {
-            LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}",
-                      partial_name,
-                      file_name,
-                      ec.message());
             removePartialFile(partial_name);
             return 0;
         }
@@ -229,10 +241,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
         H5::Exception::printErrorStack();
     }
-    if(!partial_name.empty())
-    {
-        removePartialFile(partial_name);
-    }
+    removePartialFile(partial_name);
     return 0;
 }
 

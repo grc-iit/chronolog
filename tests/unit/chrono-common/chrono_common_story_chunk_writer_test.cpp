@@ -15,12 +15,16 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 #include <string>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
+#include <vector>
 
 #include <H5Cpp.h>
 
@@ -118,6 +122,55 @@ TEST_F(ChunkWriter, AFailedWriteLeavesNothingBehind)
 
     // no window file for a replay to trip over, and no leftover temporary
     EXPECT_TRUE(fileNames().empty()) << "left behind: " << fileNames().front();
+}
+
+// Two writes of one window can be in flight at once: the grapher runs more than
+// one extraction stream, and a late or re-sent chunk writes its window again.
+// Each write that reports success has settled its receipts, so it must leave a
+// file of its own; one renamed over another loses the first one's events.
+TEST_F(ChunkWriter, ConcurrentWritesOfOneWindowEachKeepTheirOwnFile)
+{
+    constexpr int kWriters = 12;
+    std::vector<chl::StoryChunk> chunks;
+    for(int i = 0; i < kWriters; ++i) { chunks.push_back(window(60, 1 + i, 16)); }
+
+    std::atomic<int> waiting{kWriters};
+    std::atomic<int> succeeded{0};
+    std::vector<std::thread> writers;
+    for(int i = 0; i < kWriters; ++i)
+    {
+        writers.emplace_back(
+                [&, i]()
+                {
+                    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+                    // start together, so the writes overlap
+                    --waiting;
+                    while(waiting.load() > 0) { std::this_thread::yield(); }
+                    if(writer.writeStoryChunk(chunks[i]) > 0)
+                    {
+                        ++succeeded;
+                    }
+                });
+    }
+    for(auto& writer: writers) { writer.join(); }
+    ASSERT_EQ(succeeded.load(), kWriters);
+
+    // every write's events are on disk: one file per write, each holding the
+    // event count of a different chunk
+    std::vector<std::string> const names = fileNames();
+    ASSERT_EQ(names.size(), static_cast<std::size_t>(kWriters)) << "files: " << ::testing::PrintToString(names);
+    std::vector<hsize_t> event_counts;
+    for(std::string const& name: names)
+    {
+        H5::H5File file((dir / name).string(),
+                        H5F_ACC_RDONLY,
+                        H5::FileCreatPropList::DEFAULT,
+                        chl::archiveFileAccess());
+        H5::DataSet const dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+        event_counts.push_back(dataset.getSpace().getSimpleExtentNpoints());
+    }
+    std::sort(event_counts.begin(), event_counts.end());
+    for(int i = 0; i < kWriters; ++i) { EXPECT_EQ(event_counts[i], static_cast<hsize_t>(1 + i)); }
 }
 
 TEST_F(ChunkWriter, ArchiveFilesAreOpenedWithoutFileLocking)
