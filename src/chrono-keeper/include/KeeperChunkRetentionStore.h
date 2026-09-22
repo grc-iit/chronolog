@@ -498,6 +498,14 @@ public:
         return (story_it == storyRetention.end()) ? 0 : story_it->second.chunks.size();
     }
 
+    // Approximate bytes of every chunk owned, the total retention_cap_mb is
+    // checked against (diagnostics/tests).
+    std::size_t retainedByteCount() const
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        return retainedBytes;
+    }
+
     // The story is no longer recorded on this keeper, so its tail stops serving
     // playback. Without this, tail_capacity eviction is the only way events
     // leave the index, and a story that retires with fewer events than that
@@ -858,13 +866,15 @@ private:
         {
             StoryChunk* chunk = chunk_iter->first;
             ChunkState const& state = chunk_iter->second;
+            // for a queued chunk too: its state, the only record of its bytes,
+            // goes with the story, and the drain callback only deletes the pointer
+            retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
             if(state.in_queue)
             {
                 ++handed_over;
                 chunk_iter = story.chunks.erase(chunk_iter);
                 continue;
             }
-            retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
             chunk_iter = story.chunks.erase(chunk_iter);
             delete chunk;
             ++freed;

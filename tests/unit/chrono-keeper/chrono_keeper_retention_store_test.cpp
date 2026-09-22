@@ -1336,6 +1336,23 @@ TEST(KeeperChunkRetentionStore, DropReportLeavesAChunkTheExtractionQueueStillOwn
     EXPECT_EQ(store.retainedChunkCount(sid), 0u);
 }
 
+// The queued chunk's bytes leave the retention total with the story, not with
+// the pointer: once its state is erased nothing else knows how much it counted.
+TEST(KeeperChunkRetentionStore, DropReportReturnsTheBytesOfAQueuedChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A")); // stashed, still queued
+    ASSERT_GT(store.retainedByteCount(), 0u);
+
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+    EXPECT_NE(drainOne(q, store, true), nullptr);
+
+    EXPECT_EQ(store.retainedByteCount(), 0u);
+}
+
 TEST(KeeperChunkRetentionStore, StoryRecreatedAfterADropRetainsAgain)
 {
     ensureLogger();
