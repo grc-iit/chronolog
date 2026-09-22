@@ -255,17 +255,13 @@ public:
 
     // A chunk for the story arrived. Receipts are numbered from 1 per story and
     // stay pending until the chunk is merged and every chunk holding its events
-    // is written. chunk_end is the end of the arriving chunk, which decides
-    // whether a report has to carry the receipt while it is pending (see
-    // snapshotDirty); 0 means unknown, and is always carried.
-    uint64_t assignReceipt(StoryId const& story_id, uint64_t chunk_end = 0)
+    // is written.
+    uint64_t assignReceipt(StoryId const& story_id)
     {
         std::lock_guard<std::mutex> lock(mtx);
         StoryReceipts& story = receipts[story_id];
         uint64_t const receipt = ++story.last_assigned;
-        ReceiptState state;
-        state.chunk_end = chunk_end;
-        story.pending.emplace(receipt, state);
+        story.pending.emplace(receipt, ReceiptState{});
         return receipt;
     }
 
@@ -332,18 +328,15 @@ public:
                 if(receipts_iter != receipts.end())
                 {
                     report.highest_receipt = receipts_iter->second.last_assigned;
+                    // Every pending receipt, wherever W is: a keeper reads a
+                    // receipt a report leaves out as written. One whose chunk
+                    // ends above W can still be pending once W passes it -- its
+                    // events went into a window above W that was already
+                    // written and reopened -- and by then the keeper, having
+                    // taken it for written, would free the chunk.
                     for(auto const& pending: receipts_iter->second.pending)
                     {
-                        // A receipt whose chunk ends above W needs no mention: a
-                        // keeper frees a chunk only when W covers it as well, so
-                        // W already holds that chunk back. Leaving those out
-                        // bounds the report when a receipt can never settle — a
-                        // write that failed, or events a merge had to discard —
-                        // instead of carrying it in every later report.
-                        if(pending.second.chunk_end == 0 || pending.second.chunk_end <= iter->second.w)
-                        {
-                            report.pending_receipts.push_back(pending.first);
-                        }
+                        report.pending_receipts.push_back(pending.first);
                     }
                 }
                 snapshot.emplace(story_id, std::move(report));
@@ -398,8 +391,6 @@ private:
         uint32_t holders = 0;
         // every event of the receipt's chunk went into a holding chunk
         bool merged = false;
-        // end of the chunk this receipt was given to; 0 when unknown
-        uint64_t chunk_end = 0;
     };
 
     // Kept apart from Entry: a chunk can arrive before its story registers,

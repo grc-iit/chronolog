@@ -273,18 +273,17 @@ TEST(StoryWatermarkRegistry, ReportListsTheReceiptsNotWrittenYet)
     EXPECT_EQ(report.pending_receipts, (std::vector<uint64_t>{second}));
 }
 
-// A keeper frees a chunk only when the watermark covers it AND its receipt is
-// settled, so a report need not list a pending receipt whose chunk ends above
-// the watermark: that chunk is already held back by W. Leaving it out keeps a
-// failed write, whose receipts can never settle, from growing every later
-// report for the life of the grapher.
-TEST(StoryWatermarkRegistry, ReportOmitsAPendingReceiptTheWatermarkAlreadyBlocks)
+// A keeper reads a receipt a report leaves out as written, so every report
+// lists every pending receipt, wherever W is. A receipt whose chunk ends above W
+// can still be pending once W passes it: its events went into a window above W
+// that was already written and then reopened.
+TEST(StoryWatermarkRegistry, ReportListsEveryPendingReceiptWhereverTheWatermarkIs)
 {
     chl::StoryWatermarkRegistry registry;
     registry.registerStory(kStory, T0);
     registry.advancePersisted(kStory, T0, T2);
-    uint64_t const below = registry.assignReceipt(kStory, T1);
-    uint64_t const above = registry.assignReceipt(kStory, T4);
+    uint64_t const below = registry.assignReceipt(kStory); // for a chunk ending at T1
+    uint64_t const above = registry.assignReceipt(kStory); // for a chunk ending at T4
     registry.holdReceipt(kStory, below);
     registry.holdReceipt(kStory, above);
 
@@ -292,23 +291,11 @@ TEST(StoryWatermarkRegistry, ReportOmitsAPendingReceiptTheWatermarkAlreadyBlocks
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).watermark, T2);
     EXPECT_EQ(snapshot.at(kStory).highest_receipt, above);
-    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below}));
-}
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below, above}));
 
-TEST(StoryWatermarkRegistry, ReportListsAPendingReceiptOnceTheWatermarkPassesIt)
-{
-    chl::StoryWatermarkRegistry registry;
-    registry.registerStory(kStory, T0);
-    registry.advancePersisted(kStory, T0, T2);
-    uint64_t const below = registry.assignReceipt(kStory, T1);
-    uint64_t const above = registry.assignReceipt(kStory, T4);
-    registry.holdReceipt(kStory, below);
-    registry.holdReceipt(kStory, above);
-    registry.snapshotDirty();
-
-    // W now covers the second receipt's chunk, so it no longer holds it back
+    // and still once W has passed both chunks
     registry.advancePersisted(kStory, T2, T4);
-    auto snapshot = registry.snapshotDirty();
+    snapshot = registry.snapshotDirty();
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below, above}));
 }
@@ -387,7 +374,7 @@ TEST(StoryWatermarkRegistry, DropStoryReportsTheDropWatermarkOnce)
     chl::StoryWatermarkRegistry registry;
     registry.registerStory(kStory, T0);
     registry.advancePersisted(kStory, T0, T1);
-    uint64_t const receipt = registry.assignReceipt(kStory, T2);
+    uint64_t const receipt = registry.assignReceipt(kStory);
     (void)registry.snapshotDirty(); // the ordinary report; the story is clean again
 
     registry.dropStory(kStory);

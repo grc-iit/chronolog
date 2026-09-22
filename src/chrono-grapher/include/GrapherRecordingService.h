@@ -120,8 +120,7 @@ public:
             if(theWatermarkRegistry != nullptr)
             {
                 answer.grapher_instance = theWatermarkRegistry->instanceId();
-                answer.receipt =
-                        theWatermarkRegistry->assignReceipt(story_chunk->getStoryId(), story_chunk->getEndTime());
+                answer.receipt = theWatermarkRegistry->assignReceipt(story_chunk->getStoryId());
                 story_chunk->carryReceipt(answer.receipt);
             }
             request.respond(answer);

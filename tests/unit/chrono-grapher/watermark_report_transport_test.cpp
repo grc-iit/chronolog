@@ -320,3 +320,41 @@ TEST_F(WatermarkReportTransport, PendingReceiptKeepsTheKeepersChunkUntilItSettle
     publisher->publish();
     EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.retainedChunkCount(kStory) == 0; }));
 }
+
+// W can pass a chunk whose receipt is still pending: the chunk arrived while W
+// was held below a window already written above it, and its events went into
+// that window reopened. Every report has to list the receipt while it is
+// pending, including the ones sent before W reached the chunk; a keeper takes a
+// receipt a report leaves out for written, and would free the chunk as soon as
+// W covers it.
+TEST_F(WatermarkReportTransport, ReceiptPendingBeforeWReachesItsChunkStillHoldsTheChunkOnceWDoes)
+{
+    startPublisher(0);
+    constexpr chl::StoryId kStory = 5;
+    registry.registerStory(kStory, 100);
+    publisher->recordContributor(kStory, keeper1Id);
+
+    // the keeper shipped [200, 300) while W stood at 150
+    registry.advancePersisted(kStory, 100, 150);
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    auto* chunk = new chl::StoryChunk("chron", "story", kStory, 200, 300);
+    chunk->insertEvent(chl::LogEvent(kStory, 250, 1, 0, "event"));
+    keeper1->retentionStore.ingestSealedChunk(kStory, chunk);
+    chl::StoryChunk* shipped = keeper1->extractionQueue.ejectStoryChunk();
+    shipped->setGrapherReceipt(registry.instanceId(), receipt);
+    keeper1->retentionStore.markShipped(shipped);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    publisher->publish();
+    ASSERT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 150; }));
+
+    // W passes the chunk; the window holding its events is still unwritten
+    registry.advancePersisted(kStory, 150, 400);
+    publisher->publish();
+    ASSERT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 400; }));
+    EXPECT_EQ(keeper1->retentionStore.retainedChunkCount(kStory), 1u);
+
+    registry.releaseReceipt(kStory, receipt);
+    publisher->publish();
+    EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.retainedChunkCount(kStory) == 0; }));
+}

@@ -202,7 +202,7 @@ TEST_F(HDF5FileChunkExtractorWatermark, EmptyWindowReleasesItsReceipts)
     // a window can hold a receipt and still arrive empty: its events sorted
     // into the neighbouring window, which holds the receipt too. The empty one
     // is still a holder, so it has to let go or the receipt never settles.
-    uint64_t const receipt = registry.assignReceipt(kStory, T1);
+    uint64_t const receipt = registry.assignReceipt(kStory);
     registry.holdReceipt(kStory, receipt);
     registry.receiptMerged(kStory, receipt);
     chl::StoryChunk window("C", "S", kStory, T0, T1);
@@ -244,7 +244,7 @@ TEST_F(HDF5FileChunkExtractorWatermark, FailedWriteOfALateChunkKeepsItsReceiptPe
     ASSERT_GE(registry.getPersisted(kStory), T1);
 
     extractor.reset((archiveDir / "missing").string());
-    uint64_t const receipt = registry.assignReceipt(kStory, T1);
+    uint64_t const receipt = registry.assignReceipt(kStory);
     registry.holdReceipt(kStory, receipt);
     registry.receiptMerged(kStory, receipt);
     chl::StoryChunk reopened("C", "S", kStory, T0, T1);
