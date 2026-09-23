@@ -31,10 +31,10 @@ namespace chronolog
 //
 // W covering a keeper's chunk does not prove the chunk was written: a chunk
 // merged after its range persisted lands in a reopened window or a salvage
-// file, neither of which moves W. So every arriving chunk gets a receipt,
-// numbered per story, which settles once the chunk is merged and every chunk
-// holding its events is written. Reports carry the unsettled receipts next to
-// W (see ChunkReceipt.h).
+// file, neither of which moves W. So every arriving chunk gets a receipt, a
+// number this instance never gives out twice, which settles once the chunk is
+// merged and every chunk holding its events is written. Reports carry the
+// unsettled receipts next to W (see ChunkReceipt.h).
 class StoryWatermarkRegistry: public ReceiptTracker
 {
 public:
@@ -71,6 +71,12 @@ public:
         }
         if(iter == stories.end())
         {
+            // A drop still waiting to be reported belongs to a destroyed story
+            // this grapher never recorded (a chunk refused after the destroy).
+            // Reporting it now would free the new story's chunks on its
+            // keepers, and forgetting the id then would forget the new story;
+            // the keeper that sent the refused chunk keeps it, as above.
+            dropped.erase(story_id);
             Entry entry;
             entry.anchor = start_time;
             entry.w = start_time;
@@ -253,14 +259,15 @@ public:
     // tell a restarted grapher's receipts from the previous instance's.
     uint64_t instanceId() const { return instance; }
 
-    // A chunk for the story arrived. Receipts are numbered from 1 per story and
-    // stay pending until the chunk is merged and every chunk holding its events
-    // is written.
+    // A chunk for the story arrived. Receipts are numbered from one counter for
+    // every story (see lastReceipt) and stay pending until the chunk is merged
+    // and every chunk holding its events is written.
     uint64_t assignReceipt(StoryId const& story_id)
     {
         std::lock_guard<std::mutex> lock(mtx);
         StoryReceipts& story = receipts[story_id];
-        uint64_t const receipt = ++story.last_assigned;
+        uint64_t const receipt = ++lastReceipt;
+        story.last_assigned = receipt;
         story.pending.emplace(receipt, ReceiptState{});
         return receipt;
     }
@@ -431,6 +438,12 @@ private:
     }
 
     uint64_t const instance = drawInstanceId();
+    // Receipt numbers come from one counter for every story, so a number is
+    // never given out twice by this instance, not even to a story id that was
+    // destroyed, forgotten and created again under the same name. A keeper
+    // still holding the old story's view takes any number up to that view's
+    // highest as written unless a report lists it.
+    uint64_t lastReceipt = 0;
     mutable std::mutex mtx;
     std::map<StoryId, Entry> stories;
     std::map<StoryId, StoryReceipts> receipts;

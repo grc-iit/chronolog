@@ -241,12 +241,16 @@ TEST(StoryWatermarkRegistry, SnapshotDirtyReturnsOnlyChangedAndClears)
 // reports which numbers are still unwritten; a keeper frees a chunk only once
 // its receipt is off that list.
 
-TEST(StoryWatermarkRegistry, ReceiptsAreNumberedPerStoryFromOne)
+TEST(StoryWatermarkRegistry, ReceiptNumbersRiseAndAreNeverReused)
 {
     chl::StoryWatermarkRegistry registry;
-    EXPECT_EQ(registry.assignReceipt(kStory), 1u);
-    EXPECT_EQ(registry.assignReceipt(kStory), 2u);
-    EXPECT_EQ(registry.assignReceipt(kOtherStory), 1u);
+    uint64_t const first = registry.assignReceipt(kStory);
+    uint64_t const second = registry.assignReceipt(kStory);
+    uint64_t const other = registry.assignReceipt(kOtherStory);
+    EXPECT_GE(first, 1u);
+    EXPECT_GT(second, first);
+    EXPECT_NE(other, first);
+    EXPECT_NE(other, second);
     EXPECT_NE(registry.instanceId(), 0u);
 }
 
@@ -390,6 +394,62 @@ TEST(StoryWatermarkRegistry, DropStoryReportsTheDropWatermarkOnce)
     // and the story is gone: no repeat report, and W reads as unknown
     EXPECT_TRUE(registry.snapshotDirty().empty());
     EXPECT_EQ(registry.getPersisted(kStory), 0u);
+}
+
+// A story destroyed and created again under the same name has the same id. A
+// keeper that still holds the old story's receipt view takes every number up
+// to that view's highest as written unless a report lists it, so the new
+// story's receipts must never reuse one of those numbers.
+TEST(StoryWatermarkRegistry, AStoryRecreatedBeforeItsDropIsReportedNeverReusesAReceiptNumber)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    uint64_t old_highest = 0;
+    for(int i = 0; i < 3; ++i) { old_highest = registry.assignReceipt(kStory); }
+
+    registry.dropStory(kStory);
+    registry.registerStory(kStory, T2);
+
+    EXPECT_GT(registry.assignReceipt(kStory), old_highest);
+}
+
+TEST(StoryWatermarkRegistry, AStoryRecreatedAfterItsDropIsReportedNeverReusesAReceiptNumber)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    uint64_t old_highest = 0;
+    for(int i = 0; i < 3; ++i) { old_highest = registry.assignReceipt(kStory); }
+
+    registry.dropStory(kStory);
+    (void)registry.snapshotDirty(); // the drop is reported and the id forgotten
+    registry.registerStory(kStory, T2);
+
+    EXPECT_GT(registry.assignReceipt(kStory), old_highest);
+}
+
+// A chunk refused after a destroy marks a drop for a story this grapher never
+// recorded. When the name is created again and registers before that drop is
+// reported, the new story is neither reported dropped nor forgotten with it.
+TEST(StoryWatermarkRegistry, AStoryRegisteredWhileADropIsPendingIsNotDroppedWithIt)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.dropStory(kStory); // a refused chunk of the destroyed story
+    registry.registerStory(kStory, T0);
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).watermark, T0);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+
+    // still known afterwards: its W and its pending receipt carry on
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
+    registry.advancePersisted(kStory, T0, T1);
+    snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).watermark, T1);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
 }
 
 TEST(StoryWatermarkRegistry, DropStoryLeavesOtherStoriesAlone)
