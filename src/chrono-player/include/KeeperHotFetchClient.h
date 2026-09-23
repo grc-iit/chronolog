@@ -118,11 +118,11 @@ public:
         return unanswered;
     }
 
-    ~KeeperHotFetchClient()
-    {
-        story_range_fetch.deregister();
-        LOG_DEBUG("[KeeperHotFetchClient] Destructor called {}", to_string(keeperServiceId));
-    }
+    // Leaves story_range_fetch registered: the engine registers an RPC once per
+    // name, so every client of every keeper shares that registration, and
+    // deregistering it here would cut off the others. The player deletes a
+    // client whenever two replays race to create one for the same keeper.
+    ~KeeperHotFetchClient() { LOG_DEBUG("[KeeperHotFetchClient] Destructor called {}", to_string(keeperServiceId)); }
 
 private:
     ServiceId keeperServiceId;

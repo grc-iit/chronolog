@@ -168,6 +168,23 @@ TEST_F(KeeperHotFetch, LiveKeeperReturnsItsRetainedRange)
     EXPECT_EQ(response.hot_floor, 150u);
 }
 
+// Two replays can race to create the client of one keeper; the player keeps one
+// and deletes the other. The RPC they call is registered once per engine, so
+// deleting a client must leave every other client able to fetch.
+TEST_F(KeeperHotFetch, DeletingOneClientLeavesTheOthersWorking)
+{
+    liveClient = clientOf(kLiveKeeperProvider);
+    ASSERT_NE(liveClient, nullptr);
+    {
+        auto loser = clientOf(kLiveKeeperProvider);
+        ASSERT_NE(loser, nullptr);
+    }
+
+    chl::HotRangeResponse response = liveClient->fetchRange(kStory, 0, 1000, 100);
+    EXPECT_TRUE(response.answered);
+    EXPECT_EQ(response.unconfirmed_events.size(), 1u);
+}
+
 TEST_F(KeeperHotFetch, FetchesIssuedTogetherCostOneDeadlineNotTwo)
 {
     // the player asks every keeper of a story; issuing the fetches before
