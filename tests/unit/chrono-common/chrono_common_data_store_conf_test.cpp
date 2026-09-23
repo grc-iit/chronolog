@@ -55,6 +55,14 @@ TEST(DataStoreConf, RejectsANegativeResendTimeout)
     EXPECT_EQ(parseInto(conf, R"({"watermark_resend_timeout_secs": -1})"), chl::CL_ERR_INVALID_CONF);
 }
 
+// 0 would send every unconfirmed chunk again on each keeper pass, replacing
+// its receipt each time, so no chunk would ever be confirmed
+TEST(DataStoreConf, RejectsAZeroResendTimeout)
+{
+    chl::DataStoreConf conf;
+    EXPECT_EQ(parseInto(conf, R"({"watermark_resend_timeout_secs": 0})"), chl::CL_ERR_INVALID_CONF);
+}
+
 TEST(DataStoreConf, RejectsANegativeRetentionCap)
 {
     chl::DataStoreConf conf;

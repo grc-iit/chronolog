@@ -338,12 +338,15 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
                 std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': expected integer" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
-            // the keeper compares an age against this as seconds: a negative value
-            // makes every chunk look too young to send again, so nothing ever is
+            // the keeper compares an age against this as seconds. A negative value
+            // makes every chunk look too young to send again, so nothing ever is;
+            // 0 sends every unconfirmed chunk again on each pass, and since each
+            // delivery gets a new receipt the grapher has to settle afresh, none
+            // is ever confirmed
             int const parsed_resend_secs = json_object_get_int(val);
-            if(parsed_resend_secs < 0)
+            if(parsed_resend_secs <= 0)
             {
-                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': must not be negative, got "
+                std::cerr << "[DataStoreConf] Invalid 'watermark_resend_timeout_secs': must be positive, got "
                           << parsed_resend_secs << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
             }
