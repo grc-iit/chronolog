@@ -83,6 +83,26 @@ protected:
         return names;
     }
 
+    // every write's events are on disk: one file per write, each holding the
+    // event count of a different chunk (the writes carried 1, 2, ... events)
+    void expectOneFilePerWrite(int writes) const
+    {
+        std::vector<std::string> const names = fileNames();
+        ASSERT_EQ(names.size(), static_cast<std::size_t>(writes)) << "files: " << ::testing::PrintToString(names);
+        std::vector<hsize_t> event_counts;
+        for(std::string const& name: names)
+        {
+            H5::H5File file((dir / name).string(),
+                            H5F_ACC_RDONLY,
+                            H5::FileCreatPropList::DEFAULT,
+                            chl::archiveFileAccess());
+            H5::DataSet const dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
+            event_counts.push_back(dataset.getSpace().getSimpleExtentNpoints());
+        }
+        std::sort(event_counts.begin(), event_counts.end());
+        for(int i = 0; i < writes; ++i) { EXPECT_EQ(event_counts[i], static_cast<hsize_t>(1 + i)); }
+    }
+
     fs::path dir;
 };
 } // namespace
@@ -155,22 +175,46 @@ TEST_F(ChunkWriter, ConcurrentWritesOfOneWindowEachKeepTheirOwnFile)
     for(auto& writer: writers) { writer.join(); }
     ASSERT_EQ(succeeded.load(), kWriters);
 
-    // every write's events are on disk: one file per write, each holding the
-    // event count of a different chunk
-    std::vector<std::string> const names = fileNames();
-    ASSERT_EQ(names.size(), static_cast<std::size_t>(kWriters)) << "files: " << ::testing::PrintToString(names);
-    std::vector<hsize_t> event_counts;
-    for(std::string const& name: names)
+    expectOneFilePerWrite(kWriters);
+}
+
+// The same across processes. The visor gives a story acquired anew a random
+// recording group, so a story released and acquired again within one window
+// has two graphers, on different nodes, writing that window to the shared
+// archive. A lock inside one process does not reach the other.
+TEST_F(ChunkWriter, ConcurrentWritesOfOneWindowFromSeparateProcessesEachKeepTheirOwnFile)
+{
+    constexpr int kWriters = 12;
+    int go[2];
+    ASSERT_EQ(::pipe(go), 0);
+    std::vector<pid_t> children;
+    for(int i = 0; i < kWriters; ++i)
     {
-        H5::H5File file((dir / name).string(),
-                        H5F_ACC_RDONLY,
-                        H5::FileCreatPropList::DEFAULT,
-                        chl::archiveFileAccess());
-        H5::DataSet const dataset = file.openDataSet("/story_chunks/data.vlen_bytes");
-        event_counts.push_back(dataset.getSpace().getSimpleExtentNpoints());
+        pid_t const child = ::fork();
+        ASSERT_NE(child, -1);
+        if(child == 0)
+        {
+            ::close(go[1]);
+            char byte = 0;
+            // returns once the parent closes its end, so the writes start together
+            (void)!::read(go[0], &byte, 1);
+            chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+            chl::StoryChunk chunk = window(60, 1 + i, 16);
+            ::_exit(writer.writeStoryChunk(chunk) > 0 ? 0 : 1);
+        }
+        children.push_back(child);
     }
-    std::sort(event_counts.begin(), event_counts.end());
-    for(int i = 0; i < kWriters; ++i) { EXPECT_EQ(event_counts[i], static_cast<hsize_t>(1 + i)); }
+    ::close(go[0]);
+    ::close(go[1]);
+    for(pid_t const child: children)
+    {
+        int status = 0;
+        ::waitpid(child, &status, 0);
+        ASSERT_TRUE(WIFEXITED(status));
+        EXPECT_EQ(WEXITSTATUS(status), 0) << "a write failed";
+    }
+
+    expectOneFilePerWrite(kWriters);
 }
 
 TEST_F(ChunkWriter, ArchiveFilesAreOpenedWithoutFileLocking)
