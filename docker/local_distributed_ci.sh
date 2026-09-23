@@ -463,8 +463,9 @@ else
           > /tmp/py_tail_writer.log 2>&1
     " || stage_fail "could not start the python writer on c2"
 
-    # The reader POLLS: an event is in the tail only between its chunk sealing and
-    # ageing out, a window of about tail_retention_secs - acceptance_window_secs.
+    # The reader POLLS: an event becomes readable only once its chunk seals
+    # (story_chunk_duration_secs + acceptance_window_secs), so a single early read
+    # finds nothing.
     if dex c3 bash -c "
         export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
         export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
