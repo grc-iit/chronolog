@@ -306,7 +306,17 @@ void chronolog::HDF5ArchiveReadingAgent::probeForRecentFiles(ChronicleName const
     }
 
     // never more than kProbeWindows lookups: a file the listing has not shown
-    // yet was written recently, so it sits at the end of the range
+    // yet was written recently, so it sits at the end of the range.
+    //
+    // A lookup by name skips the directory listing's cache but not the NFS
+    // client's cache of failed lookups: with the default lookupcache=all, a name
+    // probed while its file did not exist stays "not found" until the client
+    // revalidates the directory (acdirmin to acdirmax). The range ends at the
+    // archive read's end, which in a replay every keeper answered is B, so a
+    // probe asks only for windows the grapher has already reported written.
+    // After a keeper failed to answer it reaches the end of the replay, and a
+    // miss cached then can hide the file from later replays; mounting the
+    // archive with lookupcache=positive rules that out.
     uint64_t probe_from = (newest_listed == 0) ? startTime : newest_listed + window_ns;
     uint64_t const horizon = (endTime > kProbeWindows * window_ns) ? endTime - kProbeWindows * window_ns : 0;
     probe_from = std::max(probe_from, horizon);
@@ -416,7 +426,12 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
         if(readAuxFiles)
         {
             // StoryChunkWriter numbers a window's later writes .vlen.1.h5, .vlen.2.h5, ...
-            // in order, so read them until one is missing
+            // in order, so read them until one is missing. That last lookup
+            // usually misses, and on NFS with the default lookupcache the miss
+            // is cached: a numbered file written moments later (a late or
+            // re-sent keeper chunk) stays invisible here until the directory is
+            // revalidated, possibly after its keeper has freed the chunk. The
+            // archive mount wants lookupcache=positive.
             std::string const numbered_prefix = (file_full_path.parent_path() / file_full_path.stem()).string();
             for(int number = 1;; ++number)
             {

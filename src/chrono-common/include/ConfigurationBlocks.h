@@ -257,11 +257,14 @@ struct DataStoreConf
     // depend on the player already seeing the new archive file. A replay now
     // looks a missing window's file up by name rather than waiting for the
     // player's next directory listing (ArchiveReaders.archive_window_secs), so
-    // this only has to cover the write-to-report round trip. On NFS mounted
-    // with the default lookupcache, a name a player asked for just before the
-    // file appeared can stay negative for acdirmin (30 s by default): mount
-    // with lookupcache=positive, or raise this to cover it. 0 frees on the
-    // report. Keeper-only knob.
+    // this only has to cover the write-to-report round trip -- provided the
+    // players' archive mount does not cache failed lookups. NFS does by
+    // default (lookupcache=all): a name a player asked for just before the file
+    // appeared stays "not found" until the client revalidates the directory,
+    // anywhere from acdirmin to acdirmax (30-60 s by default, longer where a
+    // site raises them to spare its server). Mount the archive with
+    // lookupcache=positive (see the multi-node deployment docs), or raise this
+    // above acdirmax. 0 frees on the report. Keeper-only knob.
     int archive_visibility_delay_secs = 10;
     // How long a keeper stopped with SIGTERM waits for the grapher to confirm
     // every chunk it holds written, sending unacked chunks again meanwhile.
@@ -302,8 +305,10 @@ struct DataStoreConf
 struct ExtractorReaderConf
 {
     std::string story_files_dir;
-    // How often the player lists the archive directory to find new files.
-    // Player-only knob.
+    // How often the player lists the archive directory to find new files. On
+    // NFS a listing is served from the client's directory cache, so it can be
+    // as old as acdirmax whatever this interval is; mount the archive with a
+    // small acdirmin/acdirmax to keep it close. Player-only knob.
     int archive_scan_interval_secs = 5;
     // The grapher's story_chunk_duration_secs: the time range of one archive
     // file, and so the step between the names a replay probes for files the
