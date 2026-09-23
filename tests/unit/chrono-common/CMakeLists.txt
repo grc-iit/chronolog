@@ -155,7 +155,7 @@ if(CHRONOLOG_INSTALL_TESTS)
 endif()
 
 # StoryChunkWriter (GTest): how a window reaches the archive -- written through a
-# temporary name and renamed into place, and opened without HDF5 file locking
+# temporary name and moved into place, and opened without HDF5 file locking
 add_executable(story_chunk_writer_test
     chrono_common_story_chunk_writer_test.cpp
 )
@@ -178,4 +178,25 @@ set_target_properties(story_chunk_writer_test PROPERTIES OUTPUT_NAME chronolog-t
 gtest_discover_tests(story_chunk_writer_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_chunk_writer_test DESTINATION tests)
+endif()
+
+# StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
+add_executable(chunk_extractor_csv_test
+    chrono_common_chunk_extractor_csv_test.cpp
+)
+
+target_include_directories(chunk_extractor_csv_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(chunk_extractor_csv_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(chunk_extractor_csv_test PROPERTIES OUTPUT_NAME chronolog-test-common-chunk-extractor-csv)
+gtest_discover_tests(chunk_extractor_csv_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chunk_extractor_csv_test DESTINATION tests)
 endif()
