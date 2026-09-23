@@ -155,16 +155,16 @@ runs stay verifiable), it runs against a fresh deployment with no ldmsd needed.
 The tail-read half is why the plugin lives on the tail-read development line
 (keeper-side `playback()` API).
 
-> **Note on the archive read timing.** A sealed chunk stays resident in the
-> keeper tail (where `playback()` serves it) and is forwarded to the
-> grapher/player archive only when it leaves the tail. Two bounds release it:
-> **age-out** after `tail_retention_secs` (default 60) beyond the chunk's end
-> time, and **capacity eviction** once the story exceeds `tail_capacity`
-> (default 65536 events). A small run hits the first, not the second, so its
-> samples are readable via the tail immediately on sealing but only reach the
-> archive about a retention window later — `ReplayStory()` returning 0 before
-> then is expected, not a failure of the archive-read call. The example prints
-> this explicitly and never fails on it.
+> **Note on the archive read timing.** A keeper sends each chunk to the
+> grapher as soon as it seals, and keeps it until the grapher confirms it
+> written. `ReplayStory()` answers from the archive and, for chunks not yet
+> confirmed written, from the keepers that still hold them, so it returns the
+> samples once their chunk has sealed on the keeper
+> (`story_chunk_duration_secs` + `acceptance_window_secs`, 25 s with the
+> shipped configuration), before the grapher writes them to the archive.
+> `ReplayStory()` returning 0 straight after writing means the chunk had not
+> sealed yet, not a failure of the archive-read call. The example prints this
+> explicitly and never fails on it.
 
 ## Benchmarks
 
