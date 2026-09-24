@@ -472,6 +472,14 @@ public:
         std::size_t served = 0;
         for(auto const& entry: merged)
         {
+            // An event of a chunk the archive serves, below this keeper's W:
+            // the player splits a replay at a boundary no lower than this W and
+            // takes everything under it from the archive, so sending it would
+            // only use up max_events.
+            if(entry.second.second && entry.second.first->time() < response.known_W)
+            {
+                continue;
+            }
             if(served >= max_events)
             {
                 response.truncated = true;

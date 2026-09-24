@@ -1053,9 +1053,36 @@ TEST(KeeperChunkRetentionStore, WrittenChunkIsServedUnconfirmedUntilTheVisibilit
     EXPECT_EQ(just_written.unconfirmed_events.size(), 3u);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    // once the player can read the file, events below this keeper's W are left
+    // to the archive: the player splits at a boundary no lower than this W
     auto visible = store.fetchRange(sid, 0, 1000, 1000);
-    EXPECT_EQ(visible.events.size(), 3u);
+    EXPECT_TRUE(visible.events.empty());
     EXPECT_TRUE(visible.unconfirmed_events.empty());
+    EXPECT_EQ(visible.known_W, 200u);
+}
+
+// Events the archive serves are not sent: the player splits a replay at a
+// boundary no lower than this keeper's W and takes everything below it from
+// the archive. Sending them only used up the per-query cap, so a busy story's
+// replay came back truncated with little of what it needed.
+TEST(KeeperChunkRetentionStore, FetchRangeLeavesArchivedEventsBelowItsWatermarkOutOfTheCap)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A")); // written, below W
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 2, 1, "B")); // not yet written
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+
+    auto response = store.fetchRange(sid, 0, 1000, 3);
+    EXPECT_FALSE(response.truncated);
+    ASSERT_EQ(response.events.size(), 2u);
+    EXPECT_EQ(response.events.front().getRecord(), "B#0");
+    EXPECT_TRUE(response.unconfirmed_events.empty());
+    EXPECT_EQ(response.known_W, 200u);
 }
 
 TEST(KeeperChunkRetentionStore, VisibilityDelayStartsWhenTheChunkIsWritten)
