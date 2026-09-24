@@ -350,16 +350,19 @@ void chronolog::GrapherDataStore::enqueueDestroyTask(DestroyTask&& task)
 
 void chronolog::GrapherDataStore::drainExtractionQueueOrTimeout()
 {
-    // Poll the extraction queue until it drains. Destroy is rare; per-story
-    // granularity would be nicer but a global drain wait is the simplest
-    // robust primitive the queue currently exposes. To avoid blocking
-    // shutdown indefinitely we also bail when the data store is shutting
-    // down -- the extraction module's own shutdown will then take over.
+    // Poll the extraction queue until it is idle: nothing waiting and nothing
+    // taken off it still being processed. An empty queue is not enough -- a
+    // window an extraction stream has just taken can still be mid-write, and
+    // its file appears under its name only when the write completes, after a
+    // delete that ran on "empty". Destroy is rare; per-story granularity would
+    // be nicer but a global wait is the simplest robust primitive. To avoid
+    // blocking shutdown indefinitely we also bail when the data store is
+    // shutting down -- the extraction module's own shutdown will then take over.
     using namespace std::chrono_literals;
     auto const poll_interval = 50ms;
     while(!destroyWorkerShouldExit.load(std::memory_order_acquire))
     {
-        if(theExtractionQueue.empty())
+        if(theExtractionQueue.idle())
         {
             return;
         }
@@ -400,10 +403,10 @@ void chronolog::GrapherDataStore::destroyWorkerTask()
             task.remainingChunks.clear();
         }
 
-        // Wait for the extraction queue to drain. This is the load-bearing
+        // Wait for the extraction queue to go idle. This is the load-bearing
         // ordering primitive: by the time we proceed to delete files, every
         // chunk we stashed (and anything stashed concurrently for other
-        // stories) has been picked up by a writer thread.
+        // stories) has been written and published, not only picked up.
         drainExtractionQueueOrTimeout();
 
         // Persistence-vs-deletion ordering is now safe; delete the on-disk

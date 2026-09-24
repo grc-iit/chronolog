@@ -155,3 +155,34 @@ gtest_discover_tests(grapher_pipeline_retirement_test TEST_PREFIX "Unit_ChronoGr
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(grapher_pipeline_retirement_test DESTINATION tests)
 endif()
+
+# Destroy (GTest): a window still being written when its story is destroyed is
+# deleted too, and the extraction queue counts chunks in process
+add_executable(grapher_destroy_test
+    grapher_destroy_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/GrapherDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/HDF5FileChunkExtractor.cpp
+)
+
+target_include_directories(grapher_destroy_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(grapher_destroy_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(grapher_destroy_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(grapher_destroy_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-destroy)
+gtest_discover_tests(grapher_destroy_test TEST_PREFIX "Unit_ChronoGrapher_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_destroy_test DESTINATION tests)
+endif()
