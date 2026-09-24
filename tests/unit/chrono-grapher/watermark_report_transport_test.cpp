@@ -358,3 +358,27 @@ TEST_F(WatermarkReportTransport, ReceiptPendingBeforeWReachesItsChunkStillHoldsT
     publisher->publish();
     EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.retainedChunkCount(kStory) == 0; }));
 }
+
+// A report that cannot be delivered is sent again. Building a report clears the
+// story's dirty mark, so without a retry a lost report for a story that has gone
+// quiet is never repeated, and its keepers later re-send chunks the grapher
+// already wrote. A keeper that stays unreachable is not retried every round for
+// good: after three failures in a row only new changes reach it.
+TEST_F(WatermarkReportTransport, AReportThatFailsToSendIsSentAgainAFewTimes)
+{
+    startPublisher(0);
+    constexpr chl::StoryId kStory = 5;
+    registry.registerStory(kStory, 100);
+    // nothing listens on port 1
+    publisher->recordContributor(kStory, chl::ServiceId(kProtocol, "127.0.0.1", 1, 99));
+    registry.advancePersisted(kStory, 100, 200);
+
+    // each failed round marks the story for the next one
+    for(int round = 0; round < 3; ++round) { publisher->publish(); }
+    EXPECT_EQ(registry.snapshotDirty().count(kStory), 1u);
+
+    // a fourth failure in a row does not
+    registry.advancePersisted(kStory, 200, 300);
+    publisher->publish();
+    EXPECT_TRUE(registry.snapshotDirty().empty());
+}

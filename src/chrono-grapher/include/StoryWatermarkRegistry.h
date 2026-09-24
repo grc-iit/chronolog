@@ -307,6 +307,29 @@ public:
         }
     }
 
+    // The reports built from these entries could not be delivered. snapshotDirty
+    // cleared the stories' dirty marks when it built them, so mark them again
+    // for the next report, or a story that has gone quiet would never be
+    // reported. A drop report is marked again as a drop, unless the story has
+    // been registered anew since.
+    void markUndelivered(std::map<StoryId, StoryWatermarkReport> const& reports)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        for(auto const& entry: reports)
+        {
+            bool const known = stories.find(entry.first) != stories.end();
+            if(known)
+            {
+                dirty.insert(entry.first);
+            }
+            else if(entry.second.watermark == kStoryDroppedWatermark)
+            {
+                dropped.insert(entry.first);
+                dirty.insert(entry.first);
+            }
+        }
+    }
+
     // Reports for the stories that changed since the last snapshot; clears the
     // dirty set.
     std::map<StoryId, StoryWatermarkReport> snapshotDirty()

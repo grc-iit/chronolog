@@ -54,6 +54,18 @@ private:
                     ServiceId const& keeper_id,
                     std::map<StoryId, StoryWatermarkReport> const& watermarks);
 
+    // The send failed: drop the cached handle and, unless this keeper has
+    // failed kMaxReportRetries times in a row, mark the stories for the next
+    // round so the report is sent again.
+    void reportFailed(std::string const& endpoint_key,
+                      ServiceId const& keeper_id,
+                      std::map<StoryId, StoryWatermarkReport> const& watermarks,
+                      std::string const& reason);
+
+    // a keeper unreachable this many rounds in a row is not retried until its
+    // stories change again
+    static constexpr unsigned kMaxReportRetries = 3;
+
     static std::string endpointKey(ServiceId const& service_id)
     {
         std::string key;
@@ -75,6 +87,8 @@ private:
     std::map<StoryId, std::map<std::string, ServiceId>> contributors;
     // lazily built per-keeper provider handles; dropped on send failure
     std::map<std::string, tl::provider_handle> keeperHandles;
+    // consecutive failed sends per keeper endpoint; erased on a successful send
+    std::map<std::string, unsigned> reportFailures;
 };
 
 } // namespace chronolog
