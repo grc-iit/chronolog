@@ -137,6 +137,8 @@ command -v jq >/dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 
+# jq writes to a side file that replaces the template only on success, so a failed
+# patch leaves the template intact (the restore trap below is not set up yet)
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wmark_test_backup"
 jq ".chrono_keeper.DataStoreInternals.tail_capacity = 1 |
     .chrono_keeper.DataStoreInternals.watermark_resend_timeout_secs = $RESEND_SECS |
@@ -144,7 +146,9 @@ jq ".chrono_keeper.DataStoreInternals.tail_capacity = 1 |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \
-    "$CONF_TEMPLATE.wmark_test_backup" > "$CONF_TEMPLATE" || { say "conf patch failed"; exit 2; }
+    "$CONF_TEMPLATE.wmark_test_backup" > "$CONF_TEMPLATE.wmark_test_patched" ||
+    { say "conf patch failed; template left as it was"; rm -f "$CONF_TEMPLATE.wmark_test_backup" "$CONF_TEMPLATE.wmark_test_patched"; exit 2; }
+mv -f "$CONF_TEMPLATE.wmark_test_patched" "$CONF_TEMPLATE"
 
 restore_conf() { mv -f "$CONF_TEMPLATE.wmark_test_backup" "$CONF_TEMPLATE"; }
 trap 'cleanup; restore_conf' EXIT

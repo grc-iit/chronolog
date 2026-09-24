@@ -120,12 +120,16 @@ command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$REPLAY_CHECK" ] || { say "replay probe not found at $REPLAY_CHECK"; exit 2; }
 
 say "patching installed conf template (grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
+# jq writes to a side file that replaces the template only on success, so a failed
+# patch leaves the template intact (the restore trap below is not set up yet)
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.fanout_backup"
 jq ".chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \
-    "$CONF_TEMPLATE.fanout_backup" > "$CONF_TEMPLATE" || { say "conf patch failed"; exit 2; }
+    "$CONF_TEMPLATE.fanout_backup" > "$CONF_TEMPLATE.fanout_patched" ||
+    { say "conf patch failed; template left as it was"; rm -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE.fanout_patched"; exit 2; }
+mv -f "$CONF_TEMPLATE.fanout_patched" "$CONF_TEMPLATE"
 
 restore_conf() { mv -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE"; }
 trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
