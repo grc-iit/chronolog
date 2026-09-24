@@ -298,7 +298,7 @@ void chronolog::HDF5ArchiveReadingAgent::probeForRecentFiles(ChronicleName const
     uint64_t newest_listed = 0;
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
-        auto story_iter = start_time_file_name_map_.find(std::make_pair(chronicleName, storyName));
+        auto story_iter = start_time_file_name_map_.find(storyPrefix(chronicleName, storyName));
         if(story_iter != start_time_file_name_map_.end() && !story_iter->second.empty())
         {
             newest_listed = story_iter->second.rbegin()->first;
@@ -367,8 +367,7 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                   formatWithCommas(endTime));
     }
     // Find files for the specific chronicle-story combination
-    auto chronicle_story_pair = std::make_pair(chronicleName, storyName);
-    auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
+    auto chronicle_story_it = start_time_file_name_map_.find(storyPrefix(chronicleName, storyName));
 
     if(chronicle_story_it == start_time_file_name_map_.end())
     {
