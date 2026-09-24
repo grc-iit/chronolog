@@ -9,6 +9,7 @@ set -e
 ERR='\033[7;37m\033[41m'
 INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
+WARN='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Basics
@@ -193,6 +194,51 @@ check_rpc_comm_conf() {
   [[ "${grapher_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Grapher and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}" || true
+}
+
+# A player finds new archive files by looking them up by name. NFS mounted with the
+# default lookupcache=all caches a failed lookup until the client revalidates the
+# directory, for up to acdirmax. A keeper frees a written chunk
+# archive_visibility_delay_secs after the grapher confirms it, so if a player can keep
+# "not found" longer than that, a replay can miss the chunk's events and still report
+# success. Prints why for one player host's `findmnt -n -o FSTYPE,OPTIONS` output, or
+# nothing when the mount is safe (see "Archive on a Shared File System" in the
+# multi-node deployment docs).
+archive_mount_warning() {
+  local host=$1 mount_info=$2 delay=$3
+  local fstype=${mount_info%% *}
+  local options=",${mount_info#* },"
+  [[ "${fstype}" == nfs* ]] || return 0
+  [[ "${options}" == *",noac,"* ]] && return 0
+  local lookupcache="all"
+  [[ "${options}" =~ ,lookupcache=([a-z]+), ]] && lookupcache=${BASH_REMATCH[1]}
+  [[ "${lookupcache}" == "pos"* || "${lookupcache}" == "none" ]] && return 0
+  local acdirmax=60
+  [[ "${options}" =~ ,actimeo=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
+  [[ "${options}" =~ ,acdirmax=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
+  if [[ ${delay} -le ${acdirmax} ]]; then
+    echo "${host} mounts ${OUTPUT_DIR} over NFS with lookupcache=${lookupcache} and acdirmax=${acdirmax}:" \
+      "a failed lookup can stay cached for up to ${acdirmax} s, longer than a keeper keeps a written chunk" \
+      "(archive_visibility_delay_secs=${delay}), so a replay can miss events and still report success." \
+      "Mount the archive with lookupcache=positive, or set archive_visibility_delay_secs above ${acdirmax}."
+  fi
+}
+
+check_archive_mount() {
+  echo -e "${INFO}Checking the archive mount on ChronoPlayer hosts ...${NC}"
+  local delay
+  delay=$(jq -r '.chrono_keeper.DataStoreInternals.archive_visibility_delay_secs // 10' "${CONF_FILE}")
+  local host mount_info warning
+  for host in $(sort -u "${PLAYER_HOSTS}"); do
+    mount_info=$(ssh -n "${host}" "findmnt -n -o FSTYPE,OPTIONS --target '${OUTPUT_DIR}'" 2>/dev/null || true)
+    if [[ -z "${mount_info}" ]]; then
+      [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Could not read the mount of ${OUTPUT_DIR} on ${host}; not checked${NC}" || true
+      continue
+    fi
+    warning=$(archive_mount_warning "${host}" "${mount_info}" "${delay}")
+    [[ -n "${warning}" ]] && echo -e "${WARN}WARNING: ${warning}${NC}" >&2 || true
+  done
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check archive mount done${NC}" || true
 }
 
 check_op_validity() {
@@ -576,6 +622,7 @@ start() {
   update_client_monitor_file_path
   generate_conf_for_each_recording_group
   check_rpc_comm_conf
+  check_archive_mount
 
   hostname_suffix=".\$(hostname)"
   if [[ "${verbose}" == "false" ]]; then
