@@ -387,6 +387,13 @@ public:
                     {
                         continue;
                     }
+                    // A settled receipt means the chunk's events are on disk; W
+                    // is only held below it by an earlier gap. Sending it again
+                    // would write them twice and change nothing for W.
+                    if(state.shipped && state.receipt != 0 && receiptSettled(story_entry.second, state))
+                    {
+                        continue;
+                    }
                     if(now - state.last_activity < max_age)
                     {
                         continue;
