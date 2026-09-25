@@ -186,3 +186,32 @@ gtest_discover_tests(grapher_destroy_test TEST_PREFIX "Unit_ChronoGrapher_" PROP
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(grapher_destroy_test DESTINATION tests)
 endif()
+
+# Grapher configuration (GTest): the extraction chain must include the HDF5
+# extractor, which is what advances W and settles the keepers' receipts
+add_executable(grapher_configuration_test
+    grapher_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/ChronoGrapherConfiguration.cpp
+)
+
+target_include_directories(grapher_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_compile_definitions(grapher_configuration_test PRIVATE
+    CHRONOLOG_CONF_TEMPLATE="${CMAKE_SOURCE_DIR}/conf/default_conf.json.in"
+)
+
+target_link_libraries(grapher_configuration_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(grapher_configuration_test PROPERTIES OUTPUT_NAME chronolog-test-grapher-configuration)
+gtest_discover_tests(grapher_configuration_test TEST_PREFIX "Unit_ChronoGrapher_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_configuration_test DESTINATION tests)
+endif()

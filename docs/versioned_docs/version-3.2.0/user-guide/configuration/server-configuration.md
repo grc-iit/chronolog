@@ -128,7 +128,9 @@ Present under `chrono_keeper` and `chrono_grapher`. Parsed by `ExtractionModuleC
 | `csv_extractor`                   | keeper, grapher     | `csv_archive_dir` (string)                                                                 | Writes each StoryChunk as a CSV file under `csv_archive_dir`.                                                         |
 | `single_endpoint_rdma_extractor`  | keeper, grapher     | `receiving_endpoint` (object: `protocol_conf`, `service_ip`, `service_base_port`, `service_provider_id`) | Drains each StoryChunk to one RDMA endpoint (typically a ChronoGrapher's `KeeperGrapherDrainService`).                |
 | `dual_endpoint_rdma_extractor`    | keeper              | Two `receiving_endpoint` entries                                                            | Fans each StoryChunk out to two RDMA endpoints simultaneously (e.g. ChronoGrapher + ChronoPlayer).                    |
-| `hdf5_extractor`                  | grapher             | `hdf5_archive_dir` (string)                                                                 | Serializes each StoryChunk into the HDF5 archive under `hdf5_archive_dir`.                                            |
+| `hdf5_extractor`                  | grapher (required)  | `hdf5_archive_dir` (string)                                                                 | Serializes each StoryChunk into the HDF5 archive under `hdf5_archive_dir`.                                            |
+
+A ChronoGrapher's chain must include `hdf5_extractor`: it is the only extractor that confirms chunks written, and keepers free a chunk only once the grapher confirms it. A grapher whose `extractors` list is empty or absent gets an `hdf5_extractor` with `hdf5_archive_dir` `/tmp`; one whose list leaves it out, such as a `csv_extractor` alone, fails to start. Other extractors may run alongside it.
 
 Keepers ship with `single_endpoint_rdma_extractor` to ChronoGrapher. Replay reads recent events from the keepers directly, so the ChronoPlayer copy that `dual_endpoint_rdma_extractor` sends is no longer needed.
 
