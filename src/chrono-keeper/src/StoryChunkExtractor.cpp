@@ -115,6 +115,7 @@ void chronolog::StoryChunkExtractorBase::drainExtractionQueue()
                           thallium::thread::self_id());
                 chunkExtractionQueue.stashStoryChunk(storyChunk);
             }
+            chunkExtractionQueue.chunkProcessed();
         }
         sleep(2);
     }

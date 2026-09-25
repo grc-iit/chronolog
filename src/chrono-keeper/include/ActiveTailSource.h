@@ -9,12 +9,12 @@
 namespace chronolog
 {
 
-// Interface a live story pipeline exposes so the KeeperTailStore can serve the
+// Interface a live story pipeline exposes so the KeeperChunkRetentionStore can serve the
 // most-recent events straight from the active (unsealed) timeline, in addition
 // to the sealed-chunk tail. Implemented by KeeperStoryPipeline; registered with
-// the KeeperTailStore while the pipeline is alive. Kept as a narrow interface so
-// KeeperTailStore does not have to depend on the full pipeline definition (which
-// itself depends on KeeperTailStore).
+// the KeeperChunkRetentionStore while the pipeline is alive. Kept as a narrow interface so
+// KeeperChunkRetentionStore does not have to depend on the full pipeline definition (which
+// itself depends on KeeperChunkRetentionStore).
 //
 // Both methods are expected to synchronize against the pipeline's own timeline
 // mutex so they are safe to call concurrently with background ingestion/decay.

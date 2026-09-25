@@ -9,6 +9,7 @@
 #include <string>
 #include <map>
 #include <filesystem>
+#include <regex>
 #include <thallium.hpp>
 #include <chrono>
 #include <vector>
@@ -71,10 +72,12 @@ class HDF5ArchiveReadingAgent
 public:
     explicit HDF5ArchiveReadingAgent(std::string const& archive_path,
                                      bool use_polling = true,
-                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000))
+                                     std::chrono::milliseconds monitoring_interval = std::chrono::milliseconds(5000),
+                                     uint64_t archive_window_secs = 30)
         : archive_path_(fs::absolute(expandTilde(fs::path(archive_path))).make_preferred().string())
         , use_polling_(use_polling)
         , monitoring_interval_(monitoring_interval)
+        , archive_window_secs_(archive_window_secs)
         , shutdown_requested_(false)
     {}
 
@@ -108,54 +111,67 @@ public:
                            std::list<StoryChunk*>&,
                            const std::string&);
 
+    // readAuxFiles: also read the numbered files ({...}.vlen.1.h5, .2, ...) a
+    // grapher writes when a window it already wrote gets more events, from a
+    // late or re-sent keeper chunk. Once the keepers free those chunks, the
+    // numbered files are the only copy of their events.
     int readArchivedStory(const ChronicleName&,
                           const StoryName&,
                           uint64_t,
                           uint64_t,
                           std::list<StoryChunk*>&,
-                          bool = false);
+                          bool readAuxFiles = true);
 
-    static std::string getChronicleName(const std::string& file_name)
+    // The directory listing this agent keeps can be stale: on a shared file
+    // system a client caches directory attributes, so a file the grapher wrote
+    // on another node is invisible here for as long as that cache lives. A
+    // lookup by name does not go through it. For the windows a replay needs
+    // beyond the newest file listed for the story, this asks the file system
+    // for the name the grapher would have written, and adds what it finds to
+    // the map. Bounded to the last few windows of the range.
+    void probeForRecentFiles(ChronicleName const&, StoryName const&, uint64_t start_time, uint64_t end_time);
+
+    // An archive file is named <chronicle>.<story>.<startSec>.vlen.h5, or
+    // <...>.vlen.<n>.h5 for a later write of the same window. Chronicle and story
+    // names may contain dots, so the name is read from the right, where every
+    // field has a fixed form: the start second, "vlen" and the optional number.
+    // What is left, "<chronicle>.<story>", is never split: a replay asks for one
+    // known story and looks it up by the same string (storyPrefix).
+    struct ArchiveFileName
     {
-        // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
-        std::string base_name = fs::path(file_name).filename().string();
-        std::string chronicle_name = base_name.substr(0, base_name.find_first_of('.'));
-        return chronicle_name;
+        std::string story_prefix;
+        uint64_t start_time = 0; // ns
+        bool numbered = false;
+    };
+
+    static std::string storyPrefix(std::string const& chronicle_name, std::string const& story_name)
+    {
+        return chronicle_name + "." + story_name;
     }
 
-    static std::string getStoryName(const std::string& file_name)
+    // false for a name that is not an archive file's
+    static bool parseArchiveFileName(std::string const& file_name, ArchiveFileName& parsed)
     {
-        // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
-        std::string base_name = fs::path(file_name).filename().string();
-        size_t first_dot = base_name.find_first_of('.');
-        size_t second_dot = base_name.find_first_of('.', first_dot + 1);
-        std::string story_name = base_name.substr(first_dot + 1, second_dot - first_dot - 1);
-        return story_name;
-    }
-
-    static uint64_t getStartTime(const std::string& file_name)
-    {
-        // Example file name: /home/kfeng/chronolog/Debug/output/chronicle_0_0.story_0_0.1736806500.vlen.h5
-        //        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracting start time from file name: {}", file_name);
-        std::string base_name = fs::path(file_name).filename().string();
-        size_t first_dot = base_name.find_first_of('.');
-        size_t second_dot = base_name.find_first_of('.', first_dot + 1);
-        size_t third_dot = base_name.find_first_of('.', second_dot + 1);
-        std::string start_time_str = base_name.substr(second_dot + 1, third_dot - second_dot - 1);
-        //        LOG_DEBUG("[HDF5ArchiveReadingAgent] Extracted start time: {}", start_time_str);
-        uint64_t start_time_in_ns = 0;
+        // the leading group is greedy, so the fixed fields are taken from the end
+        static std::regex const pattern(R"(^(.+)\.([0-9]+)\.vlen(\.[0-9]+)?\.h5$)");
+        std::string const base_name = fs::path(file_name).filename().string();
+        std::smatch match;
+        if(!std::regex_match(base_name, match, pattern))
+        {
+            return false;
+        }
         try
         {
-            start_time_in_ns = std::stoull(start_time_str) * 1000000000;
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Use start time={} for file map", start_time_in_ns);
+            parsed.start_time = std::stoull(match[2].str()) * 1000000000ULL;
         }
-        catch(const std::exception& e)
+        catch(std::exception const& e)
         {
-            LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to convert start time string '{}' to uint64_t: {}",
-                      start_time_str,
-                      e.what());
+            LOG_ERROR("[HDF5ArchiveReadingAgent] Start time in file name {} is out of range: {}", base_name, e.what());
+            return false;
         }
-        return start_time_in_ns;
+        parsed.story_prefix = match[1].str();
+        parsed.numbered = match[3].matched;
+        return true;
     }
 
 private:
@@ -252,7 +268,7 @@ private:
                       ec.message());
             return -1; // Return error code on failure
         }
-        std::string file_name, chronicle_name, story_name;
+        std::string file_name;
         for(const auto& entry: it)
         {
             if(ec)
@@ -269,28 +285,27 @@ private:
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Created start_time_file_name_map_ with {} entries.",
                   start_time_file_name_map_.size());
+        // the directory has been read: from here a story missing from the map
+        // means nothing was archived for it, not that nobody has looked
+        initial_scan_done_.store(true);
         return 0;
     }
 
-    void printStartTimeFileNameMapEntryCount(const std::string& chronicle_name, const std::string& story_name)
+    void printStartTimeFileNameMapEntryCount(const std::string& story_prefix)
     {
-        auto chronicle_story_it = start_time_file_name_map_.find(std::make_pair(chronicle_name, story_name));
-        if(chronicle_story_it != start_time_file_name_map_.end())
+        auto story_it = start_time_file_name_map_.find(story_prefix);
+        if(story_it != start_time_file_name_map_.end())
         {
-            LOG_DEBUG(
-                    "[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> has {} files",
-                    start_time_file_name_map_.size(),
-                    chronicle_name,
-                    story_name,
-                    chronicle_story_it->second.size());
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}> has {} files",
+                      start_time_file_name_map_.size(),
+                      story_prefix,
+                      story_it->second.size());
         }
         else
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}, {}> does not "
-                      "exist",
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] start_time_file_name_map_ has {} entries, entry: <{}> does not exist",
                       start_time_file_name_map_.size(),
-                      chronicle_name,
-                      story_name);
+                      story_prefix);
         }
     }
 
@@ -302,28 +317,22 @@ private:
             LOG_DEBUG("[HDF5ArchiveReadingAgent] Invalid archive file: {}. Skipping this file.", file_name);
             return -1; // Skip invalid files
         }
-        std::string chronicle_name = getChronicleName(file_name);
-        std::string story_name = getStoryName(file_name);
-        uint64_t start_time = getStartTime(file_name);
-        if(start_time == 0)
+        ArchiveFileName parsed;
+        if(!parseArchiveFileName(file_name, parsed))
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
-                      file_name);
-            return -1; // Skip files with invalid start time
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is not named like an archive file. Skipping this file.", file_name);
+            return -1;
         }
-        std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
-        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        if(parsed.numbered)
         {
+            // read through its window's base file, see readArchivedStory
             LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-#ifndef NDEBUG
-            printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
-#endif
-            return -1; // Skip files that already exist in the map
+            return -1;
         }
-        start_time_file_name_map_[std::make_pair(chronicle_name, story_name)][start_time] = file_name;
+        start_time_file_name_map_[parsed.story_prefix][parsed.start_time] = file_name;
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Added file {} to start_time_file_name_map_.", file_name);
 #ifndef NDEBUG
-        printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
+        printStartTimeFileNameMapEntryCount(parsed.story_prefix);
 #endif
         return 0;
     }
@@ -331,38 +340,24 @@ private:
     int removeFileFromStartTimeFileNameMap(const std::string& file_name)
     {
         std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
-        std::string chronicle_name = getChronicleName(file_name);
-        std::string story_name = getStoryName(file_name);
-        uint64_t start_time = getStartTime(file_name);
-        if(start_time == 0)
+        ArchiveFileName parsed;
+        if(!parseArchiveFileName(file_name, parsed) || parsed.numbered)
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] Failed to extract start time from file: {}. Skipping this file.",
-                      file_name);
-            return -1; // Skip files with invalid start time
+            return -1; // never added to the map
         }
-        std::string file_name_number = fs::path(file_name).replace_extension("").extension().string().substr(1);
-        if(std::all_of(file_name_number.begin(), file_name_number.end(), ::isdigit))
+        auto story_it = start_time_file_name_map_.find(parsed.story_prefix);
+        if(story_it != start_time_file_name_map_.end())
         {
-            LOG_DEBUG("[HDF5ArchiveReadingAgent] {} is an auxiliary file. Skipping this file.", file_name);
-#ifndef NDEBUG
-            printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
-#endif
-            return -1; // Skip files that already exist in the map
-        }
-        auto chronicle_story_pair = std::make_pair(chronicle_name, story_name);
-        auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
-        if(chronicle_story_it != start_time_file_name_map_.end())
-        {
-            chronicle_story_it->second.erase(start_time);
-            // Remove the chronicle-story entry if no more files exist for it
-            if(chronicle_story_it->second.empty())
+            story_it->second.erase(parsed.start_time);
+            // Remove the story's entry if no more files exist for it
+            if(story_it->second.empty())
             {
-                start_time_file_name_map_.erase(chronicle_story_it);
+                start_time_file_name_map_.erase(story_it);
             }
         }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Removed file {} from start_time_file_name_map_.", file_name);
 #ifndef NDEBUG
-        printStartTimeFileNameMapEntryCount(chronicle_name, story_name);
+        printStartTimeFileNameMapEntryCount(parsed.story_prefix);
 #endif
         return 0;
     }
@@ -378,7 +373,8 @@ private:
     }
 
     std::string archive_path_;
-    std::map<std::pair<std::string, std::string>, std::map<uint64_t, std::string>> start_time_file_name_map_;
+    // "<chronicle>.<story>" (storyPrefix) -> window start time (ns) -> the window's base file
+    std::map<std::string, std::map<uint64_t, std::string>> start_time_file_name_map_;
     std::mutex start_time_file_name_map_mutex_;
     tl::managed<tl::xstream> archive_dir_monitoring_stream_;
     tl::managed<tl::thread> archive_dir_monitoring_thread_;
@@ -386,6 +382,12 @@ private:
     // Feature flag and monitoring configuration
     bool use_polling_;
     std::chrono::milliseconds monitoring_interval_;
+    // the grapher's story_chunk_duration_secs: the width of one archive file's
+    // range, and so the step between the file names a probe tries. 0 disables
+    // probing.
+    uint64_t archive_window_secs_ = 30;
+    // how far back from the end of a replay a probe reaches, in windows
+    static constexpr uint64_t kProbeWindows = 4;
     std::chrono::system_clock::time_point last_scan_time_;
 
     // File system state tracking for polling
@@ -398,6 +400,9 @@ private:
 
     // Thread control
     std::atomic<bool> shutdown_requested_;
+    // set once the archive directory has been listed: until then a story
+    // missing from the map means "not looked yet", not "nothing archived"
+    std::atomic<bool> initial_scan_done_{false};
 };
 
 } // namespace chronolog

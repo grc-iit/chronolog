@@ -221,16 +221,21 @@ generate_config_files() {
         local new_port_keeper_record=$((base_port_keeper_record + i))
         local new_port_keeper_datastore=$((base_port_keeper_datastore + i))
         local grapher_index=$((i % num_recording_groups + 1))
-        # The keeper drains to BOTH halves of its recording group, so each endpoint
-        # has to follow that group's grapher/player rather than keep the template's
-        # fixed port. These mirror the ports assigned above: grapher i listens on
-        # base_port_grapher_drain + i, player i on base_port_player_recording + i.
+        # The keeper drains to its recording group's grapher, so the endpoint has to
+        # follow that grapher rather than keep the template's fixed port. This
+        # mirrors the ports assigned above: grapher i listens on
+        # base_port_grapher_drain + i.
         local new_port_keeper_drain=$((base_port_keeper_drain + grapher_index - 1))
-        local new_port_keeper_player_drain=$((base_port_player_recording + grapher_index - 1))
 
         local keeper_index=$((i + 1))
         local keeper_output_file="${conf_dir}/chrono-keeper-conf-${keeper_index}.json"
+        # a dual_endpoint_rdma_extractor also ships to the group's player
+        local new_port_keeper_player_drain=$((base_port_player_recording + grapher_index - 1))
 
+        # Selected by extractor TYPE, not by the template's extractor name, and
+        # covering both RDMA types: a conf that asks for dual_endpoint_rdma_extractor
+        # would otherwise keep the template's 127.0.0.1 endpoints and every keeper
+        # would drain into its own node.
         jq --arg monitor_dir "$monitor_dir" \
             --arg output_dir "$output_dir" \
             --argjson new_port_keeper_record $new_port_keeper_record \
@@ -241,11 +246,12 @@ generate_config_files() {
             --arg keeper_index "$keeper_index" \
             '.chrono_keeper.KeeperRecordingService.rpc.service_base_port = $new_port_keeper_record |
             .chrono_keeper.KeeperDataStoreAdminService.rpc.service_base_port = $new_port_keeper_datastore |
-            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.grapher_receiving_endpoint.service_base_port = $new_port_keeper_drain |
-            .chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.player_receiving_endpoint.service_base_port = $new_port_keeper_player_drain |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "single_endpoint_rdma_extractor") | .receiving_endpoint.service_base_port) |= $new_port_keeper_drain) |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "dual_endpoint_rdma_extractor") | .grapher_receiving_endpoint.service_base_port) |= $new_port_keeper_drain) |
+            ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == "dual_endpoint_rdma_extractor") | .player_receiving_endpoint.service_base_port) |= $new_port_keeper_player_drain) |
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
-        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain, player $new_port_keeper_player_drain"
+        echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain"
     done
 
     echo "Generating visor configuration file ..."
@@ -393,17 +399,17 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    # Keeper first, while the grapher and player are both still up: on SIGTERM it
-    # runs flushRetainedChunks(), handing every retained tail chunk to the
-    # extraction queue, which drains over RDMA to BOTH of those peers. Stopping
-    # them first would leave that drain without a destination.
+    # Keeper first, while the grapher is still up: on SIGTERM it sends again every
+    # chunk the grapher has not acked, then waits until the grapher confirms every
+    # chunk written, for up to shutdown_confirm_timeout_secs (default 150).
+    # Stopping the grapher first would leave nothing to send to or confirm.
     #
     # Its grace is larger than the others' because it is the only service with
-    # real shutdown work: a full tail is up to tail_capacity events per story and
-    # can take well over 30s to drain. The grace is a ceiling, not a fixed wait --
-    # stop_service polls every 1s and returns as soon as the process is gone -- so
-    # a fast shutdown still costs about a second.
-    stop_service "${KEEPER_BIN}" 120
+    # real shutdown work: sealing and sending what it holds, then that wait. The
+    # grace is a ceiling, not a fixed wait -- stop_service polls every 1s and
+    # returns as soon as the process is gone -- so a fast shutdown still costs
+    # about a second.
+    stop_service "${KEEPER_BIN}" 240
     stop_service "${PLAYER_BIN}" 30
     stop_service "${GRAPHER_BIN}" 30
     stop_service "${VISOR_BIN}" 30

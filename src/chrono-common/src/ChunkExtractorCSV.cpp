@@ -84,6 +84,15 @@ int chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk* story_chunk)
               story_chunk->getEndTime(),
               story_chunk->getEventCount());
 
+    // An empty window reaches every extractor, since the grapher's HDF5
+    // extractor needs it to move the persisted watermark past an idle gap.
+    // There is nothing to write for it, and opening the file would leave an
+    // empty one on the shared file system for every idle window of a story.
+    if(story_chunk->empty())
+    {
+        return chl::CL_SUCCESS;
+    }
+
     // chunk_filename: outputDirectory/storyId.chunkStartTime.serviceIP.port.csv
 
     std::ofstream chunk_fstream;

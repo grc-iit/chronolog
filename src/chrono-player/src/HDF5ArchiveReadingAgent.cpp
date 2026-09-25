@@ -14,6 +14,7 @@
 
 #include <chronolog_errcode.h>
 #include <StoryChunkWriter.h>
+#include <HDF5FileAccess.h>
 #include <HDF5ArchiveReadingAgent.h>
 
 namespace tl = thallium;
@@ -95,7 +96,12 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         H5::Exception::dontPrint();
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening file {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_SWMR_READ);
+        // locking off: the grapher writes these files from another node while
+        // this read is in flight (see HDF5FileAccess.h)
+        file = std::make_unique<H5::H5File>(file_name,
+                                            H5F_ACC_SWMR_READ,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         std::string dataset_name = "/story_chunks/data.vlen_bytes";
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Opening dataset {}", dataset_name);
@@ -117,7 +123,10 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
                     file_name);
             return CL_ERR_UNKNOWN;
         }
-        if(probed_data_type != defined_comp_type)
+        // a file written before client ids were widened has a 32-bit clientId;
+        // reading it through the current type widens the id
+        if(probed_data_type != defined_comp_type &&
+           probed_data_type != StoryChunkWriter::createLegacyEventCompoundType())
         {
             LOG_WARNING("[HDF5ArchiveReadingAgent]Error reading dataset {} : Compound type mismatch", file_name);
             return CL_ERR_UNKNOWN;
@@ -127,6 +136,36 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
         std::vector<LogEventHVL> data;
         data.resize(dims_out[0]);
         dataset.read(data.data(), defined_comp_type);
+        // HDF5 allocates each variable-length record with malloc. Give the
+        // buffers back to HDF5 on the way out of this scope and detach them,
+        // or ~LogEventHVL frees them with delete[].
+        struct VlenRecordReclaim
+        {
+            std::vector<LogEventHVL>& records;
+            H5::CompType const& type;
+            H5::DataSpace const& space;
+
+            ~VlenRecordReclaim()
+            {
+                if(records.empty())
+                {
+                    return;
+                }
+                try
+                {
+                    H5::DataSet::vlenReclaim(records.data(), type, space);
+                }
+                catch(H5::Exception const&)
+                {
+                    LOG_ERROR("[HDF5ArchiveReadingAgent] Failed to reclaim variable-length records");
+                }
+                for(auto& record: records)
+                {
+                    record.logRecord.p = nullptr;
+                    record.logRecord.len = 0;
+                }
+            }
+        } reclaim_records{data, defined_comp_type, dataspace};
 
         LOG_DEBUG("[HDF5ArchiveReadingAgent] Creating StoryChunk {}-{} range {}-{}...",
                   chronicleName,
@@ -245,6 +284,57 @@ int chronolog::HDF5ArchiveReadingAgent::readStoryChunkFile(const ChronicleName& 
     }
 }
 
+void chronolog::HDF5ArchiveReadingAgent::probeForRecentFiles(ChronicleName const& chronicleName,
+                                                             StoryName const& storyName,
+                                                             uint64_t startTime,
+                                                             uint64_t endTime)
+{
+    if(archive_window_secs_ == 0 || endTime == 0)
+    {
+        return;
+    }
+    uint64_t const window_ns = archive_window_secs_ * 1000000000ULL;
+
+    uint64_t newest_listed = 0;
+    {
+        std::lock_guard<std::mutex> lock(start_time_file_name_map_mutex_);
+        auto story_iter = start_time_file_name_map_.find(storyPrefix(chronicleName, storyName));
+        if(story_iter != start_time_file_name_map_.end() && !story_iter->second.empty())
+        {
+            newest_listed = story_iter->second.rbegin()->first;
+        }
+    }
+
+    // never more than kProbeWindows lookups: a file the listing has not shown
+    // yet was written recently, so it sits at the end of the range.
+    //
+    // A lookup by name skips the directory listing's cache but not the NFS
+    // client's cache of failed lookups: with the default lookupcache=all, a name
+    // probed while its file did not exist stays "not found" until the client
+    // revalidates the directory (acdirmin to acdirmax). The range ends at the
+    // archive read's end, which in a replay every keeper answered is B, so a
+    // probe asks only for windows the grapher has already reported written.
+    // After a keeper failed to answer it reaches the end of the replay, and a
+    // miss cached then can hide the file from later replays; mounting the
+    // archive with lookupcache=positive rules that out.
+    uint64_t probe_from = (newest_listed == 0) ? startTime : newest_listed + window_ns;
+    uint64_t const horizon = (endTime > kProbeWindows * window_ns) ? endTime - kProbeWindows * window_ns : 0;
+    probe_from = std::max(probe_from, horizon);
+    probe_from -= probe_from % window_ns; // file names carry a window start
+
+    for(uint64_t candidate = probe_from; candidate < endTime; candidate += window_ns)
+    {
+        std::string const candidate_file = archive_path_ + "/" + chronicleName + "." + storyName + "." +
+                                           std::to_string(candidate / 1000000000ULL) + ".vlen.h5";
+        std::error_code ec;
+        if(fs::exists(candidate_file, ec) && !ec)
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Probe found {} ahead of the directory listing", candidate_file);
+            addFileToStartTimeFileNameMap(candidate_file);
+        }
+    }
+}
+
 int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& chronicleName,
                                                           const StoryName& storyName,
                                                           uint64_t startTime,
@@ -252,6 +342,10 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                                                           std::list<StoryChunk*>& listOfChunks,
                                                           bool readAuxFiles)
 {
+    // before consulting the map, since a file written since the last listing
+    // would otherwise be missed (this takes the map mutex itself)
+    probeForRecentFiles(chronicleName, storyName, startTime, endTime);
+
     // find all HDF5 files in the archive directory the start time of which falls in the range [startTime, endTime)
     // for each file, read Events in the StoryChunk and add matched ones to the list of StoryChunks
     // return the list of StoryChunks
@@ -273,13 +367,26 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
                   formatWithCommas(endTime));
     }
     // Find files for the specific chronicle-story combination
-    auto chronicle_story_pair = std::make_pair(chronicleName, storyName);
-    auto chronicle_story_it = start_time_file_name_map_.find(chronicle_story_pair);
+    auto chronicle_story_it = start_time_file_name_map_.find(storyPrefix(chronicleName, storyName));
 
     if(chronicle_story_it == start_time_file_name_map_.end())
     {
+        // Nothing archived for this story. That is the ordinary state of any
+        // story younger than the grapher's write window, and of one whose
+        // events are all still on the keepers, so it is a successful read of
+        // zero events rather than a failure -- reporting it as a failure marks
+        // the whole replay incomplete and hands the client
+        // CL_ERR_PARTIAL_RESULT for a complete answer. Before the first
+        // listing, though, the agent cannot tell that from "not looked yet".
+        if(!initial_scan_done_.load())
+        {
+            LOG_DEBUG("[HDF5ArchiveReadingAgent] Story {}-{} looked up before the first directory listing",
+                      chronicleName,
+                      storyName);
+            return CL_ERR_UNKNOWN;
+        }
         LOG_DEBUG("[HDF5ArchiveReadingAgent] No files found for story {}-{}", chronicleName, storyName);
-        return CL_ERR_UNKNOWN;
+        return CL_SUCCESS;
     }
 
     auto& time_file_map = chronicle_story_it->second;
@@ -298,81 +405,50 @@ int chronolog::HDF5ArchiveReadingAgent::readArchivedStory(const ChronicleName& c
               formatWithCommas(startTime),
               formatWithCommas(endTime));
 
-    fs::path file_full_path;
-    std::string file_name, next_file_name, next_file_number_str;
-    bool has_no_more_files_to_read = false;
+    // A file holds no event earlier than the start second in its name, so a
+    // file starting at or after endTime has nothing in range. Stopping at the
+    // first file with an event past endTime instead would skip the numbered
+    // files of that same window.
+    // a file that cannot be read leaves its events out of the replay, so the
+    // range comes back as an error even though the readable files are returned
+    int read_status = CL_SUCCESS;
 
-    for(auto it = start_it; it != time_file_map.end(); ++it)
+    for(auto it = start_it; it != time_file_map.end() && it->first < endTime; ++it)
     {
-        file_full_path = fs::path(it->second);
-
-        // file_name should be in the format of /path/to/output/{chronicleName}.{storyName}.{startTime}.vlen.h5
-        file_name = file_full_path.string();
-        int result = readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_name);
-        if(result == 1)
+        // {chronicleName}.{storyName}.{startTime}.vlen.h5
+        fs::path const file_full_path(it->second);
+        if(readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, file_full_path.string()) < 0)
         {
-            has_no_more_files_to_read = true;
-            break;
+            read_status = CL_ERR_UNKNOWN;
         }
 
         if(readAuxFiles)
         {
-            // next_file_name should be in the format of {chronicleName}.{storyName}.{startTime}.vlen.{number}.h5
-            next_file_name = StoryChunkWriter::getStoryChunkFileName(archive_path_, file_full_path.filename().string());
-            next_file_number_str = fs::path(next_file_name).replace_extension("").extension().string().substr(1);
-            if(next_file_number_str == "vlen")
+            // StoryChunkWriter numbers a window's later writes .vlen.1.h5, .vlen.2.h5, ...
+            // in order, so read them until one is missing. That last lookup
+            // usually misses, and on NFS with the default lookupcache the miss
+            // is cached: a numbered file written moments later (a late or
+            // re-sent keeper chunk) stays invisible here until the directory is
+            // revalidated, possibly after its keeper has freed the chunk. The
+            // archive mount wants lookupcache=positive.
+            std::string const numbered_prefix = (file_full_path.parent_path() / file_full_path.stem()).string();
+            for(int number = 1;; ++number)
             {
-                // should not happen, but just in case
-                LOG_ERROR("[HDF5ArchiveReadingAgent] getStoryChunkFileName returned a file name without a number: {},"
-                          " indicating main story chunk file {} does not exist. ",
-                          next_file_name,
-                          file_name);
-                return -1;
-            }
-            else if(std::all_of(next_file_number_str.begin(), next_file_number_str.end(), ::isdigit))
-            {
-                // next_file_name is a numbered file, then read from .1 to .next_file_number_str-1
-                for(int i = 1; i < std::stoi(next_file_number_str); ++i)
+                std::string const numbered_file = numbered_prefix + "." + std::to_string(number) + ".h5";
+                if(!fs::exists(numbered_file))
                 {
-                    file_name = file_full_path.parent_path() / fs::path(file_full_path).replace_extension("").string();
-                    file_name += "." + std::to_string(i) + ".h5";
-                    // file_name should be /path/to/output/chronicleName.storyName.startTime.vlen.{i}.h5 now
-                    if(fs::exists(file_name))
-                    {
-                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", file_name);
-                        int result = readStoryChunkFile(chronicleName,
-                                                        storyName,
-                                                        startTime,
-                                                        endTime,
-                                                        listOfChunks,
-                                                        file_name);
-                        if(result == 1)
-                        {
-                            has_no_more_files_to_read = true;
-                        }
-                    }
-                    else
-                    {
-                        LOG_DEBUG("[HDF5ArchiveReadingAgent] Numbered file {} does not exist, skipping.", file_name);
-                        continue; // Skip if the numbered file does not exist
-                    }
+                    break;
                 }
-            }
-            else
-            {
-                LOG_ERROR("[HDF5ArchiveReadingAgent] Something went wrong with file name: {}.", file_name);
-            }
-            if(has_no_more_files_to_read)
-            {
-                LOG_DEBUG("[HDF5ArchiveReadingAgent] Some events in this file are outside range {}-{}, break the loop",
-                          formatWithCommas(startTime),
-                          formatWithCommas(endTime));
-                break;
+                LOG_DEBUG("[HDF5ArchiveReadingAgent] Reading numbered file: {}", numbered_file);
+                if(readStoryChunkFile(chronicleName, storyName, startTime, endTime, listOfChunks, numbered_file) < 0)
+                {
+                    read_status = CL_ERR_UNKNOWN;
+                }
             }
         }
     }
 
-    return 0;
+    return read_status;
 }
 
 int chronolog::HDF5ArchiveReadingAgent::setUpFsMonitoring()
@@ -569,7 +645,15 @@ int chronolog::HDF5ArchiveReadingAgent::pollingMonitoringThreadFunc()
 
     while(!shutdown_requested_.load())
     {
-        std::this_thread::sleep_for(monitoring_interval_);
+        // waited out in slices: shutdown() joins this thread, and the scan
+        // interval is configurable, so sleeping it in one go would hold a
+        // stopping player for as long as that interval
+        auto const wake_at = std::chrono::steady_clock::now() + monitoring_interval_;
+        while(!shutdown_requested_.load() && std::chrono::steady_clock::now() < wake_at)
+        {
+            std::this_thread::sleep_for(
+                    std::min<std::chrono::milliseconds>(monitoring_interval_, std::chrono::milliseconds(100)));
+        }
 
         if(shutdown_requested_.load())
         {

@@ -15,6 +15,7 @@
 #include <PlaybackQueryResponse.h>
 #include <StoryChunk.h>
 #include <QueryResponseTransferAgent.h>
+#include <ReplayEventMerge.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -109,7 +110,8 @@ int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId c
 
 //int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
 int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
-                                                                    std::list<chl::StoryChunk*> const& archive_chunks)
+                                                                    std::list<chl::StoryChunk*> const& archive_chunks,
+                                                                    int read_status)
 {
     // this function is called by ArchiveReadingAgent thread that got the ArchiveReadingRequest
     // extract events from archive story chunks into the response->events
@@ -145,6 +147,12 @@ int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQ
     // add the events from the StoryChunks to the response.events vector
     chronolog::PlaybackQueryResponse* response = (*query_iter).second.second;
 
+    if(read_status != chl::CL_SUCCESS)
+    {
+        // a file in the range could not be read: whatever it held is missing
+        response->complete = false;
+    }
+
     // if no events in query time range were found in archives
     // just mark the response as ready to send and return
     if(archived_events.empty())
@@ -153,27 +161,10 @@ int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQ
         return chl::CL_SUCCESS;
     }
 
-    // check if the response already has the portion of the events from the active
-    // DataStore (the are added to the response before the archives are checked)
-    // and move them out the way as the events coming from archives
-    // would have earlier timestamps than those coming from active DataStore
-    std::vector<Event> temp_vector;
-    if(!response->events.empty())
-    {
-        temp_vector = std::move(response->events);
-    }
-
-    response->events = std::move(archived_events);
-
-    // now append the active DataStore events if any were present
-    // to the end of the response->events vector
-    if(!temp_vector.empty())
-    {
-        response->events.reserve(response->events.size() + temp_vector.size());
-        response->events.insert(response->events.end(),
-                                std::make_move_iterator(temp_vector.begin()),
-                                std::move_iterator(temp_vector.end()));
-    }
+    // The events the keepers served are already in the response. The same
+    // event can also be in the archive, so merge rather than append: each
+    // event once, in time order.
+    response->events = mergeReplayEvents(std::move(archived_events), std::move(response->events));
 
     //mark the query_response as ready to be sent to client
     (*query_iter).second.first = true;
@@ -326,7 +317,13 @@ void chronolog::QueryResponseAgent::drainQueryResponses()
         }
         else
         {
-            sleep(2);
+            // Poll frequently: a response becomes ready as soon as its archive
+            // read completes (immediately when the range has no files), and
+            // on-demand hot replay is meant to be low-latency. A 2 s poll here
+            // used to make an immediate replay of still-hot data race the
+            // client's response timeout. 20 ms is negligible CPU at prototype
+            // scale (mirrors the extraction module's idle usleep).
+            usleep(20000);
         }
     }
 }

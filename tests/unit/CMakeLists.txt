@@ -7,6 +7,7 @@ include(GoogleTest)
 # Unit test subdirectories (one component per folder)
 #------------------------------------------------------------------------------
 add_subdirectory(chrono-common)
+add_subdirectory(chrono-grapher)
 add_subdirectory(chrono-keeper)
 add_subdirectory(chrono-player)
 add_subdirectory(chronokvs)

@@ -22,7 +22,9 @@
 #   7  client performance test        (chrono-bench, write path)
 #   8  client read path test          (write -> tail read -> archive read)
 #   9  python tail read               (writer on c2, reader on c3)
-#   10 stop, clean archive, tear down
+#   10 every recording group archived data
+#   11 keeper shutdown delivers its retained chunks
+#   12 stop, clean archive, tear down
 #
 # Usage:
 #   docker/local_distributed_ci.sh [options]
@@ -279,6 +281,10 @@ if [ "${SKIP_BUILD}" = "1" ]; then
 else
     dex_root c1 bash -c "mkdir -p ${REPO_DIR} && cp -r /workspace/. ${REPO_DIR}/ 2>/dev/null; chown -R grc-iit:grc-iit /home/grc-iit" \
         || stage_fail "copying the working tree into c1 failed"
+    # build.sh compiles with one job per nproc, and nproc in a container
+    # counts every host core, not the 2-CPU limit. On a many-core host that
+    # many compilers exceed the 4 GB memory limit and get OOM-killed. GNU
+    # nproc honors OMP_NUM_THREADS; 4 matches the GitHub runner.
     dex c1 bash -c "
         set -e
         cd ${REPO_DIR}
@@ -289,7 +295,7 @@ else
             spack concretize --force
         fi
         mkdir -p ${INSTALL_DIR}
-        ./tools/deploy/local_single_user_deploy.sh -b -I ${INSTALL_DIR}
+        OMP_NUM_THREADS=4 ./tools/deploy/local_single_user_deploy.sh -b -I ${INSTALL_DIR}
         ./tools/deploy/local_single_user_deploy.sh -i -I ${INSTALL_DIR}
     " || stage_fail "build/install failed"
 fi
@@ -457,8 +463,9 @@ else
           > /tmp/py_tail_writer.log 2>&1
     " || stage_fail "could not start the python writer on c2"
 
-    # The reader POLLS: an event is in the tail only between its chunk sealing and
-    # ageing out, a window of about tail_retention_secs - acceptance_window_secs.
+    # The reader POLLS: an event becomes readable only once its chunk seals
+    # (story_chunk_duration_secs + acceptance_window_secs), so a single early read
+    # finds nothing.
     if dex c3 bash -c "
         export PYTHONPATH=${WORK_DIR}/lib:\$PYTHONPATH
         export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
@@ -475,8 +482,101 @@ else
 fi
 stage_ok
 
-# --------------------------------------------------- 10. stop -----------------
-stage "10. Stop ChronoLog and clean archive"
+# --------------------------------------------------- 10. group coverage -------
+stage "10. Verify every recording group archived data"
+dex c1 bash -c "
+    set -e
+    # HDF5FileChunkExtractor logs this only after writing a non-empty chunk. Its
+    # 'processing chunk' line is also logged for empty idle-gap windows, so it is
+    # not evidence that data arrived.
+    MARKER='HDF5FileChunkExtractor\\] StoryChunk written to file'
+    EXPECTED=\$(wc -l < ${WORK_DIR}/conf/hosts_grapher)
+    LOGS=\$(ls ${WORK_DIR}/monitor/chrono-grapher*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
+    [ -n \"\$LOGS\" ] || { echo '  ❌ no grapher logs found under monitor/'; exit 1; }
+    # a grapher writes a window only after story_chunk_duration_secs plus
+    # acceptance_window_secs, so poll rather than look once
+    G_CONF=${WORK_DIR}/conf/default-chrono-conf.json
+    G_WAIT=\$(( \$(jq -r '.chrono_grapher.DataStoreInternals.story_chunk_duration_secs' \$G_CONF 2>/dev/null || echo 60) + \$(jq -r '.chrono_grapher.DataStoreInternals.acceptance_window_secs' \$G_CONF 2>/dev/null || echo 180) + 120 ))
+    DEADLINE=\$(( SECONDS + G_WAIT ))
+    while :; do
+        ACTIVE=0
+        for f in \$LOGS; do
+            if grep -q \"\$MARKER\" \"\$f\"; then ACTIVE=\$(( ACTIVE + 1 )); fi
+        done
+        [ \$ACTIVE -ge \$EXPECTED ] && break
+        [ \$SECONDS -ge \$DEADLINE ] && break
+        sleep 10
+    done
+    for f in \$LOGS; do
+        if grep -q \"\$MARKER\" \"\$f\"; then
+            echo \"  ✅ \$(basename \$f): wrote chunks to HDF5\"
+        else
+            echo \"  ❌ \$(basename \$f): never wrote a chunk within \${G_WAIT}s\"
+        fi
+    done
+    echo \"  graphers that archived data: \$ACTIVE / \$EXPECTED\"
+    [ \$ACTIVE -ge \$EXPECTED ]
+" || stage_fail "a recording group never archived data (check each keeper conf's extractor_to_grapher.receiving_endpoint)"
+stage_ok
+
+# --------------------------------------------------- 11. keeper shutdown ------
+stage "11. Keeper shutdown delivers its retained chunks"
+dex c1 bash -c "
+    set -e
+    cd ${REPO_DIR}
+    source /home/grc-iit/spack/share/spack/setup-env.sh
+    spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
+    MPIEXEC=${REPO_DIR}/.spack-env/view/bin/mpiexec
+    [ -x \"\$MPIEXEC\" ] || MPIEXEC=\$(command -v mpiexec)
+    export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
+    cd ${WORK_DIR}
+
+    SEAL=\$(( \$(jq -r '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs' conf/default-chrono-conf.json 2>/dev/null || echo 10) + \$(jq -r '.chrono_keeper.DataStoreInternals.acceptance_window_secs' conf/default-chrono-conf.json 2>/dev/null || echo 15) + 10 ))
+    echo \"  writing a burst, then waiting \${SEAL}s for it to seal on the keepers ...\"
+    timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
+      examples/chrono-client-example-distributed-telemetry-writer \
+      --config conf/default-chrono-client-conf.json -d 15 -i 3 >/dev/null 2>&1 || true
+    sleep \$SEAL
+
+    # SIGTERM only the keepers: the graphers must stay up to receive what the
+    # keepers send on the way out and to confirm it written. SIGKILL would
+    # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
+    # (150) for that confirmation, so allow 240s.
+    parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
+    for i in \$(seq 1 80); do
+        REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
+        [ \"\$REMAIN\" = 0 ] && break
+        sleep 3
+    done
+    sleep 10
+
+    # Every chunk the retention store still holds when it is destroyed is logged
+    # as 'shutdown with unconfirmed'. shipped=0 never reached a grapher; shipped=1
+    # reached it but was not confirmed written. Both count, as in CI.
+    EXPECTED=\$(wc -l < conf/hosts_keeper)
+    LOGS=\$(ls monitor/chrono-keeper*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
+    DONE=0
+    LOST_TOTAL=0
+    for f in \$LOGS; do
+        SENT=\$(grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' \"\$f\" || true)
+        LOST=\$(grep -c 'shutdown with unconfirmed' \"\$f\" || true)
+        if grep -q 'ChronoKeeperInstance\\] Shutdown completed' \"\$f\"; then
+            DONE=\$(( DONE + 1 ))
+            echo \"  \$(basename \$f): shut down; \$SENT chunk(s) delivered, \$LOST unconfirmed at exit\"
+        else
+            echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \$SENT chunk(s) delivered, \$LOST unconfirmed\"
+        fi
+        grep -h 'Flushed .* unshipped chunk' \"\$f\" | sed 's/^/    /' || true
+        grep -h 'shutdown with unconfirmed' \"\$f\" | head -5 | sed 's/^/    /' || true
+        LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
+    done
+    echo \"  keepers that completed shutdown: \$DONE / \$EXPECTED; chunks unconfirmed at exit: \$LOST_TOTAL\"
+    [ \$DONE -ge \$EXPECTED ] && [ \$LOST_TOTAL -eq 0 ]
+" || stage_fail "a keeper exited with chunks its grapher never confirmed written"
+stage_ok
+
+# --------------------------------------------------- 12. stop -----------------
+stage "12. Stop ChronoLog and clean archive"
 dex c1 bash -c "
     cd ${REPO_DIR} 2>/dev/null || true
     source /home/grc-iit/spack/share/spack/setup-env.sh 2>/dev/null || true
