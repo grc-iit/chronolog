@@ -25,7 +25,10 @@ namespace chronolog
 //
 // When no keeper reports a watermark, no keeper has freed anything, and B is
 // the lowest hot floor instead. A keeper that retains nothing, or whose fetch
-// failed, reports known_W = 0 and hot_floor = UINT64_MAX and changes neither.
+// failed, reports known_W = 0 and hot_floor = UINT64_MAX and moves neither of
+// them; a failed fetch does change the plan, though -- planReplay widens the
+// archive read to the whole range and marks the replay incomplete, since that
+// keeper may have held events nobody else can supply.
 //
 // Keeper events below B are in the archive, which returns them too, so they
 // are dropped, except those in chunks the grapher has not confirmed written:
@@ -39,6 +42,40 @@ struct HotRangeSplit
     // the hot side reaches back to start: no archive read needed
     bool complete = false;
 };
+
+// What the player does with the rest of the replay: how far the archive read
+// goes, and whether the reply it sends can claim to hold every event in range.
+struct ReplayPlan
+{
+    bool archiveNeeded = false;
+    uint64_t archiveEnd = 0;
+    bool complete = true;
+};
+
+// A keeper that did not answer leaves its watermark unknown, so the events it
+// has already freed can lie anywhere below the boundary the others reported.
+// The archive read then covers the whole range instead of stopping at B, and
+// the reply is short of whatever that keeper still held unwritten. A truncated
+// answer costs the newest events, which the archive cannot serve, so it only
+// marks the reply incomplete.
+inline ReplayPlan planReplay(HotRangeSplit const& split,
+                             uint64_t start_time,
+                             uint64_t end_time,
+                             bool all_keepers_answered,
+                             bool any_truncated)
+{
+    ReplayPlan plan;
+    plan.complete = all_keepers_answered && !any_truncated;
+    if(!all_keepers_answered)
+    {
+        plan.archiveNeeded = true;
+        plan.archiveEnd = end_time;
+        return plan;
+    }
+    plan.archiveNeeded = !split.complete;
+    plan.archiveEnd = split.boundary;
+    return plan;
+}
 
 inline HotRangeSplit splitHotRange(std::vector<HotRangeResponse>& responses, uint64_t start_time, uint64_t end_time)
 {

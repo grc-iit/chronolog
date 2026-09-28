@@ -160,11 +160,50 @@ TEST_F(KeeperHotFetch, LiveKeeperReturnsItsRetainedRange)
     ASSERT_NE(liveClient, nullptr);
 
     chl::HotRangeResponse response = liveClient->fetchRange(kStory, 0, 1000, 100);
+    EXPECT_TRUE(response.answered);
     // the chunk was never sent to a grapher, so it comes back unconfirmed
     EXPECT_TRUE(response.events.empty());
     ASSERT_EQ(response.unconfirmed_events.size(), 1u);
     EXPECT_EQ(response.unconfirmed_events.front().time(), 150u);
     EXPECT_EQ(response.hot_floor, 150u);
+}
+
+// Two replays can race to create the client of one keeper; the player keeps one
+// and deletes the other. The RPC they call is registered once per engine, so
+// deleting a client must leave every other client able to fetch.
+TEST_F(KeeperHotFetch, DeletingOneClientLeavesTheOthersWorking)
+{
+    liveClient = clientOf(kLiveKeeperProvider);
+    ASSERT_NE(liveClient, nullptr);
+    {
+        auto loser = clientOf(kLiveKeeperProvider);
+        ASSERT_NE(loser, nullptr);
+    }
+
+    chl::HotRangeResponse response = liveClient->fetchRange(kStory, 0, 1000, 100);
+    EXPECT_TRUE(response.answered);
+    EXPECT_EQ(response.unconfirmed_events.size(), 1u);
+}
+
+TEST_F(KeeperHotFetch, FetchesIssuedTogetherCostOneDeadlineNotTwo)
+{
+    // the player asks every keeper of a story; issuing the fetches before
+    // waiting on any of them keeps one silent keeper from adding its deadline
+    // to every other keeper's
+    hungClient = clientOf(kHungKeeperProvider);
+    ASSERT_NE(hungClient, nullptr);
+
+    auto const started = std::chrono::steady_clock::now();
+    tl::async_response first = hungClient->fetchRangeAsync(kStory, 0, 1000, 100);
+    tl::async_response second = hungClient->fetchRangeAsync(kStory, 0, 1000, 100);
+    chl::HotRangeResponse first_response = hungClient->waitForRange(first);
+    chl::HotRangeResponse second_response = hungClient->waitForRange(second);
+    auto const elapsed = std::chrono::steady_clock::now() - started;
+
+    EXPECT_FALSE(first_response.answered);
+    EXPECT_FALSE(second_response.answered);
+    EXPECT_GE(elapsed, kDeadline);
+    EXPECT_LT(elapsed, 2 * kDeadline);
 }
 
 TEST_F(KeeperHotFetch, HungKeeperCostsTheDeadlineAndDropsOutOfTheMin)
@@ -179,4 +218,7 @@ TEST_F(KeeperHotFetch, HungKeeperCostsTheDeadlineAndDropsOutOfTheMin)
     EXPECT_LT(elapsed, kDeadline + std::chrono::seconds(1));
     EXPECT_EQ(response.hot_floor, UINT64_MAX);
     EXPECT_TRUE(response.events.empty());
+    // the player has to tell this apart from a keeper that holds nothing: this
+    // keeper's watermark is unknown, and what it has already freed with it
+    EXPECT_FALSE(response.answered);
 }

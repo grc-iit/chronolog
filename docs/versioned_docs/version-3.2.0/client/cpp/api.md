@@ -134,6 +134,7 @@ int Client::ReplayStory(std::string const& chronicle_name,
 - Retrieve all events in the story whose timestamps fall within the half-open range `[start, end)`.
 - Events are appended to `event_series` in chronological order.
 - Returns `CL_SUCCESS` on success, `CL_ERR_NOT_READER_MODE` if the client was constructed without a `ClientQueryServiceConf`, `CL_ERR_QUERY_TIMED_OUT` if the query did not complete in time, or another error code on failure.
+- Returns `CL_ERR_PARTIAL_RESULT` (`-18`) when ChronoPlayer answered but knows the series is short: a keeper of the story did not answer within its 5-second fetch deadline, a keeper's answer hit its per-query event cap, or an archive file in the range could not be read. `event_series` holds the events it did gather; retry the range to pick up the rest.
 
 ```cpp
 using EventCallback = std::function<void(Event const&)>;

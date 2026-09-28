@@ -27,6 +27,11 @@ struct HotRangeResponse
     uint64_t hot_floor = UINT64_MAX;          // oldest retained tick; UINT64_MAX if none retained
     uint64_t known_W = 0;                     // keeper's last-seen persisted watermark (0 if none)
     bool truncated = false;                   // max_events cap hit; caller may re-request with a higher start
+    // Set by the player, not the keeper, and so not serialized: false means the
+    // keeper never answered (timeout, RPC error, or no client for it). Its
+    // known_W and everything it has already freed are then unknown, which the
+    // player cannot tell from a keeper that simply retains nothing.
+    bool answered = true;
 
     template <typename SerArchiveT>
     void serialize(SerArchiveT& serT)
