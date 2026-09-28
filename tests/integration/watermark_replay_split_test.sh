@@ -44,7 +44,18 @@ TAIL_EXAMPLE="$BUILD_DIR/client/cpp/examples/chrono-client-example-tail-reader"
 REPLAY_CHECK="$BUILD_DIR/tests/integration/watermark-replay/chronolog-test-replay-split-check"
 
 G_CHUNK_SECS=10
-G_ACCEPT_SECS=20
+# Probe 1 has to read the events while they are still only in keeper memory, so
+# the grapher must not have written them yet. Counting from a chunk's end:
+#
+#   keeper seals it        + keeper acceptance (15 s)      = +15
+#   the seal reaches the log and the probe replays          ~ +17
+#   the grapher writes it  + G_ACCEPT_SECS                  = +G_ACCEPT
+#
+# so probe 1's margin is G_ACCEPT_SECS - 17 s. That held only because the keeper
+# now flushes its log at debug (see the conf patch): at the shipped flushlevel of
+# warning the seal line reached the file about 21 s late, which left 9 s of the
+# 45 s window -- measured 2026-09-18 -- and used to leave none at all.
+G_ACCEPT_SECS=45
 REPORT_SECS=1
 RESEND_SECS=40
 VISIBILITY_SECS=5
@@ -52,11 +63,12 @@ VISIBILITY_SECS=5
 # delay has passed; derived here so the wait follows the knobs above
 WAIT_FREE_SECS=$((G_CHUNK_SECS + G_ACCEPT_SECS + REPORT_SECS + VISIBILITY_SECS + 10))
 TAIL_CAP=10 # < the ~15 events each of the 2 keepers gets from one writer run
+WRITER_EVENTS=30 # what the tail-reader example writes in one run
 
 PASS=0
 FAIL=0
 
-say()  { echo -e "[watermark_replay_split_test] $*"; }
+say()  { echo -e "[watermark_replay_split_test $(date +%H:%M:%S)] $*"; }
 ok()   { say "PASS: $*"; PASS=$((PASS + 1)); }
 bad()  { say "FAIL: $*"; FAIL=$((FAIL + 1)); }
 
@@ -99,15 +111,20 @@ command -v jq >/dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
 [ -x "$REPLAY_CHECK" ] || { say "replay probe not found at $REPLAY_CHECK"; exit 2; }
 
-say "patching installed conf template (keeper tail_capacity=$TAIL_CAP, resend=${RESEND_SECS}s; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
+say "patching installed conf template (keeper tail_capacity=$TAIL_CAP, resend=${RESEND_SECS}s, keeper log flushed at debug; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
+# jq writes to a side file that replaces the template only on success, so a failed
+# patch leaves the template intact (the restore trap below is not set up yet)
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wmark_replay_backup"
-jq ".chrono_keeper.DataStoreInternals.tail_capacity = $TAIL_CAP |
+jq ".chrono_keeper.Monitoring.monitor.flushlevel = \"debug\" |
+    .chrono_keeper.DataStoreInternals.tail_capacity = $TAIL_CAP |
     .chrono_keeper.DataStoreInternals.watermark_resend_timeout_secs = $RESEND_SECS |
     .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \
-    "$CONF_TEMPLATE.wmark_replay_backup" > "$CONF_TEMPLATE" || { say "conf patch failed"; exit 2; }
+    "$CONF_TEMPLATE.wmark_replay_backup" > "$CONF_TEMPLATE.wmark_replay_patched" ||
+    { say "conf patch failed; template left as it was"; rm -f "$CONF_TEMPLATE.wmark_replay_backup" "$CONF_TEMPLATE.wmark_replay_patched"; exit 2; }
+mv -f "$CONF_TEMPLATE.wmark_replay_patched" "$CONF_TEMPLATE"
 
 restore_conf() { mv -f "$CONF_TEMPLATE.wmark_replay_backup" "$CONF_TEMPLATE"; }
 trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
@@ -138,18 +155,45 @@ jq ".chrono_client.ClientQueryService.rpc.service_base_port = $PROBE_QUERY_PORT"
 WRITER1_OUT="$RUN_DIR/replay_writer1.out"
 say "writer run 1: 30 events (tail-reader example, no destroy)"
 : > "$WRITER1_OUT"
-"$TAIL_EXAMPLE" --config "$CLIENT_CONF" > "$WRITER1_OUT" 2>&1 &
+stdbuf -oL "$TAIL_EXAMPLE" --config "$CLIENT_CONF" > "$WRITER1_OUT" 2>&1 &
 writer_pid=$!
 
-# wait for the writes to complete and the hold to begin
-for _ in $(seq 1 30); do
-    grep -q "Holding the story acquired" "$WRITER1_OUT" && break
+# Probe 1 does not wait for the example's "Holding" line: the example tail-reads
+# for about 90 s before printing it, by which time the grapher has written the
+# story and the keepers have let go, so the hot path has nothing left to serve.
+# The keepers' own seal marker is the signal probe 1 actually depends on, and it
+# arrives while the example is still tail-reading -- with the story acquired by
+# the writer throughout, which is what probe 1 needs.
+# Anchored to the seal itself, not to a sleep from the "Holding" line: the
+# example tail-reads for a while before it prints that, so a fixed wait puts
+# probe 1 an unknown distance from the events -- far enough, as it turned out,
+# for the grapher to have written and the keepers to have freed them first.
+# The probe is launched on demand once the keepers have sealed everything: it
+# connects, acquires and replays in about three seconds, and the keeper now
+# flushes its log at debug so the seal shows up within one. Holding a
+# pre-started probe at a pause point does not work here -- a client left idle
+# even 17 s replays as CL_ERR_NOT_ACQUIRED, whether the wait sits before or
+# after the acquisition.
+say "waiting for the keepers to seal all $WRITER_EVENTS events, then probing while they are still hot"
+sealed_events=0
+for _ in $(seq 1 90); do
+    sealed_events=$(grep -h 'retaining StoryId' "$MONITOR_DIR"/chrono-keeper-*.log 2> /dev/null |
+        sed -n 's/.*eventCount \([0-9]*\).*/\1/p' | awk '{total += $1} END {print total + 0}')
+    [ "$sealed_events" -ge "$WRITER_EVENTS" ] && break
     sleep 1
 done
-say "writer holding; waiting for the keeper seal, then probing during the hold"
-sleep 30 # events sealed (~25s), writer still holds for ~10s more
+say "keepers have sealed $sealed_events event(s)"
+if [ "$sealed_events" -lt "$WRITER_EVENTS" ]; then
+    say "only $sealed_events of $WRITER_EVENTS events sealed; probing anyway"
+fi
 
 # ------------------------------------------------- probe 1: hot side ----
+# The premise: nothing of this story is on disk yet, so whatever the replay
+# returns came from the keepers. Checked rather than assumed -- when it does not
+# hold, the failure is that probe 1 ran too late, not that the hot path is broken.
+if [ "$(find "$OUTPUT_DIR" -name 'TailChronicle.*.h5' 2>/dev/null | wc -l)" -ne 0 ]; then
+    bad "probe 1 (hot): the grapher already archived the story; probe 1 ran too late to exercise the hot path"
+fi
 u1=$(replay_unique "$RUN_DIR/replay_probe1.out")
 if [ "$u1" -eq 30 ]; then
     ok "probe 1 (hot): replay returned exactly 30 unique events"

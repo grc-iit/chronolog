@@ -13,7 +13,10 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
+#include <filesystem>
 #include <set>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -88,6 +91,30 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    // Two pause points, so a caller can line the cluster up for the replay alone.
+    // Both take a file to wait for, in the environment rather than as a flag,
+    // since the shared cmd_arg_parse getopt rejects anything it does not know.
+    //
+    //   REPLAY_SPLIT_CONNECT_PAUSE_FILE  connect, announce CONNECTED, wait, then
+    //       acquire and replay. For a wait of more than a few seconds: an
+    //       acquisition left idle even 18 s replayed as CL_ERR_NOT_ACQUIRED.
+    //   REPLAY_SPLIT_PAUSE_FILE  connect and acquire, announce ACQUIRED, wait,
+    //       then replay. For a caller that must hold the story before it disturbs
+    //       the cluster -- freezing keepers, say, since acquiring reaches them
+    //       through the visor and would block. Keep that wait short.
+    auto wait_for = [](char const* env_name, char const* marker)
+    {
+        char const* path = std::getenv(env_name);
+        if(path == nullptr || *path == '\0')
+        {
+            return;
+        }
+        std::cout << marker << std::endl;
+        while(!std::filesystem::exists(path)) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+    };
+
+    wait_for("REPLAY_SPLIT_CONNECT_PAUSE_FILE", "CONNECTED");
+
     auto acquire_result = client.AcquireStory(chronicle_name, story_name);
     if(acquire_result.first != chronolog::CL_SUCCESS)
     {
@@ -96,13 +123,22 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    wait_for("REPLAY_SPLIT_PAUSE_FILE", "ACQUIRED");
+
     // full range: everything the story ever recorded
     uint64_t start_time = 1;
     uint64_t end_time = 2000000000000000000ULL;
 
     std::vector<chronolog::Event> events;
+    // timed so a caller can tell a fan-out of keeper fetches from a sequence of
+    // them: only the elapsed time distinguishes the two when keepers hang
+    auto const replay_started = std::chrono::steady_clock::now();
     ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, events);
+    auto const replay_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - replay_started)
+                    .count();
     std::cout << "REPLAY_STATUS " << chronolog::to_string_client(ret) << std::endl;
+    std::cout << "REPLAY_MS " << replay_ms << std::endl;
 
     std::set<std::string> unique_events;
     for(auto const& event: events) { unique_events.insert(event.to_string()); }
