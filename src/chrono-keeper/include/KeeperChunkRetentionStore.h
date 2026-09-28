@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include <chronolog_types.h>
+#include <HotRangeResponse.h>
 #include <StoryChunk.h>
 
 #include "ActiveTailSource.h"
@@ -315,52 +316,60 @@ public:
 
     // Serve a replay range from every retained chunk (not only tail-indexed
     // events: a chunk evicted from the tail but still awaiting W holds events
-    // that may exist nowhere else). Events are returned in ascending
-    // EventSequence order, capped at max_events (truncated=true if the cap
-    // cut the range short). hot_floor reports the oldest event tick this
-    // keeper still retains for the story (UINT64_MAX if none): everything
-    // below it has been freed, which the free condition only permits once it
-    // is durable in the archive.
-    std::vector<LogEvent> fetchRange(StoryId const& story_id,
-                                     uint64_t start,
-                                     uint64_t end,
-                                     std::size_t max_events,
-                                     uint64_t& hot_floor,
-                                     bool& truncated)
+    // that may exist nowhere else). Events from chunks the grapher has
+    // acknowledged go to events, the rest to unconfirmed_events: the archive
+    // cannot have those however far W moves. Both lists are in ascending
+    // EventSequence order and together capped at max_events (truncated if the
+    // cap cut the range short). hot_floor is the oldest event tick this keeper
+    // still retains for the story (UINT64_MAX if none) and known_W the
+    // watermark it last saw, read under the same lock as the events;
+    // HotRangeSplit.h explains how the player splits a replay with them.
+    HotRangeResponse fetchRange(StoryId const& story_id, uint64_t start, uint64_t end, std::size_t max_events)
     {
-        std::vector<LogEvent> result;
-        hot_floor = UINT64_MAX;
-        truncated = false;
+        HotRangeResponse response;
         std::lock_guard<std::mutex> lock(tailMutex);
         auto story_it = storyRetention.find(story_id);
         if(story_it == storyRetention.end())
         {
-            return result;
+            return response;
         }
-        std::map<EventSequence, LogEvent const*> merged;
+        response.known_W = story_it->second.known_w;
+        // event -> (payload, held by an acknowledged chunk)
+        std::map<EventSequence, std::pair<LogEvent const*, bool>> merged;
         for(auto const& chunk_entry: story_it->second.chunks)
         {
             StoryChunk const* chunk = chunk_entry.first;
-            if(!chunk->empty() && chunk->firstEventTime() < hot_floor)
+            bool const acknowledged = chunk_entry.second.shipped;
+            if(!chunk->empty() && chunk->firstEventTime() < response.hot_floor)
             {
-                hot_floor = chunk->firstEventTime();
+                response.hot_floor = chunk->firstEventTime();
             }
             for(auto it = chunk->lower_bound(start); it != chunk->end() && it->second.time() < end; ++it)
             {
-                merged.emplace(it->first, &it->second);
+                auto emplaced = merged.emplace(it->first, std::make_pair(&it->second, acknowledged));
+                // a copy in any acknowledged chunk is enough for the archive to have it
+                emplaced.first->second.second = emplaced.first->second.second || acknowledged;
             }
         }
-        result.reserve(merged.size() < max_events ? merged.size() : max_events);
+        std::size_t served = 0;
         for(auto const& entry: merged)
         {
-            if(result.size() >= max_events)
+            if(served >= max_events)
             {
-                truncated = true;
+                response.truncated = true;
                 break;
             }
-            result.push_back(*entry.second);
+            if(entry.second.second)
+            {
+                response.events.push_back(*entry.second.first);
+            }
+            else
+            {
+                response.unconfirmed_events.push_back(*entry.second.first);
+            }
+            ++served;
         }
-        return result;
+        return response;
     }
 
     // Number of chunks currently owned for the story (diagnostics/tests).

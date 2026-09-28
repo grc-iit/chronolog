@@ -160,8 +160,10 @@ TEST_F(KeeperHotFetch, LiveKeeperReturnsItsRetainedRange)
     ASSERT_NE(liveClient, nullptr);
 
     chl::HotRangeResponse response = liveClient->fetchRange(kStory, 0, 1000, 100);
-    ASSERT_EQ(response.events.size(), 1u);
-    EXPECT_EQ(response.events.front().time(), 150u);
+    // the chunk was never sent to a grapher, so it comes back unconfirmed
+    EXPECT_TRUE(response.events.empty());
+    ASSERT_EQ(response.unconfirmed_events.size(), 1u);
+    EXPECT_EQ(response.unconfirmed_events.front().time(), 150u);
     EXPECT_EQ(response.hot_floor, 150u);
 }
 

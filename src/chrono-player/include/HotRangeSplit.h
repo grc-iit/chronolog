@@ -12,20 +12,29 @@ namespace chronolog
 {
 
 // Where a replay of [start, end) splits between the archive and the story's
-// keepers, given every reachable keeper's hot-fetch response.
+// keepers, given every reachable keeper's hot-fetch response. The archive
+// serves [start, B) and the keepers [B, end).
 //
-// The boundary B is the minimum hot floor over the responses, clamped to end.
-// Every keeper frees a chunk only once it is durable in the archive, and frees
-// proceed oldest-first, so everything below B is guaranteed on disk: the
-// archive serves [start, B) and the keepers [B, end). This is a completeness
-// argument, not an optimization. A keeper retaining nothing, or one whose
-// fetch failed, reports hot_floor = UINT64_MAX and drops out of the min; that
-// only raises B, and archive overlap is the failure-safe direction.
+// B is the highest watermark any keeper reports, clamped to end. Each
+// keeper's known_W is a watermark the grapher sent, so everything below B is
+// on disk. A keeper frees a chunk only when its own known_W covers the chunk,
+// and no known_W is above B, so every event at or above B is still held by
+// its keeper. A lower B would not do: frees are per keeper, so a keeper can
+// still hold an old chunk while another has freed newer ones, and a split at
+// the old chunk leaves the newer freed events to nobody.
+//
+// When no keeper reports a watermark, no keeper has freed anything, and B is
+// the lowest hot floor instead. A keeper that retains nothing, or whose fetch
+// failed, reports known_W = 0 and hot_floor = UINT64_MAX and changes neither.
+//
+// Keeper events below B are in the archive, which returns them too, so they
+// are dropped, except those in chunks the grapher never acknowledged: the
+// archive cannot have those, whatever W is.
 struct HotRangeSplit
 {
     uint64_t boundary = 0;
-    // keeper events at or above the boundary, deduplicated across keepers, in
-    // EventSequence order
+    // keeper events at or above the boundary plus unacknowledged ones,
+    // deduplicated across keepers, in EventSequence order
     std::vector<LogEvent> hotEvents;
     // the hot side reaches back to start: no archive read needed
     bool complete = false;
@@ -34,29 +43,43 @@ struct HotRangeSplit
 inline HotRangeSplit splitHotRange(std::vector<HotRangeResponse>& responses, uint64_t start_time, uint64_t end_time)
 {
     HotRangeSplit split;
-    split.boundary = end_time;
+    uint64_t highest_watermark = 0;
+    uint64_t lowest_floor = UINT64_MAX;
+    for(auto const& response: responses)
+    {
+        if(response.known_W > highest_watermark)
+        {
+            highest_watermark = response.known_W;
+        }
+        if(response.hot_floor < lowest_floor)
+        {
+            lowest_floor = response.hot_floor;
+        }
+    }
+    split.boundary = (highest_watermark > 0) ? highest_watermark : lowest_floor;
+    if(split.boundary > end_time)
+    {
+        split.boundary = end_time;
+    }
+
     std::map<EventSequence, LogEvent> merged; // cross-keeper dedup
     for(auto& response: responses)
     {
-        if(response.hot_floor < split.boundary)
-        {
-            split.boundary = response.hot_floor;
-        }
-        for(auto& log_event: response.events)
+        for(auto& log_event: response.unconfirmed_events)
         {
             merged.emplace(EventSequence{log_event.time(), log_event.clientId, log_event.index()},
                            std::move(log_event));
         }
-    }
-    // events below the boundary are archive-covered: the archive portion of
-    // the same query returns them, so keeping both would duplicate them
-    for(auto& sequenced_event: merged)
-    {
-        if(sequenced_event.second.time() >= split.boundary)
+        for(auto& log_event: response.events)
         {
-            split.hotEvents.push_back(std::move(sequenced_event.second));
+            if(log_event.time() >= split.boundary)
+            {
+                merged.emplace(EventSequence{log_event.time(), log_event.clientId, log_event.index()},
+                               std::move(log_event));
+            }
         }
     }
+    for(auto& sequenced_event: merged) { split.hotEvents.push_back(std::move(sequenced_event.second)); }
     split.complete = (split.boundary <= start_time);
     return split;
 }

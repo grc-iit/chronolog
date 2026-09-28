@@ -83,12 +83,10 @@ TEST(KeeperChunkRetentionCap, ExceededCapRetainsEveryChunk)
     shipAll(q, store);
     EXPECT_EQ(store.retainedChunkCount(kStory), 4u);
 
-    uint64_t hot_floor = UINT64_MAX;
-    bool truncated = true;
-    auto events = store.fetchRange(kStory, 0, UINT64_MAX, 1000, hot_floor, truncated);
-    EXPECT_EQ(events.size(), 4u * kEventsPerChunk);
-    EXPECT_EQ(hot_floor, 0u);
-    EXPECT_FALSE(truncated);
+    auto response = store.fetchRange(kStory, 0, UINT64_MAX, 1000);
+    EXPECT_EQ(response.events.size(), 4u * kEventsPerChunk);
+    EXPECT_EQ(response.hot_floor, 0u);
+    EXPECT_FALSE(response.truncated);
 }
 
 TEST(KeeperChunkRetentionCap, WarnsOncePerCrossing)

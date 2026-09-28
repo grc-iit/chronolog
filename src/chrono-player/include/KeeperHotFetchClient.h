@@ -47,9 +47,9 @@ public:
 
     // Fetch every event the keeper retains in [start, end), waiting at most the
     // fetch deadline. On any failure -- an RPC error or a keeper that does not
-    // answer in time -- an empty response with hot_floor = UINT64_MAX is
-    // returned: the keeper drops out of the min() and the split boundary only
-    // rises — overlap with the archive is the failure-safe direction.
+    // answer in time -- an empty response is returned (no events, known_W = 0,
+    // hot_floor = UINT64_MAX), which leaves the split boundary to the keepers
+    // that did answer.
     HotRangeResponse fetchRange(StoryId const& story_id, uint64_t start_time, uint64_t end_time, uint64_t max_events)
     {
         try

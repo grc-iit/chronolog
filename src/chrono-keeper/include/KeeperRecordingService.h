@@ -70,22 +70,15 @@ public:
 
     // Replay hot fetch: every retained event in [start, end) plus this
     // keeper's hot floor and last-seen persisted watermark. The player fans
-    // this out over the story's keeper roster and splits replay at
-    // B = min(hot_floor).
+    // this out over the story's keeper roster and splits the replay with
+    // splitHotRange.
     void story_range_fetch(tl::request const& request,
                            StoryId const& story_id,
                            uint64_t start_time,
                            uint64_t end_time,
                            uint64_t max_events)
     {
-        HotRangeResponse response;
-        response.events = theTailStore.fetchRange(story_id,
-                                                  start_time,
-                                                  end_time,
-                                                  (std::size_t)max_events,
-                                                  response.hot_floor,
-                                                  response.truncated);
-        response.known_W = theTailStore.knownPersisted(story_id);
+        HotRangeResponse response = theTailStore.fetchRange(story_id, start_time, end_time, (std::size_t)max_events);
         LOG_DEBUG("[KeeperRecordingService] story_range_fetch StoryId={} {}-{} -> {} event(s), hot_floor={}, "
                   "known_W={}, truncated={}",
                   story_id,

@@ -15,6 +15,7 @@
 #include <PlaybackQueryResponse.h>
 #include <StoryChunk.h>
 #include <QueryResponseTransferAgent.h>
+#include <ReplayEventMerge.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -153,27 +154,10 @@ int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQ
         return chl::CL_SUCCESS;
     }
 
-    // check if the response already has the portion of the events from the active
-    // DataStore (the are added to the response before the archives are checked)
-    // and move them out the way as the events coming from archives
-    // would have earlier timestamps than those coming from active DataStore
-    std::vector<Event> temp_vector;
-    if(!response->events.empty())
-    {
-        temp_vector = std::move(response->events);
-    }
-
-    response->events = std::move(archived_events);
-
-    // now append the active DataStore events if any were present
-    // to the end of the response->events vector
-    if(!temp_vector.empty())
-    {
-        response->events.reserve(response->events.size() + temp_vector.size());
-        response->events.insert(response->events.end(),
-                                std::make_move_iterator(temp_vector.begin()),
-                                std::move_iterator(temp_vector.end()));
-    }
+    // The events the keepers served are already in the response. The same
+    // event can also be in the archive, so merge rather than append: each
+    // event once, in time order.
+    response->events = mergeReplayEvents(std::move(archived_events), std::move(response->events));
 
     //mark the query_response as ready to be sent to client
     (*query_iter).second.first = true;

@@ -34,11 +34,25 @@ public:
         H5::CompType data_type(sizeof(LogEventHVL));
         data_type.insertMember("storyId", HOFFSET(LogEventHVL, storyId), H5::PredType::NATIVE_UINT64);
         data_type.insertMember("eventTime", HOFFSET(LogEventHVL, eventTime), H5::PredType::NATIVE_UINT64);
-        data_type.insertMember("clientId", HOFFSET(LogEventHVL, clientId), H5::PredType::NATIVE_UINT32);
+        data_type.insertMember("clientId", HOFFSET(LogEventHVL, clientId), H5::PredType::NATIVE_UINT64);
         data_type.insertMember("eventIndex", HOFFSET(LogEventHVL, eventIndex), H5::PredType::NATIVE_UINT32);
         data_type.insertMember("logRecord",
                                HOFFSET(LogEventHVL, logRecord),
                                H5::VarLenType(H5::PredType::NATIVE_UINT8));
+        return data_type;
+    }
+
+    // The record layout of files written before client ids were widened to 64
+    // bits: clientId was a 32-bit member at offset 16, making a 40-byte record.
+    // Readers accept it and let HDF5 widen the id; its upper 32 bits are gone.
+    static H5::CompType createLegacyEventCompoundType()
+    {
+        H5::CompType data_type(static_cast<size_t>(40));
+        data_type.insertMember("storyId", 0, H5::PredType::NATIVE_UINT64);
+        data_type.insertMember("eventTime", 8, H5::PredType::NATIVE_UINT64);
+        data_type.insertMember("clientId", 16, H5::PredType::NATIVE_UINT32);
+        data_type.insertMember("eventIndex", 20, H5::PredType::NATIVE_UINT32);
+        data_type.insertMember("logRecord", 24, H5::VarLenType(H5::PredType::NATIVE_UINT8));
         return data_type;
     }
 
