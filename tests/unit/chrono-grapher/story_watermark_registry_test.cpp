@@ -241,12 +241,16 @@ TEST(StoryWatermarkRegistry, SnapshotDirtyReturnsOnlyChangedAndClears)
 // reports which numbers are still unwritten; a keeper frees a chunk only once
 // its receipt is off that list.
 
-TEST(StoryWatermarkRegistry, ReceiptsAreNumberedPerStoryFromOne)
+TEST(StoryWatermarkRegistry, ReceiptNumbersRiseAndAreNeverReused)
 {
     chl::StoryWatermarkRegistry registry;
-    EXPECT_EQ(registry.assignReceipt(kStory), 1u);
-    EXPECT_EQ(registry.assignReceipt(kStory), 2u);
-    EXPECT_EQ(registry.assignReceipt(kOtherStory), 1u);
+    uint64_t const first = registry.assignReceipt(kStory);
+    uint64_t const second = registry.assignReceipt(kStory);
+    uint64_t const other = registry.assignReceipt(kOtherStory);
+    EXPECT_GE(first, 1u);
+    EXPECT_GT(second, first);
+    EXPECT_NE(other, first);
+    EXPECT_NE(other, second);
     EXPECT_NE(registry.instanceId(), 0u);
 }
 
@@ -273,18 +277,17 @@ TEST(StoryWatermarkRegistry, ReportListsTheReceiptsNotWrittenYet)
     EXPECT_EQ(report.pending_receipts, (std::vector<uint64_t>{second}));
 }
 
-// A keeper frees a chunk only when the watermark covers it AND its receipt is
-// settled, so a report need not list a pending receipt whose chunk ends above
-// the watermark: that chunk is already held back by W. Leaving it out keeps a
-// failed write, whose receipts can never settle, from growing every later
-// report for the life of the grapher.
-TEST(StoryWatermarkRegistry, ReportOmitsAPendingReceiptTheWatermarkAlreadyBlocks)
+// A keeper reads a receipt a report leaves out as written, so every report
+// lists every pending receipt, wherever W is. A receipt whose chunk ends above W
+// can still be pending once W passes it: its events went into a window above W
+// that was already written and then reopened.
+TEST(StoryWatermarkRegistry, ReportListsEveryPendingReceiptWhereverTheWatermarkIs)
 {
     chl::StoryWatermarkRegistry registry;
     registry.registerStory(kStory, T0);
     registry.advancePersisted(kStory, T0, T2);
-    uint64_t const below = registry.assignReceipt(kStory, T1);
-    uint64_t const above = registry.assignReceipt(kStory, T4);
+    uint64_t const below = registry.assignReceipt(kStory); // for a chunk ending at T1
+    uint64_t const above = registry.assignReceipt(kStory); // for a chunk ending at T4
     registry.holdReceipt(kStory, below);
     registry.holdReceipt(kStory, above);
 
@@ -292,23 +295,11 @@ TEST(StoryWatermarkRegistry, ReportOmitsAPendingReceiptTheWatermarkAlreadyBlocks
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).watermark, T2);
     EXPECT_EQ(snapshot.at(kStory).highest_receipt, above);
-    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below}));
-}
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below, above}));
 
-TEST(StoryWatermarkRegistry, ReportListsAPendingReceiptOnceTheWatermarkPassesIt)
-{
-    chl::StoryWatermarkRegistry registry;
-    registry.registerStory(kStory, T0);
-    registry.advancePersisted(kStory, T0, T2);
-    uint64_t const below = registry.assignReceipt(kStory, T1);
-    uint64_t const above = registry.assignReceipt(kStory, T4);
-    registry.holdReceipt(kStory, below);
-    registry.holdReceipt(kStory, above);
-    registry.snapshotDirty();
-
-    // W now covers the second receipt's chunk, so it no longer holds it back
+    // and still once W has passed both chunks
     registry.advancePersisted(kStory, T2, T4);
-    auto snapshot = registry.snapshotDirty();
+    snapshot = registry.snapshotDirty();
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{below, above}));
 }
@@ -387,7 +378,7 @@ TEST(StoryWatermarkRegistry, DropStoryReportsTheDropWatermarkOnce)
     chl::StoryWatermarkRegistry registry;
     registry.registerStory(kStory, T0);
     registry.advancePersisted(kStory, T0, T1);
-    uint64_t const receipt = registry.assignReceipt(kStory, T2);
+    uint64_t const receipt = registry.assignReceipt(kStory);
     (void)registry.snapshotDirty(); // the ordinary report; the story is clean again
 
     registry.dropStory(kStory);
@@ -403,6 +394,62 @@ TEST(StoryWatermarkRegistry, DropStoryReportsTheDropWatermarkOnce)
     // and the story is gone: no repeat report, and W reads as unknown
     EXPECT_TRUE(registry.snapshotDirty().empty());
     EXPECT_EQ(registry.getPersisted(kStory), 0u);
+}
+
+// A story destroyed and created again under the same name has the same id. A
+// keeper that still holds the old story's receipt view takes every number up
+// to that view's highest as written unless a report lists it, so the new
+// story's receipts must never reuse one of those numbers.
+TEST(StoryWatermarkRegistry, AStoryRecreatedBeforeItsDropIsReportedNeverReusesAReceiptNumber)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    uint64_t old_highest = 0;
+    for(int i = 0; i < 3; ++i) { old_highest = registry.assignReceipt(kStory); }
+
+    registry.dropStory(kStory);
+    registry.registerStory(kStory, T2);
+
+    EXPECT_GT(registry.assignReceipt(kStory), old_highest);
+}
+
+TEST(StoryWatermarkRegistry, AStoryRecreatedAfterItsDropIsReportedNeverReusesAReceiptNumber)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.registerStory(kStory, T0);
+    uint64_t old_highest = 0;
+    for(int i = 0; i < 3; ++i) { old_highest = registry.assignReceipt(kStory); }
+
+    registry.dropStory(kStory);
+    (void)registry.snapshotDirty(); // the drop is reported and the id forgotten
+    registry.registerStory(kStory, T2);
+
+    EXPECT_GT(registry.assignReceipt(kStory), old_highest);
+}
+
+// A chunk refused after a destroy marks a drop for a story this grapher never
+// recorded. When the name is created again and registers before that drop is
+// reported, the new story is neither reported dropped nor forgotten with it.
+TEST(StoryWatermarkRegistry, AStoryRegisteredWhileADropIsPendingIsNotDroppedWithIt)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.dropStory(kStory); // a refused chunk of the destroyed story
+    registry.registerStory(kStory, T0);
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).watermark, T0);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+
+    // still known afterwards: its W and its pending receipt carry on
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
+    registry.advancePersisted(kStory, T0, T1);
+    snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).watermark, T1);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
 }
 
 TEST(StoryWatermarkRegistry, DropStoryLeavesOtherStoriesAlone)
@@ -467,4 +514,25 @@ TEST(StoryWatermarkRegistry, DropIsReportedAgainForEachRefusedChunk)
     auto snapshot = registry.snapshotDirty();
     ASSERT_EQ(snapshot.count(kStory), 1u);
     EXPECT_EQ(snapshot[kStory].watermark, chl::kStoryDroppedWatermark);
+}
+
+// A write can fail for a story this grapher has not registered (a salvage or
+// adopted window). Recording that as an ordinary entry anchors the story at 0,
+// and since the failure also bars registerStory from covering the gap up to the
+// story's start, W stays at 0 for the life of the grapher and its keepers can
+// never free anything of that story.
+TEST(StoryWatermarkRegistry, WriteFailureBeforeRegistrationDoesNotPinTheWatermarkAtZero)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.persistFailed(kStory);
+
+    registry.registerStory(kStory, T2, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T2);
+
+    // and the story still carries the failure: W may only advance through
+    // intervals that were actually persisted
+    registry.registerStory(kStory, T4, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T2);
+    registry.advancePersisted(kStory, T2, T3);
+    EXPECT_EQ(registry.getPersisted(kStory), T3);
 }

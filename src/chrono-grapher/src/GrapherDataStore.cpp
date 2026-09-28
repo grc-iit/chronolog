@@ -143,8 +143,9 @@ int chronolog::GrapherDataStore::stopStoryRecording(chronolog::StoryId const& st
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
+        // widen first: the delay is 32-bit, and 5 s or more wraps in 32-bit nanoseconds
         uint64_t exit_time = std::chrono::high_resolution_clock::now().time_since_epoch().count() +
-                             inactive_pipeline_delay_secs * 1000000000;
+                             static_cast<uint64_t>(inactive_pipeline_delay_secs) * 1000000000ULL;
         // (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::StoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
@@ -641,7 +642,15 @@ void chronolog::GrapherDataStore::dataCollectionTask()
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
-            sleep(1);
+            // Sleep in slices and yield between them. This stream runs other
+            // data-collection threads, and one of them may be waiting on an
+            // RPC (a watermark report send) that resumes only when the
+            // stream schedules it again; a plain sleep() never lets it.
+            for(int slice = 0; slice < 10; ++slice)
+            {
+                usleep(100000);
+                tl::thread::yield();
+            }
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();

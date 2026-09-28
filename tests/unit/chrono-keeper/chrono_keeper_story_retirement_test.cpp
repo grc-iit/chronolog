@@ -66,6 +66,11 @@ int shipQueued(chl::StoryChunkExtractionQueue& extraction_queue, chl::KeeperChun
 
 // far above the handful of events each test logs, so eviction never releases them
 constexpr std::size_t kTailCapacity = 1024;
+
+// A watermark an hour past every chunk these tests seal. Not UINT64_MAX: that
+// is kStoryDroppedWatermark, which frees a destroyed story's chunks whatever
+// their state, so these tests would pass without retirement releasing the tail.
+uint64_t coveringWatermark(uint64_t base) { return base + 3600ULL * 1000000000ULL; }
 } // namespace
 
 TEST(KeeperStoryRetirement, RetiredStoryFreesItsChunksOnceDurable)
@@ -99,7 +104,7 @@ TEST(KeeperStoryRetirement, RetiredStoryFreesItsChunksOnceDurable)
     // shipped, but no watermark covers it yet: it must stay
     EXPECT_GT(retention_store.retainedChunkCount(story_id), 0u);
 
-    data_store.applyWatermarkReport(story_id, UINT64_MAX);
+    data_store.applyWatermarkReport(story_id, coveringWatermark(base));
     EXPECT_EQ(retention_store.retainedChunkCount(story_id), 0u);
 }
 
@@ -134,6 +139,6 @@ TEST(KeeperStoryRetirement, ChunkSealedFromLateEventsAfterRetirementIsFreedOnceD
     data_store.retireDecayedPipelines();
     ASSERT_EQ(shipQueued(extraction_queue, retention_store), 1);
 
-    data_store.applyWatermarkReport(story_id, UINT64_MAX);
+    data_store.applyWatermarkReport(story_id, coveringWatermark(base));
     EXPECT_EQ(retention_store.retainedChunkCount(story_id), 0u);
 }

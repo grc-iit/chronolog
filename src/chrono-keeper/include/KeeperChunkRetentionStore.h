@@ -387,6 +387,13 @@ public:
                     {
                         continue;
                     }
+                    // A settled receipt means the chunk's events are on disk; W
+                    // is only held below it by an earlier gap. Sending it again
+                    // would write them twice and change nothing for W.
+                    if(state.shipped && state.receipt != 0 && receiptSettled(story_entry.second, state))
+                    {
+                        continue;
+                    }
                     if(now - state.last_activity < max_age)
                     {
                         continue;
@@ -741,10 +748,11 @@ private:
         return count;
     }
 
-    // A grapher never moves a receipt back to pending or reuses its number, so
-    // reports from one grapher instance combine in any order: a receipt is
-    // written once any report says so. A report from another instance replaces
-    // the view, since that instance numbers its receipts afresh.
+    // A grapher lists every receipt still pending in every report, never moves
+    // one back to pending, and never reuses a number, so reports from one
+    // grapher instance combine in any order: a receipt is written once any
+    // report says so. A report from another instance replaces the view, since
+    // that instance numbers its receipts afresh.
     static void mergeReceipts(StoryRetention& story, StoryWatermarkReport const& report)
     {
         std::set<uint64_t> const reported_pending(report.pending_receipts.begin(), report.pending_receipts.end());

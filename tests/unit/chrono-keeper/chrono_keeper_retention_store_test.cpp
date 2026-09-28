@@ -990,6 +990,22 @@ TEST(KeeperChunkRetentionStore, RequeueStalledResendsAnUnsettledChunkUnderTheWat
     EXPECT_EQ(q.size(), 1);
 }
 
+// A settled receipt means the chunk's events are on disk. While W is held
+// below the chunk by an earlier gap, sending it again only writes them twice.
+TEST(KeeperChunkRetentionStore, RequeueStalledLeavesASettledChunkAboveAStuckWatermark)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 3, 1, "written"));
+    shipWithReceipt(q, store, kGrapher, 5);
+    store.applyReport(sid, watermarkReport(100, kGrapher, 5)); // receipt 5 settled, W stuck at 100
+
+    EXPECT_EQ(store.requeueStalled(std::chrono::seconds(0)), 0u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u); // still held until W covers it
+}
+
 TEST(KeeperChunkRetentionStore, FetchRangeCountsAnUnsettledChunkAsUnconfirmed)
 {
     ensureLogger();

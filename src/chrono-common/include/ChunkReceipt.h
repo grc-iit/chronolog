@@ -18,9 +18,10 @@ namespace chronolog
 
 // Answer to receive_story_chunk. bytes is the size the receiver read; the
 // sender compares it with what it sent. A grapher also returns the receipt it
-// assigned the chunk, numbered per story, and the id of its own process
-// instance, which changes on restart and with it the numbering. A receiver
-// that tracks no durability (the player) leaves both 0.
+// assigned the chunk, from a counter that never repeats a number within the
+// process, and the id of its own process instance, which changes on restart
+// and with it the numbering. A receiver that tracks no durability (the
+// player) leaves both 0.
 struct ChunkReceipt
 {
     uint64_t bytes = 0;

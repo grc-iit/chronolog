@@ -31,10 +31,10 @@ namespace chronolog
 //
 // W covering a keeper's chunk does not prove the chunk was written: a chunk
 // merged after its range persisted lands in a reopened window or a salvage
-// file, neither of which moves W. So every arriving chunk gets a receipt,
-// numbered per story, which settles once the chunk is merged and every chunk
-// holding its events is written. Reports carry the unsettled receipts next to
-// W (see ChunkReceipt.h).
+// file, neither of which moves W. So every arriving chunk gets a receipt, a
+// number this instance never gives out twice, which settles once the chunk is
+// merged and every chunk holding its events is written. Reports carry the
+// unsettled receipts next to W (see ChunkReceipt.h).
 class StoryWatermarkRegistry: public ReceiptTracker
 {
 public:
@@ -71,12 +71,23 @@ public:
         }
         if(iter == stories.end())
         {
+            // A drop still waiting to be reported belongs to a destroyed story
+            // this grapher never recorded (a chunk refused after the destroy).
+            // Reporting it now would free the new story's chunks on its
+            // keepers, and forgetting the id then would forget the new story;
+            // the keeper that sent the refused chunk keeps it, as above.
+            dropped.erase(story_id);
             Entry entry;
             entry.anchor = start_time;
             entry.w = start_time;
+            // a window of this story failed to write before it was registered
+            entry.write_failed = failedBeforeRegistration.erase(story_id) != 0;
             stories.emplace(story_id, std::move(entry));
             dirty.insert(story_id);
-            LOG_INFO("[StoryWatermarkRegistry] StoryId={} registered, anchor={}", story_id, start_time);
+            LOG_INFO("[StoryWatermarkRegistry] StoryId={} registered, anchor={}{}",
+                     story_id,
+                     start_time,
+                     stories[story_id].write_failed ? " (carrying an earlier write failure)" : "");
             return;
         }
         Entry& entry = iter->second;
@@ -167,9 +178,13 @@ public:
         auto iter = stories.find(story_id);
         if(iter == stories.end())
         {
-            Entry entry;
-            entry.write_failed = true;
-            stories.emplace(story_id, std::move(entry));
+            // Held aside rather than stored as an entry. An entry here would
+            // anchor the story at 0, and because the failure also bars
+            // registerStory from covering the gap up to the story's start, W
+            // would stay at 0 for the life of this grapher -- no report would
+            // ever let the story's keepers free anything. Applied to the entry
+            // when the story does register.
+            failedBeforeRegistration.insert(story_id);
             LOG_WARNING("[StoryWatermarkRegistry] StoryId={} write failure recorded for unregistered story", story_id);
             return;
         }
@@ -244,19 +259,16 @@ public:
     // tell a restarted grapher's receipts from the previous instance's.
     uint64_t instanceId() const { return instance; }
 
-    // A chunk for the story arrived. Receipts are numbered from 1 per story and
-    // stay pending until the chunk is merged and every chunk holding its events
-    // is written. chunk_end is the end of the arriving chunk, which decides
-    // whether a report has to carry the receipt while it is pending (see
-    // snapshotDirty); 0 means unknown, and is always carried.
-    uint64_t assignReceipt(StoryId const& story_id, uint64_t chunk_end = 0)
+    // A chunk for the story arrived. Receipts are numbered from one counter for
+    // every story (see lastReceipt) and stay pending until the chunk is merged
+    // and every chunk holding its events is written.
+    uint64_t assignReceipt(StoryId const& story_id)
     {
         std::lock_guard<std::mutex> lock(mtx);
         StoryReceipts& story = receipts[story_id];
-        uint64_t const receipt = ++story.last_assigned;
-        ReceiptState state;
-        state.chunk_end = chunk_end;
-        story.pending.emplace(receipt, state);
+        uint64_t const receipt = ++lastReceipt;
+        story.last_assigned = receipt;
+        story.pending.emplace(receipt, ReceiptState{});
         return receipt;
     }
 
@@ -295,6 +307,29 @@ public:
         }
     }
 
+    // The reports built from these entries could not be delivered. snapshotDirty
+    // cleared the stories' dirty marks when it built them, so mark them again
+    // for the next report, or a story that has gone quiet would never be
+    // reported. A drop report is marked again as a drop, unless the story has
+    // been registered anew since.
+    void markUndelivered(std::map<StoryId, StoryWatermarkReport> const& reports)
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        for(auto const& entry: reports)
+        {
+            bool const known = stories.find(entry.first) != stories.end();
+            if(known)
+            {
+                dirty.insert(entry.first);
+            }
+            else if(entry.second.watermark == kStoryDroppedWatermark)
+            {
+                dropped.insert(entry.first);
+                dirty.insert(entry.first);
+            }
+        }
+    }
+
     // Reports for the stories that changed since the last snapshot; clears the
     // dirty set.
     std::map<StoryId, StoryWatermarkReport> snapshotDirty()
@@ -323,18 +358,15 @@ public:
                 if(receipts_iter != receipts.end())
                 {
                     report.highest_receipt = receipts_iter->second.last_assigned;
+                    // Every pending receipt, wherever W is: a keeper reads a
+                    // receipt a report leaves out as written. One whose chunk
+                    // ends above W can still be pending once W passes it -- its
+                    // events went into a window above W that was already
+                    // written and reopened -- and by then the keeper, having
+                    // taken it for written, would free the chunk.
                     for(auto const& pending: receipts_iter->second.pending)
                     {
-                        // A receipt whose chunk ends above W needs no mention: a
-                        // keeper frees a chunk only when W covers it as well, so
-                        // W already holds that chunk back. Leaving those out
-                        // bounds the report when a receipt can never settle — a
-                        // write that failed, or events a merge had to discard —
-                        // instead of carrying it in every later report.
-                        if(pending.second.chunk_end == 0 || pending.second.chunk_end <= iter->second.w)
-                        {
-                            report.pending_receipts.push_back(pending.first);
-                        }
+                        report.pending_receipts.push_back(pending.first);
                     }
                 }
                 snapshot.emplace(story_id, std::move(report));
@@ -389,8 +421,6 @@ private:
         uint32_t holders = 0;
         // every event of the receipt's chunk went into a holding chunk
         bool merged = false;
-        // end of the chunk this receipt was given to; 0 when unknown
-        uint64_t chunk_end = 0;
     };
 
     // Kept apart from Entry: a chunk can arrive before its story registers,
@@ -431,12 +461,21 @@ private:
     }
 
     uint64_t const instance = drawInstanceId();
+    // Receipt numbers come from one counter for every story, so a number is
+    // never given out twice by this instance, not even to a story id that was
+    // destroyed, forgotten and created again under the same name. A keeper
+    // still holding the old story's view takes any number up to that view's
+    // highest as written unless a report lists it.
+    uint64_t lastReceipt = 0;
     mutable std::mutex mtx;
     std::map<StoryId, Entry> stories;
     std::map<StoryId, StoryReceipts> receipts;
     std::set<StoryId> dirty;
     // destroyed stories whose drop report has not gone out yet
     std::set<StoryId> dropped;
+    // stories whose window failed to write before they were registered here;
+    // folded into the entry at registration (see persistFailed)
+    std::set<StoryId> failedBeforeRegistration;
 };
 
 } // namespace chronolog

@@ -40,14 +40,14 @@ void chronolog::WatermarkReportPublisher::recordContributor(chl::StoryId const& 
     }
 }
 
-void chronolog::WatermarkReportPublisher::publish()
+void chronolog::WatermarkReportPublisher::publish(bool force)
 {
     // endpoint key -> (keeper identity, coalesced story->W report)
     std::map<std::string, std::pair<ServiceId, std::map<StoryId, StoryWatermarkReport>>> reports;
     {
         std::lock_guard<std::mutex> lock(publisherMutex);
         auto const now = std::chrono::steady_clock::now();
-        if(now - lastPublish < reportInterval)
+        if(!force && now - lastPublish < reportInterval)
         {
             return;
         }
@@ -114,22 +114,41 @@ void chronolog::WatermarkReportPublisher::sendReport(
         LOG_DEBUG("[WatermarkReportPublisher] reported {} story watermark(s) to {}",
                   watermarks.size(),
                   chl::to_string(keeper_id));
+        std::lock_guard<std::mutex> lock(publisherMutex);
+        reportFailures.erase(endpoint_key);
     }
     catch(tl::exception const& ex)
     {
-        // drop the cached handle: the keeper may have restarted at a new
-        // margo instance; it is lazily rebuilt on the next report round
-        LOG_WARNING("[WatermarkReportPublisher] failed to report to {} : {} — dropping cached handle",
-                    chl::to_string(keeper_id),
-                    ex.what());
-        std::lock_guard<std::mutex> lock(publisherMutex);
-        keeperHandles.erase(endpoint_key);
+        reportFailed(endpoint_key, keeper_id, watermarks, ex.what());
     }
     catch(...)
     {
-        LOG_WARNING("[WatermarkReportPublisher] failed to report to {} (unknown exception) — dropping cached handle",
-                    chl::to_string(keeper_id));
+        reportFailed(endpoint_key, keeper_id, watermarks, "unknown exception");
+    }
+}
+
+void chronolog::WatermarkReportPublisher::reportFailed(
+        std::string const& endpoint_key,
+        chl::ServiceId const& keeper_id,
+        std::map<chl::StoryId, chl::StoryWatermarkReport> const& watermarks,
+        std::string const& reason)
+{
+    unsigned failures = 0;
+    {
+        // drop the cached handle: the keeper may have restarted at a new
+        // margo instance; it is lazily rebuilt on the next report round
         std::lock_guard<std::mutex> lock(publisherMutex);
         keeperHandles.erase(endpoint_key);
+        failures = ++reportFailures[endpoint_key];
+    }
+    bool const retry = failures <= kMaxReportRetries;
+    LOG_WARNING("[WatermarkReportPublisher] failed to report to {} ({} in a row): {} — {}",
+                chl::to_string(keeper_id),
+                failures,
+                reason,
+                retry ? "sending again next round" : "not retrying until its stories change");
+    if(retry)
+    {
+        theRegistry.markUndelivered(watermarks);
     }
 }
