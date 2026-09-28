@@ -57,12 +57,14 @@ public:
                               std::size_t tail_capacity,
                               std::size_t retention_cap_mb = 0,
                               bool live_tail_read = false,
-                              std::chrono::milliseconds archive_visibility_delay = std::chrono::milliseconds(0))
+                              std::chrono::milliseconds archive_visibility_delay = std::chrono::milliseconds(0),
+                              std::chrono::milliseconds dropped_story_ttl = std::chrono::minutes(10))
         : theExtractionQueue(extraction_queue)
         , tailCapacity(tail_capacity)
         , retentionCapBytes(retention_cap_mb * 1024 * 1024)
         , liveTailRead(live_tail_read)
         , archiveVisibilityDelay(archive_visibility_delay)
+        , droppedStoryTtl(dropped_story_ttl)
     {}
 
     // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
@@ -204,6 +206,22 @@ public:
         }
         {
             std::lock_guard<std::mutex> lock(tailMutex);
+            if(storyWasDropped(story_id))
+            {
+                // The grapher destroyed this story while these events were still
+                // unsealed here — a routine order, since the keeper's pipeline
+                // outlives the destroy. Retaining the chunk would put the store
+                // back where the drop found it: the grapher refuses every chunk
+                // of a destroyed story, so nothing would ever confirm it.
+                LOG_INFO("[KeeperChunkRetentionStore] StoryId={} was destroyed; dropping the chunk {}-{} that sealed "
+                         "afterwards (eventCount {})",
+                         story_id,
+                         sealed_chunk->getStartTime(),
+                         sealed_chunk->getEndTime(),
+                         sealed_chunk->getEventCount());
+                delete sealed_chunk;
+                return;
+            }
             StoryRetention& story = storyRetention[story_id];
             ChunkState state;
             state.indexed_count = (std::size_t)sealed_chunk->getEventCount();
@@ -307,6 +325,11 @@ public:
     void applyReport(StoryId const& story_id, StoryWatermarkReport const& report)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
+        if(report.watermark == kStoryDroppedWatermark)
+        {
+            dropStory(story_id);
+            return;
+        }
         StoryRetention& story = storyRetention[story_id];
         if(report.watermark < story.known_w)
         {
@@ -473,6 +496,14 @@ public:
         std::lock_guard<std::mutex> lock(tailMutex);
         auto story_it = storyRetention.find(story_id);
         return (story_it == storyRetention.end()) ? 0 : story_it->second.chunks.size();
+    }
+
+    // Approximate bytes of every chunk owned, the total retention_cap_mb is
+    // checked against (diagnostics/tests).
+    std::size_t retainedByteCount() const
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        return retainedBytes;
     }
 
     // The story is no longer recorded on this keeper, so its tail stops serving
@@ -802,6 +833,84 @@ private:
         return next;
     }
 
+    // The grapher destroyed the story (kStoryDroppedWatermark): its archive
+    // files are gone and every chunk sent from now on is refused, so no receipt
+    // of this story will ever settle and no watermark will ever cover it.
+    // Holding on would keep these chunks for the life of the process, which is
+    // the one case where a keeper frees a chunk that was never written.
+    //
+    // A chunk sitting in the extraction queue is left alone — the queue owns
+    // that pointer until a drain callback returns it, and the callback finds no
+    // story and disposes of it (markShipped/markSendFailed both handle an
+    // untracked chunk). The story entry goes too, so an acquisition of the same
+    // name later starts from a zero watermark instead of inheriting this one.
+    // Caller holds tailMutex.
+    void dropStory(StoryId const& story_id)
+    {
+        // Remembered first: the drop routinely arrives before this keeper has
+        // sealed the story's last chunks (its pipeline outlives the destroy),
+        // and that is the case where there is nothing here to free yet and
+        // everything still to come. ingestSealedChunk drops those.
+        droppedStories[story_id] = std::chrono::steady_clock::now();
+        auto story_it = storyRetention.find(story_id);
+        if(story_it == storyRetention.end())
+        {
+            return;
+        }
+        StoryRetention& story = story_it->second;
+        story.index.clear();
+        std::size_t freed = 0;
+        std::size_t handed_over = 0;
+        for(auto chunk_iter = story.chunks.begin(); chunk_iter != story.chunks.end();)
+        {
+            StoryChunk* chunk = chunk_iter->first;
+            ChunkState const& state = chunk_iter->second;
+            // for a queued chunk too: its state, the only record of its bytes,
+            // goes with the story, and the drain callback only deletes the pointer
+            retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
+            if(state.in_queue)
+            {
+                ++handed_over;
+                chunk_iter = story.chunks.erase(chunk_iter);
+                continue;
+            }
+            chunk_iter = story.chunks.erase(chunk_iter);
+            delete chunk;
+            ++freed;
+        }
+        storyRetention.erase(story_it);
+        LOG_INFO("[KeeperChunkRetentionStore] StoryId={} was destroyed on the grapher; freed {} retained chunk(s), "
+                 "{} left to the extraction queue",
+                 story_id,
+                 freed,
+                 handed_over);
+    }
+
+public:
+    // The keeper is recording this story again, so the id belongs to a new
+    // story: whatever the last drop said about the old one no longer applies.
+    // Called from KeeperDataStore::startStoryRecording, the one signal a keeper
+    // gets that an id is in use again.
+    void clearDroppedStory(StoryId const& story_id)
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        droppedStories.erase(story_id);
+    }
+
+private:
+    // Whether the grapher has told us this story is destroyed recently enough
+    // that chunks of it may still be sealing. Prunes what has aged out.
+    // Caller holds tailMutex.
+    bool storyWasDropped(StoryId const& story_id)
+    {
+        auto const now = std::chrono::steady_clock::now();
+        for(auto iter = droppedStories.begin(); iter != droppedStories.end();)
+        {
+            iter = (now - iter->second >= droppedStoryTtl) ? droppedStories.erase(iter) : ++iter;
+        }
+        return droppedStories.find(story_id) != droppedStories.end();
+    }
+
     // Evict oldest events until the tail is within capacity. Eviction only
     // trims the read index; the chunk itself is freed solely by the free
     // condition above.
@@ -868,6 +977,10 @@ private:
     // how long after the keeper learns a chunk is written a player may still
     // not see its archive file
     std::chrono::milliseconds archiveVisibilityDelay;
+    // how long a destroyed story is remembered, covering the chunks of it that
+    // are still sealing here; cleared early when the id is recorded again
+    std::chrono::milliseconds droppedStoryTtl;
+    std::unordered_map<StoryId, std::chrono::steady_clock::time_point> droppedStories;
     mutable std::mutex tailMutex;
     std::unordered_map<StoryId, StoryRetention> storyRetention;
 

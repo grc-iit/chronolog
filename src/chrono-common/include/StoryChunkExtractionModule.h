@@ -129,6 +129,7 @@ public:
                     // (retain on failure, await watermark on success); the
                     // grapher deletes it as before
                     theExtractionChain.dispose_chunk(story_chunk, status);
+                    chunkExtractionQueue.chunkProcessed();
                 }
             }
             else
@@ -211,6 +212,7 @@ public:
 
             int status = theExtractionChain.process_chunk(story_chunk);
             theExtractionChain.dispose_chunk(story_chunk, status);
+            chunkExtractionQueue.chunkProcessed();
         }
 
         // if any of the extractors still have chunks in their individual

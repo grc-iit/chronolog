@@ -196,6 +196,12 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
         // Tombstone the story so a late chunk cannot be adopted into a fresh
         // pipeline (and a fresh HDF5 file) after the destroy worker deletes files.
         destroyedStories.insert(story_id);
+        // and tell the keepers, who would otherwise hold every chunk of this
+        // story whose receipt is still open for the life of their process
+        if(theWatermarkRegistry != nullptr)
+        {
+            theWatermarkRegistry->dropStory(story_id);
+        }
         auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
         if(pipeline_iter != theMapOfStoryPipelines.end())
         {
@@ -304,6 +310,18 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
             }
             for(chl::StoryId const& sid: story_ids_to_unhook) { theIngestionQueue.removeStoryIngestionHandle(sid); }
         }
+        // Release the keepers' retention for every story of the chronicle this
+        // grapher still had a pipeline for. A story that had already retired
+        // here is not in either map, and the registry indexes stories by id
+        // without their chronicle, so it is not dropped now. Its keepers hold
+        // only chunks whose receipt never settled, and they send those again
+        // after watermark_resend_timeout_secs: with no pipeline the chunk is an
+        // orphan, the tombstone above refuses its adoption, and the refusal
+        // reports the drop to the keeper that sent it (adoptOrphanChunks).
+        if(theWatermarkRegistry != nullptr)
+        {
+            for(chl::StoryId const& sid: story_ids_to_unhook) { theWatermarkRegistry->dropStory(sid); }
+        }
     }
 
     // Finalize outside the lock; each pipeline is already unreachable via
@@ -335,16 +353,19 @@ void chronolog::GrapherDataStore::enqueueDestroyTask(DestroyTask&& task)
 
 void chronolog::GrapherDataStore::drainExtractionQueueOrTimeout()
 {
-    // Poll the extraction queue until it drains. Destroy is rare; per-story
-    // granularity would be nicer but a global drain wait is the simplest
-    // robust primitive the queue currently exposes. To avoid blocking
-    // shutdown indefinitely we also bail when the data store is shutting
-    // down -- the extraction module's own shutdown will then take over.
+    // Poll the extraction queue until it is idle: nothing waiting and nothing
+    // taken off it still being processed. An empty queue is not enough -- a
+    // window an extraction stream has just taken can still be mid-write, and
+    // its file appears under its name only when the write completes, after a
+    // delete that ran on "empty". Destroy is rare; per-story granularity would
+    // be nicer but a global wait is the simplest robust primitive. To avoid
+    // blocking shutdown indefinitely we also bail when the data store is
+    // shutting down -- the extraction module's own shutdown will then take over.
     using namespace std::chrono_literals;
     auto const poll_interval = 50ms;
     while(!destroyWorkerShouldExit.load(std::memory_order_acquire))
     {
-        if(theExtractionQueue.empty())
+        if(theExtractionQueue.idle())
         {
             return;
         }
@@ -385,10 +406,10 @@ void chronolog::GrapherDataStore::destroyWorkerTask()
             task.remainingChunks.clear();
         }
 
-        // Wait for the extraction queue to drain. This is the load-bearing
+        // Wait for the extraction queue to go idle. This is the load-bearing
         // ordering primitive: by the time we proceed to delete files, every
         // chunk we stashed (and anything stashed concurrently for other
-        // stories) has been picked up by a writer thread.
+        // stories) has been written and published, not only picked up.
         drainExtractionQueueOrTimeout();
 
         // Persistence-vs-deletion ordering is now safe; delete the on-disk
@@ -559,6 +580,15 @@ void chronolog::GrapherDataStore::adoptOrphanChunks()
                                      &was_active);
         if(rc != chronolog::CL_SUCCESS)
         {
+            // Tell the keeper that sent it, which is holding this chunk waiting
+            // for a confirmation that will never come. Saying so again costs one
+            // report entry and covers the keeper that sealed this chunk after
+            // the destroy, or that was not yet a contributor when the story was
+            // dropped the first time.
+            if(theWatermarkRegistry != nullptr)
+            {
+                theWatermarkRegistry->dropStory(chunk->getStoryId());
+            }
             delete chunk;
             ++discarded;
             continue;

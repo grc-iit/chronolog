@@ -1271,3 +1271,164 @@ TEST(KeeperChunkRetentionStore, ConcurrentSealDrainConfirmResendAndReads)
         EXPECT_EQ(store.knownPersisted(100 + s), kSpan * kChunksPerStory);
     }
 }
+
+// ---- destroyed stories ---------------------------------------------------
+//
+// A grapher that has destroyed a story deletes its archive files and refuses
+// every chunk that arrives afterwards, so the receipts of the chunks this
+// keeper holds can never settle. The grapher's last report for the story
+// carries kStoryDroppedWatermark, and the keeper lets the story go.
+
+TEST(KeeperChunkRetentionStore, DropReportFreesEveryChunkOfTheStory)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10); // a tail that still holds the events
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 3, 1, "B"));
+    shipWithReceipt(q, store, kGrapher, 2);
+    ASSERT_EQ(store.retainedChunkCount(sid), 2u);
+
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 2, {1, 2}));
+
+    // freed although both receipts were still pending and W never covered them
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    EXPECT_TRUE(store.getTailSequences(sid, 10).empty());
+    // the story is forgotten, not remembered at the drop watermark
+    EXPECT_EQ(store.knownPersisted(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, DropReportLeavesOtherStoriesAlone)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId dropped = 7;
+    chl::StoryId kept = 8;
+    store.ingestSealedChunk(dropped, makeChunk(dropped, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.ingestSealedChunk(kept, makeChunk(kept, 100, 200, 100, 3, 2, "B"));
+    shipWithReceipt(q, store, kGrapher, 1);
+
+    store.applyReport(dropped, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 1));
+
+    EXPECT_EQ(store.retainedChunkCount(dropped), 0u);
+    EXPECT_EQ(store.retainedChunkCount(kept), 1u);
+    EXPECT_EQ(store.getTailSequences(kept, 10).size(), 3u);
+}
+
+TEST(KeeperChunkRetentionStore, DropReportLeavesAChunkTheExtractionQueueStillOwns)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A")); // stashed, still queued
+
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+
+    // freeing it here would dangle the pointer the drain thread is about to use
+    ASSERT_EQ(q.size(), 1);
+    // the drain callback finds no story and disposes of the chunk itself
+    EXPECT_NE(drainOne(q, store, true), nullptr);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+// The queued chunk's bytes leave the retention total with the story, not with
+// the pointer: once its state is erased nothing else knows how much it counted.
+TEST(KeeperChunkRetentionStore, DropReportReturnsTheBytesOfAQueuedChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A")); // stashed, still queued
+    ASSERT_GT(store.retainedByteCount(), 0u);
+
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+    EXPECT_NE(drainOne(q, store, true), nullptr);
+
+    EXPECT_EQ(store.retainedByteCount(), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, StoryRecreatedAfterADropRetainsAgain)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 1));
+    ASSERT_EQ(store.retainedChunkCount(sid), 0u);
+
+    // the same name acquired again (start_story_recording clears the drop):
+    // the keeper must hold the new chunk until the new grapher watermark
+    // covers it, and must not treat the old drop watermark as covering it
+    store.clearDroppedStory(sid);
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "C"));
+    shipWithReceipt(q, store, kGrapher, 2);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(store.knownPersisted(sid), 0u);
+
+    store.applyReport(sid, watermarkReport(400, kGrapher, 2));
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+// A keeper keeps sealing chunks of a story for as long as its own pipeline
+// holds events, which outlives the destroy: the drop report routinely arrives
+// while events of the destroyed story are still unsealed here. Retaining what
+// seals afterwards puts the store straight back where the drop found it, since
+// the grapher refuses every one of them.
+
+TEST(KeeperChunkRetentionStore, ChunkSealedAfterADropIsNotRetained)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    EXPECT_EQ(q.size(), 0); // and not sent: the grapher would refuse it
+    EXPECT_TRUE(store.getTailSequences(sid, 10).empty());
+}
+
+TEST(KeeperChunkRetentionStore, StoryAcquiredAgainAfterADropRetainsOnceMore)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+
+    // the keeper is told to record the story again: a new incarnation of the id
+    store.clearDroppedStory(sid);
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "new"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(q.size(), 1);
+    drainOne(q, store, true);
+}
+
+TEST(KeeperChunkRetentionStore, ADropIsForgottenAfterItsTimeToLive)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    // a drop is remembered only long enough to cover the chunks still sealing
+    chl::KeeperChunkRetentionStore store(q, 10, 0, false, std::chrono::milliseconds(0), std::chrono::milliseconds(40));
+    chl::StoryId sid = 7;
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "late"));
+    ASSERT_EQ(store.retainedChunkCount(sid), 0u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    store.ingestSealedChunk(sid, makeChunk(sid, 300, 400, 300, 3, 1, "after"));
+
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    drainOne(q, store, true);
+}

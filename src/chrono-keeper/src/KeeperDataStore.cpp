@@ -36,6 +36,10 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 
     // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
+    // The id is in use again, so a drop this keeper was told about earlier
+    // belongs to a story that no longer exists -- story ids are a hash of the
+    // chronicle and story name, so a recreated story reuses the id.
+    theTailStore.clearDroppedStory(story_id);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {

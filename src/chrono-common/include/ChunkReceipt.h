@@ -2,6 +2,7 @@
 #define CHRONOLOG_CHUNK_RECEIPT_H
 
 #include <cstdint>
+#include <climits>
 #include <vector>
 #include <thallium/serialization/stl/vector.hpp>
 
@@ -34,6 +35,14 @@ struct ChunkReceipt
         serT & receipt;
     }
 };
+
+// The watermark a grapher reports for a story it has destroyed. It is not a
+// time: it says the story is gone, its archive files are deleted, and every
+// chunk that arrives for it from now on is refused, so a keeper holding chunks
+// of that story should free them instead of waiting for a confirmation that can
+// never come. A real watermark is a steady_clock-derived nanosecond timestamp
+// and never reaches this value.
+constexpr uint64_t kStoryDroppedWatermark = UINT64_MAX;
 
 // One story's entry in the grapher's watermark report. Every receipt from
 // grapher_instance up to highest_receipt has been written, except those in
