@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 #include <limits>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
+#include <ReceiptTracker.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
 #include <StoryChunkExtractionQueue.h>
@@ -479,6 +482,161 @@ TEST(StoryPipeline_PrependFailure, testDiscardDrainsIncomingChunkAndReturns)
 
     EXPECT_TRUE(late.empty());
     EXPECT_EQ(p.TimelineStart(), timeline_start);
+}
+
+/* ----------------------------------
+  Tests on the receipts mergeEvents() carries
+  ---------------------------------- */
+
+// A grapher gives every chunk a keeper delivers a receipt, which settles only
+// once every chunk holding its events is written. mergeEvents has to put the
+// receipt on each window or salvage chunk the events go to, and must not
+// report the merge complete if it discarded any of them.
+
+struct RecordingReceiptTracker: public chl::ReceiptTracker
+{
+    std::map<uint64_t, int> holds;
+    std::set<uint64_t> merged;
+
+    void holdReceipt(chl::StoryId const&, uint64_t receipt) override { holds[receipt]++; }
+
+    void releaseReceipt(chl::StoryId const&, uint64_t) override {}
+
+    void receiptMerged(chl::StoryId const&, uint64_t receipt) override { merged.insert(receipt); }
+};
+
+// Finalizes the pipeline and counts the windows that carry the receipt.
+static int windowsCarrying(chl::StoryPipeline& p, uint64_t receipt)
+{
+    std::vector<chl::StoryChunk*> windows;
+    p.finalize(windows);
+    int carrying = 0;
+    for(chl::StoryChunk* window: windows)
+    {
+        carrying += static_cast<int>(window->carriedReceipts().count(receipt));
+        delete window;
+    }
+    return carrying;
+}
+
+TEST(StoryPipeline_Receipts, testWindowTakingTheEventsHoldsTheReceipt)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 1);
+}
+
+TEST(StoryPipeline_Receipts, testEventsSpanningTwoWindowsHoldTheReceiptTwice)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, 2 * NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "first"));
+    c.insertEvent(chl::LogEvent(1, NS + NS / 2, 0, 1, "second"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 2);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 2);
+}
+
+TEST(StoryPipeline_Receipts, testLateChunkIsHeldByTheReopenedWindow)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 2 * NS, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "late"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 1);
+}
+
+TEST(StoryPipeline_Receipts, testSalvageChunkHoldsTheReceipt)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryChunkExtractionQueue queue;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachExtractionQueue(&queue);
+    p.attachReceiptTracker(&tracker);
+    uint64_t const timeline_start = p.TimelineStart();
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    late.carryReceipt(4);
+    p.mergeEvents(late);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    ASSERT_EQ(queue.size(), 1);
+    chl::StoryChunk* salvage = queue.ejectStoryChunk();
+    ASSERT_NE(salvage, nullptr);
+    EXPECT_EQ(salvage->carriedReceipts().count(4), 1u);
+    delete salvage;
+    // the salvage chunk holds the events, not a timeline window
+    EXPECT_EQ(windowsCarrying(p, 4), 0);
+}
+
+TEST(StoryPipeline_Receipts, testDiscardedEventsLeaveTheReceiptUnmerged)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachReceiptTracker(&tracker);
+    uint64_t const timeline_start = p.TimelineStart();
+
+    // no extraction queue attached: the late event is discarded
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    late.carryReceipt(4);
+    p.mergeEvents(late);
+
+    EXPECT_EQ(tracker.merged.count(4), 0u);
+    EXPECT_EQ(windowsCarrying(p, 4), 0);
+}
+
+TEST(StoryPipeline_Receipts, testEventAlreadyInTheWindowStillHoldsItForTheResend)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk first("C", "S", 1, 0, NS);
+    first.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    first.carryReceipt(4);
+    p.mergeEvents(first);
+
+    // the keeper re-sends the same chunk before the window is written: nothing
+    // new is inserted, but the window still has to be written for receipt 5
+    chl::StoryChunk resent("C", "S", 1, 0, NS);
+    resent.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    resent.carryReceipt(5);
+    p.mergeEvents(resent);
+
+    EXPECT_EQ(tracker.holds[5], 1);
+    EXPECT_EQ(tracker.merged.count(5), 1u);
+    EXPECT_EQ(windowsCarrying(p, 5), 1);
 }
 
 /* ----------------------------------

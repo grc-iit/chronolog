@@ -16,7 +16,8 @@ namespace chronolog
 // deserializes it.
 //
 // events and unconfirmed_events are the events the keeper retains in the
-// range, split by whether the grapher acknowledged the chunk holding them.
+// range, split by whether the grapher has confirmed the chunk holding them
+// written (acknowledged, and its receipt settled; see ChunkReceipt.h).
 // known_W and hot_floor decide where the player splits the replay between
 // the archive and the keepers; see HotRangeSplit.h.
 struct HotRangeResponse

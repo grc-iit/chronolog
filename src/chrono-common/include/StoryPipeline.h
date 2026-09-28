@@ -28,6 +28,7 @@ namespace chronolog
 
 class StoryChunkIngestionHandle;
 class StoryChunkExtractionQueue;
+class ReceiptTracker;
 
 class StoryPipeline
 {
@@ -86,6 +87,11 @@ public:
     // being discarded. Not owned.
     void attachExtractionQueue(StoryChunkExtractionQueue* queue) { theExtractionQueue = queue; }
 
+    // Optional: when attached, mergeEvents puts the receipts an incoming chunk
+    // carries on every window or salvage chunk its events go to, and reports
+    // the holds and the completed merge to this tracker. Not owned.
+    void attachReceiptTracker(ReceiptTracker* tracker) { theReceiptTracker = tracker; }
+
 private:
     StoryId storyId;
     ChronicleName chronicleName;
@@ -113,6 +119,10 @@ private:
     std::map<chrono_time, StoryChunk*> storyTimelineMap;
 
     StoryChunkExtractionQueue* theExtractionQueue = nullptr;
+    ReceiptTracker* theReceiptTracker = nullptr;
+
+    // see mergeEvents
+    void holdReceipts(StoryChunk& holder, StoryChunk const& other_chunk);
 
     // Added friend tests for the unit tests to test private functions
 

@@ -3,7 +3,9 @@
 // over real engines on the loopback interface. The publisher must send each
 // keeper one coalesced map holding only the stories that keeper contributed
 // to, and the keeper must apply it to its retention store, which is what lets
-// it free chunks that are durable in the archive.
+// it free chunks that are durable in the archive. The receipts that tie a
+// chunk to its write travel both ways: in the grapher's answer to a chunk and
+// in the report.
 
 #include <gtest/gtest.h>
 
@@ -11,13 +13,21 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 
+#include <sstream>
+
 #include <abt.h>
+#include <cereal/archives/binary.hpp>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_errcode.h>
+#include <ChunkReceipt.h>
+#include <RDMATransferAgent.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
@@ -28,6 +38,9 @@
 // the grapher has a DataStoreAdminService.h of its own; name the keeper's
 #include <chrono-keeper/include/DataStoreAdminService.h>
 
+#include <ChunkIngestionQueue.h>
+#include <GrapherRecordingService.h>
+#include <StoryChunkIngestionHandle.h>
 #include <StoryWatermarkRegistry.h>
 #include <WatermarkReportPublisher.h>
 
@@ -39,6 +52,7 @@ namespace
 constexpr char kProtocol[] = "ofi+sockets";
 constexpr uint16_t kKeeper1Provider = 11;
 constexpr uint16_t kKeeper2Provider = 12;
+constexpr uint16_t kGrapherRecordingProvider = 21;
 
 void ensureLogger()
 {
@@ -138,6 +152,15 @@ protected:
     chl::ServiceId keeper2Id;
     chl::StoryWatermarkRegistry registry;
     std::unique_ptr<chl::WatermarkReportPublisher> publisher;
+
+    // Where the grapher's recording service ingests received chunks. Members,
+    // so they outlive the engines TearDown finalizes: a handler that ingests
+    // after answering can never reach a destroyed queue.
+    std::mutex grapherIngestionMutex;
+    chl::StoryChunkDeque grapherActiveDeque;
+    chl::StoryChunkDeque grapherPassiveDeque;
+    chl::ChunkIngestionQueue grapherIngestionQueue;
+    std::unique_ptr<chl::StoryChunkIngestionHandle> grapherIngestionHandle;
 };
 } // namespace
 
@@ -211,4 +234,89 @@ TEST_F(WatermarkReportTransport, PublishWithinTheIntervalSendsNothing)
     std::this_thread::sleep_for(std::chrono::milliseconds(900));
     publisher->publish();
     EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 200; }));
+}
+
+TEST_F(WatermarkReportTransport, ChunkAckCarriesTheGraphersReceipt)
+{
+    constexpr chl::StoryId kStory = 5;
+    grapherIngestionHandle = std::make_unique<chl::StoryChunkIngestionHandle>(grapherIngestionMutex,
+                                                                              &grapherActiveDeque,
+                                                                              &grapherPassiveDeque);
+    grapherIngestionQueue.addStoryIngestionHandle(kStory, grapherIngestionHandle.get());
+    chl::GrapherRecordingService::CreateRecordingService(*grapherEngine,
+                                                         kGrapherRecordingProvider,
+                                                         grapherIngestionQueue,
+                                                         nullptr,
+                                                         &registry);
+    std::string const grapher_self = grapherEngine->self();
+    auto const grapher_port = static_cast<uint16_t>(std::stoul(grapher_self.substr(grapher_self.rfind(':') + 1)));
+    std::unique_ptr<chl::RDMATransferAgent> sender(chl::RDMATransferAgent::CreateRDMATransferAgent(
+            *keeperEngine,
+            chl::ServiceId(kProtocol, "127.0.0.1", grapher_port, kGrapherRecordingProvider)));
+    ASSERT_NE(sender, nullptr);
+
+    // serialized as the keeper's RDMA extractor does
+    chl::StoryChunk chunk("chron", "story", kStory, 100, 200);
+    chunk.insertEvent(chl::LogEvent(kStory, 150, 1, 0, "event"));
+    std::ostringstream serialized(std::ios::binary);
+    {
+        cereal::BinaryOutputArchive archive(serialized);
+        archive(chunk);
+    }
+
+    chl::ChunkReceipt first;
+    ASSERT_EQ(sender->transfer_serialized_story_chunk(serialized.str(), keeper1Id, &first), chl::CL_SUCCESS);
+    chl::ChunkReceipt second;
+    ASSERT_EQ(sender->transfer_serialized_story_chunk(serialized.str(), keeper1Id, &second), chl::CL_SUCCESS);
+
+    EXPECT_EQ(first.grapher_instance, registry.instanceId());
+    EXPECT_EQ(first.receipt, 1u);
+    EXPECT_EQ(second.receipt, 2u);
+    sender.reset();
+
+    // the grapher ingests each chunk after answering, carrying its receipt
+    ASSERT_TRUE(waitFor(
+            [&]
+            {
+                std::lock_guard<std::mutex> lock(grapherIngestionMutex);
+                return grapherActiveDeque.size() == 2;
+            }));
+    std::lock_guard<std::mutex> lock(grapherIngestionMutex);
+    std::set<uint64_t> carried;
+    for(chl::StoryChunk* received: grapherActiveDeque)
+    {
+        carried.insert(received->carriedReceipts().begin(), received->carriedReceipts().end());
+        delete received;
+    }
+    grapherActiveDeque.clear();
+    EXPECT_EQ(carried, (std::set<uint64_t>{1, 2}));
+}
+
+TEST_F(WatermarkReportTransport, PendingReceiptKeepsTheKeepersChunkUntilItSettles)
+{
+    startPublisher(0);
+    constexpr chl::StoryId kStory = 5;
+    registry.registerStory(kStory, 100);
+    publisher->recordContributor(kStory, keeper1Id);
+
+    // the keeper shipped [100, 200) and the grapher answered with a receipt
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    auto* chunk = new chl::StoryChunk("chron", "story", kStory, 100, 200);
+    chunk->insertEvent(chl::LogEvent(kStory, 150, 1, 0, "event"));
+    keeper1->retentionStore.ingestSealedChunk(kStory, chunk);
+    chl::StoryChunk* shipped = keeper1->extractionQueue.ejectStoryChunk();
+    shipped->setGrapherReceipt(registry.instanceId(), receipt);
+    keeper1->retentionStore.markShipped(shipped);
+
+    // W passes the chunk, but its events went to a window that is not written yet
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    registry.advancePersisted(kStory, 100, 200);
+    publisher->publish();
+    ASSERT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 200; }));
+    EXPECT_EQ(keeper1->retentionStore.retainedChunkCount(kStory), 1u);
+
+    registry.releaseReceipt(kStory, receipt);
+    publisher->publish();
+    EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.retainedChunkCount(kStory) == 0; }));
 }

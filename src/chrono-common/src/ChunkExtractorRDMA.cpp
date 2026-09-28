@@ -245,11 +245,14 @@ int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* sto
         oarchive(*story_chunk);
         std::string serialized_story_chunk = oss.str();
 
+        chl::ChunkReceipt receipt;
         auto transfer_return =
-                rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk, reporter_service_id);
+                rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk, reporter_service_id, &receipt);
 
         if(transfer_return == chl::CL_SUCCESS)
         {
+            // the keeper frees the chunk only once the grapher settles this receipt
+            story_chunk->setGrapherReceipt(receipt.grapher_instance, receipt.receipt);
             LOG_INFO("[ChunkExtractorRDMA] Transfered StoryChunk StoryId={} StartTime={}",
                      story_chunk->getStoryId(),
                      story_chunk->getStartTime());

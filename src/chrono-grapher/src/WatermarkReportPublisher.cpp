@@ -43,7 +43,7 @@ void chronolog::WatermarkReportPublisher::recordContributor(chl::StoryId const& 
 void chronolog::WatermarkReportPublisher::publish()
 {
     // endpoint key -> (keeper identity, coalesced story->W report)
-    std::map<std::string, std::pair<ServiceId, std::map<StoryId, uint64_t>>> reports;
+    std::map<std::string, std::pair<ServiceId, std::map<StoryId, StoryWatermarkReport>>> reports;
     {
         std::lock_guard<std::mutex> lock(publisherMutex);
         auto const now = std::chrono::steady_clock::now();
@@ -53,7 +53,7 @@ void chronolog::WatermarkReportPublisher::publish()
         }
         lastPublish = now;
 
-        std::map<StoryId, uint64_t> dirty = theRegistry.snapshotDirty();
+        std::map<StoryId, StoryWatermarkReport> dirty = theRegistry.snapshotDirty();
         if(dirty.empty())
         {
             return;
@@ -83,9 +83,10 @@ void chronolog::WatermarkReportPublisher::publish()
     }
 }
 
-void chronolog::WatermarkReportPublisher::sendReport(std::string const& endpoint_key,
-                                                     chl::ServiceId const& keeper_id,
-                                                     std::map<chl::StoryId, uint64_t> const& watermarks)
+void chronolog::WatermarkReportPublisher::sendReport(
+        std::string const& endpoint_key,
+        chl::ServiceId const& keeper_id,
+        std::map<chl::StoryId, chl::StoryWatermarkReport> const& watermarks)
 {
     try
     {

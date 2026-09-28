@@ -102,11 +102,11 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `story_chunk_duration_secs` | integer | `30`    | How long a chunk remains open.                                        |
 | `acceptance_window_secs`    | integer | `60`    | Maximum allowed age of an incoming event relative to wall-clock time. |
 | `inactive_story_delay_secs` | integer | `180`   | Idle time before an in-memory story is evicted.                       |
-| `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. An event leaving the index does not free its chunk. Must be $>0$. |
+| `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. A chunk with events in the index stays in memory; the index is released when the story retires. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
 | `retention_cap_mb`          | integer | `512`   | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). |
-| `watermark_resend_timeout_secs` | integer | `720` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher's acknowledgment or persisted watermark before sending a chunk again. |
-| `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks to the keepers. |
+| `watermark_resend_timeout_secs` | integer | `720` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. |
+| `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks and unwritten receipts to the keepers. |
 
 
 ### `ExtractionModule`

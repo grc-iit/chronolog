@@ -10,6 +10,7 @@
 
 #include <thallium.hpp>
 
+#include <ChunkReceipt.h>
 #include <StoryChunk.h>
 #include "IngestionQueue.h"
 #include "KeeperStoryPipeline.h"
@@ -80,6 +81,10 @@ public:
     // Grapher watermark report: everything below w for the story is durable;
     // forwards to the retention store's confirmPersisted.
     void applyWatermarkReport(StoryId const&, uint64_t w);
+
+    // Grapher report for one story: its watermark and the receipts it has not
+    // written yet (see ChunkReceipt.h); forwards to the retention store.
+    void applyWatermarkReport(StoryId const&, StoryWatermarkReport const& report);
 
     void startDataCollection(int stream_count);
 

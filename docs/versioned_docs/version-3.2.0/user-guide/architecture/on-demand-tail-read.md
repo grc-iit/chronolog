@@ -325,8 +325,10 @@ Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as s
 
 1. **Capacity Eviction (`tail_capacity`, default 65536)**:
    When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted.
-2. **No Time-Based Age-Out**:
-   `tail_retention_secs` is removed. A low-volume story that never fills `tail_capacity` is archived anyway, because its chunks are sent at seal.
+2. **Release at Retirement**:
+   When a story retires on the keeper (no client has it acquired and its acceptance window has passed), its whole tail index is released and `playback` returns nothing more from this keeper. A low-volume story that never fills `tail_capacity` therefore keeps its last events in memory only while it is recorded.
+3. **No Time-Based Age-Out**:
+   `tail_retention_secs` is removed. A low-volume story is archived anyway, because its chunks are sent at seal.
 3. **Between the Two Phases**:
    Sequences returned by Phase 1 are not pinned. If new events push a sequence out of the tail index before Phase 2 arrives, Phase 2 skips it and the read returns fewer than $N$ events.
 4. **Shutdown Flush (`flushUnshippedChunks`)**:

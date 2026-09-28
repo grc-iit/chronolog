@@ -28,12 +28,12 @@ namespace chronolog
 // failed, reports known_W = 0 and hot_floor = UINT64_MAX and changes neither.
 //
 // Keeper events below B are in the archive, which returns them too, so they
-// are dropped, except those in chunks the grapher never acknowledged: the
-// archive cannot have those, whatever W is.
+// are dropped, except those in chunks the grapher has not confirmed written:
+// the archive may not have those, whatever W is.
 struct HotRangeSplit
 {
     uint64_t boundary = 0;
-    // keeper events at or above the boundary plus unacknowledged ones,
+    // keeper events at or above the boundary plus unconfirmed ones,
     // deduplicated across keepers, in EventSequence order
     std::vector<LogEvent> hotEvents;
     // the hot side reaches back to start: no archive read needed

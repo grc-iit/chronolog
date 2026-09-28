@@ -53,7 +53,8 @@ bool chronolog::RDMATransferAgent::is_receiver_available() const
 
 ///////////////////////////////////
 int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk,
-                                                                  chronolog::ServiceId const& reporter)
+                                                                  chronolog::ServiceId const& reporter,
+                                                                  chronolog::ChunkReceipt* receipt)
 {
     try
     {
@@ -65,13 +66,17 @@ int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string co
                   serialized_story_chunk.size(),
                   tl_bulk.size());
 
-        size_t bytes_transfered = receive_story_chunk.on(receiver_service_handle)(tl_bulk, reporter);
+        chronolog::ChunkReceipt answer = receive_story_chunk.on(receiver_service_handle)(tl_bulk, reporter);
 
-        LOG_DEBUG("[RDMATransferAgent] prepared tl_bulk size {} transfered {} bytes", tl_bulk.size(), bytes_transfered);
+        LOG_DEBUG("[RDMATransferAgent] prepared tl_bulk size {} transfered {} bytes", tl_bulk.size(), answer.bytes);
 
-        if(bytes_transfered == tl_bulk.size())
+        if(answer.bytes == tl_bulk.size())
         {
             LOG_TRACE("[RDMATransferAgent] Successfully transfered bulk");
+            if(receipt != nullptr)
+            {
+                *receipt = answer;
+            }
             return chronolog::CL_SUCCESS;
         }
     }

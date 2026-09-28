@@ -8,6 +8,7 @@
 #include <thallium.hpp>
 
 #include <chronolog_types.h>
+#include <ChunkReceipt.h>
 #include <ServiceId.h>
 
 namespace tl = thallium;
@@ -49,7 +50,7 @@ public:
 private:
     void sendReport(std::string const& endpoint_key,
                     ServiceId const& keeper_id,
-                    std::map<StoryId, uint64_t> const& watermarks);
+                    std::map<StoryId, StoryWatermarkReport> const& watermarks);
 
     static std::string endpointKey(ServiceId const& service_id)
     {
