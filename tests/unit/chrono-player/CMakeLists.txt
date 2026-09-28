@@ -162,6 +162,40 @@ endif()
 
 #------------------------------------------------------------------------------
 
+# Archive visibility (GTest): a replay made after the grapher writes a chunk
+# but before the player has seen the new archive file still returns the
+# chunk's events. Uses the keeper's real retention store, the replay split, the
+# archive reader and the merge.
+add_executable(archive_visibility_test
+    chrono_player_archive_visibility_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+)
+
+target_include_directories(archive_visibility_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_visibility_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_visibility_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_visibility_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-visibility)
+gtest_discover_tests(archive_visibility_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_visibility_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
 # ReplayEventMerge (GTest) — merging archive and keeper events into one replay
 # response; header-only, no network needed
 add_executable(replay_event_merge_test

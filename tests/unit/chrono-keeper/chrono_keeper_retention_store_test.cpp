@@ -385,7 +385,7 @@ TEST(KeeperChunkRetentionStore, MarkSendFailedKeepsChunkReadableAndResendable)
 // ---- shutdown flush --------------------------------------------------------
 
 // A chunk whose transfer failed sits unshipped until the stall timer re-sends it,
-// and watermark_resend_timeout_secs defaults to 720s -- so a keeper shutting down
+// and watermark_resend_timeout_secs defaults to 300s -- so a keeper shutting down
 // inside that window still holds it. The destructor has a last-chance stash for
 // exactly this, but it runs after shutdownExtraction(), by which point the queue
 // has been drained and joined and its own shutdown merely frees what is left. That
@@ -750,6 +750,216 @@ TEST(KeeperChunkRetentionStore, DelayedReportFromTheSameGrapherDoesNotUndoANewer
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);                            // A freed, B queued
 }
 
+// ---- shutdown -----------------------------------------------------------------
+//
+// A keeper frees everything it holds when it exits. An acked chunk may still
+// exist only in the grapher's memory, and a send can fail after the keeper
+// handed the chunk to the extraction queue. So on SIGTERM the keeper sends again
+// whatever is not acked and waits, with extraction and watermark reports still
+// running, until the grapher has confirmed every chunk written.
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitEndsWhenTheGrapherConfirmsEveryChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1); // acked, not written yet
+
+    std::atomic<bool> reporting{false};
+    std::thread grapher(
+            [&]
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                reporting = true;
+                store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+            });
+    bool const confirmed =
+            store.waitUntilDurable(std::chrono::seconds(5), std::chrono::milliseconds(10), std::chrono::seconds(30));
+    bool const returned_after_report = reporting;
+    grapher.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_TRUE(returned_after_report);
+    // confirmed is enough: the tail may keep the chunk
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitSendsAgainAChunkWhoseSendFails)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+
+    // the drain thread: the first send fails once the wait is under way, the
+    // second is acked and the grapher confirms it
+    std::thread drain(
+            [&]
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                int attempts = 0;
+                auto const give_up = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+                while(attempts < 2 && std::chrono::steady_clock::now() < give_up)
+                {
+                    chl::StoryChunk* chunk = q.ejectStoryChunk();
+                    if(chunk == nullptr)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    if(++attempts == 1)
+                    {
+                        store.markSendFailed(chunk);
+                        continue;
+                    }
+                    chunk->setGrapherReceipt(kGrapher, 1);
+                    store.markShipped(chunk);
+                    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+                }
+            });
+    bool const confirmed =
+            store.waitUntilDurable(std::chrono::seconds(3), std::chrono::milliseconds(10), std::chrono::seconds(30));
+    drain.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitSendsAgainAChunkTheGrapherNeverWrote)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    // acked, but the grapher's write failed: its receipt never settles, and no
+    // report will ever confirm this delivery
+    shipWithReceipt(q, store, kGrapher, 1);
+
+    // the drain thread: the wait sends the chunk again, and this time the
+    // grapher writes it and confirms
+    std::thread drain(
+            [&]
+            {
+                auto const give_up = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+                while(std::chrono::steady_clock::now() < give_up)
+                {
+                    chl::StoryChunk* chunk = q.ejectStoryChunk();
+                    if(chunk == nullptr)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    chunk->setGrapherReceipt(kGrapher, 2);
+                    store.markShipped(chunk);
+                    store.applyReport(sid, watermarkReport(200, kGrapher, 2));
+                    return;
+                }
+            });
+    // stall age 0: in production it is watermark_resend_timeout_secs, and only a
+    // delivery that old is assumed lost
+    bool const confirmed =
+            store.waitUntilDurable(std::chrono::seconds(3), std::chrono::milliseconds(10), std::chrono::seconds(0));
+    drain.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+// The grapher issues a fresh receipt for every delivery and can only settle one
+// a whole write window later. So a re-send throws away the receipt the keeper is
+// waiting on and replaces it with a younger one that has to settle from scratch:
+// re-sending faster than the grapher writes starves the wait, and every chunk
+// stays unconfirmed however long the keeper waits.
+TEST(KeeperChunkRetentionStore, ShutdownWaitLeavesARecentDeliveryAloneWhileItsReceiptSettles)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+
+    std::atomic<int> receipts_issued{0};
+    std::atomic<bool> stop{false};
+    // the grapher: acks every delivery under a new receipt and settles it one
+    // write window (150ms here) later
+    std::thread grapher(
+            [&]
+            {
+                std::vector<std::pair<uint64_t, std::chrono::steady_clock::time_point>> writing;
+                while(!stop)
+                {
+                    if(chl::StoryChunk* chunk = q.ejectStoryChunk(); chunk != nullptr)
+                    {
+                        uint64_t const receipt = (uint64_t)++receipts_issued;
+                        chunk->setGrapherReceipt(kGrapher, receipt);
+                        store.markShipped(chunk);
+                        writing.emplace_back(receipt,
+                                             std::chrono::steady_clock::now() + std::chrono::milliseconds(150));
+                    }
+                    auto const now = std::chrono::steady_clock::now();
+                    for(auto it = writing.begin(); it != writing.end();)
+                    {
+                        if(now < it->second)
+                        {
+                            ++it;
+                            continue;
+                        }
+                        store.applyReport(sid, watermarkReport(200, kGrapher, it->first));
+                        it = writing.erase(it);
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                }
+            });
+
+    bool const confirmed =
+            store.waitUntilDurable(std::chrono::seconds(3), std::chrono::milliseconds(10), std::chrono::seconds(30));
+    stop = true;
+    grapher.join();
+
+    EXPECT_TRUE(confirmed);
+    EXPECT_EQ(receipts_issued.load(), 1); // the one delivery, never sent again
+}
+
+// Same thing without the grapher: a chunk acked moments ago must not go back
+// into the extraction queue on the next poll of the wait.
+TEST(KeeperChunkRetentionStore, ShutdownWaitDoesNotResendADeliveryYoungerThanTheStallAge)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1); // acked; its receipt has not settled yet
+
+    EXPECT_FALSE(store.waitUntilDurable(std::chrono::milliseconds(200),
+                                        std::chrono::milliseconds(10),
+                                        std::chrono::seconds(30)));
+    // drains what the wait queued, if anything, so the store can free it
+    EXPECT_EQ(drainOne(q, store, true), nullptr);
+}
+
+TEST(KeeperChunkRetentionStore, ShutdownWaitGivesUpAtTheTimeout)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1); // the grapher never confirms it
+
+    auto const started = std::chrono::steady_clock::now();
+    EXPECT_FALSE(store.waitUntilDurable(std::chrono::milliseconds(300),
+                                        std::chrono::milliseconds(10),
+                                        std::chrono::seconds(30)));
+    auto const waited = std::chrono::steady_clock::now() - started;
+    EXPECT_GE(waited, std::chrono::milliseconds(300));
+    EXPECT_LT(waited, std::chrono::seconds(3));
+}
+
 TEST(KeeperChunkRetentionStore, ChunkShippedWithoutAReceiptFreesOnTheWatermarkAlone)
 {
     ensureLogger();
@@ -817,6 +1027,76 @@ TEST(KeeperChunkRetentionStore, FetchRangeSeparatesEventsTheGrapherHasNotAcknowl
     EXPECT_EQ(response.unconfirmed_events.front().getRecord(), "B#0");
     EXPECT_EQ(response.unconfirmed_events.back().getRecord(), "B#1");
     EXPECT_EQ(response.hot_floor, 100u);
+}
+
+// ---- archive visibility ------------------------------------------------------
+//
+// A report that a chunk is written does not mean a player can read it yet: a
+// player finds new archive files only when it next scans the archive
+// directory, and on a shared file system its listing can lag the grapher's
+// write further. For the archive visibility delay after the keeper learns a
+// chunk is written, the keeper keeps the chunk and serves its events as
+// unconfirmed, so a replay takes them from the keeper.
+
+TEST(KeeperChunkRetentionStore, WrittenChunkIsServedUnconfirmedUntilTheVisibilityDelayPasses)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+
+    auto just_written = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(just_written.events.empty());
+    EXPECT_EQ(just_written.unconfirmed_events.size(), 3u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    auto visible = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_EQ(visible.events.size(), 3u);
+    EXPECT_TRUE(visible.unconfirmed_events.empty());
+}
+
+TEST(KeeperChunkRetentionStore, VisibilityDelayStartsWhenTheChunkIsWritten)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    // sealed well before the grapher acknowledges it
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+
+    auto response = store.fetchRange(sid, 0, 1000, 1000);
+    EXPECT_TRUE(response.events.empty());
+    EXPECT_EQ(response.unconfirmed_events.size(), 3u);
+}
+
+TEST(KeeperChunkRetentionStore, DurableChunkIsFreedOnlyOnceTheVisibilityDelayHasPassed)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100, 0, false, std::chrono::milliseconds(300));
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    ASSERT_NE(drainOne(q, store, /*transfer_ok=*/true), nullptr);
+    store.confirmPersisted(sid, 200);
+    store.releaseStoryTail(sid);
+
+    // durable, but a player may not see the file yet
+    EXPECT_EQ(store.freeDurableChunks(), 0u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    // waiting out the delay is not a stall
+    EXPECT_EQ(store.requeueStalled(std::chrono::seconds(0)), 0u);
+    EXPECT_EQ(q.size(), 0);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    // no further report comes for this chunk; the sweep frees it
+    EXPECT_EQ(store.freeDurableChunks(), 1u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
 }
 
 // ---- concurrency: seal, drain, watermark, re-send and reads at once --------

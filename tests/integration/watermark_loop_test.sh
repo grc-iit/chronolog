@@ -51,8 +51,11 @@ G_CHUNK_SECS=10
 G_ACCEPT_SECS=20
 REPORT_SECS=1
 RESEND_SECS=40
+# archive, player and keepers share one local disk: the player lists a new
+# file on its next rescan (5s)
+VISIBILITY_SECS=6
 # keeper seal delay (template: 10s chunks + 15s acceptance) + grapher loop
-FREE_DEADLINE=$((25 + 2 * (G_ACCEPT_SECS + G_CHUNK_SECS + REPORT_SECS) + 10))
+FREE_DEADLINE=$((25 + 2 * (G_ACCEPT_SECS + G_CHUNK_SECS + REPORT_SECS) + VISIBILITY_SECS + 10))
 
 PASS=0
 FAIL=0
@@ -137,6 +140,7 @@ command -v jq >/dev/null || { say "jq not found"; exit 2; }
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wmark_test_backup"
 jq ".chrono_keeper.DataStoreInternals.tail_capacity = 1 |
     .chrono_keeper.DataStoreInternals.watermark_resend_timeout_secs = $RESEND_SECS |
+    .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \

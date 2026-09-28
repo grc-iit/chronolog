@@ -324,15 +324,15 @@ The client merges all returned keys into a single globally-ordered collection, p
 Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as soon as it seals, and stays in keeper memory until ChronoGrapher confirms it is written to HDF5 (see [Durable Chunk Retention](./durable-retention.md)). The tail index is bounded on its own:
 
 1. **Capacity Eviction (`tail_capacity`, default 65536)**:
-   When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted.
+   When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted and `archive_visibility_delay_secs` has passed (see [Durable Chunk Retention](./durable-retention.md)).
 2. **Release at Retirement**:
    When a story retires on the keeper (no client has it acquired and its acceptance window has passed), its whole tail index is released and `playback` returns nothing more from this keeper. A low-volume story that never fills `tail_capacity` therefore keeps its last events in memory only while it is recorded.
 3. **No Time-Based Age-Out**:
    `tail_retention_secs` is removed. A low-volume story is archived anyway, because its chunks are sent at seal.
 3. **Between the Two Phases**:
    Sequences returned by Phase 1 are not pinned. If new events push a sequence out of the tail index before Phase 2 arrives, Phase 2 skips it and the read returns fewer than $N$ events.
-4. **Shutdown Flush (`flushUnshippedChunks`)**:
-   During clean shutdown, chunks that ChronoGrapher has not acknowledged are handed to the extraction queue before the extraction threads stop.
+4. **Shutdown Wait (`waitUntilDurable`)**:
+   During clean shutdown, before the extraction threads stop, the keeper sends again every chunk ChronoGrapher has not acknowledged and waits until ChronoGrapher confirms every chunk written, or `shutdown_confirm_timeout_secs` passes.
 
 ---
 
