@@ -10,6 +10,7 @@ const config: Config = {
     // Documents which sidebar IDs belong to each version — kept in sync with
     // versioned_sidebars/ and the swizzled DocSidebarNavbarItem component.
     navbarSidebarsByVersion: {
+      '3.2.0': ['gettingStartedSidebar', 'userGuideSidebar', 'clientApiSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'contributingSidebar'],
       '3.1.1': ['gettingStartedSidebar', 'userGuideSidebar', 'clientApiSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'contributingSidebar'],
       '3.0.0': ['gettingStartedSidebar', 'userGuideSidebar', 'clientApiSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'contributingSidebar'],
       '2.8.0': ['gettingStartedSidebar', 'userGuideSidebar', 'clientApiSidebar', 'pluginsSidebar', 'tutorialsSidebar', 'contributingSidebar'],
@@ -76,12 +77,17 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/grc-iit/ChronoLog/tree/main/docs/',
-          lastVersion: '3.1.1',
+          lastVersion: '3.2.0',
           includeCurrentVersion: false,
           versions: {
+            '3.2.0': {
+              label: '3.2.0',
+              path: '',
+              badge: true,
+            },
             '3.1.1': {
               label: '3.1.1',
-              path: '',
+              path: '3.1.1',
               badge: true,
             },
             '3.0.0': {
