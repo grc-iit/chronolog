@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
+find_package(HDF5 REQUIRED COMPONENTS C CXX)
 find_package(GTest REQUIRED)
 find_package(Thallium REQUIRED)
 include(GoogleTest)
@@ -105,3 +106,49 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_module_test DESTINATION tests)
 endif()
 
+# StoryChunkWriter (GTest): how a window reaches the archive -- written through a
+# temporary name and moved into place, and opened without HDF5 file locking
+add_executable(story_chunk_writer_test
+    chrono_common_story_chunk_writer_test.cpp
+)
+
+target_include_directories(story_chunk_writer_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(story_chunk_writer_test PRIVATE ${HDF5_LIBRARY_DIRS})
+
+target_link_libraries(story_chunk_writer_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(story_chunk_writer_test PROPERTIES OUTPUT_NAME chronolog-test-common-story-chunk-writer)
+gtest_discover_tests(story_chunk_writer_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(story_chunk_writer_test DESTINATION tests)
+endif()
+
+# StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
+add_executable(chunk_extractor_csv_test
+    chrono_common_chunk_extractor_csv_test.cpp
+)
+
+target_include_directories(chunk_extractor_csv_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(chunk_extractor_csv_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(chunk_extractor_csv_test PROPERTIES OUTPUT_NAME chronolog-test-common-chunk-extractor-csv)
+gtest_discover_tests(chunk_extractor_csv_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chunk_extractor_csv_test DESTINATION tests)
+endif()
