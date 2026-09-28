@@ -20,13 +20,11 @@
 //                    It needs only the keeper/portal (no player).
 //
 //   3. ARCHIVE READ -- best-effort probe of Client::ReplayStory() over the
-//                      player / query service. A sealed chunk stays in the keeper
-//                      tail until it leaves it: after tail_retention_secs
-//                      (default 60) beyond the chunk's end time, or earlier under
-//                      tail_capacity pressure. A small run hits the former, so
-//                      its samples are readable via the tail well before they
-//                      reach the archive. This leg is informational only and
-//                      never affects the exit code.
+//                      player / query service. A replay answers from the archive
+//                      and, for chunks the grapher has not confirmed written
+//                      yet, from the keepers that still hold them, so the
+//                      samples come back once their chunk has sealed. This leg
+//                      is informational only and never affects the exit code.
 //
 // Each sample carries a per-run tag so the verification is robust to data left
 // in the story by previous runs (playback returns the most-recent `count`
@@ -240,11 +238,10 @@ int main(int argc, char** argv)
     print_events("archive", archive_events);
     if(arc == chronolog::CL_SUCCESS && archive_events.empty())
     {
-        std::cout << "  (archive empty is expected this soon after writing: a sealed chunk stays\n"
-                     "   resident in the keeper tail -- served by playback() above -- and reaches the\n"
-                     "   grapher/player archive only once it leaves the tail, after tail_retention_secs\n"
-                     "   (default 60) beyond the chunk's end time or earlier under tail_capacity\n"
-                     "   pressure. Re-run the archive read after that window to see these samples.)\n";
+        std::cout << "  (an empty replay this soon after writing means the samples' chunk had not\n"
+                     "   sealed on the keepers yet: a chunk seals story_chunk_duration_secs +\n"
+                     "   acceptance_window_secs after its events. Re-run the archive read a little\n"
+                     "   later to see these samples.)\n";
     }
 
     client.ReleaseStory(container, schema);

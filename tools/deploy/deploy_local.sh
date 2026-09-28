@@ -401,7 +401,7 @@ stop() {
     check_work_dir
     # Keeper first, while the grapher is still up: on SIGTERM it sends again every
     # chunk the grapher has not acked, then waits until the grapher confirms every
-    # chunk written, for up to shutdown_confirm_timeout_secs (default 300).
+    # chunk written, for up to shutdown_confirm_timeout_secs (default 150).
     # Stopping the grapher first would leave nothing to send to or confirm.
     #
     # Its grace is larger than the others' because it is the only service with
@@ -409,7 +409,7 @@ stop() {
     # grace is a ceiling, not a fixed wait -- stop_service polls every 1s and
     # returns as soon as the process is gone -- so a fast shutdown still costs
     # about a second.
-    stop_service "${KEEPER_BIN}" 420
+    stop_service "${KEEPER_BIN}" 240
     stop_service "${PLAYER_BIN}" 30
     stop_service "${GRAPHER_BIN}" 30
     stop_service "${VISOR_BIN}" 30

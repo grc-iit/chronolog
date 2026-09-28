@@ -818,9 +818,9 @@ jobs:
             # SIGTERM only the keepers: the graphers must stay up to receive what the
             # keepers send on the way out and to confirm it written. SIGKILL would
             # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
-            # (300) for that confirmation, so allow 420s.
+            # (150) for that confirmation, so allow 240s.
             parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
-            for i in \$(seq 1 140); do
+            for i in \$(seq 1 80); do
               REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
               [ \"\${REMAIN}\" = \"0\" ] && break
               sleep 3

@@ -633,9 +633,9 @@ stop() {
   parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
 
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  # a keeper waits up to shutdown_confirm_timeout_secs (default 300) for the
+  # a keeper waits up to shutdown_confirm_timeout_secs (default 150) for the
   # grapher, which is stopped only after the keepers, to confirm its chunks
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 420 &
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 240 &
 
   wait
 

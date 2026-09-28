@@ -31,6 +31,54 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_chunk_test DESTINATION tests)
 endif()
 
+# Conf template (GTest): the timing relationships the shipped template must keep
+add_executable(conf_template_test
+    chrono_common_conf_template_test.cpp
+)
+
+target_include_directories(conf_template_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_compile_definitions(conf_template_test PRIVATE
+    CHRONOLOG_CONF_TEMPLATE="${CMAKE_SOURCE_DIR}/conf/default_conf.json.in"
+)
+
+target_link_libraries(conf_template_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(conf_template_test PROPERTIES OUTPUT_NAME chronolog-test-common-conf-template)
+gtest_discover_tests(conf_template_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(conf_template_test DESTINATION tests)
+endif()
+
+# DataStoreConf (GTest): the DataStoreInternals knobs and their range checks
+add_executable(data_store_conf_test
+    chrono_common_data_store_conf_test.cpp
+)
+
+target_include_directories(data_store_conf_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(data_store_conf_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(data_store_conf_test PROPERTIES OUTPUT_NAME chronolog-test-common-data-store-conf)
+gtest_discover_tests(data_store_conf_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(data_store_conf_test DESTINATION tests)
+endif()
+
 # StoryPipeline (GTest)
 add_executable(story_pipeline_test
     chrono_common_story_pipeline_test.cpp
