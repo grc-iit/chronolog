@@ -39,6 +39,12 @@ chronolog::PlaybackService::~PlaybackService()
 {
     LOG_DEBUG("[PlaybackService] Destructor called. Cleaning up...");
 
+    {
+        std::lock_guard<std::mutex> lock(hotFetchMutex);
+        for(auto& client: hotFetchClients) { delete client.second; }
+        hotFetchClients.clear();
+    }
+
     std::lock_guard<std::mutex> lock(playbackServiceMutex);
     for(auto& agent: responseSenders)
     {
@@ -49,6 +55,34 @@ chronolog::PlaybackService::~PlaybackService()
 
     //remove provider finalization callback from the engine's list
     playbackEngine.pop_finalize_callback(this);
+}
+
+//////////////////
+
+chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(chl::ServiceId const& keeper_service_id)
+{
+    {
+        std::lock_guard<std::mutex> lock(hotFetchMutex);
+        auto client_iter = hotFetchClients.find(keeper_service_id.get_service_endpoint());
+        if(client_iter != hotFetchClients.end())
+        {
+            return client_iter->second;
+        }
+    }
+    // engine lookup happens outside the cache mutex
+    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(playbackEngine, keeper_service_id);
+    if(client == nullptr)
+    {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(hotFetchMutex);
+    auto emplaced = hotFetchClients.emplace(keeper_service_id.get_service_endpoint(), client);
+    if(!emplaced.second)
+    {
+        // another thread won the race; keep the cached one
+        delete client;
+    }
+    return emplaced.first->second;
 }
 
 //////////////////
@@ -105,42 +139,66 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         }
     }
 
-    chl::chrono_time active_window_boundary = theActiveDataStore.get_active_window_boundary();
+    // The hot portion of the response comes straight from the story's keepers
+    // (on-demand pull over the roster the visor delivered at story start),
+    // and replay splits at B = min over keepers of their hot floor; see
+    // HotRangeSplit.h for why that boundary is complete. No keepers at all ->
+    // archive-only (degraded, correct for persisted data).
+    constexpr uint64_t kHotFetchMaxEvents = 262144;
 
-    LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} active_window_boundary {}",
+    std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
+
+    std::vector<chl::HotRangeResponse> hot_responses;
+    hot_responses.reserve(story_keepers.size());
+    for(auto const& keeper_service_id: story_keepers)
+    {
+        chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
+        if(fetch_client == nullptr)
+        {
+            continue; // unreachable keeper: drops out of the min, B only rises
+        }
+        hot_responses.push_back(fetch_client->fetchRange(story_id, start_time, end_time, kHotFetchMaxEvents));
+        if(hot_responses.back().truncated)
+        {
+            LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
+                        query_id,
+                        story_id,
+                        chl::to_string(keeper_service_id),
+                        kHotFetchMaxEvents);
+        }
+    }
+    chl::HotRangeSplit split = chl::splitHotRange(hot_responses, start_time, end_time);
+
+    LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",
               query_id,
               story_id,
               start_time,
               end_time,
-              active_window_boundary);
+              story_keepers.size(),
+              split.boundary,
+              split.hotEvents.size());
 
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
 
     chl::PlaybackQueryResponse* query_response = new chl::PlaybackQueryResponse(query_id);
 
-    // handle the active in-memory portion of the query response
-    if(active_window_boundary < end_time)
+    // hot side: merged keeper events at or above B
+    for(auto const& log_event: split.hotEvents)
     {
-        // portion of the playback response is coming from
-        // the active PlayerDataStore
-        theActiveDataStore.get_active_story_events(
-                story_id,
-                (start_time < active_window_boundary ? active_window_boundary : start_time),
-                end_time,
-                query_response->events);
-
-        LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} events from active DataStore",
-                  query_id,
-                  story_id,
-                  query_response->events.size());
+        query_response->events.push_back(
+                chl::Event{log_event.eventTime, log_event.clientId, log_event.eventIndex, log_event.logRecord});
     }
 
-    bool response_is_complete = false;
-    if(active_window_boundary <= start_time)
-    {
-        response_is_complete = true;
-    }
+    LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} hot events from {} keeper(s)",
+              query_id,
+              story_id,
+              query_response->events.size(),
+              story_keepers.size());
+
+    // archive side covers [start_time, B); complete without it only when the
+    // hot side reaches back to start_time
+    bool response_is_complete = split.complete;
 
     if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
     {
@@ -151,19 +209,17 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
 
     if(!response_is_complete)
     {
-        // end_time > active_window_boundary
         // portion of the playback response is coming from the archived files
 
         // create an archiveRequest and put it
         // onto the ArchiveReadingRequestQueue
 
-        chl::ArchiveReadingRequest* a_request =
-                new chl::ArchiveReadingRequest(queryResponseSender,
-                                               query_id,
-                                               chronicle_name,
-                                               story_name,
-                                               start_time,
-                                               (end_time < active_window_boundary ? end_time : active_window_boundary));
+        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
+                                                                               query_id,
+                                                                               chronicle_name,
+                                                                               story_name,
+                                                                               start_time,
+                                                                               split.boundary);
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }

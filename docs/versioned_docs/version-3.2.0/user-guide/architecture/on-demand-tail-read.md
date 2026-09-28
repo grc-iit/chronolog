@@ -35,28 +35,28 @@ ChronoLog 3.1 introduces **On-Demand Keeper Tail Read** (`playback`), allowing c
   <text x="60" y="164" fill="#9ca3b0" fontSize="7">{"Open, active StoryChunks within [chunk_duration + acceptance_window]"}</text>
   <text x="60" y="174" fill="#4a90a4" fontSize="6.5">ActiveTailSource provides live provisional reads under sequencingMutex</text>
 
-  {/* Arrow: Timeline -> KeeperTailStore */}
+  {/* Arrow: Timeline -> KeeperChunkRetentionStore */}
   <line x1="250" y1="180" x2="250" y2="198" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="250,200 246,194 254,194" fill="#c3e04d" fillOpacity="0.6"/>
   <text x="256" y="192" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">seal on acceptance window decay</text>
 
-  {/* KeeperTailStore (Per-Story Tail Index) */}
+  {/* KeeperChunkRetentionStore (Per-Story Tail Index) */}
   <rect x="36" y="202" width="428" height="56" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="52" cy="222" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="60" y="226" fill="#c3e04d" fontSize="9" fontWeight="600">KeeperTailStore (Per-Story Tail Index)</text>
+  <text x="60" y="226" fill="#c3e04d" fontSize="9" fontWeight="600">KeeperChunkRetentionStore (Per-Story Tail Index)</text>
   <text x="60" y="238" fill="#9ca3b0" fontSize="7">{"In-memory index: EventSequence \u2192 StoryChunk* (zero-copy single payload)"}</text>
-  <text x="60" y="248" fill="#9ca3b0" fontSize="6.5">{"Manages tail_capacity, tail_retention_secs age-out, and pin protection (kPinTicks)"}</text>
+  <text x="60" y="248" fill="#9ca3b0" fontSize="6.5">{"Owns each sealed chunk until it is persisted; tail_capacity bounds the index"}</text>
 
-  {/* Arrow: KeeperTailStore -> Extraction Queue */}
+  {/* Arrow: KeeperChunkRetentionStore -> Extraction Queue */}
   <line x1="250" y1="258" x2="250" y2="276" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
   <polygon points="250,278 246,272 254,272" fill="#c3e04d" fillOpacity="0.6"/>
-  <text x="256" y="270" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">age out or capacity eviction</text>
+  <text x="256" y="270" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">sent at seal</text>
 
   {/* StoryChunk Extraction Queue */}
   <rect x="36" y="280" width="428" height="48" rx="6" fill="#252b3b" stroke="#3a4050" strokeWidth="0.75"/>
   <circle cx="52" cy="298" r="3" fill="#c3e04d" fillOpacity="0.8"/>
   <text x="60" y="302" fill="#e4e7ed" fontSize="9" fontWeight="600">StoryChunk Extraction Queue</text>
-  <text x="60" y="316" fill="#9ca3b0" fontSize="7">Retired chunks drained via RDMA bulk transfer to ChronoGrapher / Player</text>
+  <text x="60" y="316" fill="#9ca3b0" fontSize="7">Sealed chunks sent via RDMA bulk transfer to ChronoGrapher</text>
 
   {/* === CLIENT TAIL READ CONSUMER (Right Side) === */}
   <rect x="500" y="110" width="200" height="170" rx="8" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
@@ -76,7 +76,7 @@ ChronoLog 3.1 introduces **On-Demand Keeper Tail Read** (`playback`), allowing c
   <text x="600" y="256" textAnchor="middle" fill="#9ca3b0" fontSize="6">Bypasses Player and HDF5 disks</text>
 
   {/* Connecting Arrows to Client */}
-  {/* KeeperTailStore -> Client (Sealed Tail Read) */}
+  {/* KeeperChunkRetentionStore -> Client (Sealed Tail Read) */}
   <line x1="464" y1="230" x2="498" y2="230" stroke="#c3e04d" strokeWidth="0.85" strokeOpacity="0.7"/>
   <polygon points="500,230 494,226 494,234" fill="#c3e04d" fillOpacity="0.8"/>
   <text x="482" y="222" textAnchor="middle" fill="#c3e04d" fontSize="6" fontWeight="600">Sealed Tail</text>
@@ -92,13 +92,13 @@ ChronoLog 3.1 introduces **On-Demand Keeper Tail Read** (`playback`), allowing c
 
 ## 1. Motivation & Architecture Overview
 
-Historically, retrieving logged events required querying the **ChronoPlayer** via `Client::ReplayStory`. While `ReplayStory` provides complete historical replays across persistent HDF5 files, it incurs indexing, disk I/O, and cross-tier network latencies (~1–2 seconds per query).
+Historically, retrieving logged events required querying the **ChronoPlayer** via `Client::ReplayStory`. `ReplayStory` returns a whole time range — reading what is already archived from HDF5 and the rest from the keepers — but it incurs indexing, disk I/O, and cross-tier network latencies (~1–2 seconds per query).
 
 Many real-time use cases — such as live dashboards, monitoring alerts, stream processing, and rapid failover recovery — only need the **last $N$ events** produced by a story. 
 
 On-Demand Tail Read provides:
 - **Direct Client $\leftrightarrow$ Keeper Communication**: Clients communicate directly with the story's assigned ChronoKeepers via lightweight Thallium RPCs. No ChronoPlayer or ChronoVisor is in the read path.
-- **Zero-Copy In-Memory Indexing**: Events are indexed directly by their memory pointers in sealed chunks retained before extraction.
+- **Zero-Copy In-Memory Indexing**: Events are indexed directly by their memory pointers in the sealed chunks the keeper retains until they are persisted.
 - **Two-Phase Scatter/Gather Protocol**: Minimal network transfer — exactly $N$ payloads cross the wire across the entire keeper group.
 - **Writer-Mode Compatibility**: Clients instantiated in writer-only mode (`ClientPortalServiceConf` only) can perform tail reads without configuring query endpoints.
 
@@ -117,18 +117,18 @@ See the [CLI API Reference](../../client/cli/api.md). Remember that an Event is 
 
 ## 2. In-Memory Retention & Single Payload Model
 
-In ChronoKeeper, when a `StoryChunk` seals (past `chunk_duration + acceptance_window`), ownership is handed to `KeeperTailStore` rather than directly to the extraction queue.
+In ChronoKeeper, when a `StoryChunk` seals (past `chunk_duration + acceptance_window`), `KeeperChunkRetentionStore` takes ownership of it: it indexes the chunk's events for tail reads and sends the chunk to ChronoGrapher at once.
 
 <svg viewBox="0 0 720 260" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
   <rect x="0" y="0" width="720" height="260" rx="10" fill="#1e2330"/>
 
   {/* Title */}
-  <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">KEEPERTAILSTORE SINGLE-PAYLOAD INDEXING MODEL</text>
+  <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">RETENTION STORE SINGLE-PAYLOAD INDEXING MODEL</text>
 
-  {/* Top: KeeperTailStore (Index Map) */}
+  {/* Top: KeeperChunkRetentionStore (Index Map) */}
   <rect x="30" y="36" width="660" height="106" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="46" cy="52" r="3" fill="#c3e04d" fillOpacity="0.8"/>
-  <text x="54" y="56" fill="#c3e04d" fontSize="9" fontWeight="600">KeeperTailStore (Per Story Index)</text>
+  <text x="54" y="56" fill="#c3e04d" fontSize="9" fontWeight="600">KeeperChunkRetentionStore (Per Story Index)</text>
   <text x="280" y="56" fill="#9ca3b0" fontSize="7">{"Sorted Index: std::map<EventSequence, StoryChunk*> (Key lookup in O(log K))"}</text>
 
   {/* Table Headers */}
@@ -164,7 +164,7 @@ In ChronoKeeper, when a `StoryChunk` seals (past `chunk_duration + acceptance_wi
   <rect x="30" y="172" width="320" height="74" rx="6" fill="#252b3b" stroke="#4a90a4" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="46" cy="188" r="3" fill="#4a90a4" fillOpacity="0.8"/>
   <text x="54" y="192" fill="#4a90a4" fontSize="8" fontWeight="600">{"Retained StoryChunk A (0x7f8a1000)"}</text>
-  <text x="210" y="192" fill="#9ca3b0" fontSize="6.5">pinned / unarchived</text>
+  <text x="210" y="192" fill="#9ca3b0" fontSize="6.5">retained until persisted</text>
 
   <rect x="42" y="202" width="140" height="32" rx="3" fill="#1e2330" stroke="#3a4050" strokeWidth="0.5"/>
   <text x="112" y="216" textAnchor="middle" fill="#e4e7ed" fontSize="6.5">LogEvent 1</text>
@@ -178,7 +178,7 @@ In ChronoKeeper, when a `StoryChunk` seals (past `chunk_duration + acceptance_wi
   <rect x="370" y="172" width="320" height="74" rx="6" fill="#252b3b" stroke="#4a90a4" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="386" cy="188" r="3" fill="#4a90a4" fillOpacity="0.8"/>
   <text x="394" y="192" fill="#4a90a4" fontSize="8" fontWeight="600">{"Retained StoryChunk B (0x7f8a2000)"}</text>
-  <text x="550" y="192" fill="#9ca3b0" fontSize="6.5">pinned / unarchived</text>
+  <text x="550" y="192" fill="#9ca3b0" fontSize="6.5">retained until persisted</text>
 
   <rect x="382" y="202" width="140" height="32" rx="3" fill="#1e2330" stroke="#3a4050" strokeWidth="0.5"/>
   <text x="452" y="216" textAnchor="middle" fill="#e4e7ed" fontSize="6.5">LogEvent 3</text>
@@ -190,8 +190,8 @@ In ChronoKeeper, when a `StoryChunk` seals (past `chunk_duration + acceptance_wi
 
 </svg>
 
-- **Single Payload Footprint**: `KeeperTailStore` maintains a sorted map `EventSequence -> StoryChunk*`. The actual `LogEvent` payload resides solely in the `StoryChunk`'s map node accessed via `StoryChunk::findEvent()`.
-- **Deferred Archival**: A retained chunk is forwarded to the `StoryChunkExtractionQueue` for RDMA transfer to ChronoGrapher only after its events age out of the tail window, are evicted by capacity limits, or are handed over by the shutdown flush (see §4).
+- **Single Payload Footprint**: `KeeperChunkRetentionStore` maintains a sorted map `EventSequence -> StoryChunk*`. The actual `LogEvent` payload resides solely in the `StoryChunk`'s map node accessed via `StoryChunk::findEvent()`.
+- **Freed once persisted**: A chunk is sent to ChronoGrapher when it seals, but stays in keeper memory until ChronoGrapher confirms its events are written to HDF5 and no tail-index entry points at it. See [Durable Chunk Retention](./durable-retention.md).
 
 ---
 
@@ -251,12 +251,12 @@ A story's events are striped across its assigned ChronoKeepers. To gather the gl
   {/* K1 -> TR response */}
   <line x1="470" y1="168" x2="274" y2="168" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="3,2"/>
   <polygon points="272,168 278,164 278,172" fill="#9ca3b0"/>
-  <text x="370" y="163" textAnchor="middle" fill="#9ca3b0" fontSize="6.5">{"up to N EventSequence keys (pinned)"}</text>
+  <text x="370" y="163" textAnchor="middle" fill="#9ca3b0" fontSize="6.5">{"up to N EventSequence keys"}</text>
 
   {/* K2 -> TR response */}
   <line x1="630" y1="190" x2="274" y2="190" stroke="#9ca3b0" strokeWidth="0.75" strokeDasharray="3,2"/>
   <polygon points="272,190 278,186 278,194" fill="#9ca3b0"/>
-  <text x="450" y="185" textAnchor="middle" fill="#9ca3b0" fontSize="6.5">{"up to N EventSequence keys (pinned)"}</text>
+  <text x="450" y="185" textAnchor="middle" fill="#9ca3b0" fontSize="6.5">{"up to N EventSequence keys"}</text>
 
   {/* Global Selection Box on KeeperTailReader */}
   <rect x="200" y="222" width="140" height="42" rx="4" fill="#252b3b" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.7"/>
@@ -304,7 +304,7 @@ A story's events are striped across its assigned ChronoKeepers. To gather the gl
 
 ### Phase 1 — Scatter (Keys Only)
 1. The client issues asynchronous `tail_get_sequences(story_id, n)` RPCs concurrently to all keepers assigned to the story.
-2. Each keeper queries `KeeperTailStore::getTailSequences` and returns up to $n$ newest `EventSequence` keys (each a tuple of `(chrono_time, clientId, index)`).
+2. Each keeper queries `KeeperChunkRetentionStore::getTailSequences` and returns up to $n$ newest `EventSequence` keys (each a tuple of `(chrono_time, clientId, index)`).
 3. Total Phase 1 latency is bounded by the slowest keeper rather than the sum, and per-RPC timeouts (`kTailReadRpcTimeoutMs = 5000ms`) isolate failed keepers.
 
 ### Selection
@@ -312,27 +312,25 @@ The client merges all returned keys into a single globally-ordered collection, p
 
 ### Phase 2 — Gather (Payloads for Winners Only)
 1. The client issues concurrent `tail_get_events(story_id, selected_seqs)` RPCs to each keeper that holds winning keys.
-2. Each keeper retrieves the specific `LogEvent` payloads using `KeeperTailStore::getTailEvents`.
+2. Each keeper retrieves the specific `LogEvent` payloads using `KeeperChunkRetentionStore::getTailEvents`.
 3. The client inserts returned events into a `std::map<EventSequence, Event>` to ensure cross-keeper deduplication and ascending ordering, returning a `std::vector<Event>`.
 
 **Network Guarantee**: Exactly $N$ event payloads are transmitted across the network, independent of the number of keepers in the recording group.
 
 ---
 
-## 4. Retention Lifecycle & Starvation Prevention
+## 4. Retention and Memory Bounds
 
-Retaining sealed chunks in keeper memory introduces the need for robust memory bounds and archival guarantees:
+Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as soon as it seals, and stays in keeper memory until ChronoGrapher confirms it is written to HDF5 (see [Durable Chunk Retention](./durable-retention.md)). The tail index is bounded on its own:
 
-### Archival Safety Mechanisms
-1. **Time-Based Age-Out (`tail_retention_secs`, default 60s)**:
-   Sealed chunks age out after `tail_retention_secs` beyond their end time and are forwarded to the extraction queue. This ensures low-volume stories that never fill `tail_capacity` are still archived to persistent storage.
-2. **Capacity Eviction (`tail_capacity`, default 65536)**:
-   When total retained events for a story exceed `tail_capacity`, oldest events are evicted immediately. Once a chunk has zero remaining indexed events, it is stashed to the extraction queue.
-3. **Pin Protection (`kPinTicks`) with Anti-Starvation (`pinDeferredTicks`)**:
-   - When Phase 1 returns sequences from a chunk, that chunk is **pinned** for `kPinTicks` (~3 maintenance ticks / ~3 seconds) so a concurrent age-out does not delete the payload before Phase 2 arrives.
-   - To prevent rapid polling from permanently deferring archival, pins defer age-out for at most `kPinTicks` consecutive ticks per story (`pinDeferredTicks`). Archival proceeds regardless of active reads.
-4. **Shutdown Flush (`flushRetainedChunks`)**:
-   During clean shutdown, `flushRetainedChunks()` explicitly hands all retained chunks to the extraction queue before extraction threads are stopped, preventing data loss.
+1. **Capacity Eviction (`tail_capacity`, default 65536)**:
+   When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted.
+2. **No Time-Based Age-Out**:
+   `tail_retention_secs` is removed. A low-volume story that never fills `tail_capacity` is archived anyway, because its chunks are sent at seal.
+3. **Between the Two Phases**:
+   Sequences returned by Phase 1 are not pinned. If new events push a sequence out of the tail index before Phase 2 arrives, Phase 2 skips it and the read returns fewer than $N$ events.
+4. **Shutdown Flush (`flushUnshippedChunks`)**:
+   During clean shutdown, chunks that ChronoGrapher has not acknowledged are handed to the extraction queue before the extraction threads stop.
 
 ---
 
@@ -340,7 +338,7 @@ Retaining sealed chunks in keeper memory introduces the need for robust memory b
 
 By default, events become visible in `playback()` once their chunk seals (`chunk_duration + acceptance_window`, ~25–30s). For latency-critical streaming applications, ChronoKeeper provides the optional **`live_tail_read`** setting.
 
-- **Mechanism**: `KeeperStoryPipeline` implements the `ActiveTailSource` interface, registering with `KeeperTailStore`. When enabled, `getTailSequences` unions the sealed tail with the unsealed active timeline (`storyTimelineMap`), and `getTailEvents` falls back to `findActiveEvent()` under `sequencingMutex`.
+- **Mechanism**: `KeeperStoryPipeline` implements the `ActiveTailSource` interface, registering with `KeeperChunkRetentionStore`. When enabled, `getTailSequences` unions the sealed tail with the unsealed active timeline (`storyTimelineMap`), and `getTailEvents` falls back to `findActiveEvent()` under `sequencingMutex`.
 - **Visibility Latency**: Send-to-visible latency drops from ~20 seconds to **~0.5 s on average, bounded by ~1 s**. An event becomes readable only once `collectIngestedEvents()` merges it into `storyTimelineMap`, and that maintenance tick runs once per second, so the tick interval — not the RPC — sets this floor.
 - **Provisional Ordering**: Because events inside the active acceptance window arrive out of order from distributed clients, active window reads are provisional (a late event may sort behind an already-seen event until sealed).
 
@@ -359,6 +357,6 @@ To prevent data loss when stories are released, retired, or unhooked:
 | Metric | Persistent Replay (`ReplayStory`) | Sealed Tail Read (`playback`) | Live Tail Read (`live_tail_read = true`) |
 |---|---|---|---|
 | **Query Latency** | ~1000–2500 ms (disk / HDF5) | **~0.4 ms median, 1–5 ms p90–p99** (keeper RAM) | **~0.4 ms median, 1–5 ms p90–p99** (keeper RAM) |
-| **Visibility Delay** | After HDF5 archival (~60–240 s) | After chunk seal (~25–30 s) | **~0.5 s mean, ~1 s max** (one ingestion tick) |
+| **Visibility Delay** | After chunk seal (~25–30 s); recent events come from keeper memory | After chunk seal (~25–30 s) | **~0.5 s mean, ~1 s max** (one ingestion tick) |
 | **Network Overhead** | Full range transfer via Player | Exactly $N$ payloads | Exactly $N$ payloads |
 | **Consistency** | Strictly ordered / final | Strictly ordered / final | Provisional within acceptance window |

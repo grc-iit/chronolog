@@ -92,7 +92,7 @@ Per-component log sink. Wrapped under a `monitor` key and parsed by `LogConf`.
 | `filenum`    | integer | Number of rotated files to keep.                                                    |
 | `flushlevel` | string  | Minimum level that triggers an immediate flush to disk.                             |
 
-### `DataStoreInternals` — story-chunk & tail-store tuning {#datastoreinternals--story-chunk-tuning}
+### `DataStoreInternals` — story-chunk, tail and retention tuning {#datastoreinternals--story-chunk-tuning}
 
 Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `DataStoreConf`. See [Performance Tuning → Story Chunk Settings](./performance-tuning.md#story-chunk-settings) for the semantics of each field.
 
@@ -102,9 +102,11 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `story_chunk_duration_secs` | integer | `30`    | How long a chunk remains open.                                        |
 | `acceptance_window_secs`    | integer | `60`    | Maximum allowed age of an incoming event relative to wall-clock time. |
 | `inactive_story_delay_secs` | integer | `180`   | Idle time before an in-memory story is evicted.                       |
-| `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events retained per story in keeper memory for tail reads before aging out. Must be $>0$. |
+| `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. An event leaving the index does not free its chunk. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
-| `tail_retention_secs`       | integer | `60`    | *(Keeper only)* Upper bound in seconds a sealed chunk may sit in the keeper tail before archival to ChronoGrapher. `0` disables age-out. |
+| `retention_cap_mb`          | integer | `512`   | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). |
+| `watermark_resend_timeout_secs` | integer | `720` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher's acknowledgment or persisted watermark before sending a chunk again. |
+| `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks to the keepers. |
 
 
 ### `ExtractionModule`
@@ -125,6 +127,8 @@ Present under `chrono_keeper` and `chrono_grapher`. Parsed by `ExtractionModuleC
 | `single_endpoint_rdma_extractor`  | keeper, grapher     | `receiving_endpoint` (object: `protocol_conf`, `service_ip`, `service_base_port`, `service_provider_id`) | Drains each StoryChunk to one RDMA endpoint (typically a ChronoGrapher's `KeeperGrapherDrainService`).                |
 | `dual_endpoint_rdma_extractor`    | keeper              | Two `receiving_endpoint` entries                                                            | Fans each StoryChunk out to two RDMA endpoints simultaneously (e.g. ChronoGrapher + ChronoPlayer).                    |
 | `hdf5_extractor`                  | grapher             | `hdf5_archive_dir` (string)                                                                 | Serializes each StoryChunk into the HDF5 archive under `hdf5_archive_dir`.                                            |
+
+Keepers ship with `single_endpoint_rdma_extractor` to ChronoGrapher. Replay reads recent events from the keepers directly, so the ChronoPlayer copy that `dual_endpoint_rdma_extractor` sends is no longer needed.
 
 See the keeper and grapher blocks in [`conf/default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/conf/default_conf.json.in) for fully expanded examples.
 

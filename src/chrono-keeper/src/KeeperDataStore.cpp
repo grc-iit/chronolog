@@ -148,11 +148,6 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
     {
         (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
     }
-
-    // Chunks sealed above went into the tail store, which forwards them for
-    // archival only on capacity eviction or shutdown. Age them out on the same
-    // clock reading so a low-volume story is still archived while the keeper runs.
-    theTailStore.ageOutChunks(current_time);
 }
 ////////////////////////
 
@@ -271,9 +266,19 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
                         "chunk for archival.",
                         recovery_chunk->getEventCount(),
                         story_id);
-            theExtractionQueue.stashStoryChunk(recovery_chunk);
+            // through the retention store (which stashes it to the extraction
+            // queue itself) so the recovery data gets the same durability
+            // gating as a regular sealed chunk
+            theTailStore.ingestSealedChunk(story_id, recovery_chunk);
         }
     }
+}
+
+////////////////////////
+
+void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id, uint64_t w)
+{
+    theTailStore.confirmPersisted(story_id, w);
 }
 
 ////////////////////////
@@ -300,6 +305,10 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
+        // re-send retained chunks whose ack or covering watermark never
+        // arrived (transient grapher outage); the store's mutex makes the
+        // call safe and idempotent across the data-collection ULTs
+        theTailStore.requeueStalled(std::chrono::seconds(watermark_resend_timeout_secs));
     }
     LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }

@@ -42,7 +42,7 @@ ChronoLog 3.1 provides two distinct modes for reading events:
 | Feature | On-Demand Tail Read (`playback`) | Historical Replay (`ReplayStory`) |
 |---|---|---|
 | **Target Data** | Most recent $N$ events of a story | All events in time range `[start, end)` |
-| **Data Source** | ChronoKeeper in-memory buffers (`KeeperTailStore`) | ChronoPlayer / HDF5 persistent archives |
+| **Data Source** | ChronoKeeper in-memory buffers (`KeeperChunkRetentionStore`) | ChronoPlayer: HDF5 archives, plus ChronoKeeper memory for events not yet persisted |
 | **Latency** | **~0.4 ms median, 1–5 ms at p90–p99** | Batch (~1–2 seconds) |
 | **Client Mode** | Writer-only mode supported | Requires Reader mode (`ClientQueryServiceConf`) |
 | **Use Cases** | Live dashboards, real-time alerts, stream tailing | Historical analysis, batch processing, audit logs |

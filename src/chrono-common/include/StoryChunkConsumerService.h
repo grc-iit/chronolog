@@ -36,7 +36,9 @@ public:
 
     void receiver_available(tl::request const& request) { request.respond(true); }
 
-    void receive_story_chunk(tl::request const& request, tl::bulk& b)
+    // The reporter identity (watermark-report target) travels with every
+    // chunk; the player consumes chunks without reporting, so it is ignored.
+    void receive_story_chunk(tl::request const& request, tl::bulk& b, ServiceId const& /*reporter*/)
     {
         try
         {

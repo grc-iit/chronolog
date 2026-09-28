@@ -90,26 +90,21 @@
       "acceptance_window_secs": 15,
       "inactive_story_delay_secs": 120,
       "tail_capacity": 65536,
-      "live_tail_read": false,
-      "tail_retention_secs": 60
+      "retention_cap_mb": 512,
+      "watermark_resend_timeout_secs": 720,
+      "live_tail_read": false
     },
     "ExtractionModule": {
         "extraction_stream_count":2,
         "extraction_protocol": "ofi+sockets",
         "extractors": {
             "extractor_to_grapher": {
-                "type": "dual_endpoint_rdma_extractor",
-                "grapher_receiving_endpoint": {
+                "type": "single_endpoint_rdma_extractor",
+                "receiving_endpoint": {
                     "protocol_conf": "ofi+sockets",
                     "service_ip": "127.0.0.1",
                     "service_base_port": 3333,
                     "service_provider_id": 33
-                },
-                "player_receiving_endpoint": {
-                    "protocol_conf": "ofi+sockets",
-                    "service_ip": "127.0.0.1",
-                    "service_base_port": 7878,
-                    "service_provider_id": 78
                 }
             }
         }
@@ -157,7 +152,8 @@
       "max_story_chunk_size": 4096,
       "story_chunk_duration_secs": 60,
       "acceptance_window_secs": 180,
-      "inactive_story_delay_secs": 300
+      "inactive_story_delay_secs": 300,
+      "watermark_report_interval_secs": 1
     },
     "ExtractionModule": {
         "extraction_stream_count":2,

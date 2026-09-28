@@ -2,10 +2,12 @@
 #define DataStoreAdmin_SERVICE_H
 
 #include <iostream>
+#include <map>
 #include <string>
 #include <cstdint>
 #include <margo.h>
 #include <thallium.hpp>
+#include <thallium/serialization/stl/map.hpp>
 #include <thallium/serialization/stl/string.hpp>
 
 #include <chronolog_types.h>
@@ -61,6 +63,18 @@ public:
         request.respond(return_code);
     }
 
+    // One-way (grapher publishes with disable_response): everything below
+    // watermarks[story] is durable in the archive; the data store forwards to
+    // the retention store which frees covered, acked, tail-released chunks.
+    void ReportStoryWatermarks(tl::request const&, std::map<StoryId, uint64_t> const& watermarks)
+    {
+        LOG_DEBUG("[DataStoreAdminService] Received watermark report for {} story(ies)", watermarks.size());
+        for(auto const& story_watermark: watermarks)
+        {
+            theDataStore.applyWatermarkReport(story_watermark.first, story_watermark.second);
+        }
+    }
+
 private:
     DataStoreAdminService(tl::engine& tl_engine, uint16_t service_provider_id, KeeperDataStore& data_store_instance)
         : tl::provider<DataStoreAdminService>(tl_engine, service_provider_id)
@@ -70,6 +84,7 @@ private:
         define("shutdown_data_collection", &DataStoreAdminService::shutdown_data_collection);
         define("start_story_recording", &DataStoreAdminService::StartStoryRecording);
         define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
+        define("report_story_watermarks", &DataStoreAdminService::ReportStoryWatermarks, tl::ignore_return_value());
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 

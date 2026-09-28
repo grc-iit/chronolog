@@ -225,7 +225,8 @@ private:
                                           ChronicleName const&,
                                           StoryName const&,
                                           StoryId const&,
-                                          uint64_t);
+                                          uint64_t,
+                                          std::vector<KeeperIdCard> const& story_keepers);
     int notifyPlayerOfStoryRecordingStop(RecordingGroup&, StoryId const&);
     int notifyKeepersOfStoryRecordingStart(RecordingGroup&,
                                            std::vector<KeeperIdCard>&,

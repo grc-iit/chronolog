@@ -326,7 +326,13 @@ void chronolog::QueryResponseAgent::drainQueryResponses()
         }
         else
         {
-            sleep(2);
+            // Poll frequently: a response becomes ready as soon as its archive
+            // read completes (immediately when the range has no files), and
+            // on-demand hot replay is meant to be low-latency. A 2 s poll here
+            // used to make an immediate replay of still-hot data race the
+            // client's response timeout. 20 ms is negligible CPU at prototype
+            // scale (mirrors the extraction module's idle usleep).
+            usleep(20000);
         }
     }
 }

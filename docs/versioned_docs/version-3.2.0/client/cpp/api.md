@@ -169,7 +169,7 @@ uint64_t StoryHandle::log_event(std::string const& event_record);
 int StoryHandle::playback(size_t n, std::vector<Event>& events);
 ```
 
-- **On-Demand Tail Read**: Retrieve the most recent `n` events of this story directly from ChronoKeeper in-memory buffers (`KeeperTailStore`), bypassing the ChronoPlayer/HDF5 archive path.
+- **On-Demand Tail Read**: Retrieve the most recent `n` events of this story directly from ChronoKeeper in-memory buffers (`KeeperChunkRetentionStore`), bypassing the ChronoPlayer/HDF5 archive path.
 - **Two-Phase Scatter/Gather**: Scatters sequence queries across all assigned keepers, selects the global last-$n$, and fetches only winning payloads over the wire.
 - **Ordering**: Events in `events` are populated in ascending `EventSequence` order (`(chrono_time, clientId, index)`).
 - **Writer-Mode Supported**: Works with clients instantiated with `ClientPortalServiceConf` only (no `ClientQueryServiceConf` needed).

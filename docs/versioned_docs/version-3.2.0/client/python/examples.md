@@ -118,7 +118,7 @@ print("\nclient.Disconnect() returned:", return_code)
 | **`ClientQueryServiceConf`** | Required for reader mode. Points to the ChronoPlayer query service (default port `5557`). |
 | **`Client(client_conf, query_conf)`** | Passing both configs enables WRITER + READER mode and unlocks `ReplayStory`. |
 | **`EventList()`** | An empty container that `ReplayStory` populates. Supports `len()` and iteration. |
-| **`ReplayStory`** | Fetches all persisted events whose timestamps fall in the half-open range `[start, end)`. Returns `-11` if the client is not in READER mode. |
+| **`ReplayStory`** | Fetches every event whose timestamp falls in the half-open range `[start, end)`, from the archive and, for the most recent ones, from keeper memory. Returns `-11` if the client is not in READER mode. |
 | **`event.time()`** | The `uint64_t` timestamp assigned when the event was logged. |
 | **`event.log_record()`** | The string payload that was passed to `log_event`. |
 
