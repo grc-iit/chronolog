@@ -805,12 +805,22 @@ jobs:
             export LD_LIBRARY_PATH=\${WORK_DIR}/lib:\$LD_LIBRARY_PATH
             cd \${WORK_DIR}
 
-            SEAL=\$(( \$(jq -r '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs' conf/default-chrono-conf.json 2>/dev/null || echo 10) + \$(jq -r '.chrono_keeper.DataStoreInternals.acceptance_window_secs' conf/default-chrono-conf.json 2>/dev/null || echo 15) + 10 ))
-            echo \"writing a burst, then waiting \${SEAL}s for it to seal on the keepers ...\"
+            # SIGTERM the keepers as soon as the writer returns: its stories are
+            # still open on the keepers (their pipelines wait out the acceptance
+            # window), so their last chunks seal during shutdown and must be
+            # delivered on the way out. Waiting for them to seal first would leave
+            # the shutdown nothing to deliver and let this step pass without
+            # testing it.
+            echo \"writing a burst, then stopping the keepers while its last chunks are still open ...\"
+            RC=0
             timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
               examples/chrono-client-example-distributed-telemetry-writer \
-              --config conf/default-chrono-client-conf.json -d 15 -i 3 >/dev/null 2>&1 || true
-            sleep \${SEAL}
+              --config conf/default-chrono-client-conf.json -d 15 -i 3 > /tmp/shutdown_writer.log 2>&1 || RC=\$?
+            if [ \${RC} -ne 0 ]; then
+              echo \"❌ telemetry writer failed (exit \${RC})\"
+              tail -8 /tmp/shutdown_writer.log || true
+              exit 1
+            fi
 
             BEFORE=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
             echo \"HDF5 files before keeper shutdown: \${BEFORE}\"
@@ -830,24 +840,37 @@ jobs:
             AFTER=\$(find \${WORK_DIR}/output -name '*.h5' 2>/dev/null | wc -l)
             echo \"HDF5 files after keeper shutdown : \${AFTER}\"
 
+            # A transfer logged after 'Initiating shutdown procedures' is a chunk
+            # delivered on the way out; at least one keeper must have one, or the
+            # shutdown path was not exercised. A log rotated past 1 MB continues in
+            # <name>.<n>.log, oldest highest, so each keeper's files are read oldest first.
             EXPECTED=\$(wc -l < \${WORK_DIR}/conf/hosts_keeper)
-            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | grep -v '\\.launch\\.log\$' || true)
+            LOGS=\$(ls \${WORK_DIR}/monitor/chrono-keeper*.log 2>/dev/null | grep -v -E '\\.launch\\.log\$|\\.[0-9]+\\.log\$' || true)
             DONE=0
             LOST_TOTAL=0
+            SHUT_SENT_TOTAL=0
             for f in \${LOGS}; do
-              SENT=\$(grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' \"\$f\" || true)
-              LOST=\$(grep -c 'shutdown with unconfirmed' \"\$f\" || true)
-              if grep -q 'ChronoKeeperInstance\\] Shutdown completed' \"\$f\"; then
+              FILES=\"\$(ls -r \${f%.log}.[0-9]*.log 2>/dev/null || true) \$f\"
+              SENT=\$(cat \${FILES} | grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' || true)
+              SHUT_SENT=\$(cat \${FILES} | awk '/ChronoKeeperInstance\\] Initiating shutdown procedures/ { s = 1 } s && /ChunkExtractorRDMA\\] Transfered StoryChunk/ { n++ } END { print n + 0 }')
+              LOST=\$(cat \${FILES} | grep -c 'shutdown with unconfirmed' || true)
+              if cat \${FILES} | grep -q 'ChronoKeeperInstance\\] Shutdown completed'; then
                 DONE=\$(( DONE + 1 ))
-                echo \"  \$(basename \$f): shut down; \${SENT} chunk(s) delivered, \${LOST} unconfirmed at exit\"
+                echo \"  \$(basename \$f): shut down; \${SENT} chunk(s) delivered, \${SHUT_SENT} of them after SIGTERM, \${LOST} unconfirmed at exit\"
               else
-                echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \${SENT} chunk(s) delivered, \${LOST} unconfirmed\"
+                echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \${SENT} chunk(s) delivered, \${SHUT_SENT} after SIGTERM, \${LOST} unconfirmed\"
               fi
-              grep -h 'Flushed .* unshipped chunk' \"\$f\" | sed 's/^/    /' || true
-              grep -h 'shutdown with unconfirmed' \"\$f\" | head -5 | sed 's/^/    /' || true
+              cat \${FILES} | grep -h 'Flushed .* unshipped chunk' | sed 's/^/    /' || true
+              cat \${FILES} | grep -h 'shutdown with unconfirmed' | head -5 | sed 's/^/    /' || true
               LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
+              SHUT_SENT_TOTAL=\$(( SHUT_SENT_TOTAL + SHUT_SENT ))
             done
 
+            if [ \"\${SHUT_SENT_TOTAL}\" -eq 0 ]; then
+              echo '❌ no keeper delivered a chunk after SIGTERM: the shutdown path was not exercised'
+              for f in \${LOGS}; do echo \"--- \$(basename \$f)\"; tail -20 \"\$f\"; done
+              exit 1
+            fi
             if [ \"\${DONE}\" -lt \"\${EXPECTED}\" ] || [ \"\${LOST_TOTAL}\" -ne 0 ]; then
               echo \"❌ keepers that completed shutdown: \${DONE} / \${EXPECTED}; chunks unconfirmed at exit: \${LOST_TOTAL}\"
               echo '   A chunk with shipped=0 never reached a grapher: check that each keeper conf'
@@ -857,7 +880,7 @@ jobs:
               for f in \${LOGS}; do echo \"--- \$(basename \$f)\"; tail -20 \"\$f\"; done
               exit 1
             fi
-            echo '✅ every keeper shut down after its grapher confirmed all of its chunks written'
+            echo \"✅ every keeper shut down after its grapher confirmed all of its chunks written (\${SHUT_SENT_TOTAL} delivered after SIGTERM)\"
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 

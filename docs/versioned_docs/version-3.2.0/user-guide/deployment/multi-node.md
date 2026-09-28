@@ -118,6 +118,12 @@ If the archive has to stay on a mount that caches failed lookups, raise
 `archive_visibility_delay_secs` above that mount's `acdirmax` instead. This costs keeper memory: each
 keeper holds every chunk that much longer after it is written.
 
+`deploy_cluster.sh --start` checks this before it launches anything: on each ChronoPlayer host it reads
+how the output directory is mounted (`findmnt`), and prints a warning when the mount is NFS that caches
+failed lookups (`lookupcache` other than `positive` or `none`) for up to an `acdirmax` no shorter than
+`archive_visibility_delay_secs`. The warning names the host and the value to set; the deployment goes
+ahead either way.
+
 To measure a mount, cache a failed lookup on one node and time how long it takes to see a file
 created on another:
 
