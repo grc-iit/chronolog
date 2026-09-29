@@ -29,7 +29,7 @@ All Client API methods return an `int` status code. Check the return value again
 | `CL_ERR_NOT_READER_MODE` | -11 | Client is in WRITER_MODE; read operations unavailable |
 | `CL_ERR_QUERY_TIMED_OUT` | -12 | Replay query or tail-read RPC timed out |
 | `CL_ERR_PROTOCOL_VERSION_MISMATCH` | -13 | Client and server disagree on the wire-protocol version |
-| `CL_ERR_PARTIAL_RESULT` | -18 | Tail-read query returned fewer records than promised due to keeper capacity eviction |
+| `CL_ERR_PARTIAL_RESULT` | -18 | Query returned fewer records than it should: for a tail read, events left keeper memory between its two phases; for a replay, a keeper missed its fetch deadline or hit its event cap, or an archive file could not be read. The records that came back are valid |
 
 :::note Reserved range
 Codes `-14` through `-17` are intentionally unassigned. They are reserved for the ingest acceptance-window and collision-policy work developing in parallel, so that branch and this one never assign the same number to different meanings.

@@ -183,6 +183,9 @@ void ChronoPubSubMapper::runSubscription(std::shared_ptr<Subscription> sub)
         {
             // Expected during the first ~120s after a publish: ChronoLog returns
             // CL_ERR_QUERY_TIMED_OUT until events have propagated to a player.
+            // CL_ERR_PARTIAL_RESULT lands here too: delivering it and moving the
+            // watermark past its newest event would skip the ones it is missing,
+            // so the watermark stays and the next poll asks again.
             // Log at WARNING so a hot polling loop does not flood stderr.
             CHRONOPUBSUB_WARNING(logLevel_,
                                  "Replay failed for topic='",

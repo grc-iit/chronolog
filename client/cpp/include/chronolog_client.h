@@ -20,7 +20,7 @@ namespace chronolog
 // format between the client and any ChronoLog server component changes in
 // an incompatible way; the Visor returns CL_ERR_PROTOCOL_VERSION_MISMATCH
 // if a connecting client's version doesn't match the server's expectation.
-static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 2;
+static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 3;
 
 // 64-bit ClientId layout. The high 48 bits are the client's network endpoint
 // (IPv4 + port) so a downstream consumer reading back events can identify the

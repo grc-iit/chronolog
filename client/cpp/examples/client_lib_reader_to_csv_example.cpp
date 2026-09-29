@@ -72,7 +72,17 @@ void reader_thread(int tid, struct thread_arg* t, std::vector<chronolog::Event>&
 
         ret = client->ReplayStory(t->chronicle, t->story, t->segment_start, (t->segment_end), replay_events);
 
-        if(ret == chronolog::CL_SUCCESS)
+        if(ret == chronolog::CL_ERR_PARTIAL_RESULT)
+        {
+            // the events that came back are real; some in the range are missing
+            LOG_WARNING("[StoryReaderClient] Reader thread tid={} replay of story {}-{} came back partial; "
+                        "keeping its {} events",
+                        tid,
+                        t->chronicle,
+                        t->story,
+                        replay_events.size());
+        }
+        if(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_PARTIAL_RESULT)
         {
 
             LOG_INFO("[StoryReaderClient] Reader thread tid={} completed replay story{}-{}  event_series has {} events",
