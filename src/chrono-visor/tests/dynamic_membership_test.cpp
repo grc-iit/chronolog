@@ -337,6 +337,9 @@ TEST_F(DynamicMembershipTest, OnlyNewOrGrownSettlementProofNeedsProposal)
 }
 TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
 {
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    GTEST_SKIP() << "timing bounds hold only in uninstrumented builds";
+#endif
     ASSERT_TRUE(store->applyRaft(1,
                                  [&]
                                  {

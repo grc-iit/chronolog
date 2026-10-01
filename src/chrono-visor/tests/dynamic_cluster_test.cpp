@@ -299,7 +299,7 @@ TEST_F(DynamicClusterTest, FailureDetectionKeepsLastKeeperAndRetriesLater)
         }
         std::this_thread::sleep_for(50ms);
     }
-    EXPECT_TRUE(retried);
+    EXPECT_TRUE(retried) << state.ShortDebugString();
 }
 TEST_F(DynamicClusterTest, FailureDetectionRemovesSilentKeeperAfterFullTimeout)
 {

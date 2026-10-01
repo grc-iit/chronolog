@@ -618,6 +618,15 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                             }
                 }
                 for(const auto& [id, applied]: applied_routes_) *q->add_applied_routes() = applied;
+                // Liveness is refreshed before the command can apply, so no detection tick sees a newly
+                // registered or joined Keeper with a stale timestamp and drains it.
+                if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
+                    heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
+                if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
+                {
+                    if(operation == 5)
+                        heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
+                }
             }
             if(propose)
                 result = raft_->propose(command);
@@ -662,15 +671,6 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                     (void)membership_.registerProcess(*convert::fromProto(request->process()));
                     std::lock_guard lock(heartbeat_mutex_);
                     heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
-                }
-                // A joined Keeper gets a full failure timeout before detection may drain it again.
-                if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
-                {
-                    if(operation == 5)
-                    {
-                        std::lock_guard lock(heartbeat_mutex_);
-                        heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
-                    }
                 }
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
