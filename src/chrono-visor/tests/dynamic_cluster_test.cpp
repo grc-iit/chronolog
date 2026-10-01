@@ -11,6 +11,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <thread>
+#include <random>
+#include <set>
 namespace chronolog::visor
 {
 namespace
@@ -19,26 +21,29 @@ using namespace std::chrono_literals;
 namespace wire = internal::v1;
 int freePort()
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(fd < 0)
-        throw std::runtime_error("socket failed");
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)))
+    static std::mt19937 random(std::random_device{}());
+    static std::set<int> chosen;
+    for(int attempt = 0; attempt < 64; ++attempt)
     {
+        const int port = 10000 + (random() % 4400) * 5;
+        if(chosen.contains(port))
+            continue;
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if(fd < 0)
+            throw std::runtime_error("socket failed");
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(port);
+        const int result = bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
         close(fd);
-        throw std::runtime_error("bind failed");
+        if(result == 0)
+        {
+            chosen.insert(port);
+            return port;
+        }
     }
-    socklen_t length = sizeof(address);
-    if(getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length))
-    {
-        close(fd);
-        throw std::runtime_error("getsockname failed");
-    }
-    int port = ntohs(address.sin_port);
-    close(fd);
-    return port;
+    throw std::runtime_error("no free loopback port block");
 }
 struct KeeperDriver
 {

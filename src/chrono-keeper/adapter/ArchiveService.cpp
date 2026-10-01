@@ -79,13 +79,18 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                         owner = p;
                 const auto instance = journal_.instance();
                 Epoch epoch = route->epoch;
-                if(!req.expect_instance().empty() || req.expect_epoch() != 0)
+                if(owner)
                 {
                     if(req.expect_instance() != instance)
+                        return fail(absl::FailedPreconditionError("predecessor instance mismatch"));
+                    epoch = owner->epoch;
+                }
+                else
+                {
+                    if(!req.expect_instance().empty() && req.expect_instance() != instance)
                         return fail(absl::FailedPreconditionError("instance mismatch"));
-                    if(owner && req.expect_epoch() == owner->epoch)
-                        epoch = owner->epoch;
-                    else if(req.expect_epoch() != route->epoch || journal_.retiredOwner(req.story_id()))
+                    if((req.expect_epoch() != 0 && req.expect_epoch() != route->epoch) ||
+                       journal_.retiredOwner(req.story_id()))
                         return fail(absl::FailedPreconditionError("owned epoch mismatch"));
                 }
                 Range range;
