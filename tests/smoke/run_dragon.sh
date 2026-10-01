@@ -60,6 +60,10 @@ if [ "${SKIP_BINDING_BUILD:-}" = 1 ]; then
     [ -f "$package/build/dev/chronolog_node.node" ] && [ -f "$package/dist/index.js" ] \
         || { echo "smoke: missing TypeScript package; run tests/smoke/build_artifacts.sh"; exit 1; }
     [ -f "$logs/wheels/chronolog_mcp-4.0.0-py3-none-any.whl" ] || { echo "smoke: missing MCP wheel; run tests/smoke/build_artifacts.sh"; exit 1; }
+    [ -f "$root/build/viz/dist/module.js" ] && [ -f "$logs/wheels/chronolog_viz-4.0.0-py3-none-any.whl" ] \
+        || { echo "smoke: missing viz artifacts; run tests/smoke/build_artifacts.sh"; exit 1; }
+    timeout 10 "$root/build/viz-venv/bin/python" -c 'import chronolog, chronolog_viz' \
+        || { echo "smoke: missing viz dependencies; run tests/smoke/build_artifacts.sh"; exit 1; }
     timeout 10 "$venv/bin/python" -c 'import grpc, grpc_tools.protoc, pytest, mcp, opentelemetry.sdk' \
         || { echo "smoke: missing test dependencies; run tests/smoke/build_artifacts.sh"; exit 1; }
 else
