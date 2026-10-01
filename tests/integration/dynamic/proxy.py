@@ -53,10 +53,21 @@ while True:
                         raise OSError('CONNECT ended')
                     header += data
                 method, target, _ = header.decode().split('\r\n', 1)[0].split(' ')
-                if method != 'CONNECT' or (blocked.exists() and target in targets):
+                candidates = target.split(',')
+                if method != 'CONNECT' or (blocked.exists() and any(c in targets for c in candidates)):
                     raise OSError('partitioned CONNECT')
-                target_host, target_port = target.rsplit(':', 1)
-                upstream = socket.create_connection((target_host, int(target_port)), timeout=1)
+                # gRPC sends a multi-replica target whole, so the proxy plays pick_first over it.
+                upstream = None
+                for candidate in candidates:
+                    target_host, target_port = candidate.rsplit(':', 1)
+                    try:
+                        upstream = socket.create_connection((target_host, int(target_port)), timeout=1)
+                        target = candidate
+                        break
+                    except OSError:
+                        continue
+                if upstream is None:
+                    raise OSError('no replica reachable')
                 client.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
                 destinations[client] = destinations[upstream] = target
                 client.settimeout(1)

@@ -96,7 +96,7 @@ class Scenario:
     def acquire(self, identity):
         return self.rpc('Acquire', dict(story_id=self.story, writer_identity=identity))
 
-    def append(self, acquired, sequence=1, retry=True):
+    def append(self, acquired, sequence=1, retry=True, whole_rpc_unavailable=False):
         payload = base64.b64encode(f"{self.story}:{acquired['writer_id']}:{acquired['incarnation']}:{sequence}".encode()).decode()
         request = dict(story_id=self.story, epoch=acquired['route']['epoch'], durability='DURABILITY_DURABLE',
                        items=[dict(writer_id=acquired['writer_id'], incarnation=acquired['incarnation'],
@@ -106,6 +106,8 @@ class Scenario:
             request['items'][0]['physical']['physical_ns'] = time.time_ns()
             response = self.raw('Append', request, acquired['assigned_keeper']['endpoint'])
             if response['transport']:
+                if whole_rpc_unavailable and response['transport'] == 14:
+                    return dict(status=dict(code=14))
                 raise RuntimeError(str(response))
             result = response['response']['results'][0]
             code = int(result.get('status', {}).get('code', 0))
@@ -206,8 +208,11 @@ class Scenario:
 
         started = self.begin('Visor leader kill')
         identity, old = writers['keeper-1']
-        metadata = self.raw('Acquire', dict(story_id=self.story, writer_identity=identity))
-        assert metadata['transport'] == 0
+        def led():
+            metadata = self.raw('Acquire', dict(story_id=self.story, writer_identity=identity))
+            return metadata if metadata['transport'] == 0 and metadata.get('leader') == 3 else None
+        # Every Keeper, Grapher and Player is configured with visor-3 alone, so its death is the case to prove.
+        metadata = self.wait(led, 20)
         leader = metadata['leader']
         old = metadata['response']
         self.append(old)
@@ -234,7 +239,7 @@ class Scenario:
         cut = hlc(route['ordering_cut'])
         # No ceiling renewal is possible; the still-running old owner must stop admitting.
         time.sleep(int(self.policy['ceiling_ahead_ns']) / 1e9 + .3)
-        rejected = self.append(old, 2, retry=False)
+        rejected = self.append(old, 2, retry=False, whole_rpc_unavailable=True)
         assert int(rejected.get('status', {}).get('code', 0)) == 14, 'I4.7 partitioned owner admitted beyond ceiling'
         self.stack.stop('keeper-1')
         def failed():
@@ -258,8 +263,10 @@ class Scenario:
         self.stack.start('keeper-1')
         def drained():
             current = self.route()
-            return current if (not any(p['instance'] == predecessor['instance'] for p in current.get('predecessors', []))
-                               and hlc(current.get('archived_below', {})) >= hlc(predecessor['own_cut'])) else None
+            if (not any(p['instance'] == predecessor['instance'] for p in current.get('predecessors', []))
+                    and hlc(current.get('archived_below', {})) >= hlc(predecessor['own_cut'])):
+                return current
+            raise RuntimeError(json.dumps(dict(route=current, members=self.state().get('members'))))
         self.wait(drained)
         self.complete()
         self.stack.stop('keeper-1')

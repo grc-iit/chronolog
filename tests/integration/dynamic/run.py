@@ -183,6 +183,8 @@ def configure(stack):
     peers = [dict(id=i + 1, catalog_endpoint=p[0], internal_endpoint=p[1], raft_endpoint=p[2])
              for i, p in enumerate(ports[:3])]
     keepers = [dict(process_id='keeper-' + str(i + 1), endpoint=p[0]) for i, p in enumerate(ports[3:5])]
+    internal = ','.join(peers[i]['internal_endpoint'] for i in (2, 0, 1))
+    catalog = ','.join(peers[i]['catalog_endpoint'] for i in (2, 0, 1))
     graphers = [ports[5][0]]
     player = ports[5][1]
     if isinstance(stack, Homelab):
@@ -195,14 +197,15 @@ def configure(stack):
                     internal_listen=peer['internal_endpoint'], db_path=str(stack.folder / (role + '.sqlite')),
                     keepers=keepers, graphers=graphers, player=player, keeper_failure_timeout_ms=1500,
                     release_fence_timeout_ms=1000, worker_threads=4,
-                    raft=dict(server_id=i + 1, raft_endpoint=peer['raft_endpoint'], peers=peers)))
+                    raft=dict(server_id=i + 1, raft_endpoint=peer['raft_endpoint'], peers=peers,
+                              election_lower_ms=300 if i == 2 else 1200, election_upper_ms=400 if i == 2 else 1600)))
     for i, p in enumerate(ports[3:5]):
         role = 'keeper-' + str(i + 1)
         node = 'mini' if isinstance(stack, Homelab) else 'dragon'
         stack.write('proxy-' + role, node, dict(listen=p[2], targets=[peer['internal_endpoint'] for peer in peers],
                                               blocked=str(stack.folder / (role + '.blocked'))))
         stack.write(role, node, dict(process_id=role, listen=p[0], internal_listen=p[1], self_endpoint=p[0],
-                    visor_internal=peers[2]['internal_endpoint'], wal_dir=str(stack.folder / role / 'wal'), story_chunk_duration_secs=1,
+                    visor_internal=internal, wal_dir=str(stack.folder / role / 'wal'), story_chunk_duration_secs=1,
                     seal_interval_ms=100, archive_visibility_delay_secs=1, watermark_resend_timeout_secs=1,
                     shutdown_confirm_timeout_secs=1, worker_threads=4, heartbeat_interval_ms=100,
                     append_ceiling_wait_ms=100, retention_cap_mb=32, wal_max_bytes=67108864,
@@ -210,11 +213,11 @@ def configure(stack):
     for i, endpoint in enumerate(graphers):
         role = 'grapher-' + ('a' if i == 0 else 'b')
         stack.write(role, 'dragon' if i == 0 else 'blade', dict(process_id=role, manifest_writer=role,
-                    internal_listen=endpoint, self_endpoint=endpoint, visor_internal=peers[2]['internal_endpoint'],
+                    internal_listen=endpoint, self_endpoint=endpoint, visor_internal=internal,
                     archive_root=stack.archive, heartbeat_interval_ms=200))
     stack.write('player', 'blade' if isinstance(stack, Homelab) else 'dragon',
-                dict(listen=player, advertise=player, visor=peers[2]['catalog_endpoint'],
-                     visor_internal=peers[2]['internal_endpoint'], archive_root=stack.archive,
+                dict(listen=player, advertise=player, visor=catalog,
+                     visor_internal=internal, archive_root=stack.archive,
                      keeper_internal={k['process_id']: p[1] for k, p in zip(keepers, ports[3:5])},
                      keeper_deadline_ms=300, manifest_poll_ms=100))
     return peers
