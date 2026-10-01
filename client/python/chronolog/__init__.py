@@ -155,6 +155,7 @@ class AppendResult:
 class AppendSpec:
     envelope: Envelope
     durability: Durability = Durability.DURABLE
+    physical: TimeReading | None = None
 
 
 @dataclass(frozen=True)
@@ -219,9 +220,9 @@ class Writer:
     def assigned_keeper(self): return self._handle.acquisition()["assigned_keeper"]
 
     def append(self, payload, *, content_type=None, attributes=None, trace_id=None, span_id=None,
-               durability=Durability.DURABLE, timeout=None):
+               durability=Durability.DURABLE, physical=None, timeout=None):
         envelope = Envelope(payload, content_type, attributes, trace_id, span_id)
-        return self._handle.append(AppendSpec(envelope, durability), timeout)
+        return self._handle.append(AppendSpec(envelope, durability, physical), timeout)
 
     def append_batch(self, items, *, durability=Durability.DURABLE, timeout=None):
         specs = []
@@ -231,7 +232,8 @@ class Writer:
             elif isinstance(item, dict):
                 fields = dict(item)
                 level = fields.pop("durability", durability)
-                specs.append(AppendSpec(Envelope(**fields), level))
+                physical = fields.pop("physical", None)
+                specs.append(AppendSpec(Envelope(**fields), level, physical))
             else:
                 specs.append(AppendSpec(item if isinstance(item, Envelope) else Envelope(item), durability))
         return self._handle.append_batch(specs, timeout)

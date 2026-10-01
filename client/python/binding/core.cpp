@@ -147,12 +147,21 @@ std::string binary(nb::handle h)
 sdk::AppendSpec spec(nb::handle h)
 {
     auto e = h.attr("envelope");
+    std::optional<TimeReading> physical;
+    auto stamp = h.attr("physical");
+    if(!stamp.is_none())
+    {
+        physical = TimeReading{nb::cast<int64_t>(stamp.attr("physical_ns")),
+                               nb::cast<std::optional<uint64_t>>(stamp.attr("uncertainty_ns")),
+                               static_cast<ClockStatus>(nb::cast<int>(stamp.attr("status")))};
+    }
     return {{nb::cast<std::string>(e.attr("content_type")),
              binary(e.attr("payload")),
              binary(e.attr("trace_id")),
              binary(e.attr("span_id")),
              nb::cast<std::map<std::string, std::string>>(e.attr("attributes"))},
-            static_cast<Durability>(nb::cast<int>(h.attr("durability")))};
+            static_cast<Durability>(nb::cast<int>(h.attr("durability"))),
+            physical};
 }
 template <class S>
 void stream(nb::module_& m, const char* name)

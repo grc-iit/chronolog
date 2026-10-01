@@ -8,7 +8,11 @@ namespace
 {
 bool same(const AppendSpec& a, const AppendSpec& b)
 {
-    return a.durability == b.durability && a.envelope.content_type == b.envelope.content_type &&
+    const bool physicalSame = a.physical.has_value() == b.physical.has_value() &&
+                              (!a.physical || (a.physical->physical_ns == b.physical->physical_ns &&
+                                               a.physical->uncertainty_ns == b.physical->uncertainty_ns &&
+                                               a.physical->status == b.physical->status));
+    return physicalSame && a.durability == b.durability && a.envelope.content_type == b.envelope.content_type &&
            a.envelope.payload == b.envelope.payload && a.envelope.trace_id == b.envelope.trace_id &&
            a.envelope.span_id == b.envelope.span_id && a.envelope.attributes == b.envelope.attributes;
 }
@@ -90,7 +94,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
             item.set_writer_id(acquired.writer_id);
             item.set_incarnation(acquired.incarnation);
             item.set_sequence(sequence + i);
-            auto reading = state->clock.now();
+            auto reading = specs[i].physical ? absl::StatusOr<TimeReading>(*specs[i].physical) : state->clock.now();
             if(!reading.ok())
                 return reading.status();
             item.mutable_physical()->set_physical_ns(reading->physical_ns);

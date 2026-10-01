@@ -1,9 +1,10 @@
 {
-  "clio-chronolog": {
-    "command": "uvx",
-    "args": [
-      "clio-kit",
-      "chronolog"
-    ]
+  "mcpServers": {
+    "chronolog-mcp": {
+      "command": "uvx",
+      "args": [
+        "chronolog-mcp==4.0.0"
+      ]
+    }
   }
 }
