@@ -14,7 +14,8 @@ public:
     static Completion decide(const Range& range,
                              Epoch route_epoch,
                              const std::vector<KeeperFrontier>& keepers,
-                             const std::vector<WriterAssignment>& writers);
+                             const std::vector<WriterAssignment>& writers,
+                             bool archive_failed = false);
 };
 
 } // namespace chronolog::player

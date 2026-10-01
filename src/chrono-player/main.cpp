@@ -119,6 +119,16 @@ int main(int argc, char** argv)
     player::HotReplayOptions replay_options;
     replay_options.batch_size = cfg.batch_size;
     replay_options.tail_poll = std::chrono::milliseconds(cfg.tail_poll_ms);
+    if(!cfg.archive_root.empty())
+    {
+        auto archive = FileTierStore::OpenReadOnly(cfg.archive_root, std::chrono::milliseconds(cfg.manifest_poll_ms));
+        if(!archive.ok())
+        {
+            std::cerr << "chrono_player: cannot open archive: " << archive.status().message() << "\n";
+            return 1;
+        }
+        replay_options.archive = std::shared_ptr<FileTierStore>(*std::move(archive));
+    }
     auto replay = std::make_shared<player::HotReplay>(source, replay_options);
     player::ReplayService service(replay, catalog);
 

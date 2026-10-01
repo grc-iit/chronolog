@@ -187,8 +187,37 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     return store;
 }
 
+absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::filesystem::path root,
+                                                                           std::chrono::milliseconds manifest_poll)
+{
+    if(manifest_poll.count() <= 0)
+        return absl::InvalidArgumentError("manifest poll must be positive");
+    auto log = ManifestLog::OpenReadOnly(root);
+    auto store = std::unique_ptr<FileTierStore>(
+            new FileTierStore(std::move(root), "", std::move(log), {}, std::make_shared<ProtoChunkCodec>()));
+    store->read_only_ = true;
+    store->manifest_poll_ = manifest_poll;
+    auto status = store->refreshNow();
+    if(!status.ok())
+        return status;
+    return store;
+}
+
+absl::Status FileTierStore::refreshNow() const
+{
+    std::lock_guard lock(mutex_);
+    auto index = log_->load();
+    if(!index.ok())
+        return index.status();
+    cached_index_ = *std::move(index);
+    refreshed_ = std::chrono::steady_clock::now();
+    return absl::OkStatus();
+}
+
 absl::Status FileTierStore::registerStory(StoryId story, std::optional<Hlc> anchor)
 {
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
     if(!story)
         return absl::InvalidArgumentError("zero story id");
     std::lock_guard lock(mutex_);
@@ -261,7 +290,21 @@ Hlc FileTierStore::watermark(const ManifestIndex& index, StoryId story) const
     return value;
 }
 
-absl::StatusOr<ManifestIndex> FileTierStore::refresh() const { return log_->load(); }
+absl::StatusOr<ManifestIndex> FileTierStore::refresh() const
+{
+    if(!read_only_)
+        return log_->load();
+    auto now = std::chrono::steady_clock::now();
+    if(!cached_index_ || now - refreshed_ >= manifest_poll_)
+    {
+        auto index = log_->load();
+        if(!index.ok())
+            return index.status();
+        cached_index_ = *std::move(index);
+        refreshed_ = now;
+    }
+    return *cached_index_;
+}
 
 absl::Status FileTierStore::recover()
 {
@@ -332,6 +375,8 @@ absl::Status FileTierStore::recover()
 
 absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
 {
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
     const auto valid = ValidChunk(chunk);
     if(!valid.ok())
         return valid;
@@ -491,6 +536,8 @@ absl::StatusOr<bool> FileTierStore::incomplete(StoryId story, Range range) const
 
 absl::Status FileTierStore::eraseFile(const std::string& file)
 {
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
     std::lock_guard lock(mutex_);
     auto index = refresh();
     if(!index.ok())
@@ -516,6 +563,8 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
 
 absl::Status FileTierStore::compact()
 {
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
     std::lock_guard lock(mutex_);
     return log_->compact();
 }

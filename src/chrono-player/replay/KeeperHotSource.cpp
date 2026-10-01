@@ -49,6 +49,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper, StoryId story, co
             trailer = true;
             out.frontier.epoch = response.trailer().epoch();
             out.frontier.sealed = convert::fromProto(response.trailer().sealed_frontier());
+            out.frontier.evicted_below = convert::fromProto(response.trailer().evicted_below());
             out.frontier.truncated = response.trailer().truncated();
         }
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/ManifestLog.h"
 #include "chronolog/tier_store.h"
@@ -14,6 +15,9 @@ public:
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
          std::shared_ptr<const ChunkCodec> codec = std::make_shared<ProtoChunkCodec>());
+    static absl::StatusOr<std::unique_ptr<FileTierStore>>
+    OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000));
+    absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
     absl::StatusOr<std::vector<Event>> read(StoryId story, Range range) const override;
@@ -35,6 +39,10 @@ private:
     Hlc watermark(const ManifestIndex& index, StoryId story) const;
     bool known(const ManifestIndex& index, StoryId story) const;
 
+    bool read_only_{};
+    std::chrono::milliseconds manifest_poll_{1000};
+    mutable std::optional<ManifestIndex> cached_index_;
+    mutable std::chrono::steady_clock::time_point refreshed_{};
     std::filesystem::path root_;
     std::string writer_;
     std::unique_ptr<ManifestLog> log_;

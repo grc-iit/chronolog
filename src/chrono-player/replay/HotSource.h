@@ -15,6 +15,7 @@ struct KeeperFrontier
     Hlc sealed;
     bool answered{true};
     bool truncated{};
+    Hlc evicted_below{};
 };
 
 struct KeeperFetch

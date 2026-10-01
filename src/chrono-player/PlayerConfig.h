@@ -29,6 +29,8 @@ struct PlayerConfig
     uint32_t keeper_deadline_ms = 2000;
     uint32_t batch_size = 1024;
     uint32_t tail_poll_ms = 200;
+    std::string archive_root;
+    uint32_t manifest_poll_ms = 1000;
     // One Route for every story, replacing registration with the Visor.
     std::optional<Route> static_routes;
 

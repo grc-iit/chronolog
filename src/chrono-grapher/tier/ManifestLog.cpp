@@ -121,6 +121,11 @@ ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, in
     , fd_(fd)
 {}
 
+std::unique_ptr<ManifestLog> ManifestLog::OpenReadOnly(std::filesystem::path root)
+{
+    return std::unique_ptr<ManifestLog>(new ManifestLog(root / "manifest", "", -1));
+}
+
 ManifestLog::~ManifestLog()
 {
     if(fd_ >= 0)

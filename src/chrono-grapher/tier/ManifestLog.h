@@ -16,6 +16,7 @@ class ManifestLog
 {
 public:
     static absl::StatusOr<std::unique_ptr<ManifestLog>> Open(std::filesystem::path root, std::string writer);
+    static std::unique_ptr<ManifestLog> OpenReadOnly(std::filesystem::path root);
     ~ManifestLog();
     absl::Status append(ManifestRecord record);
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
