@@ -383,14 +383,17 @@ static uint64_t get_bigbang_timestamp(std::ifstream& file)
 // latency floored by that sealing window (~25-30s on the default local deploy),
 // not an RPC round-trip.
 //
-// log_event() returns the event's assigned timestamp, which is
-// high_resolution_clock::now().time_since_epoch().count() (ns) and is exactly
-// the value reported by Event::time() on playback. Because writer and poller run
-// in the same process (one MPI rank) on the same clock, the first-appearance
-// latency is simply now_ns() - event.time() with no clock-skew correction.
+// log_event() returns the event's assigned timestamp, which is exactly the value
+// reported by Event::time() on playback. That timestamp is a Visor-anchored
+// ChronoTick (see ChronoClock.h), not a wall-clock reading, so it only keys an
+// event. The first-appearance latency is measured on this process's own clock:
+// now_ns() when playback() first returns the event minus now_ns() when
+// log_event() was called for it. Writer and poller run in the same process (one
+// MPI rank), so no clock-skew correction is needed.
 // ---------------------------------------------------------------------------
 
-// Same clock domain as chronolog::ChronologTimer::getTimestamp().
+// Local clock for latency arithmetic. It is NOT the clock domain of event
+// timestamps, so never subtract an Event::time() from it.
 static uint64_t now_ns()
 {
     return static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
@@ -458,7 +461,9 @@ static void latency_measure_story(chronolog::StoryHandle* story_handle,
     // event that seals mid-write must be caught at its true first appearance, not
     // at the first poll after all writes finished. eventTime is monotonically
     // assigned per log_event() call, so it uniquely keys an event of this client.
-    std::set<uint64_t> pending; // my logged eventTimes not yet seen via playback
+    // my logged eventTimes not yet seen via playback, each mapped to the now_ns()
+    // reading taken when its log_event() call started
+    std::map<uint64_t, uint64_t> pending;
     uint64_t event_size = std::min(workload_args.ave_event_size, static_cast<uint64_t>(payload_str.size()));
     std::string event_payload = payload_str.substr(0, event_size);
 
@@ -492,7 +497,7 @@ static void latency_measure_story(chronolog::StoryHandle* story_handle,
             stats.write_end_ns = t_write_end;
             if(event_time != 0)
             {
-                pending.insert(event_time);
+                pending.emplace(event_time, t_write_start);
                 ++stats.logged;
                 stats.payload_bytes += event_payload.size();
             }
@@ -524,7 +529,7 @@ static void latency_measure_story(chronolog::StoryHandle* story_handle,
                     if(it == pending.end())
                         continue; // not mine, or already recorded
                     stats.event_times.push_back(event.time());
-                    stats.latencies_ms.push_back(static_cast<double>(t_seen - event.time()) / 1e6);
+                    stats.latencies_ms.push_back(static_cast<double>(t_seen - it->second) / 1e6);
                     ++stats.seen;
                     pending.erase(it);
                 }

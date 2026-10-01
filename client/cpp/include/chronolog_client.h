@@ -176,6 +176,12 @@ public:
 
     int Disconnect();
 
+    // Re-synchronize this client's clock with the ChronoVisor time authority.
+    // A round trip to the Visor refreshes the local offset used to derive event
+    // ChronoTicks. Off the per-event hot path; safe to call any time after a
+    // successful Connect(). Returns CL_SUCCESS or an error code.
+    int SyncClock();
+
     // Returns this client's packed ClientId — the same value that appears in
     // Event::client_id() / EventSequence::clientId for every event produced
     // by this client and surfaced at retrieval. Valid only after a successful

@@ -12,6 +12,7 @@
 #include <GrapherExtractionChain.h>
 #include <StoryWatermarkRegistry.h>
 #include <WatermarkReportPublisher.h>
+#include <ChronoClock.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -480,7 +481,16 @@ void chronolog::GrapherDataStore::extractDecayedStoryChunks()
               pipelinesWaitingForExit.size(),
               tl::thread::self_id());
 
-    uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // Decay compares "now" against chunk end times derived from event ChronoTicks,
+    // so read "now" on the Visor timeline (the grapher syncs via its heartbeat).
+    // Until the first clock exchange, now_visor() is on the local steady-clock
+    // epoch (not the Visor's), so skip decay until synced.
+    if(!chronolog::ProcessClock().synced())
+    {
+        LOG_DEBUG("[GrapherDataStore] Skipping chunk decay until the Visor clock is synced.");
+        return;
+    }
+    uint64_t current_time = chronolog::ProcessClock().now_visor();
 
     std::vector<chl::StoryChunk*> extracted_story_chunks;
     std::lock_guard storeLock(dataStoreMutex);

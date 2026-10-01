@@ -18,6 +18,8 @@
 #include "PlayerStatsMsg.h"
 #include "chrono_monitor.h"
 #include "KeeperRegistry.h"
+#include "ClockState.h"
+#include "VisorClock.h"
 
 namespace tl = thallium;
 
@@ -51,7 +53,10 @@ private:
         request.respond(return_code);
     }
 
-    void handle_stats_msg(chronolog::KeeperStatsMsg const& keeper_stats_msg)
+    // Heartbeat doubles as the keeper's periodic clock exchange: the reply
+    // carries the Visor authority tick; the keeper brackets the call with local
+    // timestamps to derive its offset (see ChronoClock / KeeperRegistryClient).
+    void handle_stats_msg(tl::request const& request, chronolog::KeeperStatsMsg const& keeper_stats_msg)
     {
         std::stringstream ss;
         ss << keeper_stats_msg.getKeeperIdCard();
@@ -59,6 +64,7 @@ private:
                   ss.str(),
                   keeper_stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateKeeperProcessStats(keeper_stats_msg);
+        request.respond(ClockState{VisorClock::now()});
     }
 
     void register_grapher(tl::request const& request, chronolog::GrapherRegistrationMsg const& registrationMsg)
@@ -78,7 +84,7 @@ private:
         request.respond(return_code);
     }
 
-    void handle_grapher_stats_msg(chronolog::GrapherStatsMsg const& stats_msg)
+    void handle_grapher_stats_msg(tl::request const& request, chronolog::GrapherStatsMsg const& stats_msg)
     {
         std::stringstream ss;
         ss << stats_msg.getGrapherIdCard();
@@ -86,6 +92,7 @@ private:
                   ss.str(),
                   stats_msg.getActiveStoryCount());
         theKeeperProcessRegistry.updateGrapherProcessStats(stats_msg);
+        request.respond(ClockState{VisorClock::now()});
     }
 
     void register_player(tl::request const& request, chronolog::PlayerRegistrationMsg const& registrationMsg)
@@ -106,12 +113,13 @@ private:
         request.respond(return_code);
     }
 
-    void handle_player_stats_msg(chronolog::PlayerStatsMsg const& stats_msg)
+    void handle_player_stats_msg(tl::request const& request, chronolog::PlayerStatsMsg const& stats_msg)
     {
         std::stringstream ss;
         ss << stats_msg.getPlayerIdCard();
         // LOG_DEBUG("[KeeperRegistryService] Player Stats: PlayerIdCard: {}", chrono::to_string(stats_msg));
         theKeeperProcessRegistry.updatePlayerProcessStats(stats_msg);
+        request.respond(ClockState{VisorClock::now()});
     }
 
 
@@ -121,13 +129,15 @@ private:
     {
         define("register_keeper", &KeeperRegistryService::register_keeper);
         define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
-        define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg, tl::ignore_return_value());
+        // stats heartbeats now reply with the Visor clock state, so they are
+        // request/response (no ignore_return_value / disable_response).
+        define("handle_stats_msg", &KeeperRegistryService::handle_stats_msg);
         define("register_grapher", &KeeperRegistryService::register_grapher);
         define("unregister_grapher", &KeeperRegistryService::unregister_grapher);
-        define("handle_grapher_stats_msg", &KeeperRegistryService::handle_grapher_stats_msg, tl::ignore_return_value());
+        define("handle_grapher_stats_msg", &KeeperRegistryService::handle_grapher_stats_msg);
         define("register_player", &KeeperRegistryService::register_player);
         define("unregister_player", &KeeperRegistryService::unregister_player);
-        define("handle_player_stats_msg", &KeeperRegistryService::handle_player_stats_msg, tl::ignore_return_value());
+        define("handle_player_stats_msg", &KeeperRegistryService::handle_player_stats_msg);
         //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }

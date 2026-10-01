@@ -103,7 +103,7 @@ chronolog::VisorClientPortal::~VisorClientPortal()
 /**
  * Admin APIs
  */
-int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::ClientId& client_id, uint64_t& clock_offset)
+int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::ClientId& client_id)
 {
     chronolog::ClientIdentity identity = chronolog::ClientIdentity::unpack(client_id);
     LOG_INFO("New Client Connected. ClientEUID={}, ClientID={} (ip={}, port={}, instance={})",

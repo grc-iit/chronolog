@@ -11,6 +11,8 @@
 #include <KeeperIdCard.h>
 #include <KeeperRegistrationMsg.h>
 #include <KeeperStatsMsg.h>
+#include <ChronoClock.h>
+#include <ClockState.h>
 #include <chronolog_errcode.h>
 
 namespace tl = thallium;
@@ -70,6 +72,9 @@ public:
         }
     }
 
+    // The periodic stats heartbeat doubles as this keeper's clock exchange with
+    // the Visor: bracket the round trip with local timestamps and fold the Visor
+    // authority tick from the reply into the process clock offset.
     void send_stats_msg(KeeperStatsMsg const& keeperStatsMsg)
     {
         try
@@ -77,7 +82,20 @@ public:
             std::stringstream ss;
             ss << keeperStatsMsg;
             LOG_DEBUG("[KeeperRegisterClient] Sending Stats Message: {}", ss.str());
-            handle_stats_msg.on(reg_service_ph)(keeperStatsMsg);
+            // Timed so an unresponsive Visor cannot wedge the daemon's heartbeat
+            // loop (the RPC is now request/response, not fire-and-forget).
+            uint64_t t0 = ProcessClock().local_reading();
+            ClockState visor_state = handle_stats_msg.on(reg_service_ph).timed(std::chrono::seconds(5), keeperStatsMsg);
+            uint64_t t1 = ProcessClock().local_reading();
+            ProcessClock().applySync(t0, visor_state.visor_time, t1);
+            LOG_DEBUG("[KeeperRegisterClient] Clock synced via heartbeat: offset={}, uncertainty={}",
+                      ProcessClock().offset(),
+                      ProcessClock().state().uncertainty);
+        }
+        catch(tl::timeout const&)
+        {
+            // tl::timeout derives from std::exception, not tl::exception.
+            LOG_WARNING("[KeeperRegisterClient] Stats/clock-sync RPC timed out.");
         }
         catch(tl::exception const&)
         {
@@ -112,7 +130,7 @@ private:
                   registry_provider_id);
         register_keeper = tl_engine.define("register_keeper");
         unregister_keeper = tl_engine.define("unregister_keeper");
-        handle_stats_msg = tl_engine.define("handle_stats_msg").disable_response();
+        handle_stats_msg = tl_engine.define("handle_stats_msg");
     }
 };
 } // namespace chronolog
