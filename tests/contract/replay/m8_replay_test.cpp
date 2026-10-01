@@ -62,6 +62,15 @@ public:
             bool match = q->has_hlc() ? e.hlc >= convert::fromProto(q->hlc().start()) &&
                                                 e.hlc < convert::fromProto(q->hlc().end())
                                       : true;
+            if(match && q->has_physical_filter())
+            {
+                const auto& r = q->physical_filter();
+                const bool bounded = e.physical.status == ClockStatus::Synced && e.physical.uncertainty_ns &&
+                                     *e.physical.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
+                const __int128_t p = e.physical.physical_ns;
+                const __int128_t u = bounded ? *e.physical.uncertainty_ns : 0;
+                match = bounded ? p - u < r.end_ns() && p + u >= r.start_ns() : p >= r.start_ns() && p < r.end_ns();
+            }
             if(match)
                 *batch.mutable_batch()->add_events() = convert::toProto(e);
         }
@@ -297,10 +306,14 @@ TEST_F(ReplayContract, AbandonedRangesStaySourceFailed)
 }
 TEST_F(ReplayContract, PhysicalPredecessorSpanIncludesPhysicalCeilingAndSkew)
 {
+    routes->policy = true;
     old.events.clear();
     read({Range::Axis::Physical, {305, 0}, {320, 0}});
     ASSERT_EQ(old.requests.size(), 1);
-    EXPECT_TRUE(old.requests[0].has_physical());
+    EXPECT_TRUE(old.requests[0].has_hlc());
+    ASSERT_TRUE(old.requests[0].has_physical_filter());
+    EXPECT_EQ(old.requests[0].physical_filter().start_ns(), 305);
+    EXPECT_EQ(old.requests[0].physical_filter().end_ns(), 320);
     old.requests.clear();
     read({Range::Axis::Physical, {310, 0}, {320, 0}});
     EXPECT_TRUE(old.requests.empty());
@@ -313,7 +326,9 @@ TEST_F(ReplayContract, PhysicalPredecessorSpanIncludesPhysicalCeilingAndSkew)
 TEST_F(ReplayContract, PredecessorPhysicalFrontierMustCoverEnd)
 {
     routes->policy = true;
-    ASSERT_TRUE(archive_writer->publish({"empty", 1, {100, 0}, {1000, 0}, {}, true}).ok());
+    Chunk chunk{"empty", 1, {100, 0}, {1000, 0}, {}, true};
+    chunk.physical_policy = true;
+    ASSERT_TRUE(archive_writer->publish(chunk).ok());
     old.events.clear();
     old.physical = 309;
     read({Range::Axis::Physical, {305, 0}, {320, 0}});
@@ -331,12 +346,28 @@ TEST_F(ReplayContract, PhysicalReadWithoutEvictionsDoesNotRequireAnArchive)
     ASSERT_EQ(returned.size(), 1);
     EXPECT_EQ(returned[0].hlc, (Hlc{140, 0}));
 }
+TEST_F(ReplayContract, ArchiveWithoutPolicyMarkerMakesPhysicalReadIncomplete)
+{
+    routes->policy = true;
+    old.events.clear();
+    current.events.clear();
+    routes->state.archived_below = {200, 0};
+    ASSERT_TRUE(archive_writer->publish({"legacy", 1, {100, 0}, {200, 0}, {event(140)}, false}).ok());
+    read({Range::Axis::Physical, {135, 0}, {145, 0}});
+    EXPECT_FALSE(completion.complete);
+    EXPECT_EQ(completion.reason, IncompleteReason::PhysicalAxisUnbounded);
+    ASSERT_EQ(returned.size(), 1);
+    EXPECT_EQ(returned[0].hlc, (Hlc{140, 0}));
+}
+
 TEST_F(ReplayContract, PhysicalLimitCountsMatchesAndKeepsTheRequestedEnd)
 {
     routes->policy = true;
     options.read_max_events = 1;
     routes->state.archived_below = {200, 0};
-    ASSERT_TRUE(archive_writer->publish({"physical", 1, {100, 0}, {200, 0}, {event(120), event(140)}, false}).ok());
+    Chunk chunk{"physical", 1, {100, 0}, {200, 0}, {event(120), event(140)}, false};
+    chunk.physical_policy = true;
+    ASSERT_TRUE(archive_writer->publish(chunk).ok());
     old.events.clear();
     current.events.clear();
     read({Range::Axis::Physical, {135, 0}, {145, 0}});

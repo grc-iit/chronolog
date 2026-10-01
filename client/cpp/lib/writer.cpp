@@ -293,7 +293,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
     {
         if(!pending->outcomes[i])
             return absl::InternalError("missing append outcome");
-        if(pending->outcomes[i]->ok())
+        if(pending->outcomes[i]->ok() || pending->outcomes[i]->status().code() == absl::StatusCode::kOutOfRange)
             sequence = std::max(sequence, pending->items[i].sequence() + 1);
         out.push_back(std::move(*pending->outcomes[i]));
     }

@@ -123,6 +123,15 @@ absl::StatusOr<ReadStream> Client::read(StoryId id, HlcRange range, Deadline dea
         return endpoint.status();
     return ReadStream(std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, id, range, deadline));
 }
+absl::StatusOr<ReadStream> Client::readPhysical(StoryId id, PhysicalRange range, Deadline deadline)
+{
+    if(!id || range.end_ns <= range.start_ns)
+        return absl::InvalidArgumentError("invalid physical read range");
+    auto endpoint = impl_->state->playerEndpoint(id, impl_->state->deadline(deadline));
+    if(!endpoint.ok())
+        return endpoint.status();
+    return ReadStream(std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, id, range, deadline));
+}
 absl::StatusOr<TailStream> Client::tail(StoryId id, std::optional<Position> after, Deadline deadline)
 {
     if(!id || (after && after->id.story_id != id))

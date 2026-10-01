@@ -313,6 +313,9 @@ class Client:
     def destroy_story(self, story, *, timeout=None): return self._handle.destroy_story(_id(story), timeout)
     def acquire(self, story, identity, *, timeout=None): return Writer(self._handle.acquire(_id(story), identity, timeout))
 
+    def read_physical(self, story, start, end, *, timeout=None):
+        return ReadStream(self._handle.read_physical(_id(story), start, end, timeout), timeout)
+
     def read(self, story, start=None, end=None, *, timeout=None):
         handle = self._handle.read(_id(story), start or Hlc(), end or Hlc(2**63 - 1, 2**32 - 1), timeout)
         return ReadStream(handle, timeout)

@@ -32,6 +32,7 @@ services:
     ports: ["127.0.0.1:3000:3000"]
     environment:
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: chronolog-viz-datasource
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: chronolog-viz-password

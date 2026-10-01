@@ -244,6 +244,28 @@ class Smoke:
                                               physical=pb.PhysicalRange(start_ns=0, end_ns=time.time_ns() + 1)))
         self.check("Physical Read", not physical.complete
                    and physical.reason == pb.INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED)
+        bounded_story = self.catalog.CreateStory(pb.CreateStoryRequest(
+            chronicle=chronicle, name=f"physical-{suffix}"), timeout=self.timeout).story.story_id
+        bounded_writer = self.catalog.Acquire(pb.AcquireRequest(
+            story_id=bounded_story, writer_identity=f"physical-{suffix}"), timeout=self.timeout)
+        bounded_journal = self.rpc.JournalStub(self.connect(bounded_writer.assigned_keeper.endpoint))
+        stamp = time.time_ns()
+        bounded = bounded_journal.Append(pb.AppendRequest(
+            story_id=bounded_story, epoch=bounded_writer.route.epoch, durability=pb.DURABILITY_DURABLE,
+            items=[pb.AppendItem(writer_id=bounded_writer.writer_id, incarnation=bounded_writer.incarnation,
+                                 sequence=1, physical=pb.TimeReading(physical_ns=stamp, uncertainty_ns=0,
+                                                                  status=pb.CLOCK_STATUS_SYNCED),
+                                 envelope=pb.Envelope(payload=b"bounded"))]), timeout=self.timeout)
+        self.check("Bounded physical append", bounded.results[0].status.code == 0)
+        sealed_physical = None
+        for _ in range(22):
+            bounded_events, sealed_physical = self.read(pb.ReadRequest(story_id=bounded_story,
+                physical=pb.PhysicalRange(start_ns=stamp, end_ns=stamp + 1)))
+            if sealed_physical.complete:
+                break
+            time.sleep(1)
+        self.check("Sealed physical Read complete", sealed_physical.complete and len(bounded_events) == 1
+                   and bounded_events[0].envelope.payload == b"bounded")
         event50 = events[49]
         tail_request = pb.TailRequest(story_id=story)
         getattr(tail_request, "from").CopyFrom(pb.Position(hlc=event50.hlc, id=event50.id))

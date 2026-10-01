@@ -58,9 +58,25 @@ public:
         f.keepers = {a_, b_};
         f.writers = view_;
         f.closed = closed_;
+        f.physical_policy = policy_;
         return f;
     }
 
+    void physicalState(bool policy, int64_t frontier, uint64_t uncertainty)
+    {
+        std::lock_guard lk(mu_);
+        policy_ = policy;
+        for(auto* k: {&a_, &b_})
+        {
+            k->frontier.physical_frontier = frontier;
+            for(auto& e: k->events)
+            {
+                e.physical.status = uncertainty == UINT64_MAX ? ClockStatus::Unsynced : ClockStatus::Synced;
+                e.physical.uncertainty_ns =
+                        uncertainty == UINT64_MAX ? std::nullopt : std::optional<uint64_t>(uncertainty);
+            }
+        }
+    }
     void setKeeperFrontiers(const std::vector<KeeperFrontier>& frontiers)
     {
         std::lock_guard lk(mu_);
@@ -127,6 +143,7 @@ public:
     }
 
 private:
+    bool policy_{};
     mutable std::mutex mu_;
     KeeperFetch a_, b_;
     std::vector<WriterAssignment> writers_, view_;
@@ -149,6 +166,7 @@ std::unique_ptr<ReplayHarness> makeHarness()
     options.batch_size = 3;
     options.tail_poll = std::chrono::milliseconds(5);
     h->sut = std::make_unique<HotReplay>(src, options);
+    h->physicalState = [src](bool p, int64_t f, uint64_t u) { src->physicalState(p, f, u); };
     h->setKeeperFrontiers = [src](std::vector<KeeperFrontier> f) { src->setKeeperFrontiers(f); };
     h->hideWriterFromAcquisitionView = [src] { src->hideWriter(); };
     h->setFrontiers = [src](std::vector<Frontier> f) { src->setWriterFrontiers(f); };

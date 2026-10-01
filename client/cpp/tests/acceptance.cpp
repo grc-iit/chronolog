@@ -18,7 +18,7 @@ int main(int argc, char** argv)
     REQUIRE(argc == 3);
     sdk::ClientOptions options;
     options.catalog_endpoint = argv[1];
-    options.player_endpoint = argv[2];
+    (void)argv[2];
     options.rpc_timeout = 10s;
     auto client = sdk::Client::Connect(options);
     REQUIRE(client.ok());
@@ -103,6 +103,16 @@ int main(int argc, char** argv)
     }
     REQUIRE(delivered == 500);
     tail->cancel();
+    sdk::AppendSpec rejectionSpec;
+    rejectionSpec.envelope.payload = "backdated";
+    rejectionSpec.physical = TimeReading{1, {}, ClockStatus::Unsynced};
+    auto rejection = writer->append(rejectionSpec);
+    REQUIRE(rejection.status().code() == absl::StatusCode::kOutOfRange);
+    sdk::AppendSpec afterRejection;
+    afterRejection.envelope.payload = "after-rejection";
+    auto resumed = writer->append(afterRejection);
+    REQUIRE(resumed.ok() && resumed->event_id.sequence == 1002);
+
     auto released = writer->release();
     REQUIRE(released.ok() && *released);
     auto rejected = writer->append({{"", "released", "", "", {}}});

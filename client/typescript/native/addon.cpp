@@ -563,6 +563,21 @@ Js stream(const Napi::CallbackInfo& info)
     auto story = unsigned64(info[1]);
     auto mode = text(info[2]);
     auto end = deadline(object(info[4]));
+    if(mode == "physical")
+    {
+        auto range = object(info[3]);
+        sdk::PhysicalRange input{signed64(range.Get("startNs")), signed64(range.Get("endNs"))};
+        return work<Held>(info.Env(),
+                          [held, story, input, end]() -> absl::StatusOr<Held>
+                          {
+                              auto result = held->client->readPhysical(story, input, end);
+                              if(!result.ok())
+                                  return result.status();
+                              auto out = std::make_shared<Handle>(Handle::Read);
+                              out->read = std::make_shared<sdk::ReadStream>(std::move(*result));
+                              return out;
+                          });
+    }
     if(mode == "read")
     {
         auto range = object(info[3]);

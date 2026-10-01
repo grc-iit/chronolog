@@ -2,6 +2,7 @@
 #include "chrono-grapher/server/GrapherConfig.h"
 #include <grpcpp/grpcpp.h>
 #include <chrono>
+#include <algorithm>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
@@ -73,6 +74,7 @@ int main(int argc, char** argv)
             [&](std::stop_token stop)
             {
                 bool registered = false;
+                size_t policy_cursor = 0;
                 std::mutex mutex;
                 std::condition_variable_any pause;
                 while(!stop.stop_requested())
@@ -102,6 +104,15 @@ int main(int argc, char** argv)
                         chronolog::internal::v1::HeartbeatRequest request;
                         request.set_process_id(config->process_id);
                         request.set_instance(instance);
+                        auto legacy = (*store)->storiesWithoutPhysicalPolicy();
+                        if(legacy.ok() && !legacy->empty())
+                        {
+                            policy_cursor %= legacy->size();
+                            const auto count = std::min<size_t>(65536, legacy->size() - policy_cursor);
+                            for(size_t n = 0; n < count; ++n)
+                                request.add_stories_without_physical_policy((*legacy)[policy_cursor + n]);
+                            policy_cursor += count;
+                        }
                         chronolog::internal::v1::HeartbeatResponse response;
                         const auto status = stub->Heartbeat(&context, request, &response);
                         registered = status.ok() && response.status().code() == 0;

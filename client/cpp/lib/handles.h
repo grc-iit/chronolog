@@ -1,5 +1,6 @@
 #pragma once
 #include "internal.h"
+#include <set>
 
 namespace chronolog::client
 {
@@ -74,7 +75,19 @@ struct ReadStream::Impl: detail::ReplayState
         : ReplayState(std::move(s), std::move(endpoint), id, d)
         , range(r)
     {}
+    Impl(std::shared_ptr<detail::State> s, std::string endpoint, StoryId id, PhysicalRange r, Deadline d)
+        : ReplayState(std::move(s), std::move(endpoint), id, d)
+        , physical(r)
+        , pending_ranges{r}
+    {}
     HlcRange range;
+    std::optional<PhysicalRange> physical;
+    std::vector<PhysicalRange> pending_ranges;
+    std::set<EventId> seen;
+    Completion aggregate{true, {}, {}, IncompleteReason::None};
+    std::optional<Hlc> aggregate_frontier;
+    std::vector<Event> leaf_events;
+    absl::StatusOr<std::optional<StreamItem>> nextPhysical(Deadline);
     std::unique_ptr<grpc::ClientReader<v1::ReadResponse>> stream;
     absl::StatusOr<std::optional<StreamItem>> next(Deadline);
 };

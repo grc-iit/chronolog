@@ -87,6 +87,16 @@ TEST(SqlStack, ProvenanceAndCompletion)
     auto boundRange = db.execute("SELECT n FROM t WHERE TIME BETWEEN ? AND ?", bounds);
     ASSERT_TRUE(boundRange.ok()) << boundRange.status();
     EXPECT_EQ(boundRange->rows.size(), 2);
+    std::vector<sql::Value> physicalBounds = {
+            int64_t{0},
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+                            .count() +
+                    1000000000LL};
+    auto physical = db.execute("SELECT n FROM t WHERE PHYSICAL BETWEEN ? AND ?", physicalBounds);
+    ASSERT_TRUE(physical.ok()) << physical.status();
+    EXPECT_EQ(physical->rows.size(), 3);
+    ASSERT_TRUE(physical->completion);
+    EXPECT_FALSE(physical->completion->complete);
     std::vector<sql::Value> equality = {sql::Value::binary({0, 255})};
     auto blobs = db.execute("SELECT b FROM t WHERE b = ?", equality);
     ASSERT_TRUE(blobs.ok());

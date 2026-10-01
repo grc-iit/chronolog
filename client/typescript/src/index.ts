@@ -60,6 +60,7 @@ export interface Chronicle { readonly name: string; readonly tombstoned: boolean
 export interface Story { readonly id: bigint; readonly epoch: bigint; readonly chronicle: string; readonly name: string; readonly tombstoned: boolean }
 export interface AppendResult { readonly eventId: EventId; readonly hlc: Hlc; readonly achieved: Durability; readonly acked: boolean }
 export interface HlcRange { readonly start: Hlc; readonly end: Hlc }
+export interface PhysicalRange { readonly startNs: bigint; readonly endNs: bigint }
 export interface Position { readonly hlc: Hlc; readonly id: EventId }
 export interface CallOptions { timeoutMs?: number }
 export interface ConnectOptions extends CallOptions {
@@ -83,7 +84,7 @@ interface Core {
   append(handle: Handle, payload: Uint8Array, options: AppendOptions): Promise<AppendResult>;
   appendBatch(handle: Handle, items: readonly AppendItem[], options: CallOptions): Promise<(AppendResult | Error)[]>;
   release(handle: Handle, options: CallOptions): Promise<boolean>;
-  stream(handle: Handle, story: bigint, mode: 'read' | 'tail', input: HlcRange | Position | null, options: CallOptions): Promise<Handle>;
+  stream(handle: Handle, story: bigint, mode: 'read' | 'tail' | 'physical', input: HlcRange | PhysicalRange | Position | null, options: CallOptions): Promise<Handle>;
   next(handle: Handle, mode: 'read' | 'tail', options: CallOptions): Promise<StreamItem | null>;
   cancel(handle: Handle, mode: 'read' | 'tail'): void;
 }
@@ -114,6 +115,9 @@ export class Client {
   async acquire(story: bigint, identity: string, options: CallOptions = {}): Promise<Writer> {
     const result = await call(() => core.acquire(this.handle, story, identity, options));
     return new Writer(result.handle, freeze(result.acquisition));
+  }
+  readPhysical(story: bigint, range: PhysicalRange, options: StreamOptions = {}): EventStream {
+    return new EventStream(() => call(() => core.stream(this.handle, story, 'physical', range, options)), 'read', options);
   }
   read(story: bigint, range: HlcRange, options: StreamOptions = {}): EventStream {
     return new EventStream(() => call(() => core.stream(this.handle, story, 'read', range, options)), 'read', options);

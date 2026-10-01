@@ -79,6 +79,25 @@ protected:
     StoryId story_{};
 };
 
+TEST_F(cluster_adapter, MismatchedPolicyRefusesRegistration)
+{
+    iv1::RegisterRequest request;
+    auto* p = request.mutable_process();
+    p->set_process_id("keeper-1");
+    p->set_instance("instance");
+    p->set_endpoint("localhost:1");
+    p->set_role(iv1::PROCESS_ROLE_KEEPER);
+    request.set_policy_version(2);
+    iv1::RegisterResponse response;
+    ASSERT_TRUE(stub_->Register(context().get(), request, &response).ok());
+    EXPECT_EQ(response.status().code(), 9);
+    EXPECT_FALSE(membership_->process("keeper-1"));
+    request.set_policy_version(1);
+    ASSERT_TRUE(stub_->Register(context().get(), request, &response).ok());
+    EXPECT_EQ(response.status().code(), 0);
+    EXPECT_EQ(response.policy().acceptance_window_ns(), 15000000000LL);
+}
+
 TEST_F(cluster_adapter, RegisterAndHeartbeatFenceAnObsoleteInstance)
 {
     iv1::RegisterRequest registration;

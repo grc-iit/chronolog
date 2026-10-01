@@ -75,6 +75,11 @@ test('catalog, 1000 ordered DURABLE appends, exact binary replay, exclusive tail
     assert.deepEqual(event.envelope.traceId, traceId);
     assert.deepEqual(event.envelope.spanId, spanId);
   }
+  const physical = client.readPhysical(story.id, { startNs: 0n, endNs: BigInt(Date.now()) * 1000000n + 1000000000n }, { timeoutMs: 8000 });
+  const physicalEvents = [];
+  for await (const event of physical) physicalEvents.push(event);
+  assert.equal(physicalEvents.length, 1000);
+  assert.equal((await physical.completion).complete, false);
   const tail = client.tail(story.id, { hlc: events[499].hlc, id: events[499].id });
   let index = 500;
   for await (const event of tail) {

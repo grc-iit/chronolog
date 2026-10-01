@@ -8,6 +8,7 @@ TEST(SqlParser, GrammarAndTypedBindings)
                             "SELECT * FROM t",
                             "SELECT a,_hlc,_physical_ns,_event_id FROM t WHERE a = 1 AND a != 2 AND a < 3 AND a > 0 "
                             "AND a <= 2 AND a >= 1 ORDER BY TIME ASC LIMIT 4",
+                            "SELECT * FROM t WHERE PHYSICAL BETWEEN -1 AND 100",
                             "SELECT COUNT(*) FROM t WHERE TIME BETWEEN '1:0' AND '2:1'",
                             "SELECT a FROM t ORDER BY TIME DESC LIMIT 2",
                             "INSERT INTO t VALUES (X'00ff',1.2,true,false,NULL)"})
@@ -40,7 +41,7 @@ TEST(SqlParser, RejectionsNameTokens)
                             "INSERT INTO t VALUES ('bad)",
                             "INSERT INTO t VALUES (X'zz')",
                             "SELECT * FROM t WHERE TIME BETWEEN 'x' AND '2:0'",
-                            "SELECT * FROM t WHERE PHYSICAL BETWEEN 1 AND 2",
+                            "SELECT * FROM t WHERE PHYSICAL BETWEEN 2 AND 1",
                             "SELECT * FROM t; SELECT * FROM t",
                             "SELECT * FROM t WHERE a ! 1",
                             "SELECT * FROM t WHERE TIME BETWEEN '3:0' AND '2:0'"})
