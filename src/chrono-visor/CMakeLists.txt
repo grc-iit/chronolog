@@ -4,6 +4,7 @@
 find_package(NuRaft CONFIG REQUIRED)
 
 add_library(chronolog_visor_lib STATIC
+    dynamic/MembershipState.cpp
     raft/DurableState.cpp
     raft/RaftMetadataStore.cpp
     VisorConfig.cpp
@@ -70,3 +71,6 @@ target_link_libraries(visor_raft_acceptance_client PRIVATE chronolog_proto chron
 add_test(NAME visor_raft_binary_acceptance COMMAND timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/raft_acceptance.sh"
     $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_raft_acceptance_client>)
 set_tests_properties(visor_raft_binary_acceptance PROPERTIES TIMEOUT 125 RESOURCE_LOCK visor_raft_ports)
+
+add_executable(chronolog_admin dynamic/admin.cpp)
+target_link_libraries(chronolog_admin PRIVATE chronolog_internal_proto chronolog_warnings)

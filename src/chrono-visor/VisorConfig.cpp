@@ -86,6 +86,7 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
                                                 "graphers",
                                                 "player",
                                                 "heartbeat_timeout_ms",
+                                                "keeper_failure_timeout_ms",
                                                 "release_fence_timeout_ms",
                                                 "worker_threads",
                                                 "insecure_bind_all"};
@@ -137,6 +138,8 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
             cfg.player = json.at("player").get<std::string>();
         if(json.contains("heartbeat_timeout_ms"))
             cfg.heartbeat_timeout_ms = json.at("heartbeat_timeout_ms").get<uint32_t>();
+        if(json.contains("keeper_failure_timeout_ms"))
+            cfg.heartbeat_timeout_ms = json.at("keeper_failure_timeout_ms").get<uint32_t>();
         if(json.contains("release_fence_timeout_ms"))
             cfg.release_fence_timeout_ms = json.at("release_fence_timeout_ms").get<uint32_t>();
         if(json.contains("worker_threads"))
@@ -206,6 +209,7 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
     if(auto v = env("player"))
         cfg.player = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
+                            {"keeper_failure_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
                             {"worker_threads", &cfg.worker_threads}})
     {

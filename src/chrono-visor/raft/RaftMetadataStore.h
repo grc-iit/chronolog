@@ -31,12 +31,19 @@ public:
     int leaderId() const;
     bool isLocalLeader() const { return leaderId() == config_.server_id; }
     std::string leaderEndpoint(bool internal) const;
+    absl::StatusOr<std::string> propose(const internal::v1::CatalogCommand& command);
+    uint64_t term() const { return server_->get_term(); }
+    std::vector<std::string> replicaEndpoints() const
+    {
+        std::vector<std::string> out;
+        for(const auto& peer: config_.peers) out.push_back(peer.internal_endpoint);
+        return out;
+    }
     SqliteMetadataStore& appliedStore() { return *store_; }
 
 private:
     class Machine;
     RaftMetadataStore(std::unique_ptr<SqliteMetadataStore> store, RaftConfig config, FenceWaiter waiter);
-    absl::StatusOr<std::string> propose(const internal::v1::CatalogCommand& command);
     std::unique_ptr<SqliteMetadataStore> store_;
     RaftConfig config_;
     FenceWaiter fence_waiter_;

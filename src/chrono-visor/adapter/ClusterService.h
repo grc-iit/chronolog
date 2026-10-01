@@ -43,8 +43,24 @@ public:
                    const AcquisitionLedger& ledger,
                    AcquisitionFeed& feed,
                    RaftMetadataStore* raft = nullptr,
-                   WorkerPool* pool = nullptr);
+                   WorkerPool* pool = nullptr,
+                   std::chrono::milliseconds failure_timeout = std::chrono::milliseconds(15000));
 
+    grpc::ServerUnaryReactor* ExtendCeiling(grpc::CallbackServerContext*,
+                                            const internal::v1::ExtendCeilingRequest*,
+                                            internal::v1::ExtendCeilingResponse*) override;
+    grpc::ServerUnaryReactor* DrainKeeper(grpc::CallbackServerContext*,
+                                          const internal::v1::KeeperRequest*,
+                                          internal::v1::MembershipResponse*) override;
+    grpc::ServerUnaryReactor* JoinKeeper(grpc::CallbackServerContext*,
+                                         const internal::v1::KeeperRequest*,
+                                         internal::v1::MembershipResponse*) override;
+    grpc::ServerUnaryReactor* AbandonKeeper(grpc::CallbackServerContext*,
+                                            const internal::v1::KeeperRequest*,
+                                            internal::v1::MembershipResponse*) override;
+    grpc::ServerUnaryReactor* ListMembers(grpc::CallbackServerContext*,
+                                          const internal::v1::ListMembersRequest*,
+                                          internal::v1::MembershipResponse*) override;
     grpc::ServerUnaryReactor* ReadClock(grpc::CallbackServerContext* context,
                                         const internal::v1::ReadClockRequest* request,
                                         internal::v1::ReadClockResponse* response) override;
@@ -65,6 +81,8 @@ public:
     void shutdown();
 
 private:
+    template <class Request, class Response>
+    grpc::ServerUnaryReactor* dynamicCall(grpc::CallbackServerContext*, const Request*, Response*, int operation);
     template <class Msg>
     grpc::ServerWriteReactor<Msg>* startStream(std::deque<Msg> initial,
                                                std::function<std::optional<Msg>()> pull,
@@ -85,6 +103,11 @@ private:
     bool closed_{};
     std::set<std::shared_ptr<Stream>> streams_;
     std::jthread route_notifications_;
+    std::mutex heartbeat_mutex_;
+    std::map<std::string, std::chrono::steady_clock::time_point> heartbeats_;
+    uint64_t leader_term_{};
+    std::chrono::steady_clock::time_point leader_since_;
+    std::chrono::milliseconds failure_timeout_{15000};
 };
 
 } // namespace chronolog::visor

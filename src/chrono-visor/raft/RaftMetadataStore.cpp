@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "adapter/Convert.h"
+#include "dynamic/MembershipState.h"
 namespace chronolog::visor
 {
 using namespace nuraft;
@@ -42,6 +43,8 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
 {
     switch(c.mutation_case())
     {
+        case internal::v1::CatalogCommand::kMembership:
+            return dynamic::apply(store, c.membership());
         case internal::v1::CatalogCommand::kCreateChronicle:
         {
             const auto& q = c.create_chronicle();
@@ -70,7 +73,10 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
             if(value.ok())
+            {
                 *r.mutable_story() = convert::toProto(*value);
+                requireStorage(store.saveMembership(dynamic::snapshot(store)));
+            }
             return r.SerializeAsString();
         }
         case internal::v1::CatalogCommand::kDestroyStory:
@@ -111,7 +117,17 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
         {
             const auto& q = c.compare_and_set_epoch();
             v1::CompareAndSetEpochResponse r;
-            auto value = store.compareAndSetEpoch(q.story_id(), q.expected(), q.desired());
+            auto state = store.membershipState();
+            requireStorage(state.status());
+            bool registered = false;
+            if(state.ok())
+                for(const auto& m: state->members())
+                    if(!m.process().instance().empty())
+                        registered = true;
+            absl::StatusOr<Epoch> value = registered
+                                                  ? absl::StatusOr<Epoch>(absl::FailedPreconditionError(
+                                                            "use membership transition for registered Keepers"))
+                                                  : store.compareAndSetEpoch(q.story_id(), q.expected(), q.desired());
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
             if(value.ok())
