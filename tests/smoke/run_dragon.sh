@@ -105,8 +105,12 @@ run_engine() {
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
         echo "-- $engine: smoke.py"
+        local smoke_files=() index
+        for ((index=5; index<${#compose[@]}; index+=2)); do
+            smoke_files+=(--compose-file "${compose[index]}")
+        done
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
-            --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"
+            "${smoke_files[@]}" 2>&1 | tee -a "$log"
         rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
             if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
