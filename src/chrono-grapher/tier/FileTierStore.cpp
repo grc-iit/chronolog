@@ -1,0 +1,522 @@
+#include "chrono-grapher/tier/FileTierStore.h"
+#include "chrono-grapher/tier/FileIO.h"
+#include <algorithm>
+#include <charconv>
+#include <set>
+#include <sstream>
+#include <sys/file.h>
+#include <tuple>
+
+namespace chronolog
+{
+namespace
+{
+std::string Hex(const std::string& input)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string output;
+    for(unsigned char c: input)
+    {
+        output += digits[c >> 4];
+        output += digits[c & 15];
+    }
+    return output;
+}
+
+absl::StatusOr<std::string> Unhex(const std::string& input)
+{
+    if(input.size() % 2 != 0)
+        return absl::InvalidArgumentError("invalid chunk name");
+    std::string output;
+    for(std::size_t i = 0; i < input.size(); i += 2)
+    {
+        unsigned byte = 0;
+        const auto parsed = std::from_chars(input.data() + i, input.data() + i + 2, byte, 16);
+        if(parsed.ec != std::errc{} || parsed.ptr != input.data() + i + 2)
+            return absl::InvalidArgumentError("invalid chunk name");
+        output += static_cast<char>(byte);
+    }
+    return output;
+}
+
+std::string Filename(const Chunk& chunk, const std::string& writer)
+{
+    return std::to_string(chunk.start.physical_ns) + "_" + std::to_string(chunk.start.logical) + "_" +
+           std::to_string(chunk.end.physical_ns) + "_" + std::to_string(chunk.end.logical) + "_" +
+           (chunk.exempt ? "1_" : "0_") + std::to_string(chunk.events.size()) + "_" + Hex(writer) + "_" +
+           Hex(chunk.id) + ".pb";
+}
+
+template <typename T>
+bool Number(const std::string& text, T& value)
+{
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+}
+
+absl::StatusOr<ManifestRecord> FromFilename(const std::filesystem::path& relative)
+{
+    ManifestRecord record;
+    if(relative.extension() != ".pb" || !Number(relative.parent_path().string(), record.story_id) || !record.story_id)
+        return absl::InvalidArgumentError("not a published chunk");
+    std::istringstream name(relative.stem().string());
+    std::vector<std::string> fields;
+    std::string field;
+    while(std::getline(name, field, '_')) fields.push_back(field);
+    int exempt = 0;
+    if(fields.size() != 8 || !Number(fields[0], record.start.physical_ns) || !Number(fields[1], record.start.logical) ||
+       !Number(fields[2], record.end.physical_ns) || !Number(fields[3], record.end.logical) ||
+       !Number(fields[4], exempt) || (exempt != 0 && exempt != 1) || !Number(fields[5], record.event_count) ||
+       record.start >= record.end)
+        return absl::InvalidArgumentError("not a published chunk");
+    auto writer = Unhex(fields[6]);
+    auto chunk = Unhex(fields[7]);
+    if(!writer.ok() || !chunk.ok() || writer->empty() || chunk->empty())
+        return absl::InvalidArgumentError("not a published chunk");
+    if(writer->size() > 64 || !std::all_of(writer->begin(),
+                                           writer->end(),
+                                           [](unsigned char c) {
+                                               return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                                      (c >= '0' && c <= '9') || c == '-' || c == '_';
+                                           }))
+        return absl::InvalidArgumentError("invalid chunk writer");
+    record.manifest_writer = *writer;
+    record.chunk_id = *chunk;
+    record.exempt = exempt != 0;
+    record.file = relative.generic_string();
+    record.state = record.event_count ? ManifestState::Published : ManifestState::Empty;
+    return record;
+}
+
+absl::Status ValidChunk(const Chunk& chunk)
+{
+    if(!chunk.story_id || chunk.id.empty() || chunk.id.size() > 128 || chunk.start >= chunk.end ||
+       chunk.events.size() > 65536)
+        return absl::InvalidArgumentError("invalid chunk identity or window");
+    for(const auto& event: chunk.events)
+    {
+        if(event.id.story_id != chunk.story_id || !event.id.writer_id || !event.id.incarnation || !event.id.sequence ||
+           event.hlc < chunk.start || event.hlc >= chunk.end || event.envelope.payload.size() > 1024 * 1024 ||
+           (!event.envelope.trace_id.empty() && event.envelope.trace_id.size() != 16) ||
+           (!event.envelope.span_id.empty() && event.envelope.span_id.size() != 8))
+            return absl::InvalidArgumentError("invalid chunk event");
+    }
+    return absl::OkStatus();
+}
+
+bool SameEvent(const Event& a, const Event& b)
+{
+    return a.id == b.id && a.hlc == b.hlc && a.durability == b.durability &&
+           a.physical.physical_ns == b.physical.physical_ns && a.physical.status == b.physical.status &&
+           a.physical.uncertainty_ns == b.physical.uncertainty_ns &&
+           std::tie(a.envelope.content_type,
+                    a.envelope.payload,
+                    a.envelope.trace_id,
+                    a.envelope.span_id,
+                    a.envelope.attributes) == std::tie(b.envelope.content_type,
+                                                       b.envelope.payload,
+                                                       b.envelope.trace_id,
+                                                       b.envelope.span_id,
+                                                       b.envelope.attributes);
+}
+
+absl::Status ValidRange(const Range& range)
+{
+    if(range.axis != Range::Axis::Hlc && range.axis != Range::Axis::Physical)
+        return absl::InvalidArgumentError("invalid range axis");
+    if(range.axis == Range::Axis::Hlc ? range.start >= range.end : range.start.physical_ns >= range.end.physical_ns)
+        return absl::InvalidArgumentError("invalid range bounds");
+    return absl::OkStatus();
+}
+
+int StateRank(ManifestState state)
+{
+    if(state == ManifestState::Deleted)
+        return 3;
+    if(state == ManifestState::Lost)
+        return 2;
+    if(state == ManifestState::Published || state == ManifestState::Empty)
+        return 1;
+    return 0;
+}
+
+absl::Status ValidateFile(const ChunkCodec& codec, const std::filesystem::path& root, const ManifestRecord& record)
+{
+    auto events = codec.read(root / record.file);
+    if(!events.ok())
+        return events.status();
+    if(events->size() != record.event_count)
+        return absl::UnavailableError("chunk event count mismatch");
+    Chunk chunk{record.chunk_id, record.story_id, record.start, record.end, *std::move(events), record.exempt};
+    const auto valid = ValidChunk(chunk);
+    return valid.ok() ? absl::OkStatus() : absl::UnavailableError(valid.message());
+}
+} // namespace
+
+FileTierStore::FileTierStore(std::filesystem::path root,
+                             std::string writer,
+                             std::unique_ptr<ManifestLog> log,
+                             std::map<StoryId, Hlc> anchors,
+                             std::shared_ptr<const ChunkCodec> codec)
+    : root_(std::move(root))
+    , writer_(std::move(writer))
+    , log_(std::move(log))
+    , codec_(std::move(codec))
+{
+    for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
+}
+
+absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesystem::path root,
+                                                                   std::string writer,
+                                                                   std::map<StoryId, Hlc> anchors,
+                                                                   std::shared_ptr<const ChunkCodec> codec)
+{
+    if(!codec || anchors.contains(0))
+        return absl::InvalidArgumentError("invalid tier configuration");
+    auto log = ManifestLog::Open(root, writer);
+    if(!log.ok())
+        return log.status();
+    auto store = std::unique_ptr<FileTierStore>(new FileTierStore(std::move(root),
+                                                                  std::move(writer),
+                                                                  *std::move(log),
+                                                                  std::move(anchors),
+                                                                  std::move(codec)));
+    const auto status = store->recover();
+    if(!status.ok())
+        return status;
+    return store;
+}
+
+absl::Status FileTierStore::registerStory(StoryId story, std::optional<Hlc> anchor)
+{
+    if(!story)
+        return absl::InvalidArgumentError("zero story id");
+    std::lock_guard lock(mutex_);
+    if(anchors_.contains(story) && anchors_.at(story) != anchor)
+        return absl::FailedPreconditionError("story anchor already configured");
+    anchors_[story] = anchor;
+    return absl::OkStatus();
+}
+
+bool FileTierStore::known(const ManifestIndex& index, StoryId story) const
+{
+    return anchors_.contains(story) || std::any_of(index.records.begin(),
+                                                   index.records.end(),
+                                                   [story](const auto& record) { return record.story_id == story; });
+}
+
+std::vector<ManifestRecord> FileTierStore::effective(const ManifestIndex& index, StoryId story) const
+{
+    std::map<std::string, ManifestRecord> files;
+    for(const auto& record: index.records)
+    {
+        if(record.story_id != story)
+            continue;
+        const auto key = record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
+                                                       std::to_string(record.start.physical_ns) + ":" +
+                                                       std::to_string(record.start.logical)
+                                             : record.file;
+        const auto found = files.find(key);
+        if(found == files.end() || StateRank(record.state) >= StateRank(found->second.state))
+            files[key] = record;
+    }
+    std::vector<ManifestRecord> result;
+    for(auto& [key, record]: files) result.push_back(std::move(record));
+    return result;
+}
+
+Hlc FileTierStore::watermark(const ManifestIndex& index, StoryId story) const
+{
+    std::optional<Hlc> anchor;
+    const auto configured = anchors_.find(story);
+    if(configured != anchors_.end())
+        anchor = configured->second;
+    if(!anchor)
+    {
+        for(const auto& record: index.records)
+            if(record.story_id == story && (!anchor || record.start < *anchor))
+                anchor = record.start;
+    }
+    Hlc value = anchor.value_or(Hlc{});
+    if(const auto floor = index.watermarks.find(story); floor != index.watermarks.end())
+        value = std::max(value, floor->second);
+    if(const auto floor = watermarks_.find(story); floor != watermarks_.end())
+        value = std::max(value, floor->second);
+    auto records = effective(index, story);
+    std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
+    std::set<std::string> published;
+    for(const auto& record: index.records)
+        if(record.story_id == story && record.state == ManifestState::Published)
+            published.insert(record.file);
+    for(const auto& record: records)
+    {
+        if(record.exempt || (record.state != ManifestState::Published && record.state != ManifestState::Empty &&
+                             !(record.state == ManifestState::Deleted && published.contains(record.file))))
+            continue;
+        if(record.start > value)
+            break;
+        value = std::max(value, record.end);
+    }
+    watermarks_[story] = value;
+    return value;
+}
+
+absl::StatusOr<ManifestIndex> FileTierStore::refresh() const { return log_->load(); }
+
+absl::Status FileTierStore::recover()
+{
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    std::set<StoryId> stories;
+    std::set<std::string> recorded;
+    for(const auto& record: index->records)
+    {
+        stories.insert(record.story_id);
+        recorded.insert(record.file);
+    }
+    for(const auto story: stories)
+    {
+        const auto w = watermark(*index, story);
+        for(auto record: effective(*index, story))
+        {
+            if(record.state != ManifestState::Published)
+                continue;
+            if(ValidateFile(*codec_, root_, record).ok())
+                continue;
+            auto status = log_->rememberWatermark(story, w);
+            if(!status.ok())
+                return status;
+            record.state = ManifestState::Lost;
+            status = log_->append(record);
+            if(!status.ok())
+                return status;
+        }
+    }
+    std::error_code error;
+    for(std::filesystem::directory_iterator it(root_, error), end; !error && it != end; it.increment(error))
+    {
+        StoryId story = 0;
+        if(!Number(it->path().filename().string(), story) || !story || !it->is_directory(error))
+            continue;
+        for(std::filesystem::directory_iterator file(it->path(), error), finish; !error && file != finish;
+            file.increment(error))
+        {
+            const auto relative = file->path().lexically_relative(root_);
+            if(recorded.contains(relative.generic_string()))
+                continue;
+            auto record = FromFilename(relative);
+            if(!record.ok())
+                continue;
+            tier_detail::Fd owner(record->manifest_writer == writer_
+                                          ? -1
+                                          : ::open((root_ / "manifest" / (record->manifest_writer + ".log")).c_str(),
+                                                   O_RDWR | O_CLOEXEC));
+            if(owner.get() >= 0 && ::flock(owner.get(), LOCK_EX | LOCK_NB) != 0)
+                continue;
+            if(!ValidateFile(*codec_, root_, *record).ok())
+                continue;
+            auto synced = tier_detail::SyncDirectory(it->path());
+            if(!synced.ok())
+                return synced;
+            record->manifest_writer = writer_;
+            const auto status = log_->append(*record);
+            if(!status.ok())
+                return status;
+        }
+    }
+    if(error)
+        return absl::UnavailableError(error.message());
+    return absl::OkStatus();
+}
+
+absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
+{
+    const auto valid = ValidChunk(chunk);
+    if(!valid.ok())
+        return valid;
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if(!known(*index, chunk.story_id))
+        return absl::NotFoundError("unknown story");
+    std::sort(chunk.events.begin(), chunk.events.end(), ReplayLess);
+    const auto name = Filename(chunk, writer_);
+    if(name.size() > 255)
+        return absl::InvalidArgumentError("chunk filename too long");
+    ManifestRecord record{chunk.id,
+                          writer_,
+                          (std::filesystem::path(std::to_string(chunk.story_id)) / name).generic_string(),
+                          chunk.story_id,
+                          chunk.start,
+                          chunk.end,
+                          chunk.events.size(),
+                          chunk.events.empty() ? ManifestState::Empty : ManifestState::Published,
+                          chunk.exempt};
+    for(const auto& existing: effective(*index, chunk.story_id))
+    {
+        if(existing.file != record.file)
+            continue;
+        if(existing.state == ManifestState::Empty && chunk.events.empty())
+            return existing;
+        if(existing.state == ManifestState::Published)
+        {
+            auto events = codec_->read(root_ / existing.file);
+            if(!events.ok())
+                return events.status();
+            if(events->size() == chunk.events.size() &&
+               std::equal(events->begin(), events->end(), chunk.events.begin(), SameEvent))
+                return existing;
+        }
+        return absl::UnavailableError("chunk rotation already published");
+    }
+    const auto directory = root_ / std::to_string(chunk.story_id);
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if(error)
+        return absl::UnavailableError(error.message());
+    auto synced = tier_detail::SyncDirectory(root_);
+    if(!synced.ok())
+        return synced;
+    std::string temporary = (directory / ".partial.XXXXXX").string();
+    tier_detail::Fd fd(::mkstemp(temporary.data()));
+    if(fd.get() < 0)
+        return tier_detail::IoError("create chunk temporary");
+    struct Cleanup
+    {
+        const std::string& file;
+        ~Cleanup() { ::unlink(file.c_str()); }
+    } cleanup{temporary};
+    auto status = codec_->write(temporary, chunk.events);
+    if(!status.ok())
+        return status;
+    if(::fsync(fd.get()) != 0)
+        return tier_detail::IoError("fsync chunk");
+    if(::link(temporary.c_str(), (root_ / record.file).c_str()) != 0)
+        return tier_detail::IoError("link published chunk");
+    if(::unlink(temporary.c_str()) != 0)
+        return tier_detail::IoError("unlink chunk temporary");
+    synced = tier_detail::SyncDirectory(directory);
+    if(!synced.ok())
+        return synced;
+    status = log_->append(record);
+    if(!status.ok())
+        return status;
+    index->records.push_back(record);
+    (void)watermark(*index, chunk.story_id);
+    return record;
+}
+
+absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range range) const
+{
+    const auto valid = ValidRange(range);
+    if(!valid.ok())
+        return valid;
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if(!known(*index, story))
+        return absl::NotFoundError("unknown story");
+    std::vector<Event> result;
+    for(const auto& record: effective(*index, story))
+    {
+        if(record.state != ManifestState::Published)
+            continue;
+        if(range.axis == Range::Axis::Hlc && (record.end <= range.start || record.start >= range.end))
+            continue;
+        auto events = codec_->read(root_ / record.file);
+        if(!events.ok())
+            return events.status();
+        if(events->size() != record.event_count)
+            return absl::UnavailableError("chunk event count mismatch");
+        for(auto& event: *events)
+        {
+            if(event.id.story_id != story || event.hlc < record.start || event.hlc >= record.end)
+                return absl::UnavailableError("invalid archived event window");
+            const bool included = range.axis == Range::Axis::Hlc
+                                          ? event.hlc >= range.start && event.hlc < range.end
+                                          : event.physical.physical_ns >= range.start.physical_ns &&
+                                                    event.physical.physical_ns < range.end.physical_ns;
+            if(included)
+                result.push_back(std::move(event));
+        }
+    }
+    std::stable_sort(result.begin(), result.end(), ReplayLess);
+    std::set<EventId> seen;
+    std::erase_if(result, [&seen](const auto& event) { return !seen.insert(event.id).second; });
+    return result;
+}
+
+absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId story) const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if(!known(*index, story))
+        return absl::NotFoundError("unknown story");
+    return effective(*index, story);
+}
+
+absl::StatusOr<Hlc> FileTierStore::contiguousWatermark(StoryId story) const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if(!known(*index, story))
+        return absl::NotFoundError("unknown story");
+    return watermark(*index, story);
+}
+
+absl::StatusOr<bool> FileTierStore::incomplete(StoryId story, Range range) const
+{
+    const auto valid = ValidRange(range);
+    if(!valid.ok())
+        return valid;
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if(!known(*index, story))
+        return absl::NotFoundError("unknown story");
+    for(const auto& record: effective(*index, story))
+        if(record.state == ManifestState::Lost &&
+           (range.axis == Range::Axis::Physical || (record.start < range.end && record.end > range.start)))
+            return true;
+    return false;
+}
+
+absl::Status FileTierStore::eraseFile(const std::string& file)
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    const auto found = std::find_if(index->records.begin(),
+                                    index->records.end(),
+                                    [&file](const auto& record)
+                                    { return record.file == file && record.state == ManifestState::Published; });
+    if(found == index->records.end())
+        return absl::NotFoundError("unknown archive file");
+    auto record = *found;
+    auto status = log_->rememberWatermark(record.story_id, watermark(*index, record.story_id));
+    if(!status.ok())
+        return status;
+    record.state = ManifestState::Deleted;
+    status = log_->append(record);
+    if(!status.ok())
+        return status;
+    if(::unlink((root_ / file).c_str()) != 0 && errno != ENOENT)
+        return tier_detail::IoError("delete archived file");
+    return tier_detail::SyncDirectory((root_ / file).parent_path());
+}
+
+absl::Status FileTierStore::compact()
+{
+    std::lock_guard lock(mutex_);
+    return log_->compact();
+}
+} // namespace chronolog
