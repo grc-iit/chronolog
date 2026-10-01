@@ -242,7 +242,6 @@ try
         "CREATE TABLE IF NOT EXISTS membership_instances(process_id TEXT NOT NULL,instance TEXT NOT NULL,granted "
         "INTEGER NOT NULL,value BLOB "
         "NOT NULL,PRIMARY KEY(process_id,instance));"
-        "CREATE INDEX IF NOT EXISTS membership_granted ON membership_instances(process_id,instance) WHERE granted=1;"
         "CREATE TABLE IF NOT EXISTS membership_proofs(process_id TEXT NOT NULL,instance TEXT NOT NULL,story_id INTEGER "
         "NOT NULL,value BLOB NOT NULL,PRIMARY KEY(process_id,instance,story_id));"
         "CREATE TABLE IF NOT EXISTS membership_routes(story_id INTEGER PRIMARY KEY,revision INTEGER NOT "
@@ -252,6 +251,26 @@ try
         "CREATE INDEX IF NOT EXISTS membership_refs_story ON membership_route_refs(story_id);"
         "CREATE TABLE IF NOT EXISTS membership_history(revision INTEGER NOT NULL,story_id INTEGER NOT NULL,value BLOB "
         "NOT NULL,PRIMARY KEY(revision,story_id));");
+    bool hasGranted = false;
+    {
+        Query columns(db_, "PRAGMA table_info(membership_instances)");
+        while(columns.next())
+            if(columns.bytes(1) == "granted")
+                hasGranted = true;
+    }
+    if(!hasGranted)
+    {
+        sql(db_, "ALTER TABLE membership_instances ADD COLUMN granted INTEGER NOT NULL DEFAULT 0");
+        Query rows(db_, "SELECT process_id,instance,value FROM membership_instances ORDER BY process_id,instance");
+        while(rows.next())
+        {
+            const auto value = rows.message<wire::InstanceState>(2);
+            Query update(db_, "UPDATE membership_instances SET granted=?3 WHERE process_id=?1 AND instance=?2");
+            update.text(1, rows.bytes(0)).text(2, rows.bytes(1)).number(3, value.granted()).next();
+        }
+    }
+    sql(db_,
+        "CREATE INDEX IF NOT EXISTS membership_granted ON membership_instances(process_id,instance) WHERE granted=1");
     Query ready(db_, "SELECT id FROM membership_meta WHERE id=1");
     if(!ready.next())
     {

@@ -111,6 +111,7 @@ class DynamicMembershipTest: public ::testing::Test
 protected:
     testing::TempDir dir;
     std::unique_ptr<SqliteMetadataStore> store;
+    double lastApplyMs{};
     void SetUp() override
     {
         auto opened = SqliteMetadataStore::open((dir.path() / "catalog").string(), testing::twoKeeperTopology());
@@ -122,8 +123,16 @@ protected:
     template <class Response>
     Response call(const wire::MembershipCommand& q)
     {
-        auto applied =
-                store->applyRaft(store->appliedIndex().value_or(0) + 1, [&] { return dynamic::apply(*store, q); });
+        auto applied = store->applyRaft(
+                store->appliedIndex().value_or(0) + 1,
+                [&]
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    auto result = dynamic::apply(*store, q);
+                    lastApplyMs =
+                            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    return result;
+                });
         if(!applied.ok())
             throw std::runtime_error(applied.status().ToString());
         Response r;
@@ -342,7 +351,18 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
     {
         auto* m = state.add_members();
         m->mutable_process()->set_process_id("extra" + std::to_string(n));
+        m->mutable_process()->set_endpoint("127.0.0.1:50052");
         m->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
+        m->set_joined(true);
+    }
+    for(auto& m: *state.mutable_members())
+    {
+        m.mutable_process()->set_instance(m.process().process_id() + "1");
+        auto* i = m.add_instances();
+        i->set_instance(m.process().instance());
+        i->set_granted(true);
+        i->mutable_ceiling()->set_physical_ns(5000000100LL);
+        i->set_physical_ceiling_ns(5000000100LL);
     }
     for(auto& r: *state.mutable_routes())
         for(int n = 0; n < 62; ++n)
@@ -352,10 +372,165 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
             k->set_endpoint("127.0.0.1:50052");
         }
     ASSERT_TRUE(store->saveMembership(state).ok());
-    auto start = std::chrono::steady_clock::now();
-    ASSERT_EQ(reg("keeper-a", "a1").status().code(), 0);
-    std::cout << "64 Keeper 10000 story apply ms: "
-              << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count()
-              << std::endl;
+    auto measure = [](auto&& apply)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        apply();
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    };
+    double registerMax = 0, extendMax = 0, registerSum = 0, extendSum = 0;
+    double registerApplySum = 0, extendApplySum = 0, registerApplyMax = 0, extendApplyMax = 0;
+    for(int n = 0; n < 10; ++n)
+    {
+        const auto registration = measure([&] { ASSERT_EQ(reg("keeper-a", "keeper-a1").status().code(), 0); });
+        registerApplySum += lastApplyMs;
+        registerApplyMax = std::max(registerApplyMax, lastApplyMs);
+        const auto extension =
+                measure([&] { ASSERT_EQ(extend("keeper-a", "keeper-a1", 10000, 100 + n).status().code(), 0); });
+        extendApplySum += lastApplyMs;
+        extendApplyMax = std::max(extendApplyMax, lastApplyMs);
+        registerMax = std::max(registerMax, registration);
+        extendMax = std::max(extendMax, extension);
+        registerSum += registration;
+        extendSum += extension;
+    }
+
+    EXPECT_LT(registerApplyMax, 20);
+    EXPECT_LT(extendApplyMax, 20);
+    EXPECT_LT(registerMax, 20);
+    EXPECT_LT(extendMax, 20);
+    wire::MembershipCommand heartbeatCommand;
+    auto* heartbeat = heartbeatCommand.mutable_heartbeat();
+    heartbeat->set_process_id("keeper-a");
+    heartbeat->set_instance("keeper-a1");
+    for(int n = 1; n <= 64; ++n)
+    {
+        auto* f = heartbeat->add_story_frontiers();
+        f->set_story_id(n);
+        auto* proof = f->mutable_settlement();
+        proof->set_instance("keeper-a1");
+        proof->mutable_settled_through()->set_physical_ns(100);
+    }
+    const auto proofMs =
+            measure([&] { ASSERT_EQ(call<wire::HeartbeatResponse>(heartbeatCommand).status().code(), 0); });
+    EXPECT_LT(proofMs, 20);
+    auto after = dynamic::snapshot(*store);
+    ASSERT_EQ(after.members_size(), 64);
+    ASSERT_EQ(after.routes_size(), 10000);
+    bool found = false;
+    for(const auto& m: after.members())
+        if(m.process().process_id() == "keeper-a")
+            for(const auto& i: m.instances())
+                if(i.instance() == "keeper-a1")
+                {
+                    EXPECT_EQ(i.proofs_size(), 64);
+                    found = true;
+                }
+    EXPECT_TRUE(found);
+    const auto beforeRestriction = after;
+    // Restrict one Keeper to three stories outside the measured transition.
+    for(int n = 3; n < after.routes_size(); ++n)
+    {
+        auto* keepers = after.mutable_routes(n)->mutable_route()->mutable_keepers();
+        for(int k = keepers->size() - 1; k >= 0; --k)
+            if(keepers->Get(k).process_id() == "extra61")
+                keepers->DeleteSubrange(k, 1);
+    }
+    after.clear_route_history();
+    ASSERT_TRUE(store->applyRaft(store->appliedIndex().value_or(0) + 1,
+                                 [&]
+                                 {
+                                     auto status = store->saveMembershipChanges(beforeRestriction, after);
+                                     if(!status.ok())
+                                         throw std::runtime_error(status.ToString());
+                                     return std::string{};
+                                 })
+                        .ok());
+    const auto transitionMs = measure([&] { ASSERT_EQ(change("extra61", 0).status().code(), 0); });
+    EXPECT_LT(transitionMs, 60);
+    auto routes = store->membershipRouteChanges(0);
+    ASSERT_TRUE(routes.ok());
+    for(int n = 0; n < 10000; ++n)
+    {
+        auto r = store->membershipRouteUpdate(n + 1);
+        ASSERT_TRUE(r.ok());
+        EXPECT_EQ(r->route().epoch(), n < 3 ? 2u : 1u);
+    }
+    std::cout << "64 Keepers / 10000 stories: state apply Register mean/max " << registerApplySum / 10 << "/"
+              << registerApplyMax << " ms; state apply ExtendCeiling mean/max " << extendApplySum / 10 << "/"
+              << extendApplyMax << " ms; durable Register mean/max " << registerSum / 10 << "/" << registerMax
+              << " ms; ExtendCeiling mean/max " << extendSum / 10 << "/" << extendMax << " ms; heartbeat 64 proofs "
+              << proofMs << " ms; transition 3 stories " << transitionMs << " ms" << std::endl;
 }
+TEST_F(DynamicMembershipTest, MigratesLegacyMembershipAndPreservesSnapshotInstall)
+{
+    ready();
+    ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
+    const auto before = dynamic::snapshot(*store);
+    const auto path = (dir.path() / "catalog").string();
+    store.reset();
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+                           "BEGIN; DELETE FROM membership_meta; INSERT INTO membership_state(value) VALUES(''); UPDATE "
+                           "schema_version SET version=1;",
+                           nullptr,
+                           nullptr,
+                           nullptr),
+              SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db, "UPDATE membership_state SET value=?1", -1, &statement, nullptr), SQLITE_OK);
+    const auto legacy = before.SerializeAsString();
+    ASSERT_EQ(sqlite3_bind_blob(statement, 1, legacy.data(), static_cast<int>(legacy.size()), SQLITE_TRANSIENT),
+              SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_DONE);
+    sqlite3_finalize(statement);
+    // Model a version-one database whose only membership storage was the blob.
+    ASSERT_EQ(sqlite3_exec(db,
+                           "DELETE FROM membership_members; DELETE FROM membership_instances; DELETE FROM "
+                           "membership_proofs; DELETE FROM membership_routes; DELETE FROM membership_route_refs; "
+                           "DELETE FROM membership_history; COMMIT;",
+                           nullptr,
+                           nullptr,
+                           nullptr),
+              SQLITE_OK);
+    sqlite3_close(db);
+    auto reopened = SqliteMetadataStore::open(path, testing::twoKeeperTopology());
+    ASSERT_TRUE(reopened.ok()) << reopened.status();
+    store = std::move(*reopened);
+    EXPECT_EQ(dynamic::snapshot(*store).SerializeAsString(), before.SerializeAsString());
+    auto backup = (dir.path() / "membership-snapshot").string();
+    ASSERT_TRUE(store->backupTo(backup).ok());
+    ASSERT_EQ(change("keeper-a", 1).status().code(), 0);
+    ASSERT_TRUE(store->installFrom(backup).ok());
+    EXPECT_EQ(dynamic::snapshot(*store).SerializeAsString(), before.SerializeAsString());
+}
+
+TEST_F(DynamicMembershipTest, UpgradesNormalizedInstanceGrantIndex)
+{
+    ready();
+    const auto before = dynamic::snapshot(*store);
+    const auto path = (dir.path() / "catalog").string();
+    store.reset();
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(
+            sqlite3_exec(db,
+                         "BEGIN; DROP INDEX membership_granted; ALTER TABLE membership_instances RENAME TO "
+                         "old_instances; CREATE TABLE membership_instances(process_id TEXT NOT NULL,instance TEXT NOT "
+                         "NULL,value BLOB NOT NULL,PRIMARY KEY(process_id,instance)); INSERT INTO membership_instances "
+                         "SELECT process_id,instance,value FROM old_instances; DROP TABLE old_instances; COMMIT;",
+                         nullptr,
+                         nullptr,
+                         nullptr),
+            SQLITE_OK);
+    sqlite3_close(db);
+    auto reopened = SqliteMetadataStore::open(path, testing::twoKeeperTopology());
+    ASSERT_TRUE(reopened.ok()) << reopened.status();
+    store = std::move(*reopened);
+    EXPECT_EQ(dynamic::snapshot(*store).SerializeAsString(), before.SerializeAsString());
+    ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
+    EXPECT_EQ(route().route().epoch(), 2u);
+}
+
 } // namespace chronolog::visor
