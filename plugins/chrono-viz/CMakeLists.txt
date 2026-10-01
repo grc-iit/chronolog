@@ -2,9 +2,16 @@ set(viz_core)
 if(TARGET _core)
     set(viz_core $<TARGET_FILE:_core>)
 endif()
-add_custom_target(chronolog_viz
+add_custom_command(OUTPUT "${PROJECT_SOURCE_DIR}/build/viz/.built"
     COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/build.sh" ${viz_core}
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    COMMAND "${CMAKE_COMMAND}" -E touch "${PROJECT_SOURCE_DIR}/build/viz/.built"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    DEPENDS ${viz_core} build.sh prepare.sh
+        backend/pyproject.toml backend/chronolog_viz.py
+        grafana/package.json grafana/tsconfig.json grafana/webpack.config.cjs grafana/jest.config.cjs
+        grafana/module.ts grafana/datasource.ts grafana/frames.ts grafana/frames.test.ts
+        grafana/QueryEditor.tsx grafana/ConfigEditor.tsx grafana/types.ts grafana/plugin.json grafana/logo.svg)
+add_custom_target(chronolog_viz ALL DEPENDS "${PROJECT_SOURCE_DIR}/build/viz/.built")
 if(TARGET _core)
     add_dependencies(chronolog_viz _core)
 endif()

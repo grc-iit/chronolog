@@ -2,10 +2,19 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
+if [ ! -f build/viz-venv/.prepared ]; then
+    bash plugins/chrono-viz/prepare.sh
+fi
 mkdir -p build/viz build/smoke/wheels
+install_node=0
+if [ ! -d build/viz/node_modules ] || ! cmp -s plugins/chrono-viz/grafana/package.json build/viz/package.json; then
+    install_node=1
+fi
 cp plugins/chrono-viz/grafana/* build/viz/
 cd build/viz
-timeout 480 npm install --no-audit --no-fund
+if [ "$install_node" = 1 ]; then
+    timeout 480 npm install --no-audit --no-fund
+fi
 timeout 120 npm run typecheck
 timeout 180 npm run build
 cp plugin.json logo.svg dist/
