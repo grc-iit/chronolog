@@ -11,12 +11,12 @@ inline Range physicalWindow(const Range& range, bool policy)
     if(!policy)
         return {Range::Axis::Hlc, {low, 0}, {high, UINT32_MAX}};
     const PhysicalPolicy constants;
-    auto clamp = [&](const __int128 value)
-    { return static_cast<int64_t>(std::clamp(value, static_cast<__int128>(low), static_cast<__int128>(high))); };
-    const __int128 start =
-            static_cast<__int128>(range.start.physical_ns) - constants.skew_limit_ns - constants.hlc_lead_ns;
-    const __int128 end =
-            static_cast<__int128>(range.end.physical_ns) + constants.acceptance_window_ns + constants.hlc_lead_ns;
+    auto clamp = [&](const __int128_t value)
+    { return static_cast<int64_t>(std::clamp(value, static_cast<__int128_t>(low), static_cast<__int128_t>(high))); };
+    const __int128_t start =
+            static_cast<__int128_t>(range.start.physical_ns) - constants.skew_limit_ns - constants.hlc_lead_ns;
+    const __int128_t end =
+            static_cast<__int128_t>(range.end.physical_ns) + constants.acceptance_window_ns + constants.hlc_lead_ns;
     return {Range::Axis::Hlc, {clamp(start), 0}, {clamp(end), end >= high ? UINT32_MAX : 0}};
 }
 inline bool physicalBounded(const Event& e)

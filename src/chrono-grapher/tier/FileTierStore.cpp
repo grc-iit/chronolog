@@ -519,8 +519,8 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         {
             const bool bounded = event.physical.status == ClockStatus::Synced && event.physical.uncertainty_ns &&
                                  *event.physical.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
-            const __int128 p = event.physical.physical_ns;
-            const __int128 u = bounded ? *event.physical.uncertainty_ns : 0;
+            const __int128_t p = event.physical.physical_ns;
+            const __int128_t u = bounded ? *event.physical.uncertainty_ns : 0;
             matches = bounded ? p - u < range.end.physical_ns && p + u >= range.start.physical_ns
                               : p >= range.start.physical_ns && p < range.end.physical_ns;
         }

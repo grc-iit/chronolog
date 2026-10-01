@@ -168,8 +168,8 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::nextPhysical(Deadlin
         if(!completion)
             return absl::DataLossError("Read ended without Completion");
         pending_ranges.pop_back();
-        const int64_t middle = static_cast<int64_t>(static_cast<__int128>(current.start_ns) +
-                                                    (static_cast<__int128>(current.end_ns) - current.start_ns) / 2);
+        const int64_t middle = static_cast<int64_t>(static_cast<__int128_t>(current.start_ns) +
+                                                    (static_cast<__int128_t>(current.end_ns) - current.start_ns) / 2);
         if(completion->reason == IncompleteReason::Truncated && middle > current.start_ns)
         {
             leaf_events.clear();
