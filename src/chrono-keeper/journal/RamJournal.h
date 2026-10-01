@@ -57,7 +57,8 @@ public:
         std::vector<Event> events;
         Hlc evicted_below;
     };
-    absl::StatusOr<SealedRead> sealedRead(StoryId id, Range range) const;
+    absl::StatusOr<SealedRead> sealedRead(StoryId id, Range range, std::optional<Hlc> tick = std::nullopt) const;
+    Hlc sealTick() const { return reserveFrontier(clock_->tick()); }
 
     std::vector<StoryId> storyIds() const;
     void eraseEvents(StoryId story, Range range, bool advance_floor = false);
@@ -149,7 +150,8 @@ private:
     Hlc seal(StoryId id,
              std::vector<std::shared_ptr<Writer>>& live,
              const Range* range = nullptr,
-             std::vector<Event>* events = nullptr) const;
+             std::vector<Event>* events = nullptr,
+             std::optional<Hlc> tick = std::nullopt) const;
     static void scan(const Writer& writer, Range range, std::vector<Event>& out);
     void complete(const std::shared_ptr<Writer>& writer, uint64_t sequence, absl::Status status);
 

@@ -127,6 +127,7 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 trailer->set_epoch(route->epoch);
                 *trailer->mutable_sealed_frontier() = convert::toProto(snapshot->view.sealed);
                 for(const auto& f: snapshot->view.frontiers) *trailer->add_frontiers() = convert::toProto(f);
+                *trailer->mutable_evicted_below() = convert::toProto(snapshot->evicted_below);
                 trailer->set_truncated(truncated);
                 reactor->begin(std::move(out), grpc::Status::OK);
             });

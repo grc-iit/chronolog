@@ -14,6 +14,7 @@
 
 #include <absl/crc/crc32c.h>
 #include "wal/Record.h"
+#include "chronolog/internal/v1/internal.pb.h"
 
 namespace chronolog
 {
@@ -144,6 +145,28 @@ uint64_t WalJournal::recover()
             }
             else if(payload.front() == 'R')
                 reservation_ = std::max(reservation_, wal::decodeReserve(body));
+            else if(payload.front() == 'S')
+            {
+                internal::v1::ChunkIdentity identity;
+                if(!identity.ParseFromArray(body.data(), static_cast<int>(body.size())) || identity.chunk_id().empty())
+                    throw std::runtime_error("invalid WAL seal");
+                Chunk chunk;
+                chunk.id = identity.chunk_id();
+                chunk.story_id = identity.story_id();
+                chunk.start = {identity.start().physical_ns(), identity.start().logical()};
+                chunk.end = {identity.end().physical_ns(), identity.end().logical()};
+                if(chunk.story_id == 0 || chunk.start >= chunk.end)
+                    throw std::runtime_error("invalid WAL seal bounds");
+                const auto id = chunk.id;
+                archive_seals_[id] = SealedChunk{std::move(chunk), false};
+            }
+            else if(payload.front() == 'T')
+            {
+                auto seal = archive_seals_.find(std::string(body));
+                if(seal == archive_seals_.end())
+                    throw std::runtime_error("settlement without WAL seal");
+                seal->second.settled = true;
+            }
             else
                 throw std::runtime_error("unknown WAL record type");
             offset += 8 + length;
@@ -158,6 +181,9 @@ uint64_t WalJournal::recover()
         }
         bytes_ += offset;
     }
+    for(const auto& [id, seal]: archive_seals_)
+        if(seal.settled)
+            eraseEvents(seal.chunk.story_id, {Range::Axis::Hlc, seal.chunk.start, seal.chunk.end}, true);
     if(!segments.empty())
         (void)clock_->observe(std::max(maximum, reservation_));
     return segments.empty() ? 1 : segments.rbegin()->first + 1;
@@ -259,4 +285,54 @@ void WalJournal::commit()
     }
 }
 
+} // namespace chronolog
+
+namespace chronolog
+{
+absl::Status WalJournal::persistRecord(std::string payload)
+{
+    std::promise<absl::Status> promise;
+    auto future = promise.get_future();
+    enqueue(Write{wal::frame(payload), [&promise](absl::Status status) { promise.set_value(std::move(status)); }});
+    return future.get();
+}
+
+absl::Status WalJournal::recordSeal(const Chunk& chunk)
+{
+    internal::v1::ChunkIdentity identity;
+    identity.set_chunk_id(chunk.id);
+    identity.set_story_id(chunk.story_id);
+    identity.mutable_start()->set_physical_ns(chunk.start.physical_ns);
+    identity.mutable_start()->set_logical(chunk.start.logical);
+    identity.mutable_end()->set_physical_ns(chunk.end.physical_ns);
+    identity.mutable_end()->set_logical(chunk.end.logical);
+    auto status = persistRecord(std::string(1, 'S') + identity.SerializeAsString());
+    if(status.ok())
+    {
+        std::lock_guard lock(archive_mu_);
+        Chunk metadata = chunk;
+        metadata.events.clear();
+        archive_seals_[chunk.id] = SealedChunk{std::move(metadata), false};
+    }
+    return status;
+}
+
+absl::Status WalJournal::recordSettled(const std::string& chunk_id)
+{
+    auto status = persistRecord(std::string(1, 'T') + chunk_id);
+    if(status.ok())
+    {
+        std::lock_guard lock(archive_mu_);
+        archive_seals_.at(chunk_id).settled = true;
+    }
+    return status;
+}
+
+std::vector<WalJournal::SealedChunk> WalJournal::sealedChunks() const
+{
+    std::lock_guard lock(archive_mu_);
+    std::vector<SealedChunk> out;
+    for(const auto& [id, seal]: archive_seals_) out.push_back(seal);
+    return out;
+}
 } // namespace chronolog

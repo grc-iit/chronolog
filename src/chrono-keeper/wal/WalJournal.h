@@ -30,6 +30,14 @@ public:
                WalJournalConfig config = {},
                SinkFactory sink_factory = openFileSink);
     ~WalJournal() override;
+    struct SealedChunk
+    {
+        Chunk chunk;
+        bool settled{};
+    };
+    std::vector<SealedChunk> sealedChunks() const;
+    absl::Status recordSeal(const Chunk& chunk);
+    absl::Status recordSettled(const std::string& chunk_id);
 
 protected:
     bool supportsDurable() const override { return true; }
@@ -45,9 +53,12 @@ private:
         std::function<void(absl::Status)> done;
     };
     void enqueue(Write write);
+    absl::Status persistRecord(std::string payload);
     void commit();
     uint64_t recover();
 
+    mutable std::mutex archive_mu_;
+    std::map<std::string, SealedChunk> archive_seals_;
     std::shared_ptr<Clock> clock_;
     WalJournalConfig config_;
     std::unique_ptr<FileSink> sink_;

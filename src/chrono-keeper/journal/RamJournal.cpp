@@ -414,11 +414,12 @@ void RamJournal::scan(const Writer& writer, Range range, std::vector<Event>& out
 Hlc RamJournal::seal(StoryId id,
                      std::vector<std::shared_ptr<Writer>>& live,
                      const Range* range,
-                     std::vector<Event>* events) const
+                     std::vector<Event>* events,
+                     std::optional<Hlc> tick) const
 {
     // F is ticked before any writer lock is taken, so every assignment already made is below F
     // and, once its writer lock is acquired here, inserted. Every later assignment is above F.
-    Hlc f = reserveFrontier(clock_->tick());
+    Hlc f = tick ? *tick : reserveFrontier(clock_->tick());
     std::vector<std::shared_ptr<Writer>> all;
     std::set<const Writer*> candidates;
     {
@@ -462,7 +463,7 @@ absl::StatusOr<RamJournal::SealedView> RamJournal::sealedView(StoryId id) const
     return view;
 }
 
-absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range range) const
+absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick) const
 {
     if(range.start > range.end)
         return absl::InvalidArgumentError("range start is after end");
@@ -470,7 +471,7 @@ absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range 
         return status;
     std::vector<std::shared_ptr<Writer>> live;
     SealedRead out;
-    out.view.sealed = seal(id, live, &range, &out.events);
+    out.view.sealed = seal(id, live, &range, &out.events, tick);
     for(const auto& writer: live)
         out.view.frontiers.push_back(Frontier{writer->writer_id, writer->incarnation, out.view.sealed});
     out.evicted_below = evictionFloor(id);
@@ -535,13 +536,14 @@ void RamJournal::eraseEvents(StoryId story, Range range, bool advance_floor)
     {
         auto& sh = shard(story);
         std::unique_lock lock(sh.mu);
+        if(advance_floor)
+        {
+            auto& state = sh.stories[story];
+            state.evicted_below = std::max(state.evicted_below, range.end);
+        }
         auto it = sh.stories.find(story);
         if(it != sh.stories.end())
-        {
-            if(advance_floor)
-                it->second.evicted_below = std::max(it->second.evicted_below, range.end);
             for(const auto& [key, writer]: it->second.writers) writers.push_back(writer);
-        }
     }
     for(const auto& writer: writers)
     {
