@@ -99,7 +99,7 @@ run_engine() {
             step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest || rc=1
             step "Python abi3 wheel" 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python || rc=1
             if [ "$rc" -eq 0 ]; then
-                step "install Python wheel" 120 "$venv/bin/pip" install --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl || rc=1
+                step "install Python wheel" 120 "$venv/bin/pip" install --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl 'mcp>=1.23,<2' 'opentelemetry-sdk>=1.39,<2' || rc=1
                 step "Python SDK pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                     "$venv/bin/python" -m pytest -q client/python/tests || rc=1
             fi
