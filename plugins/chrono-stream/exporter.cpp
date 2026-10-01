@@ -1,5 +1,6 @@
 #include "chronolog/stream/stream.h"
 #include <set>
+#include <future>
 #include <thread>
 
 namespace chronolog::stream
@@ -114,6 +115,7 @@ absl::StatusOr<ExportStats> Exporter::run(std::function<bool()> stop, client::De
         std::string name;
         std::optional<client::Position> consumed;
         std::unique_ptr<client::TailStream> tail;
+        std::future<absl::StatusOr<std::optional<client::StreamItem>>> pending;
     };
     std::vector<Source> sources;
     std::set<std::string> names;
@@ -129,8 +131,21 @@ absl::StatusOr<ExportStats> Exporter::run(std::function<bool()> stop, client::De
             return position.status();
         if(*position && (**position).id.story_id != *id)
             return absl::FailedPreconditionError("saved position belongs to another story");
-        sources.push_back({*id, name, *position, {}});
+        sources.push_back({*id, name, *position, {}, {}});
     }
+    struct CancelPulls
+    {
+        std::vector<Source>& sources;
+        ~CancelPulls()
+        {
+            for(auto& source: sources)
+                if(source.tail)
+                    source.tail->cancel();
+            for(auto& source: sources)
+                if(source.pending.valid())
+                    source.pending.wait();
+        }
+    } cancelPulls{sources};
     Batch batch(options_.batch_count, options_.batch_age);
     ExportStats stats;
     while(!stop() && (!deadline || std::chrono::system_clock::now() < *deadline))
@@ -146,10 +161,22 @@ absl::StatusOr<ExportStats> Exporter::run(std::function<bool()> stop, client::De
                     return tail.status();
                 source.tail = std::make_unique<client::TailStream>(std::move(*tail));
             }
-            auto pull_end = std::chrono::system_clock::now() + std::min(options_.pull_timeout, options_.batch_age);
-            if(deadline)
-                pull_end = std::min(pull_end, *deadline);
-            auto item = source.tail->next(pull_end);
+            if(!source.pending.valid())
+                source.pending = std::async(std::launch::async,
+                                            [&source, deadline] { return source.tail->next(bounded(deadline)); });
+            // Batch scheduling must not cancel a Tail RPC while it opens its sources.
+            if(source.pending.wait_for(std::min(options_.pull_timeout, options_.batch_age)) !=
+               std::future_status::ready)
+            {
+                if(batch.due(std::chrono::steady_clock::now()))
+                {
+                    auto status = flush(batch, stats, bounded(deadline));
+                    if(!status.ok())
+                        return status;
+                }
+                continue;
+            }
+            auto item = source.pending.get();
             if(!item.ok())
             {
                 if(!absl::IsDeadlineExceeded(item.status()) && !absl::IsUnavailable(item.status()) &&

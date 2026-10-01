@@ -298,7 +298,7 @@ TEST(StreamStack, CollectorExporterResumesAndSavesOnlyAcknowledgedBatches)
                               "stream-test",
                               {"system.cpu", "system.memory", "system.network"},
                               sink,
-                              {.batch_count = 2, .batch_age = std::chrono::milliseconds(30)});
+                              {.batch_count = 2, .batch_age = std::chrono::milliseconds(1)});
     auto exported = exporter.run([&] { return server.points.load() >= 6; },
                                  std::chrono::system_clock::now() + std::chrono::seconds(5));
     ASSERT_TRUE(exported.ok()) << exported.status();
