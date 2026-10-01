@@ -16,7 +16,14 @@ cleanup() {
 }
 trap cleanup EXIT
 timeout 240 "${compose[@]}" build chrono-viz
-timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 chrono-viz grafana
+if ! timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 chrono-viz grafana; then
+    timeout 10 build/viz-venv/bin/python - <<'PYTHON' || true
+import requests
+response = requests.get("http://127.0.0.1:8087/health", timeout=5)
+print("Backend health:", response.status_code, response.text, flush=True)
+PYTHON
+    exit 1
+fi
 timeout 60 build/viz-venv/bin/python plugins/chrono-viz/backend/smoke.py
 cleanup
 trap - EXIT
