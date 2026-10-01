@@ -82,9 +82,16 @@ struct chrono_ldms
     }
     void wakeDrainer()
     {
-        std::atomic_thread_fence(std::memory_order_seq_cst);
-        if(sleeping.load(std::memory_order_relaxed))
+        if(sleeping.load())
             wake.notify_one();
+    }
+    // Flush and close wake the drainer under its mutex so the wait predicate cannot miss them.
+    void wakeForControl()
+    {
+        {
+            std::lock_guard lock(wakeMutex);
+        }
+        wake.notify_all();
     }
     void markFinished(size_t n)
     {
@@ -306,18 +313,17 @@ void chrono_ldms::drain()
                                                                   std::chrono::duration_cast<std::chrono::milliseconds>(
                                                                           flushInterval - (now - oldest)));
         std::unique_lock lock(wakeMutex);
-        sleeping.store(true, std::memory_order_relaxed);
-        std::atomic_thread_fence(std::memory_order_seq_cst);
+        sleeping.store(true);
         if(ring.pop(sample))
         {
-            sleeping.store(false, std::memory_order_relaxed);
+            sleeping.store(false);
             if(pending.empty())
                 oldest = std::chrono::steady_clock::now();
             pending.emplace_back(sample);
             continue;
         }
-        wake.wait_for(lock, wait);
-        sleeping.store(false, std::memory_order_relaxed);
+        wake.wait_for(lock, wait, [&] { return flushers.load() > 0 || closing.load(); });
+        sleeping.store(false);
     }
     maybeLog(true);
 }
@@ -489,7 +495,7 @@ extern "C"
             return CHRONO_LDMS_INVALID_ARGUMENT;
         const uint64_t target = bridge->enqueued.load();
         bridge->flushers.fetch_add(1);
-        bridge->wake.notify_all();
+        bridge->wakeForControl();
         bool ok;
         {
             std::unique_lock lock(bridge->doneMutex);
@@ -518,7 +524,7 @@ extern "C"
         if(bridge == nullptr)
             return CHRONO_LDMS_INVALID_ARGUMENT;
         bridge->closing.store(true, std::memory_order_release);
-        bridge->wake.notify_all();
+        bridge->wakeForControl();
         const uint64_t target = bridge->enqueued.load();
         bool drained;
         {
@@ -529,7 +535,7 @@ extern "C"
         }
         if(!drained)
             bridge->abandon.store(true);
-        bridge->wake.notify_all();
+        bridge->wakeForControl();
         bridge->drainer.join();
         for(auto& [key, stream]: bridge->streams)
             if(stream->writer)
