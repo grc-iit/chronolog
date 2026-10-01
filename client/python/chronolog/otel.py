@@ -78,12 +78,11 @@ class ChronologSpanExporter(SpanExporter):
 
     def shutdown(self):
         self._lock.acquire()
-        end = time.monotonic() + self.timeout
         try:
             self._closed = True
             for writer in self._writers.values():
                 try:
-                    writer.release(timeout=self._remaining(end))
+                    writer.release(timeout=self.timeout)
                 except Exception:
                     pass
             self._writers.clear()

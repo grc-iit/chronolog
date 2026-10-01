@@ -97,3 +97,27 @@ def test_exporter_rejects_accepted_and_item_failures():
     exporter._writers.clear()
     exporter.shutdown()
     provider.shutdown()
+
+
+def test_shutdown_attempts_every_writer_when_a_release_times_out():
+    from chronolog.otel import ChronologSpanExporter
+
+    exporter = ChronologSpanExporter(os.environ["CHRONOLOG_TEST_VISOR"], timeout=0.01)
+    released = []
+
+    class Writer:
+        def __init__(self, name):
+            self.name = name
+
+        def release(self, *, timeout):
+            assert timeout == 0.01
+            released.append(self.name)
+            if self.name == "first":
+                time.sleep(0.02)
+                raise TimeoutError("release deadline")
+
+    exporter._writers = {"first": Writer("first"), "second": Writer("second")}
+    exporter.shutdown()
+    assert released == ["first", "second"]
+    exporter.shutdown()
+    assert released == ["first", "second"]
