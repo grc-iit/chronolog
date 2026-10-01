@@ -154,6 +154,13 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                     total_bytes += bytes;
                     ++sent;
                 }
+                if(!owner)
+                {
+                    auto applied = membership_.route(req.story_id());
+                    if(!applied.ok())
+                        return fail(applied.status());
+                    epoch = applied->epoch;
+                }
                 auto* trailer = out.emplace_back().mutable_trailer();
                 trailer->set_epoch(epoch);
                 trailer->set_instance(instance);

@@ -179,7 +179,9 @@ TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
                 rig.rig.journal->applyRoute(1, state, false, 10, [&] { rig.rig.membership->setRoute(state.route); });
             });
     auto context = test::AdapterRig::context();
-    auto stream = rig.archive->FetchHot(context.get(), request());
+    auto req = request();
+    req.set_expect_epoch(7);
+    auto stream = rig.archive->FetchHot(context.get(), req);
     internal::v1::FetchHotResponse message;
     int trailers = 0, events = 0;
     while(stream->Read(&message))
@@ -187,7 +189,10 @@ TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
         if(message.has_batch())
             events += message.batch().events_size();
         if(message.has_trailer())
+        {
             ++trailers;
+            EXPECT_EQ(message.trailer().epoch(), 8);
+        }
     }
     EXPECT_TRUE(stream->Finish().ok());
     EXPECT_EQ(events, 1);
