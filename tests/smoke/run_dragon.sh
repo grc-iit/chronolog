@@ -98,6 +98,10 @@ run_engine() {
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/mvp/chronolog_sql_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
+            step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
+            return "$rc"
+        fi
         echo "-- $engine: smoke.py"
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
             --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"

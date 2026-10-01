@@ -11,12 +11,22 @@ namespace
 {
 constexpr auto schemaType = "application/vnd.chronolog.sql-schema+json";
 constexpr auto rowType = "application/vnd.chronolog.sql-row+json";
-client::HlcRange all()
+absl::StatusOr<Completion> snapshot(client::Client& client, StoryId id, client::Deadline deadline)
 {
-    return {{},
-            {std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
-                     .count(),
-             0}};
+    auto stream = client.read(id, {{}, {}}, deadline);
+    if(!stream.ok())
+        return stream.status();
+    while(std::chrono::system_clock::now() < *deadline)
+    {
+        auto item = stream->next(deadline);
+        if(!item.ok())
+            return item.status();
+        if(!*item)
+            break;
+        if((**item).completion)
+            return *(**item).completion;
+    }
+    return absl::DeadlineExceededError("frontier probe missing Replay Completion");
 }
 std::string schemaPayload(const std::vector<Column>& columns)
 {
@@ -97,7 +107,12 @@ absl::StatusOr<StoryId> Database::story(const std::string& table, bool create, c
 }
 absl::StatusOr<std::vector<Column>> Database::schema(StoryId id, client::Deadline deadline)
 {
-    auto stream = client_.read(id, all(), deadline);
+    auto frontier = snapshot(client_, id, deadline);
+    if(!frontier.ok())
+        return frontier.status();
+    if(!frontier->complete)
+        return absl::UnavailableError("schema frontier Replay is incomplete");
+    auto stream = client_.read(id, {{}, frontier->frontier}, deadline);
     if(!stream.ok())
         return stream.status();
     std::optional<Event> first;
@@ -270,7 +285,19 @@ absl::StatusOr<Result> Database::execute(const std::string& sql, std::span<const
         result.limited = true;
         return result;
     }
-    auto stream = client_.read(*id, s.range.value_or(all()), deadline);
+    std::optional<Completion> frontier;
+    client::HlcRange range;
+    if(s.range)
+        range = *s.range;
+    else
+    {
+        auto probe = snapshot(client_, *id, deadline);
+        if(!probe.ok())
+            return probe.status();
+        frontier = *probe;
+        range = {{}, probe->frontier};
+    }
+    auto stream = client_.read(*id, range, deadline);
     if(!stream.ok())
         return stream.status();
     struct Selected
@@ -382,6 +409,8 @@ absl::StatusOr<Result> Database::execute(const std::string& sql, std::span<const
     }
     if(!result.completion)
         return absl::DeadlineExceededError("SELECT missing Replay Completion");
+    if(frontier && !frontier->complete)
+        result.completion = *frontier;
     if(s.count)
         result.rows.push_back({{"count", count}});
     else
