@@ -30,7 +30,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -96,6 +96,12 @@ run_engine() {
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
+            step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
+            return "$rc"
+        fi
         echo "-- $engine: smoke.py"
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
             --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"
