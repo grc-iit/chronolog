@@ -31,7 +31,6 @@ def _bound(value, maximum, name):
     return value
 
 
-
 def read_story(client, story, start_hlc=None, end_hlc=None, limit=1000, timeout=10):
     _bound(limit, 10000, "limit")
     end = Hlc(**end_hlc) if end_hlc else Hlc(time.time_ns())

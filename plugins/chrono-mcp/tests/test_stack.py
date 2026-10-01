@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import sys
-import time
 import uuid
 
 import chronolog as cl
@@ -79,7 +78,6 @@ def test_mcp_stdio_session():
                 client.destroy_chronicle(chronicle, timeout=3)
 
     asyncio.run(asyncio.wait_for(run(), timeout=40))
-
 
 
 def test_conversation_workflow_resource_prompt_and_replay_reader():
