@@ -1,0 +1,67 @@
+#pragma once
+
+#include <mutex>
+
+#include "chronolog/clock.h"
+#include "clock/HlcCore.h"
+
+namespace chronolog
+{
+
+// Deterministic Clock for tests. Physical time and status are set by the test.
+class FakeClock final: public Clock
+{
+public:
+    explicit FakeClock(int64_t physical_ns = 0, uint64_t synced_bound_ns = 15)
+        : physical_ns_(physical_ns)
+        , synced_bound_ns_(synced_bound_ns)
+    {}
+
+    void setPhysical(int64_t physical_ns)
+    {
+        std::lock_guard lock(mutex_);
+        physical_ns_ = physical_ns;
+    }
+
+    void setStatus(ClockStatus status)
+    {
+        std::lock_guard lock(mutex_);
+        status_ = status;
+    }
+
+    absl::StatusOr<TimeReading> now() const override { return sample(); }
+
+    Hlc tick() override
+    {
+        auto reading = sample();
+        return hlc_.tick(reading.status == ClockStatus::Unavailable ? 0 : reading.physical_ns);
+    }
+
+    Hlc observe(Hlc remote) override
+    {
+        auto reading = sample();
+        return hlc_.observe(reading.status == ClockStatus::Unavailable ? 0 : reading.physical_ns, remote);
+    }
+
+    absl::StatusOr<std::optional<uint64_t>> uncertainty() const override { return sample().uncertainty_ns; }
+
+private:
+    TimeReading sample() const
+    {
+        std::lock_guard lock(mutex_);
+        TimeReading reading;
+        reading.physical_ns = physical_ns_;
+        reading.status = status_;
+        if(status_ == ClockStatus::Synced)
+            reading.uncertainty_ns = synced_bound_ns_;
+        return reading;
+    }
+
+    mutable std::mutex mutex_;
+    int64_t physical_ns_;
+    uint64_t synced_bound_ns_;
+    ClockStatus status_{ClockStatus::Unsynced};
+    HlcCore hlc_;
+};
+
+} // namespace chronolog
