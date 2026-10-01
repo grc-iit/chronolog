@@ -77,9 +77,10 @@ run_engine() {
         return "$rc"
     }
 
-    local rc=0
+    local rc=0 stack_ready=0
     step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
+        stack_ready=1
         echo "-- $engine: smoke.py"
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
             --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"
@@ -87,12 +88,13 @@ run_engine() {
     else
         rc=1
     fi
-    if [ "$rc" -eq 0 ]; then
-        step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh || rc=1
-        if [ "$rc" -eq 0 ]; then
+    if [ "$stack_ready" -eq 1 ]; then
+        if step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh; then
             export CHRONOLOG_TYPESCRIPT_PACKAGE="$root/build/typescript/package"
             step "TypeScript binding suite" 180 "${compose[@]}" -f client/typescript/test/compose.yaml \
                 run --rm --no-deps typescript-tests || rc=1
+        else
+            rc=1
         fi
     fi
     timeout 60 "${compose[@]}" logs --no-color > "$logs/$engine-services.log" 2>&1 || true
