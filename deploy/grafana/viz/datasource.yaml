@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: ChronoLog
+    type: chronolog-viz-datasource
+    uid: chronolog-viz
+    access: proxy
+    url: http://chrono-viz:8087
+    isDefault: true
+    editable: true

@@ -38,7 +38,7 @@ export CHRONOLOG_IMAGE=$image
 
 if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     echo "-- native dev build: ${targets[*]}"
-    { cmake --preset dev && cmake --build --preset dev --parallel 12 --target "${targets[@]}"; } > "$logs/native-build.log" 2>&1 \
+    { bash plugins/chrono-viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel 12 --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
         || { echo "FAILED native build, tail of $logs/native-build.log:"; tail -40 "$logs/native-build.log"; exit 1; }
 fi
 rm -rf "$stage"
@@ -68,6 +68,10 @@ else
     fi
     timeout 300 "$venv/bin/pip" install --quiet -r tests/smoke/python/requirements.txt \
         || { echo "smoke: pip install failed"; exit 1; }
+fi
+
+if [ "${RBUILD_HELD:-}" != stack ] && [ "${CHRONOLOG_STACK_LOCKED:-0}" != 1 ]; then
+    exec flock "$HOME/chronolog-sprint/stack.lock" env CHRONOLOG_STACK_LOCKED=1 SKIP_NATIVE_BUILD=1 bash "$0" "$@"
 fi
 
 run_engine() {
@@ -106,13 +110,16 @@ run_engine() {
     step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
-        step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
-            127.0.0.1:50051 127.0.0.1:50054 || rc=1
-        step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
-            127.0.0.1:50051 127.0.0.1:50054 || rc=1
-        step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
-            127.0.0.1:50051 127.0.0.1:50054 || rc=1
-        step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
+        if [ "${CHRONOLOG_SMOKE_VIZ_ONLY:-0}" != 1 ]; then
+            step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
+                127.0.0.1:50051 127.0.0.1:50054 || rc=1
+            step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
+                127.0.0.1:50051 127.0.0.1:50054 || rc=1
+            step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
+                127.0.0.1:50051 127.0.0.1:50054 || rc=1
+            step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
+        fi
+        step "chrono-viz Replay backend Grafana proxy health and plugin" 480 bash plugins/chrono-viz/smoke.sh "$engine" "$project" || rc=1
         if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
             return "$rc"
