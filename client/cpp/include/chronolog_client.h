@@ -20,7 +20,14 @@ namespace chronolog
 // format between the client and any ChronoLog server component changes in
 // an incompatible way; the Visor returns CL_ERR_PROTOCOL_VERSION_MISMATCH
 // if a connecting client's version doesn't match the server's expectation.
-static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 3;
+//
+// Version 4 carries two changes that were each released on a branch as 3:
+// PlaybackQueryResponse gained the `complete` flag behind CL_ERR_PARTIAL_RESULT
+// (#703), and ConnectResponseMsg gained the Visor ClockState together with the
+// SyncClock RPC (visor-clock-exchange). A client built at either branch's 3
+// therefore speaks neither layout in full, so 3 is never reused and the Visor
+// refuses it exactly as it refuses 2 or older.
+static constexpr uint32_t CLIENT_PROTOCOL_VERSION = 4;
 
 // 64-bit ClientId layout. The high 48 bits are the client's network endpoint
 // (IPv4 + port) so a downstream consumer reading back events can identify the

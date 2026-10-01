@@ -124,7 +124,8 @@ correction after a re-sync can never make a producer emit a decreasing tick.
 
 **Client ↔ Visor (request/response):**
 - **Connect** carries a `ClockState` (`visor_time = VisorClock::now()`);
-  `CLIENT_PROTOCOL_VERSION` bumped `2 → 3`. The client brackets the connect RPC
+  `CLIENT_PROTOCOL_VERSION` bumped `2 → 3` on this branch, and to `4` once merged
+  with #703, which had also used `3`. The client brackets the connect RPC
   with `t0`/`t1` and `applySync`.
 - A new **`SyncClock`** RPC/`Client::SyncClock()` API for explicit re-sync; the
   client also re-syncs opportunistically at `AcquireStory`.
@@ -179,7 +180,7 @@ were intentionally left alone.
 - `tests/end-to-end/clock-skew/clock_skew_harness.sh` — Tier-2 skew harness.
 
 **Client**
-- `chronolog_client.h` — `CLIENT_PROTOCOL_VERSION 3`; `Client::SyncClock()`.
+- `chronolog_client.h` — `CLIENT_PROTOCOL_VERSION 4` (3 on this branch alone); `Client::SyncClock()`.
 - `ConnectResponseMsg.h` — `ClockState` field + serialize.
 - `rpcVisorClient.h` — connect-time sync; `SyncClock` RPC wrapper.
 - `ChronologClientImpl.{h,cpp}` — `SyncClock()`; opportunistic re-sync in
@@ -221,8 +222,10 @@ were intentionally left alone.
 ## 4. Wire compatibility
 
 Two breaking changes; all components must be rebuilt/redeployed together:
-- Client↔Visor: `CLIENT_PROTOCOL_VERSION 2 → 3`. The Visor rejects a mismatched
-  client with `CL_ERR_PROTOCOL_VERSION_MISMATCH` (existing machinery).
+- Client↔Visor: `CLIENT_PROTOCOL_VERSION 2 → 3` on this branch. #703 also used 3
+  for its partial-replay flag, so the merged tree uses 4 for both changes. The
+  Visor rejects a mismatched client, including either branch's 3, with
+  `CL_ERR_PROTOCOL_VERSION_MISMATCH` (existing machinery).
 - Daemon↔Visor heartbeat: one-way → request/response. There is **no** daemon
   protocol-version gate, but the 5 s heartbeat timeout means a new daemon against an
   old (non-responding) Visor degrades to a per-cycle timeout (warn + retry, stays

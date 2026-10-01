@@ -19,6 +19,8 @@ static constexpr uint32_t chronolog::CLIENT_PROTOCOL_VERSION;
 
 The wire-protocol version exchanged on `Connect()`. The Visor returns `CL_ERR_PROTOCOL_VERSION_MISMATCH` if a connecting client's version doesn't match the server's expected version. The constant is bumped whenever the wire format between the client and any ChronoLog server component changes in an incompatible way.
 
+ChronoLog 3.2.0 uses version 4. It adds the `complete` flag that a replay reports as `CL_ERR_PARTIAL_RESULT`, and the Visor clock state returned by `Connect()` and `SyncClock()`. Clients built against 3.1.x (version 2) or against a pre-release branch that used version 3 are refused at `Connect()` and must be rebuilt.
+
 ---
 
 ## `Client` Class
