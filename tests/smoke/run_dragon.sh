@@ -133,13 +133,16 @@ run_engine() {
             fi
             if [ "$rc" -eq 0 ]; then
                 step "install Python wheel" 120 "$venv/bin/pip" install --no-deps --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl || rc=1
+                if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
+                    step "Python telemetry dependencies" 180 "$venv/bin/pip" install 'opentelemetry-sdk>=1.39,<2' || rc=1
+                fi
                 step "Python SDK pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                     "$venv/bin/python" -m pytest -q client/python/tests || rc=1
                 if [ "$rc" -eq 0 ]; then
                     if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
-                    step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp || rc=1
-                    step "install MCP plugin" 180 "$venv/bin/pip" install --force-reinstall --no-deps "$logs"/wheels/chronolog_mcp-4.0.0-*.whl || rc=1
-                    step "MCP plugin dependencies" 180 "$venv/bin/pip" install 'mcp>=1.30,<2' || rc=1
+                        step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp || rc=1
+                        step "install MCP plugin" 180 "$venv/bin/pip" install --force-reinstall --no-deps "$logs"/wheels/chronolog_mcp-4.0.0-*.whl || rc=1
+                        step "MCP plugin dependencies" 180 "$venv/bin/pip" install 'mcp>=1.30,<2' || rc=1
                     fi
                     step "MCP plugin pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                         "$venv/bin/python" -m pytest -q plugins/chrono-mcp/tests || rc=1

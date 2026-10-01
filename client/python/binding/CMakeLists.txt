@@ -15,7 +15,7 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
 endif()
 
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
-    add_test(NAME python.otel COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/../tests/acceptance.sh"
+    add_test(NAME python.otel COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/../tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
         "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tests/test_otel.py")
     set_tests_properties(python.otel PROPERTIES TIMEOUT 90)
