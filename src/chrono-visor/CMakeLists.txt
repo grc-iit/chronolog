@@ -42,7 +42,7 @@ if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
     set_property(TARGET chronolog_visor_tests PROPERTY CROSSCOMPILING_EMULATOR
         "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
 endif()
-gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST)
+gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
 
 # Tiny Catalog client driven by tests/acceptance.sh against the real binary.
 add_executable(visor_acceptance_client tests/acceptance_client.cpp)

@@ -39,6 +39,9 @@ std::unique_ptr<JournalHarness> MakeRam()
 
 } // namespace
 
-INSTANTIATE_TEST_SUITE_P(Ram, JournalContract, ::testing::Values(JournalFactory(MakeRam)));
+INSTANTIATE_TEST_SUITE_P(Ram,
+                         JournalContract,
+                         ::testing::Values(JournalFactory(MakeRam)),
+                         [](const ::testing::TestParamInfo<JournalFactory>&) { return std::string("Ram"); });
 
 } // namespace chronolog::contract
