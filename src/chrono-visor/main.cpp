@@ -135,7 +135,13 @@ int main(int argc, char** argv)
 
     chronolog::visor::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
     chronolog::visor::CatalogService catalog(catalog_store, pool, raft);
-    chronolog::visor::ClusterService cluster(membership, ledger, ledger, feed, raft, &pool);
+    chronolog::visor::ClusterService cluster(membership,
+                                             ledger,
+                                             ledger,
+                                             feed,
+                                             raft,
+                                             &pool,
+                                             std::chrono::milliseconds(config->heartbeat_timeout_ms));
 
     int public_port = 0;
     int internal_port = 0;

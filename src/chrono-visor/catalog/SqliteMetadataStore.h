@@ -10,9 +10,15 @@
 #include "catalog/AcquisitionLedger.h"
 #include "chronolog/metadata_store.h"
 #include "membership/Topology.h"
+#include "chronolog/internal/v1/internal.pb.h"
 
 namespace chronolog::visor
 {
+class SqliteMetadataStore;
+namespace dynamic
+{
+internal::v1::MembershipState snapshot(SqliteMetadataStore&);
+}
 
 // Durable Catalog state in one SQLite file, WAL journal mode, synchronous=FULL.
 // Every mutator is one BEGIN IMMEDIATE transaction and returns after COMMIT, so
@@ -52,10 +58,16 @@ public:
     absl::Status installFrom(const std::string& path);
     uint64_t snapshotGeneration() const { return snapshot_generation_.load(); }
 
+    absl::StatusOr<internal::v1::MembershipState> membershipState() const;
+    absl::Status saveMembership(const internal::v1::MembershipState& state);
+    absl::StatusOr<Route> membershipRoute(StoryId id) const;
+    absl::Status
+    fenceRemovedWriters(StoryId id, const Route& route, uint64_t revision, const std::string& replacement = "");
     // Value of `PRAGMA <name>` on this connection, for tests and startup logging.
     absl::StatusOr<std::string> pragmaValue(const std::string& name) const;
 
 private:
+    friend internal::v1::MembershipState dynamic::snapshot(SqliteMetadataStore&);
     SqliteMetadataStore(sqlite3* db, Topology topology, FenceWaiter fence_waiter);
     absl::Status initialize();
 

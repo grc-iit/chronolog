@@ -11,6 +11,10 @@ struct MembershipHarness
     std::unique_ptr<Membership> sut;
     // Construct the implementation with its production static epoch.
     std::function<std::unique_ptr<Membership>()> staticEpoch;
+    std::function<absl::Status(std::string, std::string)> grantCeiling;
+    std::function<absl::Status(std::string)> drainKeeper, joinKeeper, abandonKeeper;
+    std::function<absl::Status(std::string, std::string, Epoch, Hlc)> reportDrain;
+    std::function<absl::Status(std::string, std::string, Hlc, Hlc, Hlc)> reportSettlement;
 };
 using MembershipFactory = std::function<std::unique_ptr<MembershipHarness>()>;
 class MembershipContract: public ::testing::TestWithParam<MembershipFactory>
@@ -71,6 +75,64 @@ TEST_P(MembershipContract, StaticEpochIsOneAndValidated)
     for(Epoch epoch: {0, 2, 7})
         EXPECT_EQ(membership->validateEpoch(1, epoch).code(), absl::StatusCode::kFailedPrecondition);
     EXPECT_EQ(membership->route(999).status().code(), absl::StatusCode::kNotFound);
+}
+TEST_P(MembershipContract, StaleDrainReportDoesNotRemoveANewerPredecessor)
+{
+    if(!h->drainKeeper)
+        GTEST_SKIP() << "dynamic membership only";
+    auto initial = h->sut->route(1);
+    ASSERT_TRUE(initial.ok());
+    ASSERT_GE(initial->keepers.size(), 2u);
+    auto a = initial->keepers[0], b = initial->keepers[1];
+    ASSERT_TRUE(h->sut->registerProcess({a.process_id, "old-1", a.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->sut->registerProcess({b.process_id, "survivor", b.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->grantCeiling(a.process_id, "old-1").ok());
+    ASSERT_TRUE(h->grantCeiling(b.process_id, "survivor").ok());
+    ASSERT_TRUE(h->drainKeeper(a.process_id).ok());
+    auto retired = h->sut->routeState(1);
+    ASSERT_TRUE(retired.ok());
+    ASSERT_EQ(retired->predecessors.size(), 1u);
+    auto predecessor = retired->predecessors.front();
+    ASSERT_TRUE(h->joinKeeper(a.process_id).ok());
+    ASSERT_TRUE(h->grantCeiling(a.process_id, "old-1").ok());
+    ASSERT_TRUE(h->drainKeeper(a.process_id).ok());
+    auto before = h->sut->routeState(1);
+    ASSERT_TRUE(before.ok());
+    ASSERT_EQ(before->predecessors.size(), 2u);
+    ASSERT_TRUE(h->reportDrain(a.process_id, "old-1", predecessor.epoch, predecessor.own_cut).ok());
+    auto after = h->sut->routeState(1);
+    ASSERT_TRUE(after.ok());
+    ASSERT_EQ(after->predecessors.size(), 1u);
+    EXPECT_NE(after->predecessors.front().epoch, predecessor.epoch);
+    EXPECT_EQ(after->archived_below, predecessor.own_cut);
+    ASSERT_TRUE(h->reportDrain(a.process_id, "old-1", predecessor.epoch, predecessor.own_cut).ok());
+    after = h->sut->routeState(1);
+    ASSERT_TRUE(after.ok());
+    EXPECT_EQ(after->predecessors.size(), 1u);
+}
+TEST_P(MembershipContract, AbandonedRangeUsesOnlyTheSameInstanceProof)
+{
+    if(!h->abandonKeeper)
+        GTEST_SKIP() << "dynamic membership only";
+    auto initial = h->sut->route(1);
+    ASSERT_TRUE(initial.ok());
+    ASSERT_GE(initial->keepers.size(), 2u);
+    auto a = initial->keepers[0], b = initial->keepers[1];
+    ASSERT_TRUE(h->sut->registerProcess({a.process_id, "old-1", a.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->sut->registerProcess({b.process_id, "survivor", b.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->grantCeiling(a.process_id, "old-1").ok());
+    ASSERT_TRUE(h->grantCeiling(b.process_id, "survivor").ok());
+    ASSERT_TRUE(h->reportSettlement(a.process_id, "old-1", Hlc{}, Hlc{50, 0}, Hlc{10, 0}).ok());
+    ASSERT_TRUE(h->sut->registerProcess({a.process_id, "new-2", a.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->grantCeiling(a.process_id, "new-2").ok());
+    ASSERT_TRUE(h->abandonKeeper(a.process_id).ok());
+    auto state = h->sut->routeState(1);
+    ASSERT_TRUE(state.ok());
+    ASSERT_EQ(state->abandoned.size(), 2u);
+    EXPECT_TRUE(state->predecessors.empty());
+    EXPECT_EQ(state->abandoned[0].start, Hlc{});
+    EXPECT_EQ(state->abandoned[1].start, (Hlc{50, 0}));
+    EXPECT_EQ(state->archived_below, (Hlc{50, 0}));
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MembershipContract);
 } // namespace chronolog::contract

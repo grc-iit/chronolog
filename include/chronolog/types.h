@@ -151,6 +151,23 @@ struct Range
     // Exclusive HLC bound, or physical ns bound when Range::Axis is Physical.
     Hlc end;
 }; // [start,end); Physical ignores logical.
+struct Predecessor
+{
+    KeeperRef keeper;
+    std::string instance;
+    Epoch epoch{};
+    Hlc own_cut;
+    int64_t own_physical_ceiling_ns{};
+};
+struct RouteState
+{
+    Route route;
+    Hlc ordering_cut;
+    int64_t physical_floor{};
+    std::vector<Predecessor> predecessors;
+    Hlc archived_below;
+    std::vector<Range> abandoned;
+};
 // Keeper-sealed exclusive frontier: every event below F is visible, and no future
 // event can be assigned below F. Shared by all writers on that Keeper, even idle
 // writers. Pending DURABLE fsync prevents seal advancing beyond that event HLC.

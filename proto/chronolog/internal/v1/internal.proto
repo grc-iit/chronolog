@@ -22,6 +22,11 @@ service Archive
 }
 service Cluster
 {
+    rpc ExtendCeiling(ExtendCeilingRequest) returns (ExtendCeilingResponse);
+    rpc DrainKeeper(KeeperRequest) returns (MembershipResponse);
+    rpc JoinKeeper(KeeperRequest) returns (MembershipResponse);
+    rpc AbandonKeeper(KeeperRequest) returns (MembershipResponse);
+    rpc ListMembers(ListMembersRequest) returns (MembershipResponse);
     // Visor distributes writer registration and release fences to assigned Keeper.
     // INVALID_ARGUMENT for empty keeper id, UNAVAILABLE for service failure,
     // UNIMPLEMENTED before port. Stream cancellation uses CANCELLED.
@@ -160,9 +165,15 @@ message RegisterRequest
 {
     // process; interpreted according to the message invariants above.
     Process process = 1;
+    string recovered_instance = 2;
+    uint64 policy_version = 3;
 }
 message RegisterResponse
 {
+    chronolog.v1.Hlc ceiling_floor = 5;
+    int64 physical_ceiling_floor_ns = 6;
+    repeated string visor_replicas = 7;
+    MembershipPolicy policy = 8;
     // Result status, or synchronization state for a physical time reading.
     chronolog.v1.ItemStatus status = 1;
     // routes; interpreted according to the message invariants above.
@@ -172,7 +183,12 @@ message RegisterResponse
     // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
     int64 authority_tick_ns = 4;
 }
-message StoryFrontiers {
+message StoryFrontiers
+{
+    SettlementProof settlement = 4;
+    chronolog.v1.Hlc evicted_below = 5;
+    string drained_instance = 6;
+    uint64 drained_epoch = 7;
  // Catalog-assigned story.
  uint64 story_id = 1;
  // Writer diagnostics for this story.
@@ -180,7 +196,9 @@ message StoryFrontiers {
  // Keeper-level seal, including writerless stories.
  chronolog.v1.Hlc sealed_frontier = 3;
 }
-message HeartbeatRequest {
+message HeartbeatRequest
+{
+    uint64 applied_route_revision = 6;
  // Relevant updates <= R applied; irrelevant global revisions skipped. Scoped
  // to process instance. Counter originates in persisted Catalog and never reuses.
  uint64 applied_revision = 5;
@@ -212,6 +230,14 @@ message RouteSubscription
 }
 message RouteUpdate
 {
+    chronolog.v1.Hlc ordering_cut = 4;
+    int64 physical_floor_ns = 5;
+    repeated Predecessor predecessors = 6;
+    chronolog.v1.Hlc archived_below = 7;
+    repeated chronolog.v1.HlcRange abandoned = 8;
+    repeated string observe_floor = 9;
+    bool physical_policy = 10;
+
     uint64 revision = 3;
     // Catalog-assigned uint64 story identity; never a hash of concatenated names.
     uint64 story_id = 1;
@@ -233,6 +259,8 @@ message ReadClockResponse
 // Internal hot replay uses the same half-open HLC/physical range representation.
 message FetchHotRequest
 {
+    string expect_instance = 5;
+    uint64 expect_epoch = 6;
     // Catalog-assigned story identity.
     uint64 story_id = 1;
     // Exactly one range must be selected.
@@ -248,6 +276,7 @@ message FetchHotRequest
 }
 message FetchHotTrailer
 {
+    string instance = 6;
  // Current Keeper epoch; mismatch with Player Route is SOURCE_FAILED.
  uint64 epoch = 4;
     // Keeper-level sealed F even if no writers are known; completeness is over
@@ -401,7 +430,16 @@ message WatchRoutesRequest {
     string instance = 2;
 }
 // Method-specific WatchRoutes message; same payload invariants as RouteUpdate.
-message WatchRoutesResponse {
+message WatchRoutesResponse
+{
+    chronolog.v1.Hlc ordering_cut = 4;
+    int64 physical_floor_ns = 5;
+    repeated Predecessor predecessors = 6;
+    chronolog.v1.Hlc archived_below = 7;
+    repeated chronolog.v1.HlcRange abandoned = 8;
+    repeated string observe_floor = 9;
+    bool physical_policy = 10;
+
     uint64 revision = 3;
     // Catalog-assigned uint64 story identity; never a hash of concatenated names.
     uint64 story_id = 1;
@@ -409,8 +447,11 @@ message WatchRoutesResponse {
     chronolog.v1.Route route = 2;
 }
 
-message CatalogCommand {
- oneof mutation {
+message CatalogCommand
+{
+    oneof mutation
+    {
+        MembershipCommand membership = 8;
   chronolog.v1.CreateChronicleRequest create_chronicle = 1;
   chronolog.v1.DestroyChronicleRequest destroy_chronicle = 2;
   chronolog.v1.CreateStoryRequest create_story = 3;
@@ -419,4 +460,97 @@ message CatalogCommand {
   chronolog.v1.ReleaseRequest release = 6;
   chronolog.v1.CompareAndSetEpochRequest compare_and_set_epoch = 7;
  }
+}
+
+message MembershipPolicy
+{
+    int64 ceiling_ahead_ns = 1;
+    int64 physical_ahead_ns = 2;
+    int64 acceptance_budget_ns = 3;
+    int64 hlc_budget_ns = 4;
+    uint64 version = 5;
+    int64 acceptance_window_ns = 6;
+    int64 skew_limit_ns = 7;
+    int64 hlc_lead_ns = 8;
+    int64 uncertainty_cap_ns = 9;
+}
+message Predecessor
+{
+    chronolog.v1.KeeperRef keeper = 1;
+    string instance = 2;
+    uint64 epoch = 3;
+    chronolog.v1.Hlc own_cut = 4;
+    int64 own_physical_ceiling_ns = 5;
+}
+message SettlementProof
+{
+    string instance = 1;
+    chronolog.v1.Hlc coverage_start = 2;
+    chronolog.v1.Hlc settled_through = 3;
+    chronolog.v1.Hlc first_event = 4;
+}
+message ExtendCeilingRequest
+{
+    string process_id = 1;
+    string instance = 2;
+    uint64 applied_route_revision = 3;
+    chronolog.v1.Hlc wanted_hlc = 4;
+    int64 realtime_ns = 5;
+}
+message ExtendCeilingResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    chronolog.v1.Hlc ceiling = 2;
+    int64 physical_ceiling_ns = 3;
+    repeated RouteUpdate routes = 4;
+    uint64 fence_revision = 5;
+}
+message KeeperRequest { string process_id = 1; }
+message ListMembersRequest {}
+message MembershipResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    repeated MemberState members = 2;
+    repeated RouteUpdate routes = 3;
+}
+message InstanceState
+{
+    string instance = 1;
+    chronolog.v1.Hlc ceiling = 2;
+    int64 physical_ceiling_ns = 3;
+    bool granted = 4;
+    repeated InstanceProof proofs = 5;
+}
+message InstanceProof
+{
+    uint64 story_id = 1;
+    SettlementProof proof = 2;
+}
+message MemberState
+{
+    Process process = 1;
+    repeated InstanceState instances = 2;
+    uint64 fence_revision = 3;
+    bool joined = 4;
+    uint64 policy_version = 5;
+}
+message MembershipState
+{
+    repeated RouteUpdate route_history = 4;
+    uint64 revision = 5;
+    repeated MemberState members = 1;
+    repeated RouteUpdate routes = 2;
+    MembershipPolicy policy = 3;
+}
+message MembershipCommand
+{
+    oneof operation
+    {
+        RegisterRequest register = 1;
+        HeartbeatRequest heartbeat = 2;
+        ExtendCeilingRequest extend = 3;
+        KeeperRequest drain = 4;
+        KeeperRequest join = 5;
+        KeeperRequest abandon = 6;
+    }
 }
