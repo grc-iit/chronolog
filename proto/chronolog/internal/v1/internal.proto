@@ -533,17 +533,26 @@ message MemberState
     uint64 fence_revision = 3;
     bool joined = 4;
     uint64 policy_version = 5;
+    uint64 applied_route_revision = 6;
 }
 message MembershipState
 {
     repeated RouteUpdate route_history = 4;
+    uint64 route_history_floor = 6;
     uint64 revision = 5;
     repeated MemberState members = 1;
     repeated RouteUpdate routes = 2;
     MembershipPolicy policy = 3;
 }
+message AppliedRouteRevision
+{
+    string process_id = 1;
+    string instance = 2;
+    uint64 revision = 3;
+}
 message MembershipCommand
 {
+    repeated AppliedRouteRevision applied_routes = 7;
     oneof operation
     {
         RegisterRequest register = 1;

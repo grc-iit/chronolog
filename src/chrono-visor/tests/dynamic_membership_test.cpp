@@ -1,4 +1,6 @@
 #include "TestSupport.h"
+#include <chrono>
+#include <iostream>
 #include "dynamic/DynamicMembership.h"
 #include "membership_contract_test.cpp"
 namespace chronolog::contract
@@ -250,7 +252,8 @@ TEST_F(DynamicMembershipTest, StoryPhysicalFloorDoesNotFallWhenALowerCeilingKeep
     ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
     EXPECT_EQ(route().physical_floor_ns(), floor);
     auto snapshot = dynamic::snapshot(*store);
-    EXPECT_EQ(snapshot.route_history(snapshot.route_history_size() - 1).physical_floor_ns(), floor);
+    EXPECT_EQ(snapshot.routes(0).physical_floor_ns(), floor);
+    EXPECT_EQ(snapshot.route_history_size(), 0);
 }
 TEST_F(DynamicMembershipTest, MismatchedPolicyRefusesRegistration)
 {
@@ -270,8 +273,89 @@ TEST_F(DynamicMembershipTest, MissingCeilingBlocksEpochChangeAndAbandonmentDecla
     ASSERT_EQ(reg("keeper-b", "b1").status().code(), 0);
     EXPECT_NE(change("keeper-a", 0).status().code(), 0);
     EXPECT_EQ(route().route().epoch(), 1u);
+    EXPECT_NE(change("keeper-a", 2).status().code(), 0);
+    ASSERT_EQ(extend("keeper-b", "b1").status().code(), 0);
     ASSERT_EQ(change("keeper-a", 2).status().code(), 0);
     ASSERT_EQ(route().abandoned_size(), 1);
     EXPECT_EQ(route().abandoned(0).end().physical_ns(), std::numeric_limits<int64_t>::max());
+}
+TEST_F(DynamicMembershipTest, LastKeeperCannotDrainOrAbandon)
+{
+    ready();
+    ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
+    for(int action: {0, 2})
+    {
+        auto refused = change("keeper-b", action);
+        EXPECT_EQ(refused.status().code(), static_cast<int>(absl::StatusCode::kFailedPrecondition));
+        EXPECT_NE(refused.status().message().find("1"), std::string::npos);
+        EXPECT_EQ(route().route().keepers_size(), 1);
+    }
+    EXPECT_TRUE(dynamic::wouldEmptyRoute(dynamic::snapshot(*store), "keeper-b"));
+}
+TEST_F(DynamicMembershipTest, TrimmedHistoryRefusalReturnsCurrentRoutes)
+{
+    ready();
+    ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
+    ASSERT_EQ(extend("keeper-a", "a1").status().code(), 0);
+    ASSERT_EQ(extend("keeper-b", "b1").status().code(), 0);
+    auto state = dynamic::snapshot(*store);
+    EXPECT_EQ(state.route_history_size(), 0);
+    auto refused = extend("keeper-b", "b1", 0);
+    EXPECT_NE(refused.status().code(), 0);
+    ASSERT_EQ(refused.routes_size(), 1);
+    EXPECT_EQ(refused.routes(0).route().epoch(), 2u);
+}
+TEST_F(DynamicMembershipTest, OnlyNewOrGrownSettlementProofNeedsProposal)
+{
+    ready();
+    wire::HeartbeatRequest q;
+    q.set_process_id("keeper-a");
+    q.set_instance("a1");
+    EXPECT_FALSE(dynamic::heartbeatChanges(dynamic::snapshot(*store), q));
+    auto* f = q.add_story_frontiers();
+    f->set_story_id(1);
+    auto* proof = f->mutable_settlement();
+    proof->set_instance("a1");
+    proof->mutable_coverage_start()->set_physical_ns(100);
+    proof->mutable_settled_through()->set_physical_ns(200);
+    EXPECT_TRUE(dynamic::heartbeatChanges(dynamic::snapshot(*store), q));
+    ASSERT_EQ(heartbeat("keeper-a", "a1", *f).status().code(), 0);
+    EXPECT_FALSE(dynamic::heartbeatChanges(dynamic::snapshot(*store), q));
+    proof->mutable_settled_through()->set_physical_ns(150);
+    EXPECT_FALSE(dynamic::heartbeatChanges(dynamic::snapshot(*store), q));
+    proof->mutable_settled_through()->set_physical_ns(250);
+    EXPECT_TRUE(dynamic::heartbeatChanges(dynamic::snapshot(*store), q));
+}
+TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
+{
+    ASSERT_TRUE(store->applyRaft(1,
+                                 [&]
+                                 {
+                                     for(int n = 1; n < 10000; ++n)
+                                         if(!store->createStory("c", "s" + std::to_string(n)).ok())
+                                             throw std::runtime_error("story setup failed");
+                                     return std::string{};
+                                 })
+                        .ok());
+    auto state = dynamic::snapshot(*store);
+    for(int n = 0; n < 62; ++n)
+    {
+        auto* m = state.add_members();
+        m->mutable_process()->set_process_id("extra" + std::to_string(n));
+        m->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
+    }
+    for(auto& r: *state.mutable_routes())
+        for(int n = 0; n < 62; ++n)
+        {
+            auto* k = r.mutable_route()->add_keepers();
+            k->set_process_id("extra" + std::to_string(n));
+            k->set_endpoint("127.0.0.1:50052");
+        }
+    ASSERT_TRUE(store->saveMembership(state).ok());
+    auto start = std::chrono::steady_clock::now();
+    ASSERT_EQ(reg("keeper-a", "a1").status().code(), 0);
+    std::cout << "64 Keeper 10000 story apply ms: "
+              << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count()
+              << std::endl;
 }
 } // namespace chronolog::visor

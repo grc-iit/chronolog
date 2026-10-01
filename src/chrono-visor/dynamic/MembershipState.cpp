@@ -157,6 +157,44 @@ wire::MembershipState snapshot(SqliteMetadataStore& store)
     }
     return state;
 }
+bool wouldEmptyRoute(const wire::MembershipState& state, const std::string& id)
+{
+    for(const auto& r: state.routes())
+        if(r.route().keepers_size() == 1 && lists(r.route(), id))
+            return true;
+    return false;
+}
+bool heartbeatChanges(const wire::MembershipState& state, const wire::HeartbeatRequest& q)
+{
+    for(const auto& m: state.members())
+        if(m.process().process_id() == q.process_id())
+        {
+            if(m.process().instance() != q.instance())
+                return !q.story_frontiers().empty();
+            for(const auto& f: q.story_frontiers())
+            {
+                if(!f.drained_instance().empty())
+                    return true;
+                if(!f.has_settlement())
+                    continue;
+                for(const auto& i: m.instances())
+                    if(i.instance() == q.instance() && f.settlement().instance() == i.instance() &&
+                       hlc(f.settlement().coverage_start()) <= hlc(f.settlement().settled_through()) &&
+                       hlc(f.settlement().settled_through()) <= hlc(i.ceiling()))
+                    {
+                        const wire::SettlementProof* previous = nullptr;
+                        for(const auto& p: i.proofs())
+                            if(p.story_id() == f.story_id())
+                                previous = &p.proof();
+                        if(!previous || (hlc(f.settlement().coverage_start()) == hlc(previous->coverage_start()) &&
+                                         hlc(f.settlement().settled_through()) >= hlc(previous->settled_through()) &&
+                                         f.settlement().SerializeAsString() != previous->SerializeAsString()))
+                            return true;
+                    }
+            }
+        }
+    return false;
+}
 RouteState routeState(const wire::RouteUpdate& u)
 {
     RouteState s;
@@ -268,6 +306,15 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
             status = absl::InvalidArgumentError("process is not a Keeper");
         transition = q.has_abandon() || (q.has_join() ? !m->joined() : m->joined());
     }
+    if(status.ok() && transition && !replacement && !q.has_join())
+    {
+        std::string stories;
+        for(const auto& r: state.routes())
+            if(r.route().keepers_size() == 1 && lists(r.route(), id))
+                stories += " " + std::to_string(r.story_id());
+        if(!stories.empty())
+            status = absl::FailedPreconditionError("would empty routes for stories:" + stories);
+    }
     if(status.ok() && transition)
     {
         auto everGranted = [](const wire::MemberState* member)
@@ -285,7 +332,7 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 continue;
             for(const auto& k: r.route().keepers())
             {
-                if(!everGranted(member(state, k.process_id())) && !total_loss)
+                if(!everGranted(member(state, k.process_id())) && !(total_loss && k.process_id() == id))
                     status = absl::FailedPreconditionError("epoch change needs ceilings for every old Keeper");
             }
         }
@@ -376,6 +423,8 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
     }
     if(status.ok() && q.has_register_())
     {
+        if(previous != q.register_().process().instance())
+            m->set_applied_route_revision(0);
         *m->mutable_process() = q.register_().process();
         m->set_policy_version(q.register_().policy_version());
         if(m->policy_version() != state.policy().version())
@@ -513,6 +562,23 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 if(!exists)
                     *state.add_route_history() = r;
             }
+        if(m && q.has_extend() && status.ok())
+            m->set_applied_route_revision(std::max(m->applied_route_revision(), q.extend().applied_route_revision()));
+        if(m && q.has_heartbeat() && m->process().instance() == q.heartbeat().instance())
+            m->set_applied_route_revision(
+                    std::max(m->applied_route_revision(), q.heartbeat().applied_route_revision()));
+        for(const auto& applied: q.applied_routes())
+            if(auto* current = member(state, applied.process_id());
+               current && current->process().instance() == applied.instance())
+                current->set_applied_route_revision(std::max(current->applied_route_revision(), applied.revision()));
+        uint64_t floor = state.revision();
+        for(const auto& mem: state.members())
+            if(mem.process().role() == wire::PROCESS_ROLE_KEEPER && !mem.process().instance().empty())
+                floor = std::min(floor, mem.applied_route_revision());
+        state.set_route_history_floor(std::max(state.route_history_floor(), floor));
+        for(int n = state.route_history_size() - 1; n >= 0; --n)
+            if(state.route_history(n).revision() <= state.route_history_floor())
+                state.mutable_route_history()->DeleteSubrange(n, 1);
         require(store.saveMembership(state));
     }
     if(q.has_register_())
@@ -542,10 +608,15 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 r.set_physical_ceiling_ns(i->physical_ceiling_ns());
             }
             else if(q.extend().applied_route_revision() < m->fence_revision())
-                for(const auto& route: state.route_history())
-                    if(route.revision() > q.extend().applied_route_revision() &&
-                       route.revision() <= m->fence_revision())
-                        *r.add_routes() = route;
+            {
+                if(q.extend().applied_route_revision() < state.route_history_floor())
+                    for(const auto& route: state.routes()) *r.add_routes() = route;
+                else
+                    for(const auto& route: state.route_history())
+                        if(route.revision() > q.extend().applied_route_revision() &&
+                           route.revision() <= m->fence_revision())
+                            *r.add_routes() = route;
+            }
         }
         return r.SerializeAsString();
     }
