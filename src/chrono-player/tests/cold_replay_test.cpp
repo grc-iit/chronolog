@@ -123,9 +123,10 @@ TEST_F(ColdReplay, ATruncatedAnswerMarksTheReplyIncompleteWithoutWideningTheRead
     publish(250, 200, 300);
     source->response.keepers[1].frontier.truncated = true;
     read();
-    ASSERT_EQ(events.size(), 1);
+    EXPECT_TRUE(events.empty());
     ASSERT_TRUE(completion);
     EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion->frontier, (Hlc{100, 0}));
 }
 
 TEST_F(ColdReplay, BoundaryIsTheHighestWatermarkAKeeperReports)

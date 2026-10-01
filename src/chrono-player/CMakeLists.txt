@@ -44,3 +44,5 @@ chrono_player_test(chrono_player_adapter_test "tests/replay_adapter_test.cpp;tes
 chrono_player_test(chrono_player_cold_replay_test tests/cold_replay_test.cpp "")
 
 chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.cpp "")
+
+chrono_player_test(chrono_player_m8_replay_test "${PROJECT_SOURCE_DIR}/tests/contract/replay/m8_replay_test.cpp" "M8.")

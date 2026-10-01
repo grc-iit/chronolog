@@ -77,6 +77,24 @@ v1::IncompleteReason toProto(IncompleteReason reason)
 
 } // namespace
 
+RouteState fromProto(const internal::v1::RouteUpdate& update)
+{
+    RouteState state;
+    state.route = fromProto(update.route());
+    state.ordering_cut = fromProto(update.ordering_cut());
+    state.physical_floor = update.physical_floor_ns();
+    state.archived_below = fromProto(update.archived_below());
+    for(const auto& p: update.predecessors())
+        state.predecessors.push_back({{p.keeper().process_id(), p.keeper().endpoint()},
+                                      p.instance(),
+                                      p.epoch(),
+                                      fromProto(p.own_cut()),
+                                      p.own_physical_ceiling_ns()});
+    for(const auto& r: update.abandoned())
+        state.abandoned.push_back({Range::Axis::Hlc, fromProto(r.start()), fromProto(r.end())});
+    return state;
+}
+
 Hlc fromProto(const v1::Hlc& hlc) { return Hlc{hlc.physical_ns(), hlc.logical()}; }
 
 v1::Hlc toProto(const Hlc& hlc)

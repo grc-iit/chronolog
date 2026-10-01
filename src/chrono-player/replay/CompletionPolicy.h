@@ -15,7 +15,9 @@ public:
                              Epoch route_epoch,
                              const std::vector<KeeperFrontier>& keepers,
                              const std::vector<WriterAssignment>& writers,
-                             bool archive_failed = false);
+                             bool archive_failed = false,
+                             bool physical_policy = false,
+                             bool unbounded_event = false);
 };
 
 } // namespace chronolog::player
