@@ -199,6 +199,7 @@ message StoryFrontiers
 }
 message HeartbeatRequest
 {
+    repeated uint64 stories_without_physical_policy = 7;
     uint64 applied_route_revision = 6;
  // Relevant updates <= R applied; irrelevant global revisions skipped. Scoped
  // to process instance. Counter originates in persisted Catalog and never reuses.

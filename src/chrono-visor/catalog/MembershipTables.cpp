@@ -316,6 +316,37 @@ try
 }
 MEMBERSHIP_CATCH
 
+absl::Status SqliteMetadataStore::clearPhysicalPolicy(const std::vector<StoryId>& stories)
+try
+{
+    std::lock_guard lock(mutex_);
+    sql(db_, "BEGIN IMMEDIATE");
+    try
+    {
+        for(const auto story: stories)
+        {
+            auto old = membershipRouteUpdate(story);
+            if(absl::IsNotFound(old.status()))
+                continue;
+            if(!old.ok())
+                throw std::runtime_error(std::string(old.status().message()));
+            if(!old->physical_policy())
+                continue;
+            auto route = *old;
+            route.set_physical_policy(false);
+            writeRoute(db_, route, &*old);
+        }
+        sql(db_, "COMMIT");
+    }
+    catch(...)
+    {
+        sql(db_, "ROLLBACK");
+        throw;
+    }
+    return absl::OkStatus();
+}
+MEMBERSHIP_CATCH
+
 absl::Status SqliteMetadataStore::registerStaticPolicy(const std::string& process, uint64_t version)
 try
 {
@@ -667,9 +698,12 @@ try
         while(q.next()) stories.insert(q.number(0));
     }
     if(command.has_heartbeat())
+    {
         for(const auto& f: command.heartbeat().story_frontiers())
             if(!f.drained_instance().empty())
                 stories.insert(f.story_id());
+        for(const auto story: command.heartbeat().stories_without_physical_policy()) stories.insert(story);
+    }
     for(auto story: stories)
     {
         auto route = membershipRouteUpdate(story);

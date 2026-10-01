@@ -601,6 +601,19 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     return tier_detail::SyncDirectory((root_ / file).parent_path());
 }
 
+absl::StatusOr<std::vector<StoryId>> FileTierStore::storiesWithoutPhysicalPolicy() const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    std::set<StoryId> stories;
+    for(const auto& record: index->records)
+        if(!record.physical_policy)
+            stories.insert(record.story_id);
+    return std::vector<StoryId>(stories.begin(), stories.end());
+}
+
 absl::Status FileTierStore::compact()
 {
     if(read_only_)

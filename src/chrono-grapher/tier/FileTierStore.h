@@ -28,6 +28,7 @@ public:
     absl::StatusOr<bool> incomplete(StoryId story, Range range) const;
     absl::Status eraseFile(const std::string& file);
     absl::Status compact();
+    absl::StatusOr<std::vector<StoryId>> storiesWithoutPhysicalPolicy() const;
 
 private:
     FileTierStore(std::filesystem::path root,

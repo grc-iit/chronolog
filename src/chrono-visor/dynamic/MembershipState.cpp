@@ -107,11 +107,23 @@ bool wouldEmptyRoute(const wire::MembershipState& state, const std::string& id)
 }
 bool heartbeatChanges(const wire::MembershipState& state, const wire::HeartbeatRequest& q)
 {
+    if(q.stories_without_physical_policy_size() > 65536)
+        return true;
+    for(const auto story: q.stories_without_physical_policy())
+    {
+        if(story == 0)
+            return true;
+        for(const auto& r: state.routes())
+            if(r.story_id() == story && r.physical_policy())
+                return true;
+    }
     for(const auto& m: state.members())
         if(m.process().process_id() == q.process_id())
         {
             if(m.process().instance() != q.instance())
-                return !q.story_frontiers().empty();
+                return !q.story_frontiers().empty() || !q.stories_without_physical_policy().empty();
+            if(!q.stories_without_physical_policy().empty() && m.process().role() != wire::PROCESS_ROLE_GRAPHER)
+                return true;
             std::unordered_map<uint64_t, const wire::SettlementProof*> proofs;
             for(const auto& i: m.instances())
                 if(i.instance() == q.instance())
@@ -243,6 +255,16 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                     evidence = false;
             if(!evidence)
                 status = absl::FailedPreconditionError("obsolete process instance");
+        }
+        if(!q.heartbeat().stories_without_physical_policy().empty())
+        {
+            if(m->process().role() != wire::PROCESS_ROLE_GRAPHER)
+                status = absl::InvalidArgumentError("physical policy reports require a Grapher");
+            else if(q.heartbeat().stories_without_physical_policy_size() > 65536 ||
+                    std::find(q.heartbeat().stories_without_physical_policy().begin(),
+                              q.heartbeat().stories_without_physical_policy().end(),
+                              0) != q.heartbeat().stories_without_physical_policy().end())
+                status = absl::InvalidArgumentError("invalid physical policy story list");
         }
     }
     else
@@ -433,6 +455,12 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
             for(auto& p: *i->mutable_proofs()) proofs[p.story_id()] = &p;
         std::unordered_map<uint64_t, wire::RouteUpdate*> routes;
         for(auto& r: *state.mutable_routes()) routes[r.story_id()] = &r;
+        for(const auto story: q.heartbeat().stories_without_physical_policy())
+            if(auto found = routes.find(story); found != routes.end() && found->second->physical_policy())
+            {
+                found->second->set_physical_policy(false);
+                found->second->set_revision(revision);
+            }
         for(const auto& f: q.heartbeat().story_frontiers())
         {
             if(i && f.has_settlement() && f.settlement().instance() == i->instance() &&

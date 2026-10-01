@@ -329,12 +329,35 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
     if(raft_)
         return dynamicCall(context, request, response, 2);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    absl::Status status =
-            membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
-    *response->mutable_status() = convert::toProto(status);
-    *response->mutable_physical() = nowReading();
-    response->set_authority_tick_ns(authorityTickNs());
-    reactor->Finish(grpc::Status::OK);
+    auto task = [this, request = *request, response, reactor]
+    {
+        absl::Status status =
+                membership_.heartbeat(request.process_id(), request.instance(), request.applied_revision());
+        if(status.ok() && !request.stories_without_physical_policy().empty())
+        {
+            auto process = membership_.process(request.process_id());
+            if(!process || process->role != ProcessRole::Grapher)
+                status = absl::InvalidArgumentError("physical policy reports require a Grapher");
+            else if(request.stories_without_physical_policy_size() > 65536 ||
+                    std::find(request.stories_without_physical_policy().begin(),
+                              request.stories_without_physical_policy().end(),
+                              0) != request.stories_without_physical_policy().end())
+                status = absl::InvalidArgumentError("invalid physical policy story list");
+            else if(auto* sqlite = const_cast<SqliteMetadataStore*>(dynamic_cast<const SqliteMetadataStore*>(&store_)))
+                status = sqlite->clearPhysicalPolicy({request.stories_without_physical_policy().begin(),
+                                                      request.stories_without_physical_policy().end()});
+            else
+                status = absl::UnimplementedError("physical policy clearing needs a persisted Catalog");
+        }
+        *response->mutable_status() = convert::toProto(status);
+        *response->mutable_physical() = nowReading();
+        response->set_authority_tick_ns(authorityTickNs());
+        reactor->Finish(grpc::Status::OK);
+    };
+    if(request->stories_without_physical_policy().empty() || !pool_)
+        task();
+    else if(!pool_->submit(std::move(task)))
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     return reactor;
 }
 

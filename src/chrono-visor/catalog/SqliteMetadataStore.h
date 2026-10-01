@@ -59,6 +59,7 @@ public:
     uint64_t snapshotGeneration() const { return snapshot_generation_.load(); }
 
     absl::StatusOr<PhysicalPolicy> physicalPolicy() const;
+    absl::Status clearPhysicalPolicy(const std::vector<StoryId>& stories);
     absl::Status registerStaticPolicy(const std::string& process, uint64_t version);
     absl::StatusOr<internal::v1::MembershipState> membershipState() const;
     absl::Status saveMembership(const internal::v1::MembershipState& state);
