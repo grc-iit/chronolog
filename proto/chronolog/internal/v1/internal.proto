@@ -1,0 +1,403 @@
+syntax = "proto3";
+package chronolog.internal.v1;
+import "chronolog/v1/chronolog.proto";
+// Internal only: versioned with release; never gateway-exposed or SDK-generated.
+service Archive
+{
+    // Keeper hot-data snapshot for Player; batches followed by exactly one trailer.
+    // INVALID_ARGUMENT for bad range/limit, NOT_FOUND for unknown story,
+    // UNAVAILABLE for source failure, UNIMPLEMENTED before port.
+    rpc FetchHot(FetchHotRequest) returns (stream FetchHotResponse);
+
+    // Frames all belong to one chunk; reject partial streams or checksum mismatch.
+    // TransferChunk: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc TransferChunk(stream TransferChunkRequest) returns (TransferChunkResponse);
+    // Grapher reports persisted prefix and unsettled receipts to subscribing Keeper.
+    // WatchWatermarks: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc WatchWatermarks(WatchWatermarksRequest) returns (stream WatchWatermarksResponse);
+}
+service Cluster
+{
+    // Visor distributes writer registration and release fences to assigned Keeper.
+    // INVALID_ARGUMENT for empty keeper id, UNAVAILABLE for service failure,
+    // UNIMPLEMENTED before port. Stream cancellation uses CANCELLED.
+    rpc WatchAcquisitions(WatchAcquisitionsRequest) returns (stream WatchAcquisitionsResponse);
+
+    // Cluster skew observability: bracket with local monotonic t0/t1 and use
+    // offset = authority_tick_ns + RTT/2 - t1. Physical bound remains separate.
+    // INVALID_ARGUMENT for malformed input; UNAVAILABLE for source/service
+    // failure; UNIMPLEMENTED until clock exchange is ported. Never SDK-exposed.
+    rpc ReadClock(ReadClockRequest) returns (ReadClockResponse);
+
+    // Register: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+    // Heartbeat: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+    // Full snapshots on subscribe/reconnect; epochs are static until PR 8.
+    // WatchRoutes: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc WatchRoutes(WatchRoutesRequest) returns (stream WatchRoutesResponse);
+}
+message ChunkIdentity
+{
+    // chunk id; interpreted according to the message invariants above.
+    string chunk_id = 1;
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 2;
+    // start; interpreted according to the message invariants above.
+    chronolog.v1.Hlc start = 3;
+    // end; interpreted according to the message invariants above.
+    chronolog.v1.Hlc end = 4;
+    // Salvage chunk is readable but never advances contiguous watermark.
+    bool watermark_exempt = 5;
+}
+// data is a serialized ChunkPayload sliced into bounded frames; offsets gapless.
+// Every frame repeats identical identity/total_bytes/checksum/algorithm.
+// Unspecified algorithm defaults to CHECKSUM_ALGORITHM_CRC32C via absl/crc/crc32c.h. CHECKSUM_ALGORITHM_CRC32C is
+// exactly four bytes, unsigned big-endian; CHECKSUM_ALGORITHM_SHA256 is 32 bytes. Both cover all
+// concatenated data. final must match byte count and stream EOF.
+enum ChecksumAlgorithm
+{
+    // Means CHECKSUM_ALGORITHM_CRC32C, never unchecked.
+    CHECKSUM_ALGORITHM_UNSPECIFIED = 0;
+    // Castagnoli CRC via absl::ComputeCrc32c: four unsigned big-endian bytes.
+    CHECKSUM_ALGORITHM_CRC32C = 1;
+    // SHA-256 digest, 32 bytes.
+    CHECKSUM_ALGORITHM_SHA256 = 2;
+}
+message ChunkFrame
+{
+    // Absent/unspecified means CHECKSUM_ALGORITHM_CRC32C.
+    ChecksumAlgorithm checksum_algorithm = 7;
+    // identity; interpreted according to the message invariants above.
+    ChunkIdentity identity = 1;
+    // Gapless byte offset into serialized ChunkPayload, starting at zero.
+    uint64 offset = 2;
+    // Total concatenated ChunkPayload size in bytes; identical in every frame.
+    uint64 total_bytes = 3;
+    // Checksum bytes in the encoding specified above.
+    bytes checksum = 4;
+    // data; interpreted according to the message invariants above.
+    bytes data = 5;
+    // True only on last data frame; EOF must follow and total byte count must match.
+    bool final = 6;
+}
+message ChunkPayload
+{
+    // events; interpreted according to the message invariants above.
+    repeated chronolog.v1.Event events = 1;
+}
+// Delivery receipt is NOT client DURABLE ack; it scopes settlement to one Grapher
+// restart instance. Bytes must equal transmitted total; receipt numbers never
+// repeat within instance, including story destruction/recreation.
+message ChunkReceipt
+{
+    // Result status, or synchronization state for a physical time reading.
+    chronolog.v1.ItemStatus status = 1;
+    // chunk id; interpreted according to the message invariants above.
+    string chunk_id = 2;
+    // Exact byte count received for the whole chunk.
+    uint64 bytes = 3;
+    // Restart-specific Grapher identity scoping receipt numbering.
+    string grapher_instance = 4;
+    // Monotonic receipt number within grapher_instance; zero means no tracked receipt.
+    uint64 receipt = 5;
+}
+message WatermarkSubscription
+{
+    // keeper id; interpreted according to the message invariants above.
+    string keeper_id = 1;
+    // story ids; interpreted according to the message invariants above.
+    repeated uint64 story_ids = 2;
+}
+// Up to highest_receipt all are written except pending_receipts (sorted).
+// Receipt settles only after merge and all holding chunks publish; W alone
+// never proves a late/salvage chunk written. dropped is explicit, not a time.
+message WatermarkReport
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Contiguous persisted HLC prefix; alone cannot settle pending receipts.
+    chronolog.v1.Hlc watermark = 2;
+    // Restart-specific Grapher identity scoping receipt numbering.
+    string grapher_instance = 3;
+    // Inclusive highest issued receipt; zero if none issued.
+    uint64 highest_receipt = 4;
+    // Ascending receipt numbers whose events have not all been persisted.
+    repeated uint64 pending_receipts = 5;
+    // Explicit story tombstone indication; not a timestamp sentinel.
+    bool dropped = 6;
+}
+enum ProcessRole
+{
+    PROCESS_ROLE_UNSPECIFIED = 0;
+    PROCESS_ROLE_KEEPER = 1;
+    PROCESS_ROLE_GRAPHER = 2;
+    PROCESS_ROLE_PLAYER = 3;
+}
+// process_id stable; instance changes on restart to fence delayed heartbeats.
+message Process
+{
+    // Stable process registration identity, independent of endpoint.
+    string process_id = 1;
+    // Restart-specific process identity used to fence old heartbeats.
+    string instance = 2;
+    // Network endpoint for the registered process.
+    string endpoint = 3;
+    // role; interpreted according to the message invariants above.
+    ProcessRole role = 4;
+}
+message RegisterRequest
+{
+    // process; interpreted according to the message invariants above.
+    Process process = 1;
+}
+message RegisterResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    chronolog.v1.ItemStatus status = 1;
+    // routes; interpreted according to the message invariants above.
+    repeated RouteUpdate routes = 2;
+    // Writer CLOCK_REALTIME reading plus bound/status; independent of Visor monotonic tick.
+    chronolog.v1.TimeReading physical = 3;
+    // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
+    int64 authority_tick_ns = 4;
+}
+message StoryFrontiers {
+ // Catalog-assigned story.
+ uint64 story_id = 1;
+ // Writer diagnostics for this story.
+ repeated chronolog.v1.WriterFrontier frontiers = 2;
+ // Keeper-level seal, including writerless stories.
+ chronolog.v1.Hlc sealed_frontier = 3;
+}
+message HeartbeatRequest {
+ // Relevant updates <= R applied; irrelevant global revisions skipped. Scoped
+ // to process instance. Counter originates in persisted Catalog and never reuses.
+ uint64 applied_revision = 5;
+ // Stable registered process identity.
+ string process_id = 1;
+ // Restart-specific instance fences obsolete reports.
+ string instance = 2;
+ // A Keeper can serve multiple stories; seals never mix story identities.
+ repeated StoryFrontiers story_frontiers = 3;
+}
+// Clock exchange uses same Visor authority semantics as Cluster.ReadClock.
+message HeartbeatResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    chronolog.v1.ItemStatus status = 1;
+    // routes; interpreted according to the message invariants above.
+    repeated RouteUpdate routes = 2;
+    // Writer CLOCK_REALTIME reading plus bound/status; independent of Visor monotonic tick.
+    chronolog.v1.TimeReading physical = 3;
+    // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
+    int64 authority_tick_ns = 4;
+}
+message RouteSubscription
+{
+    // Stable process registration identity, independent of endpoint.
+    string process_id = 1;
+    // Restart-specific process identity used to fence old heartbeats.
+    string instance = 2;
+}
+message RouteUpdate
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // route; interpreted according to the message invariants above.
+    chronolog.v1.Route route = 2;
+}
+
+message ReadClockRequest {}
+// authority_tick_ns is Visor steady-clock tick at service time, not realtime.
+// Physical uncertainty comes from chrony/kernel: delay/2+dispersion+drift*age.
+message ReadClockResponse
+{
+    // Writer CLOCK_REALTIME reading plus bound/status; independent of Visor monotonic tick.
+    chronolog.v1.TimeReading physical = 1;
+    // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
+    int64 authority_tick_ns = 2;
+}
+
+// Internal hot replay uses the same half-open HLC/physical range representation.
+message FetchHotRequest
+{
+    // Catalog-assigned story identity.
+    uint64 story_id = 1;
+    // Exactly one range must be selected.
+    oneof range
+    {
+        // Completeness supports only the HLC axis.
+        chronolog.v1.HlcRange hlc = 2;
+        // Physical-time query always remains incomplete in v1.
+        chronolog.v1.PhysicalRange physical = 3;
+    }
+    // Maximum events to return; zero means server-configured default limit.
+    uint64 max_events = 4;
+}
+message FetchHotTrailer
+{
+ // Current Keeper epoch; mismatch with Player Route is SOURCE_FAILED.
+ uint64 epoch = 4;
+    // Keeper-level sealed F even if no writers are known; completeness is over
+    // every Route Keeper, independent of the acquisition view.
+    chronolog.v1.Hlc sealed_frontier = 3;
+    // Shared Keeper-sealed exclusive frontier for every registered writer; idle
+    // writers use the same frontier. A missing writer never implies completeness.
+    repeated chronolog.v1.WriterFrontier frontiers = 1;
+    // True if the limit prevented a full snapshot; Replay remains incomplete.
+    bool truncated = 2;
+}
+message FetchHotResponse
+{
+    // Tick the frontier BEFORE scanning, then lock each writer to await in-flight
+    // insertion. Group commit caps F at the oldest pending fsync HLC.
+    // Data snapshot must cover every visible event below the trailer's seal.
+    // Seal and snapshot must be coordinated with insertion/fsync publication.
+    oneof response
+    {
+        // Ordered visible events; pending DURABLE events are excluded.
+        chronolog.v1.EventBatch batch = 1;
+        // Exactly one final trailer on successful orderly stream termination.
+        FetchHotTrailer trailer = 2;
+    }
+}
+message AcquisitionSnapshot {
+ // Persisted global Catalog counter bounding a consistent full snapshot.
+ uint64 revision = 1;
+ // All relevant acquisitions AND release fences for the subscribed Keeper.
+ repeated AcquisitionUpdate acquisitions = 2;
+}
+message AcquisitionResponse {
+ // Exactly one full snapshot first, followed by ordered deltas above its R.
+ oneof response {
+  AcquisitionSnapshot snapshot = 1;
+  AcquisitionUpdate update = 2;
+ }
+}
+message AcquisitionSubscription
+{
+    // Stable Keeper registration identity.
+    string keeper_id = 1;
+}
+enum AcquisitionState
+{
+    // Invalid for a delivered acquisition update.
+    ACQUISITION_STATE_UNSPECIFIED = 0;
+    // Writer incarnation is registered and authorized to append.
+    ACQUISITION_STATE_ACQUIRED = 1;
+    // Writer incarnation is permanently fenced from future append.
+    ACQUISITION_STATE_RELEASED = 2;
+}
+// Subscribe/reconnect delivers full snapshot at revision R, then deltas > R.
+// Keeper restores all fences from snapshot BEFORE admitting any append.
+message AcquisitionUpdate
+{
+    // Persisted global Catalog revision, never reused across Visor restarts.
+    // Keeper reports applied_revision after applying relevant updates, and
+    // heartbeats immediately after RELEASED rather than waiting for interval.
+    uint64 revision = 7;
+    // PR 8 handoff: new Keeper must observe this old Keeper frontier before
+    // accepting the reassigned writer. Absent means no prior reported frontier.
+    chronolog.v1.Hlc last_reported_frontier = 6;
+    // Catalog-assigned story identity.
+    uint64 story_id = 1;
+    // Stable writer identity.
+    uint64 writer_id = 2;
+    // Persisted writer generation.
+    uint64 incarnation = 3;
+    // Single Keeper endpoint assigned to this writer in the epoch.
+    chronolog.v1.KeeperRef assigned_keeper = 4;
+    // Registration or permanent release fence for this incarnation.
+    AcquisitionState state = 5;
+}
+
+// Method-specific TransferChunk message; same payload invariants as ChunkFrame.
+message TransferChunkRequest {
+    // Absent/unspecified means CHECKSUM_ALGORITHM_CRC32C.
+    ChecksumAlgorithm checksum_algorithm = 7;
+    // identity; interpreted according to the message invariants above.
+    ChunkIdentity identity = 1;
+    // Gapless byte offset into serialized ChunkPayload, starting at zero.
+    uint64 offset = 2;
+    // Total concatenated ChunkPayload size in bytes; identical in every frame.
+    uint64 total_bytes = 3;
+    // Checksum bytes in the encoding specified above.
+    bytes checksum = 4;
+    // data; interpreted according to the message invariants above.
+    bytes data = 5;
+    // True only on last data frame; EOF must follow and total byte count must match.
+    bool final = 6;
+}
+// Method-specific TransferChunk message; same payload invariants as ChunkReceipt.
+message TransferChunkResponse {
+    // Result status, or synchronization state for a physical time reading.
+    chronolog.v1.ItemStatus status = 1;
+    // chunk id; interpreted according to the message invariants above.
+    string chunk_id = 2;
+    // Exact byte count received for the whole chunk.
+    uint64 bytes = 3;
+    // Restart-specific Grapher identity scoping receipt numbering.
+    string grapher_instance = 4;
+    // Monotonic receipt number within grapher_instance; zero means no tracked receipt.
+    uint64 receipt = 5;
+}
+// Method-specific WatchWatermarks message; same payload invariants as WatermarkSubscription.
+message WatchWatermarksRequest {
+    // keeper id; interpreted according to the message invariants above.
+    string keeper_id = 1;
+    // story ids; interpreted according to the message invariants above.
+    repeated uint64 story_ids = 2;
+}
+// Method-specific WatchWatermarks message; same payload invariants as WatermarkReport.
+message WatchWatermarksResponse {
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Contiguous persisted HLC prefix; alone cannot settle pending receipts.
+    chronolog.v1.Hlc watermark = 2;
+    // Restart-specific Grapher identity scoping receipt numbering.
+    string grapher_instance = 3;
+    // Inclusive highest issued receipt; zero if none issued.
+    uint64 highest_receipt = 4;
+    // Ascending receipt numbers whose events have not all been persisted.
+    repeated uint64 pending_receipts = 5;
+    // Explicit story tombstone indication; not a timestamp sentinel.
+    bool dropped = 6;
+}
+// Method-specific WatchAcquisitions message; same payload invariants as AcquisitionSubscription.
+message WatchAcquisitionsRequest {
+    // Stable Keeper registration identity.
+    string keeper_id = 1;
+}
+// Method-specific WatchAcquisitions message; same payload invariants as AcquisitionResponse.
+message WatchAcquisitionsResponse {
+ // Exactly one full snapshot first, followed by ordered deltas above its R.
+ oneof response {
+  AcquisitionSnapshot snapshot = 1;
+  AcquisitionUpdate update = 2;
+ }
+}
+// Method-specific WatchRoutes message; same payload invariants as RouteSubscription.
+message WatchRoutesRequest {
+    // Stable process registration identity, independent of endpoint.
+    string process_id = 1;
+    // Restart-specific process identity used to fence old heartbeats.
+    string instance = 2;
+}
+// Method-specific WatchRoutes message; same payload invariants as RouteUpdate.
+message WatchRoutesResponse {
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // route; interpreted according to the message invariants above.
+    chronolog.v1.Route route = 2;
+}
