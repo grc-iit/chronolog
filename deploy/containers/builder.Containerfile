@@ -14,6 +14,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VCPKG_ROOT=/opt/vcpkg \
+    VCPKG_MAX_CONCURRENCY=4 \
     VCPKG_DEFAULT_BINARY_CACHE=/opt/vcpkg-cache \
     VCPKG_DISABLE_METRICS=1 \
     CXX=g++-13 \
