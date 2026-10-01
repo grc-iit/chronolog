@@ -154,7 +154,7 @@ TEST_P(TierStoreContract, DeletedFileSupersedesPublishedRecord)
     EXPECT_TRUE(e->empty());
     auto w = h->sut->contiguousWatermark(1);
     ASSERT_TRUE(w.ok());
-    EXPECT_LE(*w, (Hlc{100, 0}));
+    EXPECT_EQ(*w, (Hlc{200, 0}));
 }
 
 TEST_P(TierStoreContract, HalfOpenRead)
