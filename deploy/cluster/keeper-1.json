@@ -1,0 +1,15 @@
+{
+  "process_id": "keeper-1",
+  "listen": "100.74.131.112:50052",
+  "internal_listen": "100.74.131.112:50062",
+  "self_endpoint": "100.74.131.112:50052",
+  "visor_internal": "100.124.181.9:50061",
+  "wal_dir": "@HOME@/chronolog-sprint/run/@RUN@/keeper-1/wal",
+  "story_chunk_duration_secs": 1,
+  "seal_interval_ms": 200,
+  "archive_visibility_delay_secs": 1,
+  "watermark_resend_timeout_secs": 2,
+  "shutdown_confirm_timeout_secs": 5,
+  "worker_threads": 4,
+  "heartbeat_interval_ms": 200
+}

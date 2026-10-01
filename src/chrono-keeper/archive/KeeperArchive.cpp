@@ -191,6 +191,7 @@ void KeeperArchive::settleLocked(State& state)
         return;
     if(auto status = journal_.recordSettled(state.chunk.id); !status.ok())
         return;
+    std::clog << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id << std::endl;
     state.settled = true;
     state.settled_at = now_();
 }

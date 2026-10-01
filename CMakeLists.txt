@@ -151,3 +151,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/server/CMakeLists.txt")
     add_subdirectory(src/chrono-grapher/server)
 endif()
+
+if(TARGET chronolog_grapher_tier)
+    add_subdirectory(deploy/cluster)
+endif()
