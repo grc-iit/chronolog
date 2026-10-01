@@ -163,25 +163,6 @@ TEST_F(ColdReplay, KeeperFreesTheChunkOnceThePlayerCanReadTheFile)
     EXPECT_TRUE(completion->complete);
 }
 
-TEST_F(ColdReplay, LostWindowBelowWatermarkIsSourceFailed)
-{
-    publish(140);
-    auto records = writer->manifest(1);
-    ASSERT_TRUE(records.ok());
-    std::filesystem::remove(root / records->front().file);
-    writer.reset();
-    auto recovered = FileTierStore::Open(root, "writer", {{1, {100, 0}}});
-    ASSERT_TRUE(recovered.ok()) << recovered.status();
-    writer = *std::move(recovered);
-    auto watermark = writer->contiguousWatermark(1);
-    ASSERT_TRUE(watermark.ok());
-    EXPECT_EQ(*watermark, (Hlc{200, 0}));
-    read();
-    ASSERT_TRUE(completion);
-    EXPECT_FALSE(completion->complete);
-    EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
-}
-
 TEST_F(ColdReplay, MissingArchiveFileIsSourceFailed)
 {
     publish(140);

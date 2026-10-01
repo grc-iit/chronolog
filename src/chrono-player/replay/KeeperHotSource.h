@@ -41,14 +41,14 @@ private:
                          Epoch expected_epoch,
                          const Predecessor* predecessor,
                          std::atomic<size_t>& retained) const;
-    internal::v1::Archive::Stub& stubFor(const std::string& address) const;
+    std::shared_ptr<internal::v1::Archive::Stub> stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;
     std::shared_ptr<const WriterSource> writers_;
     std::function<std::string(const KeeperRef&)> internal_address_;
     KeeperHotSourceOptions options_;
     mutable std::mutex mu_;
-    mutable std::map<std::string, std::unique_ptr<internal::v1::Archive::Stub>> stubs_;
+    mutable std::map<std::string, std::shared_ptr<internal::v1::Archive::Stub>> stubs_;
 };
 
 } // namespace chronolog::player

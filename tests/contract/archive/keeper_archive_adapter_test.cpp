@@ -18,6 +18,23 @@ internal::v1::FetchHotRequest request()
     return value;
 }
 } // namespace
+TEST(ArchiveTransferTest, FetchHotBeforeSnapshotIsUnavailable)
+{
+    test::AdapterRig rig;
+    rig.rig.journal->setAdmissionReady(false);
+    auto context = test::AdapterRig::context();
+    auto stream = rig.archive->FetchHot(context.get(), request());
+    internal::v1::FetchHotResponse message;
+    EXPECT_FALSE(stream->Read(&message));
+    EXPECT_EQ(stream->Finish().error_code(), grpc::StatusCode::UNAVAILABLE);
+    rig.rig.journal->setAdmissionReady(true);
+    context = test::AdapterRig::context();
+    stream = rig.archive->FetchHot(context.get(), request());
+    ASSERT_TRUE(stream->Read(&message));
+    EXPECT_TRUE(message.has_trailer());
+    EXPECT_FALSE(stream->Read(&message));
+    EXPECT_TRUE(stream->Finish().ok());
+}
 TEST(ArchiveTransferTest, FetchHotTicksFrontierBeforeScan)
 {
     test::AdapterRig rig;

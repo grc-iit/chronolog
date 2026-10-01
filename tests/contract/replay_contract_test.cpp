@@ -25,6 +25,8 @@ struct ReplayHarness
     std::function<void(uint64_t, uint64_t)> registerIdleWriter;
     // Seeded events for this test are DURABLE; crashRestart reopens persisted state.
     std::function<void()> crashRestart;
+    // Tombstone story 1; lose an archived window below a preserved watermark.
+    std::function<void()> tombstoneStory, loseWindowBelowWatermark;
 };
 Range Query() { return {Range::Axis::Hlc, {100, 0}, {300, 0}}; }
 struct Collected
@@ -294,6 +296,28 @@ TEST_P(ReplayContract, UnknownWriterCoveredByItsKeeperSeal)
     stream = h->sut->read(1, Query());
     ASSERT_TRUE(stream.ok());
     result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
+    ASSERT_EQ(result->completions.size(), 1u);
+    EXPECT_FALSE(result->completions[0].complete);
+    EXPECT_EQ(result->completions[0].reason, IncompleteReason::SourceFailed);
+}
+TEST_P(ReplayContract, ReadOnTombstonedStoryFails)
+{
+    ASSERT_TRUE(h->tombstoneStory);
+    h->tombstoneStory();
+    auto stream = h->sut->read(1, Query());
+    EXPECT_EQ(stream.status().code(), absl::StatusCode::kFailedPrecondition);
+}
+
+TEST_P(ReplayContract, LostWindowBelowWatermarkIsSourceFailed)
+{
+    ASSERT_TRUE(h->loseWindowBelowWatermark);
+    ASSERT_TRUE(h->setFrontiers);
+    h->setFrontiers({{2, 3, {300, 0}}, {4, 3, {300, 0}}});
+    h->loseWindowBelowWatermark();
+    auto stream = h->sut->read(1, Query());
+    ASSERT_TRUE(stream.ok());
+    auto result = Collect(**stream);
     ASSERT_TRUE(result.ok());
     ASSERT_EQ(result->completions.size(), 1u);
     EXPECT_FALSE(result->completions[0].complete);
