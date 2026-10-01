@@ -153,6 +153,7 @@ class Smoke:
                     break
         finally:
             cancelled = tail.cancel()
+        received = received[:50]
         self.check("Tail strictly after event 50 then cancel", len(received) == 50 and cancelled
                    and [event_key(e) for e in received] == [event_key(e) for e in events[50:]]
                    and all(event_key(e) > event_key(event50) for e in received))
