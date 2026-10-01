@@ -21,7 +21,7 @@ trap cleanup EXIT
 timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 influxdb grafana chrono-stream-collect chrono-stream-export
 python=build/smoke-venv/bin/python
 timeout 45 "$python" - <<'PY'
-import csv,io,json,os,time,urllib.request,urllib.error
+import csv,http.client,io,json,os,time,urllib.request,urllib.error
 headers={'Authorization':'Token '+os.getenv('INFLUX_TOKEN','chronolog-stream-token'),'Content-Type':'application/vnd.flux','Accept':'application/csv'}
 for metric in ['system.cpu.utilization','system.memory.usage','system.network.io']:
     flux=f'from(bucket: "telemetry") |> range(start: -5m) |> filter(fn: (r) => r._measurement == "{metric}") |> limit(n: 1)'
@@ -33,14 +33,14 @@ for metric in ['system.cpu.utilization','system.memory.usage','system.network.io
             if rows:
                 print('PASS InfluxDB '+metric,flush=True)
                 break
-        except (urllib.error.URLError,TimeoutError): pass
+        except (urllib.error.URLError,OSError,http.client.HTTPException): pass
         time.sleep(.1)
     else: raise SystemExit('FAIL no Influx points for '+metric)
 for attempt in range(100):
     try:
         with urllib.request.urlopen('http://127.0.0.1:3000/api/health',timeout=2) as response:
             if json.load(response).get('database')=='ok': break
-    except (urllib.error.URLError,TimeoutError): pass
+    except (urllib.error.URLError,OSError,http.client.HTTPException): pass
     time.sleep(.1)
 else: raise SystemExit('FAIL Grafana health')
 print('PASS Grafana health',flush=True)
@@ -49,7 +49,7 @@ for attempt in range(100):
         with urllib.request.urlopen('http://127.0.0.1:3000/api/dashboards/uid/chronolog-stream',timeout=2) as response:
             dashboard=json.load(response)['dashboard']
             if len(dashboard['panels'])==3: break
-    except (urllib.error.URLError,TimeoutError): pass
+    except (urllib.error.URLError,OSError,http.client.HTTPException): pass
     time.sleep(.1)
 else: raise SystemExit('FAIL Grafana dashboard provisioning')
 print('PASS Grafana CPU memory network dashboard',flush=True)
