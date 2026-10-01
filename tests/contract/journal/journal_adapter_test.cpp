@@ -55,6 +55,7 @@ TEST(JournalAdapterTest, UnspecifiedClockStatusIsUnavailable)
     v1::AppendRequest request;
     test::AdapterRig::fillRequest(request, 7, {1});
     auto* reading = request.mutable_items(0)->mutable_physical();
+    reading->set_physical_ns(rig.rig.clock->acceptanceClock());
     reading->set_status(v1::CLOCK_STATUS_UNSPECIFIED);
     reading->set_uncertainty_ns(1);
     auto parsed = keeper::convert::parse(request);

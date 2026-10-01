@@ -76,6 +76,8 @@ TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)
         item->set_writer_id(2);
         item->set_incarnation(3);
         item->set_sequence(sequence);
+        item->mutable_physical()->set_physical_ns(rig.clock->now()->physical_ns);
+        item->mutable_physical()->set_status(v1::CLOCK_STATUS_UNSYNCED);
         grpc::ClientContext context;
         context.set_deadline(std::chrono::system_clock::now() + 5s);
         v1::AppendResponse response;
