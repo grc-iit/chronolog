@@ -61,7 +61,14 @@ def test_real_stack_query_tail_and_failed_keeper():
         limited = requests.post(base + "/query", json={**body, "limit": 1}, timeout=8).json()
         assert len(limited["rows"]) == 1 and limited["meta"]["limited"]
         assert limited["meta"]["complete"] is None
-        assert requests.post(base + "/query", json={**body, "axis": "physical"}, timeout=5).status_code == 400
+        assert requests.post(base + "/query", json={**body, "axis": "bogus"}, timeout=5).status_code == 400
+        now = time.time_ns()
+        physical = requests.post(base + "/query", json={**body, "axis": "physical", "from_ns": 0,
+                                                        "to_ns": now + 60_000_000_000}, timeout=8)
+        assert physical.status_code == 200, physical.text
+        assert [row[2] for row in physical.json()["rows"]] == [23.5, 24]
+        assert physical.json()["meta"]["reason"] in ("NONE", "LAGGING_WRITERS", "TRUNCATED", "PHYSICAL_AXIS_UNBOUNDED")
+        assert abs(physical.json()["rows"][0][0] - first.hlc.physical_ns / 1e6) < 15_000
         assert requests.get(base + "/tail", params={"chronicle": name, "story": "events", "after": "bad"}, timeout=5).status_code == 400
         with requests.get(base + "/tail", params={"chronicle": name, "story": "events",
                           "after": position(SimpleNamespace(hlc=second.hlc, id=second.event_id))},

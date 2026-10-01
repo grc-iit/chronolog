@@ -99,32 +99,35 @@ def decode_position(token):
         raise HTTPException(400, "invalid after position")
 
 
-def row(event, fields):
+def row(event, fields, axis="hlc"):
     try:
         payload = json.loads(event.payload)
     except (ValueError, UnicodeDecodeError):
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
-    return [event.hlc.physical_ns / 1_000_000,
+    stamp = event.physical.physical_ns if axis == "physical" else event.hlc.physical_ns
+    return [stamp / 1_000_000,
             ":".join(str(v) for v in asdict(event.id).values()),
             *[payload.get(name) for name in fields], event.envelope.attributes]
 
 
 @app.post("/query")
 def query(q: Query):
-    if q.axis != "hlc":
-        raise HTTPException(400, "physical range needs SDK physical read" if q.axis == "physical" else "unknown axis")
+    if q.axis not in ("hlc", "physical"):
+        raise HTTPException(400, "unknown axis")
     end = time.monotonic() + DEADLINE
     c = client()
     story = resolve(c, q.chronicle, q.story, max(.001, end - time.monotonic()))
     rows = []
     size = 0
     limited = False
-    with c.read(story, cl.Hlc(q.from_ns), cl.Hlc(q.to_ns),
-                timeout=max(.001, end - time.monotonic())) as stream:
+    left = max(.001, end - time.monotonic())
+    stream = (c.read_physical(story, q.from_ns, q.to_ns, timeout=left) if q.axis == "physical"
+              else c.read(story, cl.Hlc(q.from_ns), cl.Hlc(q.to_ns), timeout=left))
+    with stream:
         for event in stream:
-            values = row(event, q.fields)
+            values = row(event, q.fields, q.axis)
             size += len(json.dumps(values).encode())
             if size > 16 << 20:
                 limited = True
