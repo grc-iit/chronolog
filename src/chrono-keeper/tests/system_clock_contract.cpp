@@ -53,7 +53,13 @@ std::unique_ptr<ClockHarness> MakeSystem()
 
 } // namespace
 
-INSTANTIATE_TEST_SUITE_P(Fake, ClockContract, ::testing::Values(ClockFactory(MakeFake)));
-INSTANTIATE_TEST_SUITE_P(System, ClockContract, ::testing::Values(ClockFactory(MakeSystem)));
+INSTANTIATE_TEST_SUITE_P(Fake,
+                         ClockContract,
+                         ::testing::Values(ClockFactory(MakeFake)),
+                         [](const ::testing::TestParamInfo<ClockFactory>&) { return std::string("Fake"); });
+INSTANTIATE_TEST_SUITE_P(System,
+                         ClockContract,
+                         ::testing::Values(ClockFactory(MakeSystem)),
+                         [](const ::testing::TestParamInfo<ClockFactory>&) { return std::string("System"); });
 
 } // namespace chronolog::contract
