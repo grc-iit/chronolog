@@ -623,6 +623,15 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                     std::lock_guard lock(heartbeat_mutex_);
                     heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
                 }
+                // A joined Keeper gets a full failure timeout before detection may drain it again.
+                if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
+                {
+                    if(operation == 5)
+                    {
+                        std::lock_guard lock(heartbeat_mutex_);
+                        heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
+                    }
+                }
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
                     auto current = dynamic::snapshot(raft_->appliedStore());
