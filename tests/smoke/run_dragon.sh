@@ -31,7 +31,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example chronolog_stream_collect chronolog_stream_export chronolog_stream_example)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example chronolog_stream_collect chronolog_stream_export chronolog_stream_example chronolog_ldms_fake_ldmsd chronolog_ldms_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -129,6 +129,11 @@ run_engine() {
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
             step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
+            ldms_container="ldms-smoke-$engine-$(date +%s)"
+            step "chrono-ldms fake ldmsd stores samples" 60 ./build/dev/plugins/chrono-ldms/chronolog_ldms_fake_ldmsd \
+                --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --container "$ldms_container" --producers 3 --samples 20 --stale-every 5 || rc=1
+            step "chrono-ldms read samples back" 60 ./build/dev/plugins/chrono-ldms/chronolog_ldms_example \
+                127.0.0.1:50051 127.0.0.1:50054 "$ldms_container" 60 || rc=1
             step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
         fi
         step "chrono-viz Replay backend Grafana proxy health and plugin" 480 bash plugins/chrono-viz/smoke.sh "$engine" "$project" || rc=1
