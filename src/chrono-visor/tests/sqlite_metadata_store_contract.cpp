@@ -39,6 +39,7 @@ MetadataStoreFactory sqliteFactory()
         };
         auto harness = std::make_unique<MetadataStoreHarness>();
         harness->sut = open();
+        harness->durable_restart = true;
         harness->confirmReleaseFence = [confirm](bool value) { confirm->store(value); };
         MetadataStoreHarness* raw = harness.get();
         harness->restart = [raw, open]

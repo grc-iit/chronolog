@@ -83,10 +83,19 @@ TEST_P(ClockContract, UnsyncedAndUnavailableHaveNoFiniteBound)
     }
 }
 
-TEST_P(ClockContract, UnavailableSourceKeepsHlcAdvancing) {
- auto before=h->sut->tick(); h->setStatus(ClockStatus::Unavailable);
- auto reading=h->sut->now(); ASSERT_TRUE(reading.ok()); EXPECT_EQ(reading->status,ClockStatus::Unavailable); EXPECT_FALSE(reading->uncertainty_ns);
- auto next=h->sut->tick(); EXPECT_GT(next,before); auto merged=h->sut->observe(Hlc{200,7}); EXPECT_GT(merged,(Hlc{200,7})); EXPECT_GT(merged,next);
+TEST_P(ClockContract, UnavailableSourceKeepsHlcAdvancing)
+{
+    auto before = h->sut->tick();
+    h->setStatus(ClockStatus::Unavailable);
+    auto reading = h->sut->now();
+    ASSERT_TRUE(reading.ok());
+    EXPECT_EQ(reading->status, ClockStatus::Unavailable);
+    EXPECT_FALSE(reading->uncertainty_ns);
+    auto next = h->sut->tick();
+    EXPECT_GT(next, before);
+    auto merged = h->sut->observe(Hlc{200, 7});
+    EXPECT_GT(merged, (Hlc{200, 7}));
+    EXPECT_GT(merged, next);
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ClockContract);
 } // namespace chronolog::contract

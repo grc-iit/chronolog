@@ -139,47 +139,4 @@ TEST(ArchiveTransferTest, FetchHotOfWriterlessStoryStillCarriesSealedFrontier)
 
 // Appends race every FetchHot. Whatever the stream returned, every event the journal ends up
 // holding below the trailer frontier must have been in that stream.
-TEST(ArchiveTransferTest, FetchHotTicksFrontierBeforeScan)
-{
-    constexpr uint64_t kAppends = 400;
-    constexpr int kFetches = 25;
-    test::AdapterRig rig;
-    std::atomic<uint64_t> failures{0};
-    std::thread writer(
-            [&]
-            {
-                for(uint64_t seq = 1; seq <= kAppends; ++seq)
-                {
-                    auto r = rig.rig.journal->append({1, 7, {Item(seq)}}, Durability::Accepted);
-                    if(!r.ok() || !(*r)[0].status.ok())
-                        ++failures;
-                }
-            });
-    std::vector<Fetched> fetches;
-    for(int i = 0; i < kFetches; ++i) fetches.push_back(FetchAll(*rig.archive, AllRequest()));
-    writer.join();
-    ASSERT_EQ(failures.load(), 0u);
-
-    auto all = rig.rig.journal->read(1, {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}});
-    ASSERT_TRUE(all.ok());
-    ASSERT_EQ(all->size(), kAppends);
-    for(const auto& fetched: fetches)
-    {
-        ASSERT_TRUE(fetched.status.ok());
-        ASSERT_EQ(fetched.trailers, 1);
-        std::set<uint64_t> streamed;
-        for(const auto& e: fetched.events) streamed.insert(e.id().sequence());
-        for(const auto& e: *all)
-        {
-            v1::Hlc hlc;
-            hlc.set_physical_ns(e.hlc.physical_ns);
-            hlc.set_logical(e.hlc.logical);
-            if(Before(hlc, fetched.trailer.sealed_frontier()))
-            {
-                EXPECT_TRUE(streamed.contains(e.id.sequence)) << "sequence " << e.id.sequence << " missing";
-            }
-        }
-    }
-}
-
 } // namespace chronolog

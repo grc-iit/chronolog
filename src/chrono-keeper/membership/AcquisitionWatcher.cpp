@@ -7,11 +7,18 @@ namespace chronolog::keeper
 
 namespace iv1 = chronolog::internal::v1;
 
-AcquisitionWatcher::AcquisitionWatcher(RamJournal& journal, std::string keeper_id, FenceHook on_fence)
+AcquisitionWatcher::AcquisitionWatcher(RamJournal& journal,
+                                       std::string keeper_id,
+                                       FenceHook on_fence,
+                                       bool gate_admission)
     : journal_(journal)
     , keeper_id_(std::move(keeper_id))
     , on_fence_(std::move(on_fence))
-{}
+    , gate_admission_(gate_admission)
+{
+    if(gate_admission_)
+        journal_.setAdmissionReady(false);
+}
 
 AcquisitionWatcher::~AcquisitionWatcher() { watcher_.reset(); }
 
@@ -23,6 +30,8 @@ void AcquisitionWatcher::start(std::shared_ptr<grpc::Channel> channel)
 
 bool AcquisitionWatcher::session(std::stop_token stop)
 {
+    if(gate_admission_)
+        journal_.setAdmissionReady(false);
     grpc::ClientContext context;
     std::stop_callback cancel(stop, [&context] { context.TryCancel(); });
     iv1::WatchAcquisitionsRequest request;
@@ -53,6 +62,10 @@ void AcquisitionWatcher::advance(uint64_t revision)
 
 void AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
 {
+    if(snapshot.revision() < appliedRevision())
+        return;
+    if(gate_admission_)
+        journal_.setAdmissionReady(false);
     std::set<RamJournal::WriterKey> listed;
     for(const auto& update: snapshot.acquisitions())
         if(update.state() == iv1::ACQUISITION_STATE_ACQUIRED)
@@ -72,14 +85,16 @@ void AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
         // A snapshot lists only live acquisitions; a RELEASED entry is applied as a fence.
         if(update.state() == iv1::ACQUISITION_STATE_RELEASED)
             fenced = true;
-        applyUpdate(update);
+        applyWriter(update);
     }
+    if(gate_admission_)
+        journal_.setAdmissionReady(true);
     advance(snapshot.revision());
     if(fenced && on_fence_)
         on_fence_();
 }
 
-void AcquisitionWatcher::applyUpdate(const iv1::AcquisitionUpdate& update)
+void AcquisitionWatcher::applyWriter(const iv1::AcquisitionUpdate& update)
 {
     switch(update.state())
     {
@@ -95,6 +110,13 @@ void AcquisitionWatcher::applyUpdate(const iv1::AcquisitionUpdate& update)
         default:
             break;
     }
+}
+
+void AcquisitionWatcher::applyUpdate(const iv1::AcquisitionUpdate& update)
+{
+    if(update.revision() <= appliedRevision())
+        return;
+    applyWriter(update);
     advance(update.revision());
     if(update.state() == iv1::ACQUISITION_STATE_RELEASED && on_fence_)
         on_fence_();

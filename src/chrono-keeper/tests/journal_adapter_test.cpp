@@ -68,20 +68,6 @@ TEST(JournalAdapterTest, GapAndDurableAreItemFailuresWithGrpcOk)
     }
 }
 
-TEST(JournalAdapterTest, MissingEpochIsInvalidArgument)
-{
-    test::AdapterRig rig;
-    v1::AppendRequest request;
-    test::AdapterRig::fillRequest(request, 0, {1});
-    v1::AppendResponse response;
-    auto ctx = test::AdapterRig::context();
-    auto status = rig.journal->Append(ctx.get(), request, &response);
-    EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-    auto events = rig.rig.journal->read(1, All());
-    ASSERT_TRUE(events.ok());
-    EXPECT_TRUE(events->empty());
-}
-
 TEST(JournalAdapterTest, StaleEpochIsGrpcOkWithRouteAtEveryLevel)
 {
     test::AdapterRig rig;
@@ -126,36 +112,6 @@ TEST(JournalAdapterTest, AppendStreamEchoesBatchIdsInOrder)
     auto events = rig.rig.journal->read(1, All());
     ASSERT_TRUE(events.ok());
     EXPECT_EQ(events->size(), 6u);
-}
-
-TEST(JournalAdapterTest, CancelledStreamKeepsAcceptedItems)
-{
-    test::AdapterRig rig;
-    auto ctx = test::AdapterRig::context();
-    auto stream = rig.journal->AppendStream(ctx.get());
-    for(uint64_t batch_id: {1, 2})
-    {
-        v1::AppendStreamRequest request;
-        test::AdapterRig::fillRequest(request, 7, {batch_id * 2 - 1, batch_id * 2});
-        request.set_batch_id(batch_id);
-        ASSERT_TRUE(stream->Write(request));
-        v1::AppendStreamResponse response;
-        ASSERT_TRUE(stream->Read(&response));
-        ASSERT_EQ(response.results(0).status().code(), 0);
-    }
-    ctx->TryCancel();
-    EXPECT_EQ(stream->Finish().error_code(), grpc::StatusCode::CANCELLED);
-    auto events = rig.rig.journal->read(1, All());
-    ASSERT_TRUE(events.ok());
-    EXPECT_EQ(events->size(), 4u);
-
-    // The accepted items are still the writer's history: the next sequence continues.
-    v1::AppendRequest request;
-    test::AdapterRig::fillRequest(request, 7, {5});
-    v1::AppendResponse response;
-    auto ctx2 = test::AdapterRig::context();
-    ASSERT_TRUE(rig.journal->Append(ctx2.get(), request, &response).ok());
-    EXPECT_EQ(response.results(0).status().code(), 0);
 }
 
 TEST(JournalAdapterTest, MalformedStreamRequestEndsWithInvalidArgument)

@@ -15,6 +15,8 @@ struct MetadataStoreHarness
     // short in the fixture. Does not mutate Catalog commit or result semantics.
     std::function<void(bool)> confirmReleaseFence;
     std::function<void()> restart;
+    // Whether restart reopens durable state rather than retaining a RAM double.
+    bool durable_restart{};
     StoryId story{};
 };
 using MetadataStoreFactory = std::function<std::unique_ptr<MetadataStoreHarness>()>;
@@ -103,7 +105,9 @@ TEST_P(MetadataStoreContract, StoryTombstonePermanence)
     ASSERT_TRUE(h->restart);
     ASSERT_TRUE(h->sut->destroyStory(h->story).ok());
     h->restart();
-    auto replacement=h->sut->createStory("c","s"); ASSERT_TRUE(replacement.ok()); EXPECT_NE(replacement->id,h->story);
+    auto replacement = h->sut->createStory("c", "s");
+    ASSERT_TRUE(replacement.ok());
+    EXPECT_NE(replacement->id, h->story);
     EXPECT_FALSE(h->sut->acquire(h->story, "writer").ok());
     auto s = h->sut->getStory(h->story);
     ASSERT_TRUE(s.ok());
@@ -180,10 +184,24 @@ TEST_P(MetadataStoreContract, ReleaseReportsFenceState)
     EXPECT_TRUE(confirmed->fenced);
     EXPECT_GT(confirmed->revision, pending->revision);
 }
-TEST_P(MetadataStoreContract, RevisionSurvivesRestart) {
- ASSERT_TRUE(h->restart); auto a=h->sut->acquire(h->story,"writer"); ASSERT_TRUE(a.ok()); auto first=h->sut->release(h->story,a->writer_id,a->incarnation); ASSERT_TRUE(first.ok()); h->restart();
- auto b=h->sut->acquire(h->story,"writer"); ASSERT_TRUE(b.ok()); auto second=h->sut->release(h->story,b->writer_id,b->incarnation); ASSERT_TRUE(second.ok()); EXPECT_GT(second->revision,first->revision);
- auto retry=h->sut->release(h->story,a->writer_id,a->incarnation); ASSERT_TRUE(retry.ok()); EXPECT_EQ(retry->revision,first->revision);
+TEST_P(MetadataStoreContract, RevisionSurvivesRestart)
+{
+    if(!h->durable_restart)
+        GTEST_SKIP() << "in-memory store has no durable restart";
+    ASSERT_TRUE(h->restart);
+    auto a = h->sut->acquire(h->story, "writer");
+    ASSERT_TRUE(a.ok());
+    auto first = h->sut->release(h->story, a->writer_id, a->incarnation);
+    ASSERT_TRUE(first.ok());
+    h->restart();
+    auto b = h->sut->acquire(h->story, "writer");
+    ASSERT_TRUE(b.ok());
+    auto second = h->sut->release(h->story, b->writer_id, b->incarnation);
+    ASSERT_TRUE(second.ok());
+    EXPECT_GT(second->revision, first->revision);
+    auto retry = h->sut->release(h->story, a->writer_id, a->incarnation);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->revision, first->revision);
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MetadataStoreContract);
 } // namespace chronolog::contract

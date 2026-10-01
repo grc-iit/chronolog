@@ -142,6 +142,17 @@ int main(int argc, char** argv)
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
 
+    std::atomic<keeper::ClusterClient*> cluster_ptr{nullptr};
+    keeper::AcquisitionWatcher acquisitions(
+            journal,
+            config->process_id,
+            [&cluster_ptr]
+            {
+                if(auto* client = cluster_ptr.load())
+                    client->kick();
+            },
+            config->static_writers.empty());
+
     keeper::WorkerPool pool(config->effectiveWorkerThreads(), kMaxQueuedRequests);
     keeper::JournalService journal_service(journal, pool);
     keeper::ArchiveService archive_service(journal, *membership, pool);
@@ -162,14 +173,6 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::atomic<keeper::ClusterClient*> cluster_ptr{nullptr};
-    keeper::AcquisitionWatcher acquisitions(journal,
-                                            config->process_id,
-                                            [&cluster_ptr]
-                                            {
-                                                if(auto* client = cluster_ptr.load())
-                                                    client->kick();
-                                            });
     keeper::ClusterClient cluster(visor,
                                   {config->process_id,
                                    instance,

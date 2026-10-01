@@ -8,7 +8,11 @@ add_executable(chronolog_keeper_wal_tests
     ../tests/wal_journal_contract.cpp ../tests/wal_journal_test.cpp ../tests/wal_crash_test.cpp)
 target_include_directories(chronolog_keeper_wal_tests PRIVATE ../tests)
 target_link_libraries(chronolog_keeper_wal_tests PRIVATE chronolog_keeper_wal chronolog_keeper_lib
-    GTest::gtest GTest::gtest_main chronolog_warnings Threads::Threads)
+    GTest::gtest GTest::gtest_main chronolog_keeper_archive chronolog_warnings Threads::Threads)
+if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
+    set_property(TARGET chronolog_keeper_wal_tests PROPERTY CROSSCOMPILING_EMULATOR
+        "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
+endif()
 gtest_discover_tests(chronolog_keeper_wal_tests DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
 
 add_dependencies(chronolog_keeper_wal_tests chrono_keeper)

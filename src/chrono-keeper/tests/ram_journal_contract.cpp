@@ -33,6 +33,14 @@ std::unique_ptr<JournalHarness> MakeRam()
         rig->journal = fresh->journal;
         hp->sut = fresh->release();
     };
+    h->onAssignment = [rig](std::function<void(Hlc)> hook) { rig->clock->assigned = std::move(hook); };
+    h->snapshot = [rig]() -> absl::StatusOr<std::pair<Hlc, std::vector<Event>>>
+    {
+        auto snapshot = rig->journal->sealedRead(1, All());
+        if(!snapshot.ok())
+            return snapshot.status();
+        return std::pair{snapshot->view.sealed, std::move(snapshot->events)};
+    };
     h->sut = rig->release();
     return h;
 }

@@ -1,5 +1,7 @@
 #include "../../../tests/contract/journal_contract_test.cpp"
 #include "wal_harness.h"
+#include "archive/KeeperArchive.h"
+#include "membership/ConfigMembership.h"
 
 namespace chronolog::contract
 {
@@ -8,7 +10,7 @@ namespace
 
 std::unique_ptr<JournalHarness> MakeWal()
 {
-    auto rig = std::make_shared<test::WalRig>();
+    auto rig = std::make_shared<test::WalRig>(4096);
     auto h = std::make_unique<JournalHarness>();
     h->payload_limit = rig->ram_config.payload_max_bytes;
     h->supports_durable = true;
@@ -18,8 +20,60 @@ std::unique_ptr<JournalHarness> MakeWal()
     h->releaseIncarnation = [rig] { rig->current->releaseWriter(1, 2, 3); };
     h->registerIdleWriter = [rig](uint64_t writer, uint64_t incarnation)
     { (void)rig->current->registerWriter(1, writer, incarnation); };
-    h->crashRestart = [rig, hp = h.get()]
+    auto archive = std::make_shared<std::unique_ptr<keeper::KeeperArchive>>();
+    auto membership = std::make_shared<keeper::ConfigMembership>(
+            std::vector<keeper::StaticRoute>{{1, {7, {{"self", "self:1"}}, "127.0.0.1:1", ""}}});
+    h->sealArchive = [rig, archive, membership]() -> absl::StatusOr<std::vector<Chunk>>
     {
+        if(!*archive)
+        {
+            keeper::KeeperArchiveConfig config;
+            config.story_chunk_duration_secs = 1;
+            config.archive_visibility_delay_secs = 0;
+            *archive = std::make_unique<keeper::KeeperArchive>(*rig->current, *membership, "keeper", config);
+        }
+        auto status = (*archive)->seal();
+        if(!status.ok())
+            return status;
+        return (*archive)->chunks();
+    };
+    h->deliverChunk = [archive](const Chunk& chunk, std::string instance, uint64_t number)
+    {
+        internal::v1::ChunkReceipt receipt;
+        receipt.set_chunk_id(chunk.id);
+        receipt.set_bytes(123);
+        receipt.set_grapher_instance(std::move(instance));
+        receipt.set_receipt(number);
+        (*archive)->delivered(chunk.id, receipt, 123);
+    };
+    h->reportArchive = [archive](WatermarkReport report) { (*archive)->applyReport(report); };
+    h->releaseTail = [archive] { (*archive)->releaseTail(1); };
+    h->evictionFloor = [rig] { return rig->current->evictionFloor(1); };
+    h->walSegments = [rig]
+    {
+        std::set<std::string> paths;
+        for(const auto& entry: std::filesystem::directory_iterator(rig->control->directory))
+            if(entry.path().extension() == ".wal")
+                paths.insert(entry.path().filename().string());
+        return paths;
+    };
+    h->onAssignment = [rig](std::function<void(Hlc)> hook) { rig->clock->assigned = std::move(hook); };
+    h->onWriterScanned = [rig](std::function<void()> hook) { rig->current->scanned = std::move(hook); };
+    h->snapshot = [rig]() -> absl::StatusOr<std::pair<Hlc, std::vector<Event>>>
+    {
+        auto snapshot = rig->current->sealedRead(1, All());
+        if(!snapshot.ok())
+            return snapshot.status();
+        return std::pair{snapshot->view.sealed, std::move(snapshot->events)};
+    };
+    h->failFsync = [rig](bool fail)
+    {
+        std::lock_guard lock(rig->control->mu);
+        rig->control->fail = fail;
+    };
+    h->crashRestart = [rig, archive, hp = h.get()]
+    {
+        archive->reset();
         hp->sut.reset();
         rig->reopen();
         hp->sut = std::move(rig->journal);
