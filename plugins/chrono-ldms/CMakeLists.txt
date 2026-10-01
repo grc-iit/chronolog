@@ -1,0 +1,46 @@
+enable_language(C)
+find_package(Threads REQUIRED)
+add_library(chronolog_ldms_bridge SHARED bridge.cpp)
+add_library(chronolog::ldms_bridge ALIAS chronolog_ldms_bridge)
+target_include_directories(chronolog_ldms_bridge PUBLIC include)
+target_link_libraries(chronolog_ldms_bridge PRIVATE chronolog::client nlohmann_json::nlohmann_json chronolog_warnings Threads::Threads)
+
+add_executable(chronolog_ldms_fake_ldmsd fake_ldmsd.c)
+set_target_properties(chronolog_ldms_fake_ldmsd PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(chronolog_ldms_fake_ldmsd PRIVATE chronolog::ldms_bridge chronolog_warnings Threads::Threads)
+
+add_executable(chronolog_ldms_example example.cpp)
+target_link_libraries(chronolog_ldms_example PRIVATE chronolog::client nlohmann_json::nlohmann_json chronolog_warnings)
+
+add_executable(chronolog_ldms_tests tests/bridge_test.cpp)
+target_include_directories(chronolog_ldms_tests PRIVATE .)
+target_link_libraries(chronolog_ldms_tests PRIVATE chronolog::ldms_bridge chronolog::client nlohmann_json::nlohmann_json GTest::gtest chronolog_warnings Threads::Threads)
+include(GoogleTest)
+gtest_discover_tests(chronolog_ldms_tests TEST_PREFIX "ldms." TEST_FILTER "-LdmsStack.*" DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
+    add_test(NAME ldms.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
+        $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_ldms_tests>)
+    set_tests_properties(ldms.acceptance PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE
+        ENVIRONMENT "CHRONOLOG_LDMS_FAKE=$<TARGET_FILE:chronolog_ldms_fake_ldmsd>")
+endif()
+
+# store_chronolog is an ldmsd plugin and builds only against an LDMS install; nothing here fetches LDMS.
+set(CHRONOLOG_LDMS_ROOT "" CACHE PATH "LDMS install prefix holding include/ldms/ldmsd_plug_api.h")
+if(NOT CHRONOLOG_LDMS_ROOT AND DEFINED ENV{CHRONOLOG_LDMS_ROOT})
+    set(CHRONOLOG_LDMS_ROOT "$ENV{CHRONOLOG_LDMS_ROOT}")
+endif()
+if(CHRONOLOG_LDMS_ROOT AND EXISTS "${CHRONOLOG_LDMS_ROOT}")
+    find_path(CHRONOLOG_LDMS_INCLUDE NAMES ldmsd_plug_api.h HINTS "${CHRONOLOG_LDMS_ROOT}"
+        PATH_SUFFIXES include/ldms include ldms NO_DEFAULT_PATH)
+    if(CHRONOLOG_LDMS_INCLUDE)
+        add_library(store_chronolog MODULE store_chronolog.c)
+        set_target_properties(store_chronolog PROPERTIES C_STANDARD 99 C_EXTENSIONS ON PREFIX "lib")
+        target_include_directories(store_chronolog PRIVATE "${CHRONOLOG_LDMS_INCLUDE}" "${CHRONOLOG_LDMS_ROOT}/include")
+        target_link_libraries(store_chronolog PRIVATE chronolog::ldms_bridge Threads::Threads)
+        message(STATUS "chrono-ldms: building store_chronolog against ${CHRONOLOG_LDMS_INCLUDE}")
+    else()
+        message(STATUS "chrono-ldms: ${CHRONOLOG_LDMS_ROOT} has no ldmsd_plug_api.h, skipping store_chronolog")
+    endif()
+else()
+    message(STATUS "chrono-ldms: CHRONOLOG_LDMS_ROOT not set, store_chronolog skipped (bridge and fake ldmsd still build)")
+endif()
