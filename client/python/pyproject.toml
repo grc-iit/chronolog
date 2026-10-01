@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.4"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "chronolog"
+version = "4.0.0"
+requires-python = ">=3.12"
+
+[tool.scikit-build]
+cmake.source-dir = "../.."
+cmake.args = ["--preset=dev", "-DCHRONOLOG_BUILD_PYTHON=ON", "-DCMAKE_MAKE_PROGRAM=make"]
+cmake.build-type = "Debug"
+build.targets = ["_core"]
+install.components = ["python"]
+wheel.packages = ["chronolog"]
+wheel.py-api = "cp312"
+build-dir = "../../build/dev"

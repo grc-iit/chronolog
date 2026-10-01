@@ -20,8 +20,7 @@ class ClusterClient final: public RouteSource
 public:
     ClusterClient(std::shared_ptr<grpc::Channel> visor_internal,
                   Process self,
-                  std::chrono::milliseconds deadline = std::chrono::milliseconds(2000),
-                  std::chrono::milliseconds refresh_interval = std::chrono::milliseconds(500));
+                  std::chrono::milliseconds deadline = std::chrono::milliseconds(2000));
 
     // Called for every Route learned, so the writer directory can follow its Keepers.
     void onRoute(std::function<void(const Route&)> callback);
@@ -35,11 +34,8 @@ private:
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     Process self_;
     std::chrono::milliseconds deadline_;
-    std::chrono::milliseconds refresh_interval_;
     mutable std::mutex mu_;
     mutable std::map<StoryId, Route> routes_;
-    mutable std::chrono::steady_clock::time_point last_refresh_{};
-    mutable bool refreshed_{};
     std::function<void(const Route&)> on_route_;
 };
 
