@@ -153,9 +153,10 @@ class Cluster:
     def control(self, request):
         roles = {'chrono-keeper': ['keeper-1', 'keeper-2'], 'chrono-grapher': ['grapher-a', 'grapher-b']}
         op, service = request
-        if op == 'pause':
+        if op in ('pause', 'resume'):
             node, unit, _, _ = self.processes[service]
-            self.run(node, shlex.join(['systemctl', '--user', 'kill', '--signal=SIGSTOP', unit]), 10)
+            sig = 'SIGSTOP' if op == 'pause' else 'SIGCONT'
+            self.run(node, shlex.join(['systemctl', '--user', 'kill', '--signal=' + sig, unit]), 10)
             return ''
         if op == 'transfer-log':
             self.collect()

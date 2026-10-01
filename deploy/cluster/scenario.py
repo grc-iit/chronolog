@@ -176,9 +176,13 @@ class Scenario(Smoke):
         self.settled()
         self.read_all()
         print('PASS d grapher-a SIGKILL with an in-flight transfer restart append complete no duplicates', flush=True)
+        control('pause', 'grapher-a')
+        control('pause', 'grapher-b')
         self.append_all(20)
         control('kill', 'keeper-1')
         control('start', 'keeper-1')
+        control('resume', 'grapher-a')
+        control('resume', 'grapher-b')
         for story in self.stories:
             for index, (identity, previous) in enumerate(self.writers[story]):
                 if previous.assigned_keeper.process_id == 'keeper-1':
@@ -189,7 +193,7 @@ class Scenario(Smoke):
         self.append_all(20)
         self.settled()
         self.read_all()
-        print('PASS e keeper-1 SIGKILL DURABLE events survive resumed writers read complete', flush=True)
+        print('PASS e keeper-1 SIGKILL unarchived DURABLE events survive WAL restart resumed writers read complete', flush=True)
         self.measure()
 
 
