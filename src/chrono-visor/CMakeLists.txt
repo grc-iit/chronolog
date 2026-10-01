@@ -1,7 +1,11 @@
 # ChronoVisor: Catalog (chronolog.v1) and Cluster (chronolog.internal.v1).
 # Legacy files under src/ and include/ are reference only and are not listed here.
 
+find_package(NuRaft CONFIG REQUIRED)
+
 add_library(chronolog_visor_lib STATIC
+    raft/DurableState.cpp
+    raft/RaftMetadataStore.cpp
     VisorConfig.cpp
     adapter/CatalogService.cpp
     adapter/ClusterService.cpp
@@ -13,7 +17,7 @@ add_library(chronolog_visor_lib STATIC
     membership/StaticRouteMembership.cpp)
 target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chronolog_visor_lib
-    PUBLIC chronolog_contracts chronolog_internal_proto chronolog_proto
+    PUBLIC NuRaft::static_lib chronolog_contracts chronolog_internal_proto chronolog_proto
            unofficial::sqlite3::sqlite3 nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings)
 
@@ -55,3 +59,14 @@ endif()
 add_test(NAME visor_binary_acceptance
          COMMAND ${visor_acceptance_launcher} timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
                  $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_acceptance_client>)
+
+add_executable(chronolog_raft_tests tests/raft_metadata_store_contract.cpp)
+target_include_directories(chronolog_raft_tests PRIVATE tests "${PROJECT_SOURCE_DIR}/tests/contract")
+target_link_libraries(chronolog_raft_tests PRIVATE chronolog_visor_lib chronolog_warnings GTest::gtest_main)
+gtest_discover_tests(chronolog_raft_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 45)
+
+add_executable(visor_raft_acceptance_client tests/raft_acceptance_client.cpp)
+target_link_libraries(visor_raft_acceptance_client PRIVATE chronolog_proto chronolog_warnings)
+add_test(NAME visor_raft_binary_acceptance COMMAND timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/raft_acceptance.sh"
+    $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_raft_acceptance_client>)
+set_tests_properties(visor_raft_binary_acceptance PROPERTIES TIMEOUT 125)

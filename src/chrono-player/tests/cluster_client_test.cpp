@@ -12,6 +12,8 @@ class CatalogSnapshot final: public internal::v1::Cluster::Service
 public:
     std::atomic<StoryId> story{0};
     std::atomic<int> calls{0};
+    std::atomic<uint64_t> epoch{1};
+    std::atomic<uint64_t> revision{0};
     std::atomic<bool> fail{false};
     grpc::Status Register(grpc::ServerContext*,
                           const internal::v1::RegisterRequest*,
@@ -24,7 +26,8 @@ public:
         {
             auto* update = response->add_routes();
             update->set_story_id(id);
-            update->mutable_route()->set_epoch(1);
+            update->mutable_route()->set_epoch(epoch);
+            update->set_revision(revision);
             auto* keeper = update->mutable_route()->add_keepers();
             keeper->set_process_id("keeper-1");
             keeper->set_endpoint("keeper:50052");
@@ -76,6 +79,36 @@ TEST(PlayerClusterClientTest, LearnsNewStoryOnImmediateCacheMiss)
     catalog.story = 100;
     ASSERT_TRUE(player.route(100).ok());
     EXPECT_EQ(catalog.calls, 6);
+    server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
+}
+TEST(PlayerClusterClientTest, RejectsLowerRevisionAndEpochSnapshots)
+{
+    CatalogSnapshot catalog;
+    catalog.story = 42;
+    catalog.epoch = 3;
+    catalog.revision = 10;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&catalog);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ClusterClient player(grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()),
+                         {"player-1", "instance", "player:50054", ProcessRole::Player},
+                         std::chrono::milliseconds(1000));
+    ASSERT_TRUE(player.registerSelf().ok());
+    catalog.revision = 9;
+    catalog.epoch = 4;
+    ASSERT_TRUE(player.registerSelf().ok());
+    ASSERT_TRUE(player.route(42).ok());
+    EXPECT_EQ(player.route(42)->epoch, 3);
+    catalog.revision = 11;
+    catalog.epoch = 2;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(42)->epoch, 3);
+    catalog.epoch = 4;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(42)->epoch, 4);
     server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
 }
 } // namespace

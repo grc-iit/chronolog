@@ -17,8 +17,26 @@ namespace chronolog::visor
 // Visor configuration. Keys come from a JSON file and are overridden by environment
 // variables named CHRONOLOG_VISOR_<KEY>, for example CHRONOLOG_VISOR_DB_PATH. The
 // keepers key is a comma separated list of process_id=endpoint pairs in the environment.
+struct RaftPeer
+{
+    int32_t id{};
+    std::string raft_endpoint;
+    std::string catalog_endpoint;
+    std::string internal_endpoint;
+};
+struct RaftConfig
+{
+    int32_t server_id{};
+    std::string raft_endpoint;
+    std::vector<RaftPeer> peers;
+    uint32_t election_lower_ms = 300;
+    uint32_t election_upper_ms = 600;
+    uint32_t heartbeat_ms = 75;
+};
 struct VisorConfig
 {
+    std::string membership_mode = "static";
+    RaftConfig raft;
     std::string listen = "0.0.0.0:50051";
     // Cluster service address. Loopback by default so a bare start never exposes it (S14.3).
     std::string internal_listen = "127.0.0.1:50061";

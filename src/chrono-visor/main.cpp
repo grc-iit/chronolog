@@ -20,6 +20,7 @@
 #include "adapter/WorkerPool.h"
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/SqliteMetadataStore.h"
+#include "raft/RaftMetadataStore.h"
 #include "membership/StaticRouteMembership.h"
 
 namespace
@@ -28,13 +29,16 @@ namespace
 constexpr size_t kMaxQueuedRequests = 1024;
 constexpr std::chrono::seconds kShutdownDeadline{5};
 
-std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Service& service, int& bound_port)
+std::unique_ptr<grpc::Server>
+startServer(const std::string& address, grpc::Service& service, int& bound_port, grpc::Service* extra = nullptr)
 {
     grpc::ServerBuilder builder;
     // SO_REUSEPORT would let two Visors share one port silently.
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
     builder.RegisterService(&service);
+    if(extra)
+        builder.RegisterService(extra);
     return builder.BuildAndStart();
 }
 
@@ -80,38 +84,58 @@ int main(int argc, char** argv)
     // story lookup, so the store is created first and the waiter reads membership
     // through a pointer that is set before the first request can arrive.
     std::atomic<chronolog::visor::StaticRouteMembership*> membership_ptr{nullptr};
-    auto store = chronolog::visor::SqliteMetadataStore::open(
-            config->db_path,
-            topology,
+    chronolog::visor::FenceWaiter fence_waiter =
             [&membership_ptr, fence_timeout](const chronolog::KeeperRef& keeper, uint64_t revision)
-            {
-                auto* membership = membership_ptr.load();
-                return membership && membership->waitApplied(keeper.process_id, revision, fence_timeout);
-            });
-    if(!store.ok())
     {
-        std::cerr << "chrono_visor: " << store.status().message() << "\n";
-        return 1;
+        auto* membership = membership_ptr.load();
+        return membership && membership->waitApplied(keeper.process_id, revision, fence_timeout);
+    };
+    std::unique_ptr<chronolog::MetadataStore> store;
+    chronolog::visor::RaftMetadataStore* raft = nullptr;
+    chronolog::visor::SqliteMetadataStore* applied = nullptr;
+    if(config->membership_mode == "dynamic")
+    {
+        auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path, topology, config->raft, fence_waiter);
+        if(!opened.ok())
+        {
+            std::cerr << opened.status() << "\n";
+            return 1;
+        }
+        raft = opened->get();
+        applied = &raft->appliedStore();
+        store = std::move(*opened);
     }
-    chronolog::visor::SqliteMetadataStore& catalog_store = **store;
+    else
+    {
+        auto opened = chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter);
+        if(!opened.ok())
+        {
+            std::cerr << opened.status() << "\n";
+            return 1;
+        }
+        applied = opened->get();
+        store = std::move(*opened);
+    }
+    auto& catalog_store = *store;
+    auto& ledger = *applied;
 
     chronolog::visor::StaticRouteMembership membership(
             topology,
             /*epoch=*/1,
-            [&catalog_store](chronolog::StoryId id)
+            [&ledger](chronolog::StoryId id)
             {
-                auto story = catalog_store.getStory(id);
+                auto story = ledger.getStory(id);
                 return story.ok() && !story->tombstoned;
             },
             std::chrono::milliseconds(config->heartbeat_timeout_ms));
     membership_ptr = &membership;
 
     chronolog::visor::AcquisitionFeed feed;
-    catalog_store.setObserver(&feed);
+    ledger.setObserver(&feed);
 
     chronolog::visor::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
-    chronolog::visor::CatalogService catalog(catalog_store, pool);
-    chronolog::visor::ClusterService cluster(membership, catalog_store, catalog_store, feed);
+    chronolog::visor::CatalogService catalog(catalog_store, pool, raft);
+    chronolog::visor::ClusterService cluster(membership, ledger, ledger, feed, raft, &pool);
 
     int public_port = 0;
     int internal_port = 0;
@@ -121,7 +145,7 @@ int main(int argc, char** argv)
         std::cerr << "chrono_visor: cannot listen on " << config->listen << "\n";
         return 1;
     }
-    auto internal_server = startServer(config->internal_listen, cluster, internal_port);
+    auto internal_server = startServer(config->internal_listen, cluster, internal_port, raft ? &catalog : nullptr);
     if(!internal_server || internal_port == 0)
     {
         std::cerr << "chrono_visor: cannot listen on " << config->internal_listen << "\n";
@@ -156,6 +180,6 @@ int main(int argc, char** argv)
     internal_server->Wait();
     finished = true;
     watcher.join();
-    catalog_store.setObserver(nullptr);
+    ledger.setObserver(nullptr);
     return 0;
 }

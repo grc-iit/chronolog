@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <map>
 #include <string>
 
 #include <grpcpp/grpcpp.h>
@@ -25,6 +26,7 @@ public:
 private:
     bool session(std::stop_token stop);
 
+    std::map<StoryId, std::pair<uint64_t, Epoch>> applied_;
     ConfigMembership& membership_;
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     const std::string process_id_;

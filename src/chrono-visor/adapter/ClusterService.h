@@ -7,6 +7,7 @@
 #include <mutex>
 #include <set>
 #include <vector>
+#include <thread>
 
 #include <grpcpp/grpcpp.h>
 
@@ -17,6 +18,8 @@
 
 namespace chronolog::visor
 {
+class RaftMetadataStore;
+class WorkerPool;
 
 // chronolog.internal.v1.Cluster: process registration, heartbeat, route
 // distribution and acquisition updates. ReadClock is not overridden, so it returns
@@ -39,7 +42,9 @@ public:
     ClusterService(StaticRouteMembership& membership,
                    const MetadataStore& store,
                    const AcquisitionLedger& ledger,
-                   AcquisitionFeed& feed);
+                   AcquisitionFeed& feed,
+                   RaftMetadataStore* raft = nullptr,
+                   WorkerPool* pool = nullptr);
 
     grpc::ServerUnaryReactor* Register(grpc::CallbackServerContext* context,
                                        const internal::v1::RegisterRequest* request,
@@ -68,6 +73,8 @@ private:
     // Routes of every live story, or the failure that prevented listing them.
     absl::StatusOr<std::vector<internal::v1::RouteUpdate>> routeSnapshot() const;
 
+    RaftMetadataStore* raft_;
+    WorkerPool* pool_;
     StaticRouteMembership& membership_;
     const MetadataStore& store_;
     const AcquisitionLedger& ledger_;
@@ -75,6 +82,7 @@ private:
     std::mutex mutex_;
     bool closed_{};
     std::set<std::shared_ptr<Stream>> streams_;
+    std::jthread route_notifications_;
 };
 
 } // namespace chronolog::visor

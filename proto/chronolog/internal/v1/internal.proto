@@ -212,6 +212,7 @@ message RouteSubscription
 }
 message RouteUpdate
 {
+    uint64 revision = 3;
     // Catalog-assigned uint64 story identity; never a hash of concatenated names.
     uint64 story_id = 1;
     // route; interpreted according to the message invariants above.
@@ -401,8 +402,21 @@ message WatchRoutesRequest {
 }
 // Method-specific WatchRoutes message; same payload invariants as RouteUpdate.
 message WatchRoutesResponse {
+    uint64 revision = 3;
     // Catalog-assigned uint64 story identity; never a hash of concatenated names.
     uint64 story_id = 1;
     // route; interpreted according to the message invariants above.
     chronolog.v1.Route route = 2;
+}
+
+message CatalogCommand {
+ oneof mutation {
+  chronolog.v1.CreateChronicleRequest create_chronicle = 1;
+  chronolog.v1.DestroyChronicleRequest destroy_chronicle = 2;
+  chronolog.v1.CreateStoryRequest create_story = 3;
+  chronolog.v1.DestroyStoryRequest destroy_story = 4;
+  chronolog.v1.AcquireRequest acquire = 5;
+  chronolog.v1.ReleaseRequest release = 6;
+  chronolog.v1.CompareAndSetEpochRequest compare_and_set_epoch = 7;
+ }
 }

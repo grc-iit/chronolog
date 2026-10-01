@@ -8,6 +8,7 @@
 
 namespace chronolog::visor
 {
+class RaftMetadataStore;
 
 // chronolog.v1.Catalog over a MetadataStore. Whole-request failures use gRPC codes
 // (INVALID_ARGUMENT for malformed input, UNAVAILABLE for storage failure). Every
@@ -16,7 +17,7 @@ namespace chronolog::visor
 class CatalogService final: public v1::Catalog::CallbackService
 {
 public:
-    CatalogService(MetadataStore& store, WorkerPool& pool);
+    CatalogService(MetadataStore& store, WorkerPool& pool, RaftMetadataStore* raft = nullptr);
 
     grpc::ServerUnaryReactor* CreateChronicle(grpc::CallbackServerContext* context,
                                               const v1::CreateChronicleRequest* request,
@@ -56,6 +57,7 @@ private:
     template <class Fn>
     grpc::ServerUnaryReactor* dispatch(grpc::CallbackServerContext* context, Fn fn);
 
+    RaftMetadataStore* raft_;
     MetadataStore& store_;
     WorkerPool& pool_;
 };
