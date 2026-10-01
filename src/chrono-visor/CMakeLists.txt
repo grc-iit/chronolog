@@ -1,50 +1,43 @@
-cmake_minimum_required(VERSION 3.25)
+# ChronoVisor: Catalog (chronolog.v1) and Cluster (chronolog.internal.v1).
+# Legacy files under src/ and include/ are reference only and are not listed here.
 
-find_package(Thallium REQUIRED)
+add_library(chronolog_visor_lib STATIC
+    VisorConfig.cpp
+    adapter/CatalogService.cpp
+    adapter/ClusterService.cpp
+    adapter/Convert.cpp
+    adapter/WorkerPool.cpp
+    catalog/AcquisitionFeed.cpp
+    catalog/InMemoryMetadataStore.cpp
+    catalog/SqliteMetadataStore.cpp
+    membership/StaticRouteMembership.cpp)
+target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(chronolog_visor_lib
+    PUBLIC chronolog_contracts chronolog_internal_proto chronolog_proto
+           unofficial::sqlite3::sqlite3 nlohmann_json::nlohmann_json Threads::Threads
+    PRIVATE chronolog_warnings)
 
-set(CMAKE_FIND_LIBRARY_TYPE STATIC)
+add_executable(chrono_visor main.cpp)
+target_link_libraries(chrono_visor PRIVATE chronolog_visor_lib chronolog_warnings)
 
-#------------------------------------------------------------------------------
-# ChronoVisor Executable
-#------------------------------------------------------------------------------
-add_executable(chronovisor_server)
+# Contract suites are included as source into the instantiating test files, so the
+# suite sources are reached through the contract directory.
+add_executable(chronolog_visor_tests
+    tests/sqlite_metadata_store_contract.cpp
+    tests/static_route_membership_contract.cpp
+    tests/sqlite_restart_test.cpp
+    tests/catalog_adapter_test.cpp
+    tests/cluster_adapter_test.cpp)
+target_include_directories(chronolog_visor_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+    "${PROJECT_SOURCE_DIR}/tests/contract")
+target_link_libraries(chronolog_visor_tests PRIVATE
+    chronolog_visor_lib chronolog_warnings GTest::gtest GTest::gtest_main)
 
-target_include_directories(chronovisor_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-)
-
-target_sources(chronovisor_server PRIVATE
-    src/chronovisor_instance.cpp
-    src/ChronoVisorConfiguration.cpp
-    src/VisorClientPortal.cpp
-    src/ClientRegistryManager.cpp
-    src/ClientRegistryRecord.cpp
-    src/ChronicleMetaDirectory.cpp
-    src/KeeperRegistry.cpp
-#    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
-)
-
-target_link_libraries(chronovisor_server
-    PRIVATE
-        chrono_common
-        chronolog_client
-        thallium
-)
-
-set_target_properties(chronovisor_server PROPERTIES
-    OUTPUT_NAME chrono-visor
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-#------------------------------------------------------------------------------
-# Install binary and configuration file
-#------------------------------------------------------------------------------
-chronolog_install_target(chronovisor_server)
-
-install(
-    FILES ${CMAKE_SOURCE_DIR}/conf/default_conf.json.in
-    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default-chrono-conf.json
-)
+include(GoogleTest)
+# ThreadSanitizer needs ASLR disabled on kernels with a wide mmap_rnd_bits.
+if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
+    set_property(TARGET chronolog_visor_tests PROPERTY CROSSCOMPILING_EMULATOR
+        "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
+endif()
+gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST)

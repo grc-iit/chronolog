@@ -9,13 +9,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(CHRONOLOG_WERROR "Treat warnings in ChronoLog targets as errors" ON)
+option(CHRONOLOG_BUILD_VISOR "Build the ChronoVisor catalog service" ON)
 set(CHRONOLOG_SANITIZERS "" CACHE STRING
     "Semicolon separated sanitizer list applied to every target, for example address;undefined or thread")
 
 find_package(gRPC CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(absl CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+find_program(CHRONOLOG_SETARCH setarch)
 
 if(CHRONOLOG_SANITIZERS)
     string(REPLACE ";" "," _chronolog_san "${CHRONOLOG_SANITIZERS}")
@@ -62,11 +67,33 @@ target_include_directories(chronolog_proto SYSTEM PUBLIC
     "$<BUILD_INTERFACE:${CHRONOLOG_PROTO_GEN_DIR}>")
 target_link_libraries(chronolog_proto PUBLIC gRPC::grpc++ protobuf::libprotobuf)
 
+# chronolog_internal_proto: chronolog.internal.v1 (Archive, Cluster). Never
+# installed, never exported, never generated into SDKs.
+file(GLOB CHRONOLOG_INTERNAL_PROTO_FILES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/proto/chronolog/internal/v1/*.proto")
+if(CHRONOLOG_INTERNAL_PROTO_FILES)
+    add_library(chronolog_internal_proto STATIC ${CHRONOLOG_INTERNAL_PROTO_FILES})
+    protobuf_generate(
+        TARGET chronolog_internal_proto
+        LANGUAGE cpp
+        IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/proto"
+        PROTOC_OUT_DIR "${CHRONOLOG_PROTO_GEN_DIR}")
+    protobuf_generate(
+        TARGET chronolog_internal_proto
+        LANGUAGE grpc
+        GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+        PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+        IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/proto"
+        PROTOC_OUT_DIR "${CHRONOLOG_PROTO_GEN_DIR}")
+    target_link_libraries(chronolog_internal_proto PUBLIC chronolog_proto)
+endif()
+
 # chronolog_contracts: the frozen C++ contract headers under include/chronolog.
 add_library(chronolog_contracts INTERFACE)
 target_include_directories(chronolog_contracts INTERFACE
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
 target_compile_features(chronolog_contracts INTERFACE cxx_std_20)
+target_link_libraries(chronolog_contracts INTERFACE absl::status absl::statusor absl::strings)
 
 enable_testing()
 
@@ -100,3 +127,7 @@ add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-keeper/journal)
 add_subdirectory(src/chrono-keeper/tests)
 add_subdirectory(src/chrono-player)
+
+if(CHRONOLOG_BUILD_VISOR)
+    add_subdirectory(src/chrono-visor)
+endif()

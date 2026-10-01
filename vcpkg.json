@@ -5,6 +5,8 @@
   "dependencies": [
     "grpc",
     "protobuf",
-    "gtest"
+    "gtest",
+    "sqlite3",
+    "nlohmann-json"
   ]
 }
