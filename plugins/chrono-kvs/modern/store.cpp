@@ -291,6 +291,7 @@ absl::StatusOr<GetResult> Store::get(const std::string& key, GetOptions options)
         if(!options.at)
             end = std::max(end, successor(*options.causal_floor));
     }
+    std::optional<Completion> frontier_completion;
     if(!options.at)
     {
         auto probe = client_.read(e.story, {e.end, e.end}, deadline);
@@ -306,7 +307,8 @@ absl::StatusOr<GetResult> Store::get(const std::string& key, GetOptions options)
                 break;
             if((**item).completion)
             {
-                end = (**item).completion->frontier;
+                frontier_completion = (**item).completion;
+                end = frontier_completion->frontier;
                 if(options.causal_floor)
                     end = std::max(end, successor(*options.causal_floor));
                 finished = true;
@@ -361,10 +363,13 @@ absl::StatusOr<GetResult> Store::get(const std::string& key, GetOptions options)
             e.completion = completion;
         }
     }
+    if(frontier_completion && !frontier_completion->complete)
+        completion = *frontier_completion;
     // For latest, only the sealed Replay prefix can be described as current.
     if(!options.at && !completion.complete)
     {
-        best.reset();
+        if(best && best->hlc >= completion.frontier)
+            best.reset();
         for(const auto& event: e.events)
             if(event.hlc < completion.frontier && (!best || ReplayLess(*best, event)))
                 best = event;

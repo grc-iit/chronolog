@@ -1,6 +1,8 @@
 #include "chronolog/kvs/store.h"
 #include <gtest/gtest.h>
 #include <limits>
+#include <barrier>
+#include <thread>
 
 using namespace chronolog;
 namespace
@@ -130,6 +132,32 @@ TEST(Kvs, CrossClientFloorWatchAndEviction)
     ASSERT_TRUE(cold->value);
     EXPECT_EQ(cold->value->value, "four");
     EXPECT_EQ(second.cachedKeys(), 1u);
+}
+TEST(Kvs, ConcurrentFirstPutsUseOneCatalogStory)
+{
+    auto c = connect();
+    auto other = connect();
+    kvs::Store first(c, "kvs-race");
+    kvs::Store second(other, "kvs-race");
+    std::barrier ready(2);
+    absl::StatusOr<kvs::Version> a = absl::UnknownError("not run");
+    absl::StatusOr<kvs::Version> b = absl::UnknownError("not run");
+    std::thread writer(
+            [&]
+            {
+                ready.arrive_and_wait();
+                a = first.put("shared", "a");
+            });
+    ready.arrive_and_wait();
+    b = second.put("shared", "b");
+    writer.join();
+    ASSERT_TRUE(a.ok()) << a.status();
+    ASSERT_TRUE(b.ok()) << b.status();
+    EXPECT_EQ(a->event_id.story_id, b->event_id.story_id);
+    EXPECT_NE(a->event_id, b->event_id);
+    auto stories = c.listStories("kvs-race");
+    ASSERT_TRUE(stories.ok());
+    EXPECT_EQ(stories->size(), 1u);
 }
 TEST(Kvs, ValidationMetadataAndIncompleteCompletion)
 {
