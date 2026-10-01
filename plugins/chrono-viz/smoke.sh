@@ -18,3 +18,10 @@ trap cleanup EXIT
 timeout 240 "${compose[@]}" build chrono-viz
 timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 chrono-viz grafana
 timeout 60 build/viz-venv/bin/python plugins/chrono-viz/backend/smoke.py
+cleanup
+trap - EXIT
+timeout 10 build/viz-venv/bin/python - <<'PY'
+from chronolog_viz import health
+assert health()["status"] == "healthy"
+print("PASS base Visor and Player survive viz cleanup", flush=True)
+PY
