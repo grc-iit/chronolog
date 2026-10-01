@@ -230,9 +230,9 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
 
     @server.resource("chronolog://status")
     @_threaded
-    def chronolog_status(ctx: Context) -> str:
+    def chronolog_status() -> str:
         """Report actual conversation and writer state."""
-        s = state(ctx)
+        s = state(server.get_context())
         with s.lock:
             return _json({"service": "chronolog", "status": "active" if s.writer else "idle",
                           "chronicle": s.chronicle,
