@@ -42,6 +42,8 @@ public:
     absl::StatusOr<std::vector<Event>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const override;
     absl::StatusOr<Hlc> keeperFrontier(StoryId id) const override;
+    absl::StatusOr<int64_t> physicalFrontier(StoryId id) const override;
+    virtual bool hasPhysicalPolicy() const { return true; }
 
     struct SealedView
     {
@@ -59,7 +61,10 @@ public:
         std::vector<Event> events;
         Hlc evicted_below;
     };
-    absl::StatusOr<SealedRead> sealedRead(StoryId id, Range range, std::optional<Hlc> tick = std::nullopt) const;
+    absl::StatusOr<SealedRead> sealedRead(StoryId id,
+                                          Range range,
+                                          std::optional<Hlc> tick = std::nullopt,
+                                          std::optional<Range> physical_filter = std::nullopt) const;
     Hlc sealTick() const { return reserveFrontier(clock_->tick()); }
 
     std::vector<StoryId> storyIds() const;
@@ -93,7 +98,9 @@ protected:
     }
     virtual void persist(const Event&, std::function<void(absl::Status)>);
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
+    virtual absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
     virtual void writerScanned(WriterKey) const {}
+    virtual void assignmentObserved(Hlc) {}
     void restore(const Event& event);
     struct WriterCheckpoint
     {
@@ -164,8 +171,12 @@ private:
              std::vector<std::shared_ptr<Writer>>& live,
              const Range* range = nullptr,
              std::vector<Event>* events = nullptr,
-             std::optional<Hlc> tick = std::nullopt) const;
-    static void scan(const Writer& writer, Range range, std::vector<Event>& out);
+             std::optional<Hlc> tick = std::nullopt,
+             std::optional<Range> physical_filter = std::nullopt) const;
+    static void scan(const Writer& writer,
+                     Range range,
+                     std::vector<Event>& out,
+                     std::optional<Range> physical_filter = std::nullopt);
     void complete(const std::shared_ptr<Writer>& writer, uint64_t sequence, absl::Status status);
 
     std::shared_ptr<Clock> clock_;
@@ -173,6 +184,8 @@ private:
     RamJournalConfig config_;
     std::atomic<bool> admission_ready_{true};
     mutable std::array<Shard, kShards> shards_;
+    mutable std::mutex physical_mu_;
+    mutable std::map<StoryId, int64_t> physical_reports_;
 };
 
 } // namespace chronolog

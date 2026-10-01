@@ -44,7 +44,7 @@ std::string Filename(const Chunk& chunk, const std::string& writer, const std::s
     return std::to_string(chunk.start.physical_ns) + "_" + std::to_string(chunk.start.logical) + "_" +
            std::to_string(chunk.end.physical_ns) + "_" + std::to_string(chunk.end.logical) + "_" +
            (chunk.exempt ? "1_" : "0_") + std::to_string(chunk.events.size()) + "_" + Hex(writer) + "_" +
-           Hex(chunk.id) + extension;
+           Hex(chunk.id) + (chunk.physical_policy ? "_1" : "_0") + extension;
 }
 
 template <typename T>
@@ -65,10 +65,10 @@ absl::StatusOr<ManifestRecord> FromFilename(const std::filesystem::path& relativ
     std::string field;
     while(std::getline(name, field, '_')) fields.push_back(field);
     int exempt = 0;
-    if(fields.size() != 8 || !Number(fields[0], record.start.physical_ns) || !Number(fields[1], record.start.logical) ||
-       !Number(fields[2], record.end.physical_ns) || !Number(fields[3], record.end.logical) ||
-       !Number(fields[4], exempt) || (exempt != 0 && exempt != 1) || !Number(fields[5], record.event_count) ||
-       record.start >= record.end)
+    if((fields.size() != 8 && fields.size() != 9) || !Number(fields[0], record.start.physical_ns) ||
+       !Number(fields[1], record.start.logical) || !Number(fields[2], record.end.physical_ns) ||
+       !Number(fields[3], record.end.logical) || !Number(fields[4], exempt) || (exempt != 0 && exempt != 1) ||
+       !Number(fields[5], record.event_count) || record.start >= record.end)
         return absl::InvalidArgumentError("not a published chunk");
     auto writer = Unhex(fields[6]);
     auto chunk = Unhex(fields[7]);
@@ -84,6 +84,12 @@ absl::StatusOr<ManifestRecord> FromFilename(const std::filesystem::path& relativ
     record.manifest_writer = *writer;
     record.chunk_id = *chunk;
     record.exempt = exempt != 0;
+    if(fields.size() == 9)
+    {
+        if(fields[8] != "0" && fields[8] != "1")
+            return absl::InvalidArgumentError("invalid physical policy marker");
+        record.physical_policy = fields[8] == "1";
+    }
     record.file = relative.generic_string();
     record.state = record.event_count ? ManifestState::Published : ManifestState::Empty;
     return record;
@@ -399,7 +405,8 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                           chunk.end,
                           chunk.events.size(),
                           chunk.events.empty() ? ManifestState::Empty : ManifestState::Published,
-                          chunk.exempt};
+                          chunk.exempt,
+                          chunk.physical_policy};
     for(const auto& existing: effective(*index, chunk.story_id))
     {
         auto existing_name = std::filesystem::path(existing.file);

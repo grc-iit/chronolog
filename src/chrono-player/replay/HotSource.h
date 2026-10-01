@@ -16,6 +16,11 @@ struct KeeperFrontier
     bool answered{true};
     bool truncated{};
     Hlc evicted_below{};
+    Epoch expected_epoch{};
+    bool predecessor{};
+    Hlc own_cut{};
+    std::optional<Hlc> truncated_at{};
+    std::optional<int64_t> physical_frontier{};
 };
 
 struct KeeperFetch
@@ -40,6 +45,9 @@ struct HotFetch
     std::vector<WriterAssignment> writers;
     // The source will produce no more events for this story; tails end orderly.
     bool closed{};
+    Hlc archived_below{};
+    std::vector<Range> abandoned{};
+    bool physical_policy{};
 };
 
 class HotSource

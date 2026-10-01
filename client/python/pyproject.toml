@@ -7,6 +7,9 @@ name = "chronolog"
 version = "4.0.0"
 requires-python = ">=3.12"
 
+[project.optional-dependencies]
+otel = ["opentelemetry-sdk>=1.39,<2"]
+
 [tool.scikit-build]
 cmake.source-dir = "../.."
 cmake.args = ["--preset=python", "-DCMAKE_MAKE_PROGRAM=make"]

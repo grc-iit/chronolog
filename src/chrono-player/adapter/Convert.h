@@ -15,6 +15,7 @@ v1::Hlc toProto(const Hlc& hlc);
 Event fromProto(const v1::Event& event);
 v1::Event toProto(const Event& event);
 Route fromProto(const v1::Route& route);
+RouteState fromProto(const internal::v1::RouteUpdate& update);
 v1::Completion toProto(const Completion& completion);
 
 // A request whose range oneof is unset is INVALID_ARGUMENT (W10.10).

@@ -175,3 +175,23 @@ endif()
 if(TARGET chronolog_client AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/typescript/test/CMakeLists.txt")
     add_subdirectory(client/typescript/test)
 endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/chrono-mcp/CMakeLists.txt")
+    add_subdirectory(plugins/chrono-mcp)
+endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
+    add_subdirectory(plugins/chrono-kvs)
+endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_kvs)
+    add_subdirectory(plugins/chrono-pubsub)
+endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
+    add_subdirectory(plugins/chrono-sql)
+endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_kvs)
+    add_subdirectory(plugins/chrono-stream)
+endif()

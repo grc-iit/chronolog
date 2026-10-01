@@ -3,8 +3,12 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <filesystem>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "absl/strings/str_cat.h"
+#include "adapter/Convert.h"
 
 namespace chronolog::visor
 {
@@ -12,7 +16,7 @@ namespace chronolog::visor
 namespace
 {
 
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 constexpr Epoch kInitialEpoch = 1;
 constexpr int kBusyTimeoutMs = 5000;
 
@@ -59,7 +63,7 @@ public:
     std::string columnText(int index) const
     {
         const auto* raw = reinterpret_cast<const char*>(sqlite3_column_text(stmt_, index));
-        return raw ? std::string(raw) : std::string();
+        return raw ? std::string(raw, static_cast<size_t>(sqlite3_column_bytes(stmt_, index))) : std::string();
     }
 
 private:
@@ -87,12 +91,17 @@ public:
     explicit Transaction(sqlite3* db)
         : db_(db)
     {
-        status_ = exec(db_, "BEGIN IMMEDIATE");
+        nested_ = !sqlite3_get_autocommit(db_);
+        status_ = exec(db_, nested_ ? "SAVEPOINT mutation" : "BEGIN IMMEDIATE");
     }
     ~Transaction()
     {
         if(status_.ok() && !committed_)
-            sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
+            sqlite3_exec(db_,
+                         nested_ ? "ROLLBACK TO mutation; RELEASE mutation" : "ROLLBACK",
+                         nullptr,
+                         nullptr,
+                         nullptr);
     }
     Transaction(const Transaction&) = delete;
     Transaction& operator=(const Transaction&) = delete;
@@ -100,7 +109,7 @@ public:
     const absl::Status& begun() const { return status_; }
     absl::Status commit()
     {
-        absl::Status s = exec(db_, "COMMIT");
+        absl::Status s = exec(db_, nested_ ? "RELEASE mutation" : "COMMIT");
         committed_ = s.ok();
         return s;
     }
@@ -109,6 +118,7 @@ private:
     sqlite3* db_;
     absl::Status status_;
     bool committed_{};
+    bool nested_{};
 };
 
 #define CHRONOLOG_RETURN_IF_ERROR(expr)                                                                                \
@@ -243,6 +253,7 @@ absl::Status SqliteMetadataStore::initialize()
     if(*mode != "wal")
         return absl::UnavailableError(absl::StrCat("catalog database cannot use WAL journal mode, got ", *mode));
 
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS membership_state(value TEXT NOT NULL)"));
     Transaction txn(db_);
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL)"));
@@ -296,10 +307,12 @@ absl::Status SqliteMetadataStore::initialize()
                                    "CREATE TABLE IF NOT EXISTS counters("
                                    " name TEXT PRIMARY KEY,"
                                    " value INTEGER NOT NULL)"));
-    CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-                                   "INSERT OR IGNORE INTO counters(name, value) VALUES"
-                                   " ('story_id', 0), ('writer_id', 0), ('acquisition_revision', 0)"));
+    CHRONOLOG_RETURN_IF_ERROR(
+            exec(db_,
+                 "INSERT OR IGNORE INTO counters(name, value) VALUES"
+                 " ('story_id', 0), ('writer_id', 0), ('acquisition_revision', 0), ('raft_index', 0)"));
 
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS raft_result(value TEXT NOT NULL)"));
     Statement version(db_, "SELECT version FROM schema_version LIMIT 1");
     CHRONOLOG_RETURN_IF_ERROR(version.prepared());
     auto row = version.step();
@@ -307,7 +320,7 @@ absl::Status SqliteMetadataStore::initialize()
         return row.status();
     if(*row)
     {
-        if(version.column(0) != static_cast<uint64_t>(kSchemaVersion))
+        if(version.column(0) != 1 && version.column(0) != static_cast<uint64_t>(kSchemaVersion))
             return absl::FailedPreconditionError(
                     absl::StrCat("catalog schema version ", version.column(0), " is not supported"));
     }
@@ -320,6 +333,8 @@ absl::Status SqliteMetadataStore::initialize()
         if(!done.ok())
             return done.status();
     }
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "UPDATE schema_version SET version=2"));
+    CHRONOLOG_RETURN_IF_ERROR(initializeMembership());
     return txn.commit();
 }
 
@@ -466,6 +481,7 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
     auto done = insert.step();
     if(!done.ok())
         return done.status();
+    CHRONOLOG_RETURN_IF_ERROR(seedMembershipStory(*id));
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
     return Story{*id, std::move(chronicle), std::move(name), kInitialEpoch, false};
 }
@@ -618,7 +634,23 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
         if(!done.ok())
             return done.status();
     }
-    auto keeper = topology_.assignKeeper(writer_id, (*story)->epoch);
+    auto owning_route = membershipRoute(id);
+    if(!owning_route.ok())
+        return owning_route.status();
+    absl::StatusOr<KeeperRef> keeper = absl::FailedPreconditionError("route has no keepers");
+    if(!owning_route->keepers.empty())
+        keeper = owning_route->keepers[writer_id % owning_route->keepers.size()];
+    Statement existing(db_, "SELECT keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+    CHRONOLOG_RETURN_IF_ERROR(existing.prepared());
+    existing.integer(1, id).integer(2, writer_id);
+    auto prior_keeper = existing.step();
+    if(!prior_keeper.ok())
+        return prior_keeper.status();
+    if(*prior_keeper)
+        for(const auto& k: owning_route->keepers)
+            if(k.process_id == existing.columnText(0))
+                keeper = k;
+
     if(!keeper.ok())
         return keeper.status();
     {
@@ -646,7 +678,7 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
             observer_->onAcquisitionChange(*superseded);
         observer_->onAcquisitionChange({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired});
     }
-    return Acquisition{id, writer_id, incarnation, topology_.routeFor((*story)->epoch, id), *keeper};
+    return Acquisition{id, writer_id, incarnation, *owning_route, *keeper};
 }
 
 absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t writer_id, uint64_t incarnation)
@@ -793,4 +825,196 @@ void SqliteMetadataStore::setObserver(AcquisitionObserver* observer)
     observer_ = observer;
 }
 
+absl::StatusOr<KeeperRef> SqliteMetadataStore::releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const
+{
+    std::lock_guard lock(mutex_);
+    Statement q(db_,
+                "SELECT keeper_id,keeper_endpoint FROM releases WHERE story_id=?1 AND writer_id=?2 AND incarnation=?3");
+    CHRONOLOG_RETURN_IF_ERROR(q.prepared());
+    q.integer(1, id).integer(2, writer).integer(3, incarnation);
+    auto row = q.step();
+    if(!row.ok())
+        return row.status();
+    if(!*row)
+        return absl::NotFoundError("release not found");
+    return KeeperRef{q.columnText(0), q.columnText(1)};
+}
+absl::StatusOr<uint64_t> SqliteMetadataStore::appliedIndex() const
+{
+    std::lock_guard lock(mutex_);
+    return currentCounter(db_, "raft_index");
+}
+absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const std::function<std::string()>& apply)
+{
+    std::lock_guard lock(mutex_);
+    auto prior = currentCounter(db_, "raft_index");
+    if(!prior.ok())
+        return prior.status();
+    if(index <= *prior)
+    {
+        Statement q(db_, "SELECT value FROM raft_result LIMIT 1");
+        CHRONOLOG_RETURN_IF_ERROR(q.prepared());
+        auto row = q.step();
+        if(!row.ok())
+            return row.status();
+        return *row ? q.columnText(0) : std::string();
+    }
+    struct Pending final: AcquisitionObserver
+    {
+        std::vector<AcquisitionChange> changes;
+        void onAcquisitionChange(const AcquisitionChange& c) override { changes.push_back(c); }
+    } pending;
+    Transaction txn(db_);
+    CHRONOLOG_RETURN_IF_ERROR(txn.begun());
+    auto revision = nextCounter(db_, "acquisition_revision");
+    if(!revision.ok())
+        return revision.status();
+    auto* observer = observer_;
+    observer_ = &pending;
+    std::string result;
+    try
+    {
+        result = apply();
+    }
+    catch(...)
+    {
+        observer_ = observer;
+        throw;
+    }
+    observer_ = observer;
+    Statement update(db_, "UPDATE counters SET value=?1 WHERE name='raft_index'");
+    CHRONOLOG_RETURN_IF_ERROR(update.prepared());
+    update.integer(1, index);
+    auto done = update.step();
+    if(!done.ok())
+        return done.status();
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "DELETE FROM raft_result"));
+    Statement insert(db_, "INSERT INTO raft_result VALUES(?1)");
+    CHRONOLOG_RETURN_IF_ERROR(insert.prepared());
+    insert.text(1, result);
+    done = insert.step();
+    if(!done.ok())
+        return done.status();
+    CHRONOLOG_RETURN_IF_ERROR(txn.commit());
+    if(observer)
+        for(const auto& c: pending.changes) observer->onAcquisitionChange(c);
+    return result;
+}
+absl::Status SqliteMetadataStore::backupTo(const std::string& path) const
+{
+    std::lock_guard lock(mutex_);
+    sqlite3* target{};
+    if(sqlite3_open(path.c_str(), &target) != SQLITE_OK)
+    {
+        if(target)
+            sqlite3_close(target);
+        return absl::UnavailableError("snapshot open failed");
+    }
+    auto* backup = sqlite3_backup_init(target, "main", db_, "main");
+    int rc = backup ? sqlite3_backup_step(backup, -1) : SQLITE_ERROR;
+    if(backup)
+        sqlite3_backup_finish(backup);
+    sqlite3_close(target);
+    return rc == SQLITE_DONE ? absl::OkStatus() : absl::UnavailableError("snapshot backup failed");
+}
+absl::Status SqliteMetadataStore::installFrom(const std::string& path)
+{
+    std::lock_guard lock(mutex_);
+    const std::string destination = sqlite3_db_filename(db_, "main");
+    const std::string temporary = destination + ".install";
+    std::error_code error;
+    std::filesystem::copy_file(path, temporary, std::filesystem::copy_options::overwrite_existing, error);
+    if(error)
+        return absl::UnavailableError(error.message());
+    int fd = ::open(temporary.c_str(), O_RDONLY);
+    if(fd < 0)
+        return absl::UnavailableError("snapshot open failed");
+    int rc = fsync(fd);
+    close(fd);
+    if(rc)
+        return absl::UnavailableError("snapshot fsync failed");
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "PRAGMA wal_checkpoint(TRUNCATE)"));
+    sqlite3_close(db_);
+    db_ = nullptr;
+    std::filesystem::rename(temporary, destination, error);
+    if(error)
+    {
+        sqlite3_open(destination.c_str(), &db_);
+        return absl::UnavailableError(error.message());
+    }
+    const auto parent = std::filesystem::path(destination).parent_path();
+    fd = ::open(parent.empty() ? "." : parent.c_str(), O_RDONLY | O_DIRECTORY);
+    rc = fd < 0 ? -1 : fsync(fd);
+    if(fd >= 0)
+        close(fd);
+    if(sqlite3_open(destination.c_str(), &db_) != SQLITE_OK)
+        return absl::UnavailableError("snapshot reopen failed");
+    CHRONOLOG_RETURN_IF_ERROR(initialize());
+    snapshot_generation_.fetch_add(1);
+    return rc == 0 ? absl::OkStatus() : absl::UnavailableError("snapshot directory fsync failed");
+}
+
+absl::StatusOr<Route> SqliteMetadataStore::membershipRoute(StoryId id) const
+{
+    std::lock_guard lock(mutex_);
+    auto story = getStory(id);
+    if(!story.ok())
+        return story.status();
+    if(story->tombstoned)
+        return absl::NotFoundError("destroyed story");
+    auto update = membershipRouteUpdate(id);
+    if(update.ok())
+    {
+        Route route{update->route().epoch(), {}, update->route().grapher(), update->route().player()};
+        for(const auto& k: update->route().keepers()) route.keepers.push_back({k.process_id(), k.endpoint()});
+        return route;
+    }
+    if(!absl::IsNotFound(update.status()))
+        return update.status();
+    return topology_.routeFor(story->epoch, id);
+}
+absl::Status SqliteMetadataStore::fenceRemovedWriters(StoryId id,
+                                                      const Route& route,
+                                                      uint64_t revision,
+                                                      const std::string& replacement)
+{
+    std::lock_guard lock(mutex_);
+    auto active = storyAcquisitions(id);
+    if(!active.ok())
+        return active.status();
+    for(auto change: *active)
+    {
+        bool survives = false;
+        for(const auto& k: route.keepers)
+            if(k.process_id == change.assigned_keeper.process_id)
+                survives = true;
+        if(survives && change.assigned_keeper.process_id != replacement)
+            continue;
+        Statement record(
+                db_,
+                "INSERT OR IGNORE INTO releases(story_id,writer_id,incarnation,revision,keeper_id,keeper_endpoint) "
+                "VALUES (?1,?2,?3,?4,?5,?6)");
+        CHRONOLOG_RETURN_IF_ERROR(record.prepared());
+        record.integer(1, id)
+                .integer(2, change.writer_id)
+                .integer(3, change.incarnation)
+                .integer(4, revision)
+                .text(5, change.assigned_keeper.process_id)
+                .text(6, change.assigned_keeper.endpoint);
+        auto done = record.step();
+        if(!done.ok())
+            return done.status();
+        Statement fence(db_, "UPDATE acquisitions SET released=1 WHERE story_id=?1 AND writer_id=?2");
+        CHRONOLOG_RETURN_IF_ERROR(fence.prepared());
+        fence.integer(1, id).integer(2, change.writer_id);
+        done = fence.step();
+        if(!done.ok())
+            return done.status();
+        change.revision = revision;
+        change.state = AcquisitionState::Released;
+        if(observer_)
+            observer_->onAcquisitionChange(change);
+    }
+    return absl::OkStatus();
+}
 } // namespace chronolog::visor

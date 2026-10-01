@@ -90,7 +90,19 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                     return fail(absl::InvalidArgumentError("range start is after end"));
                 const uint64_t limit = req.max_events() ? req.max_events() : options_.default_max_events;
 
-                auto snapshot = journal_.sealedRead(req.story_id(), range);
+                auto physical = journal_.physicalFrontier(req.story_id());
+                if(!physical.ok())
+                    return fail(physical.status());
+                std::optional<Range> filter;
+                if(range.axis == Range::Axis::Physical)
+                    filter = range;
+                if(req.has_physical_filter())
+                    filter = Range{Range::Axis::Physical,
+                                   {req.physical_filter().start_ns(), 0},
+                                   {req.physical_filter().end_ns(), 0}};
+                if(filter && filter->start >= filter->end)
+                    return fail(absl::InvalidArgumentError("invalid physical range"));
+                auto snapshot = journal_.sealedRead(req.story_id(), range, std::nullopt, filter);
                 if(!snapshot.ok())
                     return fail(snapshot.status());
                 auto route = membership_.route(req.story_id());
@@ -125,6 +137,7 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 }
                 auto* trailer = out.emplace_back().mutable_trailer();
                 trailer->set_epoch(route->epoch);
+                trailer->set_physical_frontier_ns(*physical);
                 *trailer->mutable_sealed_frontier() = convert::toProto(snapshot->view.sealed);
                 for(const auto& f: snapshot->view.frontiers) *trailer->add_frontiers() = convert::toProto(f);
                 *trailer->mutable_evicted_below() = convert::toProto(snapshot->evicted_below);

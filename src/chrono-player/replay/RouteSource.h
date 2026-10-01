@@ -12,6 +12,17 @@ class RouteSource
 public:
     virtual ~RouteSource() = default;
     virtual absl::StatusOr<Route> route(StoryId story) const = 0;
+    virtual absl::StatusOr<RouteState> routeState(StoryId story) const
+    {
+        auto r = route(story);
+        if(!r.ok())
+            return r.status();
+        RouteState state;
+        state.route = *r;
+        return state;
+    }
+    virtual bool physicalPolicy(StoryId) const { return false; }
+    virtual int64_t skewLimitNs() const { return 60000000000LL; }
 };
 
 // The acquisition view. It only names laggards and never decides completeness.

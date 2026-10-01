@@ -55,6 +55,7 @@ absl::Status ClusterClient::registerNow()
     grpc::ClientContext context;
     setDeadline(context);
     iv1::RegisterRequest request;
+    request.set_policy_version(journal_.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0);
     auto* process = request.mutable_process();
     process->set_process_id(options_.process_id);
     process->set_instance(options_.instance);
@@ -65,6 +66,16 @@ absl::Status ClusterClient::registerNow()
         return toStatus(rpc);
     if(auto status = toStatus(response.status()); !status.ok())
         return status;
+    if(response.has_policy())
+    {
+        const auto& policy = response.policy();
+        const PhysicalPolicy expected;
+        if(policy.version() != expected.version || policy.acceptance_window_ns() != expected.acceptance_window_ns ||
+           policy.skew_limit_ns() != expected.skew_limit_ns || policy.hlc_lead_ns() != expected.hlc_lead_ns ||
+           policy.uncertainty_cap_ns() < 0 ||
+           static_cast<uint64_t>(policy.uncertainty_cap_ns()) != expected.uncertainty_cap_ns)
+            return absl::FailedPreconditionError("physical policy constants differ");
+    }
     for(const auto& update: response.routes())
         membership_.setRoute(update.story_id(), convert::fromProto(update.route()));
     registered_ = true;

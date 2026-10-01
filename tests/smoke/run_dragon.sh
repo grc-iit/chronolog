@@ -4,7 +4,7 @@
 # brings the compose stack up, runs the Python smoke test and tears the stack down,
 # first under rootless Docker and then under rootless Podman. Nothing is compiled
 # inside a container. Run on dragon from the repository root through rbuild:
-#   rbuild 'bash tests/smoke/run_dragon.sh'
+#   RBUILD_LOCK=stack rbuild 'bash tests/smoke/run_dragon.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
 # SKIP_NATIVE_BUILD=1 reuses build/dev; SKIP_BINDING_BUILD=1 requires build_artifacts.sh outputs.
 set -uo pipefail
@@ -31,7 +31,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example chronolog_stream_collect chronolog_stream_export chronolog_stream_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -49,6 +49,7 @@ for target in "${targets[@]}"; do
     cp "$binary" "$stage/"
 done
 cp deploy/containers/entrypoint.sh "$stage/"
+cp -L build/dev/client/cpp/libchronolog_client.so.4 "$stage/"
 
 venv=$root/build/smoke-venv
 if [ "${SKIP_BINDING_BUILD:-}" = 1 ]; then
@@ -58,7 +59,8 @@ if [ "${SKIP_BINDING_BUILD:-}" = 1 ]; then
     package=$root/build/typescript/package
     [ -f "$package/build/dev/chronolog_node.node" ] && [ -f "$package/dist/index.js" ] \
         || { echo "smoke: missing TypeScript package; run tests/smoke/build_artifacts.sh"; exit 1; }
-    timeout 10 "$venv/bin/python" -c 'import grpc, grpc_tools.protoc, pytest' \
+    [ -f "$logs/wheels/chronolog_mcp-4.0.0-py3-none-any.whl" ] || { echo "smoke: missing MCP wheel; run tests/smoke/build_artifacts.sh"; exit 1; }
+    timeout 10 "$venv/bin/python" -c 'import grpc, grpc_tools.protoc, pytest, mcp, opentelemetry.sdk' \
         || { echo "smoke: missing test dependencies; run tests/smoke/build_artifacts.sh"; exit 1; }
 else
     if [ ! -x "$venv/bin/python" ]; then
@@ -104,6 +106,17 @@ run_engine() {
     step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
+        step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
+        if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
+            step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
+            return "$rc"
+        fi
         echo "-- $engine: smoke.py"
         local smoke_files=() index
         for ((index=5; index<${#compose[@]}; index+=2)); do
@@ -111,16 +124,31 @@ run_engine() {
         done
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
             "${smoke_files[@]}" 2>&1 | tee -a "$log"
-        rc=${PIPESTATUS[0]}
+        local python_rc=${PIPESTATUS[0]}
+        if [ "$python_rc" -ne 0 ]; then rc=$python_rc; fi
         if [ "$rc" -eq 0 ]; then
             if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
-                step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest || rc=1
+                step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest hatchling || rc=1
                 step "Python abi3 wheel" 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python || rc=1
             fi
             if [ "$rc" -eq 0 ]; then
                 step "install Python wheel" 120 "$venv/bin/pip" install --no-deps --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl || rc=1
                 step "Python SDK pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                     "$venv/bin/python" -m pytest -q client/python/tests || rc=1
+                if [ "$rc" -eq 0 ]; then
+                    if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
+                    step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp || rc=1
+                    step "install MCP plugin" 180 "$venv/bin/pip" install --force-reinstall --no-deps "$logs"/wheels/chronolog_mcp-4.0.0-*.whl || rc=1
+                    step "MCP plugin dependencies" 180 "$venv/bin/pip" install 'mcp>=1.30,<2' || rc=1
+                    fi
+                    step "MCP plugin pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
+                        "$venv/bin/python" -m pytest -q plugins/chrono-mcp/tests || rc=1
+                    if [ "$rc" -eq 0 ]; then
+                        step "MCP plugin deployment image" 300 "${compose[@]}" -f deploy/compose/mcp.override.yaml build chrono-mcp || rc=1
+                        step "MCP plugin container entrypoint" 30 "${compose[@]}" -f deploy/compose/mcp.override.yaml \
+                            run --rm --no-deps chrono-mcp --help || rc=1
+                    fi
+                fi
             fi
         fi
     else
@@ -162,6 +190,7 @@ if [ "${RBUILD_HELD:-}" != stack ]; then
     exec 8>"$HOME/chronolog-sprint/stack.lock"
     echo "-- waiting for shared stack lock"
     flock 8
+    export RBUILD_HELD=stack
 fi
 
 for engine in $engines; do

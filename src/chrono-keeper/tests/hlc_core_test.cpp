@@ -38,6 +38,21 @@ TEST(HlcCore, LogicalOverflowCarriesIntoPhysical)
     EXPECT_EQ(b, (Hlc{101, 0}));
 }
 
+TEST(SystemClock, BoundSourceLossKeepsRealtimeAcceptance)
+{
+    SystemClockSource source;
+    source.realtime_ns = [] { return std::optional<int64_t>(100'000'000'000); };
+    source.status = [] { return ClockStatus::Unavailable; };
+    source.uncertainty_ns = [] { return std::optional<uint64_t>{}; };
+    SystemClock clock(std::move(source));
+    EXPECT_EQ(clock.now()->status, ClockStatus::Unavailable);
+    auto assignment = clock.assignChecked({}, {100'000'000'000, 100'000'000'000, false});
+    ASSERT_TRUE(assignment.ok()) << assignment.status();
+    EXPECT_EQ(assignment->acceptance_clock_ns, 100'000'000'000);
+    EXPECT_GE(assignment->hlc.physical_ns, 100'000'000'000);
+    EXPECT_GE(clock.tick().physical_ns, 100'000'000'000);
+}
+
 TEST(SystemClock, KernelSourceIsUnsyncedWithoutBound)
 {
     SystemClock clock;

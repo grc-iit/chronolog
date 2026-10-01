@@ -29,6 +29,15 @@ public:
      * UnknownStoryCannotValidate.
      */
     virtual absl::StatusOr<Route> route(StoryId id) const = 0;
+    virtual absl::StatusOr<RouteState> routeState(StoryId id) const
+    {
+        auto r = route(id);
+        if(!r.ok())
+            return r.status();
+        RouteState state;
+        state.route = *r;
+        return state;
+    }
 
     /**
      * Check append ownership against the current route epoch.

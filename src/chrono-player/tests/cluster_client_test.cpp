@@ -12,7 +12,11 @@ class CatalogSnapshot final: public internal::v1::Cluster::Service
 public:
     std::atomic<StoryId> story{0};
     std::atomic<int> calls{0};
+    std::atomic<uint64_t> epoch{1};
+    std::atomic<uint64_t> revision{0};
     std::atomic<bool> fail{false};
+    std::atomic<bool> state_fields{false};
+    std::atomic<bool> second_story{false};
     grpc::Status Register(grpc::ServerContext*,
                           const internal::v1::RegisterRequest*,
                           internal::v1::RegisterResponse* response) override
@@ -24,10 +28,35 @@ public:
         {
             auto* update = response->add_routes();
             update->set_story_id(id);
-            update->mutable_route()->set_epoch(1);
+            update->mutable_route()->set_epoch(epoch);
+            update->set_revision(revision);
             auto* keeper = update->mutable_route()->add_keepers();
             keeper->set_process_id("keeper-1");
             keeper->set_endpoint("keeper:50052");
+            if(state_fields)
+            {
+                response->mutable_policy()->set_skew_limit_ns(17);
+                update->set_physical_policy(true);
+                update->mutable_archived_below()->set_physical_ns(revision);
+                update->mutable_ordering_cut()->set_physical_ns(900);
+                auto* p = update->add_predecessors();
+                p->mutable_keeper()->set_process_id("old");
+                p->mutable_keeper()->set_endpoint("old:50052");
+                p->set_instance("old-instance");
+                p->set_epoch(1);
+                p->mutable_own_cut()->set_physical_ns(200);
+                p->set_own_physical_ceiling_ns(300);
+                auto* lost = update->add_abandoned();
+                lost->mutable_start()->set_physical_ns(120);
+                lost->mutable_end()->set_physical_ns(150);
+            }
+            if(second_story)
+            {
+                auto* second = response->add_routes();
+                second->set_story_id(41);
+                second->set_revision(5);
+                second->mutable_route()->set_epoch(1);
+            }
         }
         return grpc::Status::OK;
     }
@@ -78,5 +107,80 @@ TEST(PlayerClusterClientTest, LearnsNewStoryOnImmediateCacheMiss)
     EXPECT_EQ(catalog.calls, 6);
     server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
 }
+TEST(PlayerClusterClientTest, RejectsLowerRevisionAndEpochSnapshots)
+{
+    CatalogSnapshot catalog;
+    catalog.story = 42;
+    catalog.epoch = 3;
+    catalog.revision = 10;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&catalog);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ClusterClient player(grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()),
+                         {"player-1", "instance", "player:50054", ProcessRole::Player},
+                         std::chrono::milliseconds(1000));
+    ASSERT_TRUE(player.registerSelf().ok());
+    catalog.revision = 9;
+    catalog.epoch = 4;
+    ASSERT_TRUE(player.registerSelf().ok());
+    ASSERT_TRUE(player.route(42).ok());
+    EXPECT_EQ(player.route(42)->epoch, 3);
+    catalog.revision = 11;
+    catalog.epoch = 2;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(42)->epoch, 3);
+    catalog.epoch = 4;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(42)->epoch, 4);
+    catalog.story = 99;
+    catalog.revision = 9;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(99).status().code(), absl::StatusCode::kNotFound);
+    server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
+}
 } // namespace
+TEST(PlayerClusterClientTest, PreservesRouteStateAndRefreshesDynamicSnapshots)
+{
+    CatalogSnapshot catalog;
+    catalog.story = 42;
+    catalog.revision = 10;
+    catalog.epoch = 2;
+    catalog.state_fields = true;
+    catalog.second_story = true;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&catalog);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ClusterClient player(grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()),
+                         {"player", "instance", "player:50054", ProcessRole::Player},
+                         std::chrono::milliseconds(500));
+    ASSERT_TRUE(player.registerSelf().ok());
+    auto older_story = player.route(41);
+    ASSERT_TRUE(older_story.ok());
+    auto state = player.routeState(42);
+    ASSERT_TRUE(state.ok());
+    ASSERT_EQ(state->predecessors.size(), 1);
+    EXPECT_EQ(state->predecessors[0].instance, "old-instance");
+    EXPECT_EQ(state->predecessors[0].own_cut, (Hlc{200, 0}));
+    EXPECT_EQ(state->predecessors[0].own_physical_ceiling_ns, 300);
+    EXPECT_EQ(state->ordering_cut, (Hlc{900, 0}));
+    ASSERT_EQ(state->abandoned.size(), 1);
+    EXPECT_EQ(state->abandoned[0].start, (Hlc{120, 0}));
+    EXPECT_TRUE(player.physicalPolicy(42));
+    EXPECT_EQ(player.skewLimitNs(), 17);
+    catalog.revision = 11;
+    state = player.routeState(42);
+    ASSERT_TRUE(state.ok());
+    EXPECT_EQ(state->archived_below, (Hlc{11, 0}));
+    catalog.revision = 9;
+    state = player.routeState(42);
+    ASSERT_TRUE(state.ok());
+    EXPECT_EQ(state->archived_below, (Hlc{11, 0}));
+    server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(1));
+}
 } // namespace chronolog::player

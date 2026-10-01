@@ -16,7 +16,7 @@
 #include "adapter/ArchiveService.h"
 #include "adapter/Convert.h"
 #include "adapter/JournalService.h"
-#include "clock/SystemClock.h"
+#include "clock/KernelClock.h"
 #include "wal/WalJournal.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
@@ -86,21 +86,23 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_BLOCK, &signals, nullptr);
 
     using namespace chronolog;
-    auto clock = std::make_shared<SystemClock>();
+    auto clock = std::make_shared<KernelClock>();
     grpc::ChannelArguments channel_args;
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
     auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
     const std::string instance = newInstanceId();
     auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
+    auto policy_version = std::make_shared<std::atomic<uint64_t>>(0);
     auto membership = std::make_shared<keeper::ConfigMembership>(
             config->static_routes,
-            [route_stub, process_id = config->process_id, endpoint = config->self_endpoint, instance](
+            [route_stub, process_id = config->process_id, endpoint = config->self_endpoint, instance, policy_version](
                     StoryId story) -> absl::StatusOr<Route>
             {
                 grpc::ClientContext context;
                 context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
                 internal::v1::RegisterRequest request;
+                request.set_policy_version(policy_version->load());
                 auto* process = request.mutable_process();
                 process->set_process_id(process_id);
                 process->set_instance(instance);
@@ -139,6 +141,7 @@ int main(int argc, char** argv)
         return 1;
     }
     auto& journal = *owned_journal;
+    *policy_version = journal.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
 
@@ -181,6 +184,13 @@ int main(int argc, char** argv)
                                   journal,
                                   *membership,
                                   acquisitions);
+    if(auto status = cluster.registerNow(); absl::IsFailedPrecondition(status))
+    {
+        std::cerr << "chrono_keeper: registration refused: " << status << "\n";
+        internal_server->Shutdown();
+        public_server->Shutdown();
+        return 1;
+    }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
     keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);

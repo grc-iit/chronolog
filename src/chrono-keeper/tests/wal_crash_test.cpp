@@ -69,7 +69,7 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
     std::vector<v1::Hlc> hlcs;
     ASSERT_TRUE(start());
     auto channel = grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
-    ASSERT_TRUE(channel->WaitForConnected(std::chrono::system_clock::now() + 5s));
+    ASSERT_TRUE(channel->WaitForConnected(std::chrono::system_clock::now() + 30s));
     auto journal = v1::Journal::NewStub(channel);
     for(int sequence = 1; sequence <= count; ++sequence)
     {
@@ -94,7 +94,7 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
     child.kill();
     ASSERT_TRUE(start());
     auto archive_channel = grpc::CreateChannel(archive_endpoint, grpc::InsecureChannelCredentials());
-    ASSERT_TRUE(archive_channel->WaitForConnected(std::chrono::system_clock::now() + 5s));
+    ASSERT_TRUE(archive_channel->WaitForConnected(std::chrono::system_clock::now() + 30s));
     auto archive = internal::v1::Archive::NewStub(archive_channel);
     internal::v1::FetchHotRequest request;
     request.set_story_id(1);

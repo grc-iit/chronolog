@@ -94,13 +94,32 @@ class ScannedWalJournal final: public WalJournal
 public:
     using WalJournal::WalJournal;
     std::function<void()> scanned;
+    void onAssignment(std::function<void(Hlc)> hook)
+    {
+        std::lock_guard lock(assignment_mu_);
+        assigned_ = std::move(hook);
+    }
 
 protected:
+    void assignmentObserved(Hlc hlc) override
+    {
+        std::function<void(Hlc)> hook;
+        {
+            std::lock_guard lock(assignment_mu_);
+            hook = assigned_;
+        }
+        if(hook)
+            hook(hlc);
+    }
     void writerScanned(WriterKey) const override
     {
         if(scanned)
             scanned();
     }
+
+private:
+    std::mutex assignment_mu_;
+    std::function<void(Hlc)> assigned_;
 };
 
 struct WalRig

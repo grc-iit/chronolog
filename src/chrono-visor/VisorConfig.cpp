@@ -76,7 +76,9 @@ absl::StatusOr<uint32_t> parseUint(const std::string& key, const std::string& te
 
 absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
 {
-    static const std::set<std::string> known = {"listen",
+    static const std::set<std::string> known = {"membership_mode",
+                                                "raft",
+                                                "listen",
                                                 "internal_listen",
                                                 "db_path",
                                                 "keepers",
@@ -84,6 +86,7 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
                                                 "graphers",
                                                 "player",
                                                 "heartbeat_timeout_ms",
+                                                "keeper_failure_timeout_ms",
                                                 "release_fence_timeout_ms",
                                                 "worker_threads",
                                                 "insecure_bind_all"};
@@ -94,6 +97,22 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
             return absl::InvalidArgumentError(absl::StrCat("unknown configuration key ", key));
     try
     {
+        if(json.contains("membership_mode"))
+            cfg.membership_mode = json.at("membership_mode").get<std::string>();
+        if(json.contains("raft"))
+        {
+            const auto& r = json.at("raft");
+            cfg.raft.server_id = r.at("server_id").get<int32_t>();
+            cfg.raft.raft_endpoint = r.at("raft_endpoint").get<std::string>();
+            cfg.raft.election_lower_ms = r.value("election_lower_ms", 300u);
+            cfg.raft.election_upper_ms = r.value("election_upper_ms", 600u);
+            cfg.raft.heartbeat_ms = r.value("heartbeat_ms", 75u);
+            for(const auto& p: r.at("peers"))
+                cfg.raft.peers.push_back({p.at("id").get<int32_t>(),
+                                          p.at("raft_endpoint").get<std::string>(),
+                                          p.at("catalog_endpoint").get<std::string>(),
+                                          p.at("internal_endpoint").get<std::string>()});
+        }
         if(json.contains("listen"))
             cfg.listen = json.at("listen").get<std::string>();
         if(json.contains("internal_listen"))
@@ -119,6 +138,8 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
             cfg.player = json.at("player").get<std::string>();
         if(json.contains("heartbeat_timeout_ms"))
             cfg.heartbeat_timeout_ms = json.at("heartbeat_timeout_ms").get<uint32_t>();
+        if(json.contains("keeper_failure_timeout_ms"))
+            cfg.heartbeat_timeout_ms = json.at("keeper_failure_timeout_ms").get<uint32_t>();
         if(json.contains("release_fence_timeout_ms"))
             cfg.release_fence_timeout_ms = json.at("release_fence_timeout_ms").get<uint32_t>();
         if(json.contains("worker_threads"))
@@ -162,6 +183,8 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
         const char* value = getenv(("CHRONOLOG_VISOR_" + upper(key)).c_str());
         return value ? std::optional<std::string>(value) : std::nullopt;
     };
+    if(auto v = env("membership_mode"))
+        cfg.membership_mode = *v;
     if(auto v = env("listen"))
         cfg.listen = *v;
     if(auto v = env("internal_listen"))
@@ -186,6 +209,7 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
     if(auto v = env("player"))
         cfg.player = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
+                            {"keeper_failure_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
                             {"worker_threads", &cfg.worker_threads}})
     {
@@ -213,6 +237,26 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
 
 absl::Status VisorConfig::validate() const
 {
+    if(membership_mode != "static" && membership_mode != "dynamic")
+        return absl::InvalidArgumentError("membership_mode must be static or dynamic");
+    if(membership_mode == "dynamic")
+    {
+        std::set<int32_t> ids;
+        std::set<std::string> endpoints;
+        bool self = false;
+        for(const auto& p: raft.peers)
+        {
+            if(p.id <= 0 || p.raft_endpoint.empty() || p.catalog_endpoint.empty() || p.internal_endpoint.empty() ||
+               !ids.insert(p.id).second || !endpoints.insert(p.raft_endpoint).second)
+                return absl::InvalidArgumentError("invalid or duplicate raft peer");
+            if(p.id == raft.server_id)
+                self = p.raft_endpoint == raft.raft_endpoint;
+        }
+        if(!self || raft.peers.size() % 2 == 0 || raft.election_upper_ms > INT32_MAX || raft.heartbeat_ms > INT32_MAX ||
+           raft.heartbeat_ms == 0 || raft.election_lower_ms <= 2 * raft.heartbeat_ms ||
+           raft.election_upper_ms < raft.election_lower_ms)
+            return absl::InvalidArgumentError("invalid raft membership or timings");
+    }
     if(listen.empty() || internal_listen.empty() || db_path.empty() || (grapher.empty() && graphers.empty()) ||
        player.empty())
         return absl::InvalidArgumentError("listen, internal_listen, db_path, grapher and player must be set");

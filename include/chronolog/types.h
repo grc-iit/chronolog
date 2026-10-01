@@ -49,6 +49,25 @@ struct TimeReading
     std::optional<uint64_t> uncertainty_ns;
     ClockStatus status{ClockStatus::Unavailable};
 };
+struct PhysicalPolicy
+{
+    int64_t acceptance_window_ns{15'000'000'000};
+    int64_t skew_limit_ns{60'000'000'000};
+    int64_t hlc_lead_ns{61'000'000'000};
+    uint64_t uncertainty_cap_ns{1'000'000'000};
+    uint64_t version{1};
+    auto operator<=>(const PhysicalPolicy&) const = default;
+};
+struct PhysicalInterval
+{
+    int64_t lo{}, hi{};
+    bool bounded{};
+};
+struct CheckedAssignment
+{
+    Hlc hlc;
+    int64_t acceptance_clock_ns{};
+};
 // Unspecified requests Durable and is never an achieved durability level.
 enum class Durability
 {
@@ -56,10 +75,11 @@ enum class Durability
     Accepted = 1,
     Durable = 2
 };
-struct KeeperRef {
- std::string process_id;
- std::string endpoint;
- auto operator<=>(const KeeperRef&) const = default;
+struct KeeperRef
+{
+    std::string process_id;
+    std::string endpoint;
+    auto operator<=>(const KeeperRef&) const = default;
 };
 struct Route
 {
@@ -152,6 +172,23 @@ struct Range
     // Exclusive HLC bound, or physical ns bound when Range::Axis is Physical.
     Hlc end;
 }; // [start,end); Physical ignores logical.
+struct Predecessor
+{
+    KeeperRef keeper;
+    std::string instance;
+    Epoch epoch{};
+    Hlc own_cut;
+    int64_t own_physical_ceiling_ns{};
+};
+struct RouteState
+{
+    Route route;
+    Hlc ordering_cut;
+    int64_t physical_floor{};
+    std::vector<Predecessor> predecessors;
+    Hlc archived_below;
+    std::vector<Range> abandoned;
+};
 // Keeper-sealed exclusive frontier: every event below F is visible, and no future
 // event can be assigned below F. Shared by all writers on that Keeper, even idle
 // writers. Pending DURABLE fsync prevents seal advancing beyond that event HLC.
@@ -230,6 +267,7 @@ struct Chunk
     std::vector<Event> events;
     // Salvage data remains readable but cannot advance contiguous watermark.
     bool exempt{};
+    bool physical_policy{};
 };
 enum class ManifestState
 {
@@ -258,6 +296,7 @@ struct ManifestRecord
     ManifestState state{ManifestState::Published};
     // Salvage data remains readable but cannot advance contiguous watermark.
     bool exempt{};
+    bool physical_policy{};
 };
 struct ChunkReceipt
 {

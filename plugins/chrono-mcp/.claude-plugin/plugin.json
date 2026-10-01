@@ -1,5 +1,5 @@
 {
-  "name": "clio-chronolog",
-  "description": "ChronoLog MCP server implementation using Model Context Protocol",
-  "version": "1.0.0"
+  "name": "chronolog-mcp",
+  "description": "Durable conversation logging, story management and Replay with explicit completeness.",
+  "version": "4.0.0"
 }

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: ChronoLog telemetry
+    folder: ChronoLog
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

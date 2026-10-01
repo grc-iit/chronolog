@@ -140,3 +140,32 @@ TEST(ArchiveTransferTest, FetchHotOfWriterlessStoryStillCarriesSealedFrontier)
 // Appends race every FetchHot. Whatever the stream returned, every event the journal ends up
 // holding below the trailer frontier must have been in that stream.
 } // namespace chronolog
+
+namespace chronolog
+{
+TEST(ArchiveTransferTest, PhysicalFilterCountsOnlyIntervalMatches)
+{
+    test::AdapterRig rig;
+    auto first = Item(1), second = Item(2), third = Item(3);
+    first.physical = {10, 1, ClockStatus::Synced};
+    second.physical = {100, 10, ClockStatus::Synced};
+    third.physical = {200, 1, ClockStatus::Synced};
+    auto appended = rig.rig.journal->append({1, 7, {first, second, third}}, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    for(const auto& result: *appended) ASSERT_TRUE(result.status.ok());
+    auto request = AllRequest(1);
+    request.mutable_physical_filter()->set_start_ns(105);
+    request.mutable_physical_filter()->set_end_ns(110);
+    auto fetched = FetchAll(*rig.archive, request);
+    ASSERT_TRUE(fetched.status.ok());
+    ASSERT_EQ(fetched.events.size(), 1u);
+    EXPECT_EQ(fetched.events.front().id().sequence(), 2u);
+    EXPECT_FALSE(fetched.trailer.truncated());
+    EXPECT_TRUE(fetched.trailer.has_physical_frontier_ns());
+    request.mutable_physical_filter()->set_start_ns(0);
+    request.mutable_physical_filter()->set_end_ns(250);
+    fetched = FetchAll(*rig.archive, request);
+    EXPECT_EQ(fetched.events.size(), 1u);
+    EXPECT_TRUE(fetched.trailer.truncated());
+}
+} // namespace chronolog

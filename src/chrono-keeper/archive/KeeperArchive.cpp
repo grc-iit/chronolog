@@ -440,6 +440,7 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     do {
         iv1::TransferChunkRequest frame;
         auto* identity = frame.mutable_identity();
+        identity->set_physical_policy(journal_.hasPhysicalPolicy());
         identity->set_chunk_id(chunk.id);
         identity->set_story_id(chunk.story_id);
         *identity->mutable_start() = convert::toProto(chunk.start);
