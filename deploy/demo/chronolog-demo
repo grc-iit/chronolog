@@ -25,7 +25,7 @@ if [ -f "$root/SHA256SUMS" ] && [ -d "$root/images" ]; then
     plugin_dir=$root/viz-plugin wheels=$root/wheels
 else
     mode=source
-    state=$root/build/demo bin=$root/build/demo-bin lib=$root/build/dev/client/cpp
+    state=$root/build/demo bin=$root/build/demo-bin lib=$root/build/lib
     venv=$root/build/smoke-venv plugin_dir=$root/build/viz/dist wheels=$root/build/smoke/wheels
 fi
 
@@ -133,7 +133,7 @@ need_images() {
 }
 
 ensure_venv() {
-    if [ -x "$venv/bin/python" ] && "$venv/bin/python" -c 'import chronolog' > /dev/null 2>&1; then return; fi
+    if [ -x "$venv/bin/python" ] && "$venv/bin/python" -c 'import chronolog, mcp, opentelemetry.sdk.trace' > /dev/null 2>&1; then return; fi
     [ "$mode" = source ] || die "no usable $venv; run 'chronolog-demo load'"
     ls "$wheels"/chronolog-4.0.0-*.whl > /dev/null 2>&1 || die "no chronolog wheel in $wheels; run 'chronolog-demo build'"
     note "creating $venv"
@@ -145,7 +145,7 @@ ensure_venv() {
 endpoints() {
     printf '%-12s %s\n' Visor 127.0.0.1:50051 Keeper 127.0.0.1:50052 Player 127.0.0.1:50054
     if [ "$(cat "$state/full" 2> /dev/null || echo "$full")" = 1 ]; then
-        printf '%-12s %s\n' Grafana "http://127.0.0.1:3000 (admin / chronolog-viz-password)" \
+        printf '%-12s %s\n' Grafana "http://127.0.0.1:3000 (admin / admin)" \
             "Viz backend" http://127.0.0.1:8087 InfluxDB http://127.0.0.1:8086 \
             Dashboards "http://127.0.0.1:3000/d/chronolog-stream  http://127.0.0.1:3000/d/chronolog-events"
     fi
@@ -253,7 +253,7 @@ cmd_bundle() {
     "$venv/bin/python" -m pip download --quiet --dest "$out/wheels/deps" "$out"/wheels/chronolog-4.0.0-*.whl \
         "$out"/wheels/chronolog_mcp-4.0.0-*.whl 'opentelemetry-sdk>=1.39,<2' 'mcp>=1.30,<2'
     cp "$bin"/* "$out/bin/"
-    cp -L "$root/build/dev/client/cpp/libchronolog_client.so.4" "$out/lib/"
+    cp -a "$lib"/. "$out/lib/"
     cp -r "$plugin_dir"/. "$out/viz-plugin/"
     local f
     for f in compose smoke.override demo.override stream.override viz.override demo-full.override; do

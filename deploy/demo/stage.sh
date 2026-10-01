@@ -32,13 +32,15 @@ case "${1:-}" in
     binaries)
         root=${2:?root}
         stage=$root/build/image-stage
-        rm -rf "$stage" "$root/build/demo-bin"
-        mkdir -p "$stage" "$root/build/demo-bin"
+        rm -rf "$stage" "$root/build/demo-bin" "$root/build/lib"
+        mkdir -p "$stage" "$root/build/demo-bin" "$root/build/lib"
         for target in "${runtime_targets[@]}"; do
             cp "$(find_binary "$root" "$target")" "$stage/"
         done
         cp "$root/deploy/containers/entrypoint.sh" "$stage/"
         cp -L "$root/build/dev/client/cpp/libchronolog_client.so.4" "$stage/"
+        cp -L "$root/build/dev/client/cpp/libchronolog_client.so.4" "$root/build/lib/"
+        ln -sf libchronolog_client.so.4 "$root/build/lib/libchronolog_client.so"
         for target in "${cli_targets[@]}"; do
             name=$(binary_name "$target")
             cp "$(find_binary "$root" "$name")" "$root/build/demo-bin/"

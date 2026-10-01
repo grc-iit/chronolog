@@ -3,6 +3,8 @@
 # bundle, where chronolog-demo exports them.
 services:
   grafana:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${CHRONOLOG_DEMO_GRAFANA_PASSWORD:-admin}
     volumes:
       - ${CHRONOLOG_DEMO_GRAFANA_DIR:-../grafana/demo}/datasources:/etc/grafana/provisioning/datasources:ro
       - ${CHRONOLOG_DEMO_GRAFANA_DIR:-../grafana/demo}/dashboards/events.json:/var/lib/grafana/dashboards/events.json:ro
