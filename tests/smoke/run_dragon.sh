@@ -96,7 +96,7 @@ run_engine() {
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
-        step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/mvp/chronolog_sql_example \
+        step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
