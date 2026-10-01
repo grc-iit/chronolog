@@ -43,9 +43,8 @@ TEST(sqlite_restart, ThirdAcquireAfterReopenGetsIncarnationThreeAndTheSameWriter
         ASSERT_TRUE(second.ok());
         EXPECT_EQ(second->incarnation, 2u);
         EXPECT_EQ(second->writer_id, writer_id);
+        ASSERT_TRUE(store->release(story, second->writer_id, second->incarnation).ok());
     }
-    // The second incarnation was never released, as after a writer crash. The store
-    // is closed and reopened, and the next acquire supersedes it.
     auto reopened = openStore(dir);
     ASSERT_NE(reopened, nullptr);
     auto third = reopened->acquire(story, "w1");
@@ -64,6 +63,9 @@ TEST(sqlite_restart, IdsAndRevisionsKeepIncreasingAcrossReopen)
         ASSERT_NE(store, nullptr);
         ASSERT_TRUE(store->createChronicle("c").ok());
         first_story = store->createStory("c", "s1")->id;
+        auto held = store->acquire(first_story, "w");
+        ASSERT_TRUE(held.ok());
+        ASSERT_TRUE(store->release(first_story, held->writer_id, held->incarnation).ok());
         ASSERT_TRUE(store->acquire(first_story, "w").ok());
         revision_before = store->snapshotAcquisitions()->revision;
         EXPECT_GT(revision_before, 0u);
@@ -76,8 +78,8 @@ TEST(sqlite_restart, IdsAndRevisionsKeepIncreasingAcrossReopen)
     ASSERT_EQ(snapshot->active.size(), 1u);
     EXPECT_EQ(snapshot->active[0].story_id, first_story);
     EXPECT_EQ(store->createStory("c", "s2")->id, first_story + 1);
-    auto acquired = store->acquire(first_story, "w");
-    ASSERT_TRUE(acquired.ok());
+    auto active = snapshot->active[0];
+    ASSERT_TRUE(store->release(first_story, active.writer_id, active.incarnation).ok());
     EXPECT_GT(store->snapshotAcquisitions()->revision, revision_before);
 }
 

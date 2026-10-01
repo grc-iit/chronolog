@@ -15,20 +15,30 @@ InMemoryMetadataStore::InMemoryMetadataStore(Topology topology, FenceWaiter fenc
     , fence_waiter_(std::move(fence_waiter))
 {}
 
+size_t InMemoryMetadataStore::findChronicle(const std::string& name) const
+{
+    size_t found = kNoChronicle;
+    for(size_t i = 0; i < chronicles_.size(); ++i)
+    {
+        if(chronicles_[i].name != name)
+            continue;
+        if(!chronicles_[i].tombstoned)
+            return i;
+        found = i;
+    }
+    return found;
+}
+
 absl::StatusOr<Chronicle> InMemoryMetadataStore::createChronicle(std::string name)
 {
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    auto it = chronicles_.find(name);
-    if(it != chronicles_.end())
-    {
-        return it->second.tombstoned ? absl::FailedPreconditionError("chronicle was destroyed")
-                                     : absl::AlreadyExistsError("chronicle exists");
-    }
-    Chronicle created{name, false};
-    chronicles_.emplace(std::move(name), created);
-    return created;
+    const size_t existing = findChronicle(name);
+    if(existing != kNoChronicle && !chronicles_[existing].tombstoned)
+        return absl::AlreadyExistsError("chronicle exists");
+    chronicles_.push_back(Chronicle{std::move(name), false});
+    return chronicles_.back();
 }
 
 absl::StatusOr<Chronicle> InMemoryMetadataStore::getChronicle(std::string name) const
@@ -36,20 +46,16 @@ absl::StatusOr<Chronicle> InMemoryMetadataStore::getChronicle(std::string name) 
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    auto it = chronicles_.find(name);
-    if(it == chronicles_.end())
+    const size_t index = findChronicle(name);
+    if(index == kNoChronicle)
         return absl::NotFoundError("unknown chronicle");
-    return it->second;
+    return chronicles_[index];
 }
 
 absl::StatusOr<std::vector<Chronicle>> InMemoryMetadataStore::listChronicles() const
 {
     std::lock_guard lock(mutex_);
-    std::vector<Chronicle> out;
-    out.reserve(chronicles_.size());
-    for(const auto& [name, chronicle]: chronicles_)
-        out.push_back(chronicle);
-    return out;
+    return chronicles_;
 }
 
 bool InMemoryMetadataStore::hasActiveAcquisition(StoryId id) const
@@ -65,15 +71,17 @@ absl::Status InMemoryMetadataStore::destroyChronicle(std::string name)
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    auto it = chronicles_.find(name);
-    if(it == chronicles_.end())
+    const size_t index = findChronicle(name);
+    if(index == kNoChronicle)
         return absl::NotFoundError("unknown chronicle");
+    if(chronicles_[index].tombstoned)
+        return absl::OkStatus();
     for(const auto& [id, story]: stories_)
-        if(story.chronicle == name && hasActiveAcquisition(id))
+        if(parent_.at(id) == index && hasActiveAcquisition(id))
             return absl::FailedPreconditionError("story has an active acquisition");
-    it->second.tombstoned = true;
+    chronicles_[index].tombstoned = true;
     for(auto& [id, story]: stories_)
-        if(story.chronicle == name)
+        if(parent_.at(id) == index)
             story.tombstoned = true;
     return absl::OkStatus();
 }
@@ -83,21 +91,17 @@ absl::StatusOr<Story> InMemoryMetadataStore::createStory(std::string chronicle, 
     if(!validName(chronicle) || !validName(name))
         return absl::InvalidArgumentError("invalid chronicle or story name");
     std::lock_guard lock(mutex_);
-    auto parent = chronicles_.find(chronicle);
-    if(parent == chronicles_.end())
+    const size_t parent = findChronicle(chronicle);
+    if(parent == kNoChronicle)
         return absl::NotFoundError("unknown chronicle");
-    if(parent->second.tombstoned)
+    if(chronicles_[parent].tombstoned)
         return absl::FailedPreconditionError("chronicle was destroyed");
     for(const auto& [id, story]: stories_)
-    {
-        if(story.chronicle == chronicle && story.name == name)
-        {
-            return story.tombstoned ? absl::FailedPreconditionError("story was destroyed")
-                                    : absl::AlreadyExistsError("story exists");
-        }
-    }
+        if(parent_.at(id) == parent && story.name == name && !story.tombstoned)
+            return absl::AlreadyExistsError("story exists");
     Story created{++last_story_id_, std::move(chronicle), std::move(name), kInitialEpoch, false};
     stories_.emplace(created.id, created);
+    parent_.emplace(created.id, parent);
     return created;
 }
 
@@ -115,11 +119,12 @@ absl::StatusOr<std::vector<Story>> InMemoryMetadataStore::listStories(std::strin
     if(!validName(chronicle))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    if(chronicles_.find(chronicle) == chronicles_.end())
+    const size_t parent = findChronicle(chronicle);
+    if(parent == kNoChronicle)
         return absl::NotFoundError("unknown chronicle");
     std::vector<Story> out;
     for(const auto& [id, story]: stories_)
-        if(story.chronicle == chronicle)
+        if(parent_.at(id) == parent)
             out.push_back(story);
     return out;
 }
@@ -157,8 +162,8 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
         if(!keeper.ok())
             return keeper.status();
         AcquisitionRow& row = acquisitions_[{id, writer_id}];
-        // A writer that re-acquires while still active supersedes its previous
-        // incarnation, which is how a crashed writer recovers.
+        if(row.incarnation != 0 && !row.released)
+            return absl::FailedPreconditionError("writer identity already holds an active acquisition");
         row.incarnation += 1;
         row.released = false;
         row.assigned_keeper = *keeper;
@@ -174,14 +179,23 @@ absl::StatusOr<ReleaseResult> InMemoryMetadataStore::release(StoryId id, uint64_
     AcquisitionChange change;
     {
         std::lock_guard lock(mutex_);
-        auto it = acquisitions_.find({id, writer_id});
-        if(it == acquisitions_.end())
-            return absl::NotFoundError("unknown acquisition");
-        if(it->second.released || it->second.incarnation != incarnation)
-            return absl::FailedPreconditionError("incarnation is stale or already released");
-        it->second.released = true;
-        change = {++revision_, id, writer_id, incarnation, it->second.assigned_keeper, AcquisitionState::Released};
-        notify(change);
+        auto prior = releases_.find({id, writer_id, incarnation});
+        if(prior != releases_.end())
+        {
+            change = prior->second;
+        }
+        else
+        {
+            auto it = acquisitions_.find({id, writer_id});
+            if(it == acquisitions_.end() || it->second.incarnation < incarnation)
+                return absl::NotFoundError("unknown acquisition");
+            if(it->second.incarnation != incarnation || it->second.released)
+                return absl::FailedPreconditionError("incarnation is stale");
+            it->second.released = true;
+            change = {++revision_, id, writer_id, incarnation, it->second.assigned_keeper, AcquisitionState::Released};
+            releases_[{id, writer_id, incarnation}] = change;
+            notify(change);
+        }
     }
     // The wait happens outside the store lock so a slow Keeper never stalls the Catalog.
     const bool fenced = fence_waiter_ && fence_waiter_(change.assigned_keeper, change.revision);

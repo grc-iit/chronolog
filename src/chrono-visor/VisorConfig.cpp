@@ -34,6 +34,19 @@ std::vector<std::string> splitCommaList(const std::string& text)
     return out;
 }
 
+absl::StatusOr<std::vector<KeeperRef>> parseKeepers(const std::string& text)
+{
+    std::vector<KeeperRef> out;
+    for(const std::string& item: splitCommaList(text))
+    {
+        const auto eq = item.find('=');
+        if(eq == std::string::npos)
+            return absl::InvalidArgumentError(absl::StrCat("keepers entry ", item, " is not process_id=endpoint"));
+        out.push_back(KeeperRef{item.substr(0, eq), item.substr(eq + 1)});
+    }
+    return out;
+}
+
 absl::StatusOr<bool> parseBool(const std::string& key, const std::string& text)
 {
     std::string lower = text;
@@ -87,7 +100,12 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
         if(json.contains("db_path"))
             cfg.db_path = json.at("db_path").get<std::string>();
         if(json.contains("keepers"))
-            cfg.keepers = json.at("keepers").get<std::vector<std::string>>();
+        {
+            cfg.keepers.clear();
+            for(const auto& item: json.at("keepers"))
+                cfg.keepers.push_back(
+                        KeeperRef{item.at("process_id").get<std::string>(), item.at("endpoint").get<std::string>()});
+        }
         if(json.contains("grapher"))
             cfg.grapher = json.at("grapher").get<std::string>();
         if(json.contains("player"))
@@ -132,7 +150,8 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
             return applied;
     }
 
-    auto env = [&](const char* key) -> std::optional<std::string> {
+    auto env = [&](const char* key) -> std::optional<std::string>
+    {
         const char* value = getenv(("CHRONOLOG_VISOR_" + upper(key)).c_str());
         return value ? std::optional<std::string>(value) : std::nullopt;
     };
@@ -143,7 +162,12 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
     if(auto v = env("db_path"))
         cfg.db_path = *v;
     if(auto v = env("keepers"))
-        cfg.keepers = splitCommaList(*v);
+    {
+        auto parsed = parseKeepers(*v);
+        if(!parsed.ok())
+            return parsed.status();
+        cfg.keepers = std::move(*parsed);
+    }
     if(auto v = env("grapher"))
         cfg.grapher = *v;
     if(auto v = env("player"))
@@ -178,15 +202,18 @@ absl::Status VisorConfig::validate() const
 {
     if(listen.empty() || internal_listen.empty() || db_path.empty() || grapher.empty() || player.empty())
         return absl::InvalidArgumentError("listen, internal_listen, db_path, grapher and player must be set");
-    if(keepers.empty() || std::any_of(keepers.begin(), keepers.end(), [](const std::string& k) { return k.empty(); }))
-        return absl::InvalidArgumentError("keepers must list at least one endpoint");
+    if(keepers.empty() || std::any_of(keepers.begin(),
+                                      keepers.end(),
+                                      [](const KeeperRef& k) { return k.process_id.empty() || k.endpoint.empty(); }))
+        return absl::InvalidArgumentError("keepers must list at least one {process_id, endpoint}");
     if(worker_threads == 0)
         return absl::InvalidArgumentError("worker_threads must be positive");
     const std::string host = hostOf(internal_listen);
     const bool wildcard = host.empty() || host == "0.0.0.0" || host == "[::]" || host == "::" || host == "*";
     if(wildcard && !insecure_bind_all)
     {
-        return absl::FailedPreconditionError(absl::StrCat("internal_listen ", internal_listen,
+        return absl::FailedPreconditionError(absl::StrCat("internal_listen ",
+                                                          internal_listen,
                                                           " binds every interface; bind the cluster interface or set "
                                                           "insecure_bind_all"));
     }

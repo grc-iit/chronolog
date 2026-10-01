@@ -16,12 +16,15 @@ namespace
 // and holds open until shutdown or cancellation. The Subscription behind `pull` and
 // the service registry own it through shared_ptr, so a late wake() is harmless.
 template <class Msg>
-class WriteStream final: public grpc::ServerWriteReactor<Msg>,
-                         public ClusterService::Stream,
-                         public std::enable_shared_from_this<WriteStream<Msg>>
+class WriteStream final
+    : public grpc::ServerWriteReactor<Msg>
+    , public ClusterService::Stream
+    , public std::enable_shared_from_this<WriteStream<Msg>>
 {
 public:
-    WriteStream(std::deque<Msg> initial, std::function<std::optional<Msg>()> pull, std::function<bool()> failed,
+    WriteStream(std::deque<Msg> initial,
+                std::function<std::optional<Msg>()> pull,
+                std::function<bool()> failed,
                 std::function<void(ClusterService::Stream*)> on_done)
         : pending_(std::move(initial))
         , pull_(std::move(pull))
@@ -133,7 +136,7 @@ v1::TimeReading nowReading()
     const auto since_epoch = std::chrono::system_clock::now().time_since_epoch();
     reading.set_physical_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(since_epoch).count());
     // The Visor has no chrony bound yet, so it reports Unsynced with no uncertainty.
-    reading.set_status(v1::UNSYNCED);
+    reading.set_status(v1::CLOCK_STATUS_UNSYNCED);
     return reading;
 }
 
@@ -146,8 +149,10 @@ uint64_t authorityTickNs()
 
 } // namespace
 
-ClusterService::ClusterService(StaticRouteMembership& membership, const MetadataStore& store,
-                               const AcquisitionLedger& ledger, AcquisitionFeed& feed)
+ClusterService::ClusterService(StaticRouteMembership& membership,
+                               const MetadataStore& store,
+                               const AcquisitionLedger& ledger,
+                               AcquisitionFeed& feed)
     : membership_(membership)
     , store_(store)
     , ledger_(ledger)
@@ -162,6 +167,12 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     auto process = convert::fromProto(request->process());
     absl::Status status = process.ok() ? membership_.registerProcess(*process) : process.status();
     *response->mutable_status() = convert::toProto(status);
+    if(status.ok())
+    {
+        auto routes = routeSnapshot();
+        if(routes.ok())
+            for(auto& route: *routes) *response->add_routes() = std::move(route);
+    }
     *response->mutable_physical() = nowReading();
     response->set_authority_tick_ns(authorityTickNs());
     reactor->Finish(grpc::Status::OK);
@@ -173,7 +184,8 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                                                     internal::v1::HeartbeatResponse* response)
 {
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    absl::Status status = membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
+    absl::Status status =
+            membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
     *response->mutable_status() = convert::toProto(status);
     *response->mutable_physical() = nowReading();
     response->set_authority_tick_ns(authorityTickNs());
@@ -191,18 +203,23 @@ grpc::ServerWriteReactor<Msg>* ClusterService::startStream(std::deque<Msg> initi
     std::lock_guard lock(mutex_);
     if(closed_)
         return new FailedStream<Msg>(grpc::Status(grpc::StatusCode::UNAVAILABLE, "visor is shutting down"));
-    auto stream = std::make_shared<WriteStream<Msg>>(
-            std::move(initial), std::move(pull), std::move(failed), [this, cleanup = std::move(cleanup)](Stream* done) {
-                if(cleanup)
-                    cleanup();
-                forget(done);
-            });
+    auto stream = std::make_shared<WriteStream<Msg>>(std::move(initial),
+                                                     std::move(pull),
+                                                     std::move(failed),
+                                                     [this, cleanup = std::move(cleanup)](Stream* done)
+                                                     {
+                                                         if(cleanup)
+                                                             cleanup();
+                                                         forget(done);
+                                                     });
     streams_.insert(stream);
     if(attach)
-        attach([weak = std::weak_ptr<Stream>(stream)]() {
-            if(auto strong = weak.lock())
-                strong->wake();
-        });
+        attach(
+                [weak = std::weak_ptr<Stream>(stream)]()
+                {
+                    if(auto strong = weak.lock())
+                        strong->wake();
+                });
     stream->wake();
     return stream.get();
 }
@@ -225,22 +242,19 @@ void ClusterService::forget(Stream* stream)
     // `released` drops the last reference here, outside the registry lock.
 }
 
-grpc::ServerWriteReactor<internal::v1::RouteUpdate>* ClusterService::WatchRoutes(
-        grpc::CallbackServerContext*, const internal::v1::RouteSubscription*)
+absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnapshot() const
 {
-    std::deque<internal::v1::RouteUpdate> snapshot;
+    std::vector<internal::v1::RouteUpdate> out;
     auto chronicles = store_.listChronicles();
     if(!chronicles.ok())
-        return new FailedStream<internal::v1::RouteUpdate>(
-                grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(chronicles.status().message())));
+        return chronicles.status();
     for(const auto& chronicle: *chronicles)
     {
         if(chronicle.tombstoned)
             continue;
         auto stories = store_.listStories(chronicle.name);
         if(!stories.ok())
-            return new FailedStream<internal::v1::RouteUpdate>(
-                    grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(stories.status().message())));
+            return stories.status();
         for(const auto& story: *stories)
         {
             if(story.tombstoned)
@@ -251,33 +265,59 @@ grpc::ServerWriteReactor<internal::v1::RouteUpdate>* ClusterService::WatchRoutes
             internal::v1::RouteUpdate update;
             update.set_story_id(story.id);
             *update.mutable_route() = convert::toProto(*route);
-            snapshot.push_back(std::move(update));
+            out.push_back(std::move(update));
         }
     }
-    return startStream<internal::v1::RouteUpdate>(std::move(snapshot), nullptr, nullptr, nullptr, nullptr);
+    return out;
 }
 
-grpc::ServerWriteReactor<internal::v1::AcquisitionUpdate>* ClusterService::WatchAcquisitions(
-        grpc::CallbackServerContext*, const internal::v1::AcquisitionSubscription*)
+grpc::ServerWriteReactor<internal::v1::WatchRoutesResponse>*
+ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::WatchRoutesRequest*)
 {
-    // The subscription carries the ledger snapshot first, then every later change.
-    // Each Keeper filters on assigned_keeper, so one stream shape serves all of them.
-    auto subscription = feed_.subscribe(ledger_);
+    auto routes = routeSnapshot();
+    if(!routes.ok())
+        return new FailedStream<internal::v1::WatchRoutesResponse>(
+                grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(routes.status().message())));
+    std::deque<internal::v1::WatchRoutesResponse> snapshot;
+    for(auto& update: *routes)
+    {
+        internal::v1::WatchRoutesResponse message;
+        message.set_story_id(update.story_id());
+        *message.mutable_route() = std::move(*update.mutable_route());
+        snapshot.push_back(std::move(message));
+    }
+    return startStream<internal::v1::WatchRoutesResponse>(std::move(snapshot), nullptr, nullptr, nullptr, nullptr);
+}
+
+grpc::ServerWriteReactor<internal::v1::WatchAcquisitionsResponse>*
+ClusterService::WatchAcquisitions(grpc::CallbackServerContext*, const internal::v1::WatchAcquisitionsRequest* request)
+{
+    if(request->keeper_id().empty())
+        return new FailedStream<internal::v1::WatchAcquisitionsResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "keeper_id is required"));
+    // The subscription registers for changes before it reads the ledger, so the
+    // snapshot at revision R and the queued changes above R leave no gap.
+    auto subscription = feed_.subscribe(ledger_, request->keeper_id());
     if(!subscription.ok())
-        return new FailedStream<internal::v1::AcquisitionUpdate>(
+        return new FailedStream<internal::v1::WatchAcquisitionsResponse>(
                 grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(subscription.status().message())));
     std::shared_ptr<AcquisitionFeed::Subscription> sub = *subscription;
-    auto* reactor = startStream<internal::v1::AcquisitionUpdate>(
-            {},
-            [sub]() -> std::optional<internal::v1::AcquisitionUpdate> {
+    std::deque<internal::v1::WatchAcquisitionsResponse> initial;
+    *initial.emplace_back().mutable_snapshot() = convert::toProto(sub->snapshot());
+    return startStream<internal::v1::WatchAcquisitionsResponse>(
+            std::move(initial),
+            [sub]() -> std::optional<internal::v1::WatchAcquisitionsResponse>
+            {
                 auto change = sub->pop();
                 if(!change)
                     return std::nullopt;
-                return convert::toProto(*change);
+                internal::v1::WatchAcquisitionsResponse message;
+                *message.mutable_update() = convert::toProto(*change);
+                return message;
             },
-            [sub]() { return sub->overflowed(); }, [sub](std::function<void()> wake) { sub->setWakeup(std::move(wake)); },
+            [sub]() { return sub->overflowed(); },
+            [sub](std::function<void()> wake) { sub->setWakeup(std::move(wake)); },
             [sub]() { sub->setWakeup(nullptr); });
-    return reactor;
 }
 
 void ClusterService::shutdown()
@@ -288,8 +328,7 @@ void ClusterService::shutdown()
         closed_ = true;
         open = streams_;
     }
-    for(auto& stream: open)
-        stream->shutdown();
+    for(auto& stream: open) stream->shutdown();
 }
 
 } // namespace chronolog::visor

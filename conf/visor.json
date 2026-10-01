@@ -2,7 +2,7 @@
   "listen": "0.0.0.0:50051",
   "internal_listen": "127.0.0.1:50061",
   "db_path": "./catalog.sqlite",
-  "keepers": ["chrono-keeper:50052"],
+  "keepers": [{"process_id": "keeper-1", "endpoint": "chrono-keeper:50052"}],
   "grapher": "chrono-grapher:50053",
   "player": "chrono-player:50054",
   "heartbeat_timeout_ms": 15000,

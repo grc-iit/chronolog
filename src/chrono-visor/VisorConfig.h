@@ -9,12 +9,14 @@
 #include <absl/status/status.h>
 #include <absl/status/statusor.h>
 
+#include "chronolog/types.h"
+
 namespace chronolog::visor
 {
 
 // Visor configuration. Keys come from a JSON file and are overridden by environment
 // variables named CHRONOLOG_VISOR_<KEY>, for example CHRONOLOG_VISOR_DB_PATH. The
-// keepers key is a comma separated list in the environment.
+// keepers key is a comma separated list of process_id=endpoint pairs in the environment.
 struct VisorConfig
 {
     std::string listen = "0.0.0.0:50051";
@@ -22,7 +24,7 @@ struct VisorConfig
     std::string internal_listen = "127.0.0.1:50061";
     // Relative to the working directory, so a local run needs no privileges.
     std::string db_path = "./catalog.sqlite";
-    std::vector<std::string> keepers = {"chrono-keeper:50052"};
+    std::vector<KeeperRef> keepers = {{"keeper-1", "chrono-keeper:50052"}};
     std::string grapher = "chrono-grapher:50053";
     std::string player = "chrono-player:50054";
     // TBD in section 13 of ARCHITECTURE.md; this PR proposes 15000.
@@ -36,8 +38,9 @@ struct VisorConfig
     using Getenv = std::function<const char*(const char*)>;
 
     // Defaults, then the JSON file when `path` is given, then the environment.
-    static absl::StatusOr<VisorConfig> load(const std::optional<std::string>& path,
-                                            const Getenv& getenv = [](const char* name) { return std::getenv(name); });
+    static absl::StatusOr<VisorConfig> load(
+            const std::optional<std::string>& path,
+            const Getenv& getenv = [](const char* name) { return std::getenv(name); });
 
     absl::Status validate() const;
 };

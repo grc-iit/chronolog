@@ -13,7 +13,7 @@ namespace chronolog::visor
 // the Route returned by acquire, and StaticRouteMembership serves it from route().
 struct Topology
 {
-    std::vector<std::string> keepers;
+    std::vector<KeeperRef> keepers;
     std::string grapher;
     std::string player;
 
@@ -21,7 +21,7 @@ struct Topology
 
     // The single Keeper for a writer. The mapping depends only on writer_id and the
     // keeper list, so it is stable for every acquire within one epoch (I7.5).
-    absl::StatusOr<std::string> assignKeeper(uint64_t writer_id, Epoch) const
+    absl::StatusOr<KeeperRef> assignKeeper(uint64_t writer_id, Epoch) const
     {
         if(keepers.empty())
             return absl::FailedPreconditionError("topology has no keepers");

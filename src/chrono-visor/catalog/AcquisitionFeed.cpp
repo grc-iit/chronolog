@@ -6,6 +6,17 @@
 namespace chronolog::visor
 {
 
+bool AcquisitionFeed::Subscription::matches(const AcquisitionChange& change) const
+{
+    return keeper_id_.empty() || change.assigned_keeper.process_id == keeper_id_;
+}
+
+AcquisitionSnapshot AcquisitionFeed::Subscription::snapshot() const
+{
+    std::lock_guard lock(mutex_);
+    return snapshot_;
+}
+
 std::optional<AcquisitionChange> AcquisitionFeed::Subscription::pop()
 {
     std::lock_guard lock(mutex_);
@@ -30,6 +41,8 @@ void AcquisitionFeed::Subscription::setWakeup(std::function<void()> wakeup)
 
 void AcquisitionFeed::Subscription::push(const AcquisitionChange& change)
 {
+    if(!matches(change))
+        return;
     std::function<void()> wakeup;
     {
         std::lock_guard lock(mutex_);
@@ -54,16 +67,21 @@ void AcquisitionFeed::Subscription::seed(const AcquisitionSnapshot& snapshot)
 {
     std::lock_guard lock(mutex_);
     std::erase_if(queue_, [&](const AcquisitionChange& c) { return c.revision <= snapshot.revision; });
-    queue_.insert(queue_.begin(), snapshot.active.begin(), snapshot.active.end());
+    snapshot_.revision = snapshot.revision;
+    snapshot_.active.clear();
+    for(const auto& change: snapshot.active)
+        if(matches(change))
+            snapshot_.active.push_back(change);
 }
 
 AcquisitionFeed::AcquisitionFeed(size_t subscription_capacity)
     : capacity_(subscription_capacity)
 {}
 
-absl::StatusOr<std::shared_ptr<AcquisitionFeed::Subscription>> AcquisitionFeed::subscribe(const AcquisitionLedger& ledger)
+absl::StatusOr<std::shared_ptr<AcquisitionFeed::Subscription>>
+AcquisitionFeed::subscribe(const AcquisitionLedger& ledger, const std::string& keeper_id)
 {
-    auto subscription = std::make_shared<Subscription>(capacity_);
+    auto subscription = std::make_shared<Subscription>(capacity_, keeper_id);
     {
         std::lock_guard lock(mutex_);
         subscriptions_.push_back(subscription);
@@ -80,16 +98,17 @@ void AcquisitionFeed::onAcquisitionChange(const AcquisitionChange& change)
     std::vector<std::shared_ptr<Subscription>> live;
     {
         std::lock_guard lock(mutex_);
-        std::erase_if(subscriptions_, [&](const std::weak_ptr<Subscription>& w) {
-            auto strong = w.lock();
-            if(!strong)
-                return true;
-            live.push_back(std::move(strong));
-            return false;
-        });
+        std::erase_if(subscriptions_,
+                      [&](const std::weak_ptr<Subscription>& w)
+                      {
+                          auto strong = w.lock();
+                          if(!strong)
+                              return true;
+                          live.push_back(std::move(strong));
+                          return false;
+                      });
     }
-    for(auto& subscription: live)
-        subscription->push(change);
+    for(auto& subscription: live) subscription->push(change);
 }
 
 } // namespace chronolog::visor

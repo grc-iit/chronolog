@@ -111,12 +111,11 @@ private:
     bool committed_{};
 };
 
-#define CHRONOLOG_RETURN_IF_ERROR(expr)   \
-    do                                    \
-    {                                     \
-        absl::Status status__ = (expr);   \
-        if(!status__.ok())                \
-            return status__;              \
+#define CHRONOLOG_RETURN_IF_ERROR(expr)                                                                                \
+    do {                                                                                                               \
+        absl::Status status__ = (expr);                                                                                \
+        if(!status__.ok())                                                                                             \
+            return status__;                                                                                           \
     } while(false)
 
 absl::StatusOr<uint64_t> nextCounter(sqlite3* db, const char* name)
@@ -153,17 +152,26 @@ absl::StatusOr<uint64_t> currentCounter(sqlite3* db, const char* name)
     return select.column(0);
 }
 
-absl::StatusOr<std::optional<Chronicle>> loadChronicle(sqlite3* db, const std::string& name)
+struct ChronicleRow
 {
-    Statement s(db, "SELECT name, tombstoned FROM chronicles WHERE name = ?1");
+    uint64_t id{};
+    Chronicle chronicle;
+};
+
+// The live identity for a name, else the most recently destroyed one.
+absl::StatusOr<std::optional<ChronicleRow>> loadChronicle(sqlite3* db, const std::string& name)
+{
+    Statement s(db,
+                "SELECT id, name, tombstoned FROM chronicles WHERE name = ?1"
+                " ORDER BY tombstoned ASC, id DESC LIMIT 1");
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     s.text(1, name);
     auto row = s.step();
     if(!row.ok())
         return row.status();
     if(!*row)
-        return std::optional<Chronicle>();
-    return std::optional<Chronicle>(Chronicle{s.columnText(0), s.column(1) != 0});
+        return std::optional<ChronicleRow>();
+    return std::optional<ChronicleRow>(ChronicleRow{s.column(0), Chronicle{s.columnText(1), s.column(2) != 0}});
 }
 
 Story readStory(const Statement& s)
@@ -196,9 +204,8 @@ absl::StatusOr<bool> storyHasActiveAcquisition(sqlite3* db, StoryId id)
 
 } // namespace
 
-absl::StatusOr<std::unique_ptr<SqliteMetadataStore>> SqliteMetadataStore::open(const std::string& path,
-                                                                                 Topology topology,
-                                                                                 FenceWaiter fence_waiter)
+absl::StatusOr<std::unique_ptr<SqliteMetadataStore>>
+SqliteMetadataStore::open(const std::string& path, Topology topology, FenceWaiter fence_waiter)
 {
     sqlite3* db = nullptr;
     const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
@@ -209,7 +216,8 @@ absl::StatusOr<std::unique_ptr<SqliteMetadataStore>> SqliteMetadataStore::open(c
         sqlite3_close(db);
         return s;
     }
-    std::unique_ptr<SqliteMetadataStore> store(new SqliteMetadataStore(db, std::move(topology), std::move(fence_waiter)));
+    std::unique_ptr<SqliteMetadataStore> store(
+            new SqliteMetadataStore(db, std::move(topology), std::move(fence_waiter)));
     absl::Status init = store->initialize();
     if(!init.ok())
         return init;
@@ -222,10 +230,7 @@ SqliteMetadataStore::SqliteMetadataStore(sqlite3* db, Topology topology, FenceWa
     , fence_waiter_(std::move(fence_waiter))
 {}
 
-SqliteMetadataStore::~SqliteMetadataStore()
-{
-    sqlite3_close(db_);
-}
+SqliteMetadataStore::~SqliteMetadataStore() { sqlite3_close(db_); }
 
 absl::Status SqliteMetadataStore::initialize()
 {
@@ -242,39 +247,58 @@ absl::Status SqliteMetadataStore::initialize()
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL)"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE TABLE IF NOT EXISTS chronicles("
-        " name TEXT PRIMARY KEY,"
-        " tombstoned INTEGER NOT NULL DEFAULT 0)"));
+                                   "CREATE TABLE IF NOT EXISTS chronicles("
+                                   " id INTEGER PRIMARY KEY,"
+                                   " name TEXT NOT NULL,"
+                                   " tombstoned INTEGER NOT NULL DEFAULT 0)"));
+    // A destroyed name can be created again with a new identity.
+    CHRONOLOG_RETURN_IF_ERROR(
+            exec(db_,
+                 "CREATE UNIQUE INDEX IF NOT EXISTS chronicles_live_name ON chronicles(name) WHERE tombstoned = 0"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE TABLE IF NOT EXISTS stories("
-        " id INTEGER PRIMARY KEY,"
-        " chronicle TEXT NOT NULL REFERENCES chronicles(name),"
-        " name TEXT NOT NULL,"
-        " epoch INTEGER NOT NULL,"
-        " tombstoned INTEGER NOT NULL DEFAULT 0)"));
+                                   "CREATE TABLE IF NOT EXISTS stories("
+                                   " id INTEGER PRIMARY KEY,"
+                                   " chronicle_id INTEGER NOT NULL REFERENCES chronicles(id),"
+                                   " chronicle TEXT NOT NULL,"
+                                   " name TEXT NOT NULL,"
+                                   " epoch INTEGER NOT NULL,"
+                                   " tombstoned INTEGER NOT NULL DEFAULT 0)"));
     // SQLite has no table level UNIQUE ... WHERE, so live name uniqueness is a
     // partial unique index.
+    CHRONOLOG_RETURN_IF_ERROR(exec(
+            db_,
+            "CREATE UNIQUE INDEX IF NOT EXISTS stories_live_name ON stories(chronicle_id, name) WHERE tombstoned = 0"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE UNIQUE INDEX IF NOT EXISTS stories_live_name ON stories(chronicle, name) WHERE tombstoned = 0"));
+                                   "CREATE TABLE IF NOT EXISTS writers("
+                                   " writer_identity TEXT PRIMARY KEY,"
+                                   " writer_id INTEGER NOT NULL UNIQUE)"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE TABLE IF NOT EXISTS writers("
-        " writer_identity TEXT PRIMARY KEY,"
-        " writer_id INTEGER NOT NULL UNIQUE)"));
+                                   "CREATE TABLE IF NOT EXISTS acquisitions("
+                                   " story_id INTEGER NOT NULL REFERENCES stories(id),"
+                                   " writer_id INTEGER NOT NULL REFERENCES writers(writer_id),"
+                                   " incarnation INTEGER NOT NULL,"
+                                   " released INTEGER NOT NULL DEFAULT 0,"
+                                   " keeper_id TEXT NOT NULL,"
+                                   " keeper_endpoint TEXT NOT NULL,"
+                                   " PRIMARY KEY(story_id, writer_id))"));
+    // One row per committed release, so a retried release returns the revision it
+    // first committed and never allocates another.
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE TABLE IF NOT EXISTS acquisitions("
-        " story_id INTEGER NOT NULL REFERENCES stories(id),"
-        " writer_id INTEGER NOT NULL REFERENCES writers(writer_id),"
-        " incarnation INTEGER NOT NULL,"
-        " released INTEGER NOT NULL DEFAULT 0,"
-        " assigned_keeper TEXT NOT NULL,"
-        " PRIMARY KEY(story_id, writer_id))"));
+                                   "CREATE TABLE IF NOT EXISTS releases("
+                                   " story_id INTEGER NOT NULL,"
+                                   " writer_id INTEGER NOT NULL,"
+                                   " incarnation INTEGER NOT NULL,"
+                                   " revision INTEGER NOT NULL,"
+                                   " keeper_id TEXT NOT NULL,"
+                                   " keeper_endpoint TEXT NOT NULL,"
+                                   " PRIMARY KEY(story_id, writer_id, incarnation))"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "CREATE TABLE IF NOT EXISTS counters("
-        " name TEXT PRIMARY KEY,"
-        " value INTEGER NOT NULL)"));
+                                   "CREATE TABLE IF NOT EXISTS counters("
+                                   " name TEXT PRIMARY KEY,"
+                                   " value INTEGER NOT NULL)"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
-        "INSERT OR IGNORE INTO counters(name, value) VALUES"
-        " ('story_id', 0), ('writer_id', 0), ('acquisition_revision', 0)"));
+                                   "INSERT OR IGNORE INTO counters(name, value) VALUES"
+                                   " ('story_id', 0), ('writer_id', 0), ('acquisition_revision', 0)"));
 
     Statement version(db_, "SELECT version FROM schema_version LIMIT 1");
     CHRONOLOG_RETURN_IF_ERROR(version.prepared());
@@ -320,11 +344,8 @@ absl::StatusOr<Chronicle> SqliteMetadataStore::createChronicle(std::string name)
     auto existing = loadChronicle(db_, name);
     if(!existing.ok())
         return existing.status();
-    if(*existing)
-    {
-        return (*existing)->tombstoned ? absl::FailedPreconditionError("chronicle was destroyed")
-                                       : absl::AlreadyExistsError("chronicle exists");
-    }
+    if(*existing && !(*existing)->chronicle.tombstoned)
+        return absl::AlreadyExistsError("chronicle exists");
     Statement insert(db_, "INSERT INTO chronicles(name, tombstoned) VALUES (?1, 0)");
     CHRONOLOG_RETURN_IF_ERROR(insert.prepared());
     insert.text(1, name);
@@ -345,13 +366,13 @@ absl::StatusOr<Chronicle> SqliteMetadataStore::getChronicle(std::string name) co
         return existing.status();
     if(!*existing)
         return absl::NotFoundError("unknown chronicle");
-    return **existing;
+    return (*existing)->chronicle;
 }
 
 absl::StatusOr<std::vector<Chronicle>> SqliteMetadataStore::listChronicles() const
 {
     std::lock_guard lock(mutex_);
-    Statement s(db_, "SELECT name, tombstoned FROM chronicles ORDER BY name");
+    Statement s(db_, "SELECT name, tombstoned FROM chronicles ORDER BY id");
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     std::vector<Chronicle> out;
     while(true)
@@ -378,12 +399,15 @@ absl::Status SqliteMetadataStore::destroyChronicle(std::string name)
         return existing.status();
     if(!*existing)
         return absl::NotFoundError("unknown chronicle");
+    if((*existing)->chronicle.tombstoned)
+        return absl::OkStatus();
+    const uint64_t chronicle_id = (*existing)->id;
     {
         Statement active(db_,
                          "SELECT 1 FROM acquisitions a JOIN stories s ON s.id = a.story_id"
-                         " WHERE s.chronicle = ?1 AND a.released = 0 LIMIT 1");
+                         " WHERE s.chronicle_id = ?1 AND a.released = 0 LIMIT 1");
         CHRONOLOG_RETURN_IF_ERROR(active.prepared());
-        active.text(1, name);
+        active.integer(1, chronicle_id);
         auto row = active.step();
         if(!row.ok())
             return row.status();
@@ -391,16 +415,16 @@ absl::Status SqliteMetadataStore::destroyChronicle(std::string name)
             return absl::FailedPreconditionError("story has an active acquisition");
     }
     {
-        Statement stories(db_, "UPDATE stories SET tombstoned = 1 WHERE chronicle = ?1");
+        Statement stories(db_, "UPDATE stories SET tombstoned = 1 WHERE chronicle_id = ?1");
         CHRONOLOG_RETURN_IF_ERROR(stories.prepared());
-        stories.text(1, name);
+        stories.integer(1, chronicle_id);
         auto done = stories.step();
         if(!done.ok())
             return done.status();
     }
-    Statement chronicle(db_, "UPDATE chronicles SET tombstoned = 1 WHERE name = ?1");
+    Statement chronicle(db_, "UPDATE chronicles SET tombstoned = 1 WHERE id = ?1");
     CHRONOLOG_RETURN_IF_ERROR(chronicle.prepared());
-    chronicle.text(1, name);
+    chronicle.integer(1, chronicle_id);
     auto done = chronicle.step();
     if(!done.ok())
         return done.status();
@@ -419,27 +443,26 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
         return parent.status();
     if(!*parent)
         return absl::NotFoundError("unknown chronicle");
-    if((*parent)->tombstoned)
+    if((*parent)->chronicle.tombstoned)
         return absl::FailedPreconditionError("chronicle was destroyed");
     {
-        Statement dup(db_, "SELECT tombstoned FROM stories WHERE chronicle = ?1 AND name = ?2");
+        Statement dup(db_, "SELECT 1 FROM stories WHERE chronicle_id = ?1 AND name = ?2 AND tombstoned = 0");
         CHRONOLOG_RETURN_IF_ERROR(dup.prepared());
-        dup.text(1, chronicle).text(2, name);
+        dup.integer(1, (*parent)->id).text(2, name);
         auto row = dup.step();
         if(!row.ok())
             return row.status();
         if(*row)
-        {
-            return dup.column(0) != 0 ? absl::FailedPreconditionError("story was destroyed")
-                                      : absl::AlreadyExistsError("story exists");
-        }
+            return absl::AlreadyExistsError("story exists");
     }
     auto id = nextCounter(db_, "story_id");
     if(!id.ok())
         return id.status();
-    Statement insert(db_, "INSERT INTO stories(id, chronicle, name, epoch, tombstoned) VALUES (?1, ?2, ?3, ?4, 0)");
+    Statement insert(db_,
+                     "INSERT INTO stories(id, chronicle_id, chronicle, name, epoch, tombstoned)"
+                     " VALUES (?1, ?2, ?3, ?4, ?5, 0)");
     CHRONOLOG_RETURN_IF_ERROR(insert.prepared());
-    insert.integer(1, *id).text(2, chronicle).text(3, name).integer(4, kInitialEpoch);
+    insert.integer(1, *id).integer(2, (*parent)->id).text(3, chronicle).text(4, name).integer(5, kInitialEpoch);
     auto done = insert.step();
     if(!done.ok())
         return done.status();
@@ -468,9 +491,10 @@ absl::StatusOr<std::vector<Story>> SqliteMetadataStore::listStories(std::string 
         return parent.status();
     if(!*parent)
         return absl::NotFoundError("unknown chronicle");
-    Statement s(db_, (std::string("SELECT ") + kStoryColumns + " FROM stories WHERE chronicle = ?1 ORDER BY id").c_str());
+    Statement s(db_,
+                (std::string("SELECT ") + kStoryColumns + " FROM stories WHERE chronicle_id = ?1 ORDER BY id").c_str());
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
-    s.text(1, chronicle);
+    s.integer(1, (*parent)->id);
     std::vector<Story> out;
     while(true)
     {
@@ -550,26 +574,32 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
 
     uint64_t incarnation = 1;
     {
-        Statement prior(db_, "SELECT incarnation FROM acquisitions WHERE story_id = ?1 AND writer_id = ?2");
+        Statement prior(db_, "SELECT incarnation, released FROM acquisitions WHERE story_id = ?1 AND writer_id = ?2");
         CHRONOLOG_RETURN_IF_ERROR(prior.prepared());
         prior.integer(1, id).integer(2, writer_id);
         auto row = prior.step();
         if(!row.ok())
             return row.status();
-        // A writer that re-acquires while still active supersedes its previous
-        // incarnation, which is how a crashed writer recovers.
         if(*row)
+        {
+            if(prior.column(1) == 0)
+                return absl::FailedPreconditionError("writer identity already holds an active acquisition");
             incarnation = prior.column(0) + 1;
+        }
     }
     auto keeper = topology_.assignKeeper(writer_id, (*story)->epoch);
     if(!keeper.ok())
         return keeper.status();
     {
         Statement upsert(db_,
-                         "INSERT OR REPLACE INTO acquisitions(story_id, writer_id, incarnation, released, assigned_keeper)"
-                         " VALUES (?1, ?2, ?3, 0, ?4)");
+                         "INSERT OR REPLACE INTO acquisitions(story_id, writer_id, incarnation, released, keeper_id,"
+                         " keeper_endpoint) VALUES (?1, ?2, ?3, 0, ?4, ?5)");
         CHRONOLOG_RETURN_IF_ERROR(upsert.prepared());
-        upsert.integer(1, id).integer(2, writer_id).integer(3, incarnation).text(4, *keeper);
+        upsert.integer(1, id)
+                .integer(2, writer_id)
+                .integer(3, incarnation)
+                .text(4, keeper->process_id)
+                .text(5, keeper->endpoint);
         auto done = upsert.step();
         if(!done.ok())
             return done.status();
@@ -591,37 +621,76 @@ absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t 
         std::lock_guard lock(mutex_);
         Transaction txn(db_);
         CHRONOLOG_RETURN_IF_ERROR(txn.begun());
-        std::string keeper;
+        KeeperRef keeper;
+        bool retried = false;
         {
-            Statement find(db_,
-                           "SELECT incarnation, released, assigned_keeper FROM acquisitions"
-                           " WHERE story_id = ?1 AND writer_id = ?2");
-            CHRONOLOG_RETURN_IF_ERROR(find.prepared());
-            find.integer(1, id).integer(2, writer_id);
-            auto row = find.step();
+            Statement done_before(db_,
+                                  "SELECT revision, keeper_id, keeper_endpoint FROM releases"
+                                  " WHERE story_id = ?1 AND writer_id = ?2 AND incarnation = ?3");
+            CHRONOLOG_RETURN_IF_ERROR(done_before.prepared());
+            done_before.integer(1, id).integer(2, writer_id).integer(3, incarnation);
+            auto row = done_before.step();
             if(!row.ok())
                 return row.status();
-            if(!*row)
-                return absl::NotFoundError("unknown acquisition");
-            if(find.column(1) != 0 || find.column(0) != incarnation)
-                return absl::FailedPreconditionError("incarnation is stale or already released");
-            keeper = find.columnText(2);
+            if(*row)
+            {
+                retried = true;
+                change = {done_before.column(0),
+                          id,
+                          writer_id,
+                          incarnation,
+                          KeeperRef{done_before.columnText(1), done_before.columnText(2)},
+                          AcquisitionState::Released};
+            }
         }
+        if(!retried)
         {
-            Statement update(db_, "UPDATE acquisitions SET released = 1 WHERE story_id = ?1 AND writer_id = ?2");
-            CHRONOLOG_RETURN_IF_ERROR(update.prepared());
-            update.integer(1, id).integer(2, writer_id);
-            auto done = update.step();
-            if(!done.ok())
-                return done.status();
+            {
+                Statement find(db_,
+                               "SELECT incarnation, released, keeper_id, keeper_endpoint FROM acquisitions"
+                               " WHERE story_id = ?1 AND writer_id = ?2");
+                CHRONOLOG_RETURN_IF_ERROR(find.prepared());
+                find.integer(1, id).integer(2, writer_id);
+                auto row = find.step();
+                if(!row.ok())
+                    return row.status();
+                if(!*row || find.column(0) < incarnation)
+                    return absl::NotFoundError("unknown acquisition");
+                if(find.column(0) != incarnation || find.column(1) != 0)
+                    return absl::FailedPreconditionError("incarnation is stale");
+                keeper = KeeperRef{find.columnText(2), find.columnText(3)};
+            }
+            {
+                Statement update(db_, "UPDATE acquisitions SET released = 1 WHERE story_id = ?1 AND writer_id = ?2");
+                CHRONOLOG_RETURN_IF_ERROR(update.prepared());
+                update.integer(1, id).integer(2, writer_id);
+                auto done = update.step();
+                if(!done.ok())
+                    return done.status();
+            }
+            auto revision = nextCounter(db_, "acquisition_revision");
+            if(!revision.ok())
+                return revision.status();
+            {
+                Statement record(db_,
+                                 "INSERT INTO releases(story_id, writer_id, incarnation, revision, keeper_id,"
+                                 " keeper_endpoint) VALUES (?1, ?2, ?3, ?4, ?5, ?6)");
+                CHRONOLOG_RETURN_IF_ERROR(record.prepared());
+                record.integer(1, id)
+                        .integer(2, writer_id)
+                        .integer(3, incarnation)
+                        .integer(4, *revision)
+                        .text(5, keeper.process_id)
+                        .text(6, keeper.endpoint);
+                auto done = record.step();
+                if(!done.ok())
+                    return done.status();
+            }
+            CHRONOLOG_RETURN_IF_ERROR(txn.commit());
+            change = {*revision, id, writer_id, incarnation, std::move(keeper), AcquisitionState::Released};
+            if(observer_)
+                observer_->onAcquisitionChange(change);
         }
-        auto revision = nextCounter(db_, "acquisition_revision");
-        if(!revision.ok())
-            return revision.status();
-        CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-        change = {*revision, id, writer_id, incarnation, std::move(keeper), AcquisitionState::Released};
-        if(observer_)
-            observer_->onAcquisitionChange(change);
     }
     // The wait happens outside the store lock so a slow Keeper never stalls the Catalog.
     const bool fenced = fence_waiter_ && fence_waiter_(change.assigned_keeper, change.revision);
@@ -663,7 +732,7 @@ absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::snapshotAcquisitions() 
         return revision.status();
     snapshot.revision = *revision;
     Statement s(db_,
-                "SELECT story_id, writer_id, incarnation, assigned_keeper FROM acquisitions"
+                "SELECT story_id, writer_id, incarnation, keeper_id, keeper_endpoint FROM acquisitions"
                 " WHERE released = 0 ORDER BY story_id, writer_id");
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     while(true)
@@ -673,8 +742,12 @@ absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::snapshotAcquisitions() 
             return row.status();
         if(!*row)
             break;
-        snapshot.active.push_back(
-                {snapshot.revision, s.column(0), s.column(1), s.column(2), s.columnText(3), AcquisitionState::Acquired});
+        snapshot.active.push_back({snapshot.revision,
+                                   s.column(0),
+                                   s.column(1),
+                                   s.column(2),
+                                   KeeperRef{s.columnText(3), s.columnText(4)},
+                                   AcquisitionState::Acquired});
     }
     return snapshot;
 }

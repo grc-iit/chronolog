@@ -25,7 +25,7 @@ struct AcquisitionChange
     StoryId story_id{};
     uint64_t writer_id{};
     uint64_t incarnation{};
-    std::string assigned_keeper;
+    KeeperRef assigned_keeper;
     AcquisitionState state{AcquisitionState::Acquired};
 };
 
@@ -46,10 +46,10 @@ public:
     virtual void onAcquisitionChange(const AcquisitionChange& change) = 0;
 };
 
-// Blocks until the Keeper serving `keeper_endpoint` has applied `revision` or the
+// Blocks until the Keeper `keeper` has applied `revision` or the
 // configured fence timeout passes. Returns true only on confirmation. A store built
 // without one reports fenced=false from every release.
-using FenceWaiter = std::function<bool(const std::string& keeper_endpoint, uint64_t revision)>;
+using FenceWaiter = std::function<bool(const KeeperRef& keeper, uint64_t revision)>;
 
 // Visor-local extension of MetadataStore. It exposes what the Cluster service needs
 // to tell Keepers about registered writers and to fence a released incarnation.

@@ -22,7 +22,9 @@ public:
     using TimePoint = std::chrono::steady_clock::time_point;
 
     // `exists` tells whether a story is live; it is injected from the Catalog store.
-    StaticRouteMembership(Topology topology, Epoch epoch, std::function<bool(StoryId)> exists,
+    StaticRouteMembership(Topology topology,
+                          Epoch epoch,
+                          std::function<bool(StoryId)> exists,
                           std::chrono::milliseconds heartbeat_timeout,
                           std::function<TimePoint()> now = &std::chrono::steady_clock::now);
 
@@ -31,13 +33,13 @@ public:
     absl::Status registerProcess(Process process) override;
     absl::Status heartbeat(std::string id, std::string instance, uint64_t applied_revision = 0) override;
 
-    // Keeper endpoint for a writer in an epoch. Same function the Catalog uses.
-    absl::StatusOr<std::string> assignKeeper(uint64_t writer_id, Epoch epoch) const;
+    // Keeper for a writer in an epoch. Same function the Catalog uses.
+    absl::StatusOr<KeeperRef> assignKeeper(uint64_t writer_id, Epoch epoch) const;
 
-    // Blocks until the current instance of the Keeper registered at `endpoint` reports an
+    // Blocks until the current instance of the Keeper registered as `process_id` reports an
     // applied revision >= `revision`, or `timeout` passes. Used to confirm a Release
     // fence. Returns false on timeout and when no such Keeper is registered.
-    bool waitApplied(const std::string& endpoint, uint64_t revision, std::chrono::milliseconds timeout) const;
+    bool waitApplied(const std::string& process_id, uint64_t revision, std::chrono::milliseconds timeout) const;
 
     // True when the process registered and its latest heartbeat is newer than the timeout.
     bool alive(const std::string& id) const;

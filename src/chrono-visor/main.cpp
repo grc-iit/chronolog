@@ -81,9 +81,12 @@ int main(int argc, char** argv)
     // through a pointer that is set before the first request can arrive.
     std::atomic<chronolog::visor::StaticRouteMembership*> membership_ptr{nullptr};
     auto store = chronolog::visor::SqliteMetadataStore::open(
-            config->db_path, topology, [&membership_ptr, fence_timeout](const std::string& keeper, uint64_t revision) {
+            config->db_path,
+            topology,
+            [&membership_ptr, fence_timeout](const chronolog::KeeperRef& keeper, uint64_t revision)
+            {
                 auto* membership = membership_ptr.load();
-                return membership && membership->waitApplied(keeper, revision, fence_timeout);
+                return membership && membership->waitApplied(keeper.process_id, revision, fence_timeout);
             });
     if(!store.ok())
     {
@@ -93,8 +96,10 @@ int main(int argc, char** argv)
     chronolog::visor::SqliteMetadataStore& catalog_store = **store;
 
     chronolog::visor::StaticRouteMembership membership(
-            topology, /*epoch=*/1,
-            [&catalog_store](chronolog::StoryId id) {
+            topology,
+            /*epoch=*/1,
+            [&catalog_store](chronolog::StoryId id)
+            {
                 auto story = catalog_store.getStory(id);
                 return story.ok() && !story->tombstoned;
             },
@@ -128,22 +133,24 @@ int main(int argc, char** argv)
               << " listen=" << config->listen << " internal_listen=" << config->internal_listen << std::endl;
 
     std::atomic<bool> finished{false};
-    std::thread watcher([&]() {
-        const timespec poll = {0, 200 * 1000 * 1000};
-        while(!finished.load())
-        {
-            const int received = sigtimedwait(&signals, nullptr, &poll);
-            if(received > 0)
+    std::thread watcher(
+            [&]()
             {
-                std::cout << "chrono_visor shutting down on signal " << received << std::endl;
-                cluster.shutdown();
-                const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
-                internal_server->Shutdown(deadline);
-                public_server->Shutdown(deadline);
-                return;
-            }
-        }
-    });
+                const timespec poll = {0, 200 * 1000 * 1000};
+                while(!finished.load())
+                {
+                    const int received = sigtimedwait(&signals, nullptr, &poll);
+                    if(received > 0)
+                    {
+                        std::cout << "chrono_visor shutting down on signal " << received << std::endl;
+                        cluster.shutdown();
+                        const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
+                        internal_server->Shutdown(deadline);
+                        public_server->Shutdown(deadline);
+                        return;
+                    }
+                }
+            });
 
     public_server->Wait();
     internal_server->Wait();

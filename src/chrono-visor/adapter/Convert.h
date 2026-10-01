@@ -15,9 +15,11 @@ namespace chronolog::visor::convert
 v1::ItemStatus toProto(const absl::Status& status);
 v1::Chronicle toProto(const Chronicle& chronicle);
 v1::Story toProto(const Story& story);
+v1::KeeperRef toProto(const KeeperRef& keeper);
 v1::Route toProto(const Route& route);
 v1::AcquireResponse toAcquireResponse(const Acquisition& acquisition);
 internal::v1::AcquisitionUpdate toProto(const AcquisitionChange& change);
+internal::v1::AcquisitionSnapshot toProto(const AcquisitionSnapshot& snapshot);
 
 absl::StatusOr<Process> fromProto(const internal::v1::Process& process);
 

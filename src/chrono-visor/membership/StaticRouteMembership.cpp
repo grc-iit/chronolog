@@ -7,7 +7,9 @@
 namespace chronolog::visor
 {
 
-StaticRouteMembership::StaticRouteMembership(Topology topology, Epoch epoch, std::function<bool(StoryId)> exists,
+StaticRouteMembership::StaticRouteMembership(Topology topology,
+                                             Epoch epoch,
+                                             std::function<bool(StoryId)> exists,
                                              std::chrono::milliseconds heartbeat_timeout,
                                              std::function<TimePoint()> now)
     : topology_(std::move(topology))
@@ -65,20 +67,24 @@ absl::Status StaticRouteMembership::heartbeat(std::string id, std::string instan
     return absl::OkStatus();
 }
 
-bool StaticRouteMembership::waitApplied(const std::string& endpoint, uint64_t revision,
+bool StaticRouteMembership::waitApplied(const std::string& process_id,
+                                        uint64_t revision,
                                         std::chrono::milliseconds timeout) const
 {
     std::shared_lock lock(mutex_);
-    return applied_cv_.wait_for(lock, std::max(timeout, std::chrono::milliseconds::zero()), [&] {
-        for(const auto& [id, entry]: processes_)
-            if(entry.process.role == ProcessRole::Keeper && entry.process.endpoint == endpoint
-               && entry.applied_revision >= revision)
-                return true;
-        return false;
-    });
+    return applied_cv_.wait_for(lock,
+                                std::max(timeout, std::chrono::milliseconds::zero()),
+                                [&]
+                                {
+                                    for(const auto& [id, entry]: processes_)
+                                        if(entry.process.role == ProcessRole::Keeper &&
+                                           entry.process.id == process_id && entry.applied_revision >= revision)
+                                            return true;
+                                    return false;
+                                });
 }
 
-absl::StatusOr<std::string> StaticRouteMembership::assignKeeper(uint64_t writer_id, Epoch epoch) const
+absl::StatusOr<KeeperRef> StaticRouteMembership::assignKeeper(uint64_t writer_id, Epoch epoch) const
 {
     return topology_.assignKeeper(writer_id, epoch);
 }

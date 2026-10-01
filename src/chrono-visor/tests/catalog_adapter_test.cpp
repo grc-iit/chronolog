@@ -34,13 +34,13 @@ class catalog_adapter: public ::testing::Test
 protected:
     void SetUp() override
     {
-        membership_ = std::make_unique<StaticRouteMembership>(
-                twoKeeperTopology(), 1, [](StoryId) { return true; }, 15s);
+        membership_ =
+                std::make_unique<StaticRouteMembership>(twoKeeperTopology(), 1, [](StoryId) { return true; }, 15s);
         // Fence timeout 50 ms keeps the unconfirmed case fast.
         store_ = std::make_unique<InMemoryMetadataStore>(
-                twoKeeperTopology(), [this](const std::string& keeper, uint64_t revision) {
-                    return membership_->waitApplied(keeper, revision, 50ms);
-                });
+                twoKeeperTopology(),
+                [this](const KeeperRef& keeper, uint64_t revision)
+                { return membership_->waitApplied(keeper.process_id, revision, 50ms); });
         pool_ = std::make_unique<WorkerPool>(2, 64);
         service_ = std::make_unique<CatalogService>(*store_, *pool_);
 
@@ -73,12 +73,12 @@ protected:
     {
         v1::CreateChronicleRequest chronicle;
         chronicle.set_name("c");
-        v1::ChronicleResponse chronicle_response;
+        v1::CreateChronicleResponse chronicle_response;
         EXPECT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, chronicle, &chronicle_response).ok());
         v1::CreateStoryRequest story;
         story.set_chronicle("c");
         story.set_name("s");
-        v1::StoryResponse story_response;
+        v1::CreateStoryResponse story_response;
         EXPECT_TRUE(call(&v1::Catalog::Stub::CreateStory, story, &story_response).ok());
         EXPECT_EQ(story_response.status().code(), 0);
         return story_response.story().story_id();
@@ -121,24 +121,26 @@ TEST_F(catalog_adapter, AcquireCarriesAssignedKeeperEpochOneAndAStableWriterId)
     EXPECT_EQ(first.story_id(), story);
     EXPECT_EQ(first.writer_id(), 1u);
     EXPECT_EQ(first.incarnation(), 1u);
-    EXPECT_EQ(first.epoch(), 1u);
     EXPECT_EQ(first.route().epoch(), 1u);
     ASSERT_EQ(first.route().keepers_size(), 2);
-    EXPECT_TRUE(first.assigned_keeper() == first.route().keepers(0) || first.assigned_keeper() == first.route().keepers(1));
+    EXPECT_TRUE(first.assigned_keeper().process_id() == first.route().keepers(0).process_id() ||
+                first.assigned_keeper().process_id() == first.route().keepers(1).process_id());
+    EXPECT_FALSE(first.assigned_keeper().endpoint().empty());
 
+    EXPECT_EQ(release(first).status().code(), 0);
     auto second = acquire(story, "w1");
     EXPECT_EQ(second.writer_id(), first.writer_id());
     EXPECT_EQ(second.incarnation(), 2u);
-    EXPECT_EQ(second.assigned_keeper(), first.assigned_keeper());
+    EXPECT_EQ(second.assigned_keeper().process_id(), first.assigned_keeper().process_id());
     EXPECT_NE(acquire(story, "w2").writer_id(), first.writer_id());
 }
 
 TEST_F(catalog_adapter, MalformedRequestsFailTheWholeRequestWithInvalidArgument)
 {
-    v1::ChronicleResponse chronicle;
+    v1::CreateChronicleResponse chronicle;
     EXPECT_EQ(call(&v1::Catalog::Stub::CreateChronicle, v1::CreateChronicleRequest(), &chronicle).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
-    v1::StoryResponse story;
+    v1::GetStoryResponse story;
     EXPECT_EQ(call(&v1::Catalog::Stub::GetStory, v1::GetStoryRequest(), &story).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
     v1::AcquireRequest acquire_request;
@@ -149,7 +151,7 @@ TEST_F(catalog_adapter, MalformedRequestsFailTheWholeRequestWithInvalidArgument)
     v1::ReleaseResponse released;
     EXPECT_EQ(call(&v1::Catalog::Stub::Release, v1::ReleaseRequest(), &released).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
-    v1::EpochResponse epoch;
+    v1::CompareAndSetEpochResponse epoch;
     EXPECT_EQ(call(&v1::Catalog::Stub::CompareAndSetEpoch, v1::CompareAndSetEpochRequest(), &epoch).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
 }
@@ -165,32 +167,40 @@ TEST_F(catalog_adapter, WellFormedButStaleRequestsAreDomainResultsNotGrpcErrors)
 
     v1::GetChronicleRequest missing;
     missing.set_name("nope");
-    v1::ChronicleResponse chronicle;
-    EXPECT_TRUE(call(&v1::Catalog::Stub::GetChronicle, missing, &chronicle).ok());
-    EXPECT_EQ(chronicle.status().code(), kNotFound);
+    v1::GetChronicleResponse got;
+    EXPECT_TRUE(call(&v1::Catalog::Stub::GetChronicle, missing, &got).ok());
+    EXPECT_EQ(got.status().code(), kNotFound);
 
     const StoryId story = makeStory();
     v1::CreateChronicleRequest again;
     again.set_name("c");
-    EXPECT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, again, &chronicle).ok());
-    EXPECT_EQ(chronicle.status().code(), kAlreadyExists);
+    v1::CreateChronicleResponse created;
+    EXPECT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, again, &created).ok());
+    EXPECT_EQ(created.status().code(), kAlreadyExists);
 
     // I3.6: destroy while acquired is FAILED_PRECONDITION in the item status.
     auto held = acquire(story, "w1");
     v1::DestroyStoryRequest destroy;
     destroy.set_story_id(story);
-    v1::StatusResponse status;
+    v1::DestroyStoryResponse status;
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyStory, destroy, &status).ok());
     EXPECT_EQ(status.status().code(), kFailedPrecondition);
     v1::DestroyChronicleRequest destroy_chronicle;
     destroy_chronicle.set_name("c");
-    EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyChronicle, destroy_chronicle, &status).ok());
-    EXPECT_EQ(status.status().code(), kFailedPrecondition);
+    v1::DestroyChronicleResponse destroyed;
+    EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyChronicle, destroy_chronicle, &destroyed).ok());
+    EXPECT_EQ(destroyed.status().code(), kFailedPrecondition);
 
-    // An old incarnation cannot release a newer one.
+    // A second acquire with an active identity is refused, and a retried release
+    // returns the revision it first committed.
+    EXPECT_EQ(acquire(story, "w1").status().code(), kFailedPrecondition);
+    auto first_release = release(held);
+    EXPECT_EQ(first_release.status().code(), 0);
     auto newer = acquire(story, "w1");
     EXPECT_GT(newer.incarnation(), held.incarnation());
-    EXPECT_EQ(release(held).status().code(), kFailedPrecondition);
+    auto retry = release(held);
+    EXPECT_EQ(retry.status().code(), 0);
+    EXPECT_EQ(retry.revision(), first_release.revision());
     EXPECT_EQ(release(newer).status().code(), 0);
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyStory, destroy, &status).ok());
     EXPECT_EQ(status.status().code(), 0);
@@ -206,8 +216,13 @@ TEST_F(catalog_adapter, ReleaseReportsFenceState)
     EXPECT_GT(unconfirmed.revision(), 0u);
 
     // The assigned Keeper registers and reports a high applied revision.
-    ASSERT_TRUE(membership_->registerProcess(Process{"keeper-x", "i1", first.assigned_keeper(), ProcessRole::Keeper}).ok());
-    ASSERT_TRUE(membership_->heartbeat("keeper-x", "i1", 1000).ok());
+    ASSERT_TRUE(membership_
+                        ->registerProcess(Process{first.assigned_keeper().process_id(),
+                                                  "i1",
+                                                  first.assigned_keeper().endpoint(),
+                                                  ProcessRole::Keeper})
+                        .ok());
+    ASSERT_TRUE(membership_->heartbeat(first.assigned_keeper().process_id(), "i1", 1000).ok());
     auto second = acquire(story, "w1");
     auto confirmed = release(second);
     EXPECT_EQ(confirmed.status().code(), 0);
@@ -234,7 +249,7 @@ TEST_F(catalog_adapter, ListsAndEpochCompareAndSet)
     cas.set_story_id(story);
     cas.set_expected(1);
     cas.set_desired(2);
-    v1::EpochResponse epoch;
+    v1::CompareAndSetEpochResponse epoch;
     EXPECT_TRUE(call(&v1::Catalog::Stub::CompareAndSetEpoch, cas, &epoch).ok());
     EXPECT_EQ(epoch.status().code(), 0);
     EXPECT_EQ(epoch.epoch(), 2u);
@@ -250,17 +265,18 @@ TEST_F(catalog_adapter, ConcurrentAcquiresGetDistinctWriterIds)
     std::vector<uint64_t> ids(kWriters);
     for(int i = 0; i < kWriters; ++i)
     {
-        threads.emplace_back([&, i] {
-            v1::AcquireRequest request;
-            request.set_story_id(story);
-            request.set_writer_identity("writer-" + std::to_string(i));
-            v1::AcquireResponse response;
-            if(call(&v1::Catalog::Stub::Acquire, request, &response).ok() && response.status().code() == 0)
-                ids[i] = response.writer_id();
-        });
+        threads.emplace_back(
+                [&, i]
+                {
+                    v1::AcquireRequest request;
+                    request.set_story_id(story);
+                    request.set_writer_identity("writer-" + std::to_string(i));
+                    v1::AcquireResponse response;
+                    if(call(&v1::Catalog::Stub::Acquire, request, &response).ok() && response.status().code() == 0)
+                        ids[i] = response.writer_id();
+                });
     }
-    for(auto& thread: threads)
-        thread.join();
+    for(auto& thread: threads) thread.join();
     std::set<uint64_t> distinct(ids.begin(), ids.end());
     EXPECT_EQ(distinct.size(), static_cast<size_t>(kWriters));
     EXPECT_EQ(distinct.count(0), 0u);

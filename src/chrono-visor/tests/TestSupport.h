@@ -13,7 +13,7 @@ namespace chronolog::visor::testing
 
 inline Topology twoKeeperTopology()
 {
-    return Topology{{"keeper-a:50052", "keeper-b:50052"}, "grapher:50053", "player:50054"};
+    return Topology{{{"keeper-a", "keeper-a:50052"}, {"keeper-b", "keeper-b:50052"}}, "grapher:50053", "player:50054"};
 }
 
 // A private temporary directory removed on destruction.
