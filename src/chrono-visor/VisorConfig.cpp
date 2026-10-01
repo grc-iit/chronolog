@@ -1,0 +1,196 @@
+#include "VisorConfig.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
+#include <set>
+#include <sstream>
+
+#include <nlohmann/json.hpp>
+
+#include "absl/strings/str_cat.h"
+
+namespace chronolog::visor
+{
+
+namespace
+{
+
+std::string upper(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return std::toupper(c); });
+    return text;
+}
+
+std::vector<std::string> splitCommaList(const std::string& text)
+{
+    std::vector<std::string> out;
+    std::stringstream stream(text);
+    std::string item;
+    while(std::getline(stream, item, ','))
+        if(!item.empty())
+            out.push_back(item);
+    return out;
+}
+
+absl::StatusOr<bool> parseBool(const std::string& key, const std::string& text)
+{
+    std::string lower = text;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+    if(lower == "1" || lower == "true" || lower == "yes")
+        return true;
+    if(lower == "0" || lower == "false" || lower == "no")
+        return false;
+    return absl::InvalidArgumentError(absl::StrCat("environment value for ", key, " is not a boolean: ", text));
+}
+
+absl::StatusOr<uint32_t> parseUint(const std::string& key, const std::string& text)
+{
+    try
+    {
+        size_t used = 0;
+        unsigned long value = std::stoul(text, &used);
+        if(used != text.size() || value > UINT32_MAX)
+            throw std::invalid_argument(text);
+        return static_cast<uint32_t>(value);
+    }
+    catch(const std::exception&)
+    {
+        return absl::InvalidArgumentError(absl::StrCat("environment value for ", key, " is not a number: ", text));
+    }
+}
+
+absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
+{
+    static const std::set<std::string> known = {"listen",
+                                                "internal_listen",
+                                                "db_path",
+                                                "keepers",
+                                                "grapher",
+                                                "player",
+                                                "heartbeat_timeout_ms",
+                                                "release_fence_timeout_ms",
+                                                "worker_threads",
+                                                "insecure_bind_all"};
+    if(!json.is_object())
+        return absl::InvalidArgumentError("configuration must be a JSON object");
+    for(const auto& [key, value]: json.items())
+        if(!known.contains(key))
+            return absl::InvalidArgumentError(absl::StrCat("unknown configuration key ", key));
+    try
+    {
+        if(json.contains("listen"))
+            cfg.listen = json.at("listen").get<std::string>();
+        if(json.contains("internal_listen"))
+            cfg.internal_listen = json.at("internal_listen").get<std::string>();
+        if(json.contains("db_path"))
+            cfg.db_path = json.at("db_path").get<std::string>();
+        if(json.contains("keepers"))
+            cfg.keepers = json.at("keepers").get<std::vector<std::string>>();
+        if(json.contains("grapher"))
+            cfg.grapher = json.at("grapher").get<std::string>();
+        if(json.contains("player"))
+            cfg.player = json.at("player").get<std::string>();
+        if(json.contains("heartbeat_timeout_ms"))
+            cfg.heartbeat_timeout_ms = json.at("heartbeat_timeout_ms").get<uint32_t>();
+        if(json.contains("release_fence_timeout_ms"))
+            cfg.release_fence_timeout_ms = json.at("release_fence_timeout_ms").get<uint32_t>();
+        if(json.contains("worker_threads"))
+            cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
+        if(json.contains("insecure_bind_all"))
+            cfg.insecure_bind_all = json.at("insecure_bind_all").get<bool>();
+    }
+    catch(const nlohmann::json::exception& e)
+    {
+        return absl::InvalidArgumentError(absl::StrCat("bad configuration value: ", e.what()));
+    }
+    return absl::OkStatus();
+}
+
+std::string hostOf(const std::string& address)
+{
+    const auto colon = address.rfind(':');
+    return colon == std::string::npos ? address : address.substr(0, colon);
+}
+
+} // namespace
+
+absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv)
+{
+    VisorConfig cfg;
+    if(path)
+    {
+        std::ifstream file(*path);
+        if(!file)
+            return absl::NotFoundError(absl::StrCat("cannot read configuration file ", *path));
+        nlohmann::json json = nlohmann::json::parse(file, nullptr, false);
+        if(json.is_discarded())
+            return absl::InvalidArgumentError(absl::StrCat("configuration file ", *path, " is not valid JSON"));
+        absl::Status applied = applyJson(json, cfg);
+        if(!applied.ok())
+            return applied;
+    }
+
+    auto env = [&](const char* key) -> std::optional<std::string> {
+        const char* value = getenv(("CHRONOLOG_VISOR_" + upper(key)).c_str());
+        return value ? std::optional<std::string>(value) : std::nullopt;
+    };
+    if(auto v = env("listen"))
+        cfg.listen = *v;
+    if(auto v = env("internal_listen"))
+        cfg.internal_listen = *v;
+    if(auto v = env("db_path"))
+        cfg.db_path = *v;
+    if(auto v = env("keepers"))
+        cfg.keepers = splitCommaList(*v);
+    if(auto v = env("grapher"))
+        cfg.grapher = *v;
+    if(auto v = env("player"))
+        cfg.player = *v;
+    for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
+                            {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
+                            {"worker_threads", &cfg.worker_threads}})
+    {
+        if(auto v = env(key))
+        {
+            auto parsed = parseUint(key, *v);
+            if(!parsed.ok())
+                return parsed.status();
+            *field = *parsed;
+        }
+    }
+    if(auto v = env("insecure_bind_all"))
+    {
+        auto parsed = parseBool("insecure_bind_all", *v);
+        if(!parsed.ok())
+            return parsed.status();
+        cfg.insecure_bind_all = *parsed;
+    }
+
+    absl::Status valid = cfg.validate();
+    if(!valid.ok())
+        return valid;
+    return cfg;
+}
+
+absl::Status VisorConfig::validate() const
+{
+    if(listen.empty() || internal_listen.empty() || db_path.empty() || grapher.empty() || player.empty())
+        return absl::InvalidArgumentError("listen, internal_listen, db_path, grapher and player must be set");
+    if(keepers.empty() || std::any_of(keepers.begin(), keepers.end(), [](const std::string& k) { return k.empty(); }))
+        return absl::InvalidArgumentError("keepers must list at least one endpoint");
+    if(worker_threads == 0)
+        return absl::InvalidArgumentError("worker_threads must be positive");
+    const std::string host = hostOf(internal_listen);
+    const bool wildcard = host.empty() || host == "0.0.0.0" || host == "[::]" || host == "::" || host == "*";
+    if(wildcard && !insecure_bind_all)
+    {
+        return absl::FailedPreconditionError(absl::StrCat("internal_listen ", internal_listen,
+                                                          " binds every interface; bind the cluster interface or set "
+                                                          "insecure_bind_all"));
+    }
+    return absl::OkStatus();
+}
+
+} // namespace chronolog::visor

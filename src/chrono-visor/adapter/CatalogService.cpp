@@ -1,0 +1,205 @@
+#include "adapter/CatalogService.h"
+
+#include <utility>
+
+#include "adapter/Convert.h"
+
+namespace chronolog::visor
+{
+
+namespace
+{
+
+grpc::Status invalid(const char* message)
+{
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, message);
+}
+
+// Storage failures fail the whole request. Every other code is a domain result.
+bool storageFailure(const absl::Status& status)
+{
+    return status.code() == absl::StatusCode::kUnavailable || status.code() == absl::StatusCode::kInternal;
+}
+
+grpc::Status wholeRequest(const absl::Status& status)
+{
+    return grpc::Status(status.code() == absl::StatusCode::kInternal ? grpc::StatusCode::INTERNAL
+                                                                      : grpc::StatusCode::UNAVAILABLE,
+                        std::string(status.message()));
+}
+
+// Fills the common ItemStatus and returns the whole-request status.
+template <class Response>
+grpc::Status finish(const absl::Status& status, Response* response)
+{
+    if(storageFailure(status))
+        return wholeRequest(status);
+    *response->mutable_status() = convert::toProto(status);
+    return grpc::Status::OK;
+}
+
+} // namespace
+
+CatalogService::CatalogService(MetadataStore& store, WorkerPool& pool)
+    : store_(store)
+    , pool_(pool)
+{}
+
+template <class Fn>
+grpc::ServerUnaryReactor* CatalogService::dispatch(grpc::CallbackServerContext* context, Fn fn)
+{
+    grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
+    if(!pool_.submit([reactor, fn = std::move(fn)]() mutable { reactor->Finish(fn()); }))
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "catalog is overloaded"));
+    return reactor;
+}
+
+grpc::ServerUnaryReactor* CatalogService::CreateChronicle(grpc::CallbackServerContext* context,
+                                                          const v1::CreateChronicleRequest* request,
+                                                          v1::ChronicleResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->name().empty())
+            return invalid("name is required");
+        auto result = store_.createChronicle(request->name());
+        if(result.ok())
+            *response->mutable_chronicle() = convert::toProto(*result);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::GetChronicle(grpc::CallbackServerContext* context,
+                                                       const v1::GetChronicleRequest* request,
+                                                       v1::ChronicleResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->name().empty())
+            return invalid("name is required");
+        auto result = store_.getChronicle(request->name());
+        if(result.ok())
+            *response->mutable_chronicle() = convert::toProto(*result);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::ListChronicles(grpc::CallbackServerContext* context,
+                                                         const v1::ListChroniclesRequest*,
+                                                         v1::ListChroniclesResponse* response)
+{
+    return dispatch(context, [this, response]() {
+        auto result = store_.listChronicles();
+        if(result.ok())
+            for(const auto& chronicle: *result)
+                *response->add_chronicles() = convert::toProto(chronicle);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::DestroyChronicle(grpc::CallbackServerContext* context,
+                                                           const v1::DestroyChronicleRequest* request,
+                                                           v1::StatusResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->name().empty())
+            return invalid("name is required");
+        return finish(store_.destroyChronicle(request->name()), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::CreateStory(grpc::CallbackServerContext* context,
+                                                      const v1::CreateStoryRequest* request,
+                                                      v1::StoryResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->chronicle().empty() || request->name().empty())
+            return invalid("chronicle and name are required");
+        auto result = store_.createStory(request->chronicle(), request->name());
+        if(result.ok())
+            *response->mutable_story() = convert::toProto(*result);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::GetStory(grpc::CallbackServerContext* context,
+                                                   const v1::GetStoryRequest* request, v1::StoryResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->story_id() == 0)
+            return invalid("story_id is required");
+        auto result = store_.getStory(request->story_id());
+        if(result.ok())
+            *response->mutable_story() = convert::toProto(*result);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::ListStories(grpc::CallbackServerContext* context,
+                                                      const v1::ListStoriesRequest* request,
+                                                      v1::ListStoriesResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->chronicle().empty())
+            return invalid("chronicle is required");
+        auto result = store_.listStories(request->chronicle());
+        if(result.ok())
+            for(const auto& story: *result)
+                *response->add_stories() = convert::toProto(story);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::DestroyStory(grpc::CallbackServerContext* context,
+                                                       const v1::DestroyStoryRequest* request,
+                                                       v1::StatusResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->story_id() == 0)
+            return invalid("story_id is required");
+        return finish(store_.destroyStory(request->story_id()), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::Acquire(grpc::CallbackServerContext* context,
+                                                  const v1::AcquireRequest* request, v1::AcquireResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->story_id() == 0 || request->writer_identity().empty())
+            return invalid("story_id and writer_identity are required");
+        auto result = store_.acquire(request->story_id(), request->writer_identity());
+        if(result.ok())
+            *response = convert::toAcquireResponse(*result);
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::Release(grpc::CallbackServerContext* context,
+                                                  const v1::ReleaseRequest* request, v1::ReleaseResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->story_id() == 0 || request->writer_id() == 0 || request->incarnation() == 0)
+            return invalid("story_id, writer_id and incarnation are required");
+        auto result = store_.release(request->story_id(), request->writer_id(), request->incarnation());
+        if(result.ok())
+        {
+            response->set_fenced(result->fenced);
+            response->set_revision(result->revision);
+        }
+        return finish(result.status(), response);
+    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::CompareAndSetEpoch(grpc::CallbackServerContext* context,
+                                                             const v1::CompareAndSetEpochRequest* request,
+                                                             v1::EpochResponse* response)
+{
+    return dispatch(context, [this, request, response]() {
+        if(request->story_id() == 0 || request->desired() == 0)
+            return invalid("story_id and desired are required");
+        auto result = store_.compareAndSetEpoch(request->story_id(), request->expected(), request->desired());
+        if(result.ok())
+            response->set_epoch(*result);
+        return finish(result.status(), response);
+    });
+}
+
+} // namespace chronolog::visor
