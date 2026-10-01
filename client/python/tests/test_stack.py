@@ -107,7 +107,7 @@ def test_physical_read_discovers_route_and_out_of_range_consumes_sequence(stack)
     client = cl.connect(os.environ["CHRONOLOG_TEST_VISOR"], timeout=5)
     with client.acquire(story, "physical") as writer:
         with pytest.raises(cl.OutOfRange):
-            writer.append(cl.AppendSpec(cl.Envelope(b"too-old"), physical=cl.TimeReading(1)), timeout=3)
+            writer.append(b"too-old", physical=cl.TimeReading(1), timeout=3)
         result = writer.append(b"physical-event", timeout=3)
         assert result.event_id.sequence == 2
         stream = client.read_physical(story, 0, time.time_ns() + 1_000_000_000, timeout=3)
