@@ -132,6 +132,47 @@ TEST(Pubsub, LatestAndDurableSavedKvsPositionResume)
     (*following)->stop();
     EXPECT_EQ(delivered[1], next->event_id);
 }
+TEST(Pubsub, LatestFrontierCheckpointResumesBeforeAnyDelivery)
+{
+    auto c = connect();
+    pubsub::Bus producer(c, "pubsub-frontier");
+    auto old = producer.publish("memory", "old");
+    ASSERT_TRUE(old.ok());
+    auto latest = producer.subscribe("memory", [](const pubsub::Message&) { return absl::OkStatus(); });
+    ASSERT_TRUE(latest.ok());
+    ASSERT_TRUE((*latest)->position());
+    auto frontier = *(*latest)->position();
+    (*latest)->stop();
+    kvs::Store checkpoints(c, "pubsub-frontier-checkpoints");
+    auto saved = pubsub::savePosition(checkpoints, "consumer", frontier);
+    ASSERT_TRUE(saved.ok()) << saved.status();
+    auto next = producer.publish("memory", "new");
+    ASSERT_TRUE(next.ok());
+    auto other = connect();
+    kvs::Store restored(other, "pubsub-frontier-checkpoints");
+    auto position = pubsub::loadPosition(restored, "consumer", {.causal_floor = saved->hlc});
+    ASSERT_TRUE(position.ok()) << position.status();
+    pubsub::Bus consumer(other, "pubsub-frontier");
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::optional<EventId> received;
+    auto resumed = consumer.subscribe("memory",
+                                      [&](const pubsub::Message& message)
+                                      {
+                                          std::lock_guard lock(mutex);
+                                          received = message.event.id;
+                                          changed.notify_all();
+                                          return absl::OkStatus();
+                                      },
+                                      {.start = pubsub::Start::Saved, .position = *position});
+    ASSERT_TRUE(resumed.ok());
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return received.has_value(); }));
+    }
+    (*resumed)->stop();
+    EXPECT_EQ(*received, next->event_id);
+}
 TEST(Pubsub, ValidationDeadlineAndCallbackStop)
 {
     auto c = connect();

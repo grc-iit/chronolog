@@ -19,7 +19,9 @@ bool valid(const std::string& name)
 }
 bool valid(client::Position p)
 {
-    return p.hlc.physical_ns >= 0 && p.id.story_id && p.id.writer_id && p.id.incarnation && p.id.sequence;
+    const bool event = p.id.writer_id && p.id.incarnation && p.id.sequence;
+    const bool frontier = !p.id.writer_id && !p.id.incarnation && !p.id.sequence;
+    return p.hlc.physical_ns >= 0 && p.id.story_id && (event || frontier);
 }
 bool after(const Event& event, client::Position p)
 {
