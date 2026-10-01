@@ -34,6 +34,12 @@ public:
         sqlite3_bind_blob(stmt_, n, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
         return *this;
     }
+    void reset()
+    {
+        if(sqlite3_reset(stmt_) != SQLITE_OK)
+            throw std::runtime_error(sqlite3_errmsg(db_));
+        sqlite3_clear_bindings(stmt_);
+    }
     bool next()
     {
         int rc = sqlite3_step(stmt_);
@@ -123,11 +129,12 @@ void writeRoute(sqlite3* db, const wire::RouteUpdate& r, const wire::RouteUpdate
             Query d(db, "DELETE FROM membership_route_refs WHERE process_id=?1 AND story_id=?2 AND kind=?3");
             d.text(1, id).number(2, r.story_id()).number(3, kind).next();
         }
+    Query insert(db, "INSERT OR IGNORE INTO membership_route_refs(process_id,story_id,kind) VALUES(?1,?2,?3)");
     for(const auto& [id, kind]: current)
         if(!previous.contains({id, kind}))
         {
-            Query a(db, "INSERT OR IGNORE INTO membership_route_refs(process_id,story_id,kind) VALUES(?1,?2,?3)");
-            a.text(1, id).number(2, r.story_id()).number(3, kind).next();
+            insert.text(1, id).number(2, r.story_id()).number(3, kind).next();
+            insert.reset();
         }
 }
 void writeChanges(sqlite3* db, const wire::MembershipState& before, const wire::MembershipState& after)
@@ -181,9 +188,9 @@ void writeChanges(sqlite3* db, const wire::MembershipState& before, const wire::
             if(scalar.SerializeAsString() != oldScalar)
             {
                 Query q(db,
-                        "INSERT INTO membership_instances(process_id,instance,value) VALUES(?1,?2,?3) "
-                        "ON CONFLICT(process_id,instance) DO UPDATE SET value=excluded.value");
-                q.text(1, id).text(2, i.instance()).blob(3, scalar.SerializeAsString()).next();
+                        "INSERT INTO membership_instances(process_id,instance,granted,value) VALUES(?1,?2,?3,?4) "
+                        "ON CONFLICT(process_id,instance) DO UPDATE SET granted=excluded.granted,value=excluded.value");
+                q.text(1, id).text(2, i.instance()).number(3, i.granted()).blob(4, scalar.SerializeAsString()).next();
             }
             std::unordered_map<uint64_t, std::string> oldProofs;
             if(old != oldInstances.end())
@@ -232,8 +239,10 @@ try
         "CREATE TABLE IF NOT EXISTS membership_members(process_id TEXT PRIMARY KEY,instance TEXT NOT NULL,role INTEGER "
         "NOT NULL,joined INTEGER NOT NULL,applied INTEGER NOT NULL,value BLOB NOT NULL);"
         "CREATE INDEX IF NOT EXISTS membership_applied ON membership_members(role,applied) WHERE instance<>'';"
-        "CREATE TABLE IF NOT EXISTS membership_instances(process_id TEXT NOT NULL,instance TEXT NOT NULL,value BLOB "
+        "CREATE TABLE IF NOT EXISTS membership_instances(process_id TEXT NOT NULL,instance TEXT NOT NULL,granted "
+        "INTEGER NOT NULL,value BLOB "
         "NOT NULL,PRIMARY KEY(process_id,instance));"
+        "CREATE INDEX IF NOT EXISTS membership_granted ON membership_instances(process_id,instance) WHERE granted=1;"
         "CREATE TABLE IF NOT EXISTS membership_proofs(process_id TEXT NOT NULL,instance TEXT NOT NULL,story_id INTEGER "
         "NOT NULL,value BLOB NOT NULL,PRIMARY KEY(process_id,instance,story_id));"
         "CREATE TABLE IF NOT EXISTS membership_routes(story_id INTEGER PRIMARY KEY,revision INTEGER NOT "
@@ -452,10 +461,189 @@ try
 }
 MEMBERSHIP_CATCH
 
-absl::StatusOr<wire::MembershipState> SqliteMetadataStore::membershipCommandState(const wire::MembershipCommand&) const
+absl::StatusOr<wire::MembershipState>
+SqliteMetadataStore::membershipCommandState(const wire::MembershipCommand& command) const
+try
 {
-    return membershipState();
+    std::lock_guard lock(mutex_);
+    wire::MembershipState state;
+    metadata(db_, state);
+    std::string id;
+    if(command.has_register_())
+        id = command.register_().process().process_id();
+    else if(command.has_extend())
+        id = command.extend().process_id();
+    else if(command.has_heartbeat())
+        id = command.heartbeat().process_id();
+    else if(command.has_drain())
+        id = command.drain().process_id();
+    else if(command.has_join())
+        id = command.join().process_id();
+    else if(command.has_abandon())
+        id = command.abandon().process_id();
+    std::set<std::string> loaded;
+    auto loadMember = [&](const std::string& process, bool evidence)
+    {
+        if(!loaded.insert(process).second)
+            return;
+        Query member(db_, "SELECT value FROM membership_members WHERE process_id=?1");
+        member.text(1, process);
+        if(!member.next())
+            return;
+        auto* m = state.add_members();
+        *m = member.message<wire::MemberState>(0);
+        std::string requested;
+        if(process == id)
+        {
+            if(command.has_register_())
+                requested = command.register_().process().instance();
+            if(command.has_extend())
+                requested = command.extend().instance();
+            if(command.has_heartbeat())
+                requested = command.heartbeat().instance();
+        }
+        std::set<std::string> seen;
+        auto loadInstance = [&](Query& rows)
+        {
+            while(rows.next())
+            {
+                auto value = rows.message<wire::InstanceState>(0);
+                if(!seen.insert(value.instance()).second)
+                    continue;
+                auto* i = m->add_instances();
+                *i = value;
+                if(evidence && command.has_heartbeat() && i->instance() == command.heartbeat().instance())
+                {
+                    std::set<uint64_t> proofs;
+                    for(const auto& f: command.heartbeat().story_frontiers())
+                        if(proofs.insert(f.story_id()).second)
+                        {
+                            Query p(db_,
+                                    "SELECT value FROM membership_proofs WHERE process_id=?1 AND instance=?2 AND "
+                                    "story_id=?3");
+                            p.text(1, process).text(2, i->instance()).number(3, f.story_id());
+                            if(p.next())
+                                *i->add_proofs() = p.message<wire::InstanceProof>(0);
+                        }
+                }
+            }
+        };
+        Query current(db_, "SELECT value FROM membership_instances WHERE process_id=?1 AND instance=?2");
+        current.text(1, process).text(2, m->process().instance());
+        loadInstance(current);
+        if(!requested.empty())
+        {
+            Query requestedRow(db_, "SELECT value FROM membership_instances WHERE process_id=?1 AND instance=?2");
+            requestedRow.text(1, process).text(2, requested);
+            loadInstance(requestedRow);
+        }
+        Query granted(
+                db_,
+                "SELECT value FROM membership_instances WHERE process_id=?1 AND granted=1 ORDER BY instance LIMIT 1");
+        granted.text(1, process);
+        loadInstance(granted);
+    };
+    loadMember(id, true);
+    // Repeated-field growth can invalidate pointers; take a value before loading peers.
+    wire::MemberState target;
+    if(!state.members().empty())
+        target = state.members(0);
+    bool all = command.has_join() && !target.joined();
+    bool affected = command.has_drain() || command.has_abandon();
+    bool predecessors = command.has_abandon();
+    if(command.has_register_())
+    {
+        const auto& q = command.register_();
+        affected = (!target.process().instance().empty() && target.process().instance() != q.process().instance()) ||
+                   (target.policy_version() != q.policy_version() &&
+                    q.policy_version() != (state.has_policy() ? state.policy().version() : 1));
+        predecessors = !q.recovered_instance().empty();
+    }
+    if(command.has_extend() && command.extend().applied_route_revision() < target.fence_revision())
+    {
+        if(command.extend().applied_route_revision() < state.route_history_floor())
+            all = true;
+        else
+        {
+            Query history(db_,
+                          "SELECT value FROM membership_history WHERE revision>?1 AND revision<=?2 ORDER BY "
+                          "revision,story_id");
+            history.number(1, command.extend().applied_route_revision()).number(2, target.fence_revision());
+            while(history.next()) *state.add_route_history() = history.message<wire::RouteUpdate>(0);
+        }
+    }
+    std::set<uint64_t> stories;
+    if(all)
+    {
+        Query q(db_, "SELECT id FROM stories WHERE tombstoned=0 ORDER BY id");
+        while(q.next()) stories.insert(q.number(0));
+    }
+    else if(affected)
+    {
+        Query q(db_, "SELECT story_id FROM membership_route_refs WHERE process_id=?1 AND kind<=?2 ORDER BY story_id");
+        q.text(1, id).number(2, predecessors ? 1 : 0);
+        while(q.next()) stories.insert(q.number(0));
+    }
+    if(command.has_heartbeat())
+        for(const auto& f: command.heartbeat().story_frontiers())
+            if(!f.drained_instance().empty())
+                stories.insert(f.story_id());
+    for(auto story: stories)
+    {
+        auto route = membershipRouteUpdate(story);
+        if(absl::IsNotFound(route.status()))
+            continue;
+        if(!route.ok())
+            return route.status();
+        *state.add_routes() = *route;
+        for(const auto& k: route->route().keepers()) loadMember(k.process_id(), false);
+    }
+    if(command.has_abandon())
+        for(auto& m: *state.mutable_members())
+            if(m.process().process_id() == id)
+            {
+                std::set<std::pair<std::string, uint64_t>> proofs;
+                for(const auto& r: state.routes())
+                {
+                    std::set<std::string> owners;
+                    for(const auto& k: r.route().keepers())
+                        if(k.process_id() == id)
+                            owners.insert(m.process().instance());
+                    for(const auto& p: r.predecessors())
+                        if(p.keeper().process_id() == id)
+                            owners.insert(p.instance());
+                    for(const auto& owner: owners)
+                    {
+                        wire::InstanceState* instance = nullptr;
+                        for(auto& i: *m.mutable_instances())
+                            if(i.instance() == owner)
+                                instance = &i;
+                        if(!instance)
+                        {
+                            Query q(db_, "SELECT value FROM membership_instances WHERE process_id=?1 AND instance=?2");
+                            q.text(1, id).text(2, owner);
+                            if(q.next())
+                            {
+                                instance = m.add_instances();
+                                *instance = q.message<wire::InstanceState>(0);
+                            }
+                        }
+                        if(instance && proofs.emplace(owner, r.story_id()).second)
+                        {
+                            Query q(db_,
+                                    "SELECT value FROM membership_proofs WHERE process_id=?1 AND instance=?2 AND "
+                                    "story_id=?3");
+                            q.text(1, id).text(2, owner).number(3, r.story_id());
+                            if(q.next())
+                                *instance->add_proofs() = q.message<wire::InstanceProof>(0);
+                        }
+                    }
+                }
+            }
+    for(const auto& applied: command.applied_routes()) loadMember(applied.process_id(), false);
+    return state;
 }
+MEMBERSHIP_CATCH
 
 bool SqliteMetadataStore::membershipWouldEmpty(const std::string& id) const
 {
