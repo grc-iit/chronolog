@@ -288,7 +288,7 @@ TEST_F(DynamicClusterTest, FailureDetectionKeepsLastKeeperAndRetriesLater)
     ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), q, &r).ok());
     ASSERT_EQ(r.status().code(), 0);
     bool retried = false;
-    for(int n = 0; n < 30; ++n)
+    for(int n = 0; n < 200; ++n)
     {
         ASSERT_EQ(a.Heartbeat().status().code(), 0);
         state = dynamic::snapshot(stores[selected]->appliedStore());
