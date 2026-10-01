@@ -93,16 +93,22 @@ int main(int argc, char** argv)
     auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
     const std::string instance = newInstanceId();
     auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
+    auto recovered_identity = std::make_shared<std::string>();
     auto policy_version = std::make_shared<std::atomic<uint64_t>>(0);
     auto membership = std::make_shared<keeper::ConfigMembership>(
             config->static_routes,
-            [route_stub, process_id = config->process_id, endpoint = config->self_endpoint, instance, policy_version](
-                    StoryId story) -> absl::StatusOr<Route>
+            [route_stub,
+             process_id = config->process_id,
+             endpoint = config->self_endpoint,
+             instance,
+             policy_version,
+             recovered_identity](StoryId story) -> absl::StatusOr<Route>
             {
                 grpc::ClientContext context;
                 context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
                 internal::v1::RegisterRequest request;
                 request.set_policy_version(policy_version->load());
+                request.set_recovered_instance(*recovered_identity);
                 auto* process = request.mutable_process();
                 process->set_process_id(process_id);
                 process->set_instance(instance);
@@ -121,6 +127,9 @@ int main(int argc, char** argv)
                 return absl::NotFoundError("unknown story");
             });
     RamJournalConfig journal_config;
+    journal_config.process_id = config->process_id;
+    journal_config.instance = instance;
+    journal_config.append_ceiling_wait_ms = config->append_ceiling_wait_ms;
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
     journal_config.dedupe_window = config->dedupe_window;
@@ -141,6 +150,8 @@ int main(int argc, char** argv)
         return 1;
     }
     auto& journal = *owned_journal;
+    const auto recovered_instance = journal.recoveredInstance();
+    *recovered_identity = recovered_instance;
     *policy_version = journal.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
@@ -180,7 +191,8 @@ int main(int argc, char** argv)
                                   {config->process_id,
                                    instance,
                                    config->self_endpoint,
-                                   std::chrono::milliseconds(config->heartbeat_interval_ms)},
+                                   std::chrono::milliseconds(config->heartbeat_interval_ms),
+                                   recovered_instance},
                                   journal,
                                   *membership,
                                   acquisitions);
@@ -193,7 +205,7 @@ int main(int argc, char** argv)
     }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
-    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);
+    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance, &journal);
     cluster.start();
     keeper::KeeperArchiveConfig archive_config{config->story_chunk_duration_secs,
                                                config->seal_interval_ms,

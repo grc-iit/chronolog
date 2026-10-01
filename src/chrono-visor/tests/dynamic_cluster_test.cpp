@@ -3,11 +3,16 @@
 #include "adapter/WorkerPool.h"
 #include "dynamic/MembershipState.h"
 #include "raft/RaftMetadataStore.h"
+#include "clock/FakeClock.h"
+#include "membership/ConfigMembership.h"
+#include "runtime/ClusterClient.h"
 #include <gtest/gtest.h>
 #include <array>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <thread>
+#include <random>
+#include <set>
 namespace chronolog::visor
 {
 namespace
@@ -16,26 +21,29 @@ using namespace std::chrono_literals;
 namespace wire = internal::v1;
 int freePort()
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(fd < 0)
-        throw std::runtime_error("socket failed");
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)))
+    static std::mt19937 random(std::random_device{}());
+    static std::set<int> chosen;
+    for(int attempt = 0; attempt < 64; ++attempt)
     {
+        const int port = 10000 + (random() % 4400) * 5;
+        if(chosen.contains(port))
+            continue;
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if(fd < 0)
+            throw std::runtime_error("socket failed");
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(port);
+        const int result = bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
         close(fd);
-        throw std::runtime_error("bind failed");
+        if(result == 0)
+        {
+            chosen.insert(port);
+            return port;
+        }
     }
-    socklen_t length = sizeof(address);
-    if(getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length))
-    {
-        close(fd);
-        throw std::runtime_error("getsockname failed");
-    }
-    int port = ntohs(address.sin_port);
-    close(fd);
-    return port;
+    throw std::runtime_error("no free loopback port block");
 }
 struct KeeperDriver
 {
@@ -103,6 +111,7 @@ protected:
     std::array<std::unique_ptr<ClusterService>, 3> services;
     std::array<std::unique_ptr<grpc::Server>, 3> servers;
     std::array<std::unique_ptr<wire::Cluster::Stub>, 3> stubs;
+    std::array<std::shared_ptr<grpc::Channel>, 3> channels;
     void SetUp() override
     {
         std::vector<RaftPeer> peers;
@@ -139,8 +148,8 @@ protected:
             builder.RegisterService(services[i].get());
             servers[i] = builder.BuildAndStart();
             ASSERT_NE(servers[i], nullptr);
-            stubs[i] = wire::Cluster::NewStub(
-                    grpc::CreateChannel(peers[i].internal_endpoint, grpc::InsecureChannelCredentials()));
+            channels[i] = grpc::CreateChannel(peers[i].internal_endpoint, grpc::InsecureChannelCredentials());
+            stubs[i] = wire::Cluster::NewStub(channels[i]);
         }
         size_t selected = leader();
         ASSERT_LT(selected, 3u);
@@ -180,13 +189,39 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     auto old = leader();
     ASSERT_LT(old, 3u);
     auto follower = (old + 1) % 3;
-    KeeperDriver a{*stubs[follower], "keeper-a", "a1"}, b{*stubs[follower], "keeper-b", "b1"};
+    KeeperDriver a{*stubs[follower], "keeper-a", "a1"};
+    auto clock = std::make_shared<FakeClock>(100, 0);
+    clock->setStatus(ClockStatus::Synced);
+    auto membership = std::make_shared<keeper::ConfigMembership>();
+    RamJournalConfig config;
+    config.process_id = "keeper-b";
+    config.instance = "b1";
+    RamJournal journal(clock, membership, config);
+    keeper::AcquisitionWatcher acquisitions(journal, "keeper-b", nullptr, false);
+    keeper::ClusterClient b(channels[follower],
+                            {"keeper-b", "b1", "keeper-b:50052"},
+                            journal,
+                            *membership,
+                            acquisitions);
     ASSERT_EQ(a.Register().status().code(), 0);
-    ASSERT_EQ(b.Register().status().code(), 0);
+    ASSERT_EQ(b.registerNow().code(), absl::StatusCode::kOk);
     ASSERT_EQ(a.Heartbeat().status().code(), 0);
-    ASSERT_EQ(b.Heartbeat().status().code(), 0);
+    ASSERT_EQ(b.heartbeatNow().code(), absl::StatusCode::kOk);
     ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
-    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    ASSERT_EQ(b.extendNow().code(), absl::StatusCode::kOk);
+    std::string remapped_identity;
+    for(int attempt = 0; attempt < 32; ++attempt)
+    {
+        auto identity = "remapped-" + std::to_string(attempt);
+        auto acquired = stores[old]->acquire(1, identity);
+        ASSERT_TRUE(acquired.ok());
+        if(acquired->assigned_keeper.process_id == "keeper-a")
+        {
+            remapped_identity = identity;
+            break;
+        }
+    }
+    ASSERT_FALSE(remapped_identity.empty());
     wire::KeeperRequest request;
     request.set_process_id("keeper-a");
     wire::MembershipResponse response;
@@ -196,19 +231,34 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     auto revision = response.routes(0).revision();
     ASSERT_GT(revision, 0u);
     EXPECT_EQ(response.routes(0).route().epoch(), 2u);
-    auto refused = b.ExtendCeiling();
-    ASSERT_NE(refused.status().code(), 0);
-    ASSERT_EQ(refused.routes_size(), 1);
-    EXPECT_EQ(refused.fence_revision(), revision);
-    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    ASSERT_TRUE(b.extendNow().ok());
+    EXPECT_EQ(journal.appliedRouteRevision(), revision);
+    EXPECT_EQ(membership->route(1)->epoch, 2);
+    auto acquired = stores[old]->acquire(1, remapped_identity);
+    ASSERT_TRUE(acquired.ok());
+    EXPECT_EQ(acquired->assigned_keeper.process_id, "keeper-b");
+    ASSERT_TRUE(journal.registerWriter(1, acquired->writer_id, acquired->incarnation).ok());
+    AppendItem item;
+    item.writer_id = acquired->writer_id;
+    item.incarnation = acquired->incarnation;
+    item.sequence = 1;
+    item.physical = {100, 0, ClockStatus::Synced};
+    auto appended = journal.append({1, 2, {item}}, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok()) << appended->front().status;
+    EXPECT_GT(appended->front().hlc,
+              (Hlc{response.routes(0).ordering_cut().physical_ns(), response.routes(0).ordering_cut().logical()}));
     stop(old);
     auto next = leader();
     ASSERT_LT(next, 3u);
-    KeeperDriver resumed{*stubs[next], "keeper-b", "b1", revision};
-    ASSERT_EQ(resumed.Heartbeat().status().code(), 0);
-    auto renewed = resumed.ExtendCeiling();
-    ASSERT_EQ(renewed.status().code(), 0);
-    EXPECT_EQ(renewed.fence_revision(), revision);
+    keeper::ClusterClient resumed(channels[next],
+                                  {"keeper-b", "b1", "keeper-b:50052"},
+                                  journal,
+                                  *membership,
+                                  acquisitions);
+    ASSERT_TRUE(resumed.heartbeatNow().ok());
+    ASSERT_TRUE(resumed.extendNow().ok());
+    EXPECT_EQ(journal.appliedRouteRevision(), revision);
     auto state = dynamic::snapshot(stores[next]->appliedStore());
     ASSERT_EQ(state.routes_size(), 1);
     EXPECT_EQ(state.routes(0).predecessors(0).instance(), "a1");

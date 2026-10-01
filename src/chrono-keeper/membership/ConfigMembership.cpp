@@ -14,9 +14,32 @@ ConfigMembership::ConfigMembership(const std::vector<StaticRoute>& seed, RouteLo
 void ConfigMembership::setRoute(StoryId id, Route route)
 {
     std::unique_lock lock(mutex_);
+    if(routes_.contains(id) && route.epoch < routes_[id].epoch)
+        return;
     routes_[id] = std::move(route);
 }
 
+void ConfigMembership::setRouteState(StoryId id, RouteState state)
+{
+    std::unique_lock lock(mutex_);
+    if(routes_.contains(id) && state.route.epoch < routes_[id].epoch)
+        return;
+    routes_[id] = state.route;
+    states_[id] = std::move(state);
+}
+absl::StatusOr<RouteState> ConfigMembership::routeState(StoryId id) const
+{
+    auto r = route(id);
+    if(!r.ok())
+        return r.status();
+    std::shared_lock lock(mutex_);
+    auto it = states_.find(id);
+    if(it != states_.end())
+        return it->second;
+    RouteState s;
+    s.route = *r;
+    return s;
+}
 absl::StatusOr<Route> ConfigMembership::route(StoryId id) const
 {
     {

@@ -37,6 +37,9 @@ public:
         bool settled{};
     };
     std::vector<SealedChunk> sealedChunks() const;
+    const std::string& recoveredInstance() const { return recovered_instance_; }
+    absl::Status recordInstance(std::string instance);
+    std::optional<Hlc> firstEvent(StoryId story) const;
     bool hasPhysicalPolicy() const override { return physical_policy_; }
     absl::Status flush();
     absl::Status recordSeal(const Chunk& chunk);
@@ -74,12 +77,14 @@ private:
     uint64_t segment_{};
     uint64_t segment_data_bytes_{};
     Hlc persisted_reservation_;
+    std::string recovered_instance_, wal_instance_;
     bool physical_policy_{true};
     std::map<StoryId, int64_t> persisted_physical_;
 
 
     mutable std::mutex archive_mu_;
     std::map<std::string, SealedChunk> archive_seals_;
+    std::map<StoryId, Hlc> first_events_;
     std::shared_ptr<Clock> clock_;
     WalJournalConfig config_;
     SinkFactory sink_factory_;

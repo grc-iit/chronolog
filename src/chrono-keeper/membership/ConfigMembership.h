@@ -21,6 +21,8 @@ public:
     explicit ConfigMembership(const std::vector<StaticRoute>& seed = {}, RouteLookup lookup = nullptr);
 
     void setRoute(StoryId id, Route route);
+    void setRouteState(StoryId id, RouteState state);
+    absl::StatusOr<RouteState> routeState(StoryId id) const override;
 
     absl::StatusOr<Route> route(StoryId id) const override;
     absl::Status validateEpoch(StoryId id, Epoch epoch) const override;
@@ -30,6 +32,7 @@ public:
 private:
     mutable std::shared_mutex mutex_;
     mutable std::map<StoryId, Route> routes_;
+    mutable std::map<StoryId, RouteState> states_;
     const RouteLookup lookup_;
 };
 

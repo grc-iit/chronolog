@@ -37,6 +37,8 @@ public:
         const auto saved = last_;
         const auto candidate = advance(acceptance_, floor);
         last_ = saved;
+        if(ceiling_ && candidate >= *ceiling_)
+            return absl::ResourceExhaustedError("WOULD_EXCEED_CEILING");
         if(candidate.physical_ns > INT64_MIN + policy_.hlc_lead_ns)
             acceptance_ = std::max(acceptance_, candidate.physical_ns - policy_.hlc_lead_ns);
         const int64_t low = acceptance_ < INT64_MIN + policy_.acceptance_window_ns
@@ -48,6 +50,11 @@ public:
             return absl::OutOfRangeError("physical reading outside acceptance window");
         last_ = candidate;
         return CheckedAssignment{candidate, acceptance_};
+    }
+    void setCeiling(Hlc ceiling)
+    {
+        std::lock_guard lock(mutex_);
+        ceiling_ = ceiling;
     }
     void observeFloor(Hlc floor)
     {
@@ -85,6 +92,7 @@ private:
 
     std::mutex mutex_;
     Hlc last_{};
+    std::optional<Hlc> ceiling_;
     int64_t acceptance_{INT64_MIN};
     PhysicalPolicy policy_;
 };

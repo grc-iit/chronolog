@@ -79,6 +79,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
 
                                                 "worker_threads",
                                                 "heartbeat_interval_ms",
+                                                "append_ceiling_wait_ms",
                                                 "insecure_bind_all",
                                                 "static_routes",
                                                 "static_writers"};
@@ -139,6 +140,8 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.retention_cap_mb = json.at("retention_cap_mb").get<decltype(cfg.retention_cap_mb)>();
         if(json.contains("worker_threads"))
             cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
+        if(json.contains("append_ceiling_wait_ms"))
+            cfg.append_ceiling_wait_ms = json.at("append_ceiling_wait_ms").get<uint32_t>();
         if(json.contains("heartbeat_interval_ms"))
             cfg.heartbeat_interval_ms = json.at("heartbeat_interval_ms").get<uint32_t>();
         if(json.contains("insecure_bind_all"))
@@ -248,6 +251,7 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"worker_threads", &cfg.worker_threads},
                             {"shutdown_confirm_timeout_secs", &cfg.shutdown_confirm_timeout_secs},
                             {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
+                            {"append_ceiling_wait_ms", &cfg.append_ceiling_wait_ms},
                             {"group_commit_window_ms", &cfg.group_commit_window_ms},
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
                             {"story_chunk_duration_secs", &cfg.story_chunk_duration_secs},
