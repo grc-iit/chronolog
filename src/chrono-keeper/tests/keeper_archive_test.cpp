@@ -706,3 +706,57 @@ TEST(KeeperRetention, ShutdownSealsPendingDurableAppendsAfterFsync)
     EXPECT_FALSE(seals.front().settled);
 }
 } // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(KeeperTransfer, EveryShippedFrameCarriesPhysicalPolicy)
+{
+    class Receiver final: public internal::v1::Archive::Service
+    {
+    public:
+        std::mutex mutex;
+        std::vector<bool> markers;
+        grpc::Status TransferChunk(grpc::ServerContext*,
+                                   grpc::ServerReader<internal::v1::TransferChunkRequest>* reader,
+                                   internal::v1::TransferChunkResponse* response) override
+        {
+            internal::v1::TransferChunkRequest frame;
+            uint64_t bytes = 0;
+            std::lock_guard lock(mutex);
+            while(reader->Read(&frame))
+            {
+                if(markers.size() >= 64)
+                    return {grpc::StatusCode::RESOURCE_EXHAUSTED, "too many test frames"};
+                markers.push_back(frame.identity().physical_policy());
+                bytes += frame.data().size();
+                response->set_chunk_id(frame.identity().chunk_id());
+            }
+            response->set_bytes(bytes);
+            response->set_grapher_instance("marker-grapher");
+            response->set_receipt(1);
+            return grpc::Status::OK;
+        }
+    } receiver;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&receiver);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ArchiveRig rig;
+    rig.config.frame_bytes = 64;
+    rig.reset();
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
+    ASSERT_TRUE(rig.wal.current->hasPhysicalPolicy());
+    rig.append(1, 100'000'000, 512);
+    rig.wal.clock->setPhysical(1'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_TRUE(rig.archive->shipOne());
+    {
+        std::lock_guard lock(receiver.mutex);
+        ASSERT_GT(receiver.markers.size(), 1u);
+        for(bool marker: receiver.markers) EXPECT_TRUE(marker);
+    }
+    server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
+}
+} // namespace chronolog::test

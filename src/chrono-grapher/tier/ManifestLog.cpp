@@ -33,7 +33,8 @@ Json Encode(const ManifestRecord& record)
             {"end", {record.end.physical_ns, record.end.logical}},
             {"count", record.event_count},
             {"state", static_cast<int>(record.state)},
-            {"exempt", record.exempt}};
+            {"exempt", record.exempt},
+            {"physical_policy", record.physical_policy}};
 }
 
 ManifestRecord Decode(const Json& json)
@@ -51,6 +52,7 @@ ManifestRecord Decode(const Json& json)
         throw std::runtime_error("invalid manifest state");
     record.state = static_cast<ManifestState>(state);
     record.exempt = json.at("exempt").get<bool>();
+    record.physical_policy = json.value("physical_policy", false);
     if(record.start >= record.end || !record.story_id || !SafeWriter(record.manifest_writer))
         throw std::runtime_error("invalid manifest identity");
     const std::filesystem::path file(record.file);

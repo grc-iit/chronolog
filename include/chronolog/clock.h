@@ -51,6 +51,12 @@ public:
      * Invariant tests: tests/contract/clock_contract_test.cpp: ObservePreservesReadThenWriteCausality.
      */
     virtual Hlc observe(Hlc remote) = 0;
+    virtual absl::StatusOr<CheckedAssignment> assignChecked(Hlc floor, PhysicalInterval interval) = 0;
+    virtual void observeFloor(Hlc floor) = 0;
+    virtual int64_t acceptanceClock() = 0;
+    virtual void raiseAcceptanceClock(int64_t floor) = 0;
+    static absl::Status wouldExceedCeiling() { return absl::ResourceExhaustedError("WOULD_EXCEED_CEILING"); }
+
 
     /**
      * Read the physical-time error bound in nanoseconds.

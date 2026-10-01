@@ -94,6 +94,7 @@ public:
      * DurableInvisibleUntilFsyncAndSealDoesNotPassPendingHlc; M5 PendingFsyncRegisteredWithAssignment to add.
      */
     virtual absl::StatusOr<Hlc> keeperFrontier(StoryId id) const = 0;
+    virtual absl::StatusOr<int64_t> physicalFrontier(StoryId id) const = 0;
 };
 
 } // namespace chronolog

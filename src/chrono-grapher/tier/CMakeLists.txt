@@ -22,7 +22,7 @@ target_link_libraries(chronolog_hdf5_interop_writer PRIVATE chronolog_grapher_ti
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_test(NAME grapher.HDF5Interop
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tests/hdf5_interop.py"
+        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tests/hdf5_interop.py"
             $<TARGET_FILE:chronolog_hdf5_interop_writer>)
     set_tests_properties(grapher.HDF5Interop PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 endif()

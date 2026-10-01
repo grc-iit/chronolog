@@ -136,7 +136,8 @@ grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
                 {id.start().physical_ns(), id.start().logical()},
                 {id.end().physical_ns(), id.end().logical()},
                 {},
-                id.watermark_exempt()};
+                id.watermark_exempt(),
+                id.physical_policy()};
     chunk.events.reserve(payload.events_size());
     for(const auto& encoded: payload.events())
     {
