@@ -204,6 +204,19 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     ASSERT_EQ(b.heartbeatNow().code(), absl::StatusCode::kOk);
     ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
     ASSERT_EQ(b.extendNow().code(), absl::StatusCode::kOk);
+    std::string remapped_identity;
+    for(int attempt = 0; attempt < 32; ++attempt)
+    {
+        auto identity = "remapped-" + std::to_string(attempt);
+        auto acquired = stores[old]->acquire(1, identity);
+        ASSERT_TRUE(acquired.ok());
+        if(acquired->assigned_keeper.process_id == "keeper-a")
+        {
+            remapped_identity = identity;
+            break;
+        }
+    }
+    ASSERT_FALSE(remapped_identity.empty());
     wire::KeeperRequest request;
     request.set_process_id("keeper-a");
     wire::MembershipResponse response;
@@ -216,10 +229,13 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     ASSERT_TRUE(b.extendNow().ok());
     EXPECT_EQ(journal.appliedRouteRevision(), revision);
     EXPECT_EQ(membership->route(1)->epoch, 2);
-    ASSERT_TRUE(journal.registerWriter(1, 2, 1).ok());
+    auto acquired = stores[old]->acquire(1, remapped_identity);
+    ASSERT_TRUE(acquired.ok());
+    EXPECT_EQ(acquired->assigned_keeper.process_id, "keeper-b");
+    ASSERT_TRUE(journal.registerWriter(1, acquired->writer_id, acquired->incarnation).ok());
     AppendItem item;
-    item.writer_id = 2;
-    item.incarnation = 1;
+    item.writer_id = acquired->writer_id;
+    item.incarnation = acquired->incarnation;
     item.sequence = 1;
     item.physical = {100, 0, ClockStatus::Synced};
     auto appended = journal.append({1, 2, {item}}, Durability::Accepted);
