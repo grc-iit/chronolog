@@ -1,0 +1,66 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include <absl/status/status.h>
+#include <absl/status/statusor.h>
+
+#include "chronolog/types.h"
+
+namespace chronolog::keeper
+{
+
+struct StaticRoute
+{
+    StoryId story_id{};
+    Route route;
+};
+
+// A writer admitted at boot, for a Keeper running without a Visor.
+struct StaticWriter
+{
+    StoryId story_id{};
+    uint64_t writer_id{};
+    uint64_t incarnation{};
+};
+
+// Keeper configuration. Keys come from a JSON file and are overridden by environment
+// variables named CHRONOLOG_KEEPER_<KEY>, for example CHRONOLOG_KEEPER_PROCESS_ID.
+// static_routes and static_writers are file only.
+struct KeeperConfig
+{
+    std::string listen = "0.0.0.0:50052";
+    // Archive service address. Loopback by default so a bare start never exposes it (S14.3).
+    std::string internal_listen = "127.0.0.1:50062";
+    std::string process_id = "keeper-1";
+    // Must equal the endpoint the Visor lists for this Keeper.
+    std::string self_endpoint = "chrono-keeper:50052";
+    std::string visor_internal = "chrono-visor:50061";
+    size_t payload_max_bytes = 1048576;
+    // TBD in section 13 of ARCHITECTURE.md; this PR proposes 60 s.
+    int64_t causal_floor_skew_limit_ns = 60'000'000'000;
+    size_t dedupe_window = 65536;
+    // Zero selects std::thread::hardware_concurrency().
+    uint32_t worker_threads = 0;
+    uint32_t heartbeat_interval_ms = 5000;
+    // Allows internal_listen on a wildcard address. Refused otherwise (S14.3).
+    bool insecure_bind_all = false;
+    std::vector<StaticRoute> static_routes;
+    std::vector<StaticWriter> static_writers;
+
+    using Getenv = std::function<const char*(const char*)>;
+
+    // Defaults, then the JSON file when `path` is given, then the environment.
+    static absl::StatusOr<KeeperConfig> load(
+            const std::optional<std::string>& path,
+            const Getenv& getenv = [](const char* name) { return std::getenv(name); });
+
+    absl::Status validate() const;
+    uint32_t effectiveWorkerThreads() const;
+};
+
+} // namespace chronolog::keeper

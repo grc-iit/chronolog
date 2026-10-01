@@ -125,6 +125,7 @@ add_subdirectory(tools/stub_server)
 # components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-keeper/journal)
+add_subdirectory(src/chrono-keeper/server)
 add_subdirectory(src/chrono-keeper/tests)
 add_subdirectory(src/chrono-player)
 

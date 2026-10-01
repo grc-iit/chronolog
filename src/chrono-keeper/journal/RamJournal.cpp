@@ -289,24 +289,52 @@ Hlc RamJournal::seal(StoryId id, std::vector<std::shared_ptr<Writer>>& live) con
     return f;
 }
 
-absl::StatusOr<std::vector<Frontier>> RamJournal::frontier(StoryId id) const
+absl::StatusOr<RamJournal::SealedView> RamJournal::sealedView(StoryId id) const
 {
     if(auto s = requireStory(id); !s.ok())
         return s;
     std::vector<std::shared_ptr<Writer>> live;
-    Hlc f = seal(id, live);
-    std::vector<Frontier> out;
-    out.reserve(live.size());
-    for(const auto& w: live) out.push_back(Frontier{w->writer_id, w->incarnation, f});
-    return out;
+    SealedView view;
+    view.sealed = seal(id, live);
+    view.frontiers.reserve(live.size());
+    for(const auto& w: live) view.frontiers.push_back(Frontier{w->writer_id, w->incarnation, view.sealed});
+    return view;
+}
+
+absl::StatusOr<std::vector<Frontier>> RamJournal::frontier(StoryId id) const
+{
+    auto view = sealedView(id);
+    if(!view.ok())
+        return view.status();
+    return std::move(view->frontiers);
 }
 
 absl::StatusOr<Hlc> RamJournal::keeperFrontier(StoryId id) const
 {
-    if(auto s = requireStory(id); !s.ok())
-        return s;
-    std::vector<std::shared_ptr<Writer>> live;
-    return seal(id, live);
+    auto view = sealedView(id);
+    if(!view.ok())
+        return view.status();
+    return view->sealed;
+}
+
+std::vector<RamJournal::WriterKey> RamJournal::liveWriters() const
+{
+    std::vector<std::pair<StoryId, std::shared_ptr<Writer>>> current;
+    for(auto& sh: shards_)
+    {
+        std::shared_lock lock(sh.mu);
+        for(const auto& [story, st]: sh.stories)
+            for(const auto& [writer_id, slot]: st.slots) current.emplace_back(story, slot.current);
+    }
+    std::vector<WriterKey> out;
+    for(const auto& [story, w]: current)
+    {
+        std::lock_guard lock(w->mu);
+        if(!w->released)
+            out.push_back(WriterKey{story, w->writer_id, w->incarnation});
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 } // namespace chronolog

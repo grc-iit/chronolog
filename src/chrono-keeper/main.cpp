@@ -1,0 +1,178 @@
+// ChronoKeeper: hosts chronolog.v1.Journal on `listen` and chronolog.internal.v1.Archive on
+// `internal_listen`, registers with the Visor, and applies its acquisition stream. The journal is
+// RAM only, so DURABLE appends are rejected with UNIMPLEMENTED until the WAL lands.
+
+#include <grpcpp/grpcpp.h>
+
+#include <atomic>
+#include <chrono>
+#include <csignal>
+#include <ctime>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <random>
+#include <string>
+#include <thread>
+
+#include "KeeperConfig.h"
+#include "adapter/ArchiveService.h"
+#include "adapter/JournalService.h"
+#include "clock/SystemClock.h"
+#include "journal/RamJournal.h"
+#include "membership/AcquisitionWatcher.h"
+#include "membership/ConfigMembership.h"
+#include "membership/RouteWatcher.h"
+#include "runtime/ClusterClient.h"
+#include "runtime/WorkerPool.h"
+
+namespace
+{
+
+constexpr size_t kMaxQueuedRequests = 1024;
+constexpr int kMaxReceiveBytes = 64 << 20;
+constexpr std::chrono::seconds kShutdownDeadline{5};
+
+std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Service& service, int& bound_port)
+{
+    grpc::ServerBuilder builder;
+    // SO_REUSEPORT would let two Keepers share one port silently.
+    builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+    builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
+    builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
+    builder.RegisterService(&service);
+    return builder.BuildAndStart();
+}
+
+std::string newInstanceId()
+{
+    std::random_device random;
+    char buffer[40];
+    std::snprintf(buffer, sizeof(buffer), "%08x%08x", random(), random());
+    return buffer;
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    std::optional<std::string> config_path;
+    for(int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if(arg == "--config" && i + 1 < argc)
+        {
+            config_path = argv[++i];
+        }
+        else
+        {
+            std::cerr << "usage: chrono_keeper [--config PATH]\n"
+                      << "environment overrides: CHRONOLOG_KEEPER_<KEY>, for example CHRONOLOG_KEEPER_PROCESS_ID\n";
+            return 2;
+        }
+    }
+
+    auto config = chronolog::keeper::KeeperConfig::load(config_path);
+    if(!config.ok())
+    {
+        std::cerr << "chrono_keeper: " << config.status().message() << "\n";
+        return 2;
+    }
+
+    // Block the termination signals before any thread exists so every thread inherits the
+    // mask and only the watcher below consumes them.
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGTERM);
+    sigaddset(&signals, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    using namespace chronolog;
+    auto clock = std::make_shared<SystemClock>();
+    auto membership = std::make_shared<keeper::ConfigMembership>(config->static_routes);
+    RamJournalConfig journal_config;
+    journal_config.payload_max_bytes = config->payload_max_bytes;
+    journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
+    journal_config.dedupe_window = config->dedupe_window;
+    RamJournal journal(clock, membership, journal_config);
+    for(const auto& writer: config->static_writers)
+        (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
+
+    keeper::WorkerPool pool(config->effectiveWorkerThreads(), kMaxQueuedRequests);
+    keeper::JournalService journal_service(journal, pool);
+    keeper::ArchiveService archive_service(journal, *membership, pool);
+
+    int public_port = 0;
+    int internal_port = 0;
+    auto public_server = startServer(config->listen, journal_service, public_port);
+    if(!public_server || public_port == 0)
+    {
+        std::cerr << "chrono_keeper: cannot listen on " << config->listen << "\n";
+        return 1;
+    }
+    auto internal_server = startServer(config->internal_listen, archive_service, internal_port);
+    if(!internal_server || internal_port == 0)
+    {
+        std::cerr << "chrono_keeper: cannot listen on " << config->internal_listen << "\n";
+        public_server->Shutdown();
+        return 1;
+    }
+
+    grpc::ChannelArguments channel_args;
+    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
+    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
+    auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
+    const std::string instance = newInstanceId();
+
+    std::atomic<keeper::ClusterClient*> cluster_ptr{nullptr};
+    keeper::AcquisitionWatcher acquisitions(journal,
+                                            config->process_id,
+                                            [&cluster_ptr]
+                                            {
+                                                if(auto* client = cluster_ptr.load())
+                                                    client->kick();
+                                            });
+    keeper::ClusterClient cluster(visor,
+                                  {config->process_id,
+                                   instance,
+                                   config->self_endpoint,
+                                   std::chrono::milliseconds(config->heartbeat_interval_ms)},
+                                  journal,
+                                  *membership,
+                                  acquisitions);
+    cluster_ptr = &cluster;
+    acquisitions.start(visor);
+    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);
+    cluster.start();
+
+    std::cout << "journal ready durability=ACCEPTED-only process_id=" << config->process_id
+              << " listen=" << config->listen << " internal_listen=" << config->internal_listen << std::endl;
+
+    std::atomic<bool> finished{false};
+    std::thread watcher(
+            [&]()
+            {
+                const timespec poll = {0, 200 * 1000 * 1000};
+                while(!finished.load())
+                {
+                    const int received = sigtimedwait(&signals, nullptr, &poll);
+                    if(received > 0)
+                    {
+                        std::cout << "chrono_keeper shutting down on signal " << received << std::endl;
+                        const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
+                        internal_server->Shutdown(deadline);
+                        public_server->Shutdown(deadline);
+                        return;
+                    }
+                }
+            });
+
+    public_server->Wait();
+    internal_server->Wait();
+    finished = true;
+    watcher.join();
+    // Queued tasks run to completion before the pool joins, then the clients stop.
+    pool.stop();
+    cluster_ptr = nullptr;
+    return 0;
+}
