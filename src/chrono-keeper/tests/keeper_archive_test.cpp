@@ -8,6 +8,7 @@
 
 #include "adapter/ArchiveService.h"
 #include "archive/KeeperArchive.h"
+#include "chrono-grapher/server/ArchiveService.h"
 #include "membership/ConfigMembership.h"
 #include "wal_harness.h"
 
@@ -412,66 +413,16 @@ namespace chronolog::test
 {
 namespace
 {
-class TransferService final: public internal::v1::Archive::Service
+class SubscriptionService final: public internal::v1::Archive::Service
 {
 public:
     std::mutex mu;
     std::condition_variable cv;
     std::vector<std::set<StoryId>> subscriptions;
     std::string keeper;
-    size_t frames{};
-    int mode{};
     bool confirm{};
     std::map<StoryId, Hlc> ends;
     uint64_t receipts{};
-    grpc::Status TransferChunk(grpc::ServerContext*,
-                               grpc::ServerReader<internal::v1::TransferChunkRequest>* reader,
-                               internal::v1::TransferChunkResponse* response) override
-    {
-        internal::v1::TransferChunkRequest first, frame;
-        std::string bytes;
-        size_t count = 0;
-        bool final = false;
-        while(reader->Read(&frame))
-        {
-            EXPECT_LT(count, 10000u);
-            if(++count > 10000)
-                return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "too many test frames");
-            if(count == 1)
-                first = frame;
-            EXPECT_FALSE(final);
-            EXPECT_EQ(frame.offset(), bytes.size());
-            EXPECT_EQ(frame.identity().SerializeAsString(), first.identity().SerializeAsString());
-            EXPECT_EQ(frame.total_bytes(), first.total_bytes());
-            EXPECT_EQ(frame.checksum(), first.checksum());
-            EXPECT_EQ(frame.checksum_algorithm(), internal::v1::CHECKSUM_ALGORITHM_CRC32C);
-            if(bytes.size() + frame.data().size() > (2u << 20))
-                return grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "test byte limit");
-            bytes += frame.data();
-            final = frame.final();
-            EXPECT_EQ(final, bytes.size() == frame.total_bytes());
-        }
-        EXPECT_TRUE(final);
-        EXPECT_EQ(bytes.size(), first.total_bytes());
-        const auto crc = static_cast<uint32_t>(absl::ComputeCrc32c(bytes));
-        std::string checksum;
-        for(int shift = 24; shift >= 0; shift -= 8) checksum.push_back(static_cast<char>(crc >> shift));
-        EXPECT_EQ(checksum, first.checksum());
-        internal::v1::ChunkPayload payload;
-        EXPECT_TRUE(payload.ParseFromString(bytes));
-        std::lock_guard lock(mu);
-        frames += count;
-        ++receipts;
-        ends[first.identity().story_id()] = {first.identity().end().physical_ns(), first.identity().end().logical()};
-        response->set_chunk_id(first.identity().chunk_id());
-        response->set_bytes(bytes.size() + (mode == 1 ? 1 : 0));
-        response->set_grapher_instance("grapher-instance");
-        response->set_receipt(mode == 2 ? 0 : receipts);
-        if(mode == 3)
-            response->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kUnavailable));
-        cv.notify_all();
-        return mode == 4 ? grpc::Status(grpc::StatusCode::UNAVAILABLE, "interrupted") : grpc::Status::OK;
-    }
     grpc::Status WatchWatermarks(grpc::ServerContext* context,
                                  const internal::v1::WatchWatermarksRequest* request,
                                  grpc::ServerWriter<internal::v1::WatchWatermarksResponse>* writer) override
@@ -513,9 +464,30 @@ public:
     }
 };
 
-TEST(KeeperTransfer, FramesRepeatIdentityAndRejectBadReceipts)
+TEST(KeeperTransfer, InvalidReceiptsKeepChunksReadable)
 {
-    TransferService service;
+    ArchiveRig rig;
+    auto chunk = rig.sealFirst();
+    internal::v1::ChunkReceipt receipt;
+    receipt.set_chunk_id(chunk.id);
+    receipt.set_grapher_instance("grapher-instance");
+    for(int mode = 0; mode < 3; ++mode)
+    {
+        receipt.mutable_status()->set_code(mode == 2 ? static_cast<int>(absl::StatusCode::kUnavailable) : 0);
+        receipt.set_bytes(mode == 0 ? 124 : 123);
+        receipt.set_receipt(mode == 1 ? 0 : 5);
+        rig.archive->delivered(chunk.id, receipt, 123);
+        EXPECT_EQ(rig.events(), 1u);
+        EXPECT_FALSE(rig.wal.current->sealedChunks().front().settled);
+    }
+}
+
+TEST(KeeperTransfer, RealGrapherPersistsSplitChunksAndConfirmsTheirReceipts)
+{
+    auto directory = std::make_shared<WalControl>();
+    auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
+    ASSERT_TRUE(store.ok());
+    grapher::ArchiveService service(**store, "grapher-instance");
     grpc::ServerBuilder builder;
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -523,36 +495,70 @@ TEST(KeeperTransfer, FramesRepeatIdentityAndRejectBadReceipts)
     auto server = builder.BuildAndStart();
     ASSERT_NE(server, nullptr);
     ArchiveRig rig;
-    rig.config.frame_bytes = 16;
+    rig.config.chunk_max_events = 2;
+    rig.config.frame_bytes = 4u << 20;
+    rig.config.seal_interval_ms = 10;
     rig.reset();
     rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
-    auto chunk = rig.sealFirst();
-    for(int mode = 1; mode <= 4; ++mode)
-    {
-        {
-            std::lock_guard lock(service.mu);
-            service.mode = mode;
-        }
-        EXPECT_TRUE(rig.archive->shipOne());
-        EXPECT_EQ(rig.events(), 1u);
-        EXPECT_FALSE(rig.wal.current->sealedChunks().front().settled);
-        rig.now += 10s;
-    }
-    {
-        std::lock_guard lock(service.mu);
-        service.mode = 0;
-    }
+    for(uint64_t sequence = 1; sequence <= 3; ++sequence) rig.append(sequence, 100'000'000, 600u << 10);
+    rig.wal.clock->setPhysical(1'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    auto chunks = rig.archive->chunks();
+    ASSERT_EQ(chunks.size(), 2u);
+    EXPECT_EQ(chunks[0].end, chunks[1].start);
     ASSERT_TRUE(rig.archive->shipOne());
-    rig.archive->releaseTail(1);
-    rig.report(chunk.end, "grapher-instance", 5);
+    ASSERT_TRUE(rig.archive->shipOne());
+    auto persisted = (*store)->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(persisted.ok());
+    ASSERT_EQ(persisted->size(), 3u);
+    auto manifest = (*store)->manifest(1);
+    ASSERT_TRUE(manifest.ok());
+    ASSERT_EQ(manifest->size(), 2u);
+    EXPECT_EQ((*manifest)[0].event_count, 2u);
+    EXPECT_EQ((*manifest)[1].event_count, 1u);
+    for(size_t i = 0; i < persisted->size(); ++i) EXPECT_EQ((*persisted)[i].id.sequence, i + 1);
+    rig.archive->start();
+    for(int poll = 0; poll < 200 && !rig.archive->chunks().empty(); ++poll) std::this_thread::sleep_for(10ms);
+    EXPECT_TRUE(rig.archive->chunks().empty());
     EXPECT_EQ(rig.events(), 0u);
-    EXPECT_GT(service.frames, 5u);
+    EXPECT_EQ(rig.wal.current->evictionFloor(1), chunks.back().end);
+    rig.archive->stop();
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
+
+TEST(KeeperTransfer, RealGrapherNotFoundDropsEveryRetainedChunk)
+{
+    auto directory = std::make_shared<WalControl>();
+    auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
+    ASSERT_TRUE(store.ok());
+    grapher::ArchiveService service(**store, "grapher-instance");
+    service.dropStory(1);
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ArchiveRig rig;
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
+    rig.sealFirst();
+    rig.append(2, 1'100'000'000);
+    rig.wal.clock->setPhysical(2'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_EQ(rig.archive->chunks().size(), 2u);
+    ASSERT_TRUE(rig.archive->shipOne());
+    EXPECT_TRUE(rig.archive->chunks().empty());
+    EXPECT_EQ(rig.events(), 0u);
+    EXPECT_EQ(rig.wal.current->evictionFloor(1), (Hlc{2'000'000'000, 0}));
+    for(const auto& seal: rig.wal.current->sealedChunks()) EXPECT_TRUE(seal.settled);
+    service.shutdown();
     server->Shutdown(std::chrono::system_clock::now() + 2s);
 }
 
 TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
 {
-    TransferService service;
+    SubscriptionService service;
     grpc::ServerBuilder builder;
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -584,6 +590,26 @@ TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
     ASSERT_TRUE(first.ok());
     clock->setPhysical(1'000'000'000);
     ASSERT_TRUE(archive.seal().ok());
+    auto acknowledge = [&](StoryId story)
+    {
+        auto chunks = archive.chunks();
+        for(const auto& chunk: chunks)
+        {
+            if(chunk.story_id != story)
+                continue;
+            internal::v1::ChunkReceipt receipt;
+            receipt.set_chunk_id(chunk.id);
+            receipt.set_grapher_instance("grapher-instance");
+            receipt.set_bytes(123);
+            receipt.set_receipt(story);
+            archive.delivered(chunk.id, receipt, 123);
+            std::lock_guard lock(service.mu);
+            service.ends[story] = chunk.end;
+            service.receipts = std::max(service.receipts, story);
+            service.cv.notify_all();
+        }
+    };
+    acknowledge(1);
     archive.start();
     {
         std::unique_lock lock(service.mu);
@@ -595,6 +621,8 @@ TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
     auto second = journal.append({2, 7, {item}}, Durability::Durable);
     ASSERT_TRUE(second.ok());
     clock->setPhysical(2'000'000'000);
+    ASSERT_TRUE(archive.seal().ok());
+    acknowledge(2);
     {
         std::unique_lock lock(service.mu);
         ASSERT_TRUE(service.cv.wait_for(lock,

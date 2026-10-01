@@ -69,6 +69,23 @@ TEST(KeeperConfig, RejectsUnknownKeysAndWildcardInternalBind)
     EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_DEDUPE_WINDOW", "-1"}})).ok());
 }
 
+TEST(KeeperConfig, ChunkEventLimitDefaultsAndOverridesAreBounded)
+{
+    auto defaults = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_EQ(defaults->chunk_max_events, 65536u);
+    auto path = WriteFile(R"({"chunk_max_events":7})");
+    auto file = KeeperConfig::load(path, Env({}));
+    ASSERT_TRUE(file.ok());
+    EXPECT_EQ(file->chunk_max_events, 7u);
+    auto overridden = KeeperConfig::load(path, Env({{"CHRONOLOG_KEEPER_CHUNK_MAX_EVENTS", "2"}}));
+    std::filesystem::remove(path);
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->chunk_max_events, 2u);
+    for(const auto* invalid: {"0", "65537"})
+        EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_CHUNK_MAX_EVENTS", invalid}})).ok());
+}
+
 TEST(ConfigMembership, SeedsAndReplacesRoutes)
 {
     ConfigMembership membership({StaticRoute{1, Route{3, {{"k", "k:1"}}, "g", "p"}}});
