@@ -186,7 +186,10 @@ class Scenario:
         writers = {}
         for n in range(8):
             identity = 'writer-' + str(n)
-            a = self.acquire(identity)
+            try:
+                a = self.acquire(identity)
+            except RuntimeError as error:
+                raise RuntimeError(f'{error} state={json.dumps(self.state())}')
             writers.setdefault(a['assigned_keeper']['process_id'], (identity, a))
             if len(writers) == 2:
                 break
@@ -208,11 +211,24 @@ class Scenario:
 
         started = self.begin('Visor leader kill')
         identity, old = writers['keeper-1']
+        observed = []
         def led():
             metadata = self.raw('Acquire', dict(story_id=self.story, writer_identity=identity))
+            if metadata['transport'] == 0 and metadata.get('leader'):
+                observed[:] = [metadata['leader']]
             return metadata if metadata['transport'] == 0 and metadata.get('leader') == 3 else None
-        # Every Keeper, Grapher and Player is configured with visor-3 alone, so its death is the case to prove.
-        metadata = self.wait(led, 20)
+        # Every Keeper, Grapher and Player lists visor-3 first, so its death is the case to prove.
+        # A slow host can leave another replica leading; bounce that leader until visor-3 wins.
+        metadata = None
+        for attempt in range(4):
+            try:
+                metadata = self.wait(led, 8)
+                break
+            except RuntimeError:
+                if observed:
+                    self.stack.stop('visor-' + str(observed[0]))
+                    self.stack.start('visor-' + str(observed[0]))
+        assert metadata, 'visor-3 never became the leader'
         leader = metadata['leader']
         old = metadata['response']
         self.append(old)
