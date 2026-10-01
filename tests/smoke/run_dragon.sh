@@ -29,7 +29,7 @@ export CHRONOLOG_IMAGE=$image
 
 if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     echo "-- native dev build: ${targets[*]}"
-    { bash plugins/chrono-viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel 12 --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
+    { bash plugins/chrono-viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-8}" --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
         || { echo "FAILED native build, tail of $logs/native-build.log:"; tail -40 "$logs/native-build.log"; exit 1; }
 fi
 bash deploy/demo/stage.sh binaries "$root" || exit 1
