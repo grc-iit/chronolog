@@ -30,7 +30,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -93,6 +93,8 @@ run_engine() {
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
         step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         echo "-- $engine: smoke.py"
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \

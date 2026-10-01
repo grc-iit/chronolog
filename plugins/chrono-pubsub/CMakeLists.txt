@@ -1,63 +1,13 @@
-cmake_minimum_required(VERSION 3.25)
-
-project(chronopubsub
-    VERSION 0.1.0
-    DESCRIPTION "ChronoPubSub Plugin for ChronoLog"
-    LANGUAGES CXX
-)
-
-# Core
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-include(GNUInstallDirs)
-
-# Library
-add_library(chronopubsub
-    src/chronopubsub.cpp
-    src/chronopubsub_mapper.cpp
-    src/chronopubsub_client_adapter.cpp
-)
-
-target_include_directories(chronopubsub
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-file(GLOB HEADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
-set_target_properties(chronopubsub PROPERTIES
-    PUBLIC_HEADER "${HEADER_FILES}"
-)
-
-set_target_properties(chronopubsub PROPERTIES
-    VERSION ${CHRONOLOG_PACKAGE_VERSION}
-    SOVERSION ${CHRONOLOG_VERSION_MAJOR}
-)
-
-target_include_directories(chronopubsub PRIVATE
-    $<TARGET_PROPERTY:chronolog_client,INTERFACE_INCLUDE_DIRECTORIES>
-)
-
-find_package(Threads REQUIRED)
-
-target_link_libraries(chronopubsub
-    PRIVATE
-        chronolog_client
-        rt
-        Threads::Threads
-)
-
-# Examples
-option(CHRONOPUBSUB_BUILD_EXAMPLES "Build ChronoPubSub examples" ON)
-if(CHRONOPUBSUB_BUILD_EXAMPLES)
-    add_subdirectory(examples)
+add_library(chronolog_pubsub bus.cpp)
+add_library(chronolog::pubsub ALIAS chronolog_pubsub)
+target_include_directories(chronolog_pubsub PUBLIC include)
+target_link_libraries(chronolog_pubsub PUBLIC chronolog::client chronolog::kvs PRIVATE chronolog_warnings Threads::Threads)
+add_executable(chronolog_pubsub_example example.cpp)
+target_link_libraries(chronolog_pubsub_example PRIVATE chronolog::pubsub chronolog_warnings)
+add_executable(chronolog_pubsub_tests tests/bus_test.cpp)
+target_link_libraries(chronolog_pubsub_tests PRIVATE chronolog::pubsub GTest::gtest chronolog_warnings Threads::Threads)
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
+    add_test(NAME pubsub.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+        $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_pubsub_tests>)
+    set_tests_properties(pubsub.acceptance PROPERTIES TIMEOUT 90)
 endif()
-
-chronolog_install_target(chronopubsub)
-
-message(STATUS "ChronoPubSub: superbuild mode enabled")
