@@ -85,6 +85,8 @@ public:
     {
         if(socket_ < 0)
             throw std::runtime_error("socket failed");
+        int reuse = 1;
+        setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -324,6 +326,28 @@ TEST(StreamStack, CollectorExporterResumesAndSavesOnlyAcknowledgedBatches)
     ASSERT_TRUE(result.ok()) << result.status();
     EXPECT_EQ(result->events, 3);
     EXPECT_EQ(server.points.load() - count, 3);
+    for(int i = 0; i < 2; ++i) ASSERT_TRUE(collector.sample().ok());
+    auto baseline = server.points.load();
+    stream::Exporter stopped(restarted,
+                             loaded,
+                             "stream-test",
+                             {"system.cpu", "system.memory", "system.network"},
+                             sink,
+                             {.batch_count = 1});
+    auto one = stopped.run([&] { return server.points.load() >= baseline + 1; },
+                           std::chrono::system_clock::now() + std::chrono::seconds(3));
+    ASSERT_TRUE(one.ok()) << one.status();
+    EXPECT_EQ(one->events, 1);
+    stream::Exporter remainder(restarted,
+                               loaded,
+                               "stream-test",
+                               {"system.cpu", "system.memory", "system.network"},
+                               sink,
+                               {.batch_count = 1});
+    auto rest = remainder.run([&] { return server.points.load() >= baseline + 6; },
+                              std::chrono::system_clock::now() + std::chrono::seconds(3));
+    ASSERT_TRUE(rest.ok()) << rest.status();
+    EXPECT_EQ(rest->events, 5);
     auto requests = server.requests();
     EXPECT_EQ(requests[0], requests[1]);
     EXPECT_EQ(requests[1], requests[2]);

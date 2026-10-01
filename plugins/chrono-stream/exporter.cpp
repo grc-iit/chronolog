@@ -162,6 +162,8 @@ absl::StatusOr<ExportStats> Exporter::run(std::function<bool()> stop, client::De
             else
                 for(const auto& event: (**item).events)
                 {
+                    if(stop() || (deadline && std::chrono::system_clock::now() >= *deadline))
+                        break;
                     if(source.consumed && !after(event, *source.consumed))
                         continue;
                     auto line = lineProtocol(event);
