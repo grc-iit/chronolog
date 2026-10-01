@@ -271,29 +271,9 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
                                                    const internal::v1::RegisterRequest* request,
                                                    internal::v1::RegisterResponse* response)
 {
-    grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    if(raft_ && !raft_->leaderLease())
-    {
-        auto task = [this, context, request, response, reactor]()
-        {
-            auto endpoint = raft_->leaderEndpoint(true);
-            if(endpoint.empty() || raft_->isLocalLeader())
-            {
-                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
-                return;
-            }
-            grpc::ClientContext ctx;
-            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
-            auto stub =
-                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
-            reactor->Finish(stub->Register(&ctx, *request, response));
-        };
-        if(!pool_ || !pool_->submit(std::move(task)))
-            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
-        return reactor;
-    }
     if(raft_)
         return dynamicCall(context, request, response, 1);
+    grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
     auto process = convert::fromProto(request->process());
     absl::Status status = process.ok() ? membership_.registerProcess(*process) : process.status();
     *response->mutable_status() = convert::toProto(status);
@@ -313,29 +293,9 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                                                     const internal::v1::HeartbeatRequest* request,
                                                     internal::v1::HeartbeatResponse* response)
 {
-    grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    if(raft_ && !raft_->leaderLease())
-    {
-        auto task = [this, context, request, response, reactor]()
-        {
-            auto endpoint = raft_->leaderEndpoint(true);
-            if(endpoint.empty() || raft_->isLocalLeader())
-            {
-                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
-                return;
-            }
-            grpc::ClientContext ctx;
-            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
-            auto stub =
-                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
-            reactor->Finish(stub->Heartbeat(&ctx, *request, response));
-        };
-        if(!pool_ || !pool_->submit(std::move(task)))
-            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
-        return reactor;
-    }
     if(raft_)
         return dynamicCall(context, request, response, 2);
+    grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
     absl::Status status =
             membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
     *response->mutable_status() = convert::toProto(status);

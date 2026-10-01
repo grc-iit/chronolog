@@ -270,21 +270,23 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
     }
     if(status.ok() && transition)
     {
+        auto everGranted = [](const wire::MemberState* member)
+        {
+            if(member)
+                for(const auto& instance: member->instances())
+                    if(instance.granted())
+                        return true;
+            return false;
+        };
+        total_loss = q.has_abandon() && !everGranted(m);
         for(const auto& r: state.routes())
         {
             if(!q.has_join() && !lists(r.route(), id))
                 continue;
             for(const auto& k: r.route().keepers())
             {
-                auto* old = member(state, k.process_id());
-                auto* i = old ? instance(*old, old->process().instance()) : nullptr;
-                if(!i || !i->granted())
-                {
-                    if(q.has_abandon() && k.process_id() == id)
-                        total_loss = true;
-                    else
-                        status = absl::FailedPreconditionError("epoch change needs ceilings for every old Keeper");
-                }
+                if(!everGranted(member(state, k.process_id())) && !total_loss)
+                    status = absl::FailedPreconditionError("epoch change needs ceilings for every old Keeper");
             }
         }
     }
@@ -487,6 +489,7 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                            proof.proof().has_first_event() &&
                            hlc(proof.proof().coverage_start()) <= hlc(proof.proof().first_event()))
                             start = hlc(proof.proof().settled_through());
+                set(r.mutable_archived_below(), std::max(hlc(r.archived_below()), std::min(start, hlc(p.own_cut()))));
                 if(start < hlc(p.own_cut()))
                 {
                     auto* a = r.add_abandoned();

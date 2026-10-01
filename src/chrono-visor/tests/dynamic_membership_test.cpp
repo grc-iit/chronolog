@@ -70,8 +70,11 @@ protected:
         p->set_role(wire::PROCESS_ROLE_KEEPER);
         return call<wire::RegisterResponse>(q);
     }
-    wire::ExtendCeilingResponse
-    extend(std::string id, std::string instance, uint64_t revision = 10000, int64_t wanted = 100)
+    wire::ExtendCeilingResponse extend(std::string id,
+                                       std::string instance,
+                                       uint64_t revision = 10000,
+                                       int64_t wanted = 100,
+                                       int64_t realtime = 100)
     {
         wire::MembershipCommand q;
         auto* r = q.mutable_extend();
@@ -79,7 +82,7 @@ protected:
         r->set_instance(instance);
         r->set_applied_route_revision(revision);
         r->mutable_wanted_hlc()->set_physical_ns(wanted);
-        r->set_realtime_ns(100);
+        r->set_realtime_ns(realtime);
         return call<wire::ExtendCeilingResponse>(q);
     }
     wire::HeartbeatResponse heartbeat(std::string id, std::string instance, const wire::StoryFrontiers& f = {})
@@ -122,8 +125,8 @@ TEST_F(MembershipContract, ReplacementRevokesExtensionAndReturnsMonotoneFloors)
     EXPECT_NE(reg("keeper-a", "a1").status().code(), 0);
     auto refused = extend("keeper-b", "b1", 0);
     EXPECT_NE(refused.status().code(), 0);
-    ASSERT_EQ(refused.routes_size(), 1);
-    EXPECT_EQ(refused.routes(0).revision(), route().revision());
+    ASSERT_GT(refused.routes_size(), 0);
+    EXPECT_EQ(refused.routes(refused.routes_size() - 1).revision(), route().revision());
     auto renewed = extend("keeper-a", "a2");
     EXPECT_EQ(renewed.status().code(), 0);
     EXPECT_GE(renewed.ceiling().physical_ns(), ceiling.ceiling().physical_ns());
@@ -176,6 +179,7 @@ TEST_F(MembershipContract, AbandonedRangeUsesOnlyTheSameInstanceProof)
     EXPECT_EQ(r.abandoned(0).start().physical_ns(), 0);
     EXPECT_EQ(r.abandoned(1).start().physical_ns(), 50);
     EXPECT_EQ(r.predecessors_size(), 0);
+    EXPECT_EQ(r.archived_below().physical_ns(), 50);
 }
 TEST_F(MembershipContract, RouteTransitionIsAtomicAndReassignsOnlyRemovedWriters)
 {
@@ -206,11 +210,35 @@ TEST_F(MembershipContract, RouteTransitionIsAtomicAndReassignsOnlyRemovedWriters
     ASSERT_TRUE(store->installFrom(backup).ok());
     EXPECT_EQ(route().route().epoch(), 2u);
 }
+TEST_F(MembershipContract, StoryPhysicalFloorDoesNotFallWhenALowerCeilingKeeperJoins)
+{
+    ready();
+    ASSERT_EQ(reg("keeper-c", "c1").status().code(), 0);
+    ASSERT_EQ(extend("keeper-c", "c1", 10000, 100, 10).status().code(), 0);
+    ASSERT_EQ(change("keeper-c", 1).status().code(), 0);
+    auto floor = route().physical_floor_ns();
+    EXPECT_EQ(floor, 5000000100LL);
+    ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
+    EXPECT_EQ(route().physical_floor_ns(), floor);
+    auto snapshot = dynamic::snapshot(*store);
+    EXPECT_EQ(snapshot.route_history(snapshot.route_history_size() - 1).physical_floor_ns(), floor);
+}
+TEST_F(MembershipContract, MismatchedPolicyRefusesRegistration)
+{
+    wire::MembershipCommand q;
+    auto* r = q.mutable_register_();
+    r->set_policy_version(2);
+    auto* p = r->mutable_process();
+    p->set_process_id("keeper-a");
+    p->set_instance("a1");
+    p->set_endpoint("keeper-a:50052");
+    p->set_role(wire::PROCESS_ROLE_KEEPER);
+    EXPECT_EQ(call<wire::RegisterResponse>(q).status().code(), static_cast<int>(absl::StatusCode::kFailedPrecondition));
+}
 TEST_F(MembershipContract, MissingCeilingBlocksEpochChangeAndAbandonmentDeclaresTotalLoss)
 {
     ASSERT_EQ(reg("keeper-a", "a1").status().code(), 0);
     ASSERT_EQ(reg("keeper-b", "b1").status().code(), 0);
-    ASSERT_EQ(extend("keeper-b", "b1").status().code(), 0);
     EXPECT_NE(change("keeper-a", 0).status().code(), 0);
     EXPECT_EQ(route().route().epoch(), 1u);
     ASSERT_EQ(change("keeper-a", 2).status().code(), 0);

@@ -214,6 +214,49 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     EXPECT_EQ(state.routes(0).predecessors(0).instance(), "a1");
     EXPECT_EQ(state.routes(0).revision(), revision);
 }
+TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloorUpdates)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[selected], "keeper-a", "a1"}, b{*stubs[selected], "keeper-b", "b1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    ASSERT_EQ(b.Register().status().code(), 0);
+    ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
+    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    auto first_writer = stores[selected]->acquire(1, "first");
+    auto second_writer = stores[selected]->acquire(1, "second");
+    ASSERT_TRUE(first_writer.ok());
+    ASSERT_TRUE(second_writer.ok());
+    ASSERT_EQ(second_writer->assigned_keeper.process_id, "keeper-a");
+    auto context = a.context();
+    wire::WatchRoutesRequest watch;
+    auto reader = stubs[selected]->WatchRoutes(context.get(), watch);
+    wire::WatchRoutesResponse first;
+    ASSERT_TRUE(reader->Read(&first));
+    EXPECT_EQ(first.route().epoch(), 1u);
+    wire::KeeperRequest request;
+    request.set_process_id("keeper-a");
+    wire::MembershipResponse response;
+    ASSERT_TRUE(stubs[selected]->DrainKeeper(a.context().get(), request, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), request, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    auto refused = b.ExtendCeiling();
+    ASSERT_NE(refused.status().code(), 0);
+    ASSERT_EQ(refused.routes_size(), 2);
+    EXPECT_EQ(refused.routes(0).route().epoch(), 2u);
+    EXPECT_EQ(refused.routes(1).route().epoch(), 3u);
+    auto observe = refused.routes(0).observe_floor();
+    EXPECT_NE(std::find(observe.begin(), observe.end(), "keeper-b"), observe.end());
+    wire::WatchRoutesResponse second, third;
+    ASSERT_TRUE(reader->Read(&second));
+    ASSERT_TRUE(reader->Read(&third));
+    EXPECT_EQ(second.route().epoch(), 2u);
+    EXPECT_EQ(third.route().epoch(), 3u);
+    EXPECT_LT(second.revision(), third.revision());
+    context->TryCancel();
+    (void)reader->Finish();
+}
 TEST_F(DynamicClusterTest, FailureDetectionRemovesSilentKeeperAfterFullTimeout)
 {
     auto selected = leader();

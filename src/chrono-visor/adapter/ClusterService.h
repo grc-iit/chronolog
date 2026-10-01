@@ -102,12 +102,12 @@ private:
     std::mutex mutex_;
     bool closed_{};
     std::set<std::shared_ptr<Stream>> streams_;
-    std::jthread route_notifications_;
     std::mutex heartbeat_mutex_;
     std::map<std::string, std::chrono::steady_clock::time_point> heartbeats_;
     uint64_t leader_term_{};
     std::chrono::steady_clock::time_point leader_since_;
     std::chrono::milliseconds failure_timeout_{15000};
+    std::jthread route_notifications_;
 };
 
 } // namespace chronolog::visor
