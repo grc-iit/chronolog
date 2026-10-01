@@ -6,6 +6,8 @@ add_executable(chronolog_keeper_tests
     fetch_hot_adapter_test.cpp
     hlc_core_test.cpp
     journal_adapter_test.cpp
+    "${CMAKE_SOURCE_DIR}/tests/contract/journal/journal_adapter_test.cpp"
+    "${CMAKE_SOURCE_DIR}/tests/contract/archive/keeper_archive_adapter_test.cpp"
     ram_journal_contract.cpp
     ram_journal_test.cpp
     system_clock_contract.cpp)
@@ -23,4 +25,4 @@ if("thread" IN_LIST CHRONOLOG_SANITIZERS)
             "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
     endif()
 endif()
-gtest_discover_tests(chronolog_keeper_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
+gtest_discover_tests(chronolog_keeper_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)

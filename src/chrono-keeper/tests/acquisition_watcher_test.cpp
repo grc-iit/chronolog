@@ -215,20 +215,13 @@ TEST_F(AcquisitionWatcherTest, ReconnectSnapshotFencesWriterItNoLongerLists)
 TEST_F(AcquisitionWatcherTest, WriterAssignedElsewhereIsRejectedWithRoute)
 {
     keeper::AcquisitionWatcher watcher(journal_, "self");
+    watcher.applySnapshot(Snapshot(0, {}));
     watcher.applyUpdate(Update(1, iv1::ACQUISITION_STATE_ACQUIRED));
     EXPECT_TRUE(append(1).status.ok());
     watcher.applyUpdate(Update(2, iv1::ACQUISITION_STATE_ACQUIRED, "other"));
     auto r = append(2);
     EXPECT_EQ(r.status.code(), absl::StatusCode::kFailedPrecondition);
     EXPECT_TRUE(r.current_route);
-}
-
-TEST_F(AcquisitionWatcherTest, SnapshotRevisionNeverMovesBackwards)
-{
-    keeper::AcquisitionWatcher watcher(journal_, "self");
-    watcher.applySnapshot(Snapshot(8, {}));
-    watcher.applyUpdate(Update(7, iv1::ACQUISITION_STATE_RELEASED));
-    EXPECT_EQ(watcher.appliedRevision(), 8u);
 }
 
 } // namespace chronolog

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <functional>
 #include <deque>
 #include <map>
@@ -37,6 +38,7 @@ public:
                                                      Durability durability = Durability::Unspecified) override;
     using AppendCallback = std::function<void(absl::StatusOr<std::vector<AppendResult>>)>;
     void appendAsync(const AppendBatch& batch, Durability durability, AppendCallback done);
+    void setAdmissionReady(bool ready) { admission_ready_.store(ready); }
     absl::StatusOr<std::vector<Event>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const override;
     absl::StatusOr<Hlc> keeperFrontier(StoryId id) const override;
@@ -169,6 +171,7 @@ private:
     std::shared_ptr<Clock> clock_;
     std::shared_ptr<const Membership> membership_;
     RamJournalConfig config_;
+    std::atomic<bool> admission_ready_{true};
     mutable std::array<Shard, kShards> shards_;
 };
 

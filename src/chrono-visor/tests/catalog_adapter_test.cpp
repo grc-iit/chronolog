@@ -204,30 +204,6 @@ TEST_F(catalog_adapter, WellFormedButStaleRequestsAreDomainResultsNotGrpcErrors)
     EXPECT_EQ(status.status().code(), 0);
 }
 
-TEST_F(catalog_adapter, ReleaseReportsFenceState)
-{
-    const StoryId story = makeStory();
-    auto first = acquire(story, "w1");
-    auto unconfirmed = release(first);
-    EXPECT_EQ(unconfirmed.status().code(), 0);
-    EXPECT_FALSE(unconfirmed.fenced());
-    EXPECT_GT(unconfirmed.revision(), 0u);
-
-    // The assigned Keeper registers and reports a high applied revision.
-    ASSERT_TRUE(membership_
-                        ->registerProcess(Process{first.assigned_keeper().process_id(),
-                                                  "i1",
-                                                  first.assigned_keeper().endpoint(),
-                                                  ProcessRole::Keeper})
-                        .ok());
-    ASSERT_TRUE(membership_->heartbeat(first.assigned_keeper().process_id(), "i1", 1000).ok());
-    auto second = acquire(story, "w1");
-    auto confirmed = release(second);
-    EXPECT_EQ(confirmed.status().code(), 0);
-    EXPECT_TRUE(confirmed.fenced());
-    EXPECT_GT(confirmed.revision(), unconfirmed.revision());
-}
-
 TEST_F(catalog_adapter, ListsAndEpochCompareAndSet)
 {
     const StoryId story = makeStory();

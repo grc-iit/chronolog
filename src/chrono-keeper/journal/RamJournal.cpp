@@ -355,6 +355,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         return done(absl::InvalidArgumentError("story_id is required"));
     if(batch.items.empty())
         return done(absl::InvalidArgumentError("batch has no items"));
+    if(!admission_ready_.load())
+        return done(absl::UnavailableError("acquisition snapshot is not applied"));
     if(durability != Durability::Unspecified && durability != Durability::Accepted && durability != Durability::Durable)
         return done(absl::InvalidArgumentError("unknown durability"));
 

@@ -27,7 +27,10 @@ public:
     // heartbeat immediately instead of waiting for the interval.
     using FenceHook = std::function<void()>;
 
-    AcquisitionWatcher(RamJournal& journal, std::string keeper_id, FenceHook on_fence = nullptr);
+    AcquisitionWatcher(RamJournal& journal,
+                       std::string keeper_id,
+                       FenceHook on_fence = nullptr,
+                       bool gate_admission = true);
     ~AcquisitionWatcher();
 
     // Starts the background stream against the Visor's Cluster service.
@@ -42,10 +45,12 @@ public:
 private:
     bool session(std::stop_token stop);
     void advance(uint64_t revision);
+    void applyWriter(const internal::v1::AcquisitionUpdate& update);
 
     RamJournal& journal_;
     const std::string keeper_id_;
     const FenceHook on_fence_;
+    const bool gate_admission_;
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     mutable std::mutex mutex_;
     mutable std::condition_variable cv_;
