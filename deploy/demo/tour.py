@@ -411,6 +411,7 @@ class Tour:
             return
         call(f"client.read_physical(story, {lo}, {hi})")
         deadline = time.monotonic() + 60
+        waited = False
         while True:
             with read_physical(notes, lo, hi, timeout=10) as stream:
                 got = list(stream)
@@ -420,7 +421,9 @@ class Tour:
                 not bounded and completion.reason == cl.IncompleteReason.PHYSICAL_AXIS_UNBOUNDED)
             if settled or time.monotonic() > deadline:
                 break
-            say("Waiting for the Keeper's physical frontier to pass the range (acceptance window 15 s).")
+            if not waited:
+                say("Waiting for the Keeper's physical frontier to pass the range (acceptance window 15 s).")
+                waited = True
             time.sleep(3)
         show("observed", outcome)
         check(settled, f"the physical read matches the clock-status prediction ({expected})")
@@ -437,7 +440,6 @@ class Tour:
                 completion = stream.completion
             if completion.reason == cl.IncompleteReason.PHYSICAL_AXIS_UNBOUNDED or time.monotonic() > deadline:
                 break
-            say("Waiting for the physical frontier to pass the range.")
             time.sleep(3)
         show("range containing the unbounded reading", f"complete={completion.complete} reason={completion.reason.name}")
         check(not completion.complete and completion.reason == cl.IncompleteReason.PHYSICAL_AXIS_UNBOUNDED
