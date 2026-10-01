@@ -17,21 +17,12 @@ export TMPDIR="$logs/tmp"
 compose_file=deploy/compose/compose.yaml
 override_file=deploy/compose/smoke.override.yaml
 python_override=$logs/python.override.yaml
-cat > "$python_override" <<'YAML'
-services:
-  chrono-visor:
-    environment:
-      CHRONOLOG_VISOR_KEEPERS: "keeper-1=127.0.0.1:50052"
-      CHRONOLOG_VISOR_PLAYER: "127.0.0.1:50054"
-  chrono-keeper:
-    environment:
-      CHRONOLOG_KEEPER_SELF_ENDPOINT: "127.0.0.1:50052"
-YAML
+cp deploy/compose/demo.override.yaml "$python_override"
 engines=${ENGINES:-"docker podman"}
 overall=0
 
-# Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example chronolog_stream_collect chronolog_stream_export chronolog_stream_example chronolog_ldms_fake_ldmsd chronolog_ldms_example)
+# Binaries to ship, shared with deploy/demo/chronolog-demo.
+mapfile -t targets < <(bash deploy/demo/stage.sh targets)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -41,15 +32,7 @@ if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     { bash plugins/chrono-viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel 12 --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
         || { echo "FAILED native build, tail of $logs/native-build.log:"; tail -40 "$logs/native-build.log"; exit 1; }
 fi
-rm -rf "$stage"
-mkdir -p "$stage"
-for target in "${targets[@]}"; do
-    binary=$(find "$root/build/dev" -type f -name "$target" -perm -u+x | head -n 1)
-    [ -n "$binary" ] || { echo "smoke: $target was not built"; exit 1; }
-    cp "$binary" "$stage/"
-done
-cp deploy/containers/entrypoint.sh "$stage/"
-cp -L build/dev/client/cpp/libchronolog_client.so.4 "$stage/"
+bash deploy/demo/stage.sh binaries "$root" || exit 1
 
 venv=$root/build/smoke-venv
 if [ "${SKIP_BINDING_BUILD:-}" = 1 ]; then
@@ -111,7 +94,7 @@ run_engine() {
     }
 
     local rc=0 stack_ready=0
-    step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
+    step "build runtime image" 300 bash deploy/demo/stage.sh image "${build_cmd[0]}" "$root" "$image" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
         if [ "${CHRONOLOG_SMOKE_STREAM_ONLY:-0}" = 1 ]; then
@@ -162,6 +145,12 @@ run_engine() {
                 fi
                 step "Python SDK pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                     "$venv/bin/python" -m pytest -q client/python/tests || rc=1
+                if [ -f deploy/demo/tour.py ]; then
+                    step "chronolog-demo tour against the smoke stack" 420 bash deploy/demo/chronolog-demo tour \
+                        --engine "$engine" --project "$project" || rc=1
+                else
+                    echo "-- $engine: deploy/demo/tour.py is absent, tour step skipped"
+                fi
                 if [ "$rc" -eq 0 ]; then
                     if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
                         step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp || rc=1

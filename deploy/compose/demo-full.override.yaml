@@ -1,0 +1,9 @@
+# Completes stream.override.yaml and viz.override.yaml into one Grafana that carries the
+# InfluxDB and ChronoLog datasources and both dashboards. The paths are absolute in a
+# bundle, where chronolog-demo exports them.
+services:
+  grafana:
+    volumes:
+      - ${CHRONOLOG_DEMO_GRAFANA_DIR:-../grafana/demo}/datasources:/etc/grafana/provisioning/datasources:ro
+      - ${CHRONOLOG_DEMO_GRAFANA_DIR:-../grafana/demo}/dashboards/events.json:/var/lib/grafana/dashboards/events.json:ro
+      - ${CHRONOLOG_DEMO_PLUGIN_DIR:-../../build/viz/dist}:/var/lib/grafana/plugins/chronolog-viz-datasource:ro
