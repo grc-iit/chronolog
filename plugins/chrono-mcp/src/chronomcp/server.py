@@ -142,7 +142,7 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
     @_threaded
     def read(story: int, ctx: Context, start_hlc: dict[str, int] | None = None,
              end_hlc: dict[str, int] | None = None, limit: int = 1000) -> str:
-        """Read a bounded HLC range with completion and an exclusive tail position."""
+        """Read an HLC range with Replay Completion. A count limit returns limited=true and completion=null."""
         s = state(ctx)
         return _json(read_story(s.client, story, start_hlc, end_hlc, limit, s.timeout))
 
@@ -211,7 +211,7 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
     def retrieve_interaction(ctx: Context, chronicle_name: str | None = None,
                              story_name: str | None = None, start_hlc: dict[str, int] | None = None,
                    end_hlc: dict[str, int] | None = None, limit: int = 1000) -> str:
-        """Retrieve conversation events and Replay's Completion over an HLC range."""
+        """Retrieve conversation events and Replay Completion. A count limit returns limited=true and completion=null."""
         s = state(ctx)
         with s.lock:
             active = s.active_story
