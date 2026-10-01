@@ -8,7 +8,9 @@
 # reachable on the compose network only and is never published to the host.
 
 x-chronolog-service: &chronolog-service
-  image: chronolog-runtime:local
+  # CI builds chronolog-runtime:local from runtime.Containerfile. The dragon smoke run
+  # sets CHRONOLOG_IMAGE to the image it built from natively compiled binaries.
+  image: ${CHRONOLOG_IMAGE:-chronolog-runtime:local}
   build:
     context: ../..
     dockerfile: deploy/containers/runtime.Containerfile

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Builds the builder and runtime images, brings the compose stack up, runs the
-# Python smoke test and tears the stack down, first under rootless Docker and then
-# under rootless Podman. Run on dragon from the repository root, normally through
-# rbuild:  rbuild 'bash tests/smoke/run_dragon.sh'
+# Builds chrono_visor and chronolog_stub_server natively with the dev preset (the
+# vcpkg binary cache makes that fast), wraps them in runtime-local.Containerfile,
+# brings the compose stack up, runs the Python smoke test and tears the stack down,
+# first under rootless Docker and then under rootless Podman. Nothing is compiled
+# inside a container. Run on dragon from the repository root through rbuild:
+#   rbuild 'bash tests/smoke/run_dragon.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
+# SKIP_NATIVE_BUILD=1 reuses the existing build/dev binaries.
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -13,6 +16,26 @@ mkdir -p "$logs"
 compose_file=deploy/compose/compose.yaml
 engines=${ENGINES:-"docker podman"}
 overall=0
+
+# Binaries to ship. Add chrono_keeper and chrono_player here once they merge.
+targets=(chrono_visor chronolog_stub_server)
+stage=$root/build/image-stage
+image=chronolog-runtime-local:dev
+export CHRONOLOG_IMAGE=$image
+
+if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
+    echo "-- native dev build: ${targets[*]}"
+    { cmake --preset dev && cmake --build --preset dev --parallel 12 --target "${targets[@]}"; } > "$logs/native-build.log" 2>&1 \
+        || { echo "FAILED native build, tail of $logs/native-build.log:"; tail -40 "$logs/native-build.log"; exit 1; }
+fi
+rm -rf "$stage"
+mkdir -p "$stage"
+for target in "${targets[@]}"; do
+    binary=$(find "$root/build/dev" -type f -name "$target" -perm -u+x | head -n 1)
+    [ -n "$binary" ] || { echo "smoke: $target was not built"; exit 1; }
+    cp "$binary" "$stage/"
+done
+cp deploy/containers/entrypoint.sh "$stage/"
 
 venv=$root/build/smoke-venv
 if [ ! -x "$venv/bin/python" ]; then
@@ -54,8 +77,7 @@ run_engine() {
     }
 
     local rc=0
-    step "build builder image" 5400 "${build_cmd[@]}" -f deploy/containers/builder.Containerfile -t chronolog-builder:local . || return 1
-    step "build runtime image" 2400 "${build_cmd[@]}" -f deploy/containers/runtime.Containerfile -t chronolog-runtime:local . || return 1
+    step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         echo "-- $engine: smoke.py"
         timeout 120 "$venv/bin/python" tests/smoke/python/smoke.py 2>&1 | tee -a "$log"
