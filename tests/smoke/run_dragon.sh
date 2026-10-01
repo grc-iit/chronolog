@@ -87,6 +87,14 @@ run_engine() {
     else
         rc=1
     fi
+    if [ "$rc" -eq 0 ]; then
+        step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh || rc=1
+        if [ "$rc" -eq 0 ]; then
+            export CHRONOLOG_TYPESCRIPT_PACKAGE="$root/build/typescript/package"
+            step "TypeScript binding suite" 180 "${compose[@]}" -f client/typescript/test/compose.yaml \
+                run --rm --no-deps typescript-tests || rc=1
+        fi
+    fi
     timeout 60 "${compose[@]}" logs --no-color > "$logs/$engine-services.log" 2>&1 || true
     if [ "$rc" -ne 0 ]; then
         echo "-- $engine: container state and service logs"
