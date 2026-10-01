@@ -159,3 +159,7 @@ endif()
 if(TARGET chronolog_grapher_tier)
     add_subdirectory(deploy/cluster)
 endif()
+
+if(TARGET chronolog_client AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/typescript/test/CMakeLists.txt")
+    add_subdirectory(client/typescript/test)
+endif()

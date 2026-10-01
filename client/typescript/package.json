@@ -1,0 +1,32 @@
+{
+  "name": "@chronolog/client",
+  "version": "4.0.0",
+  "description": "TypeScript bindings for the ChronoLog C++ client",
+  "license": "BSD-2-Clause",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "build/dev/chronolog_node.node",
+    "native",
+    "CMakeLists.txt",
+    "CMakePresets.json",
+    "scripts",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "cmake-js configure --debug --prefer-make --out build/dev --target chronolog_node --parallel 12 --cmake-path \"$PWD/scripts/cmake-dev.sh\" && cmake-js build --debug --prefer-make --out build/dev --target chronolog_node --parallel 12 --cmake-path \"$PWD/scripts/cmake-dev.sh\" && tsc",
+    "test": "node --test --test-timeout=60000 test/*.test.js"
+  },
+  "dependencies": {
+    "node-addon-api": "8.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "cmake-js": "8.0.0",
+    "typescript": "5.9.3"
+  }
+}
