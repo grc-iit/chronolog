@@ -1,0 +1,589 @@
+syntax = "proto3";
+package chronolog.v1;
+// After PR 1 freezes this API: additive changes only; reserve removed fields.
+// Per-item failures are payload statuses; gRPC errors concern the whole request.
+service Catalog
+{
+    // CreateChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc CreateChronicle(CreateChronicleRequest) returns (CreateChronicleResponse);
+    // GetChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc GetChronicle(GetChronicleRequest) returns (GetChronicleResponse);
+    // ListChronicles: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc ListChronicles(ListChroniclesRequest) returns (ListChroniclesResponse);
+    // DestroyChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc DestroyChronicle(DestroyChronicleRequest) returns (DestroyChronicleResponse);
+    // CreateStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc CreateStory(CreateStoryRequest) returns (CreateStoryResponse);
+    // GetStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc GetStory(GetStoryRequest) returns (GetStoryResponse);
+    // ListStories: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc ListStories(ListStoriesRequest) returns (ListStoriesResponse);
+    // DestroyStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc DestroyStory(DestroyStoryRequest) returns (DestroyStoryResponse);
+    // Acquire: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc Acquire(AcquireRequest) returns (AcquireResponse);
+    // Release commits a fence revision and waits a configured timeout for Keeper
+    // confirmation. fenced=false explicitly reports committed but unconfirmed.
+    // Whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE for service
+    // failure, UNIMPLEMENTED before port; domain release failures use ItemStatus.
+    rpc Release(ReleaseRequest) returns (ReleaseResponse);
+    // CompareAndSetEpoch: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc CompareAndSetEpoch(CompareAndSetEpochRequest) returns (CompareAndSetEpochResponse);
+}
+service Journal
+{
+    // Unary batch and bidi stream have identical per-item acceptance semantics.
+    // Append returns gRPC OK on epoch rejection; item FAILED_PRECONDITION and
+    // current_route are payload fields. Whole-request INVALID_ARGUMENT for malformed
+    // batch, CLOCK_STATUS_UNAVAILABLE for service failure, UNIMPLEMENTED before port.
+    rpc Append(AppendRequest) returns (AppendResponse);
+    // Responses echo batch_id; cancellation does not roll back accepted items.
+    // AppendStream uses the same payload epoch failures; no stale-epoch gRPC error.
+    // INVALID_ARGUMENT for malformed stream requests, CLOCK_STATUS_UNAVAILABLE for service
+    // failure, UNIMPLEMENTED before port; cancellation uses CANCELLED.
+    rpc AppendStream(stream AppendStreamRequest) returns (stream AppendStreamResponse);
+}
+service Replay
+{
+    // Half-open range; exactly one final Completion, then EOF on normal success.
+    // Read: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc Read(ReadRequest) returns (stream ReadResponse);
+    // Exclusive resume; final Completion on orderly termination is always false.
+    // Tail: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
+    // in ItemStatus where present; fatal stream failures terminate transport.
+    rpc Tail(TailRequest) returns (stream TailResponse);
+}
+// Unspecified is a request default for DURABILITY_DURABLE, never an achieved success level.
+enum Durability
+{
+    DURABILITY_UNSPECIFIED = 0;
+    DURABILITY_ACCEPTED = 1;
+    DURABILITY_DURABLE = 2;
+}
+enum ClockStatus
+{
+    // Every adapter maps this value to Unavailable, never Synced.
+    CLOCK_STATUS_UNSPECIFIED = 0;
+    CLOCK_STATUS_SYNCED = 1;
+    CLOCK_STATUS_UNSYNCED = 2;
+    CLOCK_STATUS_UNAVAILABLE = 3;
+}
+// Canonical status-code integers match google.rpc.Code without an extra dependency.
+message ItemStatus
+{
+    // Canonical google.rpc.Code numeric value; zero means OK.
+    int32 code = 1;
+    // Human-readable diagnostic; never use its text for branching.
+    string message = 2;
+}
+message Hlc
+{
+    // Signed nanoseconds; CLOCK_REALTIME for physical readings, Keeper HLC physical component for Hlc.
+    int64 physical_ns = 1;
+    // Dimensionless HLC counter; never assigned by an SDK.
+    uint32 logical = 2;
+}
+message EventId
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Catalog-assigned stable writer identity.
+    uint64 writer_id = 2;
+    // Persisted writer generation, strictly increased on re-acquire.
+    uint64 incarnation = 3;
+    // Gapless event sequence starting at 1 per writer/incarnation.
+    uint64 sequence = 4;
+}
+// uncertainty_ns must be present iff CLOCK_STATUS_SYNCED; absent is unbounded, not zero.
+message TimeReading
+{
+    // Signed nanoseconds; CLOCK_REALTIME for physical readings, Keeper HLC physical component for Hlc.
+    int64 physical_ns = 1;
+    // Present finite bound in nanoseconds only when CLOCK_STATUS_SYNCED; absent means unbounded.
+    optional uint64 uncertainty_ns = 2;
+    // Result status, or synchronization state for a physical time reading.
+    ClockStatus status = 3;
+}
+// Optional agent metadata; gateway redacts secrets before immutable append.
+// payload max defaults to 1 MiB and is configurable/enforced by Keeper.
+// Nonempty trace_id/span_id must be exactly 16/8 bytes (W3C trace context).
+message Envelope
+{
+    // Optional MIME content type for the payload.
+    string content_type = 1;
+    // Binary event content; configurable Keeper limit defaults to 1 MiB.
+    bytes payload = 2;
+    // Optional W3C trace id; empty or 16 bytes.
+    bytes trace_id = 3;
+    // Optional W3C span id; empty or 8 bytes.
+    bytes span_id = 4;
+    // Optional OTel GenAI, MCP and A2A context key/value attributes.
+    map<string, string> attributes = 5;
+}
+// HLC is assigned only by Keeper; replay order is HLC,writer,incarnation,sequence.
+message Event
+{
+    // Achieved level, required for stability interpretation by readers.
+    Durability durability = 5;
+    // id; interpreted according to the message invariants above.
+    EventId id = 1;
+    // Writer CLOCK_REALTIME reading plus bound/status; independent of Visor monotonic tick.
+    TimeReading physical = 2;
+    // Keeper-assigned HLC, or HLC range/position as specified by containing message.
+    Hlc hlc = 3;
+    // envelope; interpreted according to the message invariants above.
+    Envelope envelope = 4;
+}
+message KeeperRef {
+ // Stable registered Keeper process identity used by subscriptions.
+ string process_id = 1;
+ // Network endpoint used for RPC transport.
+ string endpoint = 2;
+}
+message Route
+{
+    // Story ownership generation; compared at append before acceptance.
+    uint64 epoch = 1;
+    // All Keeper endpoints in this epoch; acquire assigns exactly one to each writer.
+    repeated KeeperRef keepers = 2;
+    // Grapher endpoint for archive chunk delivery.
+    string grapher = 3;
+    // Player endpoint for replay requests.
+    string player = 4;
+}
+message Chronicle
+{
+    // name; interpreted according to the message invariants above.
+    string name = 1;
+    // tombstoned; interpreted according to the message invariants above.
+    bool tombstoned = 2;
+}
+message Story
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // chronicle; interpreted according to the message invariants above.
+    string chronicle = 2;
+    // name; interpreted according to the message invariants above.
+    string name = 3;
+    // Story ownership generation; compared at append before acceptance.
+    uint64 epoch = 4;
+    // tombstoned; interpreted according to the message invariants above.
+    bool tombstoned = 5;
+}
+message CreateChronicleRequest
+{
+    // name; interpreted according to the message invariants above.
+    string name = 1;
+}
+message GetChronicleRequest
+{
+    // name; interpreted according to the message invariants above.
+    string name = 1;
+}
+message ListChroniclesRequest {}
+// Destruction refuses active acquisitions and permanently tombstones every
+// contained story; never resurrect by re-create.
+message DestroyChronicleRequest
+{
+    // name; interpreted according to the message invariants above.
+    string name = 1;
+}
+message ChronicleResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // chronicle; interpreted according to the message invariants above.
+    Chronicle chronicle = 2;
+}
+message ListChroniclesResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // chronicles; interpreted according to the message invariants above.
+    repeated Chronicle chronicles = 2;
+}
+message StatusResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+}
+message CreateStoryRequest
+{
+    // chronicle; interpreted according to the message invariants above.
+    string chronicle = 1;
+    // name; interpreted according to the message invariants above.
+    string name = 2;
+}
+message GetStoryRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+}
+message ListStoriesRequest
+{
+    // chronicle; interpreted according to the message invariants above.
+    string chronicle = 1;
+}
+message DestroyStoryRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+}
+message StoryResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // story; interpreted according to the message invariants above.
+    Story story = 2;
+}
+message ListStoriesResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // stories; interpreted according to the message invariants above.
+    repeated Story stories = 2;
+}
+// writer_identity is a stable identity key, not a process address.
+message AcquireRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Stable caller identity key used to retain writer_id across re-acquire.
+    string writer_identity = 2;
+}
+// Catalog assigns writer_id; persisted incarnation increases on each re-acquire.
+message AcquireResponse
+{
+    // Single Keeper assigned to this writer; stable per (writer_id, epoch).
+    KeeperRef assigned_keeper = 7;
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 2;
+    // Catalog-assigned stable writer identity.
+    uint64 writer_id = 3;
+    // Persisted writer generation, strictly increased on re-acquire.
+    uint64 incarnation = 4;
+    // route; interpreted according to the message invariants above.
+    Route route = 5;
+}
+message ReleaseRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Catalog-assigned stable writer identity.
+    uint64 writer_id = 2;
+    // Persisted writer generation, strictly increased on re-acquire.
+    uint64 incarnation = 3;
+}
+message ReleaseResponse
+{
+    // Catalog commit status; a fence timeout does not undo a committed release.
+    ItemStatus status = 1;
+    // True only after assigned Keeper applied the release revision. False means
+    // committed but unconfirmed; pre-fence appends remain valid and ordered.
+    bool fenced = 2;
+    // Persisted global Catalog counter, never reused across Visor restarts.
+    uint64 revision = 3;
+}
+message CompareAndSetEpochRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // Expected current ownership epoch for atomic compare-and-set.
+    uint64 expected = 2;
+    // Strictly greater replacement epoch for atomic compare-and-set.
+    uint64 desired = 3;
+}
+message EpochResponse
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // Story ownership generation; compared at append before acceptance.
+    uint64 epoch = 2;
+}
+// Sequence starts at one, gapless; duplicate EventId returns original result.
+// SDK causal_floor is maximum observed HLC; SDK never performs HLC arithmetic.
+// Single-story request identity comes from AppendRequest.story_id.
+message AppendItem
+{
+    // Catalog-assigned writer identity.
+    uint64 writer_id = 1;
+    // Persisted writer generation.
+    uint64 incarnation = 2;
+    // Gapless sequence starts at 1 per writer/incarnation.
+    uint64 sequence = 3;
+    // Original writer realtime reading, never changed by Keeper.
+    TimeReading physical = 4;
+    // Maximum HLC observed by SDK; no SDK HLC arithmetic.
+    Hlc causal_floor = 5;
+    // Optional payload and agent metadata.
+    Envelope envelope = 6;
+}
+message AppendRequest
+{
+    // Catalog-assigned story for every item; mixed-story requests cannot be encoded.
+    uint64 story_id = 1;
+    // Ownership epoch for all items. Stale failure remains per item with gRPC OK.
+    uint64 epoch = 2;
+    // Process items in order per writer; results retain request positions.
+    repeated AppendItem items = 3;
+    // Unspecified means DURABILITY_DURABLE; never silently downgrade.
+    Durability durability = 4;
+    // Echoed for bidi response correlation.
+    uint64 batch_id = 5;
+}
+// DURABILITY_ACCEPTED is RAM only; only fsync'd Keeper WAL DURABILITY_DURABLE is an ack.
+// Unsupported requested durability explicitly fails; never silently downgrade.
+// DURABILITY_ACCEPTED becomes visible at acceptance. DURABILITY_DURABLE becomes visible only after
+// WAL fsync; a seal cannot pass its pending assigned HLC.
+// Stale epoch is per-item FAILED_PRECONDITION with current_route attached.
+// Stale epochs NEVER produce a gRPC error: transport returns OK and affected
+// items carry FAILED_PRECONDITION/current_route. No trailing route metadata.
+message AppendResult
+{
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // Actual achieved level; Unspecified never represents a successful ack.
+    Durability achieved_durability = 2;
+    // Original Keeper-assigned HLC, also returned on idempotent retries.
+    Hlc assigned_hlc = 3;
+    // id; interpreted according to the message invariants above.
+    EventId id = 4;
+    // Current ownership route on epoch rejection; transport status remains OK.
+    Route current_route = 5;
+}
+message AppendResponse
+{
+    // Present when the entire batch is rejected for epoch; affected items also
+    // carry their current route. Transport status remains OK.
+    optional Route current_route = 3;
+    // results; interpreted according to the message invariants above.
+    repeated AppendResult results = 1;
+    // batch id; interpreted according to the message invariants above.
+    uint64 batch_id = 2;
+}
+message HlcRange
+{
+    // start; interpreted according to the message invariants above.
+    Hlc start = 1;
+    // end; interpreted according to the message invariants above.
+    Hlc end = 2;
+}
+// OPEN (PR 6): physical-axis queries never claim completeness in v1.
+message PhysicalRange
+{
+    // start ns; interpreted according to the message invariants above.
+    int64 start_ns = 1;
+    // end ns; interpreted according to the message invariants above.
+    int64 end_ns = 2;
+}
+// Exactly one range must be supplied, always [start,end).
+// Fields are selected by the documented union; unset unions are invalid.
+message ReadRequest
+{
+    // Catalog-assigned story id.
+    uint64 story_id = 1;
+    // Exactly one half-open range is required.
+    oneof range
+    {
+        // HLC ordering range; supports completeness.
+        HlcRange hlc = 2;
+        // Writer physical time ns; always incomplete in v1.
+        PhysicalRange physical = 3;
+    }
+}
+message Position
+{
+    // Keeper-assigned HLC, or HLC range/position as specified by containing message.
+    Hlc hlc = 1;
+    // id; interpreted according to the message invariants above.
+    EventId id = 2;
+}
+message TailRequest
+{
+    // Catalog-assigned uint64 story identity; never a hash of concatenated names.
+    uint64 story_id = 1;
+    // from; interpreted according to the message invariants above.
+    Position from = 2;
+}
+message EventBatch
+{
+    // events; interpreted according to the message invariants above.
+    repeated Event events = 1;
+}
+// Tick seal before scan, then take each writer lock to await insertion. Group
+// commit retains each writer pending minimum observed under its scan lock.
+// Pending state is per writer, registered with assignment; scan reads that writer
+// pending minimum under the same writer lock, preserving the cap even if fsync
+// completes later. F=min(initial tick, per-writer minima).
+// All writers assigned to a Keeper share its sealed exclusive frontier, including
+// idle writers. Seal cannot pass an assigned DURABILITY_DURABLE event awaiting fsync.
+// After restart assignment must exceed every previously reported frontier;
+// PR 5 persists a reserved HLC high watermark before reporting within it.
+message WriterFrontier
+{
+    // Catalog-assigned stable writer identity.
+    uint64 writer_id = 1;
+    // Persisted writer generation, strictly increased on re-acquire.
+    uint64 incarnation = 2;
+    // Keeper-sealed exclusive frontier F: all events with HLC < F are visible and no future event can have HLC < F.
+    Hlc frontier = 3;
+}
+// HLC-axis complete for [start,end) iff every Keeper in the story Route answered and its sealed frontier >= end.
+// Read uses exclusive HLC range end as t. OPEN (PR 6): physical-axis reads
+// MUST return complete=false and INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED until backdating is bounded.
+// Tail never claims completeness. Errors/truncated sources prevent complete=true.
+enum IncompleteReason
+{
+    // Unspecified when complete. Tail uses this because it makes no claim.
+    INCOMPLETE_REASON_UNSPECIFIED = 0;
+    // At least one required Keeper did not answer or has sealed frontier below the HLC end.
+    INCOMPLETE_REASON_LAGGING_WRITERS = 1;
+    // Physical timestamps can be backdated without a bounded acceptance policy.
+    INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED = 2;
+    // A required source did not answer successfully.
+    INCOMPLETE_REASON_SOURCE_FAILED = 3;
+    // A required source returned only part of the requested data.
+    INCOMPLETE_REASON_TRUNCATED = 4;
+}
+message Completion
+{
+    // Reason for incomplete result; physical-axis reason takes precedence.
+    IncompleteReason reason = 4;
+    // True only for complete HLC Read; always false for Tail and physical Read.
+    bool complete = 1;
+    // Keeper-sealed exclusive frontier F: all events with HLC < F are visible and no future event can have HLC < F.
+    Hlc frontier = 2;
+    // Diagnostic writer entries from acquisition view; completeness depends on ALL
+    // Route Keepers, including those with no known writers. This list can be empty
+    // even when a missing Keeper makes complete=false.
+    repeated WriterFrontier laggards = 3;
+}
+// Fields are selected by the documented union; unset unions are invalid.
+message ReplayResponse
+{
+    // Exactly one data batch or final Completion.
+    oneof response
+    {
+        // Ordered events; no data batches after Completion.
+        EventBatch batch = 1;
+        // Exactly one terminal message on orderly stream success.
+        Completion completion = 2;
+    }
+}
+
+// Method-specific CreateChronicle message; same payload invariants as ChronicleResponse.
+message CreateChronicleResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // chronicle; interpreted according to the message invariants above.
+    Chronicle chronicle = 2;
+}
+// Method-specific GetChronicle message; same payload invariants as ChronicleResponse.
+message GetChronicleResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // chronicle; interpreted according to the message invariants above.
+    Chronicle chronicle = 2;
+}
+// Method-specific DestroyChronicle message; same payload invariants as StatusResponse.
+message DestroyChronicleResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+}
+// Method-specific CreateStory message; same payload invariants as StoryResponse.
+message CreateStoryResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // story; interpreted according to the message invariants above.
+    Story story = 2;
+}
+// Method-specific GetStory message; same payload invariants as StoryResponse.
+message GetStoryResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // story; interpreted according to the message invariants above.
+    Story story = 2;
+}
+// Method-specific DestroyStory message; same payload invariants as StatusResponse.
+message DestroyStoryResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+}
+// Method-specific CompareAndSetEpoch message; same payload invariants as EpochResponse.
+message CompareAndSetEpochResponse {
+    // Result status, or synchronization state for a physical time reading.
+    ItemStatus status = 1;
+    // Story ownership generation; compared at append before acceptance.
+    uint64 epoch = 2;
+}
+// Method-specific AppendStream message; same payload invariants as AppendRequest.
+message AppendStreamRequest {
+    // Catalog-assigned story for every item; mixed-story requests cannot be encoded.
+    uint64 story_id = 1;
+    // Ownership epoch for all items. Stale failure remains per item with gRPC OK.
+    uint64 epoch = 2;
+    // Process items in order per writer; results retain request positions.
+    repeated AppendItem items = 3;
+    // Unspecified means DURABILITY_DURABLE; never silently downgrade.
+    Durability durability = 4;
+    // Echoed for bidi response correlation.
+    uint64 batch_id = 5;
+}
+// Method-specific AppendStream message; same payload invariants as AppendResponse.
+message AppendStreamResponse {
+    // Present when the entire batch is rejected for epoch; affected items also
+    // carry their current route. Transport status remains OK.
+    optional Route current_route = 3;
+    // results; interpreted according to the message invariants above.
+    repeated AppendResult results = 1;
+    // batch id; interpreted according to the message invariants above.
+    uint64 batch_id = 2;
+}
+// Method-specific Read message; same payload invariants as ReplayResponse.
+message ReadResponse {
+    // Exactly one data batch or final Completion.
+    oneof response
+    {
+        // Ordered events; no data batches after Completion.
+        EventBatch batch = 1;
+        // Exactly one terminal message on orderly stream success.
+        Completion completion = 2;
+    }
+}
+// Method-specific Tail message; same payload invariants as ReplayResponse.
+message TailResponse {
+    // Exactly one data batch or final Completion.
+    oneof response
+    {
+        // Ordered events; no data batches after Completion.
+        EventBatch batch = 1;
+        // Exactly one terminal message on orderly stream success.
+        Completion completion = 2;
+    }
+}
