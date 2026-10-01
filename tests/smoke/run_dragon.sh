@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds chrono_visor and chronolog_stub_server natively with the dev preset (the
+# Builds the Visor, Keeper, Player and stub natively with the dev preset (the
 # vcpkg binary cache makes that fast), wraps them in runtime-local.Containerfile,
 # brings the compose stack up, runs the Python smoke test and tears the stack down,
 # first under rootless Docker and then under rootless Podman. Nothing is compiled
@@ -17,8 +17,8 @@ compose_file=deploy/compose/compose.yaml
 engines=${ENGINES:-"docker podman"}
 overall=0
 
-# Binaries to ship. Add chrono_keeper and chrono_player here once they merge.
-targets=(chrono_visor chronolog_stub_server)
+# Binaries to ship.
+targets=(chrono_visor chrono_keeper chrono_player chronolog_stub_server)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -86,9 +86,9 @@ run_engine() {
         rc=1
     fi
     if [ "$rc" -ne 0 ]; then
-        echo "-- $engine: container state and visor log"
+        echo "-- $engine: container state and service logs"
         timeout 60 "${compose[@]}" ps 2>&1 | tail -20
-        timeout 60 "${compose[@]}" logs --no-color --tail 40 chrono-visor 2>&1 | tail -40
+        timeout 60 "${compose[@]}" logs --no-color --tail 40 2>&1 | tail -40
     fi
     step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
     return "$rc"

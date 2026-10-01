@@ -5,8 +5,7 @@
 ARG BUILDER_IMAGE=chronolog-builder:local
 
 FROM ${BUILDER_IMAGE} AS build
-# To ship chrono_keeper or chrono_player once they merge, append the target here.
-ARG CHRONOLOG_TARGETS="chrono_visor chronolog_stub_server"
+ARG CHRONOLOG_TARGETS="chrono_visor chrono_keeper chrono_player chronolog_stub_server"
 COPY . /src
 RUN cmake --preset release \
     && cmake --build --preset release --parallel 4 --target ${CHRONOLOG_TARGETS} \
