@@ -3,6 +3,7 @@
 
 import argparse
 import importlib
+import json
 import os
 import shutil
 import subprocess
@@ -24,7 +25,7 @@ def event_key(event):
 
 
 class Smoke:
-    def __init__(self, stubs, visor, timeout):
+    def __init__(self, stubs, visor, timeout, engine, project, compose_files):
         import grpc
 
         sys.path.insert(0, str(stubs))
@@ -32,6 +33,10 @@ class Smoke:
         self.rpc = importlib.import_module("chronolog.v1.chronolog_pb2_grpc")
         self.grpc = grpc
         self.timeout = timeout
+        self.engine = engine
+        self.compose = [engine, "compose", "-p", project]
+        for path in compose_files:
+            self.compose.extend(["-f", path])
         self.channels = []
         self.channel = self.connect(visor)
         self.catalog = self.rpc.CatalogStub(self.channel)
@@ -66,9 +71,9 @@ class Smoke:
             raise RuntimeError("Append response correlation or result count")
         return response.results[0]
 
-    def read(self, request):
+    def read(self, request, timeout=None):
         events, completion = [], None
-        for response in self.replay.Read(request, timeout=self.timeout):
+        for response in self.replay.Read(request, timeout=timeout or self.timeout):
             kind = response.WhichOneof("response")
             if completion is not None:
                 raise RuntimeError("Replay data after Completion")
@@ -81,6 +86,106 @@ class Smoke:
         if completion is None:
             raise RuntimeError("Replay missing Completion")
         return events, completion
+
+    def restart(self, service):
+        subprocess.run([*self.compose, "kill", "-s", "SIGKILL", service], check=True, timeout=15,
+                       stdout=subprocess.DEVNULL)
+        subprocess.run([*self.compose, "start", service], check=True, timeout=15,
+                       stdout=subprocess.DEVNULL)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            ids = subprocess.check_output([*self.compose, "ps", "-q", service], text=True,
+                                          timeout=min(5, remaining)).split()
+            if ids:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                state = json.loads(subprocess.check_output([self.engine, "inspect", ids[0]], text=True,
+                                                           timeout=min(5, remaining)))[0]["State"]
+                health = state.get("Health", state.get("Healthcheck", {}))
+                if state.get("Running") and health.get("Status") == "healthy":
+                    return
+            time.sleep(min(0.2, max(0, deadline - time.monotonic())))
+        raise RuntimeError(f"{service} did not become healthy within 30 seconds")
+
+    def read_complete(self, request, expected):
+        deadline = time.monotonic() + 30
+        detail = "no response"
+        while time.monotonic() < deadline:
+            try:
+                events, completion = self.read(request, min(self.timeout, deadline - time.monotonic()))
+                actual = [(e.id.story_id, e.id.writer_id, e.id.incarnation, e.id.sequence,
+                           *hlc_key(e.hlc), e.envelope.payload) for e in events]
+                detail = f"count={len(events)} complete={completion.complete} reason={completion.reason}"
+                if completion.complete:
+                    if actual != expected or completion.reason != self.pb.INCOMPLETE_REASON_UNSPECIFIED:
+                        raise RuntimeError(f"complete read differs from acknowledged events: {detail}")
+                    if hlc_key(completion.frontier) < hlc_key(request.hlc.end):
+                        raise RuntimeError("complete frontier below requested end")
+                    return completion
+            except self.grpc.RpcError as error:
+                detail = str(error.code())
+            time.sleep(min(0.2, max(0, deadline - time.monotonic())))
+        raise RuntimeError(f"read did not become complete within 30 seconds: {detail}")
+
+    def restarts(self, chronicle, writer):
+        pb = self.pb
+        created = self.catalog.CreateStory(pb.CreateStoryRequest(chronicle=chronicle, name="restart"),
+                                           timeout=self.timeout)
+        self.check("Create restart story", created.status.code == 0)
+        story = created.story.story_id
+        acquired = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer),
+                                        timeout=self.timeout)
+        self.check("Acquire restart writer", acquired.status.code == 0)
+        self.journal = self.rpc.JournalStub(self.connect(acquired.assigned_keeper.endpoint))
+        self.replay = self.rpc.ReplayStub(self.connect(acquired.route.player))
+        expected = []
+        def append_range(acquisition, first, count, durability):
+            assigned = []
+            for sequence in range(first, first + count):
+                result = self.append(acquisition, sequence, durability)
+                identity = (story, acquisition.writer_id, acquisition.incarnation, sequence)
+                if (result.status.code != 0 or result.achieved_durability != durability
+                        or (result.id.story_id, result.id.writer_id, result.id.incarnation, result.id.sequence)
+                        != identity):
+                    raise RuntimeError(f"restart append {sequence}: {result.status}")
+                expected.append((*identity, *hlc_key(result.assigned_hlc), f"event-{sequence}".encode()))
+                assigned.append(result.assigned_hlc)
+            return assigned
+
+        append_range(acquired, 1, 200, pb.DURABILITY_ACCEPTED)
+        self.check("Restart Append 200 ACCEPTED", True)
+        append_range(acquired, 201, 20, pb.DURABILITY_DURABLE)
+        self.check("Restart Append 20 DURABLE", True)
+        def request():
+            end = max((e[4], e[5]) for e in expected)
+            return pb.ReadRequest(story_id=story, hlc=pb.HlcRange(
+                start=pb.Hlc(physical_ns=expected[0][4], logical=expected[0][5]),
+                end=pb.Hlc(physical_ns=end[0], logical=end[1] + 1)))
+
+        self.read_complete(request(), expected)
+        self.check("Read 220 complete before Keeper crash", True)
+        time.sleep(10)
+        pre_crash = self.read_complete(request(), expected)
+        pre_crash_frontier = hlc_key(pre_crash.frontier)
+        pre_crash_max = max((e[4], e[5]) for e in expected)
+        self.restart("chrono-keeper")
+        self.read_complete(request(), expected)
+        self.check("Keeper SIGKILL restart preserves all 220 ids HLCs and payloads complete", True)
+
+        reacquired = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer),
+                                          timeout=self.timeout)
+        self.check("Reacquire after Keeper restart", reacquired.status.code == 0
+                   and reacquired.incarnation > acquired.incarnation)
+        assigned = append_range(reacquired, 1, 10, pb.DURABILITY_ACCEPTED)
+        self.check("Append 10 after Keeper restart above pre-crash HLCs and frontier",
+                   all(hlc_key(h) > pre_crash_max and hlc_key(h) > pre_crash_frontier for h in assigned))
+        self.restart("chrono-grapher")
+        append_range(reacquired, 11, 10, pb.DURABILITY_ACCEPTED)
+        time.sleep(10)
+        self.read_complete(request(), expected)
+        self.check("Grapher SIGKILL restart and 10 appends preserve all 240 events complete without duplicates", True)
 
     def run(self, ready_timeout):
         pb = self.pb
@@ -166,6 +271,7 @@ class Smoke:
         second = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer), timeout=self.timeout)
         self.check("Acquire incarnation 2", second.status.code == 0 and second.incarnation == 2
                    and second.writer_id == first.writer_id)
+        self.restarts(chronicle, f"restart-{suffix}")
         print("SMOKE PASS", flush=True)
 
 
@@ -174,13 +280,17 @@ def main():
     parser.add_argument("--visor", default=os.environ.get("CHRONOLOG_SMOKE_VISOR", "127.0.0.1:50051"))
     parser.add_argument("--ready-timeout", type=float, default=30.0)
     parser.add_argument("--rpc-timeout", type=float, default=10.0)
+    parser.add_argument("--engine", choices=["docker", "podman"], default="docker")
+    parser.add_argument("--project", default="chronolog-smoke-docker")
+    parser.add_argument("--compose-file", action="append")
     args = parser.parse_args()
     out_dir = Path(tempfile.mkdtemp(prefix="chronolog-smoke-"))
     smoke = None
     try:
         subprocess.run([str(HERE / "gen_stubs.sh"), str(out_dir)], check=True, timeout=30,
                        env={**os.environ, "PYTHON": sys.executable}, stdout=subprocess.DEVNULL)
-        smoke = Smoke(out_dir, args.visor, args.rpc_timeout)
+        smoke = Smoke(out_dir, args.visor, args.rpc_timeout, args.engine, args.project,
+                      args.compose_file or ["deploy/compose/compose.yaml", "deploy/compose/smoke.override.yaml"])
         smoke.run(args.ready_timeout)
         return 0
     except Exception as error:

@@ -21,7 +21,15 @@ internal::v1::Archive::Stub& KeeperHotSource::stubFor(const std::string& address
     std::lock_guard lk(mu_);
     auto& stub = stubs_[address];
     if(!stub)
-        stub = internal::v1::Archive::NewStub(grpc::CreateChannel(address, grpc::InsecureChannelCredentials()));
+    {
+        grpc::ChannelArguments args;
+        args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
+        args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+        args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
+        stub = internal::v1::Archive::NewStub(
+                grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args));
+    }
     return *stub;
 }
 

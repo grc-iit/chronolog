@@ -1,14 +1,15 @@
 #!/bin/sh
 # Starts the binary for CHRONOLOG_ROLE. Extra arguments go to the binary.
 set -eu
-role=${CHRONOLOG_ROLE:-stub}
+export GRPC_DNS_RESOLVER=${GRPC_DNS_RESOLVER:-native}
+role=${CHRONOLOG_ROLE:-visor}
 case "$role" in
     visor) bin=chrono_visor ;;
     keeper) bin=chrono_keeper ;;
     player) bin=chrono_player ;;
-    stub) bin=chronolog_stub_server ;;
+    grapher) bin=chrono_grapher ;;
     *)
-        echo "chronolog-entrypoint: unknown CHRONOLOG_ROLE '$role' (visor, keeper, player, stub)" >&2
+        echo "chronolog-entrypoint: unknown CHRONOLOG_ROLE '$role' (visor, keeper, grapher, player)" >&2
         exit 64
         ;;
 esac

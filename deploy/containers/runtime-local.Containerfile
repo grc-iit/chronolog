@@ -6,13 +6,13 @@
 # ubuntu:24.04 index digest resolved from the Docker Hub registry API.
 FROM ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin chronolog \
-    && mkdir -p /var/lib/chronolog \
-    && chown 10001:10001 /var/lib/chronolog
-# Ships the Visor, Keeper, Player and grapher stub staged by run_dragon.sh.
-COPY chrono_* chronolog_* /usr/local/bin/
+    && mkdir -p /var/lib/chronolog/archive \
+    && chown -R 10001:10001 /var/lib/chronolog
+# Ships the Visor, Keeper, Player and Grapher staged by run_dragon.sh.
+COPY chrono_* /usr/local/bin/
 COPY entrypoint.sh /usr/local/bin/chronolog-entrypoint
 USER 10001:10001
-ENV CHRONOLOG_ROLE=stub \
+ENV CHRONOLOG_ROLE=visor \
     CHRONOLOG_PORT=50051
 EXPOSE 50051
 ENTRYPOINT ["/usr/local/bin/chronolog-entrypoint"]

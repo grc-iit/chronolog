@@ -83,6 +83,7 @@ private:
         std::shared_ptr<grpc::ClientContext> context;
         std::unique_ptr<Watcher> watcher;
     };
+    std::shared_ptr<grpc::Channel> archiveChannel(const std::string& endpoint);
     void collectLocked();
     void settleLocked(State& state);
     bool safe(const State& state) const;
@@ -100,6 +101,7 @@ private:
     std::mutex seal_mu_;
     std::map<std::string, State> chunks_;
     std::map<StoryId, StoryState> stories_;
+    std::map<std::string, std::shared_ptr<grpc::Channel>> channels_;
     std::map<std::string, std::unique_ptr<Subscription>> subscriptions_;
     std::condition_variable_any cv_;
     std::jthread sealer_, shipper_;

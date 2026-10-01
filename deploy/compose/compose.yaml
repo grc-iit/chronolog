@@ -2,7 +2,7 @@
 # Run from the repository root:
 #   podman build -f deploy/containers/builder.Containerfile -t chronolog-builder:local .
 #   podman compose -f deploy/compose/compose.yaml up --build --wait
-# Visor, Keeper and Player are real services; grapher remains a stub.
+# Visor, Keeper, Grapher and Player are real services.
 # Internal listeners are reachable only on the compose network.
 
 x-chronolog-service: &chronolog-service
@@ -20,7 +20,7 @@ x-chronolog-service: &chronolog-service
   restart: "no"
   networks: [chronolog]
 
-x-stub-healthcheck: &stub-healthcheck
+x-service-healthcheck: &service-healthcheck
   test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${CHRONOLOG_PORT}"]
   interval: 5s
   timeout: 3s
@@ -69,14 +69,27 @@ services:
       chrono-visor:
         condition: service_healthy
     ports: ["127.0.0.1:50052:50052"]
-    healthcheck: *stub-healthcheck
+    healthcheck: *service-healthcheck
 
   chrono-grapher:
     <<: *chronolog-service
     environment:
-      CHRONOLOG_ROLE: stub
+      CHRONOLOG_ROLE: grapher
       CHRONOLOG_PORT: "50053"
-    healthcheck: *stub-healthcheck
+      CHRONOLOG_GRAPHER_PROCESS_ID: grapher-1
+      CHRONOLOG_GRAPHER_MANIFEST_WRITER: grapher-1
+      CHRONOLOG_GRAPHER_INTERNAL_LISTEN: "0.0.0.0:50053"
+      CHRONOLOG_GRAPHER_SELF_ENDPOINT: "chrono-grapher:50053"
+      CHRONOLOG_GRAPHER_VISOR_INTERNAL: "chrono-visor:50061"
+      CHRONOLOG_GRAPHER_INSECURE_BIND_ALL: "true"
+      CHRONOLOG_GRAPHER_ARCHIVE_ROOT: /var/lib/chronolog/archive
+    expose: ["50053"]
+    volumes:
+      - archive:/var/lib/chronolog/archive
+    depends_on:
+      chrono-visor:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
 
   chrono-player:
     <<: *chronolog-service
@@ -89,17 +102,21 @@ services:
       CHRONOLOG_PLAYER_VISOR: "chrono-visor:50051"
       CHRONOLOG_PLAYER_VISOR_INTERNAL: "chrono-visor:50061"
       CHRONOLOG_PLAYER_KEEPER_INTERNAL: "keeper-1=chrono-keeper:50062"
+      CHRONOLOG_PLAYER_ARCHIVE_ROOT: /var/lib/chronolog/archive
+    volumes:
+      - archive:/var/lib/chronolog/archive:ro
     depends_on:
       chrono-visor:
         condition: service_healthy
       chrono-keeper:
         condition: service_healthy
     ports: ["127.0.0.1:50054:50054"]
-    healthcheck: *stub-healthcheck
+    healthcheck: *service-healthcheck
 
 volumes:
   visor-catalog:
   keeper-wal:
+  archive:
 
 networks:
   chronolog:
