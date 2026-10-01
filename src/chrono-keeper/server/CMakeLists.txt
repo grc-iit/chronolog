@@ -19,7 +19,7 @@ target_link_libraries(chronolog_keeper_lib
     PRIVATE chronolog_warnings)
 
 add_executable(chrono_keeper "${KEEPER_DIR}/main.cpp")
-target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_lib chronolog_warnings)
+target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_archive chronolog_keeper_lib chronolog_warnings)
 set_target_properties(chrono_keeper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/src/chrono-keeper")
 install(TARGETS chrono_keeper RUNTIME DESTINATION bin)

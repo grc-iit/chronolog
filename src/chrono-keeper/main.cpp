@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "KeeperConfig.h"
+#include "archive/KeeperArchive.h"
 #include "adapter/ArchiveService.h"
 #include "adapter/Convert.h"
 #include "adapter/JournalService.h"
@@ -180,6 +181,15 @@ int main(int argc, char** argv)
     acquisitions.start(visor);
     keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);
     cluster.start();
+    keeper::KeeperArchiveConfig archive_config{config->story_chunk_duration_secs,
+                                               config->seal_interval_ms,
+                                               config->chunk_max_bytes,
+                                               config->frame_bytes,
+                                               config->watermark_resend_timeout_secs,
+                                               config->archive_visibility_delay_secs,
+                                               config->retention_cap_mb};
+    keeper::KeeperArchive archive(journal, *membership, config->process_id, archive_config);
+    archive.start();
 
     std::cout << "journal ready durability=ACCEPTED,DURABLE process_id=" << config->process_id
               << " listen=" << config->listen << " internal_listen=" << config->internal_listen << std::endl;
@@ -208,6 +218,7 @@ int main(int argc, char** argv)
     finished = true;
     watcher.join();
     // Queued tasks run to completion before the pool joins, then the clients stop.
+    archive.stop();
     pool.stop();
     cluster_ptr = nullptr;
     return 0;
