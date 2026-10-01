@@ -75,7 +75,6 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
             if(value.ok())
             {
                 *r.mutable_story() = convert::toProto(*value);
-                requireStorage(store.saveMembership(dynamic::snapshot(store)));
             }
             return r.SerializeAsString();
         }
