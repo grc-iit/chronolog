@@ -195,3 +195,7 @@ endif()
 if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_kvs)
     add_subdirectory(plugins/chrono-stream)
 endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
+    add_subdirectory(plugins/chrono-viz)
+endif()

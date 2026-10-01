@@ -1,0 +1,26 @@
+{
+  "type": "datasource",
+  "name": "ChronoLog",
+  "id": "chronolog-viz-datasource",
+  "metrics": true,
+  "logs": true,
+  "info": {
+    "description": "ChronoLog stories with Replay completeness and live Tail",
+    "author": {
+      "name": "ChronoLog"
+    },
+    "keywords": [
+      "chronolog"
+    ],
+    "logos": {
+      "small": "logo.svg",
+      "large": "logo.svg"
+    },
+    "version": "4.0.0",
+    "updated": "2026-10-01"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=11.6.0",
+    "plugins": []
+  }
+}
