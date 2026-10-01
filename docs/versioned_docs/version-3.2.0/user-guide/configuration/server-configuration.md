@@ -105,11 +105,36 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. A chunk with events in the index stays in memory; the index is released when the story retires. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
 | `retention_cap_mb`          | integer | `4096`  | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. Set it above the memory a healthy keeper holds, or the warning fires in normal operation: about `3 × 125 s × peak per-keeper MB/s` with the template's windows. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). |
-| `watermark_resend_timeout_secs` | integer | `300` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. Keep it above ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`. Must be positive. |
-| `archive_visibility_delay_secs` | integer | `10` | *(Keeper only)* Seconds a keeper keeps a chunk after ChronoGrapher confirms it written, so replays take its events from the keeper until players can read the new archive file. A replay looks a missing file up by name, so this need not cover a shared file system's directory listing cache; it must cover a cache of failed lookups, which NFS keeps by default (`lookupcache=all`) for up to `acdirmax`. Mount the archive with `lookupcache=positive` to need only the default, or raise this above `acdirmax`; see [Archive on a Shared File System](../deployment/multi-node.md#archive-on-a-shared-file-system). `0` frees on confirmation. See [Durable Chunk Retention](../architecture/durable-retention.md). |
-| `shutdown_confirm_timeout_secs` | integer | `150` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`. `0` exits without waiting. |
+| `watermark_resend_timeout_secs` | integer | `300` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. Keep it at least twice ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`; see [Timing rules across components](#timing-rules-across-components). Must be positive. |
+| `archive_visibility_delay_secs` | integer | `10` | *(Keeper only)* Seconds a keeper keeps a chunk after ChronoGrapher confirms it written, so replays take its events from the keeper until players can read the new archive file. A replay looks the newest windows up by name, which skips a shared file system's directory listing cache but not its cache of failed lookups, which NFS keeps by default (`lookupcache=all`) for up to `acdirmax`: mount the archive with `lookupcache=positive`, or raise this above `acdirmax`. A window written late at an older start time, after a lost chunk was sent again, is found only by the player's directory scan, so for those this has to cover `archive_scan_interval_secs` plus the listing cache; see [Timing rules across components](#timing-rules-across-components) and [Archive on a Shared File System](../deployment/multi-node.md#archive-on-a-shared-file-system). `0` frees on confirmation. See [Durable Chunk Retention](../architecture/durable-retention.md). |
+| `shutdown_confirm_timeout_secs` | integer | `150` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`; see [Timing rules across components](#timing-rules-across-components). `0` exits without waiting. |
 | `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks and unwritten receipts to the keepers. |
 
+
+### Timing rules across components
+
+Several timing settings only work together with a setting of another component: a keeper waits for
+ChronoGrapher to write its chunks, and a player has to find a file before the keeper lets its copy
+go. Each component reads only its own settings, so nothing checks these relations when a component
+starts. If you change any of the settings below, keep the rules. The values are the template's.
+
+| Rule | Template values | Why | If it is broken |
+| --- | --- | --- | --- |
+| player `archive_window_secs` = grapher `story_chunk_duration_secs` | 30 = 30 | The player builds the names of the newest archive files from the grapher's window length. | Lookups by name never match; new files are found only by the next directory scan, and a replay in between can miss events the keepers have freed. |
+| grapher `acceptance_window_secs` > keeper `story_chunk_duration_secs` + keeper `acceptance_window_secs` | 60 > 10 + 15 | A keeper ships a chunk that long after its first event; it has to reach the grapher before the grapher's window for that time closes. | Every keeper chunk arrives after its window was written and lands in a second, numbered file for that window. |
+| grapher `story_chunk_duration_secs` + `acceptance_window_secs` (the write window) stays short | 30 + 60 = 90 s | An event reaches the archive within the write window, and a keeper holds each chunk at least that long. | Keepers hold more memory and replays read more from the keepers. |
+| keeper `watermark_resend_timeout_secs` ≥ 2 × the grapher's write window | 300 ≥ 180 | A keeper sends a chunk again only when the grapher has had time to write it. | A delivery about to be confirmed is replaced by a new one that has to be confirmed from the start; chunks are sent and written again, and a keeper can wait indefinitely. |
+| keeper `shutdown_confirm_timeout_secs` ≥ the grapher's write window | 150 ≥ 90 | A keeper stopped with SIGTERM waits for the grapher to write the chunks it just sent. | The keeper exits before its last chunks are confirmed, and frees them unconfirmed with a warning. |
+| keeper `archive_visibility_delay_secs` ≥ player `archive_scan_interval_secs` + the archive mount's `acdirmax` | 10 vs 5 + 5 with the recommended mount | A window written late at an older start time is found only by the player's directory scan, which lags by the mount's directory cache. | A replay issued between the keeper freeing such a chunk and the next listing that shows its file misses those events and still reports success. |
+| keeper `retention_cap_mb` ≥ 3 × peak per-keeper MB/s × (keeper `story_chunk_duration_secs` + `acceptance_window_secs` + the grapher's write window + grapher `watermark_report_interval_secs` + keeper `archive_visibility_delay_secs`) | 4096 ≥ 3 × 10 × 126 | That is how long a healthy keeper holds each chunk; the factor 3 leaves room for a short grapher stall. | The retention warning fires in normal operation and stops meaning anything. Nothing is dropped. |
+| grapher `watermark_report_interval_secs` well below keeper `archive_visibility_delay_secs` | 1 vs 10 | Keepers learn that a chunk is written from these reports. | Chunks stay on the keepers longer than they need to. |
+| grapher `inactive_story_delay_secs` > keeper `story_chunk_duration_secs` + keeper `acceptance_window_secs` | 300 > 25 | After a story is released, a keeper seals its last chunk that long later; the grapher's pipeline for the story should still be there. | The last chunks arrive after the pipeline retired and are written as reopened windows. |
+
+It also helps to make the grapher's `story_chunk_duration_secs` a multiple of the keeper's (30 and
+10), so that a keeper's chunk does not straddle two grapher windows.
+
+A client waits up to 180 s for a replay (fixed in the client library). A player gives each keeper
+5 s to answer before it returns a partial result, so this leaves the archive read most of that time.
 
 ### `ExtractionModule`
 
@@ -143,6 +168,8 @@ Present under `chrono_player`. Parsed by `ExtractorReaderConf`.
 | Field             | Type   | Description                                                                  |
 | ----------------- | ------ | ---------------------------------------------------------------------------- |
 | `story_files_dir` | string | Filesystem directory where archived story files are read from by the player. On NFS, mount it with `lookupcache=positive` and a short `acdirmin`/`acdirmax`; see [Archive on a Shared File System](../deployment/multi-node.md#archive-on-a-shared-file-system). |
+| `archive_scan_interval_secs` | integer | Seconds between the player's listings of `story_files_dir`. A file written since the last listing is found by a lookup by name if it is one of the newest windows, and otherwise only by the next listing. Default: `5`. |
+| `archive_window_secs` | integer | Length of ChronoGrapher's windows, used to build the names of the newest archive files for a lookup by name. Must equal the grapher's `story_chunk_duration_secs`. `0` turns the lookup off. Default: `30`. |
 
 ### `IngestionThreadCount` — ingestion-thread parallelism
 
