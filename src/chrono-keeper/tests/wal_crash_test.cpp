@@ -5,6 +5,7 @@
 #include <csignal>
 #include <fstream>
 #include <thread>
+#include <random>
 #include <sys/wait.h>
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
@@ -20,27 +21,21 @@ using namespace std::chrono_literals;
 TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
 {
     auto control = std::make_shared<WalControl>();
-    // Reserve two ephemeral ports while choosing their addresses.
-    grpc::ServerBuilder ports;
-    v1::Journal::CallbackService unused;
-    ports.RegisterService(&unused);
-    int public_port = 0;
-    int internal_port = 0;
-    ports.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &public_port);
-    ports.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &internal_port);
-    auto reservation = ports.BuildAndStart();
-    ASSERT_NE(reservation, nullptr);
-    const auto endpoint = "127.0.0.1:" + std::to_string(public_port);
-    const auto archive_endpoint = "127.0.0.1:" + std::to_string(internal_port);
+    std::string endpoint, archive_endpoint;
     const auto config_path = control->directory + "/keeper.json";
-    std::ofstream(config_path) << "{\"listen\":\"" << endpoint << "\",\"internal_listen\":\"" << archive_endpoint
-                               << "\",\"visor_internal\":\"127.0.0.1:1\",\"wal_dir\":\"" << control->directory
-                               << "\",\"worker_threads\":2,\"static_routes\":[{\"story_id\":1,\"epoch\":7,\"keepers\":["
-                                  "{\"process_id\":\"keeper-1\",\"endpoint\":\""
-                               << endpoint
-                               << "\"}]}],\"static_writers\":[{\"story_id\":1,\"writer_id\":2,\"incarnation\":3}]}";
-    reservation->Shutdown(std::chrono::system_clock::now() + 2s);
-    reservation.reset();
+    std::mt19937 random(std::random_device{}());
+    auto addresses = [&]
+    {
+        const unsigned port = 10000 + (random() % 4400) * 5;
+        endpoint = "127.0.0.1:" + std::to_string(port);
+        archive_endpoint = "127.0.0.1:" + std::to_string(port + 1);
+        std::ofstream(config_path)
+                << "{\"listen\":\"" << endpoint << "\",\"internal_listen\":\"" << archive_endpoint
+                << "\",\"visor_internal\":\"127.0.0.1:1\",\"wal_dir\":\"" << control->directory
+                << "\",\"worker_threads\":2,\"static_routes\":[{\"story_id\":1,\"epoch\":7,\"keepers\":["
+                   "{\"process_id\":\"keeper-1\",\"endpoint\":\""
+                << endpoint << "\"}]}],\"static_writers\":[{\"story_id\":1,\"writer_id\":2,\"incarnation\":3}]}";
+    };
     struct Child
     {
         pid_t pid{-1};
@@ -57,13 +52,32 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
     } child;
     auto start = [&]
     {
-        child.pid = ::fork();
-        if(child.pid == 0)
+        const auto deadline = std::chrono::system_clock::now() + 30s;
+        for(int attempt = 0; attempt < 8 && std::chrono::system_clock::now() < deadline; ++attempt)
         {
-            ::execl(CHRONOLOG_KEEPER_BINARY, CHRONOLOG_KEEPER_BINARY, "--config", config_path.c_str(), nullptr);
-            ::_exit(127);
+            addresses();
+            child.pid = ::fork();
+            if(child.pid == 0)
+            {
+                ::execl(CHRONOLOG_KEEPER_BINARY, CHRONOLOG_KEEPER_BINARY, "--config", config_path.c_str(), nullptr);
+                ::_exit(127);
+            }
+            if(child.pid < 0)
+                return false;
+            auto channel = grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
+            while(std::chrono::system_clock::now() < deadline)
+            {
+                if(channel->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 200ms)))
+                    return true;
+                if(::waitpid(child.pid, nullptr, WNOHANG) == child.pid)
+                {
+                    child.pid = -1;
+                    break;
+                }
+            }
+            child.kill();
         }
-        return child.pid > 0;
+        return false;
     };
     constexpr int count = 16;
     std::vector<v1::Hlc> hlcs;
@@ -81,6 +95,10 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
         item->set_writer_id(2);
         item->set_incarnation(3);
         item->set_sequence(sequence);
+        item->mutable_physical()->set_physical_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                          std::chrono::system_clock::now().time_since_epoch())
+                                                          .count());
+        item->mutable_physical()->set_status(v1::CLOCK_STATUS_UNSYNCED);
         item->mutable_envelope()->set_payload("crash event " + std::to_string(sequence));
         grpc::ClientContext context;
         context.set_deadline(std::chrono::system_clock::now() + 5s);
