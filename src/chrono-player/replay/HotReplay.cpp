@@ -75,8 +75,8 @@ Hlc archiveEnd(const HotFetch& fetch, const Range& range)
         return range.end;
     Hlc boundary = fetch.archived_below;
     for(const auto& keeper: fetch.keepers) boundary = std::max(boundary, keeper.frontier.evicted_below);
-    if(range.axis == Range::Axis::Physical && (boundary > Hlc{} || fetch.physical_policy))
-        return range.end;
+    if(range.axis == Range::Axis::Physical)
+        return boundary > Hlc{} ? range.end : range.start;
     return std::min(range.end, boundary);
 }
 

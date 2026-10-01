@@ -274,10 +274,20 @@ TEST_F(ReplayContract, PredecessorPhysicalFrontierMustCoverEnd)
     read({Range::Axis::Physical, {305, 0}, {320, 0}});
     EXPECT_TRUE(completion.complete);
 }
+TEST_F(ReplayContract, PhysicalReadWithoutEvictionsDoesNotRequireAnArchive)
+{
+    routes->policy = true;
+    options.archive.reset();
+    read({Range::Axis::Physical, {100, 0}, {200, 0}});
+    EXPECT_TRUE(completion.complete);
+    ASSERT_EQ(returned.size(), 1);
+    EXPECT_EQ(returned[0].hlc, (Hlc{140, 0}));
+}
 TEST_F(ReplayContract, PhysicalLimitCountsMatchesAndKeepsTheRequestedEnd)
 {
     routes->policy = true;
     options.read_max_events = 1;
+    routes->state.archived_below = {200, 0};
     ASSERT_TRUE(archive_writer->publish({"physical", 1, {100, 0}, {200, 0}, {event(120), event(140)}, false}).ok());
     old.events.clear();
     current.events.clear();
