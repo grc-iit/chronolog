@@ -186,23 +186,22 @@ public:
     }
     void create_snapshot(snapshot& s, async_result<bool>::handler_type& done) override
     {
-        std::lock_guard lock(mutex_);
         ptr<std::exception> error;
         bool ok = false;
+        // done() takes raft_server's lock, which NuRaft holds while calling into this machine: call it unlocked.
         try
         {
-            if(s.get_last_log_idx() != last_commit_index())
+            std::lock_guard lock(mutex_);
+            if(s.get_last_log_idx() == last_commit_index())
             {
-                done(ok, error);
-                return;
+                auto result = store_.backupTo(snapshotPath(s));
+                if(!result.ok())
+                    throw std::runtime_error(std::string(result.message()));
+                syncFile(snapshotPath(s));
+                syncDirectory(snapshotPath(s));
+                durable_.put("snapshot", *s.serialize());
+                ok = true;
             }
-            auto result = store_.backupTo(snapshotPath(s));
-            if(!result.ok())
-                throw std::runtime_error(std::string(result.message()));
-            syncFile(snapshotPath(s));
-            syncDirectory(snapshotPath(s));
-            durable_.put("snapshot", *s.serialize());
-            ok = true;
         }
         catch(const std::exception& e)
         {
