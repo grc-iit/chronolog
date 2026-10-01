@@ -131,3 +131,7 @@ add_subdirectory(src/chrono-player)
 if(CHRONOLOG_BUILD_VISOR)
     add_subdirectory(src/chrono-visor)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/tier/CMakeLists.txt")
+    add_subdirectory(src/chrono-grapher/tier)
+endif()
