@@ -8,6 +8,6 @@ if(Python3_Interpreter_FOUND)
         add_test(NAME plugin.mcp COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/python/tests/acceptance.sh"
             $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
             "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
-        set_tests_properties(plugin.mcp PROPERTIES TIMEOUT 90)
+        set_tests_properties(plugin.mcp PROPERTIES TIMEOUT 90 ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/src")
     endif()
 endif()

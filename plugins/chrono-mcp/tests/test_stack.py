@@ -19,7 +19,7 @@ def test_mcp_stdio_session():
         client = cl.connect(os.environ["CHRONOLOG_TEST_VISOR"], os.getenv("CHRONOLOG_TEST_PLAYER"), timeout=3)
         parameters = StdioServerParameters(command=sys.executable, args=[
             "-m", "chronomcp.server", "--catalog", os.environ["CHRONOLOG_TEST_VISOR"],
-            "--player", os.environ["CHRONOLOG_TEST_PLAYER"], "--chronicle", chronicle, "--timeout", "3"])
+            "--player", os.environ["CHRONOLOG_TEST_PLAYER"], "--chronicle", chronicle, "--timeout", "3"], env=dict(os.environ))
         story = None
         try:
             async with stdio_client(parameters) as (read, write):
@@ -90,7 +90,7 @@ def test_conversation_workflow_resource_prompt_and_replay_reader():
         parameters = StdioServerParameters(command=sys.executable, args=[
             "-m", "chronomcp.server", "--catalog", os.environ["CHRONOLOG_TEST_VISOR"],
             "--player", os.environ["CHRONOLOG_TEST_PLAYER"], "--chronicle", chronicle,
-            "--identity", "conversation-test", "--timeout", "3"])
+            "--identity", "conversation-test", "--timeout", "3"], env=dict(os.environ))
         story = None
         try:
             async with stdio_client(parameters) as (read, write):
