@@ -176,6 +176,14 @@ class Homelab(Local):
             except Exception:
                 pass
         self.cluster.close()
+        for node in self.nodes:
+            paths = [f'~/chronolog-sprint/bin/{self.tag}', f'~/chronolog-sprint/run/{self.tag}']
+            if node in ('dragon', 'blade'):
+                paths.append('/mnt/nfs/chronolog-sprint/' + self.tag)
+            try:
+                self.cluster.run(node, 'rm -rf ' + ' '.join(paths), 30)
+            except Exception:
+                pass
 
 
 def configure(stack):
