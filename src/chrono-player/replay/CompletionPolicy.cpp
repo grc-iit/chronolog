@@ -8,11 +8,18 @@ Completion CompletionPolicy::decide(const Range& range,
                                     Epoch route_epoch,
                                     const std::vector<KeeperFrontier>& keepers,
                                     const std::vector<WriterAssignment>& writers,
-                                    bool archive_failed)
+                                    bool archive_failed,
+                                    bool physical_policy,
+                                    bool unbounded_event)
 {
     const bool hlc = range.axis == Range::Axis::Hlc;
-    auto failed = [&](const KeeperFrontier& k) { return !k.answered || k.epoch != route_epoch; };
-    auto lagging = [&](const KeeperFrontier& k) { return hlc && k.sealed < range.end; };
+    auto failed = [&](const KeeperFrontier& k)
+    { return !k.answered || k.epoch != (k.expected_epoch ? k.expected_epoch : route_epoch); };
+    auto lagging = [&](const KeeperFrontier& k)
+    {
+        return hlc ? k.sealed < (k.predecessor ? std::min(range.end, k.own_cut) : range.end)
+                   : physical_policy && (!k.physical_frontier || *k.physical_frontier < range.end.physical_ns);
+    };
 
     // A Route with no Keepers is an uninitialized route, never vacuously complete.
     bool any_failed = archive_failed || keepers.empty();
@@ -27,7 +34,8 @@ Completion CompletionPolicy::decide(const Range& range,
         }
         any_truncated |= k.truncated;
         any_lagging |= lagging(k);
-        min_seal = min_seal ? std::min(*min_seal, k.sealed) : k.sealed;
+        if(!k.predecessor || k.sealed < k.own_cut)
+            min_seal = min_seal ? std::min(*min_seal, k.sealed) : k.sealed;
     }
 
     Completion c;
@@ -36,7 +44,7 @@ Completion CompletionPolicy::decide(const Range& range,
         c.reason = IncompleteReason::SourceFailed;
     else if(any_truncated)
         c.reason = IncompleteReason::Truncated;
-    else if(!hlc)
+    else if(!hlc && (!physical_policy || unbounded_event))
         c.reason = IncompleteReason::PhysicalAxisUnbounded;
     else if(any_lagging)
         c.reason = IncompleteReason::LaggingWriters;

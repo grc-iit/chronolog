@@ -276,6 +276,7 @@ message FetchHotRequest
 }
 message FetchHotTrailer
 {
+    optional int64 physical_frontier_ns = 7;
     string instance = 6;
  // Current Keeper epoch; mismatch with Player Route is SOURCE_FAILED.
  uint64 epoch = 4;

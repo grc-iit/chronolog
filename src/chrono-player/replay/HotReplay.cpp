@@ -17,16 +17,38 @@ namespace
 
 bool inRange(const Range& r, const Event& e)
 {
-    if(r.axis == Range::Axis::Physical)
-        return e.physical.physical_ns >= r.start.physical_ns && e.physical.physical_ns < r.end.physical_ns;
-    return e.hlc >= r.start && e.hlc < r.end;
+    if(r.axis == Range::Axis::Hlc)
+        return e.hlc >= r.start && e.hlc < r.end;
+    int64_t p = e.physical.physical_ns;
+    if(!e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced)
+        return p >= r.start.physical_ns && p < r.end.physical_ns;
+    uint64_t u = *e.physical.uncertainty_ns;
+    if(u > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+        return true;
+    int64_t bound = static_cast<int64_t>(u);
+    int64_t lo = p < std::numeric_limits<int64_t>::min() + bound ? std::numeric_limits<int64_t>::min() : p - bound;
+    int64_t hi = p > std::numeric_limits<int64_t>::max() - bound ? std::numeric_limits<int64_t>::max() : p + bound;
+    return lo < r.end.physical_ns && hi >= r.start.physical_ns;
+}
+
+bool abandoned(const HotFetch& fetch, const Range& range)
+{
+    for(const auto& lost: fetch.abandoned)
+        if(range.axis == Range::Axis::Physical || (lost.start < range.end && lost.end > range.start))
+            return true;
+    return false;
 }
 
 bool routeAnswered(const HotFetch& f)
 {
     return std::all_of(f.keepers.begin(),
                        f.keepers.end(),
-                       [&](const KeeperFetch& k) { return k.frontier.answered && k.frontier.epoch == f.route_epoch; });
+                       [&](const KeeperFetch& k)
+                       {
+                           return k.frontier.answered &&
+                                  k.frontier.epoch ==
+                                          (k.frontier.expected_epoch ? k.frontier.expected_epoch : f.route_epoch);
+                       });
 }
 
 // Keeps events accepted by `keep`, sorted per Keeper, merged and deduplicated.
@@ -51,9 +73,9 @@ Hlc archiveEnd(const HotFetch& fetch, const Range& range)
 {
     if(!routeAnswered(fetch) || fetch.keepers.empty())
         return range.end;
-    Hlc boundary{};
+    Hlc boundary = fetch.archived_below;
     for(const auto& keeper: fetch.keepers) boundary = std::max(boundary, keeper.frontier.evicted_below);
-    if(range.axis == Range::Axis::Physical && boundary > Hlc{})
+    if(range.axis == Range::Axis::Physical && (boundary > Hlc{} || fetch.physical_policy))
         return range.end;
     return std::min(range.end, boundary);
 }
@@ -215,7 +237,7 @@ private:
     {
         if(fetch.closed)
             closed_ = true;
-        if(!routeAnswered(fetch))
+        if(!routeAnswered(fetch) || abandoned(fetch, Range{Range::Axis::Hlc, cursor_.hlc, maxHlc()}))
             return false;
         std::vector<Event> cold;
         if(!loadArchive(options_, story_, Range{Range::Axis::Hlc, cursor_.hlc, maxHlc()}, fetch, cold))
@@ -293,6 +315,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     std::vector<Hlc> hot_times;
     for(auto& k: fetched->keepers)
     {
+        if(k.frontier.truncated && !k.frontier.truncated_at)
+            k.frontier.truncated_at = k.events.empty() ? range.start : k.events.back().hlc;
         frontiers.push_back(k.frontier);
         std::erase_if(k.events, [&](const Event& e) { return !inRange(range, e); });
         for(const auto& e: k.events)
@@ -306,6 +330,31 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     }
     auto hotCount = [&](Hlc end)
     { return static_cast<size_t>(std::count_if(hot_times.begin(), hot_times.end(), [&](Hlc t) { return t < end; })); };
+    bool source_truncated = std::any_of(frontiers.begin(), frontiers.end(), [](const auto& k) { return k.truncated; });
+    auto capPrefix = [&]
+    {
+        if(range.axis != Range::Axis::Hlc)
+            return;
+        Hlc cut = covered.end;
+        for(const auto& k: frontiers)
+        {
+            if(!k.answered || k.epoch != (k.expected_epoch ? k.expected_epoch : fetched->route_epoch))
+                cut = range.start;
+            else
+            {
+                if(!k.predecessor || k.sealed < k.own_cut)
+                    cut = std::min(cut, k.sealed);
+                if(k.truncated)
+                    cut = std::min(cut, k.truncated_at.value_or(range.start));
+            }
+        }
+        for(const auto& lost: fetched->abandoned)
+            if(lost.start < cut && lost.end > range.start)
+                cut = std::min(cut, lost.start);
+        covered.end = std::max(range.start, cut);
+    };
+    if(limited || source_truncated)
+        capPrefix();
     const Hlc boundary = archiveEnd(*fetched, range);
     bool archive_ok = true;
     std::vector<ManifestRecord> records;
@@ -360,10 +409,35 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
             i = j;
         }
     }
+    if(limited || source_truncated)
+    {
+        capPrefix();
+        if(range.axis == Range::Axis::Hlc)
+        {
+            for(const auto& record: records)
+                if(record.state == ManifestState::Lost && record.start < covered.end && record.end > range.start)
+                    covered.end = std::max(range.start, record.start);
+            bool changed;
+            do {
+                changed = false;
+                for(const auto& record: records)
+                    if(record.state == ManifestState::Published && record.start < covered.end &&
+                       record.end > covered.end)
+                    {
+                        Hlc cut = std::max(range.start, record.start);
+                        changed |= cut < covered.end;
+                        covered.end = cut;
+                    }
+            } while(changed);
+        }
+    }
     std::vector<std::vector<Event>> inputs;
+    bool unbounded_event = false;
     for(auto& k: fetched->keepers)
     {
         std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e); });
+        for(const auto& e: k.events)
+            unbounded_event |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
         std::stable_sort(k.events.begin(), k.events.end(), ReplayLess);
         inputs.push_back(std::move(k.events));
     }
@@ -378,21 +452,35 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         {
             if(range.axis == Range::Axis::Hlc && record.start >= cold.end)
                 continue;
-            auto events = options_.archive->readRecord(record, cold);
+            auto events = options_.archive->readRecord(
+                    record,
+                    range.axis == Range::Axis::Physical ? Range{Range::Axis::Hlc, record.start, record.end} : cold);
             if(!events.ok())
                 archive_ok = false;
             else
+            {
+                std::erase_if(*events, [&](const Event& e) { return !inRange(cold, e); });
+                for(const auto& e: *events)
+                    unbounded_event |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
                 inputs.push_back(*std::move(events));
+            }
         }
     }
-    Completion completion =
-            CompletionPolicy::decide(covered, fetched->route_epoch, frontiers, fetched->writers, !archive_ok);
-    if(limited && completion.reason != IncompleteReason::SourceFailed)
+    Completion completion = CompletionPolicy::decide(covered,
+                                                     fetched->route_epoch,
+                                                     frontiers,
+                                                     fetched->writers,
+                                                     !archive_ok || abandoned(*fetched, range),
+                                                     fetched->physical_policy,
+                                                     unbounded_event);
+    if((limited || source_truncated) && completion.reason != IncompleteReason::SourceFailed)
     {
         completion.complete = false;
         completion.reason = IncompleteReason::Truncated;
         completion.frontier = covered.end;
     }
+    if((limited || source_truncated) && range.axis == Range::Axis::Hlc)
+        completion.frontier = covered.end;
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options_.batch_size));
 }

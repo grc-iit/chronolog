@@ -35,8 +35,12 @@ public:
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
 
 private:
-    KeeperFetch
-    fetchOne(const KeeperRef& keeper, StoryId story, const Range& range, std::atomic<size_t>& retained) const;
+    KeeperFetch fetchOne(const KeeperRef& keeper,
+                         StoryId story,
+                         const Range& range,
+                         Epoch expected_epoch,
+                         const Predecessor* predecessor,
+                         std::atomic<size_t>& retained) const;
     internal::v1::Archive::Stub& stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;
