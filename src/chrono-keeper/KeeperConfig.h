@@ -49,6 +49,8 @@ struct KeeperConfig
     size_t group_commit_max_bytes = 4u << 20;
     uint32_t reserve_ahead_ms = 1000;
     uint64_t wal_max_bytes = 1ull << 30;
+    uint64_t wal_segment_bytes = 64ull << 20;
+    uint32_t shutdown_confirm_timeout_secs = 150;
     uint32_t story_chunk_duration_secs = 10;
     uint32_t seal_interval_ms = 1000;
     size_t chunk_max_bytes = 32u << 20;

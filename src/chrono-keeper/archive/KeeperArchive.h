@@ -26,6 +26,7 @@ struct KeeperArchiveConfig
     uint32_t archive_visibility_delay_secs{10};
     uint64_t retention_cap_mb{4096};
     uint32_t chunk_max_events{65536};
+    uint32_t shutdown_confirm_timeout_secs{150};
 };
 
 class KeeperArchive
@@ -42,7 +43,8 @@ public:
     ~KeeperArchive();
     void start();
     void stop();
-    absl::Status seal();
+    absl::Status seal(bool through_frontier = false);
+    bool shutdown();
     bool shipOne(std::stop_token stop = {});
     void delivered(const std::string& id, const internal::v1::ChunkReceipt& receipt, size_t bytes);
     void sendFailed(const std::string& id);
@@ -102,5 +104,6 @@ private:
     std::condition_variable_any cv_;
     std::jthread sealer_, shipper_;
     bool cap_warned_{};
+    bool draining_{};
 };
 } // namespace chronolog::keeper

@@ -95,7 +95,7 @@ absl::Status KeeperArchive::addChunk(Chunk chunk, size_t bytes)
     return absl::OkStatus();
 }
 
-absl::Status KeeperArchive::seal()
+absl::Status KeeperArchive::seal(bool through_frontier)
 {
     std::lock_guard seal_lock(seal_mu_);
     const Hlc tick = journal_.sealTick();
@@ -107,7 +107,7 @@ absl::Status KeeperArchive::seal()
         auto snapshot = journal_.sealedRead(story_id, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}, tick);
         if(!snapshot.ok())
             return snapshot.status();
-        const Hlc end = align(snapshot->view.sealed);
+        const Hlc end = through_frontier ? snapshot->view.sealed : align(snapshot->view.sealed);
         Hlc start;
         {
             std::lock_guard lock(mu_);
@@ -253,6 +253,7 @@ void KeeperArchive::applyReport(const WatermarkReport& report)
             it = chunks_.erase(it);
         }
         journal_.eraseEvents(report.story_id, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+        cv_.notify_all();
         return;
     }
     story.watermark = std::max(story.watermark, report.watermark);
@@ -347,7 +348,9 @@ bool KeeperArchive::shipOne(std::stop_token stop)
         {
             if(state.inflight || state.settled || now_() < state.retry_at ||
                (state.delivered &&
-                now_() - state.activity < std::chrono::seconds(config_.watermark_resend_timeout_secs)))
+                now_() - state.activity <
+                        (draining_ ? std::chrono::milliseconds(1000)
+                                   : std::chrono::milliseconds(1000ull * config_.watermark_resend_timeout_secs))))
                 continue;
             auto route = membership_.route(state.chunk.story_id);
             if(!route.ok() || route->grapher.empty())
@@ -527,6 +530,55 @@ void KeeperArchive::start()
                 }
             });
 }
+bool KeeperArchive::shutdown()
+{
+    const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(config_.shutdown_confirm_timeout_secs);
+    sealer_.request_stop();
+    cv_.notify_all();
+    if(sealer_.joinable())
+        sealer_.join();
+    auto status = journal_.flush();
+    if(status.ok())
+        status = seal(true);
+    {
+        std::lock_guard lock(mu_);
+        draining_ = true;
+        for(auto& [id, state]: chunks_)
+        {
+            state.activity = now_() - std::chrono::seconds(config_.watermark_resend_timeout_secs);
+            state.retry_at = now_();
+        }
+    }
+    refreshSubscriptions();
+    if(!shipper_.joinable())
+        shipper_ = std::jthread(
+                [this](std::stop_token stop)
+                {
+                    while(!stop.stop_requested())
+                    {
+                        if(shipOne(stop))
+                            continue;
+                        std::unique_lock lock(mu_);
+                        cv_.wait_for(lock, stop, std::chrono::milliseconds(20), [] { return false; });
+                    }
+                });
+    cv_.notify_all();
+    bool confirmed;
+    {
+        std::unique_lock lock(mu_);
+        confirmed = cv_.wait_until(lock,
+                                   deadline,
+                                   [this] {
+                                       return std::all_of(chunks_.begin(),
+                                                          chunks_.end(),
+                                                          [](const auto& entry) { return entry.second.settled; });
+                                   });
+    }
+    stop();
+    return status.ok() && confirmed;
+}
+
 void KeeperArchive::stop()
 {
     sealer_.request_stop();

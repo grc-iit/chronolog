@@ -18,6 +18,7 @@ struct WalJournalConfig
     size_t group_commit_max_bytes{4u << 20};
     uint32_t reserve_ahead_ms{1000};
     uint64_t wal_max_bytes{1ull << 30};
+    uint64_t wal_segment_bytes{64ull << 20};
 };
 
 class WalJournal: public RamJournal
@@ -36,6 +37,7 @@ public:
         bool settled{};
     };
     std::vector<SealedChunk> sealedChunks() const;
+    absl::Status flush();
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
 
@@ -56,11 +58,27 @@ private:
     absl::Status persistRecord(std::string payload);
     void commit();
     uint64_t recover();
+    absl::Status rotate();
+    void truncate();
+    void trackRecord(std::string_view payload, uint64_t segment);
+    std::string writersRecord() const;
+    void restoreWriters(std::string_view payload);
+    struct Segment
+    {
+        uint64_t bytes{};
+        std::vector<std::pair<StoryId, Hlc>> events;
+    };
+    std::map<uint64_t, Segment> segments_;
+    uint64_t segment_{};
+    uint64_t segment_data_bytes_{};
+    Hlc persisted_reservation_;
+
 
     mutable std::mutex archive_mu_;
     std::map<std::string, SealedChunk> archive_seals_;
     std::shared_ptr<Clock> clock_;
     WalJournalConfig config_;
+    SinkFactory sink_factory_;
     std::unique_ptr<FileSink> sink_;
     int lock_fd_{-1};
     uint64_t bytes_{};

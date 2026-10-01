@@ -86,6 +86,27 @@ TEST(KeeperConfig, ChunkEventLimitDefaultsAndOverridesAreBounded)
         EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_CHUNK_MAX_EVENTS", invalid}})).ok());
 }
 
+TEST(KeeperConfig, WalRotationAndShutdownSettings)
+{
+    auto defaults = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_EQ(defaults->wal_segment_bytes, 64u << 20);
+    EXPECT_EQ(defaults->shutdown_confirm_timeout_secs, 150u);
+    auto path = WriteFile(R"({"wal_segment_bytes":1024,"shutdown_confirm_timeout_secs":5})");
+    auto file = KeeperConfig::load(path, Env({}));
+    ASSERT_TRUE(file.ok());
+    EXPECT_EQ(file->wal_segment_bytes, 1024u);
+    EXPECT_EQ(file->shutdown_confirm_timeout_secs, 5u);
+    auto overridden = KeeperConfig::load(path,
+                                         Env({{"CHRONOLOG_KEEPER_WAL_SEGMENT_BYTES", "2048"},
+                                              {"CHRONOLOG_KEEPER_SHUTDOWN_CONFIRM_TIMEOUT_SECS", "0"}}));
+    std::filesystem::remove(path);
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->wal_segment_bytes, 2048u);
+    EXPECT_EQ(overridden->shutdown_confirm_timeout_secs, 0u);
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_WAL_SEGMENT_BYTES", "0"}})).ok());
+}
+
 TEST(ConfigMembership, SeedsAndReplacesRoutes)
 {
     ConfigMembership membership({StaticRoute{1, Route{3, {{"k", "k:1"}}, "g", "p"}}});

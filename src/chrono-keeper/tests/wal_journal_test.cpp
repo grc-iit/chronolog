@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <future>
 
@@ -271,5 +272,50 @@ TEST(WalJournal, PendingUpgradeKeepsTheOriginalVisibleAndMakesRetriesWait)
     ASSERT_TRUE(events.ok());
     ASSERT_EQ(events->size(), 1u);
     EXPECT_EQ(events->front().durability, Durability::Durable);
+}
+} // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(WalJournal, RotationPreservesReleasedWritersAndUnsettledSealIdentity)
+{
+    WalRig rig;
+    rig.config.wal_segment_bytes = 1;
+    rig.reopen();
+    auto appended = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok());
+    Chunk chunk;
+    chunk.id = "keeper:1:0.0";
+    chunk.story_id = 1;
+    chunk.start = {};
+    chunk.end = {1000, 0};
+    ASSERT_TRUE(rig.current->recordSeal(chunk).ok());
+    rig.current->releaseWriter(1, 2, 3);
+    ASSERT_TRUE(rig.current->recordSettled(chunk.id).ok());
+    ASSERT_TRUE(rig.current->registerWriter(1, 4, 1).ok());
+    rig.clock->setPhysical(1100);
+    auto next_batch = batch({1});
+    next_batch.items.front().writer_id = 4;
+    next_batch.items.front().incarnation = 1;
+    auto next = rig.current->append(next_batch, Durability::Durable);
+    ASSERT_TRUE(next.ok());
+    ASSERT_TRUE(next->front().status.ok());
+    chunk.id = "keeper:1:1000.0";
+    chunk.start = chunk.end;
+    chunk.end = {2'000'000'000, 0};
+    ASSERT_TRUE(rig.current->recordSeal(chunk).ok());
+    rig.reopen();
+    auto released = rig.current->append(batch({2}), Durability::Durable);
+    ASSERT_TRUE(released.ok());
+    EXPECT_EQ(released->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    const auto seals = rig.current->sealedChunks();
+    ASSERT_EQ(seals.size(), 2u);
+    auto seal = std::find_if(seals.begin(), seals.end(), [&](const auto& value) { return value.chunk.id == chunk.id; });
+    ASSERT_NE(seal, seals.end());
+    EXPECT_FALSE(seal->settled);
+    EXPECT_EQ(seal->chunk.start, chunk.start);
+    EXPECT_EQ(seal->chunk.end, chunk.end);
+    EXPECT_GT(rig.clock->tick(), next->front().hlc);
 }
 } // namespace chronolog::test
