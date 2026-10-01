@@ -41,10 +41,13 @@ gtest_discover_tests(chronolog_client_tests TEST_PREFIX "sdk." DISCOVERY_MODE PR
 add_executable(chronolog_client_acceptance tests/acceptance.cpp)
 target_link_libraries(chronolog_client_acceptance PRIVATE chronolog::client chronolog_warnings)
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
-    add_test(NAME sdk.acceptance COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+    add_test(NAME sdk.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_client_acceptance>)
     set_tests_properties(sdk.acceptance PROPERTIES TIMEOUT 90)
 endif()
-add_test(NAME sdk.install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.sh"
-    "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
-set_tests_properties(sdk.install PROPERTIES TIMEOUT 180)
+# The installed-package check builds an uninstrumented consumer, so it runs only in unsanitized builds.
+if(NOT CHRONOLOG_SANITIZERS)
+    add_test(NAME sdk.install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.sh"
+        "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    set_tests_properties(sdk.install PROPERTIES TIMEOUT 180)
+endif()
