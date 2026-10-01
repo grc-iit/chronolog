@@ -109,6 +109,11 @@ run_engine() {
                     step "MCP plugin dependencies" 180 "$venv/bin/pip" install 'mcp>=1.30,<2' || rc=1
                     step "MCP plugin pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                         "$venv/bin/python" -m pytest -q plugins/chrono-mcp/tests || rc=1
+                    if [ "$rc" -eq 0 ]; then
+                        step "MCP plugin deployment image" 300 "${compose[@]}" -f deploy/compose/mcp.override.yaml build chrono-mcp || rc=1
+                        step "MCP plugin container entrypoint" 30 "${compose[@]}" -f deploy/compose/mcp.override.yaml \
+                            run --rm --no-deps chrono-mcp --help || rc=1
+                    fi
                 fi
             fi
         fi
