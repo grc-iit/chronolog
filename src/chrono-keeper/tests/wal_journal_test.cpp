@@ -182,3 +182,94 @@ TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)
 
 } // namespace
 } // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(WalJournal, AcceptedThenDurableUpgradeSurvivesCrashWithOutOfOrderSequences)
+{
+    WalRig rig;
+    AppendBatch batch{1, 7, {}};
+    for(uint64_t sequence = 1; sequence <= 3; ++sequence)
+    {
+        AppendItem item;
+        item.writer_id = 2;
+        item.incarnation = 3;
+        item.sequence = sequence;
+        item.envelope.payload = "original";
+        batch.items.push_back(item);
+    }
+    auto accepted = rig.current->append(batch, Durability::Accepted);
+    ASSERT_TRUE(accepted.ok());
+    for(int index: {2, 0, 1})
+    {
+        auto item = batch.items[index];
+        item.envelope.payload = "retry must not replace payload";
+        auto durable = rig.current->append({1, 7, {item}}, index == 0 ? Durability::Unspecified : Durability::Durable);
+        ASSERT_TRUE(durable.ok());
+        ASSERT_TRUE(durable->front().status.ok());
+        EXPECT_EQ(durable->front().hlc, (*accepted)[index].hlc);
+        EXPECT_EQ(durable->front().achieved, Durability::Durable);
+    }
+    rig.reopen();
+    auto replay = rig.current->append(batch, Durability::Durable);
+    ASSERT_TRUE(replay.ok());
+    for(size_t i = 0; i < replay->size(); ++i)
+    {
+        EXPECT_TRUE((*replay)[i].status.ok());
+        EXPECT_EQ((*replay)[i].hlc, (*accepted)[i].hlc);
+    }
+    auto events = rig.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 3u);
+    for(const auto& event: *events) EXPECT_EQ(event.envelope.payload, "original");
+    auto item = batch.items.front();
+    item.sequence = 4;
+    auto next = rig.current->append({1, 7, {item}}, Durability::Durable);
+    ASSERT_TRUE(next.ok());
+    EXPECT_TRUE(next->front().status.ok());
+}
+} // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(WalJournal, PendingUpgradeKeepsTheOriginalVisibleAndMakesRetriesWait)
+{
+    WalRig rig;
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    item.envelope.payload = "original";
+    auto original = rig.current->append({1, 7, {item}}, Durability::Accepted);
+    ASSERT_TRUE(original.ok());
+    ASSERT_TRUE(original->front().status.ok());
+    rig.control->block();
+    auto upgrade =
+            std::async(std::launch::async, [&] { return rig.current->append({1, 7, {item}}, Durability::Durable); });
+    (void)rig.control->waitPending();
+    auto retry =
+            std::async(std::launch::async, [&] { return rig.current->append({1, 7, {item}}, Durability::Accepted); });
+    EXPECT_EQ(retry.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+    auto events = rig.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    EXPECT_TRUE(events.ok());
+    if(events.ok() && events->size() == 1)
+    {
+        EXPECT_EQ(events->front().durability, Durability::Accepted);
+    }
+    rig.control->release();
+    ASSERT_EQ(upgrade.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    ASSERT_EQ(retry.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    for(auto* future: {&upgrade, &retry})
+    {
+        auto result = future->get();
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+        EXPECT_EQ(result->front().hlc, original->front().hlc);
+        EXPECT_EQ(result->front().achieved, Durability::Durable);
+    }
+    events = rig.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().durability, Durability::Durable);
+}
+} // namespace chronolog::test

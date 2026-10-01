@@ -49,6 +49,14 @@ struct KeeperConfig
     size_t group_commit_max_bytes = 4u << 20;
     uint32_t reserve_ahead_ms = 1000;
     uint64_t wal_max_bytes = 1ull << 30;
+    uint32_t story_chunk_duration_secs = 10;
+    uint32_t seal_interval_ms = 1000;
+    size_t chunk_max_bytes = 32u << 20;
+    uint32_t chunk_max_events = 65536;
+    size_t frame_bytes = 1u << 20;
+    uint32_t watermark_resend_timeout_secs = 300;
+    uint32_t archive_visibility_delay_secs = 10;
+    uint64_t retention_cap_mb = 4096;
     // Zero selects std::thread::hardware_concurrency().
     uint32_t worker_threads = 0;
     uint32_t heartbeat_interval_ms = 5000;

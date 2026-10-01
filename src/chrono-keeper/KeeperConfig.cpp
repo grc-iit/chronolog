@@ -66,6 +66,15 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "group_commit_max_bytes",
                                                 "reserve_ahead_ms",
                                                 "wal_max_bytes",
+                                                "story_chunk_duration_secs",
+                                                "seal_interval_ms",
+                                                "chunk_max_bytes",
+                                                "chunk_max_events",
+                                                "frame_bytes",
+                                                "watermark_resend_timeout_secs",
+                                                "archive_visibility_delay_secs",
+                                                "retention_cap_mb",
+
                                                 "worker_threads",
                                                 "heartbeat_interval_ms",
                                                 "insecure_bind_all",
@@ -103,6 +112,25 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.reserve_ahead_ms = json.at("reserve_ahead_ms").get<uint32_t>();
         if(json.contains("wal_max_bytes"))
             cfg.wal_max_bytes = json.at("wal_max_bytes").get<uint64_t>();
+        if(json.contains("story_chunk_duration_secs"))
+            cfg.story_chunk_duration_secs =
+                    json.at("story_chunk_duration_secs").get<decltype(cfg.story_chunk_duration_secs)>();
+        if(json.contains("seal_interval_ms"))
+            cfg.seal_interval_ms = json.at("seal_interval_ms").get<decltype(cfg.seal_interval_ms)>();
+        if(json.contains("chunk_max_bytes"))
+            cfg.chunk_max_bytes = json.at("chunk_max_bytes").get<decltype(cfg.chunk_max_bytes)>();
+        if(json.contains("chunk_max_events"))
+            cfg.chunk_max_events = json.at("chunk_max_events").get<uint32_t>();
+        if(json.contains("frame_bytes"))
+            cfg.frame_bytes = json.at("frame_bytes").get<decltype(cfg.frame_bytes)>();
+        if(json.contains("watermark_resend_timeout_secs"))
+            cfg.watermark_resend_timeout_secs =
+                    json.at("watermark_resend_timeout_secs").get<decltype(cfg.watermark_resend_timeout_secs)>();
+        if(json.contains("archive_visibility_delay_secs"))
+            cfg.archive_visibility_delay_secs =
+                    json.at("archive_visibility_delay_secs").get<decltype(cfg.archive_visibility_delay_secs)>();
+        if(json.contains("retention_cap_mb"))
+            cfg.retention_cap_mb = json.at("retention_cap_mb").get<decltype(cfg.retention_cap_mb)>();
         if(json.contains("worker_threads"))
             cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
         if(json.contains("heartbeat_interval_ms"))
@@ -183,7 +211,10 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         cfg.payload_max_bytes = *parsed;
     }
     for(auto [key, field]: {std::pair<const char*, uint64_t*>{"wal_max_bytes", &cfg.wal_max_bytes},
-                            {"group_commit_max_bytes", &cfg.group_commit_max_bytes}})
+                            {"group_commit_max_bytes", &cfg.group_commit_max_bytes},
+                            {"chunk_max_bytes", &cfg.chunk_max_bytes},
+                            {"frame_bytes", &cfg.frame_bytes},
+                            {"retention_cap_mb", &cfg.retention_cap_mb}})
     {
         if(auto v = env(key))
         {
@@ -210,7 +241,12 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"worker_threads", &cfg.worker_threads},
                             {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
                             {"group_commit_window_ms", &cfg.group_commit_window_ms},
-                            {"reserve_ahead_ms", &cfg.reserve_ahead_ms}})
+                            {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
+                            {"story_chunk_duration_secs", &cfg.story_chunk_duration_secs},
+                            {"seal_interval_ms", &cfg.seal_interval_ms},
+                            {"chunk_max_events", &cfg.chunk_max_events},
+                            {"watermark_resend_timeout_secs", &cfg.watermark_resend_timeout_secs},
+                            {"archive_visibility_delay_secs", &cfg.archive_visibility_delay_secs}})
     {
         if(auto v = env(key))
         {
@@ -248,6 +284,10 @@ absl::Status KeeperConfig::validate() const
     if(wal_dir.empty() || group_commit_max_bytes == 0 || reserve_ahead_ms == 0 || wal_max_bytes == 0)
         return absl::InvalidArgumentError(
                 "wal_dir, group_commit_max_bytes, reserve_ahead_ms and wal_max_bytes must be set");
+    if(story_chunk_duration_secs == 0 || seal_interval_ms == 0 || chunk_max_bytes == 0 ||
+       chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
+       frame_bytes > (4u << 20))
+        return absl::InvalidArgumentError("invalid archive chunk, frame or timer configuration");
     for(const auto& writer: static_writers)
         if(writer.story_id == 0 || writer.writer_id == 0 || writer.incarnation == 0)
             return absl::InvalidArgumentError("static_writers entries need story_id, writer_id and incarnation");
