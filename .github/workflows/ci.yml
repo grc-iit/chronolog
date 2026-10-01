@@ -1,0 +1,73 @@
+name: "ChronoLog: CI"
+
+on:
+  push:
+    branches: [main, develop, supercomputing-sprint, 'sprint/**']
+  pull_request:
+
+env:
+  VCPKG_BUILTIN_BASELINE: 4a1c77189c64dae7afd478333a64d1e604d5dc91
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
+jobs:
+  build-test:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [dev, asan, tsan]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential g++-13 cmake ninja-build pkg-config curl zip unzip tar
+
+      - name: Check out vcpkg at the pinned baseline
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout "$VCPKG_BUILTIN_BASELINE"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_BUILTIN_BASELINE }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_BUILTIN_BASELINE }}-
+
+      - name: Create the binary cache directory
+        run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Configure
+        env:
+          CXX: g++-13
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+  disabled-tests:
+    name: disabled contract tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the disabled and skipped test count to the allowlist
+        run: |
+          allowed="$(tr -d '[:space:]' < .github/ci/disabled-contract-tests.count)"
+          actual="$(.github/ci/count_disabled_tests.sh tests/contract)"
+          echo "disabled or skipped contract tests: actual=$actual allowed=$allowed"
+          if [ "$actual" -gt "$allowed" ]; then
+            echo "::error::tests/contract has $actual disabled or skipped tests, allowlist is $allowed"
+            exit 1
+          fi
