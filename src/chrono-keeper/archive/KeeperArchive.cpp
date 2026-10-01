@@ -34,6 +34,7 @@ std::shared_ptr<grpc::Channel> KeeperArchive::archiveChannel(const std::string& 
         return channel;
     grpc::ChannelArguments args;
     args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
+    args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
     args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
     args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
@@ -398,9 +399,11 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     const auto crc = static_cast<uint32_t>(absl::ComputeCrc32c(bytes));
     std::string checksum;
     for(int shift = 24; shift >= 0; shift -= 8) checksum.push_back(static_cast<char>(crc >> shift));
-    auto stub = iv1::Archive::NewStub(archiveChannel(route->grapher));
+    auto channel = archiveChannel(route->grapher);
+    auto stub = iv1::Archive::NewStub(channel);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    context.set_wait_for_ready(true);
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     iv1::TransferChunkResponse response;
     std::osyncstream(std::clog) << "archive_transfer_start chunk=" << chunk.id << " grapher=" << route->grapher
@@ -417,6 +420,14 @@ bool KeeperArchive::shipOne(std::stop_token stop)
         }
         if(!status.ok())
         {
+            if(status.error_code() == grpc::StatusCode::UNAVAILABLE ||
+               status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)
+            {
+                std::lock_guard lock(mu_);
+                auto it = channels_.find(route->grapher);
+                if(it != channels_.end() && it->second == channel)
+                    channels_.erase(it);
+            }
             std::cerr << "chrono_keeper: archive transfer " << chunk.id << " failed: " << status.error_code() << " "
                       << status.error_message() << '\n';
             return fail();
