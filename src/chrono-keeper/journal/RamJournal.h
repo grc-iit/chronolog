@@ -98,7 +98,7 @@ protected:
     }
     virtual void persist(const Event&, std::function<void(absl::Status)>);
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
-    virtual int64_t reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
+    virtual absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
     virtual void writerScanned(WriterKey) const {}
     void restore(const Event& event);
     struct WriterCheckpoint

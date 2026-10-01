@@ -3,6 +3,7 @@
 // Do not also compile that suite separately into the same test executable.
 #include <gtest/gtest.h>
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <set>
 #include "chronolog/clock.h"

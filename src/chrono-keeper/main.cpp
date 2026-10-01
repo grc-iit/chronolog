@@ -181,6 +181,13 @@ int main(int argc, char** argv)
                                   journal,
                                   *membership,
                                   acquisitions);
+    if(auto status = cluster.registerNow(); absl::IsFailedPrecondition(status))
+    {
+        std::cerr << "chrono_keeper: registration refused: " << status << "\n";
+        internal_server->Shutdown();
+        public_server->Shutdown();
+        return 1;
+    }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
     keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);

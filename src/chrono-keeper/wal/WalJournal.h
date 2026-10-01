@@ -48,7 +48,7 @@ protected:
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
     void persist(const Event& event, std::function<void(absl::Status)> done) override;
     Hlc reserveFrontier(Hlc frontier) const override;
-    int64_t reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
+    absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
 
 private:
     struct Write

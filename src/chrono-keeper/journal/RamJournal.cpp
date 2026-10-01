@@ -691,8 +691,10 @@ absl::StatusOr<int64_t> RamJournal::physicalFrontier(StoryId id) const
     }
     auto [it, inserted] = physical_reports_.try_emplace(id, INT64_MIN);
     (void)inserted;
-    frontier = reservePhysicalFrontier(id, std::max(frontier, it->second));
-    it->second = frontier;
-    return frontier;
+    auto persisted = reservePhysicalFrontier(id, std::max(frontier, it->second));
+    if(!persisted.ok())
+        return persisted.status();
+    it->second = *persisted;
+    return *persisted;
 }
 } // namespace chronolog

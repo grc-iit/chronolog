@@ -590,14 +590,14 @@ void WalJournal::truncate()
 
 namespace chronolog
 {
-int64_t WalJournal::reservePhysicalFrontier(StoryId story, int64_t frontier) const
+absl::StatusOr<int64_t> WalJournal::reservePhysicalFrontier(StoryId story, int64_t frontier) const
 {
     frontier = std::min(frontier, reserveFrontier(Hlc{frontier, 0}).physical_ns);
     std::lock_guard lock(reserve_mu_);
     auto status =
             const_cast<WalJournal*>(this)->persistRecord("F" + std::to_string(story) + " " + std::to_string(frontier));
     if(!status.ok())
-        return INT64_MIN;
+        return status;
     return frontier;
 }
 } // namespace chronolog
