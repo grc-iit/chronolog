@@ -6,12 +6,10 @@ namespace chronolog::player
 
 ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> visor_internal,
                              Process self,
-                             std::chrono::milliseconds deadline,
-                             std::chrono::milliseconds refresh_interval)
+                             std::chrono::milliseconds deadline)
     : stub_(internal::v1::Cluster::NewStub(std::move(visor_internal)))
     , self_(std::move(self))
     , deadline_(deadline)
-    , refresh_interval_(refresh_interval)
 {}
 
 void ClusterClient::onRoute(std::function<void(const Route&)> callback)
@@ -44,8 +42,6 @@ absl::Status ClusterClient::refresh() const
     std::function<void(const Route&)> callback;
     {
         std::lock_guard lk(mu_);
-        last_refresh_ = std::chrono::steady_clock::now();
-        refreshed_ = true;
         for(const auto& update: response.routes())
         {
             routes_[update.story_id()] = convert::fromProto(update.route());
@@ -64,8 +60,6 @@ absl::StatusOr<Route> ClusterClient::route(StoryId story) const
         std::lock_guard lk(mu_);
         if(auto it = routes_.find(story); it != routes_.end())
             return it->second;
-        if(refreshed_ && std::chrono::steady_clock::now() - last_refresh_ < refresh_interval_)
-            return absl::NotFoundError("no route for story");
     }
     if(auto status = refresh(); !status.ok())
         return status;

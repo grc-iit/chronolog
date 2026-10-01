@@ -42,3 +42,5 @@ chrono_player_test(chrono_player_hot_replay_contract_test tests/hot_replay_contr
 chrono_player_test(chrono_player_adapter_test "tests/replay_adapter_test.cpp;tests/player_config_test.cpp" "")
 
 chrono_player_test(chrono_player_cold_replay_test tests/cold_replay_test.cpp "")
+
+chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.cpp "")
