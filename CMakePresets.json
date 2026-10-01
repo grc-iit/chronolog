@@ -46,6 +46,12 @@
         "VCPKG_TARGET_TRIPLET": "x64-linux-tsan",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets"
       }
+    },
+    {
+      "name": "python",
+      "displayName": "Debug build of the Python binding, separate cache from dev",
+      "inherits": "dev",
+      "cacheVariables": { "CHRONOLOG_BUILD_PYTHON": "ON" }
     }
   ],
   "buildPresets": [
