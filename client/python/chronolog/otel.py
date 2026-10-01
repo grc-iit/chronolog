@@ -6,7 +6,7 @@ import uuid
 
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from . import AlreadyExists, AppendResult, AppendSpec, Durability, Envelope, TimeReading, connect
+from . import AlreadyExists, AppendResult, AppendSpec, Durability, Envelope, connect
 
 
 def _attribute(value):
@@ -57,13 +57,14 @@ class ChronologSpanExporter(SpanExporter):
             batches = {}
             for span in spans:
                 attrs = {key: _attribute(value) for key, value in (span.attributes or {}).items()}
+                attrs["start_time_unix_nano"] = str(span.start_time)
+                attrs["end_time_unix_nano"] = str(span.end_time)
                 story = attrs.get("gen_ai.conversation.id") or self.default_story
                 context = span.context
                 payload = span.to_json(indent=None).encode("utf-8")
                 envelope = Envelope(payload, "application/vnd.chronolog.otel-span+json", attrs,
                                     context.trace_id.to_bytes(16, "big"), context.span_id.to_bytes(8, "big"))
-                batches.setdefault(story, []).append(AppendSpec(envelope, Durability.DURABLE,
-                                                              TimeReading(span.end_time)))
+                batches.setdefault(story, []).append(AppendSpec(envelope, Durability.DURABLE))
                 self._remaining(end)
             for story, items in batches.items():
                 writer = self._writer(story, end)

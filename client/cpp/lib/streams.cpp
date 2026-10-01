@@ -64,6 +64,8 @@ void ReadStream::cancel()
 absl::StatusOr<std::optional<StreamItem>> ReadStream::next(Deadline d) { return impl_->next(d); }
 absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadline)
 {
+    if(physical)
+        return nextPhysical(deadline);
     const auto end = pullEnd(deadline);
     std::unique_lock lock(pull_mutex, std::defer_lock);
     if(!lock.try_lock_until(end))
@@ -117,6 +119,83 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
             return status;
     }
     return std::optional<StreamItem>(std::move(*item));
+}
+absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::nextPhysical(Deadline deadline)
+{
+    const auto end = pullEnd(deadline);
+    std::unique_lock lock(pull_mutex, std::defer_lock);
+    if(!lock.try_lock_until(end))
+        return expired();
+    if(cancelled)
+        return client::cancelled();
+    if(done)
+        return std::optional<StreamItem>{};
+    while(!pending_ranges.empty())
+    {
+        if(std::chrono::system_clock::now() >= end)
+            return expired();
+        const auto current = pending_ranges.back();
+        if(!stream)
+        {
+            v1::ReadRequest request;
+            request.set_story_id(story);
+            request.mutable_physical()->set_start_ns(current.start_ns);
+            request.mutable_physical()->set_end_ns(current.end_ns);
+            stream = replay->Read(newContext(end).get(), request);
+        }
+        detail::PullDeadline watchdog(context, end);
+        v1::ReadResponse response;
+        std::optional<Completion> completion;
+        while(stream->Read(&response))
+        {
+            if(completion)
+                return absl::DataLossError("Read data after Completion");
+            auto item = client::decode(response, *state);
+            if(!item.ok())
+                return item.status();
+            for(auto& event: item->events) leaf_events.push_back(std::move(event));
+            if(item->completion)
+                completion = *item->completion;
+        }
+        auto status = detail::status(stream->Finish());
+        stream.reset();
+        if(cancelled)
+            return client::cancelled();
+        if(watchdog.expired())
+            return expired();
+        if(!status.ok())
+            return status;
+        if(!completion)
+            return absl::DataLossError("Read ended without Completion");
+        pending_ranges.pop_back();
+        const int64_t middle = static_cast<int64_t>(static_cast<__int128>(current.start_ns) +
+                                                    (static_cast<__int128>(current.end_ns) - current.start_ns) / 2);
+        if(completion->reason == IncompleteReason::Truncated && middle > current.start_ns)
+        {
+            leaf_events.clear();
+            pending_ranges.push_back({middle, current.end_ns});
+            pending_ranges.push_back({current.start_ns, middle});
+            continue;
+        }
+        aggregate.complete &= completion->complete;
+        if(!completion->complete &&
+           (aggregate.reason == IncompleteReason::None || completion->reason == IncompleteReason::SourceFailed ||
+            (completion->reason == IncompleteReason::Truncated && aggregate.reason != IncompleteReason::SourceFailed)))
+            aggregate.reason = completion->reason;
+        aggregate.laggards.insert(aggregate.laggards.end(), completion->laggards.begin(), completion->laggards.end());
+        aggregate.frontier = {physical->end_ns, 0};
+        StreamItem result;
+        for(auto& event: leaf_events)
+            if(seen.insert(event.id).second)
+                result.events.push_back(std::move(event));
+        leaf_events.clear();
+        if(!result.events.empty())
+            return std::optional<StreamItem>(std::move(result));
+    }
+    done = true;
+    StreamItem result;
+    result.completion = aggregate;
+    return std::optional<StreamItem>(std::move(result));
 }
 TailStream::TailStream(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl))

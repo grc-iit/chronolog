@@ -48,6 +48,11 @@ struct HlcRange
     Hlc start;
     Hlc end;
 };
+struct PhysicalRange
+{
+    int64_t start_ns;
+    int64_t end_ns;
+};
 struct Position
 {
     Hlc hlc;
@@ -132,6 +137,7 @@ public:
     absl::Status destroyStory(StoryId, Deadline deadline = {});
     absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, Deadline deadline = {});
+    absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});
     absl::StatusOr<TailStream> tail(StoryId, std::optional<Position> after = {}, Deadline deadline = {});
 
 private:

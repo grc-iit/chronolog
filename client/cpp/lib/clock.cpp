@@ -2,6 +2,7 @@
 #include <chrono>
 #include <limits>
 #include <mutex>
+#include <sys/timex.h>
 namespace chronolog::client
 {
 struct ChronoClock::Impl
@@ -36,7 +37,14 @@ absl::StatusOr<TimeReading> ChronoClock::now()
         reading.physical_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                       std::chrono::system_clock::now().time_since_epoch())
                                       .count();
-        reading.status = ClockStatus::Unsynced;
+        timex state{};
+        const int result = ntp_adjtime(&state);
+        reading.status = result < 0 ? ClockStatus::Unavailable : ClockStatus::Unsynced;
+        if(result >= 0 && !(state.status & STA_UNSYNC) && state.maxerror >= 0 && state.maxerror <= 1000000)
+        {
+            reading.status = ClockStatus::Synced;
+            reading.uncertainty_ns = static_cast<uint64_t>(state.maxerror) * 1000;
+        }
     }
     if(reading.status == ClockStatus::Synced && !reading.uncertainty_ns)
         return absl::InvalidArgumentError("synced time source requires uncertainty");

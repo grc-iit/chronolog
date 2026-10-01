@@ -44,16 +44,18 @@ def test_otel_agent_tree_round_trip():
             time.sleep(0.1)
         assert len(events) == 2 and reader.completion.complete
         for event, context, end_time in zip(events, ids, ends):
-            assert event.physical.physical_ns == end_time
+            assert event.physical.physical_ns >= end_time
             assert event.envelope.trace_id == context.trace_id.to_bytes(16, "big")
             assert event.envelope.span_id == context.span_id.to_bytes(8, "big")
-            assert event.envelope.attributes == attributes
+            assert all(event.envelope.attributes[k] == v for k, v in attributes.items())
+            assert event.envelope.attributes["end_time_unix_nano"] == str(end_time)
+            assert "start_time_unix_nano" in event.envelope.attributes
             assert event.envelope.content_type == "application/vnd.chronolog.otel-span+json"
             payload = json.loads(event.payload)
             from datetime import datetime
-            # JSON timestamps use microseconds; the physical field preserves nanoseconds.
+            # JSON timestamps use microseconds; attributes preserve nanoseconds.
             stamp = datetime.fromisoformat(payload["end_time"])
-            assert abs(event.physical.physical_ns - int(stamp.timestamp() * 1e9)) < 2000
+            assert abs(end_time - int(stamp.timestamp() * 1e9)) < 2000
         provider.shutdown()
         assert exporter.export([]) == SpanExportResult.FAILURE
     finally:
@@ -121,3 +123,28 @@ def test_shutdown_attempts_every_writer_when_a_release_times_out():
     assert released == ["first", "second"]
     exporter.shutdown()
     assert released == ["first", "second"]
+
+
+def test_delayed_span_is_stored_with_append_clock():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SpanExportResult
+    from chronolog.otel import ChronologSpanExporter
+
+    chronicle = f"otel-delayed-{uuid.uuid4().hex}"
+    exporter = ChronologSpanExporter(os.environ["CHRONOLOG_TEST_VISOR"],
+                                    chronicle=chronicle, timeout=3)
+    provider = TracerProvider()
+    end = time.time_ns() - 30_000_000_000
+    span = provider.get_tracer("delayed").start_span("delayed", start_time=end - 1_000_000)
+    span.end(end_time=end)
+    try:
+        assert exporter.export([span]) == SpanExportResult.SUCCESS
+        story = exporter.client.list_stories(chronicle, timeout=3)[0]
+        events = list(exporter.client.read(story, timeout=3))
+        assert len(events) == 1
+        assert events[0].physical.physical_ns > end + 15_000_000_000
+        assert events[0].envelope.attributes["end_time_unix_nano"] == str(end)
+        assert events[0].envelope.attributes["start_time_unix_nano"] == str(span.start_time)
+    finally:
+        exporter.shutdown()
+        provider.shutdown()

@@ -137,15 +137,28 @@ struct State
         std::lock_guard lock(mutex);
         routes[id] = r;
     }
-    absl::StatusOr<std::string> playerEndpoint(StoryId id, TimePoint)
+    absl::StatusOr<std::string> playerEndpoint(StoryId id, TimePoint end)
     {
-        std::lock_guard lock(mutex);
-        auto it = routes.find(id);
-        if(it != routes.end() && !it->second.player.empty())
-            return it->second.player;
         if(!options.player_endpoint.empty())
             return options.player_endpoint;
-        return absl::FailedPreconditionError("player_endpoint is required without a cached route");
+        grpc::ClientContext context;
+        context.set_deadline(end);
+        v1::GetStoryRequest request;
+        request.set_story_id(id);
+        v1::GetStoryResponse response;
+        auto rpc = catalog->GetStory(&context, request, &response);
+        if(!rpc.ok())
+            return status(rpc);
+        if(auto result = status(response.status()); !result.ok())
+            return result;
+        const auto& story = response.story();
+        if(story.tombstoned())
+            return absl::FailedPreconditionError("story is tombstoned");
+        if(!story.has_route() || story.route().epoch() != story.epoch() || story.route().player().empty())
+            return absl::DataLossError("story has no current Player route");
+        auto current = decode(story.route());
+        route(id, current);
+        return current.player;
     }
 };
 // Bounds an individual pull even when its deadline precedes the stream's RPC deadline.
