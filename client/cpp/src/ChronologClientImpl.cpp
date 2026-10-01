@@ -23,6 +23,7 @@ namespace chl = chronolog;
 
 std::mutex chronolog::ChronologClientImpl::chronologClientMutex;
 chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::chronologClientImplInstance{nullptr};
+int chronolog::ChronologClientImpl::chronologClientRefCount{0};
 
 chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplInstance(
         chronolog::ClientPortalServiceConf const& visorClientPortalServiceConf,
@@ -45,7 +46,35 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
                 new ChronologClientImpl(visorClientPortalServiceConf, clientMode, clientQueryServiceConf);
     }
 
+    // Every Client that obtains the shared instance holds a reference to it;
+    // ReleaseClientImplInstance() (called from ~Client) drops it.
+    ++chronologClientRefCount;
+
     return chronologClientImplInstance;
+}
+
+void chronolog::ChronologClientImpl::ReleaseClientImplInstance()
+{
+    ChronologClientImpl* instance_to_delete = nullptr;
+    {
+        std::lock_guard<std::mutex> lock_client(chronologClientMutex);
+
+        if(chronologClientImplInstance == nullptr || chronologClientRefCount == 0)
+        {
+            // Nothing to release (or already released) — avoids underflow / double free.
+            return;
+        }
+
+        if(--chronologClientRefCount == 0)
+        {
+            instance_to_delete = chronologClientImplInstance;
+            chronologClientImplInstance = nullptr;
+        }
+    }
+
+    // Delete OUTSIDE the lock: ~ChronologClientImpl() -> Disconnect() re-acquires
+    // chronologClientMutex, so deleting while holding it would self-deadlock.
+    delete instance_to_delete;
 }
 
 chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServiceConf const& clientPortalServiceConf,
@@ -409,13 +438,36 @@ std::pair<int, chronolog::StoryHandle*> chronolog::ChronologClientImpl::AcquireS
                                                      acquireStoryResponse.getKeepers(),
                                                      acquireStoryResponse.getPlayer());
 
-    if((nullptr != storyReaderService) && acquireStoryResponse.getPlayer().is_valid())
+    if(nullptr != storyReaderService)
     {
+        // Reader-capable client: registering the story with the ClientQueryService is
+        // what makes ReplayStory() work. If we cannot register it, this acquisition is
+        // not usable for reading, so we must NOT report CL_SUCCESS -- otherwise the
+        // caller gets a later, confusing CL_ERR_NOT_ACQUIRED (-5) from ReplayStory for
+        // a story AcquireStory said it acquired. Surface the failure here instead.
+        if(!acquireStoryResponse.getPlayer().is_valid())
+        {
+            LOG_ERROR("[ChronoLogClientImpl] Acquired story '{}' in chronicle '{}' but the Visor returned no valid "
+                      "ChronoPlayer; the story cannot be replayed.",
+                      story_name,
+                      chronicle_name);
+            return std::pair<int, chronolog::StoryHandle*>(chronolog::CL_ERR_NO_PLAYERS, nullptr);
+        }
+
         //prepare ClientQueryService for reading this story
-        storyReaderService->addStoryReader(chronicle_name,
-                                           story_name,
-                                           acquireStoryResponse.getStoryId(),
-                                           acquireStoryResponse.getPlayer());
+        int reader_ret = storyReaderService->addStoryReader(chronicle_name,
+                                                            story_name,
+                                                            acquireStoryResponse.getStoryId(),
+                                                            acquireStoryResponse.getPlayer());
+        if(chronolog::CL_SUCCESS != reader_ret)
+        {
+            LOG_ERROR("[ChronoLogClientImpl] Acquired story '{}' in chronicle '{}' but failed to register it for "
+                      "reading (error {}).",
+                      story_name,
+                      chronicle_name,
+                      reader_ret);
+            return std::pair<int, chronolog::StoryHandle*>(reader_ret, nullptr);
+        }
     }
 
     if(storyHandle == nullptr)

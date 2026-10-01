@@ -16,7 +16,11 @@ chronolog::Client::Client(chronolog::ClientPortalServiceConf const& visorClientP
                                                                                 clientQueryServiceConf);
 }
 
-chronolog::Client::~Client() { delete chronologClientImpl; }
+// chronologClientImpl is a process-wide singleton shared by every Client, so it
+// must not be `delete`d per-Client (that double-frees it and leaves a dangling
+// instance for the next Client — the use-after-free in issue #692). Drop this
+// Client's reference instead; the impl is destroyed when the last one is released.
+chronolog::Client::~Client() { chronolog::ChronologClientImpl::ReleaseClientImplInstance(); }
 
 int chronolog::Client::Connect() { return chronologClientImpl->Connect(); }
 
