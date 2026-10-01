@@ -133,6 +133,27 @@ TEST(Kvs, CrossClientFloorWatchAndEviction)
     EXPECT_EQ(cold->value->value, "four");
     EXPECT_EQ(second.cachedKeys(), 1u);
 }
+TEST(Kvs, AcceptedReceiptsRetainSdkAckAndDurability)
+{
+    auto c = connect();
+    kvs::Store store(c, "kvs-accepted");
+    kvs::PutOptions options;
+    options.durability = Durability::Accepted;
+    auto version = store.put("ram", "one", options);
+    ASSERT_TRUE(version.ok()) << version.status();
+    EXPECT_FALSE(version->acked());
+    EXPECT_EQ(version->durability, Durability::Accepted);
+    std::vector<std::string> values{"two", "three"};
+    auto batch = store.putBatch("ram", values, options);
+    ASSERT_TRUE(batch.ok()) << batch.status();
+    ASSERT_EQ(batch->size(), 2u);
+    for(const auto& receipt: *batch)
+    {
+        ASSERT_TRUE(receipt.ok()) << receipt.status();
+        EXPECT_FALSE(receipt->acked());
+        EXPECT_EQ(receipt->durability, Durability::Accepted);
+    }
+}
 TEST(Kvs, ConcurrentFirstPutsUseOneCatalogStory)
 {
     auto c = connect();

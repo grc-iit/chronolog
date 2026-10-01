@@ -10,7 +10,8 @@ struct Version
     EventId event_id;
     Hlc hlc;
     Durability durability{Durability::Unspecified};
-    bool acked() const { return durability == Durability::Durable; }
+    bool acknowledged{};
+    bool acked() const { return acknowledged; }
 };
 struct Value
 {

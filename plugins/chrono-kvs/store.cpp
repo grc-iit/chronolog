@@ -163,7 +163,7 @@ absl::StatusOr<Version> Store::append(const std::string& key, std::string value,
     if(!result.ok())
         return result.status();
     insert(**e, {result->event_id, {}, result->hlc, std::move(item.envelope), result->achieved});
-    return Version{result->event_id, result->hlc, result->achieved};
+    return Version{result->event_id, result->hlc, result->achieved, result->acked()};
 }
 absl::StatusOr<Version> Store::put(const std::string& key, std::string value, PutOptions options)
 {
@@ -202,7 +202,7 @@ Store::putBatch(const std::string& key, std::span<const std::string> values, Put
             continue;
         }
         insert(**e, {r->event_id, {}, r->hlc, std::move(specs[i].envelope), r->achieved});
-        results.emplace_back(Version{r->event_id, r->hlc, r->achieved});
+        results.emplace_back(Version{r->event_id, r->hlc, r->achieved, r->acked()});
     }
     return results;
 }
