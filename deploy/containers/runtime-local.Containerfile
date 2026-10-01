@@ -8,7 +8,7 @@ FROM ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffb
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin chronolog \
     && mkdir -p /var/lib/chronolog \
     && chown 10001:10001 /var/lib/chronolog
-# Every binary staged next to this file is shipped. Add chrono_keeper and chrono_player to the stage list in run_dragon.sh.
+# Ships the Visor, Keeper, Player and grapher stub staged by run_dragon.sh.
 COPY chrono_* chronolog_* /usr/local/bin/
 COPY entrypoint.sh /usr/local/bin/chronolog-entrypoint
 USER 10001:10001

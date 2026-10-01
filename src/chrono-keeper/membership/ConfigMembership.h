@@ -16,7 +16,9 @@ namespace chronolog::keeper
 class ConfigMembership final: public Membership
 {
 public:
-    explicit ConfigMembership(const std::vector<StaticRoute>& seed = {});
+    using RouteLookup = std::function<absl::StatusOr<Route>(StoryId)>;
+
+    explicit ConfigMembership(const std::vector<StaticRoute>& seed = {}, RouteLookup lookup = nullptr);
 
     void setRoute(StoryId id, Route route);
 
@@ -27,7 +29,8 @@ public:
 
 private:
     mutable std::shared_mutex mutex_;
-    std::map<StoryId, Route> routes_;
+    mutable std::map<StoryId, Route> routes_;
+    const RouteLookup lookup_;
 };
 
 } // namespace chronolog::keeper

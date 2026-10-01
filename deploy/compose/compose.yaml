@@ -2,10 +2,8 @@
 # Run from the repository root:
 #   podman build -f deploy/containers/builder.Containerfile -t chronolog-builder:local .
 #   podman compose -f deploy/compose/compose.yaml up --build --wait
-# chrono-visor is the real Catalog. Keeper, grapher and player run the stub server
-# until their images ship the real binaries: set CHRONOLOG_ROLE to keeper or
-# player on that service to switch it. The Visor internal (Cluster) port is
-# reachable on the compose network only and is never published to the host.
+# Visor, Keeper and Player are real services; grapher remains a stub.
+# Internal listeners are reachable only on the compose network.
 
 x-chronolog-service: &chronolog-service
   # CI builds chronolog-runtime:local from runtime.Containerfile. The dragon smoke run
@@ -54,8 +52,19 @@ services:
   chrono-keeper:
     <<: *chronolog-service
     environment:
-      CHRONOLOG_ROLE: stub
+      CHRONOLOG_ROLE: keeper
       CHRONOLOG_PORT: "50052"
+      CHRONOLOG_KEEPER_PROCESS_ID: keeper-1
+      CHRONOLOG_KEEPER_INSECURE_BIND_ALL: "true"
+      CHRONOLOG_KEEPER_WORKER_THREADS: "4"
+      CHRONOLOG_KEEPER_SELF_ENDPOINT: "chrono-keeper:50052"
+      CHRONOLOG_KEEPER_LISTEN: "0.0.0.0:50052"
+      CHRONOLOG_KEEPER_INTERNAL_LISTEN: "0.0.0.0:50062"
+      CHRONOLOG_KEEPER_VISOR_INTERNAL: "chrono-visor:50061"
+    expose: ["50062"]
+    depends_on:
+      chrono-visor:
+        condition: service_healthy
     ports: ["127.0.0.1:50052:50052"]
     healthcheck: *stub-healthcheck
 
@@ -64,14 +73,24 @@ services:
     environment:
       CHRONOLOG_ROLE: stub
       CHRONOLOG_PORT: "50053"
-    ports: ["127.0.0.1:50053:50053"]
     healthcheck: *stub-healthcheck
 
   chrono-player:
     <<: *chronolog-service
     environment:
-      CHRONOLOG_ROLE: stub
+      CHRONOLOG_ROLE: player
       CHRONOLOG_PORT: "50054"
+      CHRONOLOG_PLAYER_PLAYER_ID: player-1
+      CHRONOLOG_PLAYER_LISTEN: "0.0.0.0:50054"
+      CHRONOLOG_PLAYER_ADVERTISE: "chrono-player:50054"
+      CHRONOLOG_PLAYER_VISOR: "chrono-visor:50051"
+      CHRONOLOG_PLAYER_VISOR_INTERNAL: "chrono-visor:50061"
+      CHRONOLOG_PLAYER_KEEPER_INTERNAL: "keeper-1=chrono-keeper:50062"
+    depends_on:
+      chrono-visor:
+        condition: service_healthy
+      chrono-keeper:
+        condition: service_healthy
     ports: ["127.0.0.1:50054:50054"]
     healthcheck: *stub-healthcheck
 
