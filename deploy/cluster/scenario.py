@@ -157,18 +157,25 @@ class Scenario(Smoke):
         print('PASS b ten stories both Graphers two Keepers per story 2000 DURABLE events complete', flush=True)
         published, settled = self.settled()
         print(f'PASS c merged Player manifest published={published} settled={settled} every event counted', flush=True)
-        # Ongoing appends force transfer attempts while grapher-a is killed.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            pending = pool.submit(self.append_all, 200)
-            time.sleep(.25)
-            control('kill', 'grapher-a')
-            pending.result(timeout=90)
-            time.sleep(2)
-            control('start', 'grapher-a')
+        control('pause', 'grapher-a')
+        previous = control('transfer-log', '')
+        self.append_all(200)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            current = control('transfer-log', '')
+            attempts = re.findall(r'archive_transfer_start chunk=(\S+) grapher=100.101.232.95:50053', current)
+            old = set(re.findall(r'archive_transfer_start chunk=(\S+) grapher=100.101.232.95:50053', previous))
+            if any(chunk not in old for chunk in attempts):
+                break
+            time.sleep(.1)
+        else:
+            raise RuntimeError('no in-flight transfer to paused grapher-a')
+        control('kill', 'grapher-a')
+        control('start', 'grapher-a')
         self.append_all(20)
         self.settled()
         self.read_all()
-        print('PASS d grapher-a SIGKILL during active writes restart append complete no duplicates', flush=True)
+        print('PASS d grapher-a SIGKILL with an in-flight transfer restart append complete no duplicates', flush=True)
         self.append_all(20)
         control('kill', 'keeper-1')
         control('start', 'keeper-1')

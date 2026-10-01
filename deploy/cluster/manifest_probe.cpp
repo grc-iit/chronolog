@@ -21,6 +21,8 @@ int main(int argc, char** argv)
         for(int i = 2; i < argc; ++i)
         {
             auto records = (*store)->manifest(std::stoull(argv[i]));
+            if(absl::IsNotFound(records.status()))
+                continue;
             if(!records.ok())
             {
                 std::cerr << records.status() << std::endl;

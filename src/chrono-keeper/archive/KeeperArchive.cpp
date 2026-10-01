@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <syncstream>
 
 #include <absl/crc/crc32c.h>
 #include "adapter/Convert.h"
@@ -191,7 +192,8 @@ void KeeperArchive::settleLocked(State& state)
         return;
     if(auto status = journal_.recordSettled(state.chunk.id); !status.ok())
         return;
-    std::clog << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id << std::endl;
+    std::osyncstream(std::clog) << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id
+                                << std::endl;
     state.settled = true;
     state.settled_at = now_();
 }
@@ -401,6 +403,8 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     iv1::TransferChunkResponse response;
+    std::osyncstream(std::clog) << "archive_transfer_start chunk=" << chunk.id << " grapher=" << route->grapher
+                                << std::endl;
     auto stream = stub->TransferChunk(&context, &response);
     auto finish = [&]
     {

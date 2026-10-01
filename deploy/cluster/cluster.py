@@ -28,6 +28,7 @@ class Cluster:
         self.processes = {}
         self.services = {}
         self.lock = threading.RLock()
+        self.archive_owned = False
         OUT.mkdir(parents=True, exist_ok=True)
         self.socket_path = str(OUT / 'control.sock')
 
@@ -136,8 +137,9 @@ class Cluster:
         for node in ('dragon', 'blade'):
             self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs && '
                      'mkdir -p /mnt/nfs/chronolog-sprint/archive && '
-                     'test ! -e /mnt/nfs/chronolog-sprint/archive/manifest/grapher-a.log && '
-                     'test ! -e /mnt/nfs/chronolog-sprint/archive/manifest/grapher-b.log')
+                     'test -z "$(ls -A /mnt/nfs/chronolog-sprint/archive)"')
+        self.archive_owned = True
+        (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services}, indent=2))
 
     def start(self, role):
         node, folder, _ = self.services[role]
@@ -151,6 +153,13 @@ class Cluster:
     def control(self, request):
         roles = {'chrono-keeper': ['keeper-1', 'keeper-2'], 'chrono-grapher': ['grapher-a', 'grapher-b']}
         op, service = request
+        if op == 'pause':
+            node, unit, _, _ = self.processes[service]
+            self.run(node, shlex.join(['systemctl', '--user', 'kill', '--signal=SIGSTOP', unit]), 10)
+            return ''
+        if op == 'transfer-log':
+            self.collect()
+            return ''.join((OUT / (keeper + '.log')).read_text() for keeper in ('keeper-1', 'keeper-2'))
         if op == 'probe':
             node, folder, _ = self.services['player']
             self.launch('manifest-probe', node, f'cd ~/{folder} && exec ~/chronolog-sprint/bin/cluster_manifest_probe {ARCHIVE} {service} >>manifest-probe.log 2>&1', 600)
@@ -233,6 +242,13 @@ class Cluster:
         self.collect()
         for name in list(self.processes):
             self.stop(name)
+        self.collect()
+        if self.archive_owned:
+            try:
+                self.run('dragon', f'mv {ARCHIVE} /mnt/nfs/chronolog-sprint/archive-{self.tag}', 15)
+                print(f'Archive retained at /mnt/nfs/chronolog-sprint/archive-{self.tag}', flush=True)
+            except Exception as error:
+                print(f'FAIL preserve archive {error}', flush=True)
 
 
 def shim():
