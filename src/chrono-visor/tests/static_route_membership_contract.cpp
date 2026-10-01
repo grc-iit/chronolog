@@ -3,9 +3,11 @@
 // the Release fence wait.
 #include <atomic>
 #include <chrono>
+#include <fstream>
 #include <thread>
 
 #include "TestSupport.h"
+#include "VisorConfig.h"
 #include "membership/StaticRouteMembership.h"
 #include "membership_contract_test.cpp"
 
@@ -52,6 +54,50 @@ TEST(static_route_membership, EpochOneIsServedAndValidated)
     EXPECT_TRUE(membership->validateEpoch(1, 1).ok());
     EXPECT_FALSE(membership->validateEpoch(1, 2).ok());
     EXPECT_EQ(membership->route(2).status().code(), absl::StatusCode::kNotFound);
+}
+
+TEST(static_route_membership, AssignsGraphersByStoryAcrossRepeatedRoutes)
+{
+    auto topology = twoKeeperTopology();
+    topology.graphers = {"grapher-a:50053", "grapher-b:50053"};
+    StaticRouteMembership membership(topology, 1, [](StoryId) { return true; }, 15s);
+    for(StoryId story = 1; story <= 10; ++story)
+    {
+        auto first = membership.route(story);
+        auto repeated = membership.route(story);
+        ASSERT_TRUE(first.ok());
+        ASSERT_TRUE(repeated.ok());
+        EXPECT_EQ(first->grapher, topology.graphers[story % 2]);
+        EXPECT_EQ(repeated->grapher, first->grapher);
+        EXPECT_EQ(topology.routeFor(2, story).grapher, first->grapher);
+    }
+    topology.graphers.clear();
+    EXPECT_EQ(topology.routeFor(1, 7).grapher, topology.grapher);
+}
+
+TEST(static_route_membership, GraphersEnvironmentOverridesJsonAndRejectsEmptyEndpoints)
+{
+    visor::testing::TempDir dir;
+    const auto path = (dir.path() / "visor.json").string();
+    {
+        std::ofstream file(path);
+        file << R"({"graphers":["a:50053","b:50053"]})";
+    }
+    auto cfg = visor::VisorConfig::load(path, [](const char*) -> const char* { return nullptr; });
+    ASSERT_TRUE(cfg.ok());
+    EXPECT_EQ(cfg->graphers, (std::vector<std::string>{"a:50053", "b:50053"}));
+    cfg = visor::VisorConfig::load(path,
+                                   [](const char* key) -> const char* {
+                                       return std::string(key) == "CHRONOLOG_VISOR_GRAPHERS" ? "c:50053,d:50053"
+                                                                                             : nullptr;
+                                   });
+    ASSERT_TRUE(cfg.ok());
+    EXPECT_EQ(cfg->graphers, (std::vector<std::string>{"c:50053", "d:50053"}));
+    {
+        std::ofstream file(path);
+        file << R"({"graphers":[""]})";
+    }
+    EXPECT_FALSE(visor::VisorConfig::load(path, [](const char*) -> const char* { return nullptr; }).ok());
 }
 
 TEST(static_route_membership, AppliedRevisionNeverLowersAndResetsOnNewInstance)

@@ -23,7 +23,7 @@ absl::StatusOr<Route> StaticRouteMembership::route(StoryId id) const
 {
     if(!exists_(id))
         return absl::NotFoundError("unknown story");
-    return topology_.routeFor(epoch_);
+    return topology_.routeFor(epoch_, id);
 }
 
 absl::Status StaticRouteMembership::validateEpoch(StoryId id, Epoch epoch) const

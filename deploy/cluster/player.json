@@ -1,0 +1,12 @@
+{
+  "listen": "100.124.181.9:50054",
+  "advertise": "100.124.181.9:50054",
+  "visor": "100.124.181.9:50051",
+  "visor_internal": "100.124.181.9:50061",
+  "keeper_internal": {
+    "keeper-1": "100.74.131.112:50062",
+    "keeper-2": "100.74.131.112:50065"
+  },
+  "archive_root": "/mnt/nfs/chronolog-sprint/archive",
+  "manifest_poll_ms": 200
+}

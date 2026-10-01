@@ -73,7 +73,7 @@ int main(int argc, char** argv)
     sigaddset(&signals, SIGINT);
     pthread_sigmask(SIG_BLOCK, &signals, nullptr);
 
-    chronolog::visor::Topology topology{config->keepers, config->grapher, config->player};
+    chronolog::visor::Topology topology{config->keepers, config->grapher, config->player, config->graphers};
     const auto fence_timeout = std::chrono::milliseconds(config->release_fence_timeout_ms);
 
     // The store needs the membership's fence wait and the membership needs the store's

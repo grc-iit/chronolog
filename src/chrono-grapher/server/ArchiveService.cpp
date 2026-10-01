@@ -2,6 +2,8 @@
 #include <absl/crc/crc32c.h>
 #include <chrono>
 #include <limits>
+#include <iostream>
+#include <syncstream>
 
 namespace chronolog::grapher
 {
@@ -179,6 +181,12 @@ grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
                     std::string(published.status().message()));
     if(published->state != ManifestState::Published && published->state != ManifestState::Empty)
         return Fail(*response, grpc::StatusCode::UNAVAILABLE, "chunk was not persisted");
+    std::osyncstream(std::clog) << "archive_published chunk=" << id.chunk_id() << " story=" << id.story_id()
+                                << " monotonic_ns="
+                                << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                           std::chrono::steady_clock::now().time_since_epoch())
+                                           .count()
+                                << std::endl;
     response->mutable_status()->set_code(0);
     response->set_chunk_id(id.chunk_id());
     response->set_bytes(bytes.size());

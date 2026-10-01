@@ -155,3 +155,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/cpp/CMakeLists.txt")
     add_subdirectory(client/cpp)
 endif()
+
+if(TARGET chronolog_grapher_tier)
+    add_subdirectory(deploy/cluster)
+endif()
