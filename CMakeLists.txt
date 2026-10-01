@@ -199,3 +199,7 @@ endif()
 if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
     add_subdirectory(plugins/chrono-viz)
 endif()
+
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player)
+    add_subdirectory(tests/integration/dynamic)
+endif()

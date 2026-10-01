@@ -278,6 +278,15 @@ try
         wire::MembershipState state;
         if(legacy.next())
             state = legacy.message<wire::MembershipState>(0);
+        else
+            for(const auto& keeper: topology_.keepers)
+            {
+                auto* member = state.add_members();
+                member->set_joined(true);
+                member->mutable_process()->set_process_id(keeper.process_id);
+                member->mutable_process()->set_endpoint(keeper.endpoint);
+                member->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
+            }
         writeChanges(db_, {}, state);
         sql(db_, "DELETE FROM membership_state");
     }
