@@ -145,11 +145,6 @@ int main(int argc, char** argv)
     }
     auto& journal = *owned_journal;
     const auto recovered_instance = journal.recoveredInstance();
-    if(auto status = journal.recordInstance(instance); !status.ok())
-    {
-        std::cerr << "chrono_keeper: cannot persist instance: " << status << "\n";
-        return 1;
-    }
     *policy_version = journal.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);

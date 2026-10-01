@@ -83,6 +83,9 @@ absl::Status ClusterClient::registerNow()
            static_cast<uint64_t>(policy.uncertainty_cap_ns()) != expected.uncertainty_cap_ns)
             return absl::FailedPreconditionError("physical policy constants differ");
     }
+    if(auto* wal = dynamic_cast<WalJournal*>(&journal_))
+        if(auto status = wal->recordInstance(options_.instance); !status.ok())
+            return status;
     if(response.has_policy() && response.policy().ceiling_ahead_ns() > 0)
         journal_.enableDynamic(options_.instance,
                                convert::fromProto(response.ceiling_floor()),

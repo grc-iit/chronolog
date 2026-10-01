@@ -233,3 +233,30 @@ TEST(WalJournal, RotationPreservesReleasedWritersAndUnsettledSealIdentity)
     EXPECT_GT(rig.clock->tick(), next->front().hlc);
 }
 } // namespace chronolog::test
+
+namespace chronolog
+{
+TEST(WalJournal, RecoveredInstanceAndFirstEventSurviveRotation)
+{
+    test::WalRig rig(4096);
+    ASSERT_TRUE(rig.current->recordInstance("old").ok());
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    item.physical = {100, 1, ClockStatus::Synced};
+    item.envelope.payload.assign(8192, 'x');
+    auto result = rig.current->append({1, 7, {item}}, Durability::Durable);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok());
+    const auto first = result->front().hlc;
+    rig.reopen();
+    EXPECT_EQ(rig.current->recoveredInstance(), "old");
+    ASSERT_TRUE(rig.current->firstEvent(1));
+    EXPECT_EQ(*rig.current->firstEvent(1), first);
+    ASSERT_TRUE(rig.current->recordInstance("replacement").ok());
+    rig.reopen();
+    EXPECT_EQ(rig.current->recoveredInstance(), "replacement");
+    EXPECT_EQ(*rig.current->firstEvent(1), first);
+}
+} // namespace chronolog

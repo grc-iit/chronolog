@@ -448,6 +448,10 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             if(!reading.ok())
             {
                 result = AppendResult{};
+                result->id = {batch.story_id,
+                              batch.items[i].writer_id,
+                              batch.items[i].incarnation,
+                              batch.items[i].sequence};
                 result->status = absl::UnavailableError("clock unavailable");
                 break;
             }
@@ -711,6 +715,11 @@ absl::StatusOr<int64_t> RamJournal::physicalFrontier(StoryId id) const
 {
     if(auto status = requireStory(id); !status.ok())
         return status;
+    {
+        std::lock_guard lock(dynamic_mu_);
+        if(dynamic_ && !ceiling_granted_)
+            return absl::UnavailableError("ceiling not granted");
+    }
     std::lock_guard report_lock(physical_mu_);
     const auto acceptance = clock_->acceptanceClock();
     const auto window = PhysicalPolicy{}.acceptance_window_ns;
@@ -794,6 +803,7 @@ void RamJournal::enableDynamic(std::string instance, Hlc floor, int64_t physical
 void RamJournal::extendCeiling(Hlc ceiling, int64_t physical)
 {
     std::lock_guard lock(dynamic_mu_);
+    ceiling_granted_ = true;
     ceiling_ = std::max(ceiling_, ceiling);
     physical_ceiling_ = std::max(physical_ceiling_, physical);
     dynamic_cast<CeilingControl*>(clock_.get())->setCeiling(ceiling_);

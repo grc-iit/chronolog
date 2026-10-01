@@ -192,7 +192,7 @@ private:
     std::atomic<size_t> ceiling_waiters_{};
     std::condition_variable ceiling_cv_;
     uint64_t ceiling_generation_{}, applied_route_revision_{};
-    bool dynamic_{};
+    bool dynamic_{}, ceiling_granted_{};
     std::string instance_;
     Hlc ceiling_{}, restart_floor_{};
     int64_t physical_ceiling_{}, restart_physical_{}, acceptance_budget_{}, hlc_budget_{};
