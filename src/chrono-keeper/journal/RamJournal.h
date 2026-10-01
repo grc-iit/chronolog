@@ -55,8 +55,13 @@ public:
     {
         SealedView view;
         std::vector<Event> events;
+        Hlc evicted_below;
     };
     absl::StatusOr<SealedRead> sealedRead(StoryId id, Range range) const;
+
+    std::vector<StoryId> storyIds() const;
+    void eraseEvents(StoryId story, Range range, bool advance_floor = false);
+    Hlc evictionFloor(StoryId story) const;
 
     struct WriterKey
     {
@@ -103,7 +108,7 @@ private:
         Hlc last_hlc;
         bool released{};
         // Results for recent sequences; back() is next_sequence - 1.
-        std::deque<AppendResult> window;
+        std::map<uint64_t, AppendResult> window;
         std::map<uint64_t, Pending> pending;
         // Sorted by hlc because assignment and insertion are atomic under mu.
         std::vector<Event> events;
@@ -118,6 +123,7 @@ private:
 
     struct Story
     {
+        Hlc evicted_below;
         std::map<std::pair<uint64_t, uint64_t>, std::shared_ptr<Writer>> writers;
         std::map<uint64_t, Slot> slots;
     };

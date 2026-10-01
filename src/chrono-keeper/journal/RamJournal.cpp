@@ -142,19 +142,35 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
                                                   ExpectedSequence(writer->next_sequence)));
     if(item.sequence < writer->next_sequence)
     {
-        uint64_t oldest = writer->next_sequence - writer->window.size();
-        if(item.sequence < oldest)
-            return fail(absl::FailedPreconditionError("sequence is outside the dedupe window; " +
-                                                      ExpectedSequence(writer->next_sequence)));
         auto pending = writer->pending.find(item.sequence);
         if(pending != writer->pending.end())
         {
             pending->second.waiters.push_back(std::move(done));
             return std::nullopt;
         }
-        result = writer->window[item.sequence - oldest];
+        auto original = writer->window.find(item.sequence);
+        if(original == writer->window.end())
+            return fail(absl::FailedPreconditionError("sequence is outside the dedupe window; " +
+                                                      ExpectedSequence(writer->next_sequence)));
+        result = original->second;
         if(durability != Durability::Accepted && result.achieved == Durability::Accepted)
-            return fail(absl::UnavailableError("original ACCEPTED receipt cannot satisfy a DURABLE retry"));
+        {
+            if(!durableAvailable())
+                return fail(absl::UnavailableError("WAL failed; DURABLE requires restart"));
+            auto stored = std::lower_bound(writer->events.begin(),
+                                           writer->events.end(),
+                                           result.hlc,
+                                           [](const Event& event, Hlc hlc) { return event.hlc < hlc; });
+            if(stored == writer->events.end() || stored->id != result.id)
+                return fail(absl::UnavailableError("original event has already left Keeper RAM"));
+            Event event = *stored;
+            event.durability = Durability::Durable;
+            writer->pending.emplace(item.sequence, Pending{event, {std::move(done)}});
+            persist(event,
+                    [this, writer, sequence = item.sequence](absl::Status status)
+                    { complete(writer, sequence, std::move(status)); });
+            return std::nullopt;
+        }
         return result;
     }
     if(item.sequence > writer->next_sequence)
@@ -187,8 +203,10 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
     result.status = absl::OkStatus();
     result.achieved = event.durability;
     result.hlc = hlc;
-    writer->window.push_back(result);
-    while(writer->window.size() > std::max<size_t>(config_.dedupe_window, 1)) writer->window.pop_front();
+    writer->window[item.sequence] = result;
+    while(!writer->window.empty() && writer->next_sequence > std::max<size_t>(config_.dedupe_window, 1) &&
+          writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
+        writer->window.erase(writer->window.begin());
     if(event.durability == Durability::Accepted)
     {
         writer->events.push_back(std::move(event));
@@ -221,11 +239,15 @@ void RamJournal::complete(const std::shared_ptr<Writer>& writer, uint64_t sequen
                                         writer->events.end(),
                                         event.hlc,
                                         [](const Event& e, Hlc h) { return e.hlc < h; });
-            writer->events.insert(pos, event);
+            if(pos != writer->events.end() && pos->id == event.id)
+                *pos = event;
+            else
+                writer->events.insert(pos, event);
         }
-        const uint64_t oldest = writer->next_sequence - writer->window.size();
-        if(sequence >= oldest)
-            writer->window[sequence - oldest] = result;
+        auto original = writer->window.find(sequence);
+        if(original != writer->window.end() &&
+           (result.status.ok() || original->second.achieved != Durability::Accepted))
+            original->second = result;
         waiters = std::move(pending->second.waiters);
         writer->pending.erase(pending);
     }
@@ -247,14 +269,21 @@ void RamJournal::restore(const Event& event)
     auto& slot = st.slots[event.id.writer_id];
     if(slot.incarnation <= event.id.incarnation)
         slot = Slot{event.id.incarnation, true, writer};
-    writer->events.push_back(event);
+    auto pos = std::lower_bound(writer->events.begin(),
+                                writer->events.end(),
+                                event.hlc,
+                                [](const Event& stored, Hlc hlc) { return stored.hlc < hlc; });
+    if(pos != writer->events.end() && pos->id == event.id)
+        *pos = event;
+    else
+        writer->events.insert(pos, event);
     writer->last_hlc = std::max(writer->last_hlc, event.hlc);
-    // ACCEPTED sequences may have vanished between two persisted sequences.
-    if(event.id.sequence != writer->next_sequence)
-        writer->window.clear();
-    writer->next_sequence = event.id.sequence + 1;
-    writer->window.push_back(AppendResult{absl::OkStatus(), event.durability, event.hlc, event.id, std::nullopt});
-    while(writer->window.size() > std::max<size_t>(config_.dedupe_window, 1)) writer->window.pop_front();
+    writer->next_sequence = std::max(writer->next_sequence, event.id.sequence + 1);
+    writer->window[event.id.sequence] =
+            AppendResult{absl::OkStatus(), event.durability, event.hlc, event.id, std::nullopt};
+    while(!writer->window.empty() && writer->next_sequence > std::max<size_t>(config_.dedupe_window, 1) &&
+          writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
+        writer->window.erase(writer->window.begin());
 }
 
 absl::StatusOr<std::vector<AppendResult>> RamJournal::append(const AppendBatch& batch, Durability durability)
@@ -444,6 +473,7 @@ absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range 
     out.view.sealed = seal(id, live, &range, &out.events);
     for(const auto& writer: live)
         out.view.frontiers.push_back(Frontier{writer->writer_id, writer->incarnation, out.view.sealed});
+    out.evicted_below = evictionFloor(id);
     std::sort(out.events.begin(), out.events.end(), ReplayLess);
     return out;
 }
@@ -484,4 +514,54 @@ std::vector<RamJournal::WriterKey> RamJournal::liveWriters() const
     return out;
 }
 
+} // namespace chronolog
+
+namespace chronolog
+{
+std::vector<StoryId> RamJournal::storyIds() const
+{
+    std::vector<StoryId> out;
+    for(auto& shard: shards_)
+    {
+        std::shared_lock lock(shard.mu);
+        for(const auto& [id, story]: shard.stories) out.push_back(id);
+    }
+    return out;
+}
+
+void RamJournal::eraseEvents(StoryId story, Range range, bool advance_floor)
+{
+    std::vector<std::shared_ptr<Writer>> writers;
+    {
+        auto& sh = shard(story);
+        std::unique_lock lock(sh.mu);
+        auto it = sh.stories.find(story);
+        if(it != sh.stories.end())
+        {
+            if(advance_floor)
+                it->second.evicted_below = std::max(it->second.evicted_below, range.end);
+            for(const auto& [key, writer]: it->second.writers) writers.push_back(writer);
+        }
+    }
+    for(const auto& writer: writers)
+    {
+        std::lock_guard lock(writer->mu);
+        std::erase_if(writer->events,
+                      [&](const Event& event) {
+                          return event.hlc >= range.start && event.hlc < range.end &&
+                                 !writer->pending.contains(event.id.sequence);
+                      });
+    }
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+Hlc RamJournal::evictionFloor(StoryId story) const
+{
+    auto& sh = shard(story);
+    std::shared_lock lock(sh.mu);
+    auto it = sh.stories.find(story);
+    return it == sh.stories.end() ? Hlc{} : it->second.evicted_below;
+}
 } // namespace chronolog
