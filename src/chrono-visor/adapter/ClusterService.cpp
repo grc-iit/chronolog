@@ -188,6 +188,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                             {
                                 std::lock_guard heartbeat_lock(heartbeat_mutex_);
                                 auto now = std::chrono::steady_clock::now();
+                                // A term has one leader, so a lease lapse inside it keeps this term's liveness.
                                 if(leader_term_ != raft_->term())
                                 {
                                     leader_term_ = raft_->term();
@@ -214,11 +215,6 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 command.mutable_membership()->mutable_drain()->set_process_id(id);
                                 (void)raft_->propose(command);
                             }
-                        }
-                        else
-                        {
-                            std::lock_guard heartbeat_lock(heartbeat_mutex_);
-                            leader_term_ = 0;
                         }
                         auto current = raft_->appliedStore().snapshotGeneration();
                         for(auto& stream: streams)
