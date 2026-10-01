@@ -1,8 +1,11 @@
 # Compose-spec file for podman compose and docker compose, rootless.
 # Run from the repository root:
 #   podman build -f deploy/containers/builder.Containerfile -t chronolog-builder:local .
-#   podman compose -f deploy/compose/compose.yaml up --build -d
-# Every service is the stub server until the real components are ported.
+#   podman compose -f deploy/compose/compose.yaml up --build --wait
+# chrono-visor is the real Catalog. Keeper, grapher and player run the stub server
+# until their images ship the real binaries: set CHRONOLOG_ROLE to keeper or
+# player on that service to switch it. The Visor internal (Cluster) port is
+# reachable on the compose network only and is never published to the host.
 
 x-chronolog-service: &chronolog-service
   image: chronolog-runtime:local
@@ -17,14 +20,31 @@ x-chronolog-service: &chronolog-service
   restart: "no"
   networks: [chronolog]
 
+x-stub-healthcheck: &stub-healthcheck
+  test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${CHRONOLOG_PORT}"]
+  interval: 5s
+  timeout: 3s
+  retries: 10
+
 services:
   chrono-visor:
     <<: *chronolog-service
     environment:
-      CHRONOLOG_PORT: "50051"
+      CHRONOLOG_ROLE: visor
+      CHRONOLOG_VISOR_LISTEN: "0.0.0.0:50051"
+      CHRONOLOG_VISOR_INTERNAL_LISTEN: "0.0.0.0:50061"
+      # The compose network is the cluster interface, so the wildcard bind is deliberate.
+      CHRONOLOG_VISOR_INSECURE_BIND_ALL: "true"
+      CHRONOLOG_VISOR_DB_PATH: /var/lib/chronolog/catalog.sqlite
+      CHRONOLOG_VISOR_KEEPERS: "keeper-1=chrono-keeper:50052"
+      CHRONOLOG_VISOR_GRAPHER: "chrono-grapher:50053"
+      CHRONOLOG_VISOR_PLAYER: "chrono-player:50054"
+    expose: ["50061"]
     ports: ["127.0.0.1:50051:50051"]
-    healthcheck: &healthcheck
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${CHRONOLOG_PORT}"]
+    volumes:
+      - visor-catalog:/var/lib/chronolog
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/50051"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -32,23 +52,29 @@ services:
   chrono-keeper:
     <<: *chronolog-service
     environment:
+      CHRONOLOG_ROLE: stub
       CHRONOLOG_PORT: "50052"
     ports: ["127.0.0.1:50052:50052"]
-    healthcheck: *healthcheck
+    healthcheck: *stub-healthcheck
 
   chrono-grapher:
     <<: *chronolog-service
     environment:
+      CHRONOLOG_ROLE: stub
       CHRONOLOG_PORT: "50053"
     ports: ["127.0.0.1:50053:50053"]
-    healthcheck: *healthcheck
+    healthcheck: *stub-healthcheck
 
   chrono-player:
     <<: *chronolog-service
     environment:
+      CHRONOLOG_ROLE: stub
       CHRONOLOG_PORT: "50054"
     ports: ["127.0.0.1:50054:50054"]
-    healthcheck: *healthcheck
+    healthcheck: *stub-healthcheck
+
+volumes:
+  visor-catalog:
 
 networks:
   chronolog:
