@@ -397,6 +397,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     auto hotCount = [&](Hlc end)
     { return static_cast<size_t>(std::count_if(hot_times.begin(), hot_times.end(), [&](Hlc t) { return t < end; })); };
     bool source_truncated = std::any_of(frontiers.begin(), frontiers.end(), [](const auto& k) { return k.truncated; });
+    Hlc prefix_cap = range.end;
     auto capPrefix = [&]
     {
         if(range.axis != Range::Axis::Hlc)
@@ -417,6 +418,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         for(const auto& lost: fetched->abandoned)
             if(lost.start < cut && lost.end > range.start)
                 cut = std::min(cut, lost.start);
+        prefix_cap = std::min(prefix_cap, cut);
         covered.end = std::max(range.start, cut);
     };
     if(limited || source_truncated)
@@ -482,7 +484,10 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         {
             for(const auto& record: records)
                 if(record.state == ManifestState::Lost && record.start < covered.end && record.end > range.start)
+                {
+                    prefix_cap = std::min(prefix_cap, record.start);
                     covered.end = std::max(range.start, record.start);
+                }
             bool changed;
             do {
                 changed = false;
@@ -490,6 +495,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                     if(record.state == ManifestState::Published && record.start < covered.end &&
                        record.end > covered.end)
                     {
+                        prefix_cap = std::min(prefix_cap, record.start);
                         Hlc cut = std::max(range.start, record.start);
                         changed |= cut < covered.end;
                         covered.end = cut;
@@ -546,7 +552,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         completion.frontier = covered.end;
     }
     if((limited || source_truncated) && range.axis == Range::Axis::Hlc)
-        completion.frontier = covered.end;
+        completion.frontier = std::min(covered.end, prefix_cap);
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options_.batch_size));
 }

@@ -334,6 +334,15 @@ TEST_F(ReplayContract, PredecessorOwnedEpochMismatchIsSourceFailed)
     read();
     EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed);
 }
+TEST_F(ReplayContract, TruncatedFrontierDoesNotPassASealBelowTheQueryStart)
+{
+    current.seal = {90, 0};
+    old.truncated = true;
+    read();
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion.frontier, (Hlc{90, 0}));
+    EXPECT_TRUE(returned.empty());
+}
 TEST_F(ReplayContract, TruncatedEmptyPredecessorHasNoCompletePrefix)
 {
     old.events.clear();
