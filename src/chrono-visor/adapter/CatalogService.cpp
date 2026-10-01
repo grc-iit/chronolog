@@ -2,6 +2,7 @@
 
 #include <utility>
 #include "raft/RaftMetadataStore.h"
+#include "catalog/SqliteMetadataStore.h"
 
 #include "adapter/Convert.h"
 
@@ -38,11 +39,31 @@ grpc::Status finish(const absl::Status& status, Response* response)
 
 } // namespace
 
-CatalogService::CatalogService(MetadataStore& store, WorkerPool& pool, RaftMetadataStore* raft)
-    : raft_(raft)
+CatalogService::CatalogService(MetadataStore& store,
+                               WorkerPool& pool,
+                               RaftMetadataStore* raft,
+                               const Membership* membership)
+    : membership_(membership)
+    , raft_(raft)
     , store_(store)
     , pool_(pool)
 {}
+
+absl::Status CatalogService::fillStory(const Story& story, v1::Story* out) const
+{
+    *out = convert::toProto(story);
+    if(story.tombstoned)
+        return absl::OkStatus();
+    const auto* sqlite = raft_ ? &raft_->appliedStore() : dynamic_cast<const SqliteMetadataStore*>(&store_);
+    absl::StatusOr<Route> route = sqlite        ? sqlite->membershipRoute(story.id)
+                                  : membership_ ? membership_->route(story.id)
+                                                : absl::StatusOr<Route>(absl::NotFoundError("route unavailable"));
+    if(!route.ok())
+        return route.status();
+    *out->mutable_route() = convert::toProto(*route);
+    out->set_epoch(route->epoch);
+    return absl::OkStatus();
+}
 
 template <class Fn>
 grpc::ServerUnaryReactor* CatalogService::dispatch(grpc::CallbackServerContext* context, Fn fn)
@@ -185,7 +206,12 @@ grpc::ServerUnaryReactor* CatalogService::CreateStory(grpc::CallbackServerContex
                     return invalid("chronicle and name are required");
                 auto result = store_.createStory(request->chronicle(), request->name());
                 if(result.ok())
-                    *response->mutable_story() = convert::toProto(*result);
+                {
+                    if(!raft_ && !membership_ && !dynamic_cast<const SqliteMetadataStore*>(&store_))
+                        *response->mutable_story() = convert::toProto(*result);
+                    else
+                        return finish(fillStory(*result, response->mutable_story()), response);
+                }
                 return finish(result.status(), response);
             });
 }
@@ -213,7 +239,12 @@ grpc::ServerUnaryReactor* CatalogService::GetStory(grpc::CallbackServerContext* 
                     return invalid("story_id is required");
                 auto result = store_.getStory(request->story_id());
                 if(result.ok())
-                    *response->mutable_story() = convert::toProto(*result);
+                {
+                    if(!raft_ && !membership_ && !dynamic_cast<const SqliteMetadataStore*>(&store_))
+                        *response->mutable_story() = convert::toProto(*result);
+                    else
+                        return finish(fillStory(*result, response->mutable_story()), response);
+                }
                 return finish(result.status(), response);
             });
 }
@@ -241,7 +272,9 @@ grpc::ServerUnaryReactor* CatalogService::ListStories(grpc::CallbackServerContex
                     return invalid("chronicle is required");
                 auto result = store_.listStories(request->chronicle());
                 if(result.ok())
-                    for(const auto& story: *result) *response->add_stories() = convert::toProto(story);
+                    for(const auto& story: *result)
+                        if(auto status = fillStory(story, response->add_stories()); !status.ok())
+                            return finish(status, response);
                 return finish(result.status(), response);
             });
 }

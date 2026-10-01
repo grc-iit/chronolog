@@ -274,18 +274,44 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     if(raft_)
         return dynamicCall(context, request, response, 1);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    auto process = convert::fromProto(request->process());
-    absl::Status status = process.ok() ? membership_.registerProcess(*process) : process.status();
-    *response->mutable_status() = convert::toProto(status);
-    if(status.ok())
+    auto task = [this, request = *request, response, reactor]
     {
-        auto routes = routeSnapshot();
-        if(routes.ok())
-            for(auto& route: *routes) *response->add_routes() = std::move(route);
+        auto process = convert::fromProto(request.process());
+        absl::Status status = process.ok() ? absl::OkStatus() : process.status();
+        if(status.ok() && request.policy_version() != 0 && request.policy_version() != 1)
+            status = absl::FailedPreconditionError("policy version mismatch");
+        if(status.ok())
+        {
+            if(auto* sqlite = const_cast<SqliteMetadataStore*>(dynamic_cast<const SqliteMetadataStore*>(&store_));
+               sqlite && process->role == ProcessRole::Keeper)
+                status = sqlite->registerStaticPolicy(process->id, request.policy_version());
+            if(status.ok())
+                status = membership_.registerProcess(*process);
+        }
+        *response->mutable_status() = convert::toProto(status);
+        auto* policy = response->mutable_policy();
+        policy->set_version(1);
+        policy->set_acceptance_window_ns(15000000000LL);
+        policy->set_skew_limit_ns(60000000000LL);
+        policy->set_hlc_lead_ns(61000000000LL);
+        policy->set_uncertainty_cap_ns(1000000000LL);
+        if(status.ok())
+        {
+            auto routes = routeSnapshot();
+            if(routes.ok())
+                for(auto& route: *routes) *response->add_routes() = std::move(route);
+        }
+        *response->mutable_physical() = nowReading();
+        response->set_authority_tick_ns(authorityTickNs());
+        reactor->Finish(grpc::Status::OK);
+    };
+    if(pool_)
+    {
+        if(!pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     }
-    *response->mutable_physical() = nowReading();
-    response->set_authority_tick_ns(authorityTickNs());
-    reactor->Finish(grpc::Status::OK);
+    else
+        task();
     return reactor;
 }
 
@@ -390,6 +416,13 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
                 update.set_revision(snapshot->revision);
             }
             *update.mutable_route() = convert::toProto(*route);
+            if(const auto* sqlite = dynamic_cast<const SqliteMetadataStore*>(&store_))
+            {
+                auto persisted = sqlite->membershipRouteUpdate(story.id);
+                if(!persisted.ok())
+                    return persisted.status();
+                update.set_physical_policy(persisted->physical_policy());
+            }
             out.push_back(std::move(update));
         }
     }

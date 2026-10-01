@@ -37,6 +37,18 @@ INSTANTIATE_TEST_SUITE_P(
                             return absl::InternalError("invalid response");
                         return absl::Status(static_cast<absl::StatusCode>(r.status().code()), r.status().message());
                     };
+                    harness->registerPolicy = [send](uint64_t version)
+                    {
+                        internal::v1::CatalogCommand c;
+                        auto* q = c.mutable_membership()->mutable_register_();
+                        q->set_policy_version(version);
+                        auto* p = q->mutable_process();
+                        p->set_process_id("policy-test");
+                        p->set_instance("instance");
+                        p->set_endpoint("localhost:1");
+                        p->set_role(internal::v1::PROCESS_ROLE_KEEPER);
+                        return send.template operator()<internal::v1::RegisterResponse>(c);
+                    };
                     harness->grantCeiling = [send](std::string id, std::string instance)
                     {
                         internal::v1::CatalogCommand c;

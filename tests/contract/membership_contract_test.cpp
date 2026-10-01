@@ -9,6 +9,7 @@ namespace chronolog::contract
 struct MembershipHarness
 {
     std::unique_ptr<Membership> sut;
+    std::function<absl::Status(uint64_t)> registerPolicy;
     // Construct the implementation with its production static epoch.
     std::function<std::unique_ptr<Membership>()> staticEpoch;
     std::function<absl::Status(std::string, std::string)> grantCeiling;
@@ -28,6 +29,14 @@ protected:
         ASSERT_NE(h->sut, nullptr);
     }
 };
+
+TEST_P(MembershipContract, MismatchedPolicyRefusesRegistration)
+{
+    if(!h->registerPolicy)
+        GTEST_SKIP() << "wire registration is covered by cluster_adapter";
+    EXPECT_EQ(h->registerPolicy(2).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(h->registerPolicy(1).ok());
+}
 
 TEST_P(MembershipContract, RouteSnapshotContainsAllRoles)
 {

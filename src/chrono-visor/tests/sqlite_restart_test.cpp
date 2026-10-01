@@ -20,6 +20,29 @@ std::unique_ptr<SqliteMetadataStore> openStore(const TempDir& dir)
     return store.ok() ? std::move(*store) : nullptr;
 }
 
+TEST(sqlite_restart, PhysicalPolicyFlagIsPermanentAcrossRestart)
+{
+    TempDir dir;
+    auto store = openStore(dir);
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-b", 1).ok());
+    ASSERT_TRUE(store->createChronicle("c").ok());
+    auto story = store->createStory("c", "s");
+    ASSERT_TRUE(story.ok());
+    auto route = store->membershipRouteUpdate(story->id);
+    ASSERT_TRUE(route.ok());
+    EXPECT_TRUE(route->physical_policy());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 0).ok());
+    EXPECT_FALSE(store->membershipRouteUpdate(story->id)->physical_policy());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
+    store.reset();
+    store = openStore(dir);
+    EXPECT_FALSE(store->membershipRouteUpdate(story->id)->physical_policy());
+    auto fresh = store->createStory("c", "fresh");
+    ASSERT_TRUE(fresh.ok());
+    EXPECT_TRUE(store->membershipRouteUpdate(fresh->id)->physical_policy());
+}
+
 TEST(sqlite_restart, ThirdAcquireAfterReopenGetsIncarnationThreeAndTheSameWriterId)
 {
     TempDir dir;
