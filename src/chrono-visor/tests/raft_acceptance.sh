@@ -10,13 +10,15 @@ cleanup() {
     rm -rf "$work"
 }
 trap cleanup EXIT
-python3 - "$work" <<'PY'
-import json,socket,sys
+launch() {
+    rm -f "$work"/*.sqlite*
+    block1=$((10000 + (RANDOM % 4400) * 5))
+    block2=$((10000 + (RANDOM % 4400) * 5))
+    block3=$((10000 + (RANDOM % 4400) * 5))
+python3 - "$work" "$block1" "$block2" "$block3" <<'PY'
+import json,sys
 from pathlib import Path
-sockets=[]
-ports=[]
-for i in range(9):
-    s=socket.socket();s.bind(('127.0.0.1',0));sockets.append(s);ports.append(s.getsockname()[1])
+ports=[int(block)+offset for block in sys.argv[2:] for offset in range(3)]
 peers=[dict(id=i+1,raft_endpoint=f'127.0.0.1:{ports[i*3]}',catalog_endpoint=f'127.0.0.1:{ports[i*3+1]}',internal_endpoint=f'127.0.0.1:{ports[i*3+2]}') for i in range(3)]
 p=Path(sys.argv[1])
 for i,peer in enumerate(peers):
@@ -27,6 +29,25 @@ PY
 for i in 0 1 2; do
     "$visor" --config "$work/$i.json" >"$work/$i.log" 2>&1 &
     pids+=("$!")
+done
+    for attempt in $(seq 1 300); do
+        local ready=0
+        for i in 0 1 2; do
+            kill -0 "${pids[i]}" 2>/dev/null || return 1
+            if rg -q "catalog ready" "$work/$i.log"; then ready=$((ready+1)); fi
+        done
+        [ "$ready" -eq 3 ] && return 0
+        sleep 0.1
+    done
+    return 1
+}
+for attempt in 1 2 3; do
+    if launch; then break; fi
+    cat "$work/"*.log
+    for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+    for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+    pids=()
+    [ "$attempt" -lt 3 ] || exit 1
 done
 mapfile -t endpoints < "$work/endpoints"
 timeout 100 "$client" "${endpoints[@]}" "${pids[@]}" "$work" &
