@@ -33,7 +33,7 @@ struct AppendSpec
 {
     Envelope envelope;
     Durability durability{Durability::Durable};
-    std::optional<TimeReading> physical;
+    std::optional<TimeReading> physical{};
 };
 struct AppendResult
 {
