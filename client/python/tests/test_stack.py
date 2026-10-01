@@ -16,15 +16,6 @@ def stack():
     chronicle = client.create_chronicle(f"pyclient-{uuid.uuid4().hex}")
     story = client.create_story(chronicle, "events")
     try:
-        ready_by = time.monotonic() + 15
-        while True:
-            try:
-                list(client.read(story, end=cl.Hlc(1), timeout=2))
-                break
-            except cl.FailedPrecondition:
-                if time.monotonic() >= ready_by:
-                    raise
-                time.sleep(0.1)
         yield client, chronicle, story
     finally:
         client.destroy_story(story, timeout=5)
