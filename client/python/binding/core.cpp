@@ -12,6 +12,11 @@ using namespace chronolog;
 namespace sdk = chronolog::client;
 namespace
 {
+template <class... Args>
+nb::dict fields(Args&&... args)
+{
+    return nb::cast<nb::dict>(nb::module_::import_("builtins").attr("dict")(std::forward<Args>(args)...));
+}
 nb::object value(const char* name, nb::dict fields) { return nb::module_::import_("chronolog").attr(name)(**fields); }
 nb::object error(const absl::Status& status)
 {
@@ -51,81 +56,80 @@ T unwrap(absl::StatusOr<T> result)
     check(result.status());
     return std::move(*result);
 }
-nb::object pack(Hlc h) { return value("Hlc", nb::dict("physical_ns"_a = h.physical_ns, "logical"_a = h.logical)); }
+nb::object pack(Hlc h) { return value("Hlc", fields("physical_ns"_a = h.physical_ns, "logical"_a = h.logical)); }
 nb::object pack(EventId id)
 {
     return value("EventId",
-                 nb::dict("story_id"_a = id.story_id,
-                          "writer_id"_a = id.writer_id,
-                          "incarnation"_a = id.incarnation,
-                          "sequence"_a = id.sequence));
+                 fields("story_id"_a = id.story_id,
+                        "writer_id"_a = id.writer_id,
+                        "incarnation"_a = id.incarnation,
+                        "sequence"_a = id.sequence));
 }
 nb::object pack(KeeperRef k)
 {
-    return value("KeeperRef", nb::dict("process_id"_a = k.process_id, "endpoint"_a = k.endpoint));
+    return value("KeeperRef", fields("process_id"_a = k.process_id, "endpoint"_a = k.endpoint));
 }
 nb::object pack(Route r)
 {
     nb::list keepers;
     for(auto& k: r.keepers) keepers.append(pack(k));
     return value("Route",
-                 nb::dict("epoch"_a = r.epoch,
-                          "keepers"_a = nb::tuple(keepers),
-                          "grapher"_a = r.grapher,
-                          "player"_a = r.player));
+                 fields("epoch"_a = r.epoch,
+                        "keepers"_a = nb::tuple(keepers),
+                        "grapher"_a = r.grapher,
+                        "player"_a = r.player));
 }
-nb::object pack(Chronicle c) { return value("Chronicle", nb::dict("name"_a = c.name, "tombstoned"_a = c.tombstoned)); }
+nb::object pack(Chronicle c) { return value("Chronicle", fields("name"_a = c.name, "tombstoned"_a = c.tombstoned)); }
 nb::object pack(Story s)
 {
     return value("Story",
-                 nb::dict("id"_a = s.id,
-                          "chronicle"_a = s.chronicle,
-                          "name"_a = s.name,
-                          "epoch"_a = s.epoch,
-                          "tombstoned"_a = s.tombstoned));
+                 fields("id"_a = s.id,
+                        "chronicle"_a = s.chronicle,
+                        "name"_a = s.name,
+                        "epoch"_a = s.epoch,
+                        "tombstoned"_a = s.tombstoned));
 }
 nb::object pack(sdk::AppendResult r)
 {
     return value("AppendResult",
-                 nb::dict("event_id"_a = pack(r.event_id),
-                          "hlc"_a = pack(r.hlc),
-                          "durability"_a = static_cast<int>(r.achieved)));
+                 fields("event_id"_a = pack(r.event_id),
+                        "hlc"_a = pack(r.hlc),
+                        "durability"_a = static_cast<int>(r.achieved)));
 }
 nb::object pack(Envelope e)
 {
     return value("Envelope",
-                 nb::dict("content_type"_a = e.content_type,
-                          "payload"_a = nb::bytes(e.payload.data(), e.payload.size()),
-                          "trace_id"_a = nb::bytes(e.trace_id.data(), e.trace_id.size()),
-                          "span_id"_a = nb::bytes(e.span_id.data(), e.span_id.size()),
-                          "attributes"_a = e.attributes));
+                 fields("content_type"_a = e.content_type,
+                        "payload"_a = nb::bytes(e.payload.data(), e.payload.size()),
+                        "trace_id"_a = nb::bytes(e.trace_id.data(), e.trace_id.size()),
+                        "span_id"_a = nb::bytes(e.span_id.data(), e.span_id.size()),
+                        "attributes"_a = e.attributes));
 }
 nb::object pack(Event e)
 {
     auto physical = value("TimeReading",
-                          nb::dict("physical_ns"_a = e.physical.physical_ns,
-                                   "uncertainty_ns"_a = e.physical.uncertainty_ns,
-                                   "status"_a = static_cast<int>(e.physical.status)));
+                          fields("physical_ns"_a = e.physical.physical_ns,
+                                 "uncertainty_ns"_a = e.physical.uncertainty_ns,
+                                 "status"_a = static_cast<int>(e.physical.status)));
     return value("Event",
-                 nb::dict("id"_a = pack(e.id),
-                          "hlc"_a = pack(e.hlc),
-                          "physical"_a = physical,
-                          "envelope"_a = pack(e.envelope),
-                          "durability"_a = static_cast<int>(e.durability)));
+                 fields("id"_a = pack(e.id),
+                        "hlc"_a = pack(e.hlc),
+                        "physical"_a = physical,
+                        "envelope"_a = pack(e.envelope),
+                        "durability"_a = static_cast<int>(e.durability)));
 }
 nb::object pack(Completion c)
 {
     nb::list laggards;
     for(auto& f: c.laggards)
-        laggards.append(value("Frontier",
-                              nb::dict("writer_id"_a = f.writer_id,
-                                       "incarnation"_a = f.incarnation,
-                                       "frontier"_a = pack(f.frontier))));
+        laggards.append(value(
+                "Frontier",
+                fields("writer_id"_a = f.writer_id, "incarnation"_a = f.incarnation, "frontier"_a = pack(f.frontier))));
     return value("Completion",
-                 nb::dict("complete"_a = c.complete,
-                          "frontier"_a = pack(c.frontier),
-                          "laggards"_a = nb::tuple(laggards),
-                          "reason"_a = static_cast<int>(c.reason)));
+                 fields("complete"_a = c.complete,
+                        "frontier"_a = pack(c.frontier),
+                        "laggards"_a = nb::tuple(laggards),
+                        "reason"_a = static_cast<int>(c.reason)));
 }
 Hlc hlc(nb::handle h) { return {nb::cast<int64_t>(h.attr("physical_ns")), nb::cast<uint32_t>(h.attr("logical"))}; }
 EventId eventId(nb::handle h)
@@ -181,11 +185,11 @@ NB_MODULE(_core, m)
                  [](sdk::Writer& w)
                  {
                      auto a = call([&] { return w.acquisition(); });
-                     return nb::dict("story_id"_a = a.story_id,
-                                     "writer_id"_a = a.writer_id,
-                                     "incarnation"_a = a.incarnation,
-                                     "route"_a = pack(a.route),
-                                     "assigned_keeper"_a = pack(a.assigned_keeper));
+                     return fields("story_id"_a = a.story_id,
+                                   "writer_id"_a = a.writer_id,
+                                   "incarnation"_a = a.incarnation,
+                                   "route"_a = pack(a.route),
+                                   "assigned_keeper"_a = pack(a.assigned_keeper));
                  })
             .def(
                     "append",
