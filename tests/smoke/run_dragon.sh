@@ -87,10 +87,13 @@ run_engine() {
     else
         rc=1
     fi
+    timeout 60 "${compose[@]}" logs --no-color > "$logs/$engine-services.log" 2>&1 || true
     if [ "$rc" -ne 0 ]; then
         echo "-- $engine: container state and service logs"
         timeout 60 "${compose[@]}" ps 2>&1 | tail -20
-        timeout 60 "${compose[@]}" logs --no-color --tail 40 2>&1 | tail -40
+        tail -40 "$logs/$engine-services.log"
+        step "capture archive" 30 "${compose[@]}" cp chrono-grapher:/var/lib/chronolog/archive "$logs/$engine-archive" || true
+        step "capture WAL" 30 "${compose[@]}" cp chrono-keeper:/var/lib/chronolog/wal "$logs/$engine-wal" || true
     fi
     step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
     return "$rc"

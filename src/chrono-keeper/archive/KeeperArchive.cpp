@@ -12,6 +12,7 @@ namespace iv1 = internal::v1;
 namespace
 {
 Range range(const Chunk& chunk) { return {Range::Axis::Hlc, chunk.start, chunk.end}; }
+
 template <class T>
 WatermarkReport report(const T& proto)
 {
@@ -23,6 +24,21 @@ WatermarkReport report(const T& proto)
             proto.dropped()};
 }
 } // namespace
+
+std::shared_ptr<grpc::Channel> KeeperArchive::archiveChannel(const std::string& endpoint)
+{
+    std::lock_guard lock(mu_);
+    auto& channel = channels_[endpoint];
+    if(channel)
+        return channel;
+    grpc::ChannelArguments args;
+    args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
+    args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
+    channel = grpc::CreateCustomChannel(endpoint, grpc::InsecureChannelCredentials(), args);
+    return channel;
+}
 
 KeeperArchive::KeeperArchive(WalJournal& journal,
                              const Membership& membership,
@@ -376,7 +392,7 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     const auto crc = static_cast<uint32_t>(absl::ComputeCrc32c(bytes));
     std::string checksum;
     for(int shift = 24; shift >= 0; shift -= 8) checksum.push_back(static_cast<char>(crc >> shift));
-    auto stub = iv1::Archive::NewStub(grpc::CreateChannel(route->grapher, grpc::InsecureChannelCredentials()));
+    auto stub = iv1::Archive::NewStub(archiveChannel(route->grapher));
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
@@ -392,7 +408,11 @@ bool KeeperArchive::shipOne(std::stop_token stop)
             return true;
         }
         if(!status.ok())
+        {
+            std::cerr << "chrono_keeper: archive transfer " << chunk.id << " failed: " << status.error_code() << " "
+                      << status.error_message() << '\n';
             return fail();
+        }
         iv1::ChunkReceipt receipt;
         *receipt.mutable_status() = response.status();
         receipt.set_chunk_id(response.chunk_id());
@@ -471,7 +491,7 @@ void KeeperArchive::refreshSubscriptions()
 
 bool KeeperArchive::watch(const std::string& endpoint, Subscription& subscription, std::stop_token stop)
 {
-    auto stub = iv1::Archive::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+    auto stub = iv1::Archive::NewStub(archiveChannel(endpoint));
     auto context = std::make_shared<grpc::ClientContext>();
     context->set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
     iv1::WatchWatermarksRequest request;
