@@ -62,7 +62,10 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto scan = range.axis == Range::Axis::Physical ? physicalWindow(range, policy) : range;
     if(predecessor)
+    {
         scan.end = std::min(scan.end, predecessor->own_cut);
+        scan.start = std::min(scan.start, scan.end);
+    }
     auto request = convert::fetchHotRequest(story, scan, options_.max_events);
     if(range.axis == Range::Axis::Physical)
     {
