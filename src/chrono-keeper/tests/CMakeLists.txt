@@ -2,6 +2,7 @@ include(GoogleTest)
 
 add_executable(chronolog_keeper_tests
     acquisition_watcher_test.cpp
+    cluster_client_test.cpp
     config_test.cpp
     fetch_hot_adapter_test.cpp
     hlc_core_test.cpp

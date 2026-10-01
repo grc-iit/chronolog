@@ -128,6 +128,7 @@ absl::Status ClusterClient::heartbeatNow()
                 drain->set_story_id(story);
                 drain->set_drained_instance(owner.instance);
                 drain->set_drained_epoch(owner.epoch);
+                *drain->mutable_sealed_frontier() = convert::toProto(view->sealed);
                 *drain->mutable_evicted_below() = convert::toProto(journal_.evictionFloor(story));
             }
         if(auto* wal = dynamic_cast<WalJournal*>(&journal_))
