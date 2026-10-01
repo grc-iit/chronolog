@@ -28,21 +28,17 @@ public:
     Hlc observe(Hlc remote) override
     {
         auto value = clock_.observe(remote);
-        if(assigned)
-            assigned(value);
         return value;
     }
     absl::StatusOr<CheckedAssignment> assignChecked(Hlc floor, PhysicalInterval interval) override
     {
         auto value = clock_.assignChecked(floor, interval);
-        if(value.ok() && assigned)
-            assigned(value->hlc);
         return value;
     }
     void observeFloor(Hlc floor) override { clock_.observeFloor(floor); }
     int64_t acceptanceClock() override { return clock_.acceptanceClock(); }
     void raiseAcceptanceClock(int64_t floor) override { clock_.raiseAcceptanceClock(floor); }
-    std::function<void(Hlc)> assigned, ticked;
+    std::function<void(Hlc)> ticked;
 
 private:
     FakeClock clock_;
@@ -76,6 +72,11 @@ class ScannedRamJournal final: public RamJournal
 {
 public:
     using RamJournal::RamJournal;
+    void onAssignment(std::function<void(Hlc)> hook)
+    {
+        std::lock_guard lock(mu_);
+        assigned_ = std::move(hook);
+    }
     void onScanned(std::function<void()> hook)
     {
         std::lock_guard lock(mu_);
@@ -83,6 +84,16 @@ public:
     }
 
 protected:
+    void assignmentObserved(Hlc hlc) override
+    {
+        std::function<void(Hlc)> hook;
+        {
+            std::lock_guard lock(mu_);
+            hook = assigned_;
+        }
+        if(hook)
+            hook(hlc);
+    }
     void writerScanned(WriterKey) const override
     {
         std::function<void()> hook;
@@ -97,6 +108,7 @@ protected:
 private:
     mutable std::mutex mu_;
     std::function<void()> scanned_;
+    std::function<void(Hlc)> assigned_;
 };
 
 // Fresh RamJournal on a FakeClock at physical 100 with writer 2 incarnation 3 registered on story 1.

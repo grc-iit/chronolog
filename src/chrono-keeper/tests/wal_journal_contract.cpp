@@ -57,7 +57,7 @@ std::unique_ptr<JournalHarness> MakeWal()
                 paths.insert(entry.path().filename().string());
         return paths;
     };
-    h->onAssignment = [rig](std::function<void(Hlc)> hook) { rig->clock->assigned = std::move(hook); };
+    h->onAssignment = [rig](std::function<void(Hlc)> hook) { rig->current->onAssignment(std::move(hook)); };
     h->onWriterScanned = [rig](std::function<void()> hook) { rig->current->scanned = std::move(hook); };
     h->snapshot = [rig]() -> absl::StatusOr<std::pair<Hlc, std::vector<Event>>>
     {

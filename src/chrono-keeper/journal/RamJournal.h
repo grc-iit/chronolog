@@ -100,6 +100,7 @@ protected:
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
     virtual absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
     virtual void writerScanned(WriterKey) const {}
+    virtual void assignmentObserved(Hlc) {}
     void restore(const Event& event);
     struct WriterCheckpoint
     {

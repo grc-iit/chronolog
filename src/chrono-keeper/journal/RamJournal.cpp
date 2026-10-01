@@ -211,6 +211,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         return result;
     }
     Hlc hlc = assignment->hlc;
+    assignmentObserved(hlc);
     Event event;
     event.id = result.id;
     event.physical = item.physical;
