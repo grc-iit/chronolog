@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <csignal>
+#include <future>
 #include <poll.h>
 #include <sys/wait.h>
 
@@ -645,4 +646,154 @@ TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
     server->Shutdown(std::chrono::system_clock::now() + 2s);
 }
 } // namespace
+} // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(KeeperRetention, WalTruncatesOnlyAfterReceiptSettlement)
+{
+    ArchiveRig rig;
+    rig.archive.reset();
+    rig.wal.config.wal_segment_bytes = 1;
+    rig.wal.reopen();
+    rig.reset();
+    rig.append(1, 2'100'000'000);
+    rig.wal.clock->setPhysical(3'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_EQ(rig.archive->chunks().size(), 1u);
+    auto chunk = rig.archive->chunks().front();
+    rig.append(2, 3'100'000'000);
+    std::set<std::filesystem::path> before;
+    for(const auto& entry: std::filesystem::directory_iterator(rig.wal.control->directory))
+        if(entry.path().extension() == ".wal")
+            before.insert(entry.path());
+    ASSERT_GT(before.size(), 1u);
+    rig.deliver(chunk);
+    rig.report(chunk.end, "another-instance", 100);
+    for(const auto& path: before) EXPECT_TRUE(std::filesystem::exists(path));
+    rig.report(chunk.end, "g1", 5, {5});
+    for(const auto& path: before) EXPECT_TRUE(std::filesystem::exists(path));
+    rig.report({}, "g1", 5);
+    size_t removed = 0;
+    for(const auto& path: before) removed += !std::filesystem::exists(path);
+    EXPECT_GT(removed, 0u);
+    rig.archive.reset();
+    rig.wal.reopen();
+    rig.reset();
+    auto events = rig.wal.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().id.sequence, 2u);
+    EXPECT_EQ(rig.wal.current->evictionFloor(1), chunk.end);
+    AppendItem retry;
+    retry.writer_id = 2;
+    retry.incarnation = 3;
+    retry.sequence = 1;
+    auto result = rig.wal.current->append({1, 7, {retry}}, Durability::Durable);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->front().status.ok());
+    EXPECT_EQ(result->front().achieved, Durability::Durable);
+    rig.append(3, 5'100'000'000);
+    rig.wal.clock->setPhysical(6'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_FALSE(rig.archive->chunks().empty());
+    EXPECT_EQ(rig.archive->chunks().front().start, chunk.end);
+}
+
+TEST(KeeperRetention, ShutdownWaitEndsWhenTheGrapherConfirmsEveryChunk)
+{
+    auto directory = std::make_shared<WalControl>();
+    auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
+    ASSERT_TRUE(store.ok());
+    grapher::ArchiveService service(**store, "shutdown-grapher");
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ArchiveRig rig;
+    rig.config.shutdown_confirm_timeout_secs = 3;
+    rig.config.archive_visibility_delay_secs = 600;
+    rig.reset();
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
+    rig.append(1, 100'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_TRUE(rig.archive->chunks().empty());
+    EXPECT_TRUE(rig.archive->shutdown());
+    auto events = (*store)->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
+    ASSERT_EQ(rig.wal.current->sealedChunks().size(), 1u);
+    EXPECT_TRUE(rig.wal.current->sealedChunks().front().settled);
+    EXPECT_EQ(rig.events(), 1u);
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
+
+TEST(KeeperRetention, ShutdownWaitSendsAgainAChunkTheGrapherNeverWrote)
+{
+    auto directory = std::make_shared<WalControl>();
+    auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
+    ASSERT_TRUE(store.ok());
+    grapher::ArchiveService service(**store, "restarted-grapher");
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    ArchiveRig rig;
+    rig.config.shutdown_confirm_timeout_secs = 3;
+    rig.reset();
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
+    const auto chunk = rig.sealFirst();
+    rig.deliver(chunk, "lost-grapher", 5);
+    EXPECT_TRUE(rig.archive->shutdown());
+    auto events = (*store)->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
+    EXPECT_TRUE(rig.wal.current->sealedChunks().front().settled);
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
+
+TEST(KeeperRetention, ShutdownWaitGivesUpAtTheTimeout)
+{
+    ArchiveRig rig;
+    rig.config.shutdown_confirm_timeout_secs = 1;
+    rig.reset();
+    rig.sealFirst();
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT_FALSE(rig.archive->shutdown());
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_GE(elapsed, 1s);
+    EXPECT_LT(elapsed, 2s);
+    EXPECT_EQ(rig.events(), 1u);
+    EXPECT_FALSE(rig.wal.current->sealedChunks().front().settled);
+}
+} // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(KeeperRetention, ShutdownSealsPendingDurableAppendsAfterFsync)
+{
+    ArchiveRig rig;
+    rig.config.shutdown_confirm_timeout_secs = 0;
+    rig.reset();
+    rig.wal.control->block();
+    auto append = std::async(std::launch::async, [&] { rig.append(1, 100'000'000); });
+    (void)rig.wal.control->waitPending();
+    auto shutdown = std::async(std::launch::async, [&] { return rig.archive->shutdown(); });
+    EXPECT_EQ(shutdown.wait_for(20ms), std::future_status::timeout);
+    rig.wal.control->release();
+    ASSERT_EQ(append.wait_for(5s), std::future_status::ready);
+    append.get();
+    ASSERT_EQ(shutdown.wait_for(5s), std::future_status::ready);
+    EXPECT_FALSE(shutdown.get());
+    const auto seals = rig.wal.current->sealedChunks();
+    ASSERT_EQ(seals.size(), 1u);
+    EXPECT_EQ(rig.events(), 1u);
+    EXPECT_FALSE(seals.front().settled);
+}
 } // namespace chronolog::test

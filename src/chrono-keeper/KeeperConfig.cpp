@@ -66,6 +66,8 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "group_commit_max_bytes",
                                                 "reserve_ahead_ms",
                                                 "wal_max_bytes",
+                                                "wal_segment_bytes",
+                                                "shutdown_confirm_timeout_secs",
                                                 "story_chunk_duration_secs",
                                                 "seal_interval_ms",
                                                 "chunk_max_bytes",
@@ -110,6 +112,10 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.group_commit_max_bytes = json.at("group_commit_max_bytes").get<size_t>();
         if(json.contains("reserve_ahead_ms"))
             cfg.reserve_ahead_ms = json.at("reserve_ahead_ms").get<uint32_t>();
+        if(json.contains("wal_segment_bytes"))
+            cfg.wal_segment_bytes = json.at("wal_segment_bytes").get<uint64_t>();
+        if(json.contains("shutdown_confirm_timeout_secs"))
+            cfg.shutdown_confirm_timeout_secs = json.at("shutdown_confirm_timeout_secs").get<uint32_t>();
         if(json.contains("wal_max_bytes"))
             cfg.wal_max_bytes = json.at("wal_max_bytes").get<uint64_t>();
         if(json.contains("story_chunk_duration_secs"))
@@ -211,6 +217,7 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         cfg.payload_max_bytes = *parsed;
     }
     for(auto [key, field]: {std::pair<const char*, uint64_t*>{"wal_max_bytes", &cfg.wal_max_bytes},
+                            {"wal_segment_bytes", &cfg.wal_segment_bytes},
                             {"group_commit_max_bytes", &cfg.group_commit_max_bytes},
                             {"chunk_max_bytes", &cfg.chunk_max_bytes},
                             {"frame_bytes", &cfg.frame_bytes},
@@ -239,6 +246,7 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         cfg.causal_floor_skew_limit_ns = static_cast<int64_t>(*parsed);
     }
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"worker_threads", &cfg.worker_threads},
+                            {"shutdown_confirm_timeout_secs", &cfg.shutdown_confirm_timeout_secs},
                             {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
                             {"group_commit_window_ms", &cfg.group_commit_window_ms},
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
@@ -281,9 +289,10 @@ absl::Status KeeperConfig::validate() const
         return absl::InvalidArgumentError(
                 "payload_max_bytes, dedupe_window and heartbeat_interval_ms must be positive and the skew limit "
                 "non-negative");
-    if(wal_dir.empty() || group_commit_max_bytes == 0 || reserve_ahead_ms == 0 || wal_max_bytes == 0)
+    if(wal_dir.empty() || group_commit_max_bytes == 0 || reserve_ahead_ms == 0 || wal_max_bytes == 0 ||
+       wal_segment_bytes == 0)
         return absl::InvalidArgumentError(
-                "wal_dir, group_commit_max_bytes, reserve_ahead_ms and wal_max_bytes must be set");
+                "wal_dir, group_commit_max_bytes, reserve_ahead_ms, wal_max_bytes and wal_segment_bytes must be set");
     if(story_chunk_duration_secs == 0 || seal_interval_ms == 0 || chunk_max_bytes == 0 ||
        chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
        frame_bytes > (4u << 20))

@@ -126,7 +126,8 @@ int main(int argc, char** argv)
                                 config->group_commit_window_ms,
                                 config->group_commit_max_bytes,
                                 config->reserve_ahead_ms,
-                                config->wal_max_bytes};
+                                config->wal_max_bytes,
+                                config->wal_segment_bytes};
     std::unique_ptr<WalJournal> owned_journal;
     try
     {
@@ -188,7 +189,8 @@ int main(int argc, char** argv)
                                                config->watermark_resend_timeout_secs,
                                                config->archive_visibility_delay_secs,
                                                config->retention_cap_mb,
-                                               config->chunk_max_events};
+                                               config->chunk_max_events,
+                                               config->shutdown_confirm_timeout_secs};
     keeper::KeeperArchive archive(journal, *membership, config->process_id, archive_config);
     archive.start();
 
@@ -219,8 +221,9 @@ int main(int argc, char** argv)
     finished = true;
     watcher.join();
     // Queued tasks run to completion before the pool joins, then the clients stop.
-    archive.stop();
     pool.stop();
+    if(!archive.shutdown())
+        std::cerr << "chrono_keeper: archive confirmation timed out or sealing failed\n";
     cluster_ptr = nullptr;
     return 0;
 }
