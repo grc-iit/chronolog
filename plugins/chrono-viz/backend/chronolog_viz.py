@@ -43,6 +43,9 @@ def health():
             list(stream)
     except cl.NotFound:
         pass
+    except cl.FailedPrecondition as error:
+        if error.status.message != "unknown story":
+            raise
     return {"status": "healthy", "visor": True, "player": True}
 
 

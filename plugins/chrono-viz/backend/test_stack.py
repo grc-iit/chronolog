@@ -6,6 +6,9 @@ import socket
 import subprocess
 import time
 import uuid
+from types import SimpleNamespace
+
+from chronolog_viz import position
 
 import chronolog as cl
 import requests
@@ -20,7 +23,7 @@ def test_real_stack_query_tail_and_failed_keeper():
     env = dict(os.environ, CHRONOLOG_CATALOG=os.environ["CHRONOLOG_TEST_VISOR"],
                CHRONOLOG_PLAYER=os.environ["CHRONOLOG_TEST_PLAYER"])
     server = subprocess.Popen([python, "-m", "uvicorn", "chronolog_viz:app", "--host", "127.0.0.1",
-                               "--port", str(port)], env=env)
+                               "--port", str(port), "--no-access-log"], env=env)
     c = cl.connect(env["CHRONOLOG_CATALOG"], env["CHRONOLOG_PLAYER"], timeout=5)
     name = "viz-" + uuid.uuid4().hex
     chronicle = c.create_chronicle(name, timeout=5)
@@ -36,7 +39,7 @@ def test_real_stack_query_tail_and_failed_keeper():
                 pass
             time.sleep(.05)
         else:
-            raise AssertionError("backend health did not become ready")
+            raise AssertionError("backend health did not become ready: " + response.text)
         assert requests.get(base + "/stories", timeout=5).json()["chronicles"] == [name]
         assert requests.get(base + "/stories", params={"chronicle": name}, timeout=5).json()["stories"] == ["events"]
         first = writer.append(b'{"temperature":23.5}', content_type="application/json",
@@ -60,7 +63,8 @@ def test_real_stack_query_tail_and_failed_keeper():
         assert limited["meta"]["complete"] is None
         assert requests.post(base + "/query", json={**body, "axis": "physical"}, timeout=5).status_code == 400
         assert requests.get(base + "/tail", params={"chronicle": name, "story": "events", "after": "bad"}, timeout=5).status_code == 400
-        with requests.get(base + "/tail", params={"chronicle": name, "story": "events"},
+        with requests.get(base + "/tail", params={"chronicle": name, "story": "events",
+                          "after": position(SimpleNamespace(hlc=second.hlc, id=second.event_id))},
                           stream=True, timeout=(3, 5)) as response:
             assert response.status_code == 200
             def receive():
