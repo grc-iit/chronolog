@@ -192,6 +192,42 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                 });
 }
 
+grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext* context,
+                                                    const internal::v1::ReadClockRequest* request,
+                                                    internal::v1::ReadClockResponse* response)
+{
+    auto* reactor = context->DefaultReactor();
+    if(!raft_)
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "clock exchange is not configured"));
+        return reactor;
+    }
+    if(!raft_->leaderLease())
+    {
+        auto task = [this, context, request, response, reactor]
+        {
+            auto endpoint = raft_->leaderEndpoint(true);
+            if(endpoint.empty() || raft_->isLocalLeader())
+            {
+                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
+                return;
+            }
+            grpc::ClientContext ctx;
+            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
+            auto stub =
+                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            reactor->Finish(stub->ReadClock(&ctx, *request, response));
+        };
+        if(!pool_ || !pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
+        return reactor;
+    }
+    *response->mutable_physical() = nowReading();
+    response->set_authority_tick_ns(authorityTickNs());
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
+
 grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* context,
                                                    const internal::v1::RegisterRequest* request,
                                                    internal::v1::RegisterResponse* response)

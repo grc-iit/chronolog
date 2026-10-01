@@ -45,10 +45,10 @@ absl::Status ClusterClient::refresh() const
         for(const auto& update: response.routes())
         {
             auto prior = routes_.find(update.story_id());
-            if(update.revision() < revisions_[update.story_id()] ||
+            if(update.revision() < revision_ ||
                (prior != routes_.end() && update.route().epoch() < prior->second.epoch))
                 continue;
-            revisions_[update.story_id()] = update.revision();
+            revision_ = update.revision();
             routes_[update.story_id()] = convert::fromProto(update.route());
             learned.push_back(routes_[update.story_id()]);
         }

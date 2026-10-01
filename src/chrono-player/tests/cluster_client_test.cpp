@@ -109,6 +109,10 @@ TEST(PlayerClusterClientTest, RejectsLowerRevisionAndEpochSnapshots)
     catalog.epoch = 4;
     ASSERT_TRUE(player.registerSelf().ok());
     EXPECT_EQ(player.route(42)->epoch, 4);
+    catalog.story = 99;
+    catalog.revision = 9;
+    ASSERT_TRUE(player.registerSelf().ok());
+    EXPECT_EQ(player.route(99).status().code(), absl::StatusCode::kNotFound);
     server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
 }
 } // namespace

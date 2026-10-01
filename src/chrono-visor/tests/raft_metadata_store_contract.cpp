@@ -15,17 +15,23 @@ using visor::RaftMetadataStore;
 using namespace std::chrono_literals;
 int port()
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if(fd < 0 || bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)))
-        throw std::runtime_error("port reservation failed");
-    socklen_t size = sizeof(address);
-    getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size);
-    int result = ntohs(address.sin_port);
-    close(fd);
-    return result;
+    static int candidate = 18000 + (getpid() % 4000) * 3;
+    for(int attempt = 0; attempt < 32; ++attempt)
+    {
+        int fd = socket(AF_INET, SOCK_STREAM, 0);
+        if(fd < 0)
+            throw std::runtime_error("port reservation failed");
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        int result = candidate++;
+        address.sin_port = htons(static_cast<uint16_t>(result));
+        int rc = bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+        close(fd);
+        if(rc == 0)
+            return result;
+    }
+    throw std::runtime_error("Raft test ports unavailable");
 }
 MetadataStoreFactory factory(bool majority)
 {
@@ -168,5 +174,51 @@ TEST(RaftStorageTest, DurableLogTruncationPackingAndCompactionSurviveReopen)
     EXPECT_EQ(recovered.next_slot(), 3u);
     EXPECT_EQ(recovered.term_at(2), 8u);
     EXPECT_EQ(recovered.entry_at(1), nullptr);
+}
+} // namespace chronolog::visor
+namespace chronolog::visor
+{
+TEST(RaftStorageTest, LinearizableReadsAndMutationsStopWithoutQuorum)
+{
+    testing::TempDir directory;
+    std::vector<RaftPeer> peers;
+    for(int i = 0; i < 3; ++i)
+    {
+        auto endpoint = "127.0.0.1:" + std::to_string(contract::port());
+        peers.push_back({i + 1, endpoint, endpoint, endpoint});
+    }
+    std::array<std::unique_ptr<RaftMetadataStore>, 3> replicas;
+    for(size_t i = 0; i < 3; ++i)
+    {
+        RaftConfig config{static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers};
+        auto opened = RaftMetadataStore::open((directory.path() / std::to_string(i)).string(),
+                                              testing::twoKeeperTopology(),
+                                              config);
+        ASSERT_TRUE(opened.ok()) << opened.status();
+        replicas[i] = std::move(*opened);
+    }
+    size_t leader = 3;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while(std::chrono::steady_clock::now() < until && leader == 3)
+    {
+        for(size_t i = 0; i < 3; ++i)
+            if(replicas[i]->leaderLease())
+                leader = i;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    ASSERT_LT(leader, 3u);
+    ASSERT_TRUE(replicas[leader]->createChronicle("c").ok());
+    auto story = replicas[leader]->createStory("c", "s");
+    ASSERT_TRUE(story.ok());
+    auto applied = replicas[leader]->appliedStore().appliedIndex();
+    ASSERT_TRUE(applied.ok());
+    for(size_t i = 0; i < 3; ++i)
+        if(i != leader)
+            replicas[i].reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    EXPECT_FALSE(replicas[leader]->leaderLease());
+    EXPECT_EQ(replicas[leader]->getStory(story->id).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(replicas[leader]->acquire(story->id, "writer").status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(replicas[leader]->appliedStore().appliedIndex().value_or(0), *applied);
 }
 } // namespace chronolog::visor

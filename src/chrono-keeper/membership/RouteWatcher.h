@@ -26,6 +26,7 @@ public:
 private:
     bool session(std::stop_token stop);
 
+    uint64_t applied_revision_{};
     std::map<StoryId, std::pair<uint64_t, Epoch>> applied_;
     ConfigMembership& membership_;
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;

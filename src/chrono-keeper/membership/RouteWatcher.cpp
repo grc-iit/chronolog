@@ -35,8 +35,10 @@ bool RouteWatcher::session(std::stop_token stop)
         if(current.ok() && message.route().epoch() < current->epoch)
             continue;
         auto& prior = applied_[message.story_id()];
-        if(message.revision() < prior.first || message.route().epoch() < prior.second)
+        if(message.revision() < applied_revision_ || message.revision() < prior.first ||
+           message.route().epoch() < prior.second)
             continue;
+        applied_revision_ = message.revision();
         prior = {message.revision(), message.route().epoch()};
         progressed = true;
         membership_.setRoute(message.story_id(), convert::fromProto(message.route()));

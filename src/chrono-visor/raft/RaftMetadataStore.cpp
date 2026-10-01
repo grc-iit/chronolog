@@ -275,12 +275,12 @@ RaftMetadataStore::open(const std::string& path, Topology topology, RaftConfig c
     {
         out->durable_ = cs_new<DurableState>(path + ".raft", config);
         out->machine_ = cs_new<Machine>(*out->store_, *out->durable_, path);
+        // NuRaft 3.0.0 uses inconsistent lost-peer thresholds with a custom leadership expiry.
         raft_params p;
         p.with_election_timeout_lower(static_cast<int32_t>(config.election_lower_ms))
                 .with_election_timeout_upper(static_cast<int32_t>(config.election_upper_ms))
                 .with_hb_interval(static_cast<int32_t>(config.heartbeat_ms))
                 .with_client_req_timeout(3000)
-                .with_leadership_expiry(static_cast<int32_t>(config.election_lower_ms / 2))
                 .with_snapshot_enabled(64);
         asio_service::options options;
         options.thread_pool_size_ = 2;
