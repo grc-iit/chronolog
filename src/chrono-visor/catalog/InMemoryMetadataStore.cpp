@@ -180,7 +180,7 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
         row.released = false;
         row.assigned_keeper = *keeper;
         change = {++revision_, id, writer_id, row.incarnation, row.assigned_keeper, AcquisitionState::Acquired};
-        out = {id, writer_id, row.incarnation, topology_.routeFor(story->second.epoch), row.assigned_keeper};
+        out = {id, writer_id, row.incarnation, topology_.routeFor(story->second.epoch, id), row.assigned_keeper};
         if(superseded)
             notify(*superseded);
         notify(change);

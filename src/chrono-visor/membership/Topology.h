@@ -17,7 +17,12 @@ struct Topology
     std::string grapher;
     std::string player;
 
-    Route routeFor(Epoch epoch) const { return Route{epoch, keepers, grapher, player}; }
+    std::vector<std::string> graphers = {};
+
+    Route routeFor(Epoch epoch, StoryId story = 0) const
+    {
+        return Route{epoch, keepers, graphers.empty() ? grapher : graphers[story % graphers.size()], player};
+    }
 
     // The single Keeper for a writer. The mapping depends only on writer_id and the
     // keeper list, so it is stable for every acquire within one epoch (I7.5).

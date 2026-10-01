@@ -81,6 +81,7 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
                                                 "db_path",
                                                 "keepers",
                                                 "grapher",
+                                                "graphers",
                                                 "player",
                                                 "heartbeat_timeout_ms",
                                                 "release_fence_timeout_ms",
@@ -108,6 +109,12 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
         }
         if(json.contains("grapher"))
             cfg.grapher = json.at("grapher").get<std::string>();
+        if(json.contains("graphers"))
+        {
+            cfg.graphers = json.at("graphers").get<std::vector<std::string>>();
+            if(cfg.graphers.empty())
+                return absl::InvalidArgumentError("graphers must contain at least one endpoint");
+        }
         if(json.contains("player"))
             cfg.player = json.at("player").get<std::string>();
         if(json.contains("heartbeat_timeout_ms"))
@@ -170,6 +177,12 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
     }
     if(auto v = env("grapher"))
         cfg.grapher = *v;
+    if(auto v = env("graphers"))
+    {
+        cfg.graphers = splitCommaList(*v);
+        if(cfg.graphers.empty())
+            return absl::InvalidArgumentError("graphers must contain at least one endpoint");
+    }
     if(auto v = env("player"))
         cfg.player = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
@@ -200,12 +213,15 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
 
 absl::Status VisorConfig::validate() const
 {
-    if(listen.empty() || internal_listen.empty() || db_path.empty() || grapher.empty() || player.empty())
+    if(listen.empty() || internal_listen.empty() || db_path.empty() || (grapher.empty() && graphers.empty()) ||
+       player.empty())
         return absl::InvalidArgumentError("listen, internal_listen, db_path, grapher and player must be set");
     if(keepers.empty() || std::any_of(keepers.begin(),
                                       keepers.end(),
                                       [](const KeeperRef& k) { return k.process_id.empty() || k.endpoint.empty(); }))
         return absl::InvalidArgumentError("keepers must list at least one {process_id, endpoint}");
+    if(std::any_of(graphers.begin(), graphers.end(), [](const auto& endpoint) { return endpoint.empty(); }))
+        return absl::InvalidArgumentError("graphers endpoints must be nonempty");
     if(worker_threads == 0)
         return absl::InvalidArgumentError("worker_threads must be positive");
     const std::string host = hostOf(internal_listen);

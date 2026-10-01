@@ -646,7 +646,7 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
             observer_->onAcquisitionChange(*superseded);
         observer_->onAcquisitionChange({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired});
     }
-    return Acquisition{id, writer_id, incarnation, topology_.routeFor((*story)->epoch), *keeper};
+    return Acquisition{id, writer_id, incarnation, topology_.routeFor((*story)->epoch, id), *keeper};
 }
 
 absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t writer_id, uint64_t incarnation)

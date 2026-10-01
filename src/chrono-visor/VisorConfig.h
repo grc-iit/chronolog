@@ -26,6 +26,7 @@ struct VisorConfig
     std::string db_path = "./catalog.sqlite";
     std::vector<KeeperRef> keepers = {{"keeper-1", "chrono-keeper:50052"}};
     std::string grapher = "chrono-grapher:50053";
+    std::vector<std::string> graphers;
     std::string player = "chrono-player:50054";
     // TBD in section 13 of ARCHITECTURE.md; this PR proposes 15000.
     uint32_t heartbeat_timeout_ms = 15000;
