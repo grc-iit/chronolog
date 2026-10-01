@@ -1,0 +1,46 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include "chronolog/types.h"
+
+namespace chronolog::player
+{
+
+// Player configuration. Keys come from a JSON file and are overridden by environment variables
+// named CHRONOLOG_PLAYER_<KEY>. keeper_internal is a comma separated list of process_id=address
+// pairs in the environment. static_routes is JSON only.
+struct PlayerConfig
+{
+    std::string listen = "0.0.0.0:50054";
+    // Endpoint the Visor hands to clients as Route.player; defaults to listen when empty.
+    std::string advertise;
+    std::string player_id = "player-1";
+    // Catalog address. Empty disables the tombstone check, for runs without a Visor.
+    std::string visor = "chrono-visor:50051";
+    // Cluster address. Unused when static_routes is set.
+    std::string visor_internal = "chrono-visor:50061";
+    // Keeper internal listener is the Route endpoint host plus this suffix unless keeper_internal names it.
+    std::string keeper_internal_suffix = ":50062";
+    std::map<std::string, std::string> keeper_internal;
+    uint32_t keeper_deadline_ms = 2000;
+    uint32_t batch_size = 1024;
+    uint32_t tail_poll_ms = 200;
+    // One Route for every story, replacing registration with the Visor.
+    std::optional<Route> static_routes;
+
+    using Getenv = std::function<const char*(const char*)>;
+
+    static absl::StatusOr<PlayerConfig> load(
+            const std::optional<std::string>& path,
+            const Getenv& getenv = [](const char* name) { return std::getenv(name); });
+
+    absl::Status validate() const;
+
+    std::string keeperInternal(const KeeperRef& keeper) const;
+};
+
+} // namespace chronolog::player
