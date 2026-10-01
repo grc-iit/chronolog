@@ -4,7 +4,7 @@ add_library(chrono_player_replay STATIC
     replay/HotReplay.cpp
     replay/ReplayMerge.cpp)
 target_include_directories(chrono_player_replay PUBLIC "${CMAKE_SOURCE_DIR}/src")
-target_link_libraries(chrono_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads
+target_link_libraries(chrono_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads chronolog_grapher_tier
     PRIVATE chronolog_warnings)
 
 # gRPC clients and the Replay service.
@@ -33,10 +33,12 @@ function(chrono_player_test name sources prefix)
         set_property(TARGET ${name} PROPERTY CROSSCOMPILING_EMULATOR
             "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
     endif()
-    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
+    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
 endfunction()
 
 chrono_player_test(chrono_player_replay_merge_test tests/replay_merge_test.cpp "replay_merge.")
 chrono_player_test(chrono_player_completion_policy_test tests/completion_policy_test.cpp "completion_policy.")
 chrono_player_test(chrono_player_hot_replay_contract_test tests/hot_replay_contract.cpp "")
 chrono_player_test(chrono_player_adapter_test "tests/replay_adapter_test.cpp;tests/player_config_test.cpp" "")
+
+chrono_player_test(chrono_player_cold_replay_test tests/cold_replay_test.cpp "")

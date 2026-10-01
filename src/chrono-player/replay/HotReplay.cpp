@@ -44,6 +44,38 @@ std::vector<Event> mergeKept(HotFetch& f, Pred keep)
     return mergeReplay(std::move(inputs));
 }
 
+Hlc archiveEnd(const HotFetch& fetch, const Range& range)
+{
+    if(!routeAnswered(fetch) || fetch.keepers.empty())
+        return range.end;
+    Hlc boundary{};
+    for(const auto& keeper: fetch.keepers) boundary = std::max(boundary, keeper.frontier.evicted_below);
+    if(range.axis == Range::Axis::Physical && boundary > Hlc{})
+        return range.end;
+    return std::min(range.end, boundary);
+}
+
+bool loadArchive(const HotReplayOptions& options,
+                 StoryId story,
+                 const Range& range,
+                 const HotFetch& fetch,
+                 std::vector<Event>& events)
+{
+    Hlc end = archiveEnd(fetch, range);
+    if(end <= range.start)
+        return true;
+    if(!options.archive)
+        return false;
+    if(!options.archive->refreshNow().ok())
+        return false;
+    Range cold{range.axis, range.start, end};
+    auto archived = options.archive->read(story, cold);
+    auto lost = options.archive->incomplete(story, cold);
+    if(archived.ok())
+        events = *std::move(archived);
+    return archived.ok() && lost.ok() && !*lost;
+}
+
 class HotReplayStream final: public ReplayStream
 {
 public:
@@ -150,7 +182,12 @@ private:
             closed_ = true;
         if(!routeAnswered(fetch))
             return false;
-        auto events = mergeKept(fetch, [&](const Event& e) { return ReplayLess(cursor_, e); });
+        std::vector<Event> cold;
+        if(!loadArchive(options_, story_, Range{Range::Axis::Hlc, cursor_.hlc, maxHlc()}, fetch, cold))
+            return false;
+        std::erase_if(cold, [&](const Event& e) { return !ReplayLess(cursor_, e); });
+        auto hot = mergeKept(fetch, [&](const Event& e) { return ReplayLess(cursor_, e); });
+        auto events = mergeReplay({std::move(cold), std::move(hot)});
         if(events.empty())
             return false;
         cursor_ = events.back();
@@ -212,8 +249,12 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     std::vector<KeeperFrontier> frontiers;
     frontiers.reserve(fetched->keepers.size());
     for(const auto& k: fetched->keepers) frontiers.push_back(k.frontier);
-    Completion completion = CompletionPolicy::decide(range, fetched->route_epoch, frontiers, fetched->writers);
-    auto events = mergeKept(*fetched, [&](const Event& e) { return inRange(range, e); });
+    std::vector<Event> cold;
+    bool archive_ok = loadArchive(options_, id, range, *fetched, cold);
+    Completion completion =
+            CompletionPolicy::decide(range, fetched->route_epoch, frontiers, fetched->writers, !archive_ok);
+    auto hot = mergeKept(*fetched, [&](const Event& e) { return inRange(range, e); });
+    auto events = mergeReplay({std::move(cold), std::move(hot)});
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(events), std::move(completion), options_.batch_size));
 }

@@ -65,6 +65,8 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "keeper_deadline_ms",
                                                 "batch_size",
                                                 "tail_poll_ms",
+                                                "archive_root",
+                                                "manifest_poll_ms",
                                                 "static_routes"};
     if(!json.is_object())
         return absl::InvalidArgumentError("configuration must be a JSON object");
@@ -92,6 +94,8 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         num("keeper_deadline_ms", cfg.keeper_deadline_ms);
         num("batch_size", cfg.batch_size);
         num("tail_poll_ms", cfg.tail_poll_ms);
+        str("archive_root", cfg.archive_root);
+        num("manifest_poll_ms", cfg.manifest_poll_ms);
         if(json.contains("keeper_internal"))
             cfg.keeper_internal = json.at("keeper_internal").get<std::map<std::string, std::string>>();
         if(json.contains("static_routes"))
@@ -138,12 +142,14 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"player_id", &cfg.player_id},
                             {"visor", &cfg.visor},
                             {"visor_internal", &cfg.visor_internal},
-                            {"keeper_internal_suffix", &cfg.keeper_internal_suffix}})
+                            {"keeper_internal_suffix", &cfg.keeper_internal_suffix},
+                            {"archive_root", &cfg.archive_root}})
         if(auto v = env(key))
             *field = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"keeper_deadline_ms", &cfg.keeper_deadline_ms},
                             {"batch_size", &cfg.batch_size},
-                            {"tail_poll_ms", &cfg.tail_poll_ms}})
+                            {"tail_poll_ms", &cfg.tail_poll_ms},
+                            {"manifest_poll_ms", &cfg.manifest_poll_ms}})
     {
         if(auto v = env(key))
         {
@@ -169,8 +175,9 @@ absl::Status PlayerConfig::validate() const
 {
     if(listen.empty() || player_id.empty())
         return absl::InvalidArgumentError("listen and player_id must be set");
-    if(batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0)
-        return absl::InvalidArgumentError("batch_size, tail_poll_ms and keeper_deadline_ms must be positive");
+    if(batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0 || manifest_poll_ms == 0)
+        return absl::InvalidArgumentError(
+                "batch_size, tail_poll_ms, keeper_deadline_ms and manifest_poll_ms must be positive");
     if(!static_routes && visor_internal.empty())
         return absl::InvalidArgumentError("visor_internal is required without static_routes");
     if(static_routes && static_routes->keepers.empty())

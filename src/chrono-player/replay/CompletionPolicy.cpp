@@ -7,14 +7,15 @@ namespace chronolog::player
 Completion CompletionPolicy::decide(const Range& range,
                                     Epoch route_epoch,
                                     const std::vector<KeeperFrontier>& keepers,
-                                    const std::vector<WriterAssignment>& writers)
+                                    const std::vector<WriterAssignment>& writers,
+                                    bool archive_failed)
 {
     const bool hlc = range.axis == Range::Axis::Hlc;
     auto failed = [&](const KeeperFrontier& k) { return !k.answered || k.epoch != route_epoch; };
     auto lagging = [&](const KeeperFrontier& k) { return hlc && k.sealed < range.end; };
 
     // A Route with no Keepers is an uninitialized route, never vacuously complete.
-    bool any_failed = keepers.empty();
+    bool any_failed = archive_failed || keepers.empty();
     bool any_truncated = false, any_lagging = false;
     std::optional<Hlc> min_seal;
     for(const auto& k: keepers)

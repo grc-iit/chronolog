@@ -3,6 +3,7 @@
 #include <chrono>
 #include <memory>
 #include "chrono-player/replay/HotSource.h"
+#include "chrono-grapher/tier/FileTierStore.h"
 #include "chronolog/replay.h"
 
 namespace chronolog::player
@@ -12,6 +13,7 @@ struct HotReplayOptions
 {
     size_t batch_size{1024};
     std::chrono::milliseconds tail_poll{200};
+    std::shared_ptr<const FileTierStore> archive;
 };
 
 class HotReplay final: public Replay
