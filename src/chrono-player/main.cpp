@@ -12,6 +12,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include "rpc/VisorChannel.h"
 #include "chrono-player/PlayerConfig.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/adapter/ReplayService.h"
@@ -67,7 +68,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        auto visor = grpc::CreateChannel(config->visor_internal, grpc::InsecureChannelCredentials());
+        auto visor = rpc::visorChannel(config->visor_internal);
         writers = std::make_shared<player::WriterDirectory>(visor);
         Process self{config->player_id,
                      config->player_id + "-" + std::to_string(::getpid()) + "-" +
@@ -104,9 +105,8 @@ int main(int argc, char** argv)
 
     std::shared_ptr<const player::StoryCatalog> catalog = std::make_shared<player::AnyStoryCatalog>();
     if(!config->visor.empty())
-        catalog = std::make_shared<player::CatalogClient>(
-                grpc::CreateChannel(config->visor, grpc::InsecureChannelCredentials()),
-                std::chrono::milliseconds(config->keeper_deadline_ms));
+        catalog = std::make_shared<player::CatalogClient>(rpc::visorChannel(config->visor),
+                                                          std::chrono::milliseconds(config->keeper_deadline_ms));
 
     const player::PlayerConfig& cfg = *config;
     player::KeeperHotSourceOptions source_options;

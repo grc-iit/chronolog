@@ -15,7 +15,7 @@ add_library(chronolog_keeper_lib STATIC
 target_include_directories(chronolog_keeper_lib PUBLIC "${KEEPER_DIR}")
 target_link_libraries(chronolog_keeper_lib
     PUBLIC chronolog_keeper_wal chronolog_keeper_journal chronolog_common_clock chronolog_contracts
-           chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json Threads::Threads
+           chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings)
 
 add_executable(chrono_keeper "${KEEPER_DIR}/main.cpp")
