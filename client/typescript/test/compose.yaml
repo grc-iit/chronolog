@@ -5,7 +5,8 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    networks: [chronolog]
+    # Host SDK tests use the published Keeper port; share its loopback here.
+    network_mode: "service:chrono-keeper"
     working_dir: /package
     volumes:
       - ${CHRONOLOG_TYPESCRIPT_PACKAGE}:/package:ro
