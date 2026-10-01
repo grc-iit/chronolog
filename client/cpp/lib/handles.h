@@ -85,6 +85,7 @@ struct ReadStream::Impl: detail::ReplayState
     std::vector<PhysicalRange> pending_ranges;
     std::set<EventId> seen;
     Completion aggregate{true, {}, {}, IncompleteReason::None};
+    std::optional<Hlc> aggregate_frontier;
     std::vector<Event> leaf_events;
     absl::StatusOr<std::optional<StreamItem>> nextPhysical(Deadline);
     std::unique_ptr<grpc::ClientReader<v1::ReadResponse>> stream;

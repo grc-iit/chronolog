@@ -197,7 +197,9 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::nextPhysical(Deadlin
         if(rank(completion->reason) > rank(aggregate.reason))
             aggregate.reason = completion->reason;
         aggregate.laggards.insert(aggregate.laggards.end(), completion->laggards.begin(), completion->laggards.end());
-        aggregate.frontier = {physical->end_ns, 0};
+        aggregate_frontier =
+                aggregate_frontier ? std::min(*aggregate_frontier, completion->frontier) : completion->frontier;
+        aggregate.frontier = *aggregate_frontier;
         StreamItem result;
         for(auto& event: leaf_events)
             if(seen.insert(event.id).second)
