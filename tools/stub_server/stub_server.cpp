@@ -26,14 +26,19 @@ struct Options
 
 bool parse_args(int argc, char** argv, Options& opts)
 {
-    if(const char* env = std::getenv("CHRONOLOG_PORT")) opts.port = env;
-    if(const char* env = std::getenv("CHRONOLOG_LISTEN_HOST")) opts.host = env;
+    if(const char* env = std::getenv("CHRONOLOG_PORT"))
+        opts.port = env;
+    if(const char* env = std::getenv("CHRONOLOG_LISTEN_HOST"))
+        opts.host = env;
     for(int i = 1; i < argc; ++i)
     {
         std::string arg = argv[i];
-        if(arg == "--port" && i + 1 < argc) opts.port = argv[++i];
-        else if(arg == "--host" && i + 1 < argc) opts.host = argv[++i];
-        else return false;
+        if(arg == "--port" && i + 1 < argc)
+            opts.port = argv[++i];
+        else if(arg == "--host" && i + 1 < argc)
+            opts.host = argv[++i];
+        else
+            return false;
     }
     return !opts.port.empty();
 }
@@ -81,19 +86,21 @@ int main(int argc, char** argv)
     std::cout << "chronolog_stub_server listening on " << opts.host << ":" << bound_port << std::endl;
 
     std::atomic<bool> finished{false};
-    std::thread watcher([&]() {
-        const timespec poll = {0, 200 * 1000 * 1000};
-        while(!finished.load())
-        {
-            const int received = sigtimedwait(&signals, nullptr, &poll);
-            if(received > 0)
+    std::thread watcher(
+            [&]()
             {
-                std::cout << "chronolog_stub_server shutting down on signal " << received << std::endl;
-                server->Shutdown();
-                return;
-            }
-        }
-    });
+                const timespec poll = {0, 200 * 1000 * 1000};
+                while(!finished.load())
+                {
+                    const int received = sigtimedwait(&signals, nullptr, &poll);
+                    if(received > 0)
+                    {
+                        std::cout << "chronolog_stub_server shutting down on signal " << received << std::endl;
+                        server->Shutdown();
+                        return;
+                    }
+                }
+            });
 
     server->Wait();
     finished = true;
