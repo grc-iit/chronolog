@@ -9,10 +9,12 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin chro
     && mkdir -p /var/lib/chronolog/archive \
     && chown -R 10001:10001 /var/lib/chronolog
 # Ships the Visor, Keeper, Player and Grapher staged by run_dragon.sh.
-COPY chrono_* /usr/local/bin/
+COPY chrono_* chronolog_stream_* /usr/local/bin/
+COPY libchronolog_client.so.4 /usr/local/lib/
 COPY entrypoint.sh /usr/local/bin/chronolog-entrypoint
 USER 10001:10001
-ENV CHRONOLOG_ROLE=visor \
+ENV LD_LIBRARY_PATH=/usr/local/lib \
+    CHRONOLOG_ROLE=visor \
     CHRONOLOG_PORT=50051
 EXPOSE 50051
 ENTRYPOINT ["/usr/local/bin/chronolog-entrypoint"]

@@ -4,7 +4,7 @@
 # brings the compose stack up, runs the Python smoke test and tears the stack down,
 # first under rootless Docker and then under rootless Podman. Nothing is compiled
 # inside a container. Run on dragon from the repository root through rbuild:
-#   rbuild 'bash tests/smoke/run_dragon.sh'
+#   RBUILD_LOCK=stack rbuild 'bash tests/smoke/run_dragon.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
 # SKIP_NATIVE_BUILD=1 reuses the existing build/dev binaries.
 set -uo pipefail
@@ -30,7 +30,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example chronolog_pubsub_example chronolog_sql_example chronolog_stream_collect chronolog_stream_export chronolog_stream_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -48,6 +48,7 @@ for target in "${targets[@]}"; do
     cp "$binary" "$stage/"
 done
 cp deploy/containers/entrypoint.sh "$stage/"
+cp -L build/dev/client/cpp/libchronolog_client.so.4 "$stage/"
 
 venv=$root/build/smoke-venv
 if [ ! -x "$venv/bin/python" ]; then
@@ -98,6 +99,7 @@ run_engine() {
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
         step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
             127.0.0.1:50051 127.0.0.1:50054 || rc=1
+        step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
         if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
             return "$rc"
