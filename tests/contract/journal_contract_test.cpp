@@ -1146,3 +1146,34 @@ TEST_P(JournalContract, DeferredFloorSurvivesALaterSurvivorUpdate)
     EXPECT_GT(result->front().hlc, (Hlc{40'000'000'000, 0}));
 }
 } // namespace chronolog::contract
+
+namespace chronolog::contract
+{
+TEST_P(JournalContract, RejoinedKeeperFinishesItsPredecessorEmptyTail)
+{
+    if(!h->supports_durable)
+        GTEST_SKIP() << "archive drain requires WAL";
+    auto chunk = archiveChunk();
+    ASSERT_TRUE(chunk.ok());
+    h->deliverChunk(*chunk, "grapher", 1);
+    h->releaseTail();
+    h->reportArchive({1, chunk->end, "grapher", 1, {}, false});
+    ASSERT_EQ(eventCount(), 0);
+    h->enableDynamic({10'000'000'000, 0}, 20'000'000'000);
+    RouteState state;
+    state.route = {9, {{"self", "self:1"}}, "127.0.0.1:1", ""};
+    const Hlc cut{2'500'000'000, 0};
+    state.predecessors.push_back({{"self", "self:1"}, "instance", 7, cut, 20'000'000'000});
+    h->applyRoute(state, false, 11);
+    h->setPhysical(cut.physical_ns);
+    auto chunks = h->sealArchive();
+    ASSERT_TRUE(chunks.ok());
+    ASSERT_FALSE(chunks->empty());
+    EXPECT_EQ(chunks->back().start, chunk->end);
+    EXPECT_EQ(chunks->back().end, cut);
+    h->deliverChunk(chunks->back(), "grapher", 2);
+    h->releaseTail();
+    h->reportArchive({1, cut, "grapher", 2, {}, false});
+    EXPECT_EQ(h->evictionFloor(), cut);
+}
+} // namespace chronolog::contract

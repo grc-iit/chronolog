@@ -125,12 +125,18 @@ absl::Status KeeperArchive::seal(bool through_frontier)
         if(!snapshot.ok())
             return snapshot.status();
         auto owner = journal_.retiredOwner(story_id);
-        if(owner && journal_.neverHeldEvent(story_id))
+        const auto predecessors = journal_.predecessorOwners(story_id);
+        Hlc predecessor_cut{};
+        for(const auto& predecessor: predecessors) predecessor_cut = std::max(predecessor_cut, predecessor.own_cut);
+        if(!predecessors.empty() && journal_.neverHeldEvent(story_id))
         {
-            journal_.eraseEvents(story_id, {Range::Axis::Hlc, {}, owner->own_cut}, true);
+            journal_.eraseEvents(story_id, {Range::Axis::Hlc, {}, predecessor_cut}, true);
             continue;
         }
-        const Hlc end = (through_frontier || owner) ? snapshot->view.sealed : align(snapshot->view.sealed);
+        Hlc end = (through_frontier || owner) ? snapshot->view.sealed : align(snapshot->view.sealed);
+        for(const auto& predecessor: predecessors)
+            if(predecessor.own_cut <= snapshot->view.sealed)
+                end = std::max(end, predecessor.own_cut);
         Hlc start;
         {
             std::lock_guard lock(mu_);
@@ -144,7 +150,7 @@ absl::Status KeeperArchive::seal(bool through_frontier)
                 if(snapshot->events.empty())
                 {
                     start = journal_.evictionFloor(story_id);
-                    if(!owner || start == Hlc{})
+                    if(predecessors.empty() || start == Hlc{})
                         continue;
                 }
                 else
@@ -179,7 +185,7 @@ absl::Status KeeperArchive::seal(bool through_frontier)
             bytes += record_bytes;
             ++events;
         }
-        if(events != 0 || owner)
+        if(events != 0 || !predecessors.empty())
         {
             Chunk chunk;
             chunk.story_id = story_id;

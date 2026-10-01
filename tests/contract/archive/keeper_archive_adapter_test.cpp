@@ -163,7 +163,7 @@ TEST(ArchiveTransferTest, RetiredOwnerSealIsCutAtTheHandoff)
         EXPECT_EQ(stream->Finish().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
     }
 }
-TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
+TEST(ArchiveTransferTest, CurrentOwnerTrailerReportsTheEpochAppliedDuringScan)
 {
     test::AdapterRig rig;
     AppendItem item;

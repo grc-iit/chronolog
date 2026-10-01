@@ -709,13 +709,14 @@ TEST(KeeperRetention, ShutdownSealsPendingDurableAppendsAfterFsync)
 
 namespace chronolog::test
 {
-TEST(KeeperTransfer, EveryShippedFrameCarriesPhysicalPolicy)
+TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
 {
     class Receiver final: public internal::v1::Archive::Service
     {
     public:
         std::mutex mutex;
         std::vector<bool> markers;
+        std::function<void()> change_route;
         grpc::Status TransferChunk(grpc::ServerContext*,
                                    grpc::ServerReader<internal::v1::TransferChunkRequest>* reader,
                                    internal::v1::TransferChunkResponse* response) override
@@ -727,6 +728,8 @@ TEST(KeeperTransfer, EveryShippedFrameCarriesPhysicalPolicy)
             {
                 if(markers.size() >= 64)
                     return {grpc::StatusCode::RESOURCE_EXHAUSTED, "too many test frames"};
+                if(markers.empty())
+                    change_route();
                 markers.push_back(frame.identity().physical_policy());
                 bytes += frame.data().size();
                 response->set_chunk_id(frame.identity().chunk_id());
@@ -747,6 +750,12 @@ TEST(KeeperTransfer, EveryShippedFrameCarriesPhysicalPolicy)
     rig.config.frame_bytes = 64;
     rig.reset();
     rig.membership.setRoute(1, {7, {{"self", "self:1"}}, "127.0.0.1:" + std::to_string(port), ""});
+    receiver.change_route = [&]
+    {
+        RouteState state;
+        state.route = {8, {{"other", "other:1"}}, "127.0.0.1:1", ""};
+        rig.wal.current->applyRoute(1, state, false, 10, [&] { rig.membership.setRoute(1, state.route); });
+    };
     ASSERT_TRUE(rig.wal.current->hasPhysicalPolicy());
     rig.append(1, 100'000'000, 512);
     rig.wal.clock->setPhysical(1'000'000'000);
@@ -757,6 +766,12 @@ TEST(KeeperTransfer, EveryShippedFrameCarriesPhysicalPolicy)
         ASSERT_GT(receiver.markers.size(), 1u);
         for(bool marker: receiver.markers) EXPECT_TRUE(marker);
     }
+    EXPECT_EQ(rig.membership.route(1)->epoch, 8);
+    const auto retained = rig.archive->chunks();
+    ASSERT_EQ(retained.size(), 1u);
+    rig.report(retained.front().end, "marker-grapher", 1);
+    rig.archive->releaseTail(1);
+    EXPECT_EQ(rig.events(), 0u);
     server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
 }
 } // namespace chronolog::test
