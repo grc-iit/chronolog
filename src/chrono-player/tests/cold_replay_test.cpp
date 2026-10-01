@@ -57,10 +57,10 @@ protected:
         auto record = writer->publish({std::to_string(time), 1, {start, 0}, {end, 0}, {event(time)}, false});
         ASSERT_TRUE(record.ok()) << record.status();
     }
-    void read()
+    void read(Hlc start = {100, 0})
     {
         HotReplay replay(source, options);
-        auto stream = replay.read(1, {Range::Axis::Hlc, {100, 0}, {300, 0}});
+        auto stream = replay.read(1, {Range::Axis::Hlc, start, {300, 0}});
         ASSERT_TRUE(stream.ok()) << stream.status();
         events.clear();
         completion.reset();
@@ -252,6 +252,97 @@ TEST_F(ColdReplay, TailCatchesUpFromArchiveExclusivelyAfterPosition)
     ASSERT_TRUE(*final);
     ASSERT_TRUE((**final).completion);
     EXPECT_FALSE((**final).completion->complete);
+}
+
+TEST_F(ColdReplay, LimitCutsAtRecordStartAndContinuationHasNoGapOrDuplicate)
+{
+    options.read_max_events = 3;
+    options.batch_size = 1;
+    source->response.keepers[0].frontier.evicted_below = {300, 0};
+    source->response.keepers[0].events = {event(145), event(250)};
+    auto first = writer->publish({"first", 1, {100, 0}, {150, 0}, {event(120), event(140)}, false});
+    ASSERT_TRUE(first.ok());
+    auto second = writer->publish({"second", 1, {150, 0}, {200, 0}, {event(160), event(180)}, false});
+    ASSERT_TRUE(second.ok());
+    publish(220, 200, 250);
+    read();
+    ASSERT_TRUE(completion);
+    EXPECT_FALSE(completion->complete);
+    EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion->frontier, (Hlc{150, 0}));
+    ASSERT_EQ(events.size(), 3);
+    EXPECT_EQ(events.back().id, event(145).id);
+    std::vector<Event> all = events;
+    Hlc cut = completion->frontier;
+    read(cut);
+    ASSERT_TRUE(completion);
+    EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion->frontier, (Hlc{200, 0}));
+    all.insert(all.end(), events.begin(), events.end());
+    read(completion->frontier);
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+    all.insert(all.end(), events.begin(), events.end());
+    ASSERT_EQ(all.size(), 7);
+    const std::vector<int64_t> expected{120, 140, 145, 160, 180, 220, 250};
+    for(size_t j = 0; j < all.size(); ++j) EXPECT_EQ(all[j].hlc.physical_ns, expected[j]);
+}
+
+TEST_F(ColdReplay, AFileLargerThanTheLimitIsReturnedWhole)
+{
+    options.read_max_events = 1;
+    options.batch_size = 1;
+    auto record = writer->publish({"large", 1, {100, 0}, {200, 0}, {event(120), event(140)}, false});
+    ASSERT_TRUE(record.ok());
+    read();
+    ASSERT_EQ(events.size(), 2);
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+}
+
+TEST_F(ColdReplay, TailEndsSourceFailedOnALostWindow)
+{
+    publish(140);
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    std::filesystem::remove(root / records->front().file);
+    writer.reset();
+    auto recovered = FileTierStore::Open(root, "writer", {{1, {100, 0}}});
+    ASSERT_TRUE(recovered.ok());
+    writer = *std::move(recovered);
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    EXPECT_TRUE((**final).events.empty());
+    ASSERT_TRUE((**final).completion);
+    EXPECT_FALSE((**final).completion->complete);
+    EXPECT_EQ((**final).completion->reason, IncompleteReason::SourceFailed);
+    EXPECT_EQ((**final).completion->frontier, event(110).hlc);
+    auto eof = (*stream)->next();
+    ASSERT_TRUE(eof.ok());
+    EXPECT_FALSE(*eof);
+}
+
+TEST_F(ColdReplay, TailEndsSourceFailedOnAnArchiveReadError)
+{
+    publish(140);
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    std::filesystem::remove(root / records->front().file);
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    ASSERT_TRUE((**final).completion);
+    EXPECT_EQ((**final).completion->reason, IncompleteReason::SourceFailed);
+    auto eof = (*stream)->next();
+    ASSERT_TRUE(eof.ok());
+    EXPECT_FALSE(*eof);
 }
 
 TEST_F(ColdReplay, ReadOnlyViewMergesEveryWriterAndNeverScansDataFiles)

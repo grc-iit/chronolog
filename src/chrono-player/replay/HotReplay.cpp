@@ -4,6 +4,9 @@
 #include <condition_variable>
 #include <limits>
 #include <mutex>
+#include <queue>
+#include <set>
+#include <tuple>
 #include "chrono-player/replay/CompletionPolicy.h"
 #include "chrono-player/replay/ReplayMerge.h"
 
@@ -78,26 +81,47 @@ bool loadArchive(const HotReplayOptions& options,
 
 class HotReplayStream final: public ReplayStream
 {
+    struct Head
+    {
+        size_t input;
+        size_t pos;
+    };
+    struct After
+    {
+        const std::vector<std::vector<Event>>* inputs;
+        bool operator()(const Head& a, const Head& b) const
+        {
+            return ReplayLess((*inputs)[b.input][b.pos], (*inputs)[a.input][a.pos]);
+        }
+    };
+
 public:
-    HotReplayStream(std::vector<Event> events, Completion completion, size_t batch_size)
-        : events_(std::move(events))
+    HotReplayStream(std::vector<std::vector<Event>> inputs, Completion completion, size_t batch_size)
+        : inputs_(std::move(inputs))
+        , heads_(After{&inputs_})
         , completion_(std::move(completion))
         , batch_size_(std::max<size_t>(batch_size, 1))
-    {}
+    {
+        for(size_t i = 0; i < inputs_.size(); ++i)
+            if(!inputs_[i].empty())
+                heads_.push({i, 0});
+    }
 
     absl::StatusOr<std::optional<ReplayBatch>> next() override
     {
         if(cancelled_.load())
             return absl::CancelledError("replay stream cancelled");
         ReplayBatch batch;
-        if(pos_ < events_.size())
+        while(!heads_.empty() && batch.events.size() < batch_size_)
         {
-            size_t n = std::min(batch_size_, events_.size() - pos_);
-            batch.events.assign(std::make_move_iterator(events_.begin() + pos_),
-                                std::make_move_iterator(events_.begin() + pos_ + n));
-            pos_ += n;
-            return std::optional<ReplayBatch>(std::move(batch));
+            Event e = pop();
+            while(!heads_.empty() && inputs_[heads_.top().input][heads_.top().pos].id == e.id)
+                e.durability = std::max(e.durability, pop().durability);
+            if(seen_.insert(e.id).second)
+                batch.events.push_back(std::move(e));
         }
+        if(!batch.events.empty())
+            return std::optional<ReplayBatch>(std::move(batch));
         if(!completion_sent_)
         {
             completion_sent_ = true;
@@ -106,14 +130,25 @@ public:
         }
         return std::optional<ReplayBatch>();
     }
-
     void cancel() override { cancelled_.store(true); }
 
 private:
-    std::vector<Event> events_;
+    Event pop()
+    {
+        Head h = heads_.top();
+        heads_.pop();
+        Event e = std::move(inputs_[h.input][h.pos]);
+        if(++h.pos < inputs_[h.input].size())
+            heads_.push(h);
+        else
+            std::vector<Event>().swap(inputs_[h.input]);
+        return e;
+    }
+    std::vector<std::vector<Event>> inputs_;
+    std::priority_queue<Head, std::vector<Head>, After> heads_;
+    std::set<EventId> seen_;
     Completion completion_;
     size_t batch_size_;
-    size_t pos_{};
     bool completion_sent_{};
     std::atomic<bool> cancelled_{false};
 };
@@ -184,7 +219,11 @@ private:
             return false;
         std::vector<Event> cold;
         if(!loadArchive(options_, story_, Range{Range::Axis::Hlc, cursor_.hlc, maxHlc()}, fetch, cold))
+        {
+            closed_ = true;
+            final_reason_ = IncompleteReason::SourceFailed;
             return false;
+        }
         std::erase_if(cold, [&](const Event& e) { return !ReplayLess(cursor_, e); });
         auto hot = mergeKept(fetch, [&](const Event& e) { return ReplayLess(cursor_, e); });
         auto events = mergeReplay({std::move(cold), std::move(hot)});
@@ -214,7 +253,7 @@ private:
         pending_.clear();
         pending_pos_ = 0;
         ReplayBatch batch;
-        batch.completion = Completion{false, cursor_.hlc, {}, IncompleteReason::None};
+        batch.completion = Completion{false, cursor_.hlc, {}, final_reason_};
         return batch;
     }
 
@@ -230,6 +269,7 @@ private:
     bool closed_{};
     bool idle_{};
     bool final_sent_{};
+    IncompleteReason final_reason_{IncompleteReason::None};
 };
 
 } // namespace
@@ -246,17 +286,115 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     auto fetched = source_->fetch(id, range);
     if(!fetched.ok())
         return fetched.status();
+    const size_t limit = std::max<size_t>(1, options_.read_max_events);
+    Range covered = range;
+    bool limited = false;
     std::vector<KeeperFrontier> frontiers;
-    frontiers.reserve(fetched->keepers.size());
-    for(const auto& k: fetched->keepers) frontiers.push_back(k.frontier);
-    std::vector<Event> cold;
-    bool archive_ok = loadArchive(options_, id, range, *fetched, cold);
+    std::vector<Hlc> hot_times;
+    for(auto& k: fetched->keepers)
+    {
+        frontiers.push_back(k.frontier);
+        std::erase_if(k.events, [&](const Event& e) { return !inRange(range, e); });
+        for(const auto& e: k.events)
+            hot_times.push_back(range.axis == Range::Axis::Hlc ? e.hlc : Hlc{e.physical.physical_ns, 0});
+    }
+    if(hot_times.size() > limit)
+    {
+        std::nth_element(hot_times.begin(), hot_times.begin() + limit, hot_times.end());
+        covered.end = hot_times[limit];
+        limited = true;
+    }
+    auto hotCount = [&](Hlc end)
+    { return static_cast<size_t>(std::count_if(hot_times.begin(), hot_times.end(), [&](Hlc t) { return t < end; })); };
+    const Hlc boundary = archiveEnd(*fetched, range);
+    bool archive_ok = true;
+    std::vector<ManifestRecord> records;
+    std::vector<ManifestRecord> selected;
+    if(boundary > range.start)
+    {
+        archive_ok = options_.archive && options_.archive->refreshNow().ok();
+        if(archive_ok)
+        {
+            auto manifest = options_.archive->manifest(id);
+            archive_ok = manifest.ok();
+            if(manifest.ok())
+                records = *std::move(manifest);
+        }
+        std::stable_sort(records.begin(),
+                         records.end(),
+                         [](const auto& a, const auto& b)
+                         { return std::tie(a.start, a.file) < std::tie(b.start, b.file); });
+        std::vector<ManifestRecord> published;
+        for(const auto& record: records)
+        {
+            if(record.state != ManifestState::Published)
+                continue;
+            if(range.axis == Range::Axis::Hlc &&
+               (record.end <= range.start || record.start >= boundary || record.start >= covered.end))
+                continue;
+            published.push_back(record);
+        }
+        size_t archived_count = 0;
+        Hlc accepted_cut = range.start;
+        for(size_t i = 0; i < published.size();)
+        {
+            size_t j = i;
+            size_t group_count = 0;
+            while(j < published.size() && published[j].start == published[i].start)
+                group_count += published[j++].event_count;
+            Hlc candidate_cut = j < published.size() ? std::min(covered.end, published[j].start) : covered.end;
+            candidate_cut = std::max(range.start, candidate_cut);
+            size_t hot_count = hotCount(candidate_cut);
+            bool fits = archived_count <= limit && group_count <= limit - archived_count &&
+                        hot_count <= limit - archived_count - group_count;
+            bool oversized_file = selected.empty() && j == i + 1 && group_count > limit;
+            if(!fits && !oversized_file)
+            {
+                covered.end = accepted_cut;
+                limited = true;
+                break;
+            }
+            selected.insert(selected.end(), published.begin() + i, published.begin() + j);
+            archived_count += group_count;
+            accepted_cut = candidate_cut;
+            i = j;
+        }
+    }
+    std::vector<std::vector<Event>> inputs;
+    for(auto& k: fetched->keepers)
+    {
+        std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e); });
+        std::stable_sort(k.events.begin(), k.events.end(), ReplayLess);
+        inputs.push_back(std::move(k.events));
+    }
+    Range cold{range.axis, range.start, std::min(boundary, covered.end)};
+    if(cold.start < cold.end && archive_ok && options_.archive)
+    {
+        for(const auto& record: records)
+            if(record.state == ManifestState::Lost &&
+               (range.axis == Range::Axis::Physical || (record.start < cold.end && record.end > cold.start)))
+                archive_ok = false;
+        for(const auto& record: selected)
+        {
+            if(range.axis == Range::Axis::Hlc && record.start >= cold.end)
+                continue;
+            auto events = options_.archive->readRecord(record, cold);
+            if(!events.ok())
+                archive_ok = false;
+            else
+                inputs.push_back(*std::move(events));
+        }
+    }
     Completion completion =
-            CompletionPolicy::decide(range, fetched->route_epoch, frontiers, fetched->writers, !archive_ok);
-    auto hot = mergeKept(*fetched, [&](const Event& e) { return inRange(range, e); });
-    auto events = mergeReplay({std::move(cold), std::move(hot)});
+            CompletionPolicy::decide(covered, fetched->route_epoch, frontiers, fetched->writers, !archive_ok);
+    if(limited && completion.reason != IncompleteReason::SourceFailed)
+    {
+        completion.complete = false;
+        completion.reason = IncompleteReason::Truncated;
+        completion.frontier = covered.end;
+    }
     return std::unique_ptr<ReplayStream>(
-            std::make_unique<HotReplayStream>(std::move(events), std::move(completion), options_.batch_size));
+            std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options_.batch_size));
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position) const
