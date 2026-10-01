@@ -395,6 +395,13 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
         extendSum += extension;
     }
 
+    double durableBaselineSum = 0;
+    for(int n = 0; n < 10; ++n)
+        durableBaselineSum += measure(
+                [&] {
+                    ASSERT_TRUE(
+                            store->applyRaft(store->appliedIndex().value_or(0) + 1, [] { return std::string{}; }).ok());
+                });
     EXPECT_LT(registerApplyMax, 20);
     EXPECT_LT(extendApplyMax, 20);
     EXPECT_LT(registerMax, 20);
@@ -458,7 +465,8 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
     }
     std::cout << "64 Keepers / 10000 stories: state apply Register mean/max " << registerApplySum / 10 << "/"
               << registerApplyMax << " ms; state apply ExtendCeiling mean/max " << extendApplySum / 10 << "/"
-              << extendApplyMax << " ms; durable Register mean/max " << registerSum / 10 << "/" << registerMax
+              << extendApplyMax << " ms; durable no-op mean " << durableBaselineSum / 10
+              << " ms; durable Register mean/max " << registerSum / 10 << "/" << registerMax
               << " ms; ExtendCeiling mean/max " << extendSum / 10 << "/" << extendMax << " ms; heartbeat 64 proofs "
               << proofMs << " ms; transition 3 stories " << transitionMs << " ms" << std::endl;
 }
