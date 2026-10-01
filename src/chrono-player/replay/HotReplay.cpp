@@ -9,6 +9,7 @@
 #include <tuple>
 #include "chrono-player/replay/CompletionPolicy.h"
 #include "chrono-player/replay/ReplayMerge.h"
+#include "chrono-player/replay/PhysicalRead.h"
 
 namespace chronolog::player
 {
@@ -20,7 +21,7 @@ bool inRange(const Range& r, const Event& e)
     if(r.axis == Range::Axis::Hlc)
         return e.hlc >= r.start && e.hlc < r.end;
     int64_t p = e.physical.physical_ns;
-    if(!e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced)
+    if(!physicalBounded(e))
         return p >= r.start.physical_ns && p < r.end.physical_ns;
     uint64_t u = *e.physical.uncertainty_ns;
     if(u > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
@@ -192,7 +193,7 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
             events.resize(limit - retained);
         }
         retained += events.size();
-        for(const auto& e: events) unbounded |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
+        for(const auto& e: events) unbounded |= !physicalBounded(e);
         std::stable_sort(events.begin(), events.end(), ReplayLess);
         inputs.push_back(std::move(events));
     };
@@ -201,26 +202,37 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
         frontiers.push_back(keeper.frontier);
         take(std::move(keeper.events));
     }
-    if(archiveEnd(fetch, range) > range.start)
+    bool policy = fetch.physical_policy;
+    const Range window = physicalWindow(range, policy);
+    if(options.archive || archiveEnd(fetch, range) > range.start)
     {
         archive_failed = !options.archive || !options.archive->refreshNow().ok();
         if(!archive_failed)
         {
             auto records = options.archive->manifest(story);
-            archive_failed = !records.ok();
+            archive_failed =
+                    !records.ok() && !(absl::IsNotFound(records.status()) && archiveEnd(fetch, range) <= range.start);
             if(records.ok())
+            {
+                for(const auto& record: *records) policy &= record.physical_policy;
                 for(const auto& record: *records)
                 {
+                    if(!record.physical_policy)
+                        policy = false;
+                    const auto scan = physicalWindow(range, policy);
+                    if(record.end <= scan.start || record.start >= scan.end)
+                        continue;
                     if(record.state == ManifestState::Lost)
                         archive_failed = true;
                     if(record.state != ManifestState::Published)
                         continue;
-                    auto events = options.archive->readRecord(record, {Range::Axis::Hlc, record.start, record.end});
+                    auto events = options.archive->readRecord(record, range, limit - retained + 1);
                     if(!events.ok())
                         archive_failed = true;
                     else
                         take(*std::move(events));
                 }
+            }
         }
     }
     auto completion = CompletionPolicy::decide(range,
@@ -228,8 +240,8 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
                                                frontiers,
                                                fetch.writers,
                                                archive_failed || abandoned(fetch, range),
-                                               fetch.physical_policy,
-                                               unbounded);
+                                               policy,
+                                               unbounded || window.end.physical_ns == INT64_MAX);
     if(limited && completion.reason != IncompleteReason::SourceFailed)
     {
         completion.complete = false;
@@ -369,11 +381,25 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
 {
     if(range.end < range.start)
         return absl::InvalidArgumentError("range end precedes start");
-    auto fetched = source_->fetch(id, range);
+    bool archive_policy = true;
+    if(range.axis == Range::Axis::Physical && options_.archive)
+    {
+        if(options_.archive->refreshNow().ok())
+        {
+            auto manifest = options_.archive->manifest(id);
+            if(manifest.ok())
+                for(const auto& record: *manifest) archive_policy &= record.physical_policy;
+        }
+    }
+    auto fetched = range.axis == Range::Axis::Physical ? source_->fetchPhysical(id, range, archive_policy)
+                                                       : source_->fetch(id, range);
     if(!fetched.ok())
         return fetched.status();
     if(range.axis == Range::Axis::Physical)
+    {
+        fetched->physical_policy &= archive_policy;
         return physicalRead(id, range, *fetched, options_);
+    }
     const size_t limit = std::max<size_t>(1, options_.read_max_events);
     Range covered = range;
     bool limited = false;
@@ -508,8 +534,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     for(auto& k: fetched->keepers)
     {
         std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e); });
-        for(const auto& e: k.events)
-            unbounded_event |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
+        for(const auto& e: k.events) unbounded_event |= !physicalBounded(e);
         std::stable_sort(k.events.begin(), k.events.end(), ReplayLess);
         inputs.push_back(std::move(k.events));
     }
@@ -532,8 +557,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
             else
             {
                 std::erase_if(*events, [&](const Event& e) { return !inRange(cold, e); });
-                for(const auto& e: *events)
-                    unbounded_event |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
+                for(const auto& e: *events) unbounded_event |= !physicalBounded(e);
                 inputs.push_back(*std::move(events));
             }
         }

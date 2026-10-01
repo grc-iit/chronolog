@@ -492,7 +492,8 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
     return result;
 }
 
-absl::StatusOr<std::vector<Event>> FileTierStore::readRecord(const ManifestRecord& record, Range range) const
+absl::StatusOr<std::vector<Event>>
+FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_events) const
 {
     const auto valid = ValidRange(range);
     if(!valid.ok())
@@ -507,16 +508,30 @@ absl::StatusOr<std::vector<Event>> FileTierStore::readRecord(const ManifestRecor
     for(const auto& event: *events)
         if(event.id.story_id != record.story_id || event.hlc < record.start || event.hlc >= record.end)
             return absl::UnavailableError("invalid archived event window");
-    std::erase_if(*events,
-                  [&](const Event& event)
-                  {
-                      return range.axis == Range::Axis::Hlc
-                                     ? event.hlc < range.start || event.hlc >= range.end
-                                     : event.physical.physical_ns < range.start.physical_ns ||
-                                               event.physical.physical_ns >= range.end.physical_ns;
-                  });
     std::stable_sort(events->begin(), events->end(), ReplayLess);
-    return events;
+    std::vector<Event> selected;
+    for(auto& event: *events)
+    {
+        bool matches;
+        if(range.axis == Range::Axis::Hlc)
+            matches = event.hlc >= range.start && event.hlc < range.end;
+        else
+        {
+            const bool bounded = event.physical.status == ClockStatus::Synced && event.physical.uncertainty_ns &&
+                                 *event.physical.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
+            const __int128 p = event.physical.physical_ns;
+            const __int128 u = bounded ? *event.physical.uncertainty_ns : 0;
+            matches = bounded ? p - u < range.end.physical_ns && p + u >= range.start.physical_ns
+                              : p >= range.start.physical_ns && p < range.end.physical_ns;
+        }
+        if(matches)
+        {
+            if(selected.size() == max_events)
+                break;
+            selected.push_back(std::move(event));
+        }
+    }
+    return selected;
 }
 
 absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId story) const

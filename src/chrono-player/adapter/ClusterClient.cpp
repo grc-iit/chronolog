@@ -24,6 +24,7 @@ absl::Status ClusterClient::registerSelf() { return refresh(); }
 absl::Status ClusterClient::refresh() const
 {
     internal::v1::RegisterRequest request;
+    request.set_policy_version(PhysicalPolicy{}.version);
     auto* process = request.mutable_process();
     process->set_process_id(self_.id);
     process->set_instance(self_.instance);
@@ -38,6 +39,16 @@ absl::Status ClusterClient::refresh() const
         return absl::UnavailableError("visor register failed: " + rpc.error_message());
     if(response.status().code() != 0)
         return absl::Status(static_cast<absl::StatusCode>(response.status().code()), response.status().message());
+
+    if(response.has_policy())
+    {
+        const auto& p = response.policy();
+        const PhysicalPolicy expected;
+        if(p.version() != expected.version || p.acceptance_window_ns() != expected.acceptance_window_ns ||
+           p.skew_limit_ns() != expected.skew_limit_ns || p.hlc_lead_ns() != expected.hlc_lead_ns ||
+           p.uncertainty_cap_ns() != static_cast<int64_t>(expected.uncertainty_cap_ns))
+            return absl::FailedPreconditionError("physical policy mismatch");
+    }
 
     std::vector<Route> learned;
     std::function<void(const Route&)> callback;

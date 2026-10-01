@@ -35,7 +35,12 @@ public:
             keeper->set_endpoint("keeper:50052");
             if(state_fields)
             {
-                response->mutable_policy()->set_skew_limit_ns(17);
+                auto* policy = response->mutable_policy();
+                policy->set_version(1);
+                policy->set_skew_limit_ns(60000000000LL);
+                policy->set_acceptance_window_ns(15000000000LL);
+                policy->set_hlc_lead_ns(61000000000LL);
+                policy->set_uncertainty_cap_ns(1000000000LL);
                 update->set_physical_policy(true);
                 update->mutable_archived_below()->set_physical_ns(revision);
                 update->mutable_ordering_cut()->set_physical_ns(900);
@@ -172,7 +177,7 @@ TEST(PlayerClusterClientTest, PreservesRouteStateAndRefreshesDynamicSnapshots)
     ASSERT_EQ(state->abandoned.size(), 1);
     EXPECT_EQ(state->abandoned[0].start, (Hlc{120, 0}));
     EXPECT_TRUE(player.physicalPolicy(42));
-    EXPECT_EQ(player.skewLimitNs(), 17);
+    EXPECT_EQ(player.skewLimitNs(), 60000000000LL);
     catalog.revision = 11;
     state = player.routeState(42);
     ASSERT_TRUE(state.ok());

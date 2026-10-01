@@ -13,6 +13,7 @@ namespace chronolog::contract
 struct ReplayHarness
 {
     std::unique_ptr<Replay> sut;
+    std::function<void(bool, int64_t, uint64_t)> physicalState;
     // Route contains keeper-a and keeper-b. Diagnostic acquisition view can
     // omit a writer; its Keeper seal still determines completeness.
     std::function<void(std::vector<KeeperFrontier>)> setKeeperFrontiers;
@@ -203,10 +204,10 @@ TEST_P(ReplayContract, CancellationIsIdempotent)
     EXPECT_TRUE(!next.ok() || !*next || ((**next).completion && !(**next).completion->complete));
 }
 
-TEST_P(ReplayContract, PhysicalAxisAlwaysIncomplete)
+TEST_P(ReplayContract, PhysicalReadCompleteWhenEveryPhysicalFrontierPassesEnd)
 {
-    ASSERT_TRUE(h->setFrontiers);
-    h->setFrontiers({{2, 3, {301, 0}}, {4, 3, {301, 0}}});
+    ASSERT_TRUE(h->physicalState);
+    h->physicalState(true, 300, 0);
     auto range = Query();
     range.axis = Range::Axis::Physical;
     auto stream = h->sut->read(1, range);
@@ -214,8 +215,73 @@ TEST_P(ReplayContract, PhysicalAxisAlwaysIncomplete)
     auto result = Collect(**stream);
     ASSERT_TRUE(result.ok());
     ASSERT_EQ(result->completions.size(), 1u);
+    EXPECT_TRUE(result->completions[0].complete);
+    h->physicalState(true, 299, 0);
+    stream = h->sut->read(1, range);
+    ASSERT_TRUE(stream.ok());
+    result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->completions[0].reason, IncompleteReason::LaggingWriters);
+}
+TEST_P(ReplayContract, PhysicalRangeHonorsUncertainty)
+{
+    ASSERT_TRUE(h->physicalState);
+    h->physicalState(true, 300, 5);
+    Range range{Range::Axis::Physical, {151, 0}, {155, 0}};
+    auto stream = h->sut->read(1, range);
+    ASSERT_TRUE(stream.ok());
+    auto result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
+    ASSERT_EQ(result->events.size(), 1u);
+    EXPECT_EQ(result->events[0].physical.physical_ns, 150);
+    EXPECT_TRUE(result->completions[0].complete);
+}
+TEST_P(ReplayContract, UnboundedEventMakesPhysicalReadIncomplete)
+{
+    ASSERT_TRUE(h->physicalState);
+    h->physicalState(true, 300, UINT64_MAX);
+    auto range = Query();
+    range.axis = Range::Axis::Physical;
+    auto stream = h->sut->read(1, range);
+    ASSERT_TRUE(stream.ok());
+    auto result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
     EXPECT_FALSE(result->completions[0].complete);
     EXPECT_EQ(result->completions[0].reason, IncompleteReason::PhysicalAxisUnbounded);
+}
+TEST_P(ReplayContract, StoryWithoutPolicyIsNeverPhysicallyComplete)
+{
+    ASSERT_TRUE(h->physicalState);
+    h->physicalState(false, 300, 0);
+    auto range = Query();
+    range.axis = Range::Axis::Physical;
+    auto stream = h->sut->read(1, range);
+    ASSERT_TRUE(stream.ok());
+    auto result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->events.empty());
+    EXPECT_FALSE(result->completions[0].complete);
+    EXPECT_EQ(result->completions[0].reason, IncompleteReason::PhysicalAxisUnbounded);
+}
+TEST_P(ReplayContract, TruncatedReadFrontierIsACompletePrefix)
+{
+    h->setKeeperFrontiers({{"keeper-a", 7, {160, 0}, true}, {"keeper-b", 7, {180, 0}, true}});
+    h->truncateSource();
+    auto stream = h->sut->read(1, Query());
+    ASSERT_TRUE(stream.ok());
+    auto result = Collect(**stream);
+    ASSERT_TRUE(result.ok());
+    ASSERT_EQ(result->completions.size(), 1u);
+    const auto cut = result->completions[0].frontier;
+    EXPECT_LE(cut, (Hlc{160, 0}));
+    EXPECT_EQ(result->completions[0].reason, IncompleteReason::Truncated);
+    auto prefix = Query();
+    prefix.end = cut;
+    stream = h->sut->read(1, prefix);
+    ASSERT_TRUE(stream.ok());
+    auto again = Collect(**stream);
+    ASSERT_TRUE(again.ok());
+    EXPECT_EQ(again->events.size(), result->events.size());
 }
 
 TEST_P(ReplayContract, TailResumesExclusivelyAfterPosition)
