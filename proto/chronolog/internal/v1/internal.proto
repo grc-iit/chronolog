@@ -257,6 +257,11 @@ message FetchHotTrailer
     repeated chronolog.v1.WriterFrontier frontiers = 1;
     // True if the limit prevented a full snapshot; Replay remains incomplete.
     bool truncated = 2;
+    // Eviction floor E of this Keeper for the story: events with hlc below it may
+    // have left Keeper RAM, and only after their chunk's receipt settled. Every
+    // event at or above it is still served here. Zero when nothing was freed.
+    // Survives Keeper restart. The Player reads the archive over [start, max E).
+    chronolog.v1.Hlc evicted_below = 5;
 }
 message FetchHotResponse
 {
