@@ -61,6 +61,11 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "payload_max_bytes",
                                                 "causal_floor_skew_limit_ns",
                                                 "dedupe_window",
+                                                "wal_dir",
+                                                "group_commit_window_ms",
+                                                "group_commit_max_bytes",
+                                                "reserve_ahead_ms",
+                                                "wal_max_bytes",
                                                 "worker_threads",
                                                 "heartbeat_interval_ms",
                                                 "insecure_bind_all",
@@ -78,6 +83,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             if(json.contains(key))
                 field = json.at(key).get<std::string>();
         };
+        str("wal_dir", cfg.wal_dir);
         str("listen", cfg.listen);
         str("internal_listen", cfg.internal_listen);
         str("process_id", cfg.process_id);
@@ -89,6 +95,14 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.causal_floor_skew_limit_ns = json.at("causal_floor_skew_limit_ns").get<int64_t>();
         if(json.contains("dedupe_window"))
             cfg.dedupe_window = json.at("dedupe_window").get<size_t>();
+        if(json.contains("group_commit_window_ms"))
+            cfg.group_commit_window_ms = json.at("group_commit_window_ms").get<uint32_t>();
+        if(json.contains("group_commit_max_bytes"))
+            cfg.group_commit_max_bytes = json.at("group_commit_max_bytes").get<size_t>();
+        if(json.contains("reserve_ahead_ms"))
+            cfg.reserve_ahead_ms = json.at("reserve_ahead_ms").get<uint32_t>();
+        if(json.contains("wal_max_bytes"))
+            cfg.wal_max_bytes = json.at("wal_max_bytes").get<uint64_t>();
         if(json.contains("worker_threads"))
             cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
         if(json.contains("heartbeat_interval_ms"))
@@ -157,7 +171,8 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
                             {"internal_listen", &cfg.internal_listen},
                             {"process_id", &cfg.process_id},
                             {"self_endpoint", &cfg.self_endpoint},
-                            {"visor_internal", &cfg.visor_internal}})
+                            {"visor_internal", &cfg.visor_internal},
+                            {"wal_dir", &cfg.wal_dir}})
         if(auto v = env(key))
             *field = *v;
     if(auto v = env("payload_max_bytes"))
@@ -166,6 +181,17 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         if(!parsed.ok())
             return parsed.status();
         cfg.payload_max_bytes = *parsed;
+    }
+    for(auto [key, field]: {std::pair<const char*, uint64_t*>{"wal_max_bytes", &cfg.wal_max_bytes},
+                            {"group_commit_max_bytes", &cfg.group_commit_max_bytes}})
+    {
+        if(auto v = env(key))
+        {
+            auto parsed = parseUint(key, *v);
+            if(!parsed.ok())
+                return parsed.status();
+            *field = *parsed;
+        }
     }
     if(auto v = env("dedupe_window"))
     {
@@ -182,7 +208,9 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         cfg.causal_floor_skew_limit_ns = static_cast<int64_t>(*parsed);
     }
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"worker_threads", &cfg.worker_threads},
-                            {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms}})
+                            {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
+                            {"group_commit_window_ms", &cfg.group_commit_window_ms},
+                            {"reserve_ahead_ms", &cfg.reserve_ahead_ms}})
     {
         if(auto v = env(key))
         {
@@ -217,6 +245,9 @@ absl::Status KeeperConfig::validate() const
         return absl::InvalidArgumentError(
                 "payload_max_bytes, dedupe_window and heartbeat_interval_ms must be positive and the skew limit "
                 "non-negative");
+    if(wal_dir.empty() || group_commit_max_bytes == 0 || reserve_ahead_ms == 0 || wal_max_bytes == 0)
+        return absl::InvalidArgumentError(
+                "wal_dir, group_commit_max_bytes, reserve_ahead_ms and wal_max_bytes must be set");
     for(const auto& writer: static_writers)
         if(writer.story_id == 0 || writer.writer_id == 0 || writer.incarnation == 0)
             return absl::InvalidArgumentError("static_writers entries need story_id, writer_id and incarnation");

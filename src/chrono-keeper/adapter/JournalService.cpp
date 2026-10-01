@@ -10,17 +10,22 @@ namespace
 
 // Runs on a worker thread.
 template <class Req, class Resp>
-grpc::Status process(RamJournal& journal, const Req& request, Resp& response)
+void process(RamJournal& journal, const Req& request, Resp& response, std::function<void(grpc::Status)> done)
 {
     CHRONOLOG_ASSERT_WORKER_THREAD();
     auto parsed = convert::parse(request);
     if(!parsed.ok())
-        return convert::toGrpc(parsed.status());
-    auto results = journal.append(parsed->batch, parsed->durability);
-    if(!results.ok())
-        return convert::toGrpc(results.status());
-    convert::fill(response, *parsed, *results);
-    return grpc::Status::OK;
+        return done(convert::toGrpc(parsed.status()));
+    auto input = std::make_shared<convert::ParsedAppend>(std::move(*parsed));
+    journal.appendAsync(input->batch,
+                        input->durability,
+                        [input, &response, done = std::move(done)](auto results)
+                        {
+                            if(!results.ok())
+                                return done(convert::toGrpc(results.status()));
+                            convert::fill(response, *input, *results);
+                            done(grpc::Status::OK);
+                        });
 }
 
 class AppendStreamReactor final: public grpc::ServerBidiReactor<v1::AppendStreamRequest, v1::AppendStreamResponse>
@@ -62,13 +67,16 @@ private:
     void run()
     {
         response_.Clear();
-        grpc::Status status = process(journal_, request_, response_);
-        if(!status.ok())
-        {
-            Finish(status);
-            return;
-        }
-        StartWrite(&response_);
+        process(journal_,
+                request_,
+                response_,
+                [this](grpc::Status status)
+                {
+                    if(!status.ok())
+                        Finish(status);
+                    else
+                        StartWrite(&response_);
+                });
     }
 
     RamJournal& journal_;
@@ -89,8 +97,9 @@ grpc::ServerUnaryReactor* JournalService::Append(grpc::CallbackServerContext* co
                                                  v1::AppendResponse* response)
 {
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    bool queued = pool_.submit([this, reactor, request, response]
-                               { reactor->Finish(process(journal_, *request, *response)); });
+    bool queued = pool_.submit(
+            [this, reactor, request, response]
+            { process(journal_, *request, *response, [reactor](grpc::Status status) { reactor->Finish(status); }); });
     if(!queued)
         reactor->Finish(grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "keeper is saturated"));
     return reactor;

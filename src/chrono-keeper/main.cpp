@@ -1,7 +1,3 @@
-// ChronoKeeper: hosts chronolog.v1.Journal on `listen` and chronolog.internal.v1.Archive on
-// `internal_listen`, registers with the Visor, and applies its acquisition stream. The journal is
-// RAM only, so DURABLE appends are rejected with UNIMPLEMENTED until the WAL lands.
-
 #include <grpcpp/grpcpp.h>
 
 #include <atomic>
@@ -20,7 +16,7 @@
 #include "adapter/Convert.h"
 #include "adapter/JournalService.h"
 #include "clock/SystemClock.h"
-#include "journal/RamJournal.h"
+#include "wal/WalJournal.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
 #include "membership/RouteWatcher.h"
@@ -125,7 +121,22 @@ int main(int argc, char** argv)
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
     journal_config.dedupe_window = config->dedupe_window;
-    RamJournal journal(clock, membership, journal_config);
+    WalJournalConfig wal_config{config->wal_dir,
+                                config->group_commit_window_ms,
+                                config->group_commit_max_bytes,
+                                config->reserve_ahead_ms,
+                                config->wal_max_bytes};
+    std::unique_ptr<WalJournal> owned_journal;
+    try
+    {
+        owned_journal = std::make_unique<WalJournal>(clock, membership, journal_config, wal_config);
+    }
+    catch(const std::exception& error)
+    {
+        std::cerr << "chrono_keeper: " << error.what() << "\n";
+        return 1;
+    }
+    auto& journal = *owned_journal;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
 
@@ -170,7 +181,7 @@ int main(int argc, char** argv)
     keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);
     cluster.start();
 
-    std::cout << "journal ready durability=ACCEPTED-only process_id=" << config->process_id
+    std::cout << "journal ready durability=ACCEPTED,DURABLE process_id=" << config->process_id
               << " listen=" << config->listen << " internal_listen=" << config->internal_listen << std::endl;
 
     std::atomic<bool> finished{false};

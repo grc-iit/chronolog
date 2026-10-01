@@ -14,7 +14,7 @@ add_library(chronolog_keeper_lib STATIC
     "${KEEPER_DIR}/runtime/WorkerPool.cpp")
 target_include_directories(chronolog_keeper_lib PUBLIC "${KEEPER_DIR}")
 target_link_libraries(chronolog_keeper_lib
-    PUBLIC chronolog_keeper_journal chronolog_common_clock chronolog_contracts
+    PUBLIC chronolog_keeper_wal chronolog_keeper_journal chronolog_common_clock chronolog_contracts
            chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings)
 
