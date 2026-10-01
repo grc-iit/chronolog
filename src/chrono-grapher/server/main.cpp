@@ -1,5 +1,6 @@
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
+#include "rpc/VisorChannel.h"
 #include <grpcpp/grpcpp.h>
 #include <chrono>
 #include <csignal>
@@ -67,8 +68,7 @@ int main(int argc, char** argv)
         std::cerr << "cannot listen on " << config->internal_listen << '\n';
         return 1;
     }
-    auto stub = chronolog::internal::v1::Cluster::NewStub(
-            grpc::CreateChannel(config->visor_internal, grpc::InsecureChannelCredentials()));
+    auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::visorChannel(config->visor_internal));
     std::jthread cluster(
             [&](std::stop_token stop)
             {

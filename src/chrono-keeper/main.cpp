@@ -22,6 +22,7 @@
 #include "membership/ConfigMembership.h"
 #include "membership/RouteWatcher.h"
 #include "runtime/ClusterClient.h"
+#include "rpc/VisorChannel.h"
 #include "runtime/WorkerPool.h"
 
 namespace
@@ -90,7 +91,7 @@ int main(int argc, char** argv)
     grpc::ChannelArguments channel_args;
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
-    auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
+    auto visor = rpc::visorChannel(config->visor_internal, channel_args);
     const std::string instance = newInstanceId();
     auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
     auto recovered_identity = std::make_shared<std::string>();
