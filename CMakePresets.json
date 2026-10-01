@@ -31,7 +31,9 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CHRONOLOG_SANITIZERS": "address;undefined"
+        "CHRONOLOG_SANITIZERS": "address;undefined",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-asan",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets"
       }
     },
     {
@@ -40,7 +42,9 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CHRONOLOG_SANITIZERS": "thread"
+        "CHRONOLOG_SANITIZERS": "thread",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-tsan",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets"
       }
     }
   ],
