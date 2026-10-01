@@ -29,6 +29,7 @@ struct Statement
     std::vector<std::vector<Value>> tuples;
     std::vector<Predicate> predicates;
     std::optional<client::HlcRange> range;
+    std::optional<client::PhysicalRange> physical_range;
     std::string order{"time"};
     bool count{}, descending{};
     std::optional<size_t> limit;

@@ -280,12 +280,23 @@ public:
                         auto lo = hlc();
                         need("and");
                         auto hi = hlc();
-                        if(hi < lo || s.range)
+                        if(hi < lo || s.range || s.physical_range)
                             throw std::invalid_argument("invalid token TIME range");
                         s.range = client::HlcRange{lo, hi};
                     }
                     else if(col == "physical")
-                        throw std::invalid_argument("token PHYSICAL: physical range needs M6");
+                    {
+                        need("between");
+                        auto lo = literal();
+                        need("and");
+                        auto hi = literal();
+                        if(!lo.is_number_integer() || !hi.is_number_integer() || s.range || s.physical_range)
+                            throw std::invalid_argument("invalid token PHYSICAL range");
+                        const auto start = lo.get<int64_t>(), end = hi.get<int64_t>();
+                        if(end <= start)
+                            throw std::invalid_argument("invalid token PHYSICAL range");
+                        s.physical_range = client::PhysicalRange{start, end};
+                    }
                     else
                     {
                         auto op = token().text;
