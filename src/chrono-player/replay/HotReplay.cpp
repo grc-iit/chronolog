@@ -176,8 +176,11 @@ private:
     std::atomic<bool> cancelled_{false};
 };
 
-absl::StatusOr<std::unique_ptr<ReplayStream>>
-physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplayOptions& options)
+absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
+                                                           const Range& range,
+                                                           HotFetch& fetch,
+                                                           const HotReplayOptions& options,
+                                                           const HotSource& source)
 {
     const size_t limit = std::max<size_t>(1, options.read_max_events);
     size_t retained = 0;
@@ -197,42 +200,48 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
         std::stable_sort(events.begin(), events.end(), ReplayLess);
         inputs.push_back(std::move(events));
     };
-    for(auto& keeper: fetch.keepers)
-    {
-        frontiers.push_back(keeper.frontier);
-        take(std::move(keeper.events));
-    }
     bool policy = fetch.physical_policy;
+    std::vector<ManifestRecord> records;
     if(options.archive || archiveEnd(fetch, range) > range.start)
     {
         archive_failed = !options.archive || !options.archive->refreshNow().ok();
         if(!archive_failed)
         {
-            auto records = options.archive->manifest(story);
+            auto manifest = options.archive->manifest(story);
             archive_failed =
-                    !records.ok() && !(absl::IsNotFound(records.status()) && archiveEnd(fetch, range) <= range.start);
-            if(records.ok())
-            {
-                for(const auto& record: *records) policy &= record.physical_policy;
-                for(const auto& record: *records)
-                {
-                    if(!record.physical_policy)
-                        policy = false;
-                    const auto scan = physicalWindow(range, policy);
-                    if(record.end <= scan.start || record.start >= scan.end)
-                        continue;
-                    if(record.state == ManifestState::Lost)
-                        archive_failed = true;
-                    if(record.state != ManifestState::Published)
-                        continue;
-                    auto events = options.archive->readRecord(record, range, limit - retained + 1);
-                    if(!events.ok())
-                        archive_failed = true;
-                    else
-                        take(*std::move(events));
-                }
-            }
+                    !manifest.ok() && !(absl::IsNotFound(manifest.status()) && archiveEnd(fetch, range) <= range.start);
+            if(manifest.ok())
+                records = *std::move(manifest);
+            for(const auto& record: records) policy &= record.physical_policy;
         }
+    }
+    if(!policy && fetch.physical_policy)
+    {
+        auto full = source.fetchPhysical(story, range, false);
+        if(!full.ok())
+            return full.status();
+        fetch = *std::move(full);
+        fetch.physical_policy = false;
+    }
+    for(auto& keeper: fetch.keepers)
+    {
+        frontiers.push_back(keeper.frontier);
+        take(std::move(keeper.events));
+    }
+    const auto scan = physicalWindow(range, policy);
+    for(const auto& record: records)
+    {
+        if(record.end <= scan.start || record.start >= scan.end)
+            continue;
+        if(record.state == ManifestState::Lost)
+            archive_failed = true;
+        if(record.state != ManifestState::Published)
+            continue;
+        auto events = options.archive->readRecord(record, range, limit - retained + 1);
+        if(!events.ok())
+            archive_failed = true;
+        else
+            take(*std::move(events));
     }
     auto completion = CompletionPolicy::decide(range,
                                                fetch.route_epoch,
@@ -397,7 +406,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     if(range.axis == Range::Axis::Physical)
     {
         fetched->physical_policy &= archive_policy;
-        return physicalRead(id, range, *fetched, options_);
+        return physicalRead(id, range, *fetched, options_, *source_);
     }
     const size_t limit = std::max<size_t>(1, options_.read_max_events);
     Range covered = range;

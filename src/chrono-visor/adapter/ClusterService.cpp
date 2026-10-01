@@ -2,6 +2,7 @@
 #include "dynamic/MembershipState.h"
 
 #include <chrono>
+#include <algorithm>
 #include <deque>
 #include <optional>
 
