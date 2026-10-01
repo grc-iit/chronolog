@@ -1,5 +1,6 @@
 #include "catalog/InMemoryMetadataStore.h"
 
+#include <optional>
 #include <utility>
 
 namespace chronolog::visor
@@ -162,13 +163,26 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
         if(!keeper.ok())
             return keeper.status();
         AcquisitionRow& row = acquisitions_[{id, writer_id}];
+        std::optional<AcquisitionChange> superseded;
+        // A writer that re-acquires while still active has crashed. Its old
+        // incarnation is released together with the new acquire.
         if(row.incarnation != 0 && !row.released)
-            return absl::FailedPreconditionError("writer identity already holds an active acquisition");
+        {
+            superseded = AcquisitionChange{++revision_,
+                                           id,
+                                           writer_id,
+                                           row.incarnation,
+                                           row.assigned_keeper,
+                                           AcquisitionState::Released};
+            releases_[{id, writer_id, row.incarnation}] = *superseded;
+        }
         row.incarnation += 1;
         row.released = false;
         row.assigned_keeper = *keeper;
         change = {++revision_, id, writer_id, row.incarnation, row.assigned_keeper, AcquisitionState::Acquired};
         out = {id, writer_id, row.incarnation, topology_.routeFor(story->second.epoch), row.assigned_keeper};
+        if(superseded)
+            notify(*superseded);
         notify(change);
     }
     return out;

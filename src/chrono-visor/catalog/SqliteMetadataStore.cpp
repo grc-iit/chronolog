@@ -573,8 +573,11 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
     }
 
     uint64_t incarnation = 1;
+    std::optional<AcquisitionChange> superseded;
     {
-        Statement prior(db_, "SELECT incarnation, released FROM acquisitions WHERE story_id = ?1 AND writer_id = ?2");
+        Statement prior(db_,
+                        "SELECT incarnation, released, keeper_id, keeper_endpoint FROM acquisitions"
+                        " WHERE story_id = ?1 AND writer_id = ?2");
         CHRONOLOG_RETURN_IF_ERROR(prior.prepared());
         prior.integer(1, id).integer(2, writer_id);
         auto row = prior.step();
@@ -582,10 +585,38 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
             return row.status();
         if(*row)
         {
-            if(prior.column(1) == 0)
-                return absl::FailedPreconditionError("writer identity already holds an active acquisition");
             incarnation = prior.column(0) + 1;
+            // A writer that re-acquires while still active has crashed. Its old
+            // incarnation is released in the same transaction as the new one.
+            if(prior.column(1) == 0)
+            {
+                auto released_revision = nextCounter(db_, "acquisition_revision");
+                if(!released_revision.ok())
+                    return released_revision.status();
+                superseded = AcquisitionChange{*released_revision,
+                                               id,
+                                               writer_id,
+                                               prior.column(0),
+                                               KeeperRef{prior.columnText(2), prior.columnText(3)},
+                                               AcquisitionState::Released};
+            }
         }
+    }
+    if(superseded)
+    {
+        Statement record(db_,
+                         "INSERT INTO releases(story_id, writer_id, incarnation, revision, keeper_id, keeper_endpoint)"
+                         " VALUES (?1, ?2, ?3, ?4, ?5, ?6)");
+        CHRONOLOG_RETURN_IF_ERROR(record.prepared());
+        record.integer(1, id)
+                .integer(2, writer_id)
+                .integer(3, superseded->incarnation)
+                .integer(4, superseded->revision)
+                .text(5, superseded->assigned_keeper.process_id)
+                .text(6, superseded->assigned_keeper.endpoint);
+        auto done = record.step();
+        if(!done.ok())
+            return done.status();
     }
     auto keeper = topology_.assignKeeper(writer_id, (*story)->epoch);
     if(!keeper.ok())
@@ -610,7 +641,11 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
 
     if(observer_)
+    {
+        if(superseded)
+            observer_->onAcquisitionChange(*superseded);
         observer_->onAcquisitionChange({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired});
+    }
     return Acquisition{id, writer_id, incarnation, topology_.routeFor((*story)->epoch), *keeper};
 }
 

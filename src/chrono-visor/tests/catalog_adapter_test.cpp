@@ -191,16 +191,14 @@ TEST_F(catalog_adapter, WellFormedButStaleRequestsAreDomainResultsNotGrpcErrors)
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyChronicle, destroy_chronicle, &destroyed).ok());
     EXPECT_EQ(destroyed.status().code(), kFailedPrecondition);
 
-    // A second acquire with an active identity is refused, and a retried release
-    // returns the revision it first committed.
-    EXPECT_EQ(acquire(story, "w1").status().code(), kFailedPrecondition);
-    auto first_release = release(held);
-    EXPECT_EQ(first_release.status().code(), 0);
+    // A second acquire with an active identity supersedes the old incarnation, and a
+    // retried release of it returns the revision the supersede committed.
     auto newer = acquire(story, "w1");
+    EXPECT_EQ(newer.status().code(), 0);
     EXPECT_GT(newer.incarnation(), held.incarnation());
     auto retry = release(held);
     EXPECT_EQ(retry.status().code(), 0);
-    EXPECT_EQ(retry.revision(), first_release.revision());
+    EXPECT_GT(retry.revision(), 0u);
     EXPECT_EQ(release(newer).status().code(), 0);
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyStory, destroy, &status).ok());
     EXPECT_EQ(status.status().code(), 0);

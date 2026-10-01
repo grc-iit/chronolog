@@ -27,7 +27,9 @@ add_executable(chronolog_visor_tests
     tests/static_route_membership_contract.cpp
     tests/sqlite_restart_test.cpp
     tests/catalog_adapter_test.cpp
-    tests/cluster_adapter_test.cpp)
+    tests/cluster_adapter_test.cpp
+    tests/supersede_test.cpp
+    tests/fence_end_to_end_test.cpp)
 target_include_directories(chronolog_visor_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/tests"
     "${PROJECT_SOURCE_DIR}/tests/contract")
@@ -41,3 +43,10 @@ if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
         "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
 endif()
 gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST)
+
+# Tiny Catalog client driven by tests/acceptance.sh against the real binary.
+add_executable(visor_acceptance_client tests/acceptance_client.cpp)
+target_link_libraries(visor_acceptance_client PRIVATE chronolog_proto chronolog_warnings)
+add_test(NAME visor_binary_acceptance
+         COMMAND timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+                 $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_acceptance_client>)

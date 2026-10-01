@@ -113,11 +113,13 @@ public:
 
     /**
      * Acquire a writer identity for a story.
-     * Preconditions: Live story and nonempty stable writer identity; prior acquisition released.
+     * Preconditions: Live story and nonempty stable writer identity. An identity that still holds an active
+     * acquisition has crashed: acquire supersedes it by releasing the old incarnation, with its own revision and
+     * without a fence wait, in the same atomic step that creates the next incarnation.
      * Postconditions: Returns stable writer_id, persisted strictly increased incarnation, route, epoch and
      * assigned_keeper stable per (writer_id, epoch).
      * Status codes: OK; INVALID_ARGUMENT for empty identity; NOT_FOUND for unknown id; FAILED_PRECONDITION for
-     * tombstone or already active identity; UNAVAILABLE for storage failure.
+     * tombstone; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; persistence completes before success.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: PersistedIncarnationStrictlyIncreases,
      * AcquireReturnsRouteAndEpoch,
