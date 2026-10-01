@@ -18,6 +18,7 @@ async function create(client, name) {
 async function complete(client, story, results) {
   const range = { start: results[0].hlc,
     end: { physicalNs: results.at(-1).hlc.physicalNs, logical: results.at(-1).hlc.logical + 1 } };
+  let last;
   for (let attempt = 0; attempt < 40; ++attempt) {
     const stream = client.read(story, range, { timeoutMs: 5000 });
     const events = [];
@@ -27,13 +28,15 @@ async function complete(client, story, results) {
         assert.ok(events.length <= results.length);
       }
       const completion = await stream.completion;
+      last = { completion, count: events.length };
       if (completion.complete) return { events, completion, stream };
     } catch (error) {
+      last = { code: error.code, message: error.message };
       if (!['FAILED_PRECONDITION', 'UNAVAILABLE'].includes(error.code)) throw error;
     }
     await delay(50);
   }
-  throw new Error('read did not become complete');
+  throw new Error(`read did not become complete: ${JSON.stringify(last, (_, value) => typeof value === 'bigint' ? value.toString() : value)}`);
 }
 
 test('catalog, 1000 ordered DURABLE appends, exact binary replay, exclusive tail, fenced release', { timeout: 55000 }, async () => {

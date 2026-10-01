@@ -6,13 +6,14 @@
 # inside a container. Run on dragon from the repository root through rbuild:
 #   rbuild 'bash tests/smoke/run_dragon.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
-# SKIP_NATIVE_BUILD=1 reuses the existing build/dev binaries.
+# SKIP_NATIVE_BUILD=1 reuses build/dev; SKIP_BINDING_BUILD=1 requires build_artifacts.sh outputs.
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 logs=$root/build/smoke
-mkdir -p "$logs"
+mkdir -p "$logs/tmp"
+export TMPDIR="$logs/tmp"
 compose_file=deploy/compose/compose.yaml
 override_file=deploy/compose/smoke.override.yaml
 python_override=$logs/python.override.yaml
@@ -50,11 +51,22 @@ done
 cp deploy/containers/entrypoint.sh "$stage/"
 
 venv=$root/build/smoke-venv
-if [ ! -x "$venv/bin/python" ]; then
-    python3 -m venv "$venv" || { echo "smoke: cannot create venv"; exit 1; }
+if [ "${SKIP_BINDING_BUILD:-}" = 1 ]; then
+    [ -x "$venv/bin/python" ] || { echo "smoke: missing smoke venv; run tests/smoke/build_artifacts.sh"; exit 1; }
+    wheels=("$logs"/wheels/chronolog-4.0.0-*.whl)
+    [ -f "${wheels[0]}" ] || { echo "smoke: missing Python wheel; run tests/smoke/build_artifacts.sh"; exit 1; }
+    package=$root/build/typescript/package
+    [ -f "$package/build/dev/chronolog_node.node" ] && [ -f "$package/dist/index.js" ] \
+        || { echo "smoke: missing TypeScript package; run tests/smoke/build_artifacts.sh"; exit 1; }
+    timeout 10 "$venv/bin/python" -c 'import grpc, grpc_tools.protoc, pytest' \
+        || { echo "smoke: missing test dependencies; run tests/smoke/build_artifacts.sh"; exit 1; }
+else
+    if [ ! -x "$venv/bin/python" ]; then
+        python3 -m venv "$venv" || { echo "smoke: cannot create venv"; exit 1; }
+    fi
+    timeout 300 "$venv/bin/pip" install --quiet -r tests/smoke/python/requirements.txt \
+        || { echo "smoke: pip install failed"; exit 1; }
 fi
-timeout 300 "$venv/bin/pip" install --quiet -r tests/smoke/python/requirements.txt \
-    || { echo "smoke: pip install failed"; exit 1; }
 
 run_engine() {
     local engine=$1 project=chronolog-smoke-$1 log=$logs/$1.log compose build_cmd
@@ -97,10 +109,12 @@ run_engine() {
             --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"
         rc=${PIPESTATUS[0]}
         if [ "$rc" -eq 0 ]; then
-            step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest || rc=1
-            step "Python abi3 wheel" 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python || rc=1
+            if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
+                step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest || rc=1
+                step "Python abi3 wheel" 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python || rc=1
+            fi
             if [ "$rc" -eq 0 ]; then
-                step "install Python wheel" 120 "$venv/bin/pip" install --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl || rc=1
+                step "install Python wheel" 120 "$venv/bin/pip" install --no-deps --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl || rc=1
                 step "Python SDK pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
                     "$venv/bin/python" -m pytest -q client/python/tests || rc=1
             fi
@@ -109,7 +123,18 @@ run_engine() {
         rc=1
     fi
     if [ "$stack_ready" -eq 1 ]; then
-        if step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh; then
+        timeout 60 "${compose[@]}" logs --no-color > "$logs/$engine-host-services.log" 2>&1 || true
+        if [ "$rc" -ne 0 ]; then cat "$logs/$engine-host-services.log"; fi
+        # Acquired endpoints must be reachable from the SDK client's network.
+        if ! step "reset host SDK stack" 120 "${compose[@]}" down -v --timeout 20; then
+            return 1
+        fi
+        compose=("${compose[@]:0:${#compose[@]}-2}")
+        if ! step "compose network SDK stack" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
+            step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || true
+            return 1
+        fi
+        if [ "${SKIP_BINDING_BUILD:-}" = 1 ] || step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh; then
             export CHRONOLOG_TYPESCRIPT_PACKAGE="$root/build/typescript/package"
             step "TypeScript binding suite" 180 "${compose[@]}" -f client/typescript/test/compose.yaml \
                 run --rm --no-deps typescript-tests || rc=1
