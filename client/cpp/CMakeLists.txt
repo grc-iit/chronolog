@@ -47,7 +47,7 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
 endif()
 # The installed-package check builds an uninstrumented consumer, so it runs only in unsanitized builds.
 if(NOT CHRONOLOG_SANITIZERS)
-    add_test(NAME sdk.install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.sh"
+    add_test(NAME sdk.install COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.sh"
         "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     set_tests_properties(sdk.install PROPERTIES TIMEOUT 180)
 endif()
