@@ -12,6 +12,13 @@
       "name": "hdf5",
       "default-features": false
     },
-    "nuraft"
+    "nuraft",
+    {
+      "name": "curl",
+      "default-features": false,
+      "features": [
+        "ssl"
+      ]
+    }
   ]
 }

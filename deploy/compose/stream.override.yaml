@@ -1,0 +1,77 @@
+services:
+  chrono-visor:
+    environment:
+      CHRONOLOG_VISOR_KEEPERS: "keeper-1=127.0.0.1:50052"
+      CHRONOLOG_VISOR_PLAYER: "127.0.0.1:50054"
+  chrono-keeper:
+    environment:
+      CHRONOLOG_KEEPER_SELF_ENDPOINT: "127.0.0.1:50052"
+  influxdb:
+    image: influxdb:2.7.12
+    networks: [chronolog]
+    ports: ["127.0.0.1:8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: chronolog
+      DOCKER_INFLUXDB_INIT_PASSWORD: chronolog-stream-password
+      DOCKER_INFLUXDB_INIT_ORG: chronolog
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-chronolog-stream-token}
+    volumes:
+      - stream-influx:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8086/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  grafana:
+    image: grafana/grafana:11.6.0
+    networks: [chronolog]
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-chronolog-stream-token}
+    volumes:
+      - ../grafana/stream/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../grafana/stream/dashboards/provider.yaml:/etc/grafana/provisioning/dashboards/stream.yaml:ro
+      - ../grafana/stream/dashboards/telemetry.json:/var/lib/grafana/dashboards/telemetry.json:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+  chrono-stream-collect:
+    image: ${CHRONOLOG_IMAGE:-chronolog-runtime:local}
+    network_mode: host
+    entrypoint: ["/usr/local/bin/chronolog_stream_collect"]
+    command: ["--chronicle", "${CHRONOLOG_STREAM_CHRONICLE:-host-metrics}", "--host", "${CHRONOLOG_STREAM_HOST:-host}", "--interval-ms", "${CHRONOLOG_STREAM_INTERVAL_MS:-1000}", "--samples", "${CHRONOLOG_STREAM_SAMPLES:-0}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      chrono-visor:
+        condition: service_healthy
+      chrono-keeper:
+        condition: service_healthy
+  chrono-stream-export:
+    image: ${CHRONOLOG_IMAGE:-chronolog-runtime:local}
+    network_mode: host
+    entrypoint: ["/usr/local/bin/chronolog_stream_export"]
+    command: ["--chronicle", "${CHRONOLOG_STREAM_CHRONICLE:-host-metrics}", "--batch-count", "32", "--batch-age-ms", "100"]
+    environment:
+      INFLUX_URL: http://127.0.0.1:8086
+      INFLUX_ORG: chronolog
+      INFLUX_BUCKET: telemetry
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-chronolog-stream-token}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      chrono-stream-collect:
+        condition: service_started
+      chrono-player:
+        condition: service_healthy
+volumes:
+  stream-influx:
