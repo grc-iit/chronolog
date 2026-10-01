@@ -7,6 +7,9 @@
 #include "chrono-player/adapter/Convert.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
+#include "adapter/ArchiveService.h"
+#include "membership/ConfigMembership.h"
+#include "clock/FakeClock.h"
 
 namespace chronolog::player
 {
@@ -79,6 +82,52 @@ class ReplayContract: public ::testing::Test
 {
 protected:
     KeeperDriver current, old;
+    std::shared_ptr<FakeClock> real_clock;
+    std::shared_ptr<keeper::ConfigMembership> real_membership;
+    std::unique_ptr<RamJournal> real_journal;
+    std::unique_ptr<keeper::WorkerPool> real_pool;
+    std::unique_ptr<keeper::ArchiveService> real_archive;
+    void useRealPredecessor(std::string instance = "old-instance")
+    {
+        old_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(1));
+        old_server.reset();
+        real_clock = std::make_shared<FakeClock>(140, 0);
+        real_clock->setStatus(ClockStatus::Synced);
+        real_membership = std::make_shared<keeper::ConfigMembership>(
+                std::vector<keeper::StaticRoute>{{1, {1, {{"old", "old:1"}}, "", ""}}});
+        RamJournalConfig config;
+        config.process_id = "old";
+        config.instance = instance;
+        real_journal = std::make_unique<RamJournal>(real_clock, real_membership, config);
+        real_journal->enableDynamic(instance);
+        real_journal->extendCeiling({1000, 0}, 300);
+        RouteState initial;
+        initial.route = *real_membership->route(1);
+        real_journal->applyRoute(1, initial, false, 1, [] {});
+        if(!real_journal->registerWriter(1, 2, 1).ok())
+            throw std::runtime_error("writer registration failed");
+        AppendItem item;
+        item.writer_id = 2;
+        item.incarnation = 1;
+        item.sequence = 1;
+        item.physical = {140, 0, ClockStatus::Synced};
+        auto appended = real_journal->append({1, 1, {item}}, Durability::Accepted);
+        if(!appended.ok() || !appended->front().status.ok())
+            throw std::runtime_error("real Keeper append failed");
+        RouteState retired = routes->state;
+        retired.predecessors.front().instance = instance;
+        real_journal->applyRoute(1, retired, false, 2, [&] { real_membership->setRouteState(1, retired); });
+        real_pool = std::make_unique<keeper::WorkerPool>(2, 16);
+        real_archive = std::make_unique<keeper::ArchiveService>(*real_journal, *real_membership, *real_pool);
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(real_archive.get());
+        old_server = builder.BuildAndStart();
+        if(!old_server)
+            throw std::runtime_error("real Keeper server failed");
+        routes->state.predecessors.front().keeper.endpoint = "127.0.0.1:" + std::to_string(port);
+    }
     std::unique_ptr<grpc::Server> current_server, old_server;
     std::shared_ptr<Routes> routes = std::make_shared<Routes>();
     std::shared_ptr<KeeperHotSource> source;
@@ -163,26 +212,24 @@ protected:
 };
 TEST_F(ReplayContract, UndrainedPredecessorIsASource)
 {
+    useRealPredecessor();
     read();
     EXPECT_TRUE(completion.complete);
     ASSERT_EQ(returned.size(), 2);
     EXPECT_EQ(returned[0].hlc, (Hlc{140, 0}));
-    ASSERT_EQ(old.requests.size(), 1);
-    EXPECT_EQ(old.requests[0].expect_instance(), "old-instance");
-    EXPECT_EQ(old.requests[0].expect_epoch(), 1);
-    EXPECT_EQ(convert::fromProto(old.requests[0].hlc().end()), (Hlc{200, 0}));
+    EXPECT_EQ(real_journal->keeperFrontier(1).value(), (Hlc{200, 0}));
 }
 TEST_F(ReplayContract, DeadPredecessorIsSourceFailed)
 {
-    old.failed = true;
+    useRealPredecessor();
+    old_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(1));
     read();
     EXPECT_FALSE(completion.complete);
     EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed);
 }
 TEST_F(ReplayContract, ReplacementInstanceCannotAnswerForItsPredecessor)
 {
-    old.instance = "replacement";
-    old.lie = true;
+    useRealPredecessor("replacement");
     read();
     EXPECT_FALSE(completion.complete);
     EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed);
@@ -196,6 +243,7 @@ TEST_F(ReplayContract, TrailerEpochMismatchIsSourceFailed)
 }
 TEST_F(ReplayContract, DrainedPredecessorHistoryComesFromTheArchive)
 {
+    useRealPredecessor();
     ASSERT_TRUE(archive_writer->publish({"old", 1, {100, 0}, {200, 0}, old.events, false}).ok());
     routes->state.predecessors.clear();
     routes->state.archived_below = {200, 0};

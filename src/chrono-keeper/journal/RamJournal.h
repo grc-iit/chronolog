@@ -180,6 +180,8 @@ private:
         Gate gate;
         RouteState state;
         bool installed{}, observe{}, raise{};
+        Hlc observe_floor;
+        int64_t physical_floor{};
         uint64_t revision{};
     };
     std::shared_ptr<Admission> admission(StoryId story) const;

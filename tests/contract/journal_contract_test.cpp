@@ -1121,3 +1121,28 @@ TEST_P(JournalContract, WriterlessRetiredStoryDrainsAtItsOwnCut)
     EXPECT_EQ(h->evictionFloor(), (Hlc{2'000'000'000, 0}));
 }
 } // namespace chronolog::contract
+
+namespace chronolog::contract
+{
+TEST_P(JournalContract, DeferredFloorSurvivesALaterSurvivorUpdate)
+{
+    h->enableDynamic({100'000'000'000, 0}, 100'000'000'000);
+    RouteState state;
+    state.route = {8, {{"self", "self:1"}}, "grapher:1", ""};
+    state.ordering_cut = {40'000'000'000, 0};
+    h->applyRoute(state, true, 10);
+    state.route.epoch = 9;
+    state.ordering_cut = {500, 0};
+    h->applyRoute(state, false, 11);
+    auto result = h->sut->append(Batch({Item()}, 9), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+    h->setPhysical(11'000'000'000);
+    auto item = Item();
+    item.physical.physical_ns = 11'000'000'000;
+    result = h->sut->append(Batch({item}, 9), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok()) << result->front().status;
+    EXPECT_GT(result->front().hlc, (Hlc{40'000'000'000, 0}));
+}
+} // namespace chronolog::contract

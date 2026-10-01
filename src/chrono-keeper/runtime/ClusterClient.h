@@ -53,6 +53,32 @@ private:
     void loop(std::stop_token stop);
     void applyRoutes(const google::protobuf::RepeatedPtrField<internal::v1::RouteUpdate>& routes);
 
+    template <class Call>
+    grpc::Status invoke(Call call)
+    {
+        std::lock_guard lock(rpc_mutex_);
+        grpc::ClientContext context;
+        context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+        auto status = call(*stub_, context);
+        if(status.error_code() != grpc::StatusCode::UNAVAILABLE)
+            return status;
+        for(auto& replica: replicas_)
+        {
+            grpc::ClientContext retry;
+            retry.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+            status = call(*replica, retry);
+            if(status.ok())
+            {
+                stub_.swap(replica);
+                return status;
+            }
+            if(status.error_code() != grpc::StatusCode::UNAVAILABLE)
+                return status;
+        }
+        return status;
+    }
+    std::mutex rpc_mutex_;
+    std::vector<std::unique_ptr<internal::v1::Cluster::Stub>> replicas_;
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     const Options options_;
     RamJournal& journal_;

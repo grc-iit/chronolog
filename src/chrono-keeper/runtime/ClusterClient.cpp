@@ -14,13 +14,6 @@ namespace iv1 = chronolog::internal::v1;
 namespace
 {
 
-constexpr std::chrono::seconds kRpcDeadline{5};
-
-void setDeadline(grpc::ClientContext& context)
-{
-    context.set_deadline(std::chrono::system_clock::now() + kRpcDeadline);
-}
-
 absl::Status toStatus(const grpc::Status& status)
 {
     return absl::Status(static_cast<absl::StatusCode>(status.error_code()), status.error_message());
@@ -53,8 +46,6 @@ ClusterClient::~ClusterClient()
 
 absl::Status ClusterClient::registerNow()
 {
-    grpc::ClientContext context;
-    setDeadline(context);
     iv1::RegisterRequest request;
     request.set_recovered_instance(options_.recovered_instance);
     request.set_policy_version(journal_.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0);
@@ -64,10 +55,24 @@ absl::Status ClusterClient::registerNow()
     process->set_endpoint(options_.endpoint);
     process->set_role(iv1::PROCESS_ROLE_KEEPER);
     iv1::RegisterResponse response;
-    if(auto rpc = stub_->Register(&context, request, &response); !rpc.ok())
+    if(auto rpc = invoke(
+               [&](auto& stub, auto& context)
+               {
+                   response.Clear();
+                   return stub.Register(&context, request, &response);
+               });
+       !rpc.ok())
         return toStatus(rpc);
     if(auto status = toStatus(response.status()); !status.ok())
         return status;
+    if(!response.visor_replicas().empty())
+    {
+        std::lock_guard lock(rpc_mutex_);
+        replicas_.clear();
+        for(const auto& endpoint: response.visor_replicas())
+            replicas_.push_back(
+                    iv1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials())));
+    }
     if(response.has_policy())
     {
         const auto& policy = response.policy();
@@ -97,8 +102,6 @@ absl::Status ClusterClient::registerNow()
 
 absl::Status ClusterClient::heartbeatNow()
 {
-    grpc::ClientContext context;
-    setDeadline(context);
     iv1::HeartbeatRequest request;
     request.set_process_id(options_.process_id);
     request.set_instance(options_.instance);
@@ -159,7 +162,13 @@ absl::Status ClusterClient::heartbeatNow()
         for(const auto& frontier: view->frontiers) *entry->add_frontiers() = convert::toProto(frontier);
     }
     iv1::HeartbeatResponse response;
-    if(auto rpc = stub_->Heartbeat(&context, request, &response); !rpc.ok())
+    if(auto rpc = invoke(
+               [&](auto& stub, auto& context)
+               {
+                   response.Clear();
+                   return stub.Heartbeat(&context, request, &response);
+               });
+       !rpc.ok())
         return toStatus(rpc);
     applyRoutes(response.routes());
     auto status = toStatus(response.status());
@@ -189,8 +198,6 @@ absl::Status ClusterClient::extendNow()
 {
     for(int attempt = 0; attempt < 3; ++attempt)
     {
-        grpc::ClientContext context;
-        setDeadline(context);
         iv1::ExtendCeilingRequest request;
         request.set_process_id(options_.process_id);
         request.set_instance(options_.instance);
@@ -198,7 +205,12 @@ absl::Status ClusterClient::extendNow()
         *request.mutable_wanted_hlc() = convert::toProto(journal_.wantedCeiling());
         request.set_realtime_ns(journal_.realtime());
         iv1::ExtendCeilingResponse response;
-        auto rpc = stub_->ExtendCeiling(&context, request, &response);
+        auto rpc = invoke(
+                [&](auto& stub, auto& context)
+                {
+                    response.Clear();
+                    return stub.ExtendCeiling(&context, request, &response);
+                });
         if(!rpc.ok())
             return toStatus(rpc);
         auto status = toStatus(response.status());

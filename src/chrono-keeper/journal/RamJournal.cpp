@@ -429,7 +429,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             {
                 std::lock_guard lock(dynamic_mu_);
                 generation = ceiling_generation_;
-                if(status.ok() && dynamic_ && (!scheduleSteps(*gate) || ceiling_ <= gate->state.ordering_cut))
+                if(status.ok() && dynamic_ &&
+                   (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
                     status = absl::UnavailableError("route clock steps or ceiling deferred");
             }
             if(!status.ok())
@@ -809,8 +810,8 @@ bool RamJournal::scheduleSteps(Admission& a)
         return floor <= reading->physical_ns ||
                (reading->physical_ns <= INT64_MAX - budget && floor <= reading->physical_ns + budget);
     };
-    Hlc floor = std::max(restart_floor_, a.observe ? a.state.ordering_cut : Hlc{});
-    const int64_t physical = std::max(restart_physical_, a.raise ? a.state.physical_floor : int64_t{0});
+    Hlc floor = std::max(restart_floor_, a.observe ? a.observe_floor : Hlc{});
+    const int64_t physical = std::max(restart_physical_, a.raise ? a.physical_floor : int64_t{0});
     if(!within(floor.physical_ns, hlc_budget_) || !within(physical, acceptance_budget_))
         return false;
     clock_->observeFloor(floor);
@@ -836,6 +837,10 @@ void RamJournal::applyRoute(StoryId story,
                            [&](const auto& k) { return k.process_id == config_.process_id; });
     };
     bool added = listed(state.route) && (!a->installed || !listed(a->state.route));
+    if(observe)
+        a->observe_floor = std::max(a->observe_floor, state.ordering_cut);
+    if(added)
+        a->physical_floor = std::max(a->physical_floor, state.physical_floor);
     a->observe = a->observe || observe;
     a->raise = a->raise || added;
     a->state = std::move(state);

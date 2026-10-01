@@ -123,6 +123,7 @@ int main(int argc, char** argv)
     RamJournalConfig journal_config;
     journal_config.process_id = config->process_id;
     journal_config.instance = instance;
+    journal_config.append_ceiling_wait_ms = config->append_ceiling_wait_ms;
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
     journal_config.dedupe_window = config->dedupe_window;
