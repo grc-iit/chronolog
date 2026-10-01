@@ -1,0 +1,47 @@
+#pragma once
+
+#include <chrono>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include "chrono-player/replay/RouteSource.h"
+#include "chronolog/internal/v1/internal.grpc.pb.h"
+
+namespace chronolog::player
+{
+
+struct KeeperHotSourceOptions
+{
+    std::chrono::milliseconds deadline{2000};
+    // Zero lets each Keeper apply its configured default limit.
+    uint64_t max_events{0};
+};
+
+// Asks every Keeper in the story Route for its hot data through Archive.FetchHot. A Keeper
+// that fails or times out comes back answered=false, so the read is incomplete rather than wrong.
+class KeeperHotSource final: public HotSource
+{
+public:
+    // `internal_address` maps a Route Keeper to the address of its internal listener.
+    KeeperHotSource(std::shared_ptr<const RouteSource> routes,
+                    std::shared_ptr<const WriterSource> writers,
+                    std::function<std::string(const KeeperRef&)> internal_address,
+                    KeeperHotSourceOptions options = {});
+
+    absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
+
+private:
+    KeeperFetch fetchOne(const KeeperRef& keeper, StoryId story, const Range& range) const;
+    internal::v1::Archive::Stub& stubFor(const std::string& address) const;
+
+    std::shared_ptr<const RouteSource> routes_;
+    std::shared_ptr<const WriterSource> writers_;
+    std::function<std::string(const KeeperRef&)> internal_address_;
+    KeeperHotSourceOptions options_;
+    mutable std::mutex mu_;
+    mutable std::map<std::string, std::unique_ptr<internal::v1::Archive::Stub>> stubs_;
+};
+
+} // namespace chronolog::player
