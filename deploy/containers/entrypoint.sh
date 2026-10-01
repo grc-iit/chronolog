@@ -1,7 +1,7 @@
 #!/bin/sh
 # Starts the binary for CHRONOLOG_ROLE. Extra arguments go to the binary.
 set -eu
-export GRPC_DNS_RESOLVER=${GRPC_DNS_RESOLVER:-native}
+export GRPC_DNS_RESOLVER=${GRPC_DNS_RESOLVER:-ares}
 role=${CHRONOLOG_ROLE:-visor}
 case "$role" in
     visor) bin=chrono_visor ;;

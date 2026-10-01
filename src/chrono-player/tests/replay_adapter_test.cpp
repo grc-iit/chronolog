@@ -183,7 +183,11 @@ protected:
         source_ = std::make_shared<KeeperHotSource>(
                 std::make_shared<StaticRouteSource>(route),
                 std::make_shared<FakeWriters>(),
-                [this](const KeeperRef& k) { return k.process_id == "keeper-a" ? a_addr_ : b_addr_; },
+                [this](const KeeperRef& k)
+                {
+                    const auto& address = k.process_id == "keeper-a" ? a_addr_ : b_addr_;
+                    return "localhost" + address.substr(address.find(':'));
+                },
                 options);
         HotReplayOptions replay_options;
         replay_options.batch_size = 2;
@@ -401,7 +405,11 @@ TEST_F(replay_adapter, HotFetchSharesOneRetentionBudgetAcrossKeepers)
     KeeperHotSource source(
             std::make_shared<StaticRouteSource>(route),
             std::make_shared<FakeWriters>(),
-            [this](const KeeperRef& k) { return k.process_id == "keeper-a" ? a_addr_ : b_addr_; },
+            [this](const KeeperRef& k)
+            {
+                const auto& address = k.process_id == "keeper-a" ? a_addr_ : b_addr_;
+                return "localhost" + address.substr(address.find(':'));
+            },
             options);
     auto fetched = source.fetch(kStory, {Range::Axis::Hlc, {100, 0}, {200, 0}});
     ASSERT_TRUE(fetched.ok());

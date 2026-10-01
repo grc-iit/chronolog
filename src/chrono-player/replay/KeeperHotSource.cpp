@@ -28,8 +28,11 @@ std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std:
         grpc::ChannelArguments args;
         args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
         args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+        args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
+        args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
+        args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
         args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
-        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 1000);
         args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
         stub = internal::v1::Archive::NewStub(
                 grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args));
@@ -90,15 +93,6 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
             std::osyncstream(std::clog) << "fetch_hot_failed keeper=" << keeper.process_id
                                         << " status=" << status.error_code() << " trailer=" << trailer
                                         << " message=" << status.error_message() << std::endl;
-        if(status.error_code() == grpc::StatusCode::UNAVAILABLE ||
-           status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)
-        {
-            // Retire a stale transport after restart; concurrent fetches retain their own stub.
-            std::lock_guard lock(mu_);
-            auto it = stubs_.find(address);
-            if(it != stubs_.end() && it->second == stub)
-                stubs_.erase(it);
-        }
         // Retry readiness failures without replaying a partially received stream or extending the deadline.
         if(received || status.error_code() != grpc::StatusCode::UNAVAILABLE)
             break;

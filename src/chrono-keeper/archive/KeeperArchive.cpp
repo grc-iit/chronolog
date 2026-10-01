@@ -35,8 +35,11 @@ std::shared_ptr<grpc::Channel> KeeperArchive::archiveChannel(const std::string& 
     grpc::ChannelArguments args;
     args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
     args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
+    args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
-    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 1000);
     args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
     channel = grpc::CreateCustomChannel(endpoint, grpc::InsecureChannelCredentials(), args);
     return channel;
@@ -420,14 +423,6 @@ bool KeeperArchive::shipOne(std::stop_token stop)
         }
         if(!status.ok())
         {
-            if(status.error_code() == grpc::StatusCode::UNAVAILABLE ||
-               status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)
-            {
-                std::lock_guard lock(mu_);
-                auto it = channels_.find(route->grapher);
-                if(it != channels_.end() && it->second == channel)
-                    channels_.erase(it);
-            }
             std::cerr << "chrono_keeper: archive transfer " << chunk.id << " failed: " << status.error_code() << " "
                       << status.error_message() << '\n';
             return fail();
