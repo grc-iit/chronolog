@@ -62,6 +62,7 @@ struct KeeperConfig
     // Zero selects std::thread::hardware_concurrency().
     uint32_t worker_threads = 0;
     uint32_t heartbeat_interval_ms = 5000;
+    uint32_t append_ceiling_wait_ms = 1000;
     // Allows internal_listen on a wildcard address. Refused otherwise (S14.3).
     bool insecure_bind_all = false;
     std::vector<StaticRoute> static_routes;

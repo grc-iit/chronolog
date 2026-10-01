@@ -70,6 +70,29 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
 
                 if(req.story_id() == 0)
                     return fail(absl::InvalidArgumentError("story_id is required"));
+                auto route = membership_.route(req.story_id());
+                if(!route.ok())
+                    return fail(route.status());
+                std::optional<Predecessor> owner;
+                for(const auto& p: journal_.predecessorOwners(req.story_id()))
+                    if(p.epoch == req.expect_epoch())
+                        owner = p;
+                const auto instance = journal_.instance();
+                Epoch epoch = route->epoch;
+                if(owner)
+                {
+                    if(req.expect_instance() != instance)
+                        return fail(absl::FailedPreconditionError("predecessor instance mismatch"));
+                    epoch = owner->epoch;
+                }
+                else
+                {
+                    if(!req.expect_instance().empty() && req.expect_instance() != instance)
+                        return fail(absl::FailedPreconditionError("instance mismatch"));
+                    if((req.expect_epoch() != 0 && req.expect_epoch() != route->epoch) ||
+                       journal_.retiredOwner(req.story_id()))
+                        return fail(absl::FailedPreconditionError("owned epoch mismatch"));
+                }
                 Range range;
                 switch(req.range_case())
                 {
@@ -105,10 +128,6 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 auto snapshot = journal_.sealedRead(req.story_id(), range, std::nullopt, filter);
                 if(!snapshot.ok())
                     return fail(snapshot.status());
-                auto route = membership_.route(req.story_id());
-                if(!route.ok())
-                    return fail(route.status());
-
                 std::deque<iv1::FetchHotResponse> out;
                 iv1::FetchHotResponse* current = nullptr;
                 size_t current_bytes = 0;
@@ -135,10 +154,24 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                     total_bytes += bytes;
                     ++sent;
                 }
+                if(!owner)
+                {
+                    auto applied = membership_.route(req.story_id());
+                    if(!applied.ok())
+                        return fail(applied.status());
+                    epoch = applied->epoch;
+                }
                 auto* trailer = out.emplace_back().mutable_trailer();
-                trailer->set_epoch(route->epoch);
-                trailer->set_physical_frontier_ns(*physical);
-                *trailer->mutable_sealed_frontier() = convert::toProto(snapshot->view.sealed);
+                trailer->set_epoch(epoch);
+                trailer->set_instance(instance);
+                const auto window = PhysicalPolicy{}.acceptance_window_ns;
+                const int64_t physical_cap = owner ? (owner->own_physical_ceiling_ns < INT64_MIN + window
+                                                              ? INT64_MIN
+                                                              : owner->own_physical_ceiling_ns - window)
+                                                   : INT64_MAX;
+                trailer->set_physical_frontier_ns(std::min(*physical, physical_cap));
+                *trailer->mutable_sealed_frontier() = convert::toProto(
+                        owner ? std::min(snapshot->view.sealed, owner->own_cut) : snapshot->view.sealed);
                 for(const auto& f: snapshot->view.frontiers) *trailer->add_frontiers() = convert::toProto(f);
                 *trailer->mutable_evicted_below() = convert::toProto(snapshot->evicted_below);
                 trailer->set_truncated(truncated);

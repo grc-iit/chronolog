@@ -81,6 +81,20 @@ std::unique_ptr<JournalHarness> MakeWal()
     h->blockFsync = [rig] { rig->control->block(); };
     h->waitPendingHlc = [rig] { return rig->control->waitPending(); };
     h->releaseFsync = [rig] { rig->control->release(); };
+    h->enableDynamic = [rig](Hlc c, int64_t cp)
+    {
+        rig->current->enableDynamic("instance");
+        rig->current->extendCeiling(c, cp);
+        RouteState state;
+        state.route = *rig->membership->route(1);
+        rig->current->applyRoute(1, state, false, 1, [] {});
+    };
+    h->ceilingWaiting = [rig] { return rig->current->ceilingWaiters() != 0; };
+    h->extendCeiling = [rig](Hlc c, int64_t cp) { rig->current->extendCeiling(c, cp); };
+    h->applyRoute = [rig](RouteState state, bool observe, uint64_t revision)
+    { rig->current->applyRoute(1, state, observe, revision, [&] { rig->membership->setRoute(state.route); }); };
+    h->acceptanceClock = [rig] { return rig->clock->acceptanceClock(); };
+    h->retiredDrained = [rig] { return rig->current->retiredDrained(1); };
     h->sut = std::move(rig->journal);
     return h;
 }

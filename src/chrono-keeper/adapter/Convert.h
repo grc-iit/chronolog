@@ -20,6 +20,24 @@ v1::Hlc toProto(const Hlc& hlc);
 Hlc fromProto(const v1::Hlc& hlc);
 v1::Route toProto(const Route& route);
 Route fromProto(const v1::Route& route);
+template <class Update>
+RouteState routeState(const Update& update)
+{
+    RouteState state;
+    state.route = fromProto(update.route());
+    state.ordering_cut = fromProto(update.ordering_cut());
+    state.physical_floor = update.physical_floor_ns();
+    state.archived_below = fromProto(update.archived_below());
+    for(const auto& p: update.predecessors())
+        state.predecessors.push_back({{p.keeper().process_id(), p.keeper().endpoint()},
+                                      p.instance(),
+                                      p.epoch(),
+                                      fromProto(p.own_cut()),
+                                      p.own_physical_ceiling_ns()});
+    for(const auto& r: update.abandoned())
+        state.abandoned.push_back({Range::Axis::Hlc, fromProto(r.start()), fromProto(r.end())});
+    return state;
+}
 v1::Event toProto(const Event& event);
 v1::AppendResult toProto(const AppendResult& result);
 v1::WriterFrontier toProto(const Frontier& frontier);

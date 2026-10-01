@@ -142,4 +142,79 @@ TEST(ArchiveTransferTest, FrontierTickOrderedBeforeInsert)
     ASSERT_TRUE(all.ok());
     EXPECT_EQ(all->size(), writers * appends);
 }
+TEST(ArchiveTransferTest, RetiredOwnerSealIsCutAtTheHandoff)
+{
+    test::AdapterRig rig;
+    auto& journal = *rig.rig.journal;
+    journal.enableDynamic("instance");
+    journal.extendCeiling({10000, 0}, 10'000'000'000);
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "grapher:1", ""};
+    state.predecessors.push_back({{"self", "self:1"}, "instance", 7, {500, 0}, 4'000'000'000});
+    journal.applyRoute(1, state, false, 10, [&] { rig.rig.membership->setRoute(state.route); });
+    auto req = request();
+    req.set_expect_instance("instance");
+    req.set_expect_epoch(7);
+    auto context = test::AdapterRig::context();
+    auto stream = rig.archive->FetchHot(context.get(), req);
+    internal::v1::FetchHotResponse message;
+    bool trailer = false;
+    while(stream->Read(&message))
+        if(message.has_trailer())
+        {
+            trailer = true;
+            EXPECT_EQ(message.trailer().epoch(), 7);
+            EXPECT_EQ(message.trailer().instance(), "instance");
+            EXPECT_EQ(keeper::convert::fromProto(message.trailer().sealed_frontier()), (Hlc{500, 0}));
+            EXPECT_LE(message.trailer().physical_frontier_ns(), 4'000'000'000 - PhysicalPolicy{}.acceptance_window_ns);
+        }
+    EXPECT_TRUE(stream->Finish().ok());
+    EXPECT_TRUE(trailer);
+    for(bool wrong_instance: {false, true})
+    {
+        req.set_expect_instance(wrong_instance ? "replacement" : "instance");
+        req.set_expect_epoch(wrong_instance ? 7 : 6);
+        context = test::AdapterRig::context();
+        stream = rig.archive->FetchHot(context.get(), req);
+        while(stream->Read(&message)) {}
+        EXPECT_EQ(stream->Finish().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+    }
+}
+TEST(ArchiveTransferTest, CurrentOwnerTrailerReportsTheEpochAppliedDuringScan)
+{
+    test::AdapterRig rig;
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    ASSERT_TRUE(rig.rig.journal->append({1, 7, {item}}, Durability::Accepted).ok());
+    rig.rig.journal->onScanned(
+            [&]
+            {
+                RouteState state;
+                state.route = {8, {{"self", "self:1"}}, "grapher:1", ""};
+                rig.rig.journal->applyRoute(1, state, false, 10, [&] { rig.rig.membership->setRoute(state.route); });
+            });
+    auto context = test::AdapterRig::context();
+    auto req = request();
+    req.set_expect_epoch(7);
+    auto stream = rig.archive->FetchHot(context.get(), req);
+    internal::v1::FetchHotResponse message;
+    int trailers = 0, events = 0;
+    while(stream->Read(&message))
+    {
+        if(message.has_batch())
+            events += message.batch().events_size();
+        if(message.has_trailer())
+        {
+            ++trailers;
+            EXPECT_EQ(message.trailer().epoch(), 8);
+        }
+    }
+    EXPECT_TRUE(stream->Finish().ok());
+    EXPECT_EQ(events, 1);
+    EXPECT_EQ(trailers, 1);
+    rig.rig.journal->onScanned({});
+    EXPECT_EQ(rig.rig.membership->route(1)->epoch, 8);
+}
 } // namespace chronolog

@@ -4,12 +4,15 @@
 
 #include "chronolog/clock.h"
 #include "clock/HlcCore.h"
+#include "clock/CeilingControl.h"
 
 namespace chronolog
 {
 
 // Deterministic Clock for tests. Physical time and status are set by the test.
-class FakeClock final: public Clock
+class FakeClock final
+    : public Clock
+    , public CeilingControl
 {
 public:
     explicit FakeClock(int64_t physical_ns = 0, uint64_t synced_bound_ns = 15)
@@ -52,6 +55,7 @@ public:
                                   floor,
                                   interval);
     }
+    void setCeiling(Hlc ceiling) override { hlc_.setCeiling(ceiling); }
     void observeFloor(Hlc floor) override { hlc_.observeFloor(floor); }
     int64_t acceptanceClock() override
     {
