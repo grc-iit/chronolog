@@ -1,0 +1,15 @@
+add_library(chronolog_grapher_server STATIC ArchiveService.cpp GrapherConfig.cpp)
+target_include_directories(chronolog_grapher_server PUBLIC "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(chronolog_grapher_server PUBLIC
+    chronolog_grapher_tier chronolog_internal_proto absl::crc32c
+    PRIVATE chronolog_warnings nlohmann_json::nlohmann_json)
+
+add_executable(chrono_grapher main.cpp)
+target_link_libraries(chrono_grapher PRIVATE chronolog_grapher_server chronolog_warnings)
+
+add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp)
+target_link_libraries(chronolog_grapher_server_tests PRIVATE
+    chronolog_grapher_server chronolog_warnings GTest::gtest GTest::gtest_main)
+include(GoogleTest)
+gtest_discover_tests(chronolog_grapher_server_tests
+    TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
