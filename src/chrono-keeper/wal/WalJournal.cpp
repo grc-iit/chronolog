@@ -207,7 +207,7 @@ void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<Ap
             results.ok() && std::any_of(results->begin(),
                                         results->end(),
                                         [](const AppendResult& result) { return absl::IsOutOfRange(result.status); });
-    if(!rejected && std::this_thread::get_id() == committer_.get_id())
+    if(!rejected)
         return done(std::move(results));
     auto bytes = rejected ? wal::frame(writersRecord()) : std::string{};
     enqueue(Write{std::move(bytes),

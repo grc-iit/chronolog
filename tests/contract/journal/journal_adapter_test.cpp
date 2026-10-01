@@ -61,6 +61,7 @@ TEST(JournalAdapterTest, UnspecifiedClockStatusIsUnavailable)
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed->batch.items.front().physical.status, ClockStatus::Unavailable);
     EXPECT_FALSE(parsed->batch.items.front().physical.uncertainty_ns);
+    EXPECT_EQ(rig.rig.clock->acceptanceClock(), 100);
     rig.rig.clock->setStatus(ClockStatus::Unavailable);
     auto context = test::AdapterRig::context();
     v1::AppendResponse response;

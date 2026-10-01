@@ -81,6 +81,10 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
         item->set_writer_id(2);
         item->set_incarnation(3);
         item->set_sequence(sequence);
+        item->mutable_physical()->set_physical_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                          std::chrono::system_clock::now().time_since_epoch())
+                                                          .count());
+        item->mutable_physical()->set_status(v1::CLOCK_STATUS_UNSYNCED);
         item->mutable_envelope()->set_payload("crash event " + std::to_string(sequence));
         grpc::ClientContext context;
         context.set_deadline(std::chrono::system_clock::now() + 5s);
