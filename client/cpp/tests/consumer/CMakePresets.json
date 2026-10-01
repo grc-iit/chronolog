@@ -1,0 +1,9 @@
+{
+  "version": 6,
+  "configurePresets": [{
+    "name": "dev", "generator": "Unix Makefiles", "binaryDir": "${sourceDir}/build/dev",
+    "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+    "cacheVariables": {"CMAKE_BUILD_TYPE": "Debug", "VCPKG_TARGET_TRIPLET": "x64-linux"}
+  }],
+  "buildPresets": [{"name": "dev", "configurePreset": "dev"}]
+}

@@ -1,119 +1,50 @@
-cmake_minimum_required(VERSION 3.25)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
-find_package(Thallium REQUIRED)
-find_package(spdlog REQUIRED)
+add_library(chronolog_client_objects OBJECT lib/client.cpp lib/writer.cpp lib/streams.cpp lib/clock.cpp)
+target_include_directories(chronolog_client_objects PRIVATE include "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(chronolog_client_objects PRIVATE chronolog_proto absl::status absl::statusor chronolog_warnings Threads::Threads)
 
-# json-c is needed because ClientConfiguration.h (public header) includes json-c/json.h
-# PkgConfig is already found in root CMakeLists.txt, but we check for json-c here
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSON-C REQUIRED json-c)
+add_library(chronolog_client SHARED $<TARGET_OBJECTS:chronolog_client_objects>)
+add_library(chronolog_client_static STATIC $<TARGET_OBJECTS:chronolog_client_objects>)
+add_library(chronolog::client ALIAS chronolog_client)
+add_library(chronolog::client_static ALIAS chronolog_client_static)
+foreach(target chronolog_client chronolog_client_static)
+    target_compile_features(${target} PUBLIC cxx_std_20)
+    target_include_directories(${target} PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+    target_link_libraries(${target} PUBLIC absl::status absl::statusor PRIVATE chronolog_proto Threads::Threads)
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME chronolog_client)
+endforeach()
+set_target_properties(chronolog_client PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 4 EXPORT_NAME client)
+set_target_properties(chronolog_client_static PROPERTIES EXPORT_NAME client_static)
+set_target_properties(chronolog_proto PROPERTIES EXPORT_NAME client_wire)
+install(TARGETS chronolog_client chronolog_client_static chronolog_proto EXPORT chronologClientTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT client
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT client
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT client)
+install(DIRECTORY include/chronolog/client DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
+install(FILES "${PROJECT_SOURCE_DIR}/include/chronolog/types.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
+configure_package_config_file(cmake/chronologConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/chronologConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog)
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/chronologConfigVersion.cmake" VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chronologConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/chronologConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog COMPONENT client)
+install(EXPORT chronologClientTargets NAMESPACE chronolog:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog COMPONENT client)
 
-#------------------------------------------------------------------------------
-# chronolog_client Library
-#------------------------------------------------------------------------------
-add_library(chronolog_client
-    include/chronolog_client.h
-    src/ChronologClientImpl.h
-    src/KeeperRecordingClient.h
-    src/KeeperTailReader.h
-    src/KeeperTailReader.cpp
-    src/StorytellerClient.h
-    src/StorytellerClient.cpp
-    src/PlaybackQueryRpcClient.cpp
-    src/ClientQueryService.cpp
-    src/ChronologClient.cpp
-    src/ChronologClientImpl.cpp
-    src/ClientConfiguration.cpp
-    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
-)
-
-# Include directories for the library
-# PUBLIC: Headers needed by consumers of this library
-# Use generator expressions to handle build vs install interfaces
-target_include_directories(chronolog_client
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
-        # json-c is PUBLIC because public headers include json-c/json.h
-        ${JSON-C_INCLUDE_DIRS}
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/client/cpp/include
-)
-
-# Link dependencies
-# thallium is PRIVATE - it's an implementation detail, not part of the public API
-# json-c is PRIVATE - only library implementation needs to link, consumers just need headers
-target_link_directories(chronolog_client
-    PRIVATE
-        ${JSON-C_LIBRARY_DIRS}
-)
-
-target_link_libraries(chronolog_client
-    PRIVATE
-        thallium
-        ${JSON-C_LIBRARIES}
-)
-
-# spdlog is PRIVATE: public headers no longer expose spdlog types
-if(TARGET spdlog::spdlog)
-    target_link_libraries(chronolog_client
-        PRIVATE
-            spdlog::spdlog
-    )
-else()
-    target_include_directories(chronolog_client
-        PRIVATE
-            ${spdlog_INCLUDE_DIRS}
-    )
+include(GoogleTest)
+add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp
+    "${PROJECT_SOURCE_DIR}/tests/contract/client/client_test.cpp")
+target_link_libraries(chronolog_client_tests PRIVATE chronolog::client chronolog_proto chronolog_warnings GTest::gtest_main Threads::Threads)
+gtest_discover_tests(chronolog_client_tests TEST_PREFIX "sdk." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+add_executable(chronolog_client_acceptance tests/acceptance.cpp)
+target_link_libraries(chronolog_client_acceptance PRIVATE chronolog::client chronolog_warnings)
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
+    add_test(NAME sdk.acceptance COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+        $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_client_acceptance>)
+    set_tests_properties(sdk.acceptance PROPERTIES TIMEOUT 90)
 endif()
-
-# Define the header files to be copied
-set(PUBLIC_HEADER_FILES
-    include/chronolog_client.h
-    include/ClientConfiguration.h
-    include/client_errcode.h
-    include/log_level.h
-    include/chrono_monitor.h
-)
-
-# Set PUBLIC_HEADER property for automatic installation
-set_target_properties(chronolog_client PROPERTIES
-    PUBLIC_HEADER "${PUBLIC_HEADER_FILES}"
-)
-
-# Versioned shared library (symlinks libchronolog_client.so, .so.<SOVERSION> created by install)
-set_target_properties(chronolog_client PROPERTIES
-    VERSION ${CHRONOLOG_PACKAGE_VERSION}
-    SOVERSION ${CHRONOLOG_VERSION_MAJOR}
-)
-
-#------------------------------------------------------------------------------
-# Install library, headers, and configuration file
-#------------------------------------------------------------------------------
-# Install chronolog_client with export (chrono_common is not installed as it's
-# only used internally by server-side ChronoLog components)
-install(TARGETS chronolog_client
-    EXPORT ChronologTargets
-    RUNTIME DESTINATION ${CHRONOLOG_INSTALL_BIN_DIR}
-    LIBRARY DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
-    ARCHIVE DESTINATION ${CHRONOLOG_INSTALL_LIB_DIR}
-    PUBLIC_HEADER DESTINATION ${CHRONOLOG_INSTALL_INCLUDE_DIR}
-)
-# Set both absolute and relative RPATH for portability
-set_target_properties(chronolog_client PROPERTIES INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
-
-# Export target for CMake config files
-install(EXPORT ChronologTargets
-    FILE ChronologTargets.cmake
-    NAMESPACE Chronolog::
-    DESTINATION ${CHRONOLOG_INSTALL_ROOT}/lib/cmake/Chronolog
-)
-
-install(
-    FILES ${CMAKE_SOURCE_DIR}/conf/default_client_conf.json.in
-    DESTINATION ${CHRONOLOG_INSTALL_CONF_DIR}
-    RENAME default-chrono-client-conf.json
-)
-
-add_subdirectory(examples)
+add_test(NAME sdk.install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.sh"
+    "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+set_tests_properties(sdk.install PROPERTIES TIMEOUT 180)
