@@ -175,6 +175,70 @@ private:
     std::atomic<bool> cancelled_{false};
 };
 
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplayOptions& options)
+{
+    const size_t limit = std::max<size_t>(1, options.read_max_events);
+    size_t retained = 0;
+    bool limited = false, unbounded = false, archive_failed = false;
+    std::vector<KeeperFrontier> frontiers;
+    std::vector<std::vector<Event>> inputs;
+    auto take = [&](std::vector<Event> events)
+    {
+        std::erase_if(events, [&](const Event& e) { return !inRange(range, e); });
+        if(events.size() > limit - retained)
+        {
+            limited = true;
+            events.resize(limit - retained);
+        }
+        retained += events.size();
+        for(const auto& e: events) unbounded |= !e.physical.uncertainty_ns || e.physical.status != ClockStatus::Synced;
+        std::stable_sort(events.begin(), events.end(), ReplayLess);
+        inputs.push_back(std::move(events));
+    };
+    for(auto& keeper: fetch.keepers)
+    {
+        frontiers.push_back(keeper.frontier);
+        take(std::move(keeper.events));
+    }
+    if(archiveEnd(fetch, range) > range.start)
+    {
+        archive_failed = !options.archive || !options.archive->refreshNow().ok();
+        if(!archive_failed)
+        {
+            auto records = options.archive->manifest(story);
+            archive_failed = !records.ok();
+            if(records.ok())
+                for(const auto& record: *records)
+                {
+                    if(record.state == ManifestState::Lost)
+                        archive_failed = true;
+                    if(record.state != ManifestState::Published)
+                        continue;
+                    auto events = options.archive->readRecord(record, {Range::Axis::Hlc, record.start, record.end});
+                    if(!events.ok())
+                        archive_failed = true;
+                    else
+                        take(*std::move(events));
+                }
+        }
+    }
+    auto completion = CompletionPolicy::decide(range,
+                                               fetch.route_epoch,
+                                               frontiers,
+                                               fetch.writers,
+                                               archive_failed || abandoned(fetch, range),
+                                               fetch.physical_policy,
+                                               unbounded);
+    if(limited && completion.reason != IncompleteReason::SourceFailed)
+    {
+        completion.complete = false;
+        completion.reason = IncompleteReason::Truncated;
+    }
+    return std::unique_ptr<ReplayStream>(
+            std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options.batch_size));
+}
+
 Hlc maxHlc() { return {std::numeric_limits<int64_t>::max(), std::numeric_limits<uint32_t>::max()}; }
 
 class TailStream final: public ReplayStream
@@ -308,6 +372,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     auto fetched = source_->fetch(id, range);
     if(!fetched.ok())
         return fetched.status();
+    if(range.axis == Range::Axis::Physical)
+        return physicalRead(id, range, *fetched, options_);
     const size_t limit = std::max<size_t>(1, options_.read_max_events);
     Range covered = range;
     bool limited = false;

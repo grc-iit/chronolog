@@ -274,6 +274,22 @@ TEST_F(ReplayContract, PredecessorPhysicalFrontierMustCoverEnd)
     read({Range::Axis::Physical, {305, 0}, {320, 0}});
     EXPECT_TRUE(completion.complete);
 }
+TEST_F(ReplayContract, PhysicalLimitCountsMatchesAndKeepsTheRequestedEnd)
+{
+    routes->policy = true;
+    options.read_max_events = 1;
+    ASSERT_TRUE(archive_writer->publish({"physical", 1, {100, 0}, {200, 0}, {event(120), event(140)}, false}).ok());
+    old.events.clear();
+    current.events.clear();
+    read({Range::Axis::Physical, {135, 0}, {145, 0}});
+    EXPECT_TRUE(completion.complete);
+    ASSERT_EQ(returned.size(), 1);
+    EXPECT_EQ(returned[0].hlc, (Hlc{140, 0}));
+    read({Range::Axis::Physical, {100, 0}, {200, 0}});
+    EXPECT_FALSE(completion.complete);
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    EXPECT_LE(returned.size(), 1);
+}
 TEST_F(ReplayContract, TruncatedPrefixAlsoRespectsCurrentSealAndArchiveRecordStart)
 {
     old.events = {event(120), event(180)};
