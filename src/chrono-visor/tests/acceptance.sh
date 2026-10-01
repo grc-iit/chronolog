@@ -10,7 +10,7 @@ pid=
 cleanup() { [ -n "$pid" ] && kill "$pid" 2>/dev/null; rm -rf "$dir"; }
 trap cleanup EXIT
 
-port=$((20000 + RANDOM % 20000))
+port=$((10000 + (RANDOM % 4400) * 5))
 internal=$((port + 1))
 cat > "$dir/visor.json" <<JSON
 {"listen": "127.0.0.1:$port", "internal_listen": "127.0.0.1:$internal", "db_path": "$dir/catalog.sqlite",

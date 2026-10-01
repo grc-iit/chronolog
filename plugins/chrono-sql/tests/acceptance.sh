@@ -9,7 +9,7 @@ cleanup() {
     rm -rf "$scratch"
 }
 trap cleanup EXIT
-port=$((20000 + RANDOM % 20000))
+port=$((10000 + (RANDOM % 4400) * 5))
 cat > "$scratch/visor.json" <<JSON
 {"listen":"127.0.0.1:$port","internal_listen":"127.0.0.1:$((port+1))","db_path":"$scratch/catalog.sqlite","keepers":[{"process_id":"keeper-1","endpoint":"127.0.0.1:$((port+2))"}],"player":"127.0.0.1:$((port+4))"}
 JSON
