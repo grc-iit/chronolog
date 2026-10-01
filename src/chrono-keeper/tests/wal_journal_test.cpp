@@ -229,3 +229,47 @@ TEST(WalJournal, AcceptedThenDurableUpgradeSurvivesCrashWithOutOfOrderSequences)
     EXPECT_TRUE(next->front().status.ok());
 }
 } // namespace chronolog::test
+
+namespace chronolog::test
+{
+TEST(WalJournal, PendingUpgradeKeepsTheOriginalVisibleAndMakesRetriesWait)
+{
+    WalRig rig;
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    item.envelope.payload = "original";
+    auto original = rig.current->append({1, 7, {item}}, Durability::Accepted);
+    ASSERT_TRUE(original.ok());
+    ASSERT_TRUE(original->front().status.ok());
+    rig.control->block();
+    auto upgrade =
+            std::async(std::launch::async, [&] { return rig.current->append({1, 7, {item}}, Durability::Durable); });
+    (void)rig.control->waitPending();
+    auto retry =
+            std::async(std::launch::async, [&] { return rig.current->append({1, 7, {item}}, Durability::Accepted); });
+    EXPECT_EQ(retry.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+    auto events = rig.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    EXPECT_TRUE(events.ok());
+    if(events.ok() && events->size() == 1)
+    {
+        EXPECT_EQ(events->front().durability, Durability::Accepted);
+    }
+    rig.control->release();
+    ASSERT_EQ(upgrade.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    ASSERT_EQ(retry.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    for(auto* future: {&upgrade, &retry})
+    {
+        auto result = future->get();
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+        EXPECT_EQ(result->front().hlc, original->front().hlc);
+        EXPECT_EQ(result->front().achieved, Durability::Durable);
+    }
+    events = rig.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().durability, Durability::Durable);
+}
+} // namespace chronolog::test
