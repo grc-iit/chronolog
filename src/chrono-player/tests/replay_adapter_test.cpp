@@ -65,10 +65,18 @@ public:
         delay_ = delay;
     }
 
+    std::atomic<unsigned> unavailable{0};
+    std::atomic<unsigned> calls{0};
+
     grpc::Status FetchHot(grpc::ServerContext* context,
                           const iv1::FetchHotRequest* request,
                           grpc::ServerWriter<iv1::FetchHotResponse>* writer) override
     {
+        ++calls;
+        unsigned remaining = unavailable.load();
+        while(remaining && !unavailable.compare_exchange_weak(remaining, remaining - 1)) {}
+        if(remaining)
+            return grpc::Status(grpc::StatusCode::UNAVAILABLE, "snapshot not applied");
         std::vector<v1::Event> events;
         int64_t sealed;
         uint64_t epoch;
@@ -175,7 +183,11 @@ protected:
         source_ = std::make_shared<KeeperHotSource>(
                 std::make_shared<StaticRouteSource>(route),
                 std::make_shared<FakeWriters>(),
-                [this](const KeeperRef& k) { return k.process_id == "keeper-a" ? a_addr_ : b_addr_; },
+                [this](const KeeperRef& k)
+                {
+                    const auto& address = k.process_id == "keeper-a" ? a_addr_ : b_addr_;
+                    return "localhost" + address.substr(address.find(':'));
+                },
                 options);
         HotReplayOptions replay_options;
         replay_options.batch_size = 2;
@@ -296,6 +308,57 @@ TEST_F(replay_adapter, LaggingKeeperNamesItsWriters)
     EXPECT_EQ(r.completions[0].laggards(0).frontier().physical_ns(), 150);
 }
 
+TEST_F(replay_adapter, CachedChannelRecoversAfterKeeperRestart)
+{
+    auto before = read(hlcRead(100, 200));
+    ASSERT_EQ(before.completions.size(), 1u);
+    ASSERT_TRUE(before.completions[0].complete());
+    b_server_->Shutdown(std::chrono::system_clock::now());
+    b_server_.reset();
+    auto down = read(hlcRead(100, 200));
+    ASSERT_EQ(down.completions.size(), 1u);
+    EXPECT_EQ(down.completions[0].reason(), v1::INCOMPLETE_REASON_SOURCE_FAILED);
+    FakeArchive restarted;
+    for(auto time: {120, 140, 160}) restarted.add(protoEvent(4, (time - 100) / 20, time));
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort(b_addr_, grpc::InsecureServerCredentials());
+    builder.RegisterService(&restarted);
+    b_server_ = builder.BuildAndStart();
+    ASSERT_TRUE(b_server_);
+    auto after = read(hlcRead(100, 200));
+    EXPECT_EQ(after.events.size(), 6u);
+    EXPECT_EQ(after.completions.size(), 1u);
+    if(!after.completions.empty())
+    {
+        EXPECT_TRUE(after.completions[0].complete());
+    }
+    b_server_->Shutdown(std::chrono::system_clock::now() + 1s);
+    b_server_.reset();
+}
+
+TEST_F(replay_adapter, KeeperReadinessIsRetriedWithinDeadline)
+{
+    b_.unavailable = 2;
+    auto r = read(hlcRead(100, 200));
+    ASSERT_TRUE(r.status.ok());
+    ASSERT_EQ(r.completions.size(), 1u);
+    EXPECT_TRUE(r.completions[0].complete());
+    EXPECT_EQ(r.events.size(), 6u);
+    EXPECT_EQ(b_.calls.load(), 3u);
+}
+
+TEST_F(replay_adapter, KeeperReadinessRetriesStopAtDeadline)
+{
+    b_.unavailable = 1000;
+    const auto start = std::chrono::steady_clock::now();
+    auto r = read(hlcRead(100, 200));
+    EXPECT_LT(std::chrono::steady_clock::now() - start, 2s);
+    ASSERT_EQ(r.completions.size(), 1u);
+    EXPECT_EQ(r.completions[0].reason(), v1::INCOMPLETE_REASON_SOURCE_FAILED);
+    EXPECT_GE(b_.calls.load(), 2u);
+    EXPECT_LT(b_.calls.load(), 20u);
+}
+
 TEST_F(replay_adapter, KeeperThatIsDownIsSourceFailed)
 {
     b_server_->Shutdown(std::chrono::system_clock::now());
@@ -342,7 +405,11 @@ TEST_F(replay_adapter, HotFetchSharesOneRetentionBudgetAcrossKeepers)
     KeeperHotSource source(
             std::make_shared<StaticRouteSource>(route),
             std::make_shared<FakeWriters>(),
-            [this](const KeeperRef& k) { return k.process_id == "keeper-a" ? a_addr_ : b_addr_; },
+            [this](const KeeperRef& k)
+            {
+                const auto& address = k.process_id == "keeper-a" ? a_addr_ : b_addr_;
+                return "localhost" + address.substr(address.find(':'));
+            },
             options);
     auto fetched = source.fetch(kStory, {Range::Axis::Hlc, {100, 0}, {200, 0}});
     ASSERT_TRUE(fetched.ok());
@@ -372,14 +439,7 @@ TEST_F(replay_adapter, PhysicalAxisIsUnbounded)
     EXPECT_EQ(r.completions[0].reason(), v1::INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED);
 }
 
-TEST_F(replay_adapter, UnsetRangeIsInvalidArgument)
-{
-    v1::ReadRequest request;
-    request.set_story_id(kStory);
-    auto r = read(request);
-    EXPECT_EQ(r.status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
-    EXPECT_TRUE(r.events.empty());
-}
+#include "../../../tests/contract/replay/replay_adapter_test.cpp"
 
 TEST_F(replay_adapter, TombstonedStoryFailsPrecondition)
 {

@@ -171,8 +171,10 @@ uint64_t WalJournal::recover()
         segments_[sequence].bytes = offset;
     }
     for(const auto& [id, seal]: archive_seals_)
-        if(seal.settled)
-            eraseEvents(seal.chunk.story_id, {Range::Axis::Hlc, seal.chunk.start, seal.chunk.end}, true);
+        // ACCEPTED data in a recovered seal may exist only in the archive, even before receipt settlement.
+        eraseEvents(seal.chunk.story_id,
+                    {Range::Axis::Hlc, seal.settled ? seal.chunk.start : seal.chunk.end, seal.chunk.end},
+                    true);
     if(!segments.empty())
     {
         const auto restart = std::max(maximum, reservation_);
@@ -205,7 +207,7 @@ void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<Ap
             results.ok() && std::any_of(results->begin(),
                                         results->end(),
                                         [](const AppendResult& result) { return absl::IsOutOfRange(result.status); });
-    if(!rejected && std::this_thread::get_id() == committer_.get_id())
+    if(!rejected)
         return done(std::move(results));
     auto bytes = rejected ? wal::frame(writersRecord()) : std::string{};
     enqueue(Write{std::move(bytes),

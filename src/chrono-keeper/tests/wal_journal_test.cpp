@@ -29,6 +29,28 @@ AppendBatch batch(std::initializer_list<uint64_t> sequences)
 }
 Range all() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 
+TEST(WalJournal, RecoveredUnsettledSealRequiresArchiveEvenWhenAcceptedEventsAreGone)
+{
+    WalRig rig;
+    auto accepted = rig.current->append(batch({1}), Durability::Accepted);
+    auto durable = rig.current->append(batch({2}), Durability::Durable);
+    ASSERT_TRUE(accepted.ok());
+    ASSERT_TRUE(durable.ok());
+    ASSERT_TRUE(accepted->front().status.ok());
+    ASSERT_TRUE(durable->front().status.ok());
+    const Hlc end{durable->front().hlc.physical_ns + 1, 0};
+    ASSERT_TRUE(rig.current->recordSeal({"unsettled", 1, accepted->front().hlc, end, {}, false}).ok());
+    EXPECT_EQ(rig.current->evictionFloor(1), Hlc{});
+    rig.reopen();
+    EXPECT_EQ(rig.current->evictionFloor(1), end);
+    auto events = rig.current->read(1, all());
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().id.sequence, 2u);
+    ASSERT_EQ(rig.current->sealedChunks().size(), 1u);
+    EXPECT_FALSE(rig.current->sealedChunks().front().settled);
+}
+
 TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
 {
     WalRig rig;

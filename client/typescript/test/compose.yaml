@@ -10,6 +10,8 @@ services:
     volumes:
       - ${CHRONOLOG_TYPESCRIPT_PACKAGE}:/package:ro
     environment:
+      GRPC_DNS_RESOLVER: native
+      RES_OPTIONS: "single-request-reopen timeout:1 attempts:2"
       CHRONOLOG_TYPESCRIPT_CATALOG: chrono-visor:50051
       CHRONOLOG_TYPESCRIPT_PLAYER: chrono-player:50054
     command: ["node", "--test", "--test-timeout=60000", "test/client.test.js"]

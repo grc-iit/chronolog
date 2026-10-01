@@ -68,6 +68,7 @@ struct CheckedAssignment
     Hlc hlc;
     int64_t acceptance_clock_ns{};
 };
+// Unspecified requests Durable and is never an achieved durability level.
 enum class Durability
 {
     Unspecified = 0,
@@ -274,6 +275,7 @@ enum class ManifestState
     Empty,
     Deleted,
     Failed,
+    // LOST preserves the watermark; reads over a missing/corrupt persisted window are SOURCE_FAILED.
     Lost
 };
 struct ManifestRecord

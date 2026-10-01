@@ -127,6 +127,7 @@ TEST_P(JournalContract, GaplessSequenceRejection)
     ASSERT_EQ(a->size(), 1u);
     EXPECT_EQ((*a)[0].status.code(), absl::StatusCode::kFailedPrecondition);
     EXPECT_NE((*a)[0].status.message().find("1"), std::string::npos);
+    EXPECT_EQ((*a)[0].achieved, Durability::Unspecified);
     auto b = h->sut->append(Batch({Item()}), Durability::Accepted);
     ASSERT_TRUE(b.ok());
     ASSERT_EQ(b->size(), 1u);
@@ -226,12 +227,21 @@ TEST_P(JournalContract, PayloadAndTraceContextValidation)
     ASSERT_TRUE(a.ok());
     ASSERT_EQ(a->size(), 1u);
     EXPECT_EQ((*a)[0].status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ((*a)[0].achieved, Durability::Unspecified);
     i = Item();
     i.envelope.trace_id = "short";
     auto b = h->sut->append(Batch({i}), Durability::Accepted);
     ASSERT_TRUE(b.ok());
     ASSERT_EQ(b->size(), 1u);
     EXPECT_EQ((*b)[0].status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ((*b)[0].achieved, Durability::Unspecified);
+    i = Item();
+    i.envelope.span_id = "short";
+    auto c = h->sut->append(Batch({i}), Durability::Accepted);
+    ASSERT_TRUE(c.ok());
+    ASSERT_EQ(c->size(), 1u);
+    EXPECT_EQ((*c)[0].status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ((*c)[0].achieved, Durability::Unspecified);
 }
 
 TEST_P(JournalContract, HalfOpenRangeAndFrontierIncludesRegisteredWriter)

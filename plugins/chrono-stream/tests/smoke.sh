@@ -20,7 +20,8 @@ cleanup() {
     timeout 30 "${compose[0]}" volume rm -f "${project}_stream-influx" > /dev/null 2>&1 || true
 }
 trap cleanup EXIT
-timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 influxdb grafana chrono-stream-collect chrono-stream-export
+timeout 240 "${compose[@]}" up -d --no-deps --wait --wait-timeout 180 influxdb grafana
+timeout 60 "${compose[@]}" up -d --no-deps --wait --wait-timeout 30 chrono-stream-collect chrono-stream-export
 python=build/smoke-venv/bin/python
 timeout 45 "$python" - <<'PY'
 import csv,http.client,io,json,os,time,urllib.request,urllib.error

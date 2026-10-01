@@ -558,6 +558,8 @@ RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick, std::op
 {
     if(range.start > range.end)
         return absl::InvalidArgumentError("range start is after end");
+    if(!admission_ready_.load())
+        return absl::UnavailableError("acquisition snapshot is not applied");
     if(auto status = requireStory(id); !status.ok())
         return status;
     std::vector<std::shared_ptr<Writer>> live;
