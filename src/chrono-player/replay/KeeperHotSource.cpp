@@ -166,7 +166,7 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story, const Range& 
                 continue;
             own.end = std::min(range.end, p.own_cut);
         }
-        else
+        else if(out.physical_policy)
         {
             int64_t bound = std::max(p.own_cut.physical_ns, p.own_physical_ceiling_ns);
             int64_t skew = std::max<int64_t>(0, routes_->skewLimitNs());
