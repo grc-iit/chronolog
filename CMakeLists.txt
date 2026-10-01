@@ -155,3 +155,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/cpp/CMakeLists.txt")
     add_subdirectory(client/cpp)
 endif()
+
+if(CHRONOLOG_BUILD_PYTHON)
+    add_subdirectory(client/python/binding)
+endif()
