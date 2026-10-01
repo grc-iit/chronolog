@@ -38,6 +38,26 @@ public:
     absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const override;
     absl::StatusOr<Hlc> keeperFrontier(StoryId id) const override;
 
+    struct SealedView
+    {
+        // Exclusive frontier F ticked once before any writer lock was taken.
+        Hlc sealed;
+        // Every live writer incarnation, all carrying F.
+        std::vector<Frontier> frontiers;
+    };
+    // One tick for both the Keeper seal and the per-writer frontiers, so FetchHot can scan after it.
+    absl::StatusOr<SealedView> sealedView(StoryId id) const;
+
+    struct WriterKey
+    {
+        StoryId story_id{};
+        uint64_t writer_id{};
+        uint64_t incarnation{};
+        auto operator<=>(const WriterKey&) const = default;
+    };
+    // Current, unreleased incarnation of every writer registered here, assigned or not.
+    std::vector<WriterKey> liveWriters() const;
+
     // Writer admission, fed by the acquisition stream (or a test). A higher incarnation supersedes the
     // current one; a lower one is rejected. Re-registering the current incarnation reassigns it here.
     absl::Status registerWriter(StoryId story, uint64_t writer_id, uint64_t incarnation);
