@@ -98,6 +98,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
                                                   const AppendItem& item,
                                                   Durability durability,
                                                   int64_t now_ns,
+                                                  const std::optional<Route>& route,
                                                   std::set<std::pair<uint64_t, uint64_t>>& poisoned,
                                                   std::function<void(AppendResult)> done)
 {
@@ -108,7 +109,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         result.status = std::move(status);
         result.achieved = Durability::Unspecified;
         if(with_route)
-            result.current_route = currentRoute(story);
+            result.current_route = route;
         return result;
     };
 
@@ -459,6 +460,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
                                batch.items[i],
                                durability,
                                reading->physical_ns,
+                               route,
                                poisoned,
                                [state, i](AppendResult r) { state->finish(i, std::move(r)); });
             if(!result || result->status != Clock::wouldExceedCeiling())

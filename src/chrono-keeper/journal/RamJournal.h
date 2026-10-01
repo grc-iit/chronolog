@@ -246,6 +246,7 @@ private:
                                           const AppendItem& item,
                                           Durability durability,
                                           int64_t now_ns,
+                                          const std::optional<Route>& route,
                                           std::set<std::pair<uint64_t, uint64_t>>& poisoned,
                                           std::function<void(AppendResult)> done);
     // Ticks F first, then waits out every in-flight assignment by taking each writer lock in turn.
