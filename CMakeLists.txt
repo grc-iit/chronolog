@@ -94,3 +94,4 @@ else()
 endif()
 
 add_subdirectory(tools/stub_server)
+add_subdirectory(src/chrono-player)

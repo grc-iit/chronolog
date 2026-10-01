@@ -1,49 +1,25 @@
-cmake_minimum_required(VERSION 3.25)
+add_library(chrono_player_replay STATIC
+    replay/CompletionPolicy.cpp
+    replay/HotReplay.cpp
+    replay/ReplayMerge.cpp)
+target_include_directories(chrono_player_replay PUBLIC "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(chrono_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads
+    PRIVATE chronolog_warnings)
 
-find_package(Thallium REQUIRED)
-find_package(HDF5 REQUIRED COMPONENTS C CXX)
+include(GoogleTest)
 
-#------------------------------------------------------------------------------
-# ChronoPlayer Executable
-#------------------------------------------------------------------------------
-add_executable(chrono_player)
+function(chrono_player_test name source prefix)
+    add_executable(${name} ${source})
+    target_include_directories(${name} PRIVATE "${CMAKE_SOURCE_DIR}/tests/contract")
+    target_link_libraries(${name} PRIVATE chrono_player_replay chronolog_warnings GTest::gtest GTest::gtest_main)
+    if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
+        set_property(TARGET ${name} PROPERTY CROSSCOMPILING_EMULATOR
+            "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
+    endif()
+    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST)
+endfunction()
 
-target_include_directories(chrono_player PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-)
-
-target_sources(chrono_player PRIVATE
-    src/ChronoPlayer.cpp
-    src/ChronoPlayerConfiguration.cpp
-    src/PlayerDataStore.cpp
-    src/ArchiveReadingAgent.cpp
-    src/HDF5ArchiveReadingAgent.cpp
-    src/PlaybackService.cpp
-    src/QueryResponseTransferAgent.cpp
-)
-
-target_link_libraries(chrono_player
-    PRIVATE
-        chrono_common
-        chronolog_client
-        thallium
-        ${HDF5_LIBRARIES}
-)
-
-set_target_properties(chrono_player PROPERTIES
-    OUTPUT_NAME chrono-player
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-#------------------------------------------------------------------------------
-# Test executables: built from tests/unit/chrono-player/
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# Install executables
-#------------------------------------------------------------------------------
-chronolog_install_target(chrono_player)
-
-# Configuration file is installed by ChronoVisor to avoid duplication
+find_program(CHRONOLOG_SETARCH setarch)
+chrono_player_test(chrono_player_replay_merge_test tests/replay_merge_test.cpp "replay_merge.")
+chrono_player_test(chrono_player_completion_policy_test tests/completion_policy_test.cpp "completion_policy.")
+chrono_player_test(chrono_player_hot_replay_contract_test tests/hot_replay_contract.cpp "")
