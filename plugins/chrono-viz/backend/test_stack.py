@@ -92,6 +92,9 @@ def test_real_stack_query_tail_and_failed_keeper():
         assert failed.json()["meta"]["complete"] is False
         assert failed.json()["meta"]["reason"] == "SOURCE_FAILED"
         assert failed.json()["meta"]["laggards"]
+        os.kill(int(os.environ["CHRONOLOG_TEST_PLAYER_PID"]), signal.SIGKILL)
+        health = requests.get(base + "/health", timeout=8)
+        assert health.status_code == 503, health.text
         server.terminate()
         server.wait(timeout=5)
     finally:

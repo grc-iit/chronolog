@@ -114,13 +114,20 @@ def query(q: Query):
     c = client()
     story = resolve(c, q.chronicle, q.story, max(.001, end - time.monotonic()))
     rows = []
+    size = 0
+    limited = False
     with c.read(story, cl.Hlc(q.from_ns), cl.Hlc(q.to_ns),
                 timeout=max(.001, end - time.monotonic())) as stream:
         for event in stream:
-            rows.append(row(event, q.fields))
-            if len(rows) == q.limit:
+            values = row(event, q.fields)
+            size += len(json.dumps(values).encode())
+            if size > 16 << 20:
+                limited = True
                 break
-        limited = len(rows) == q.limit
+            rows.append(values)
+            if len(rows) == q.limit:
+                limited = True
+                break
         completion = stream.completion
     meta = {"complete": None, "reason": None, "frontier": None, "laggards": [], "limited": limited}
     if not limited:

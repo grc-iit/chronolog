@@ -34,7 +34,7 @@ start() {
 start "$visor" visor 'catalog ready'
 start "$keeper" keeper 'journal ready'
 start "$player" player 'player ready'
-if ! timeout 90 env CHRONOLOG_TEST_VISOR="127.0.0.1:$port" CHRONOLOG_TEST_PLAYER="127.0.0.1:$((port+4))" CHRONOLOG_TEST_KEEPER_PID="${pids[1]}" "$python" -m pytest -q "$tests"; then
+if ! timeout 90 env CHRONOLOG_TEST_VISOR="127.0.0.1:$port" CHRONOLOG_TEST_PLAYER="127.0.0.1:$((port+4))" CHRONOLOG_TEST_KEEPER_PID="${pids[1]}" CHRONOLOG_TEST_PLAYER_PID="${pids[2]}" "$python" -m pytest -q "$tests"; then
     cat "$scratch/visor.log" "$scratch/keeper.log" "$scratch/player.log"
     exit 1
 fi

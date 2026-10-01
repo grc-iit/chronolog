@@ -16,7 +16,7 @@ export class DataSource extends DataSourceApi<Query, Options>
     constructor(settings: DataSourceInstanceSettings<Options>)
     {
         super(settings);
-        this.url = settings.url || `/api/datasources/proxy/uid/${settings.uid}`;
+        this.url = `/api/datasources/proxy/uid/${settings.uid}`;
     }
     async choices(chronicle?: string): Promise<string[]>
     {
