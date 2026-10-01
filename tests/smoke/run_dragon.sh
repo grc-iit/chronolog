@@ -154,6 +154,12 @@ run_engine() {
     return "$rc"
 }
 
+if [ "${RBUILD_HELD:-}" != stack ]; then
+    exec 8>"$HOME/chronolog-sprint/stack.lock"
+    echo "-- waiting for shared stack lock"
+    flock 8
+fi
+
 for engine in $engines; do
     if run_engine "$engine"; then
         echo "RESULT $engine: PASS"
