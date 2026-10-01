@@ -17,6 +17,7 @@
 
 #include "KeeperConfig.h"
 #include "adapter/ArchiveService.h"
+#include "adapter/Convert.h"
 #include "adapter/JournalService.h"
 #include "clock/SystemClock.h"
 #include "journal/RamJournal.h"
@@ -89,7 +90,37 @@ int main(int argc, char** argv)
 
     using namespace chronolog;
     auto clock = std::make_shared<SystemClock>();
-    auto membership = std::make_shared<keeper::ConfigMembership>(config->static_routes);
+    grpc::ChannelArguments channel_args;
+    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
+    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
+    auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
+    const std::string instance = newInstanceId();
+    auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
+    auto membership = std::make_shared<keeper::ConfigMembership>(
+            config->static_routes,
+            [route_stub, process_id = config->process_id, endpoint = config->self_endpoint, instance](
+                    StoryId story) -> absl::StatusOr<Route>
+            {
+                grpc::ClientContext context;
+                context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+                internal::v1::RegisterRequest request;
+                auto* process = request.mutable_process();
+                process->set_process_id(process_id);
+                process->set_instance(instance);
+                process->set_endpoint(endpoint);
+                process->set_role(internal::v1::PROCESS_ROLE_KEEPER);
+                internal::v1::RegisterResponse response;
+                auto status = route_stub->Register(&context, request, &response);
+                if(!status.ok())
+                    return absl::Status(static_cast<absl::StatusCode>(status.error_code()), status.error_message());
+                if(response.status().code() != 0)
+                    return absl::Status(static_cast<absl::StatusCode>(response.status().code()),
+                                        response.status().message());
+                for(const auto& update: response.routes())
+                    if(update.story_id() == story)
+                        return keeper::convert::fromProto(update.route());
+                return absl::NotFoundError("unknown story");
+            });
     RamJournalConfig journal_config;
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
@@ -117,12 +148,6 @@ int main(int argc, char** argv)
         public_server->Shutdown();
         return 1;
     }
-
-    grpc::ChannelArguments channel_args;
-    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
-    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
-    auto visor = grpc::CreateCustomChannel(config->visor_internal, grpc::InsecureChannelCredentials(), channel_args);
-    const std::string instance = newInstanceId();
 
     std::atomic<keeper::ClusterClient*> cluster_ptr{nullptr};
     keeper::AcquisitionWatcher acquisitions(journal,

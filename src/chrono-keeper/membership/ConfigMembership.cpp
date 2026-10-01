@@ -5,7 +5,8 @@
 namespace chronolog::keeper
 {
 
-ConfigMembership::ConfigMembership(const std::vector<StaticRoute>& seed)
+ConfigMembership::ConfigMembership(const std::vector<StaticRoute>& seed, RouteLookup lookup)
+    : lookup_(std::move(lookup))
 {
     for(const auto& entry: seed) routes_[entry.story_id] = entry.route;
 }
@@ -18,20 +19,27 @@ void ConfigMembership::setRoute(StoryId id, Route route)
 
 absl::StatusOr<Route> ConfigMembership::route(StoryId id) const
 {
-    std::shared_lock lock(mutex_);
-    auto it = routes_.find(id);
-    if(it == routes_.end())
+    {
+        std::shared_lock lock(mutex_);
+        auto it = routes_.find(id);
+        if(it != routes_.end())
+            return it->second;
+    }
+    if(!lookup_)
         return absl::NotFoundError("unknown story");
-    return it->second;
+    auto learned = lookup_(id);
+    if(!learned.ok())
+        return learned.status();
+    std::unique_lock lock(mutex_);
+    return routes_.try_emplace(id, std::move(*learned)).first->second;
 }
 
 absl::Status ConfigMembership::validateEpoch(StoryId id, Epoch epoch) const
 {
-    std::shared_lock lock(mutex_);
-    auto it = routes_.find(id);
-    if(it == routes_.end())
-        return absl::NotFoundError("unknown story");
-    if(it->second.epoch != epoch)
+    auto current = route(id);
+    if(!current.ok())
+        return current.status();
+    if(current->epoch != epoch)
         return absl::FailedPreconditionError("stale epoch");
     return absl::OkStatus();
 }
