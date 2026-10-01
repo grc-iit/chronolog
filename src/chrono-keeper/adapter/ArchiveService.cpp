@@ -90,13 +90,9 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                     return fail(absl::InvalidArgumentError("range start is after end"));
                 const uint64_t limit = req.max_events() ? req.max_events() : options_.default_max_events;
 
-                // The seal is ticked before the scan so every event below it is already inserted.
-                auto view = journal_.sealedView(req.story_id());
-                if(!view.ok())
-                    return fail(view.status());
-                auto events = journal_.read(req.story_id(), range);
-                if(!events.ok())
-                    return fail(events.status());
+                auto snapshot = journal_.sealedRead(req.story_id(), range);
+                if(!snapshot.ok())
+                    return fail(snapshot.status());
                 auto route = membership_.route(req.story_id());
                 if(!route.ok())
                     return fail(route.status());
@@ -107,7 +103,7 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 size_t total_bytes = 0;
                 uint64_t sent = 0;
                 bool truncated = false;
-                for(const auto& event: *events)
+                for(const auto& event: snapshot->events)
                 {
                     const size_t bytes = event.envelope.payload.size();
                     if(sent >= limit || (sent > 0 && total_bytes + bytes > options_.max_bytes))
@@ -129,8 +125,8 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 }
                 auto* trailer = out.emplace_back().mutable_trailer();
                 trailer->set_epoch(route->epoch);
-                *trailer->mutable_sealed_frontier() = convert::toProto(view->sealed);
-                for(const auto& f: view->frontiers) *trailer->add_frontiers() = convert::toProto(f);
+                *trailer->mutable_sealed_frontier() = convert::toProto(snapshot->view.sealed);
+                for(const auto& f: snapshot->view.frontiers) *trailer->add_frontiers() = convert::toProto(f);
                 trailer->set_truncated(truncated);
                 reactor->begin(std::move(out), grpc::Status::OK);
             });
