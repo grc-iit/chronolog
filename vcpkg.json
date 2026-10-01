@@ -7,6 +7,7 @@
     "protobuf",
     "gtest",
     "sqlite3",
-    "nlohmann-json"
+    "nlohmann-json",
+    {"name": "hdf5", "default-features": false}
   ]
 }

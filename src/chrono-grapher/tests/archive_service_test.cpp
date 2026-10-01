@@ -243,6 +243,13 @@ TEST(GrapherConfigTest, ValidatesLimitsAndInternalBindGuard)
 {
     auto loaded = GrapherConfig::load(std::nullopt);
     ASSERT_TRUE(loaded.ok());
+    EXPECT_EQ(loaded->archive_codec, "hdf5");
+    loaded->archive_codec = "proto";
+    EXPECT_TRUE(loaded->validate().ok());
+    loaded->archive_codec = "invalid";
+    EXPECT_FALSE(loaded->validate().ok());
+    loaded->archive_codec = "hdf5";
+    ASSERT_TRUE(loaded.ok());
     EXPECT_EQ(loaded->manifest_writer, loaded->process_id);
     loaded->internal_listen = "0.0.0.0:50063";
     EXPECT_FALSE(loaded->validate().ok());

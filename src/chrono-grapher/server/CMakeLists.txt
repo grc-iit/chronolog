@@ -12,4 +12,4 @@ target_link_libraries(chronolog_grapher_server_tests PRIVATE
     chronolog_grapher_server chronolog_warnings GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chronolog_grapher_server_tests
-    TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+    TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)

@@ -39,12 +39,12 @@ absl::StatusOr<std::string> Unhex(const std::string& input)
     return output;
 }
 
-std::string Filename(const Chunk& chunk, const std::string& writer)
+std::string Filename(const Chunk& chunk, const std::string& writer, const std::string& extension)
 {
     return std::to_string(chunk.start.physical_ns) + "_" + std::to_string(chunk.start.logical) + "_" +
            std::to_string(chunk.end.physical_ns) + "_" + std::to_string(chunk.end.logical) + "_" +
            (chunk.exempt ? "1_" : "0_") + std::to_string(chunk.events.size()) + "_" + Hex(writer) + "_" +
-           Hex(chunk.id) + ".pb";
+           Hex(chunk.id) + extension;
 }
 
 template <typename T>
@@ -57,7 +57,8 @@ bool Number(const std::string& text, T& value)
 absl::StatusOr<ManifestRecord> FromFilename(const std::filesystem::path& relative)
 {
     ManifestRecord record;
-    if(relative.extension() != ".pb" || !Number(relative.parent_path().string(), record.story_id) || !record.story_id)
+    if((relative.extension() != ".pb" && relative.extension() != ".h5") ||
+       !Number(relative.parent_path().string(), record.story_id) || !record.story_id)
         return absl::InvalidArgumentError("not a published chunk");
     std::istringstream name(relative.stem().string());
     std::vector<std::string> fields;
@@ -140,9 +141,9 @@ int StateRank(ManifestState state)
     return 0;
 }
 
-absl::Status ValidateFile(const ChunkCodec& codec, const std::filesystem::path& root, const ManifestRecord& record)
+absl::Status ValidateFile(const std::filesystem::path& root, const ManifestRecord& record)
 {
-    auto events = codec.read(root / record.file);
+    auto events = ReadChunkFile(root / record.file);
     if(!events.ok())
         return events.status();
     if(events->size() != record.event_count)
@@ -325,7 +326,7 @@ absl::Status FileTierStore::recover()
         {
             if(record.state != ManifestState::Published)
                 continue;
-            if(ValidateFile(*codec_, root_, record).ok())
+            if(ValidateFile(root_, record).ok())
                 continue;
             auto status = log_->rememberWatermark(story, w);
             if(!status.ok())
@@ -357,7 +358,7 @@ absl::Status FileTierStore::recover()
                                                    O_RDWR | O_CLOEXEC));
             if(owner.get() >= 0 && ::flock(owner.get(), LOCK_EX | LOCK_NB) != 0)
                 continue;
-            if(!ValidateFile(*codec_, root_, *record).ok())
+            if(!ValidateFile(root_, *record).ok())
                 continue;
             auto synced = tier_detail::SyncDirectory(it->path());
             if(!synced.ok())
@@ -387,7 +388,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(!known(*index, chunk.story_id))
         return absl::NotFoundError("unknown story");
     std::sort(chunk.events.begin(), chunk.events.end(), ReplayLess);
-    const auto name = Filename(chunk, writer_);
+    const auto name = Filename(chunk, writer_, codec_->extension());
     if(name.size() > 255)
         return absl::InvalidArgumentError("chunk filename too long");
     ManifestRecord record{chunk.id,
@@ -401,13 +402,15 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                           chunk.exempt};
     for(const auto& existing: effective(*index, chunk.story_id))
     {
-        if(existing.file != record.file)
+        auto existing_name = std::filesystem::path(existing.file);
+        auto requested_name = std::filesystem::path(record.file);
+        if(existing_name.replace_extension() != requested_name.replace_extension())
             continue;
         if(existing.state == ManifestState::Empty && chunk.events.empty())
             return existing;
         if(existing.state == ManifestState::Published)
         {
-            auto events = codec_->read(root_ / existing.file);
+            auto events = ReadChunkFile(root_ / existing.file);
             if(!events.ok())
                 return events.status();
             if(events->size() == chunk.events.size() &&
@@ -433,7 +436,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         const std::string& file;
         ~Cleanup() { ::unlink(file.c_str()); }
     } cleanup{temporary};
-    auto status = codec_->write(temporary, chunk.events);
+    auto status = codec_->writeChunk(temporary, chunk);
     if(!status.ok())
         return status;
     if(::fsync(fd.get()) != 0)
@@ -471,7 +474,7 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
             continue;
         if(range.axis == Range::Axis::Hlc && (record.end <= range.start || record.start >= range.end))
             continue;
-        auto events = codec_->read(root_ / record.file);
+        auto events = ReadChunkFile(root_ / record.file);
         if(!events.ok())
             return events.status();
         if(events->size() != record.event_count)

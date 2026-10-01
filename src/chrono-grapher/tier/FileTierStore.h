@@ -14,7 +14,7 @@ public:
     Open(std::filesystem::path root,
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
-         std::shared_ptr<const ChunkCodec> codec = std::make_shared<ProtoChunkCodec>());
+         std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>());
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000));
     absl::Status refreshNow() const;

@@ -31,23 +31,33 @@ std::shared_ptr<fs::path> TestDirectory()
 class FailingCodec final: public ChunkCodec
 {
 public:
+    explicit FailingCodec(std::shared_ptr<const ChunkCodec> codec)
+        : codec_(std::move(codec))
+    {}
     mutable std::atomic<bool> fail{false};
+    std::string extension() const override { return codec_->extension(); }
+    absl::Status writeChunk(const fs::path& path, const Chunk& chunk) const override
+    {
+        if(fail.exchange(false))
+            return absl::UnavailableError("injected chunk write failure");
+        return codec_->writeChunk(path, chunk);
+    }
     absl::Status write(const fs::path& path, std::span<const Event> events) const override
     {
         if(fail.exchange(false))
             return absl::UnavailableError("injected chunk write failure");
-        return proto_.write(path, events);
+        return codec_->write(path, events);
     }
-    absl::StatusOr<std::vector<Event>> read(const fs::path& path) const override { return proto_.read(path); }
+    absl::StatusOr<std::vector<Event>> read(const fs::path& path) const override { return codec_->read(path); }
 
 private:
-    ProtoChunkCodec proto_;
+    std::shared_ptr<const ChunkCodec> codec_;
 };
 
-std::unique_ptr<contract::TierStoreHarness> MakeFileStore()
+std::unique_ptr<contract::TierStoreHarness> MakeFileStore(std::shared_ptr<const ChunkCodec> implementation)
 {
     auto directory = TestDirectory();
-    auto codec = std::make_shared<FailingCodec>();
+    auto codec = std::make_shared<FailingCodec>(implementation);
     auto harness = std::make_unique<contract::TierStoreHarness>();
     auto opened = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
     EXPECT_TRUE(opened.ok()) << opened.status();
@@ -77,9 +87,9 @@ std::unique_ptr<contract::TierStoreHarness> MakeFileStore()
                 logs.push_back(file.path().string());
         return logs;
     };
-    harness->publishOtherWriter = [directory](Chunk chunk) -> absl::StatusOr<ManifestRecord>
+    harness->publishOtherWriter = [directory, codec](Chunk chunk) -> absl::StatusOr<ManifestRecord>
     {
-        auto other = FileTierStore::Open(*directory, "secondary", {{1, {100, 0}}});
+        auto other = FileTierStore::Open(*directory, "secondary", {{1, {100, 0}}}, codec);
         if(!other.ok())
             return other.status();
         return (*other)->publish(std::move(chunk));
@@ -366,13 +376,98 @@ TEST(FileTierStore, InvalidInputsAndUnknownStoriesAreRejected)
     EXPECT_EQ((*store)->read(1, {static_cast<Range::Axis>(99), {100, 0}, {200, 0}}).status().code(),
               absl::StatusCode::kInvalidArgument);
 }
+TEST(HDF5ChunkCodec, LosslessEveryEventField)
+{
+    auto directory = TestDirectory();
+    auto chunk = contract::Window();
+    auto& event = chunk.events.front();
+    event.id = {1, 0xfedcba9876543210ULL, 0xffffffffffffffffULL, 42};
+    event.hlc = {111, 37};
+    event.physical = {-456, 0xffffffffffffffffULL, ClockStatus::Synced};
+    event.durability = Durability::Durable;
+    event.envelope = {"application/octet-stream",
+                      std::string("a\0\xffz", 4),
+                      std::string("\0", 1) + std::string(15, '\xff'),
+                      std::string(8, '\0'),
+                      {{"", ""}, {"host", "dragon"}, {std::string("a\0b", 3), "back\\slash"}}};
+    auto second = event;
+    second.id.sequence++;
+    second.physical = {-999, std::nullopt, ClockStatus::Unavailable};
+    second.durability = Durability::Accepted;
+    second.envelope = {};
+    chunk.events.push_back(second);
+    auto third = second;
+    third.id.sequence++;
+    third.physical = {0, 0, ClockStatus::Unsynced};
+    third.durability = Durability::Unspecified;
+    chunk.events.push_back(third);
+    HDF5ChunkCodec codec;
+    const auto path = *directory / "fields.h5";
+    ASSERT_TRUE(codec.writeChunk(path, chunk).ok());
+    auto read = codec.read(path);
+    ASSERT_TRUE(read.ok()) << read.status();
+    ASSERT_EQ(read->size(), chunk.events.size());
+    for(std::size_t i = 0; i < read->size(); ++i)
+    {
+        const auto& expected = chunk.events[i];
+        const auto& actual = (*read)[i];
+        EXPECT_EQ(actual.id, expected.id);
+        EXPECT_EQ(actual.hlc, expected.hlc);
+        EXPECT_EQ(actual.physical.physical_ns, expected.physical.physical_ns);
+        EXPECT_EQ(actual.physical.uncertainty_ns, expected.physical.uncertainty_ns);
+        EXPECT_EQ(actual.physical.status, expected.physical.status);
+        EXPECT_EQ(actual.durability, expected.durability);
+        EXPECT_EQ(actual.envelope.content_type, expected.envelope.content_type);
+        EXPECT_EQ(actual.envelope.payload, expected.envelope.payload);
+        EXPECT_EQ(actual.envelope.trace_id, expected.envelope.trace_id);
+        EXPECT_EQ(actual.envelope.span_id, expected.envelope.span_id);
+        EXPECT_EQ(actual.envelope.attributes, expected.envelope.attributes);
+    }
+}
+
+TEST(FileTierStore, MixedCodecsRecoverOrphansAndReadByExtension)
+{
+    auto directory = TestDirectory();
+    auto proto = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(proto.ok());
+    auto first = (*proto)->publish(contract::Window());
+    ASSERT_TRUE(first.ok());
+    EXPECT_EQ(fs::path(first->file).extension(), ".pb");
+    proto->reset();
+    auto hdf5 = Open(*directory);
+    ASSERT_TRUE(hdf5.ok());
+    auto retry = (*hdf5)->publish(contract::Window());
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->file, first->file);
+    auto changed = contract::Window();
+    changed.events[0].envelope.payload = "changed";
+    EXPECT_FALSE((*hdf5)->publish(changed).ok());
+    auto second = (*hdf5)->publish(contract::Window(200, 300));
+    ASSERT_TRUE(second.ok());
+    EXPECT_EQ(fs::path(second->file).extension(), ".h5");
+    hdf5->reset();
+    std::ofstream(*directory / "manifest/primary.log", std::ios::trunc).close();
+    proto = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(proto.ok());
+    auto events = (*proto)->read(1, contract::WholeArchive());
+    ASSERT_TRUE(events.ok()) << events.status();
+    EXPECT_EQ(events->size(), 2u);
+    EXPECT_EQ((*proto)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+}
+
 } // namespace
 
 namespace contract
 {
-INSTANTIATE_TEST_SUITE_P(File,
-                         TierStoreContract,
-                         ::testing::Values(TierStoreFactory(MakeFileStore)),
-                         [](const auto&) { return "FileTier"; });
+INSTANTIATE_TEST_SUITE_P(
+        File,
+        TierStoreContract,
+        ::testing::Values(TierStoreFactory([] { return MakeFileStore(std::make_shared<ProtoChunkCodec>()); })),
+        [](const auto&) { return "FileTier"; });
+INSTANTIATE_TEST_SUITE_P(
+        HDF5,
+        TierStoreContract,
+        ::testing::Values(TierStoreFactory([] { return MakeFileStore(std::make_shared<HDF5ChunkCodec>()); })),
+        [](const auto&) { return "HDF5Tier"; });
 } // namespace contract
 } // namespace chronolog
