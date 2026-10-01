@@ -39,6 +39,7 @@ std::shared_ptr<grpc::Channel> KeeperArchive::archiveChannel(const std::string& 
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
     args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 5000);
     args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
     channel = grpc::CreateCustomChannel(endpoint, grpc::InsecureChannelCredentials(), args);
     return channel;

@@ -32,6 +32,7 @@ std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std:
         args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
         args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
         args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 5000);
         args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
         stub = internal::v1::Archive::NewStub(
                 grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args));
