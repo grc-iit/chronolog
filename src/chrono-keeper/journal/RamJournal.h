@@ -93,6 +93,17 @@ protected:
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
     virtual void writerScanned(WriterKey) const {}
     void restore(const Event& event);
+    struct WriterCheckpoint
+    {
+        WriterKey key;
+        uint64_t next_sequence{};
+        Hlc last_hlc;
+        bool released{}, assigned{};
+        std::vector<AppendResult> window;
+    };
+    std::vector<WriterCheckpoint> checkpointWriters() const;
+    void restoreWriter(const WriterCheckpoint& checkpoint);
+
 
 private:
     struct Pending

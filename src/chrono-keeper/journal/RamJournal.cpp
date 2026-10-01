@@ -254,6 +254,58 @@ void RamJournal::complete(const std::shared_ptr<Writer>& writer, uint64_t sequen
     for(auto& waiter: waiters) waiter(result);
 }
 
+std::vector<RamJournal::WriterCheckpoint> RamJournal::checkpointWriters() const
+{
+    std::vector<WriterCheckpoint> out;
+    for(auto& sh: shards_)
+    {
+        std::shared_lock lock(sh.mu);
+        for(const auto& [story_id, story]: sh.stories)
+            for(const auto& [key, writer]: story.writers)
+            {
+                std::lock_guard writer_lock(writer->mu);
+                const auto& slot = story.slots.at(key.first);
+                WriterCheckpoint checkpoint{{story_id, key.first, key.second},
+                                            writer->next_sequence,
+                                            writer->last_hlc,
+                                            writer->released,
+                                            slot.current == writer && slot.assigned,
+                                            {}};
+                for(const auto& [sequence, result]: writer->window)
+                    if(result.status.ok() && result.achieved == Durability::Durable &&
+                       !writer->pending.contains(sequence))
+                        checkpoint.window.push_back(result);
+                out.push_back(std::move(checkpoint));
+            }
+    }
+    return out;
+}
+
+void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
+{
+    const auto& key = checkpoint.key;
+    auto& sh = shard(key.story_id);
+    std::unique_lock lock(sh.mu);
+    auto& story = sh.stories[key.story_id];
+    auto& writer = story.writers[{key.writer_id, key.incarnation}];
+    if(!writer)
+    {
+        writer = std::make_shared<Writer>();
+        writer->writer_id = key.writer_id;
+        writer->incarnation = key.incarnation;
+    }
+    writer->next_sequence = std::max(writer->next_sequence, checkpoint.next_sequence);
+    writer->last_hlc = std::max(writer->last_hlc, checkpoint.last_hlc);
+    writer->released = writer->released || checkpoint.released;
+    for(const auto& result: checkpoint.window) writer->window[result.id.sequence] = result;
+    while(!writer->window.empty() && writer->next_sequence > std::max<size_t>(config_.dedupe_window, 1) &&
+          writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
+        writer->window.erase(writer->window.begin());
+    auto& slot = story.slots[key.writer_id];
+    if(slot.incarnation <= key.incarnation)
+        slot = Slot{key.incarnation, checkpoint.assigned, writer};
+}
+
 void RamJournal::restore(const Event& event)
 {
     auto& sh = shard(event.id.story_id);
