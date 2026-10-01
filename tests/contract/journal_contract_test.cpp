@@ -800,5 +800,150 @@ TEST_P(JournalContract, ReassignedWriterObservesOldFrontier)
     GTEST_SKIP() << "M8 dynamic reassignment is not implemented";
 }
 
+TEST_P(JournalContract, BackdatedReadingIsOutOfRange)
+{
+    auto item = Item();
+    item.physical.physical_ns = 100 - PhysicalPolicy{}.acceptance_window_ns - 2;
+    auto result = h->sut->append(Batch({item}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsOutOfRange(result->front().status));
+    EXPECT_EQ(result->front().achieved, Durability::Unspecified);
+    EXPECT_EQ(eventCount(), 0u);
+}
+TEST_P(JournalContract, FutureReadingIsOutOfRange)
+{
+    auto item = Item();
+    item.physical.physical_ns = 100 + PhysicalPolicy{}.skew_limit_ns + 2;
+    auto result = h->sut->append(Batch({item}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsOutOfRange(result->front().status));
+    EXPECT_EQ(eventCount(), 0u);
+}
+TEST_P(JournalContract, UnrepresentableIntervalIsInvalidArgument)
+{
+    for(auto physical: {INT64_MIN, INT64_MAX})
+    {
+        auto item = Item();
+        item.physical.physical_ns = physical;
+        auto result = h->sut->append(Batch({item}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        EXPECT_TRUE(absl::IsInvalidArgument(result->front().status));
+    }
+    auto valid = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(valid.ok());
+    EXPECT_TRUE(valid->front().status.ok());
+}
+TEST_P(JournalContract, OutOfRangeConsumesSequenceAndRetriesIdempotently)
+{
+    auto item = Item();
+    item.physical.physical_ns = 100 + PhysicalPolicy{}.skew_limit_ns + 2;
+    auto first = h->sut->append(Batch({item}), Durability::Accepted);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(absl::IsOutOfRange(first->front().status));
+    if(h->supports_durable)
+        h->crashRestart();
+    auto retry = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->front().status, first->front().status);
+    EXPECT_EQ(retry->front().achieved, Durability::Unspecified);
+    auto next = h->sut->append(Batch({Item(2)}), Durability::Accepted);
+    ASSERT_TRUE(next.ok());
+    EXPECT_TRUE(next->front().status.ok());
+    EXPECT_EQ(eventCount(), 1u);
+}
+TEST_P(JournalContract, HlcLeadOverAcceptanceClockIsBounded)
+{
+    for(uint64_t sequence = 1; sequence <= 32; ++sequence)
+    {
+        auto item = Item(sequence);
+        item.causal_floor = {100 + h->causal_skew_limit_ns, UINT32_MAX};
+        auto result = h->sut->append(Batch({item}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+        EXPECT_GE(result->front().hlc.physical_ns, 100);
+        EXPECT_LE(result->front().hlc.physical_ns - 100, PhysicalPolicy{}.hlc_lead_ns);
+    }
+}
+TEST_P(JournalContract, PhysicalFrontierBoundsLaterAcceptance)
+{
+    h->setPhysical(30'000'000'000);
+    auto frontier = h->sut->physicalFrontier(1);
+    ASSERT_TRUE(frontier.ok());
+    auto item = Item();
+    item.physical.physical_ns = *frontier;
+    auto result = h->sut->append(Batch({item}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsOutOfRange(result->front().status));
+    item = Item(2);
+    item.physical.physical_ns = *frontier + 1;
+    result = h->sut->append(Batch({item}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->front().status.ok());
+}
+TEST_P(JournalContract, PhysicalFrontierSurvivesRestart)
+{
+    if(!h->supports_durable)
+        GTEST_SKIP() << "requires WAL";
+    h->setPhysical(30'000'000'000);
+    auto before = h->sut->physicalFrontier(1);
+    ASSERT_TRUE(before.ok());
+    h->crashRestart();
+    auto after = h->sut->physicalFrontier(1);
+    ASSERT_TRUE(after.ok());
+    EXPECT_GE(*after, *before);
+    auto result = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsOutOfRange(result->front().status));
+}
+TEST_P(JournalContract, PhysicalCheckOrderedBeforeInsert)
+{
+    if(!h->onAssignment)
+        GTEST_SKIP() << "requires assignment hook";
+    std::promise<void> assigned, resume;
+    auto resumed = resume.get_future().share();
+    h->onAssignment(
+            [&](Hlc)
+            {
+                assigned.set_value();
+                if(resumed.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+                    throw std::runtime_error("assignment timeout");
+            });
+    auto append = std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+    auto ready = assigned.get_future();
+    EXPECT_EQ(ready.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    h->setPhysical(30'000'000'000);
+    auto report = std::async(std::launch::async, [&] { return h->sut->physicalFrontier(1); });
+    EXPECT_EQ(report.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+    resume.set_value();
+    auto result = append.get();
+    h->onAssignment({});
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->front().status.ok());
+    auto frontier = report.get();
+    ASSERT_TRUE(frontier.ok());
+    EXPECT_GE(*frontier, 15'000'000'000);
+    EXPECT_EQ(eventCount(), 1u);
+}
+TEST_P(JournalContract, DurabilityUpgradeDoesNotLowerPhysicalFrontier)
+{
+    if(!h->blockFsync)
+        GTEST_SKIP() << "requires WAL";
+    auto accepted = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(accepted.ok());
+    h->setPhysical(30'000'000'000);
+    auto before = h->sut->physicalFrontier(1);
+    ASSERT_TRUE(before.ok());
+    h->blockFsync();
+    auto upgrade = std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Durable); });
+    (void)h->waitPendingHlc();
+    auto report = std::async(std::launch::async, [&] { return h->sut->physicalFrontier(1); });
+    h->releaseFsync();
+    auto result = upgrade.get();
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok());
+    auto after = report.get();
+    ASSERT_TRUE(after.ok());
+    EXPECT_GE(*after, *before);
+}
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(JournalContract);
 } // namespace chronolog::contract

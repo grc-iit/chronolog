@@ -64,6 +64,7 @@ message ChunkIdentity
     chronolog.v1.Hlc end = 4;
     // Salvage chunk is readable but never advances contiguous watermark.
     bool watermark_exempt = 5;
+    bool physical_policy = 6;
 }
 // data is a serialized ChunkPayload sliced into bounded frames; offsets gapless.
 // Every frame repeats identical identity/total_bytes/checksum/algorithm.
@@ -259,6 +260,7 @@ message ReadClockResponse
 // Internal hot replay uses the same half-open HLC/physical range representation.
 message FetchHotRequest
 {
+    chronolog.v1.PhysicalRange physical_filter = 7;
     string expect_instance = 5;
     uint64 expect_epoch = 6;
     // Catalog-assigned story identity.

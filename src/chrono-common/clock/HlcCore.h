@@ -26,6 +26,45 @@ public:
         return advance(physical_ns, remote);
     }
 
+    absl::StatusOr<CheckedAssignment> assignChecked(int64_t physical, Hlc floor, PhysicalInterval interval)
+    {
+        std::lock_guard lock(mutex_);
+        acceptance_ = std::max(acceptance_, physical);
+        const auto maximum = std::max({acceptance_, floor.physical_ns, last_.physical_ns});
+        if(maximum == INT64_MAX && ((floor.physical_ns == maximum && floor.logical == UINT32_MAX) ||
+                                    (last_.physical_ns == maximum && last_.logical == UINT32_MAX)))
+            return absl::InvalidArgumentError("HLC overflow");
+        const auto saved = last_;
+        const auto candidate = advance(acceptance_, floor);
+        last_ = saved;
+        if(candidate.physical_ns > INT64_MIN + policy_.hlc_lead_ns)
+            acceptance_ = std::max(acceptance_, candidate.physical_ns - policy_.hlc_lead_ns);
+        const int64_t low = acceptance_ < INT64_MIN + policy_.acceptance_window_ns
+                                    ? INT64_MIN
+                                    : acceptance_ - policy_.acceptance_window_ns;
+        const int64_t high =
+                acceptance_ > INT64_MAX - policy_.skew_limit_ns ? INT64_MAX : acceptance_ + policy_.skew_limit_ns;
+        if(interval.lo < low || interval.hi > high)
+            return absl::OutOfRangeError("physical reading outside acceptance window");
+        last_ = candidate;
+        return CheckedAssignment{candidate, acceptance_};
+    }
+    void observeFloor(Hlc floor)
+    {
+        std::lock_guard lock(mutex_);
+        last_ = std::max(last_, floor);
+    }
+    int64_t acceptanceClock(int64_t physical)
+    {
+        std::lock_guard lock(mutex_);
+        return acceptance_ = std::max(acceptance_, physical);
+    }
+    void raiseAcceptanceClock(int64_t floor)
+    {
+        std::lock_guard lock(mutex_);
+        acceptance_ = std::max(acceptance_, floor);
+    }
+
 private:
     Hlc advance(int64_t physical_ns, const Hlc& remote)
     {
@@ -46,6 +85,8 @@ private:
 
     std::mutex mutex_;
     Hlc last_{};
+    int64_t acceptance_{INT64_MIN};
+    PhysicalPolicy policy_;
 };
 
 } // namespace chronolog

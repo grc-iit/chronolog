@@ -30,6 +30,8 @@ SystemClock::SystemClock(SystemClockSource source)
 
 TimeReading SystemClock::sample() const
 {
+    if(source_.snapshot)
+        return source_.snapshot();
     TimeReading reading;
     auto realtime = source_.realtime_ns();
     reading.status = realtime ? source_.status() : ClockStatus::Unavailable;

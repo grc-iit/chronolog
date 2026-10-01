@@ -32,6 +32,16 @@ public:
             assigned(value);
         return value;
     }
+    absl::StatusOr<CheckedAssignment> assignChecked(Hlc floor, PhysicalInterval interval) override
+    {
+        auto value = clock_.assignChecked(floor, interval);
+        if(value.ok() && assigned)
+            assigned(value->hlc);
+        return value;
+    }
+    void observeFloor(Hlc floor) override { clock_.observeFloor(floor); }
+    int64_t acceptanceClock() override { return clock_.acceptanceClock(); }
+    void raiseAcceptanceClock(int64_t floor) override { clock_.raiseAcceptanceClock(floor); }
     std::function<void(Hlc)> assigned, ticked;
 
 private:

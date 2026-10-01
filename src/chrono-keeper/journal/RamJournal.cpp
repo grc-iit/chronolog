@@ -1,4 +1,5 @@
 #include "journal/RamJournal.h"
+#include "clock/PhysicalPolicy.h"
 
 #include <algorithm>
 #include <future>
@@ -188,10 +189,28 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         return fail(absl::InvalidArgumentError("trace_id must be 16 bytes"));
     if(!item.envelope.span_id.empty() && item.envelope.span_id.size() != 8)
         return fail(absl::InvalidArgumentError("span_id must be 8 bytes"));
-    if(item.causal_floor.physical_ns < 0 || item.causal_floor.physical_ns - now_ns > config_.causal_floor_skew_limit_ns)
+    if(item.causal_floor.physical_ns < 0 ||
+       (item.causal_floor.physical_ns > now_ns &&
+        (now_ns < 0 || item.causal_floor.physical_ns - now_ns > config_.causal_floor_skew_limit_ns)))
         return fail(absl::InvalidArgumentError("causal_floor is beyond the skew limit"));
 
-    Hlc hlc = clock_->observe(std::max(item.causal_floor, writer->last_hlc));
+    auto interval = physicalInterval(item.physical);
+    if(!interval.ok())
+        return fail(interval.status());
+    auto assignment = clock_->assignChecked(std::max(item.causal_floor, writer->last_hlc), *interval);
+    if(!assignment.ok())
+    {
+        result = fail(assignment.status());
+        if(absl::IsOutOfRange(result.status))
+        {
+            ++writer->next_sequence;
+            writer->window[item.sequence] = result;
+            while(writer->window.size() > std::max<size_t>(config_.dedupe_window, 1))
+                writer->window.erase(writer->window.begin());
+        }
+        return result;
+    }
+    Hlc hlc = assignment->hlc;
     Event event;
     event.id = result.id;
     event.physical = item.physical;
@@ -272,7 +291,8 @@ std::vector<RamJournal::WriterCheckpoint> RamJournal::checkpointWriters() const
                                             slot.current == writer && slot.assigned,
                                             {}};
                 for(const auto& [sequence, result]: writer->window)
-                    if(result.status.ok() && result.achieved == Durability::Durable &&
+                    if((absl::IsOutOfRange(result.status) ||
+                        (result.status.ok() && result.achieved == Durability::Durable)) &&
                        !writer->pending.contains(sequence))
                         checkpoint.window.push_back(result);
                 out.push_back(std::move(checkpoint));
@@ -348,7 +368,7 @@ absl::StatusOr<std::vector<AppendResult>> RamJournal::append(const AppendBatch& 
 
 void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, AppendCallback done)
 {
-    if(durability != Durability::Accepted && supportsDurable())
+    if(supportsDurable())
         done = [this, callback = std::move(done)](auto results) mutable
         { finishAppend(std::move(callback), std::move(results)); };
     if(batch.story_id == 0)
@@ -448,28 +468,43 @@ absl::StatusOr<std::vector<Event>> RamJournal::read(StoryId id, Range range) con
     return out;
 }
 
-void RamJournal::scan(const Writer& writer, Range range, std::vector<Event>& out)
+void RamJournal::scan(const Writer& writer, Range range, std::vector<Event>& out, std::optional<Range> physical_filter)
 {
+    auto emit = [&](const Event& event)
+    {
+        if(physical_filter)
+        {
+            auto interval = physicalInterval(event.physical);
+            if(!interval.ok())
+                return;
+            const auto start = physical_filter->start.physical_ns, end = physical_filter->end.physical_ns;
+            if(interval->bounded ? !(interval->lo < end && interval->hi >= start)
+                                 : !(start <= event.physical.physical_ns && event.physical.physical_ns < end))
+                return;
+        }
+        out.push_back(event);
+    };
     if(range.axis == Range::Axis::Hlc)
     {
         auto first = std::lower_bound(writer.events.begin(),
                                       writer.events.end(),
                                       range.start,
                                       [](const Event& event, Hlc hlc) { return event.hlc < hlc; });
-        for(auto it = first; it != writer.events.end() && it->hlc < range.end; ++it) out.push_back(*it);
+        for(auto it = first; it != writer.events.end() && it->hlc < range.end; ++it) emit(*it);
     }
     else
         for(const auto& event: writer.events)
-            if(event.physical.physical_ns >= range.start.physical_ns &&
-               event.physical.physical_ns < range.end.physical_ns)
-                out.push_back(event);
+            if(physical_filter || (event.physical.physical_ns >= range.start.physical_ns &&
+                                   event.physical.physical_ns < range.end.physical_ns))
+                emit(event);
 }
 
 Hlc RamJournal::seal(StoryId id,
                      std::vector<std::shared_ptr<Writer>>& live,
                      const Range* range,
                      std::vector<Event>* events,
-                     std::optional<Hlc> tick) const
+                     std::optional<Hlc> tick,
+                     std::optional<Range> physical_filter) const
 {
     // F is ticked before any writer lock is taken, so every assignment already made is below F
     // and, once its writer lock is acquired here, inserted. Every later assignment is above F.
@@ -494,7 +529,7 @@ Hlc RamJournal::seal(StoryId id,
         {
             std::lock_guard lock(w->mu);
             if(range)
-                scan(*w, *range, *events);
+                scan(*w, *range, *events, physical_filter);
             if(!w->pending.empty())
                 f = std::min(f, w->pending.begin()->second.event.hlc);
             if(!w->released && candidates.count(w.get()))
@@ -517,7 +552,8 @@ absl::StatusOr<RamJournal::SealedView> RamJournal::sealedView(StoryId id) const
     return view;
 }
 
-absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick) const
+absl::StatusOr<RamJournal::SealedRead>
+RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick, std::optional<Range> physical_filter) const
 {
     if(range.start > range.end)
         return absl::InvalidArgumentError("range start is after end");
@@ -525,7 +561,7 @@ absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id, Range 
         return status;
     std::vector<std::shared_ptr<Writer>> live;
     SealedRead out;
-    out.view.sealed = seal(id, live, &range, &out.events, tick);
+    out.view.sealed = seal(id, live, &range, &out.events, tick, physical_filter);
     for(const auto& writer: live)
         out.view.frontiers.push_back(Frontier{writer->writer_id, writer->incarnation, out.view.sealed});
     out.evicted_below = evictionFloor(id);
@@ -619,5 +655,44 @@ Hlc RamJournal::evictionFloor(StoryId story) const
     std::shared_lock lock(sh.mu);
     auto it = sh.stories.find(story);
     return it == sh.stories.end() ? Hlc{} : it->second.evicted_below;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+absl::StatusOr<int64_t> RamJournal::physicalFrontier(StoryId id) const
+{
+    if(auto status = requireStory(id); !status.ok())
+        return status;
+    std::lock_guard report_lock(physical_mu_);
+    const auto acceptance = clock_->acceptanceClock();
+    const auto window = PhysicalPolicy{}.acceptance_window_ns;
+    int64_t frontier = acceptance < INT64_MIN + window ? INT64_MIN : acceptance - window;
+    std::vector<std::shared_ptr<Writer>> writers;
+    {
+        auto& sh = shard(id);
+        std::shared_lock lock(sh.mu);
+        auto it = sh.stories.find(id);
+        if(it != sh.stories.end())
+            for(const auto& [key, writer]: it->second.writers) writers.push_back(writer);
+    }
+    for(const auto& writer: writers)
+    {
+        std::lock_guard lock(writer->mu);
+        for(const auto& [sequence, pending]: writer->pending)
+        {
+            auto visible = writer->window.find(sequence);
+            if(visible != writer->window.end() && visible->second.achieved == Durability::Accepted)
+                continue;
+            auto interval = physicalInterval(pending.event.physical);
+            if(interval.ok())
+                frontier = std::min(frontier, interval->lo);
+        }
+    }
+    auto [it, inserted] = physical_reports_.try_emplace(id, INT64_MIN);
+    (void)inserted;
+    frontier = reservePhysicalFrontier(id, std::max(frontier, it->second));
+    it->second = frontier;
+    return frontier;
 }
 } // namespace chronolog

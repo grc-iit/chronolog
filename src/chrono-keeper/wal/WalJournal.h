@@ -37,6 +37,7 @@ public:
         bool settled{};
     };
     std::vector<SealedChunk> sealedChunks() const;
+    bool hasPhysicalPolicy() const override { return physical_policy_; }
     absl::Status flush();
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
@@ -47,6 +48,7 @@ protected:
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
     void persist(const Event& event, std::function<void(absl::Status)> done) override;
     Hlc reserveFrontier(Hlc frontier) const override;
+    int64_t reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
 
 private:
     struct Write
@@ -72,6 +74,8 @@ private:
     uint64_t segment_{};
     uint64_t segment_data_bytes_{};
     Hlc persisted_reservation_;
+    bool physical_policy_{true};
+    std::map<StoryId, int64_t> persisted_physical_;
 
 
     mutable std::mutex archive_mu_;

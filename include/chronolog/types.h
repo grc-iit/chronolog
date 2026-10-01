@@ -49,16 +49,36 @@ struct TimeReading
     std::optional<uint64_t> uncertainty_ns;
     ClockStatus status{ClockStatus::Unavailable};
 };
+struct PhysicalPolicy
+{
+    int64_t acceptance_window_ns{15'000'000'000};
+    int64_t skew_limit_ns{60'000'000'000};
+    int64_t hlc_lead_ns{61'000'000'000};
+    uint64_t uncertainty_cap_ns{1'000'000'000};
+    uint64_t version{1};
+    auto operator<=>(const PhysicalPolicy&) const = default;
+};
+struct PhysicalInterval
+{
+    int64_t lo{}, hi{};
+    bool bounded{};
+};
+struct CheckedAssignment
+{
+    Hlc hlc;
+    int64_t acceptance_clock_ns{};
+};
 enum class Durability
 {
     Unspecified = 0,
     Accepted = 1,
     Durable = 2
 };
-struct KeeperRef {
- std::string process_id;
- std::string endpoint;
- auto operator<=>(const KeeperRef&) const = default;
+struct KeeperRef
+{
+    std::string process_id;
+    std::string endpoint;
+    auto operator<=>(const KeeperRef&) const = default;
 };
 struct Route
 {
@@ -246,6 +266,7 @@ struct Chunk
     std::vector<Event> events;
     // Salvage data remains readable but cannot advance contiguous watermark.
     bool exempt{};
+    bool physical_policy{};
 };
 enum class ManifestState
 {
@@ -273,6 +294,7 @@ struct ManifestRecord
     ManifestState state{ManifestState::Published};
     // Salvage data remains readable but cannot advance contiguous watermark.
     bool exempt{};
+    bool physical_policy{};
 };
 struct ChunkReceipt
 {

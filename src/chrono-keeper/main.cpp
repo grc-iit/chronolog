@@ -16,7 +16,7 @@
 #include "adapter/ArchiveService.h"
 #include "adapter/Convert.h"
 #include "adapter/JournalService.h"
-#include "clock/SystemClock.h"
+#include "clock/KernelClock.h"
 #include "wal/WalJournal.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
@@ -86,7 +86,7 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_BLOCK, &signals, nullptr);
 
     using namespace chronolog;
-    auto clock = std::make_shared<SystemClock>();
+    auto clock = std::make_shared<KernelClock>();
     grpc::ChannelArguments channel_args;
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
     channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);

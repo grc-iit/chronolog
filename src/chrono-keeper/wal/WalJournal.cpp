@@ -140,6 +140,8 @@ uint64_t WalJournal::recover()
                     break;
                 throw std::runtime_error("WAL checksum mismatch before tail");
             }
+            if(sequence == segments.begin()->first && offset == 0)
+                physical_policy_ = payload.front() == 'Q' && payload.substr(1) == "1";
             const auto body = std::string_view(payload).substr(1);
             if(payload.front() == 'E')
             {
@@ -151,7 +153,8 @@ uint64_t WalJournal::recover()
                 reservation_ = std::max(reservation_, wal::decodeReserve(body));
             else if(payload.front() == 'W')
                 restoreWriters(body);
-            else if(payload.front() != 'S' && payload.front() != 'T')
+            else if(payload.front() != 'S' && payload.front() != 'T' && payload.front() != 'Q' &&
+                    payload.front() != 'F')
                 throw std::runtime_error("unknown WAL record type");
             trackRecord(payload, sequence);
             offset += 8 + length;
@@ -171,7 +174,18 @@ uint64_t WalJournal::recover()
         if(seal.settled)
             eraseEvents(seal.chunk.story_id, {Range::Axis::Hlc, seal.chunk.start, seal.chunk.end}, true);
     if(!segments.empty())
-        (void)clock_->observe(std::max(maximum, reservation_));
+    {
+        const auto restart = std::max(maximum, reservation_);
+        clock_->observeFloor(restart);
+        const auto ahead = static_cast<int64_t>(config_.reserve_ahead_ms) * 1'000'000;
+        clock_->raiseAcceptanceClock(restart.physical_ns < INT64_MIN + ahead ? INT64_MIN : restart.physical_ns - ahead);
+        for(const auto& [story, frontier]: persisted_physical_)
+        {
+            (void)story;
+            const auto window = PhysicalPolicy{}.acceptance_window_ns;
+            clock_->raiseAcceptanceClock(frontier > INT64_MAX - window ? INT64_MAX : frontier + window);
+        }
+    }
     return segments.empty() ? 1 : segments.rbegin()->first + 1;
 }
 
@@ -187,9 +201,18 @@ void WalJournal::enqueue(Write write)
 
 void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results)
 {
-    if(std::this_thread::get_id() == committer_.get_id())
+    const bool rejected =
+            results.ok() && std::any_of(results->begin(),
+                                        results->end(),
+                                        [](const AppendResult& result) { return absl::IsOutOfRange(result.status); });
+    if(!rejected && std::this_thread::get_id() == committer_.get_id())
         return done(std::move(results));
-    enqueue(Write{{}, [done = std::move(done), results = std::move(results)](absl::Status) mutable {
+    auto bytes = rejected ? wal::frame(writersRecord()) : std::string{};
+    enqueue(Write{std::move(bytes),
+                  [done = std::move(done), results = std::move(results), rejected](absl::Status status) mutable
+                  {
+                      if(rejected && !status.ok())
+                          return done(status);
                       done(std::move(results));
                   }});
 }
@@ -334,6 +357,7 @@ absl::Status WalJournal::persistRecord(std::string payload)
 absl::Status WalJournal::recordSeal(const Chunk& chunk)
 {
     internal::v1::ChunkIdentity identity;
+    identity.set_physical_policy(physical_policy_);
     identity.set_chunk_id(chunk.id);
     identity.set_story_id(chunk.story_id);
     identity.mutable_start()->set_physical_ns(chunk.start.physical_ns);
@@ -367,7 +391,7 @@ namespace chronolog
 std::string WalJournal::writersRecord() const
 {
     std::ostringstream out;
-    out << 'W';
+    out << "Wv2 ";
     const auto writers = checkpointWriters();
     out << writers.size() << '\n';
     for(const auto& writer: writers)
@@ -376,7 +400,8 @@ std::string WalJournal::writersRecord() const
             << writer.next_sequence << ' ' << writer.last_hlc.physical_ns << ' ' << writer.last_hlc.logical << ' '
             << writer.released << ' ' << writer.assigned << ' ' << writer.window.size() << '\n';
         for(const auto& result: writer.window)
-            out << result.id.sequence << ' ' << result.hlc.physical_ns << ' ' << result.hlc.logical << '\n';
+            out << result.id.sequence << ' ' << result.hlc.physical_ns << ' ' << result.hlc.logical << ' '
+                << static_cast<int>(result.status.code()) << '\n';
     }
     return out.str();
 }
@@ -384,6 +409,9 @@ std::string WalJournal::writersRecord() const
 void WalJournal::restoreWriters(std::string_view payload)
 {
     std::istringstream in{std::string(payload)};
+    const bool version2 = payload.starts_with("v2 ");
+    if(version2)
+        in.ignore(3);
     size_t count{};
     if(!(in >> count) || count > payload.size())
         throw std::runtime_error("invalid WAL writers");
@@ -404,10 +432,21 @@ void WalJournal::restoreWriters(std::string_view payload)
             if(!(in >> result.id.sequence >> result.hlc.physical_ns >> result.hlc.logical) || result.id.sequence == 0 ||
                result.id.sequence >= writer.next_sequence)
                 throw std::runtime_error("invalid WAL dedupe checkpoint");
+            if(version2)
+            {
+                int code{};
+                if(!(in >> code) || (code != 0 && code != static_cast<int>(absl::StatusCode::kOutOfRange)))
+                    throw std::runtime_error("invalid WAL rejection code");
+                if(code != 0)
+                {
+                    result.status = absl::OutOfRangeError("physical reading outside acceptance window");
+                    result.achieved = Durability::Unspecified;
+                }
+            }
             writer.window.push_back(result);
         }
         restoreWriter(writer);
-        (void)clock_->observe(writer.last_hlc);
+        clock_->observeFloor(writer.last_hlc);
     }
     in >> std::ws;
     if(!in.eof())
@@ -424,12 +463,24 @@ void WalJournal::trackRecord(std::string_view payload, uint64_t segment)
     }
     else if(payload.front() == 'R')
         persisted_reservation_ = std::max(persisted_reservation_, wal::decodeReserve(body));
+    else if(payload.front() == 'F')
+    {
+        std::istringstream in{std::string(body)};
+        StoryId story{};
+        int64_t frontier{};
+        if(!(in >> story >> frontier) || story == 0)
+            throw std::runtime_error("invalid physical reservation");
+        auto [it, inserted] = persisted_physical_.try_emplace(story, frontier);
+        if(!inserted)
+            it->second = std::max(it->second, frontier);
+    }
     else if(payload.front() == 'S')
     {
         internal::v1::ChunkIdentity identity;
         if(!identity.ParseFromArray(body.data(), static_cast<int>(body.size())) || identity.chunk_id().empty())
             throw std::runtime_error("invalid WAL seal");
         Chunk chunk;
+        chunk.physical_policy = identity.physical_policy();
         chunk.id = identity.chunk_id();
         chunk.story_id = identity.story_id();
         chunk.start = {identity.start().physical_ns(), identity.start().logical()};
@@ -465,7 +516,12 @@ absl::Status WalJournal::rotate()
         size += bytes.size();
         return sink->write(bytes);
     };
-    auto status = write(writersRecord());
+    auto status = write(physical_policy_ ? "Q1" : "Q0");
+    if(status.ok())
+        status = write(writersRecord());
+    for(const auto& [story, frontier]: persisted_physical_)
+        if(status.ok())
+            status = write("F" + std::to_string(story) + " " + std::to_string(frontier));
     if(status.ok())
         status = write(wal::reserve(persisted_reservation_));
     for(const auto& seal: sealedChunks())
@@ -473,6 +529,7 @@ absl::Status WalJournal::rotate()
         if(!status.ok())
             break;
         internal::v1::ChunkIdentity identity;
+        identity.set_physical_policy(seal.chunk.physical_policy);
         identity.set_chunk_id(seal.chunk.id);
         identity.set_story_id(seal.chunk.story_id);
         identity.mutable_start()->set_physical_ns(seal.chunk.start.physical_ns);
@@ -528,5 +585,19 @@ void WalJournal::truncate()
         it = segments_.erase(it);
     }
     syncDirectory(config_.wal_dir);
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+int64_t WalJournal::reservePhysicalFrontier(StoryId story, int64_t frontier) const
+{
+    frontier = std::min(frontier, reserveFrontier(Hlc{frontier, 0}).physical_ns);
+    std::lock_guard lock(reserve_mu_);
+    auto status =
+            const_cast<WalJournal*>(this)->persistRecord("F" + std::to_string(story) + " " + std::to_string(frontier));
+    if(!status.ok())
+        return INT64_MIN;
+    return frontier;
 }
 } // namespace chronolog

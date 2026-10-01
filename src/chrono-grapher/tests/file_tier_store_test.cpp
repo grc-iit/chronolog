@@ -471,3 +471,41 @@ INSTANTIATE_TEST_SUITE_P(
         [](const auto&) { return "HDF5Tier"; });
 } // namespace contract
 } // namespace chronolog
+
+namespace chronolog
+{
+TEST(FileTierStore, PhysicalPolicySurvivesBothCodecsAndManifestRecovery)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+        ASSERT_TRUE(store.ok());
+        Event event;
+        event.id = {1, 2, 3, 1};
+        event.hlc = {150, 0};
+        event.physical = {150, 1, ClockStatus::Synced};
+        event.durability = Durability::Durable;
+        Chunk chunk{"policy", 1, {100, 0}, {200, 0}, {event}, false, true};
+        auto record = (*store)->publish(chunk);
+        ASSERT_TRUE(record.ok()) << record.status();
+        EXPECT_TRUE(record->physical_policy);
+        store->reset();
+        auto reopened = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+        ASSERT_TRUE(reopened.ok());
+        auto manifest = (*reopened)->manifest(1);
+        ASSERT_TRUE(manifest.ok());
+        ASSERT_FALSE(manifest->empty());
+        EXPECT_TRUE(manifest->front().physical_policy);
+        reopened->reset();
+        std::filesystem::remove_all(*directory / "manifest");
+        reopened = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+        ASSERT_TRUE(reopened.ok());
+        manifest = (*reopened)->manifest(1);
+        ASSERT_TRUE(manifest.ok());
+        ASSERT_FALSE(manifest->empty());
+        EXPECT_TRUE(manifest->front().physical_policy);
+    }
+}
+} // namespace chronolog
