@@ -257,6 +257,50 @@ TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloor
     context->TryCancel();
     (void)reader->Finish();
 }
+TEST_F(DynamicClusterTest, PlainHeartbeatsDoNotAppendRaftEntries)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[(selected + 1) % 3], "keeper-a", "a1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    auto before = stores[selected]->appliedStore().appliedIndex().value_or(0);
+    for(int n = 0; n < 20; ++n) ASSERT_EQ(a.Heartbeat().status().code(), 0);
+    EXPECT_EQ(stores[selected]->appliedStore().appliedIndex().value_or(0), before);
+}
+TEST_F(DynamicClusterTest, FailureDetectionKeepsLastKeeperAndRetriesLater)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[selected], "keeper-a", "a1"}, b{*stubs[selected], "keeper-b", "b1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    ASSERT_EQ(b.Register().status().code(), 0);
+    ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
+    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    wire::KeeperRequest q;
+    q.set_process_id("keeper-a");
+    wire::MembershipResponse r;
+    ASSERT_TRUE(stubs[selected]->DrainKeeper(a.context().get(), q, &r).ok());
+    ASSERT_EQ(r.status().code(), 0);
+    for(int n = 0; n < 40; ++n) std::this_thread::sleep_for(50ms);
+    auto state = dynamic::snapshot(stores[selected]->appliedStore());
+    ASSERT_EQ(state.routes(0).route().keepers_size(), 1);
+    EXPECT_EQ(state.routes(0).route().keepers(0).process_id(), "keeper-b");
+    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), q, &r).ok());
+    ASSERT_EQ(r.status().code(), 0);
+    bool retried = false;
+    for(int n = 0; n < 30; ++n)
+    {
+        ASSERT_EQ(a.Heartbeat().status().code(), 0);
+        state = dynamic::snapshot(stores[selected]->appliedStore());
+        if(state.routes(0).route().keepers_size() == 1 && state.routes(0).route().keepers(0).process_id() == "keeper-a")
+        {
+            retried = true;
+            break;
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+    EXPECT_TRUE(retried);
+}
 TEST_F(DynamicClusterTest, FailureDetectionRemovesSilentKeeperAfterFullTimeout)
 {
     auto selected = leader();

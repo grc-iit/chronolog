@@ -193,12 +193,14 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                     leader_term_ = raft_->term();
                                     leader_since_ = now;
                                     heartbeats_.clear();
+                                    applied_routes_.clear();
                                 }
                                 if(now - leader_since_ >= failure_timeout_)
                                 {
                                     auto state = dynamic::snapshot(raft_->appliedStore());
                                     for(const auto& member: state.members())
-                                        if(member.joined())
+                                        if(member.joined() &&
+                                           !dynamic::wouldEmptyRoute(state, member.process().process_id()))
                                         {
                                             auto it = heartbeats_.find(member.process().process_id());
                                             if(it == heartbeats_.end() || now - it->second >= failure_timeout_)
@@ -424,7 +426,9 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
                 auto current = dynamic::snapshot(raft_->appliedStore());
                 if(current.revision() <= state->first)
                     return std::nullopt;
-                for(const auto& update: current.route_history())
+                bool trimmed = state->first < current.route_history_floor();
+                const auto& updates = trimmed ? current.routes() : current.route_history();
+                for(const auto& update: updates)
                     if(update.revision() > state->first)
                     {
                         auto& message = state->second.emplace_back();
@@ -567,7 +571,39 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 else
                     *q->mutable_abandon() = *request;
             }
-            auto result = raft_->propose(command);
+            absl::StatusOr<std::string> result = absl::UnavailableError("not proposed");
+            bool propose = true;
+            if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
+            {
+                auto state = dynamic::snapshot(raft_->appliedStore());
+                if(!dynamic::heartbeatChanges(state, *request))
+                {
+                    internal::v1::HeartbeatResponse plain;
+                    auto status = absl::FailedPreconditionError("obsolete or unknown process instance");
+                    for(const auto& m: state.members())
+                        if(m.process().process_id() == request->process_id() &&
+                           m.process().instance() == request->instance())
+                            status = absl::OkStatus();
+                    *plain.mutable_status() = convert::toProto(status);
+                    result = plain.SerializeAsString();
+                    propose = false;
+                }
+            }
+            {
+                std::lock_guard lock(heartbeat_mutex_);
+                if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
+                {
+                    auto& applied = applied_routes_[request->process_id()];
+                    if(applied.instance() != request->instance())
+                        applied.Clear();
+                    applied.set_process_id(request->process_id());
+                    applied.set_instance(request->instance());
+                    applied.set_revision(std::max(applied.revision(), request->applied_route_revision()));
+                }
+                for(const auto& [id, applied]: applied_routes_) *q->add_applied_routes() = applied;
+            }
+            if(propose)
+                result = raft_->propose(command);
             if(!result.ok())
             {
                 reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(result.status().message())));
