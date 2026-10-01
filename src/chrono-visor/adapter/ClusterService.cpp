@@ -198,10 +198,12 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 }
                                 if(now - leader_since_ >= failure_timeout_)
                                 {
-                                    auto state = dynamic::snapshot(raft_->appliedStore());
-                                    for(const auto& member: state.members())
+                                    auto state = raft_->appliedStore().membershipLivenessState();
+                                    if(!state.ok())
+                                        continue;
+                                    for(const auto& member: state->members())
                                         if(member.joined() &&
-                                           !dynamic::wouldEmptyRoute(state, member.process().process_id()))
+                                           !raft_->appliedStore().membershipWouldEmpty(member.process().process_id()))
                                         {
                                             auto it = heartbeats_.find(member.process().process_id());
                                             if(it == heartbeats_.end() || now - it->second >= failure_timeout_)
@@ -419,13 +421,17 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
         {
             if(state->second.empty())
             {
-                auto current = dynamic::snapshot(raft_->appliedStore());
-                if(current.revision() <= state->first)
+                auto revision = raft_->appliedStore().membershipRevision();
+                if(!revision.ok() || *revision <= state->first)
                     return std::nullopt;
+                auto loaded = raft_->appliedStore().membershipRouteChanges(state->first);
+                if(!loaded.ok())
+                    return std::nullopt;
+                const auto& current = *loaded;
                 bool trimmed = state->first < current.route_history_floor();
                 const auto& updates = trimmed ? current.routes() : current.route_history();
                 for(const auto& update: updates)
-                    if(update.revision() > state->first)
+                    if(trimmed || update.revision() > state->first)
                     {
                         auto& message = state->second.emplace_back();
                         message.ParseFromString(update.SerializeAsString());
@@ -571,7 +577,14 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
             bool propose = true;
             if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
             {
-                auto state = dynamic::snapshot(raft_->appliedStore());
+                auto loaded = raft_->appliedStore().membershipCommandState(*q);
+                if(!loaded.ok())
+                {
+                    reactor->Finish(
+                            grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(loaded.status().message())));
+                    return;
+                }
+                const auto& state = *loaded;
                 if(!dynamic::heartbeatChanges(state, *request))
                 {
                     internal::v1::HeartbeatResponse plain;
@@ -589,12 +602,20 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 std::lock_guard lock(heartbeat_mutex_);
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
-                    auto& applied = applied_routes_[request->process_id()];
-                    if(applied.instance() != request->instance())
-                        applied.Clear();
-                    applied.set_process_id(request->process_id());
-                    applied.set_instance(request->instance());
-                    applied.set_revision(std::max(applied.revision(), request->applied_route_revision()));
+                    auto loaded = raft_->appliedStore().membershipCommandState(*q);
+                    if(loaded.ok())
+                        for(const auto& m: loaded->members())
+                            if(m.process().process_id() == request->process_id() &&
+                               m.process().instance() == request->instance() &&
+                               request->applied_route_revision() > m.applied_route_revision())
+                            {
+                                auto& applied = applied_routes_[request->process_id()];
+                                if(applied.instance() != request->instance())
+                                    applied.Clear();
+                                applied.set_process_id(request->process_id());
+                                applied.set_instance(request->instance());
+                                applied.set_revision(std::max(applied.revision(), request->applied_route_revision()));
+                            }
                 }
                 for(const auto& [id, applied]: applied_routes_) *q->add_applied_routes() = applied;
             }
@@ -612,6 +633,29 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
             }
             if(response->status().code() == 0)
             {
+                if(propose)
+                {
+                    std::lock_guard lock(heartbeat_mutex_);
+                    for(const auto& sent: q->applied_routes())
+                    {
+                        auto pending = applied_routes_.find(sent.process_id());
+                        if(pending != applied_routes_.end() && pending->second.instance() == sent.instance() &&
+                           pending->second.revision() <= sent.revision())
+                            applied_routes_.erase(pending);
+                    }
+                }
+                if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest> ||
+                             std::is_same_v<Request, internal::v1::KeeperRequest>)
+                {
+                    auto current = dynamic::snapshot(raft_->appliedStore());
+                    response->clear_routes();
+                    for(const auto& route: current.routes()) *response->add_routes() = route;
+                    if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
+                    {
+                        response->clear_members();
+                        for(const auto& member: current.members()) *response->add_members() = member;
+                    }
+                }
                 if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
                 {
                     for(const auto& endpoint: raft_->replicaEndpoints()) response->add_visor_replicas(endpoint);
@@ -630,17 +674,18 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 }
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
-                    auto current = dynamic::snapshot(raft_->appliedStore());
+                    auto current = raft_->appliedStore().membershipCommandState(*q);
                     bool current_instance = false;
-                    for(const auto& member: current.members())
-                        if(member.process().process_id() == request->process_id() &&
-                           member.process().instance() == request->instance())
-                        {
-                            current_instance = true;
-                            auto local = membership_.process(request->process_id());
-                            if(!local || local->instance != request->instance())
-                                (void)membership_.registerProcess(*convert::fromProto(member.process()));
-                        }
+                    if(current.ok())
+                        for(const auto& member: current->members())
+                            if(member.process().process_id() == request->process_id() &&
+                               member.process().instance() == request->instance())
+                            {
+                                current_instance = true;
+                                auto local = membership_.process(request->process_id());
+                                if(!local || local->instance != request->instance())
+                                    (void)membership_.registerProcess(*convert::fromProto(member.process()));
+                            }
                     (void)membership_.heartbeat(request->process_id(),
                                                 request->instance(),
                                                 request->applied_revision());
