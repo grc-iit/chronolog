@@ -822,7 +822,8 @@ bool RamJournal::scheduleSteps(Admission& a)
     };
     Hlc floor = std::max(restart_floor_, a.observe ? a.observe_floor : Hlc{});
     const int64_t physical = std::max(restart_physical_, a.raise ? a.physical_floor : int64_t{0});
-    if(!within(floor.physical_ns, hlc_budget_) || !within(physical, acceptance_budget_))
+    if(!within(floor.physical_ns, hlc_budget_) || !within(physical, acceptance_budget_) ||
+       !within(clock_->acceptanceClock(), acceptance_budget_))
         return false;
     clock_->observeFloor(floor);
     clock_->raiseAcceptanceClock(physical);
@@ -847,6 +848,7 @@ void RamJournal::applyRoute(StoryId story,
                            [&](const auto& k) { return k.process_id == config_.process_id; });
     };
     bool added = listed(state.route) && (!a->installed || !listed(a->state.route));
+    observe = observe || (dynamic_ && added);
     if(observe)
         a->observe_floor = std::max(a->observe_floor, state.ordering_cut);
     if(added)
