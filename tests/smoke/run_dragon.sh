@@ -30,7 +30,7 @@ engines=${ENGINES:-"docker podman"}
 overall=0
 
 # Binaries to ship.
-targets=(chrono_visor chrono_keeper chrono_player chrono_grapher)
+targets=(chrono_visor chrono_keeper chrono_player chrono_grapher chronolog_kvs_example)
 stage=$root/build/image-stage
 image=chronolog-runtime-local:dev
 export CHRONOLOG_IMAGE=$image
@@ -92,10 +92,13 @@ run_engine() {
     step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
+        step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
+            127.0.0.1:50051 127.0.0.1:50054 || rc=1
         echo "-- $engine: smoke.py"
         timeout 240 "$venv/bin/python" tests/smoke/python/smoke.py --engine "$engine" --project "$project" \
             --compose-file "$compose_file" --compose-file "$override_file" 2>&1 | tee -a "$log"
-        rc=${PIPESTATUS[0]}
+        local python_rc=${PIPESTATUS[0]}
+        if [ "$python_rc" -ne 0 ]; then rc=$python_rc; fi
         if [ "$rc" -eq 0 ]; then
             step "Python wheel build dependencies" 180 "$venv/bin/pip" install --quiet build pytest hatchling || rc=1
             step "Python abi3 wheel" 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python || rc=1
