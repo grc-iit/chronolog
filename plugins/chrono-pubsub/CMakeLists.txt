@@ -7,7 +7,7 @@ target_link_libraries(chronolog_pubsub_example PRIVATE chronolog::pubsub chronol
 add_executable(chronolog_pubsub_tests tests/bus_test.cpp)
 target_link_libraries(chronolog_pubsub_tests PRIVATE chronolog::pubsub GTest::gtest chronolog_warnings Threads::Threads)
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
-    add_test(NAME pubsub.acceptance COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+    add_test(NAME pubsub.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_pubsub_tests>)
     set_tests_properties(pubsub.acceptance PROPERTIES TIMEOUT 90)
 endif()
