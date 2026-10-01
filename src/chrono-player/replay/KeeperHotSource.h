@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <map>
@@ -17,6 +18,7 @@ struct KeeperHotSourceOptions
     std::chrono::milliseconds deadline{2000};
     // Zero lets each Keeper apply its configured default limit.
     uint64_t max_events{0};
+    size_t read_max_events{262144};
 };
 
 // Asks every Keeper in the story Route for its hot data through Archive.FetchHot. A Keeper
@@ -33,7 +35,8 @@ public:
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
 
 private:
-    KeeperFetch fetchOne(const KeeperRef& keeper, StoryId story, const Range& range) const;
+    KeeperFetch
+    fetchOne(const KeeperRef& keeper, StoryId story, const Range& range, std::atomic<size_t>& retained) const;
     internal::v1::Archive::Stub& stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;

@@ -28,6 +28,7 @@ struct PlayerConfig
     std::map<std::string, std::string> keeper_internal;
     uint32_t keeper_deadline_ms = 2000;
     uint32_t batch_size = 1024;
+    uint32_t read_max_events = 262144;
     uint32_t tail_poll_ms = 200;
     std::string archive_root;
     uint32_t manifest_poll_ms = 1000;

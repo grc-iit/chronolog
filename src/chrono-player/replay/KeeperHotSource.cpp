@@ -25,7 +25,10 @@ internal::v1::Archive::Stub& KeeperHotSource::stubFor(const std::string& address
     return *stub;
 }
 
-KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper, StoryId story, const Range& range) const
+KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
+                                      StoryId story,
+                                      const Range& range,
+                                      std::atomic<size_t>& retained) const
 {
     KeeperFetch out;
     out.frontier.process_id = keeper.process_id;
@@ -38,11 +41,20 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper, StoryId story, co
 
     internal::v1::FetchHotResponse response;
     bool trailer = false;
+    bool limited = false;
     while(reader->Read(&response))
     {
         if(response.has_batch())
         {
-            for(const auto& event: response.batch().events()) out.events.push_back(convert::fromProto(event));
+            for(const auto& event: response.batch().events())
+            {
+                size_t count = retained.load();
+                while(count < options_.read_max_events && !retained.compare_exchange_weak(count, count + 1)) {}
+                if(count < options_.read_max_events)
+                    out.events.push_back(convert::fromProto(event));
+                else
+                    limited = true;
+            }
         }
         else if(response.has_trailer())
         {
@@ -54,6 +66,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper, StoryId story, co
         }
     }
     // A stream that ends without its trailer carries no seal, so it cannot count as an answer.
+    out.frontier.truncated |= limited;
     out.frontier.answered = reader->Finish().ok() && trailer;
     return out;
 }
@@ -65,10 +78,12 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& rang
         return route.status();
     HotFetch out;
     out.route_epoch = route->epoch;
+    std::atomic<size_t> retained{0};
     std::vector<std::future<KeeperFetch>> pending;
     pending.reserve(route->keepers.size());
     for(const auto& keeper: route->keepers)
-        pending.push_back(std::async(std::launch::async, [&, keeper] { return fetchOne(keeper, story, range); }));
+        pending.push_back(
+                std::async(std::launch::async, [&, keeper] { return fetchOne(keeper, story, range, retained); }));
     for(auto& f: pending) out.keepers.push_back(f.get());
     if(writers_)
         out.writers = writers_->writers(story);

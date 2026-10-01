@@ -333,6 +333,31 @@ TEST_F(replay_adapter, TruncatedKeeperIsTruncated)
     EXPECT_EQ(r.completions[0].reason(), v1::INCOMPLETE_REASON_TRUNCATED);
 }
 
+TEST_F(replay_adapter, HotFetchSharesOneRetentionBudgetAcrossKeepers)
+{
+    Route route{7, {{"keeper-a", "keeper-a"}, {"keeper-b", "keeper-b"}}, "", ""};
+    KeeperHotSourceOptions options;
+    options.deadline = 500ms;
+    options.read_max_events = 4;
+    KeeperHotSource source(
+            std::make_shared<StaticRouteSource>(route),
+            std::make_shared<FakeWriters>(),
+            [this](const KeeperRef& k) { return k.process_id == "keeper-a" ? a_addr_ : b_addr_; },
+            options);
+    auto fetched = source.fetch(kStory, {Range::Axis::Hlc, {100, 0}, {200, 0}});
+    ASSERT_TRUE(fetched.ok());
+    size_t total = 0;
+    bool truncated = false;
+    for(const auto& keeper: fetched->keepers)
+    {
+        EXPECT_TRUE(keeper.frontier.answered);
+        total += keeper.events.size();
+        truncated |= keeper.frontier.truncated;
+    }
+    EXPECT_EQ(total, 4);
+    EXPECT_TRUE(truncated);
+}
+
 TEST_F(replay_adapter, PhysicalAxisIsUnbounded)
 {
     v1::ReadRequest request;

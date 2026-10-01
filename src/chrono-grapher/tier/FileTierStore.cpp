@@ -474,27 +474,42 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
             continue;
         if(range.axis == Range::Axis::Hlc && (record.end <= range.start || record.start >= range.end))
             continue;
-        auto events = ReadChunkFile(root_ / record.file);
+        auto events = readRecord(record, range);
         if(!events.ok())
             return events.status();
-        if(events->size() != record.event_count)
-            return absl::UnavailableError("chunk event count mismatch");
-        for(auto& event: *events)
-        {
-            if(event.id.story_id != story || event.hlc < record.start || event.hlc >= record.end)
-                return absl::UnavailableError("invalid archived event window");
-            const bool included = range.axis == Range::Axis::Hlc
-                                          ? event.hlc >= range.start && event.hlc < range.end
-                                          : event.physical.physical_ns >= range.start.physical_ns &&
-                                                    event.physical.physical_ns < range.end.physical_ns;
-            if(included)
-                result.push_back(std::move(event));
-        }
+        result.insert(result.end(), std::make_move_iterator(events->begin()), std::make_move_iterator(events->end()));
     }
     std::stable_sort(result.begin(), result.end(), ReplayLess);
     std::set<EventId> seen;
     std::erase_if(result, [&seen](const auto& event) { return !seen.insert(event.id).second; });
     return result;
+}
+
+absl::StatusOr<std::vector<Event>> FileTierStore::readRecord(const ManifestRecord& record, Range range) const
+{
+    const auto valid = ValidRange(range);
+    if(!valid.ok())
+        return valid;
+    if(record.state != ManifestState::Published)
+        return absl::InvalidArgumentError("record is not published");
+    auto events = ReadChunkFile(root_ / record.file);
+    if(!events.ok())
+        return events.status();
+    if(events->size() != record.event_count)
+        return absl::UnavailableError("chunk event count mismatch");
+    for(const auto& event: *events)
+        if(event.id.story_id != record.story_id || event.hlc < record.start || event.hlc >= record.end)
+            return absl::UnavailableError("invalid archived event window");
+    std::erase_if(*events,
+                  [&](const Event& event)
+                  {
+                      return range.axis == Range::Axis::Hlc
+                                     ? event.hlc < range.start || event.hlc >= range.end
+                                     : event.physical.physical_ns < range.start.physical_ns ||
+                                               event.physical.physical_ns >= range.end.physical_ns;
+                  });
+    std::stable_sort(events->begin(), events->end(), ReplayLess);
+    return events;
 }
 
 absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId story) const

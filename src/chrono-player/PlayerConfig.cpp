@@ -64,6 +64,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "keeper_internal",
                                                 "keeper_deadline_ms",
                                                 "batch_size",
+                                                "read_max_events",
                                                 "tail_poll_ms",
                                                 "archive_root",
                                                 "manifest_poll_ms",
@@ -93,6 +94,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         str("keeper_internal_suffix", cfg.keeper_internal_suffix);
         num("keeper_deadline_ms", cfg.keeper_deadline_ms);
         num("batch_size", cfg.batch_size);
+        num("read_max_events", cfg.read_max_events);
         num("tail_poll_ms", cfg.tail_poll_ms);
         str("archive_root", cfg.archive_root);
         num("manifest_poll_ms", cfg.manifest_poll_ms);
@@ -148,6 +150,7 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
             *field = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"keeper_deadline_ms", &cfg.keeper_deadline_ms},
                             {"batch_size", &cfg.batch_size},
+                            {"read_max_events", &cfg.read_max_events},
                             {"tail_poll_ms", &cfg.tail_poll_ms},
                             {"manifest_poll_ms", &cfg.manifest_poll_ms}})
     {
@@ -175,9 +178,9 @@ absl::Status PlayerConfig::validate() const
 {
     if(listen.empty() || player_id.empty())
         return absl::InvalidArgumentError("listen and player_id must be set");
-    if(batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0 || manifest_poll_ms == 0)
+    if(read_max_events == 0 || batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0 || manifest_poll_ms == 0)
         return absl::InvalidArgumentError(
-                "batch_size, tail_poll_ms, keeper_deadline_ms and manifest_poll_ms must be positive");
+                "read_max_events, batch_size, tail_poll_ms, keeper_deadline_ms and manifest_poll_ms must be positive");
     if(!static_routes && visor_internal.empty())
         return absl::InvalidArgumentError("visor_internal is required without static_routes");
     if(static_routes && static_routes->keepers.empty())

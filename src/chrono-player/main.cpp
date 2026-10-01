@@ -110,6 +110,7 @@ int main(int argc, char** argv)
 
     const player::PlayerConfig& cfg = *config;
     player::KeeperHotSourceOptions source_options;
+    source_options.read_max_events = cfg.read_max_events;
     source_options.deadline = std::chrono::milliseconds(cfg.keeper_deadline_ms);
     auto source = std::make_shared<player::KeeperHotSource>(
             routes,
@@ -117,6 +118,7 @@ int main(int argc, char** argv)
             [&cfg](const KeeperRef& keeper) { return cfg.keeperInternal(keeper); },
             source_options);
     player::HotReplayOptions replay_options;
+    replay_options.read_max_events = cfg.read_max_events;
     replay_options.batch_size = cfg.batch_size;
     replay_options.tail_poll = std::chrono::milliseconds(cfg.tail_poll_ms);
     if(!cfg.archive_root.empty())
