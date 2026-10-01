@@ -85,13 +85,28 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
     if not math.isfinite(timeout) or not 0 < timeout <= 300:
         raise ValueError("timeout must be finite and between 0 and 300 seconds")
 
+    shared_state = None
+    active_sessions = 0
+    session_lock = threading.Lock()
+
     @asynccontextmanager
     async def lifespan(server):
-        state = _State(catalog, player, chronicle, identity, timeout)
+        nonlocal shared_state, active_sessions
+        with session_lock:
+            if shared_state is None:
+                shared_state = _State(catalog, player, chronicle, identity, timeout)
+            active_sessions += 1
+            current = shared_state
         try:
-            yield state
+            yield current
         finally:
-            state.close()
+            with session_lock:
+                active_sessions -= 1
+                if active_sessions == 0:
+                    try:
+                        current.close()
+                    finally:
+                        shared_state = None
 
     server = FastMCP("chronolog", lifespan=lifespan, host=host, port=port)
 
