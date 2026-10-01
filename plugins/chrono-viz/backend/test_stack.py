@@ -76,8 +76,8 @@ def test_real_stack_query_tail_and_failed_keeper():
                 time.sleep(.1)
                 third = writer.append(b'{"temperature":25}', content_type="application/json", timeout=5)
                 token, event = pending.result(timeout=6)
-                assert event["event_id"] == dict(story_id=third.event_id.story_id, writer_id=third.event_id.writer_id,
-                                               incarnation=third.event_id.incarnation, sequence=third.event_id.sequence)
+                assert event["event_id"] == dict(story_id=str(third.event_id.story_id), writer_id=str(third.event_id.writer_id),
+                                               incarnation=str(third.event_id.incarnation), sequence=str(third.event_id.sequence))
         # Disconnect must release the blocked SDK pull; a resumed stream stays exclusive.
         with requests.get(base + "/tail", params={"chronicle": name, "story": "events", "after": token},
                           stream=True, timeout=(3, 5)) as response:
@@ -85,7 +85,7 @@ def test_real_stack_query_tail_and_failed_keeper():
                 pending = pool.submit(receive)
                 fourth = writer.append(b'{"temperature":26}', content_type="application/json", timeout=5)
                 _, event = pending.result(timeout=6)
-                assert event["event_id"]["sequence"] == fourth.event_id.sequence
+                assert event["event_id"]["sequence"] == str(fourth.event_id.sequence)
         os.kill(int(os.environ["CHRONOLOG_TEST_KEEPER_PID"]), signal.SIGKILL)
         failed = requests.post(base + "/query", json=body, timeout=8)
         assert failed.status_code == 200, failed.text

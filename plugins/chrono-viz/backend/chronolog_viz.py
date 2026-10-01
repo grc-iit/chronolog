@@ -177,7 +177,7 @@ async def tail(request: Request, chronicle: str, story: str, after: str | None =
                 pending = None
                 if event is None:
                     break
-                data = {"hlc": asdict(event.hlc), "event_id": asdict(event.id),
+                data = {"hlc": asdict(event.hlc), "event_id": {key: str(value) for key, value in asdict(event.id).items()},
                         "payload": event.payload.decode("utf-8", errors="replace"),
                         "labels": event.envelope.attributes}
                 yield f"id: {position(event)}\ndata: {json.dumps(data)}\n\n"
