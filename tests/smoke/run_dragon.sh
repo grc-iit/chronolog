@@ -110,6 +110,14 @@ run_engine() {
     step "build runtime image" 300 "${build_cmd[@]}" -f deploy/containers/runtime-local.Containerfile -t "$image" "$stage" || return 1
     if step "compose up --wait" 300 "${compose[@]}" up -d --wait --wait-timeout 120; then
         stack_ready=1
+        if [ "${CHRONOLOG_SMOKE_STREAM_ONLY:-0}" = 1 ]; then
+            for ((stream_run=1; stream_run<=${CHRONOLOG_SMOKE_STREAM_RUNS:-1}; ++stream_run)); do
+                step "chrono-stream pass $stream_run" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || { rc=1; break; }
+                cp "$logs/$engine-stream-services.log" "$logs/$engine-stream-$stream_run-services.log"
+            done
+            step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
+            return "$rc"
+        fi
         if [ "${CHRONOLOG_SMOKE_VIZ_ONLY:-0}" != 1 ]; then
             step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
