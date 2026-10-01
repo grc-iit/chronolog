@@ -44,6 +44,11 @@ absl::Status ClusterClient::refresh() const
         std::lock_guard lk(mu_);
         for(const auto& update: response.routes())
         {
+            auto prior = routes_.find(update.story_id());
+            if(update.revision() < revision_ ||
+               (prior != routes_.end() && update.route().epoch() < prior->second.epoch))
+                continue;
+            revision_ = update.revision();
             routes_[update.story_id()] = convert::fromProto(update.route());
             learned.push_back(routes_[update.story_id()]);
         }

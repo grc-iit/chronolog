@@ -36,6 +36,7 @@ private:
     std::chrono::milliseconds deadline_;
     mutable std::mutex mu_;
     mutable std::map<StoryId, Route> routes_;
+    mutable uint64_t revision_{};
     std::function<void(const Route&)> on_route_;
 };
 

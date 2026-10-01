@@ -203,5 +203,24 @@ TEST_P(MetadataStoreContract, RevisionSurvivesRestart)
     ASSERT_TRUE(retry.ok());
     EXPECT_EQ(retry->revision, first->revision);
 }
+TEST_P(MetadataStoreContract, RevisionSurvivesLeaderChange)
+{
+    if(!h->durable_restart)
+        GTEST_SKIP() << "in-memory store has no durable restart";
+    ASSERT_TRUE(h->restart);
+    auto a = h->sut->acquire(h->story, "writer");
+    ASSERT_TRUE(a.ok());
+    auto first = h->sut->release(h->story, a->writer_id, a->incarnation);
+    ASSERT_TRUE(first.ok());
+    h->restart();
+    auto b = h->sut->acquire(h->story, "writer");
+    ASSERT_TRUE(b.ok());
+    auto second = h->sut->release(h->story, b->writer_id, b->incarnation);
+    ASSERT_TRUE(second.ok());
+    EXPECT_GT(second->revision, first->revision);
+    auto retry = h->sut->release(h->story, a->writer_id, a->incarnation);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->revision, first->revision);
+}
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MetadataStoreContract);
 } // namespace chronolog::contract

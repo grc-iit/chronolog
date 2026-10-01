@@ -7,6 +7,7 @@
 #include <mutex>
 #include <set>
 #include <vector>
+#include <thread>
 
 #include <grpcpp/grpcpp.h>
 
@@ -17,11 +18,12 @@
 
 namespace chronolog::visor
 {
+class RaftMetadataStore;
+class WorkerPool;
 
 // chronolog.internal.v1.Cluster: process registration, heartbeat, route
-// distribution and acquisition updates. ReadClock is not overridden, so it returns
-// UNIMPLEMENTED until the Clock port. Route change notification lands in M8, so
-// WatchRoutes sends one full snapshot and then holds the stream open.
+// distribution and acquisition updates. Dynamic replicas forward unary calls and
+// publish routes from their applied Catalog state.
 // WatchAcquisitions sends one snapshot of the acquisitions assigned to the Keeper as
 // of revision R, then every change above R in revision order.
 class ClusterService final: public internal::v1::Cluster::CallbackService
@@ -39,8 +41,13 @@ public:
     ClusterService(StaticRouteMembership& membership,
                    const MetadataStore& store,
                    const AcquisitionLedger& ledger,
-                   AcquisitionFeed& feed);
+                   AcquisitionFeed& feed,
+                   RaftMetadataStore* raft = nullptr,
+                   WorkerPool* pool = nullptr);
 
+    grpc::ServerUnaryReactor* ReadClock(grpc::CallbackServerContext* context,
+                                        const internal::v1::ReadClockRequest* request,
+                                        internal::v1::ReadClockResponse* response) override;
     grpc::ServerUnaryReactor* Register(grpc::CallbackServerContext* context,
                                        const internal::v1::RegisterRequest* request,
                                        internal::v1::RegisterResponse* response) override;
@@ -68,6 +75,8 @@ private:
     // Routes of every live story, or the failure that prevented listing them.
     absl::StatusOr<std::vector<internal::v1::RouteUpdate>> routeSnapshot() const;
 
+    RaftMetadataStore* raft_;
+    WorkerPool* pool_;
     StaticRouteMembership& membership_;
     const MetadataStore& store_;
     const AcquisitionLedger& ledger_;
@@ -75,6 +84,7 @@ private:
     std::mutex mutex_;
     bool closed_{};
     std::set<std::shared_ptr<Stream>> streams_;
+    std::jthread route_notifications_;
 };
 
 } // namespace chronolog::visor

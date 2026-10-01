@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -16,12 +17,14 @@ namespace chronolog::visor
 // Durable Catalog state in one SQLite file, WAL journal mode, synchronous=FULL.
 // Every mutator is one BEGIN IMMEDIATE transaction and returns after COMMIT, so
 // an acknowledged acquire or incarnation bump survives a crash.
-class SqliteMetadataStore final: public MetadataStore, public AcquisitionLedger
+class SqliteMetadataStore final
+    : public MetadataStore
+    , public AcquisitionLedger
 {
 public:
     // `fence_waiter` may be empty, in which case release always reports fenced=false.
-    static absl::StatusOr<std::unique_ptr<SqliteMetadataStore>> open(const std::string& path, Topology topology,
-                                                                     FenceWaiter fence_waiter = nullptr);
+    static absl::StatusOr<std::unique_ptr<SqliteMetadataStore>>
+    open(const std::string& path, Topology topology, FenceWaiter fence_waiter = nullptr);
     ~SqliteMetadataStore() override;
 
     SqliteMetadataStore(const SqliteMetadataStore&) = delete;
@@ -42,6 +45,13 @@ public:
     absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const override;
     void setObserver(AcquisitionObserver* observer) override;
 
+    absl::StatusOr<std::string> applyRaft(uint64_t index, const std::function<std::string()>& apply);
+    absl::StatusOr<uint64_t> appliedIndex() const;
+    absl::StatusOr<KeeperRef> releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const;
+    absl::Status backupTo(const std::string& path) const;
+    absl::Status installFrom(const std::string& path);
+    uint64_t snapshotGeneration() const { return snapshot_generation_.load(); }
+
     // Value of `PRAGMA <name>` on this connection, for tests and startup logging.
     absl::StatusOr<std::string> pragmaValue(const std::string& name) const;
 
@@ -49,12 +59,13 @@ private:
     SqliteMetadataStore(sqlite3* db, Topology topology, FenceWaiter fence_waiter);
     absl::Status initialize();
 
+    std::atomic<uint64_t> snapshot_generation_{};
     sqlite3* db_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;
     // One mutex serializes every statement on the single connection. const readers
     // lock it too, so it is mutable.
-    mutable std::mutex mutex_;
+    mutable std::recursive_mutex mutex_;
     AcquisitionObserver* observer_{};
 };
 

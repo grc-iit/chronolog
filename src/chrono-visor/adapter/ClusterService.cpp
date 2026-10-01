@@ -5,6 +5,8 @@
 #include <optional>
 
 #include "adapter/Convert.h"
+#include "adapter/WorkerPool.h"
+#include "raft/RaftMetadataStore.h"
 
 namespace chronolog::visor
 {
@@ -152,18 +154,105 @@ uint64_t authorityTickNs()
 ClusterService::ClusterService(StaticRouteMembership& membership,
                                const MetadataStore& store,
                                const AcquisitionLedger& ledger,
-                               AcquisitionFeed& feed)
-    : membership_(membership)
+                               AcquisitionFeed& feed,
+                               RaftMetadataStore* raft,
+                               WorkerPool* pool)
+    : raft_(raft)
+    , pool_(pool)
+    , membership_(membership)
     , store_(store)
     , ledger_(ledger)
     , feed_(feed)
-{}
+{
+    if(raft_)
+        route_notifications_ = std::jthread(
+                [this](std::stop_token stop)
+                {
+                    uint64_t generation = raft_->appliedStore().snapshotGeneration();
+                    while(!stop.stop_requested())
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        std::set<std::shared_ptr<Stream>> streams;
+                        {
+                            std::lock_guard lock(mutex_);
+                            if(closed_)
+                                return;
+                            streams = streams_;
+                        }
+                        auto current = raft_->appliedStore().snapshotGeneration();
+                        for(auto& stream: streams)
+                        {
+                            if(current != generation)
+                                stream->shutdown();
+                            else
+                                stream->wake();
+                        }
+                        generation = current;
+                    }
+                });
+}
+
+grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext* context,
+                                                    const internal::v1::ReadClockRequest* request,
+                                                    internal::v1::ReadClockResponse* response)
+{
+    auto* reactor = context->DefaultReactor();
+    if(!raft_)
+    {
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "clock exchange is not configured"));
+        return reactor;
+    }
+    if(!raft_->leaderLease())
+    {
+        auto task = [this, context, request, response, reactor]
+        {
+            auto endpoint = raft_->leaderEndpoint(true);
+            if(endpoint.empty() || raft_->isLocalLeader())
+            {
+                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
+                return;
+            }
+            grpc::ClientContext ctx;
+            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
+            auto stub =
+                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            reactor->Finish(stub->ReadClock(&ctx, *request, response));
+        };
+        if(!pool_ || !pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
+        return reactor;
+    }
+    *response->mutable_physical() = nowReading();
+    response->set_authority_tick_ns(authorityTickNs());
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+}
 
 grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* context,
                                                    const internal::v1::RegisterRequest* request,
                                                    internal::v1::RegisterResponse* response)
 {
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
+    if(raft_ && !raft_->leaderLease())
+    {
+        auto task = [this, context, request, response, reactor]()
+        {
+            auto endpoint = raft_->leaderEndpoint(true);
+            if(endpoint.empty() || raft_->isLocalLeader())
+            {
+                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
+                return;
+            }
+            grpc::ClientContext ctx;
+            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
+            auto stub =
+                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            reactor->Finish(stub->Register(&ctx, *request, response));
+        };
+        if(!pool_ || !pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
+        return reactor;
+    }
     auto process = convert::fromProto(request->process());
     absl::Status status = process.ok() ? membership_.registerProcess(*process) : process.status();
     *response->mutable_status() = convert::toProto(status);
@@ -184,6 +273,26 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                                                     internal::v1::HeartbeatResponse* response)
 {
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
+    if(raft_ && !raft_->leaderLease())
+    {
+        auto task = [this, context, request, response, reactor]()
+        {
+            auto endpoint = raft_->leaderEndpoint(true);
+            if(endpoint.empty() || raft_->isLocalLeader())
+            {
+                reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
+                return;
+            }
+            grpc::ClientContext ctx;
+            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
+            auto stub =
+                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            reactor->Finish(stub->Heartbeat(&ctx, *request, response));
+        };
+        if(!pool_ || !pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
+        return reactor;
+    }
     absl::Status status =
             membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
     *response->mutable_status() = convert::toProto(status);
@@ -264,6 +373,14 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
                 continue;
             internal::v1::RouteUpdate update;
             update.set_story_id(story.id);
+            if(raft_)
+            {
+                route->epoch = story.epoch;
+                auto snapshot = ledger_.snapshotAcquisitions();
+                if(!snapshot.ok())
+                    return snapshot.status();
+                update.set_revision(snapshot->revision);
+            }
             *update.mutable_route() = convert::toProto(*route);
             out.push_back(std::move(update));
         }
@@ -283,10 +400,46 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
     {
         internal::v1::WatchRoutesResponse message;
         message.set_story_id(update.story_id());
+        message.set_revision(update.revision());
         *message.mutable_route() = std::move(*update.mutable_route());
         snapshot.push_back(std::move(message));
     }
-    return startStream<internal::v1::WatchRoutesResponse>(std::move(snapshot), nullptr, nullptr, nullptr, nullptr);
+    std::function<std::optional<internal::v1::WatchRoutesResponse>()> pull;
+    if(raft_)
+    {
+        auto state = std::make_shared<std::pair<uint64_t, std::deque<internal::v1::WatchRoutesResponse>>>();
+        for(const auto& message: snapshot) state->first = std::max(state->first, message.revision());
+        pull = [this, state]() -> std::optional<internal::v1::WatchRoutesResponse>
+        {
+            if(state->second.empty())
+            {
+                auto current = ledger_.snapshotAcquisitions();
+                if(!current.ok() || current->revision <= state->first)
+                    return std::nullopt;
+                auto routes = routeSnapshot();
+                if(!routes.ok())
+                    return std::nullopt;
+                for(const auto& update: *routes)
+                {
+                    auto& message = state->second.emplace_back();
+                    message.set_story_id(update.story_id());
+                    message.set_revision(update.revision());
+                    *message.mutable_route() = update.route();
+                }
+                state->first = current->revision;
+            }
+            if(state->second.empty())
+                return std::nullopt;
+            auto message = std::move(state->second.front());
+            state->second.pop_front();
+            return message;
+        };
+    }
+    return startStream<internal::v1::WatchRoutesResponse>(std::move(snapshot),
+                                                          std::move(pull),
+                                                          nullptr,
+                                                          nullptr,
+                                                          nullptr);
 }
 
 grpc::ServerWriteReactor<internal::v1::WatchAcquisitionsResponse>*
