@@ -29,6 +29,11 @@ if(CHRONOLOG_SANITIZERS)
     if("undefined" IN_LIST CHRONOLOG_SANITIZERS)
         add_compile_options(-fno-sanitize-recover=undefined)
     endif()
+    # ThreadSanitizer aborts with "unexpected memory mapping" when mmap_rnd_bits is wide.
+    # Every executable target, including gtest discovery, runs under setarch -R.
+    if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
+        set(CMAKE_CROSSCOMPILING_EMULATOR "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
+    endif()
 endif()
 
 # Warning flags live on an interface target so they reach only ChronoLog's own
