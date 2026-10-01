@@ -37,6 +37,18 @@ INSTANTIATE_TEST_SUITE_P(
                             return absl::InternalError("invalid response");
                         return absl::Status(static_cast<absl::StatusCode>(r.status().code()), r.status().message());
                     };
+                    harness->registerPolicy = [send](uint64_t version)
+                    {
+                        internal::v1::CatalogCommand c;
+                        auto* q = c.mutable_membership()->mutable_register_();
+                        q->set_policy_version(version);
+                        auto* p = q->mutable_process();
+                        p->set_process_id("policy-test");
+                        p->set_instance("instance");
+                        p->set_endpoint("localhost:1");
+                        p->set_role(internal::v1::PROCESS_ROLE_KEEPER);
+                        return send.template operator()<internal::v1::RegisterResponse>(c);
+                    };
                     harness->grantCeiling = [send](std::string id, std::string instance)
                     {
                         internal::v1::CatalogCommand c;
@@ -193,6 +205,44 @@ protected:
     }
     wire::RouteUpdate route() { return dynamic::snapshot(*store).routes(0); }
 };
+TEST_F(DynamicMembershipTest, GrapherPolicyReportClearsFlagThroughCatalogCommand)
+{
+    wire::MembershipCommand registration;
+    auto* q = registration.mutable_register_();
+    auto* p = q->mutable_process();
+    p->set_process_id("grapher");
+    p->set_instance("grapher-instance");
+    p->set_endpoint("grapher:50053");
+    p->set_role(wire::PROCESS_ROLE_GRAPHER);
+    ASSERT_EQ(call<wire::RegisterResponse>(registration).status().code(), 0);
+    auto before = dynamic::snapshot(*store);
+    ASSERT_EQ(before.routes_size(), 1);
+    before.mutable_routes(0)->set_physical_policy(true);
+    ASSERT_TRUE(store->saveMembership(before).ok());
+    wire::MembershipCommand command;
+    auto* h = command.mutable_heartbeat();
+    h->set_process_id("grapher");
+    h->set_instance("grapher-instance");
+    h->add_stories_without_physical_policy(1);
+    auto loaded = store->membershipCommandState(command);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_TRUE(dynamic::heartbeatChanges(*loaded, *h));
+    ASSERT_EQ(call<wire::HeartbeatResponse>(command).status().code(), 0);
+    auto after = dynamic::snapshot(*store);
+    EXPECT_FALSE(after.routes(0).physical_policy());
+    EXPECT_GT(after.routes(0).revision(), before.routes(0).revision());
+    loaded = store->membershipCommandState(command);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_FALSE(dynamic::heartbeatChanges(*loaded, *h));
+    ASSERT_EQ(call<wire::HeartbeatResponse>(command).status().code(), 0);
+    const auto path = (dir.path() / "catalog").string();
+    store.reset();
+    auto reopened = SqliteMetadataStore::open(path, testing::twoKeeperTopology());
+    ASSERT_TRUE(reopened.ok());
+    store = std::move(*reopened);
+    EXPECT_FALSE(store->membershipRouteUpdate(1)->physical_policy());
+}
+
 TEST_F(DynamicMembershipTest, ReplacementRevokesExtensionAndReturnsMonotoneFloors)
 {
     ready();

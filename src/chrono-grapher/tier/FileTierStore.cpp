@@ -492,7 +492,8 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
     return result;
 }
 
-absl::StatusOr<std::vector<Event>> FileTierStore::readRecord(const ManifestRecord& record, Range range) const
+absl::StatusOr<std::vector<Event>>
+FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_events) const
 {
     const auto valid = ValidRange(range);
     if(!valid.ok())
@@ -507,16 +508,30 @@ absl::StatusOr<std::vector<Event>> FileTierStore::readRecord(const ManifestRecor
     for(const auto& event: *events)
         if(event.id.story_id != record.story_id || event.hlc < record.start || event.hlc >= record.end)
             return absl::UnavailableError("invalid archived event window");
-    std::erase_if(*events,
-                  [&](const Event& event)
-                  {
-                      return range.axis == Range::Axis::Hlc
-                                     ? event.hlc < range.start || event.hlc >= range.end
-                                     : event.physical.physical_ns < range.start.physical_ns ||
-                                               event.physical.physical_ns >= range.end.physical_ns;
-                  });
     std::stable_sort(events->begin(), events->end(), ReplayLess);
-    return events;
+    std::vector<Event> selected;
+    for(auto& event: *events)
+    {
+        bool matches;
+        if(range.axis == Range::Axis::Hlc)
+            matches = event.hlc >= range.start && event.hlc < range.end;
+        else
+        {
+            const bool bounded = event.physical.status == ClockStatus::Synced && event.physical.uncertainty_ns &&
+                                 *event.physical.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
+            const __int128_t p = event.physical.physical_ns;
+            const __int128_t u = bounded ? *event.physical.uncertainty_ns : 0;
+            matches = bounded ? p - u < range.end.physical_ns && p + u >= range.start.physical_ns
+                              : p >= range.start.physical_ns && p < range.end.physical_ns;
+        }
+        if(matches)
+        {
+            if(selected.size() == max_events)
+                break;
+            selected.push_back(std::move(event));
+        }
+    }
+    return selected;
 }
 
 absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId story) const
@@ -584,6 +599,19 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     if(::unlink((root_ / file).c_str()) != 0 && errno != ENOENT)
         return tier_detail::IoError("delete archived file");
     return tier_detail::SyncDirectory((root_ / file).parent_path());
+}
+
+absl::StatusOr<std::vector<StoryId>> FileTierStore::storiesWithoutPhysicalPolicy() const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    std::set<StoryId> stories;
+    for(const auto& record: index->records)
+        if(!record.physical_policy)
+            stories.insert(record.story_id);
+    return std::vector<StoryId>(stories.begin(), stories.end());
 }
 
 absl::Status FileTierStore::compact()

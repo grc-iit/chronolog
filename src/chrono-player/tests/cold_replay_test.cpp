@@ -193,6 +193,62 @@ TEST_F(ColdReplay, ZeroEvictionFloorDoesNotNeedAnArchive)
     ASSERT_EQ(events.size(), 1);
 }
 
+TEST_F(ColdReplay, PhysicalArchiveCountsOnlyIntervalMatches)
+{
+    std::vector<Event> archived;
+    for(int64_t i = 100; i < 140; ++i)
+    {
+        auto e = event(i);
+        e.physical = {1000, 0, ClockStatus::Synced};
+        archived.push_back(e);
+    }
+    auto e = event(140);
+    e.physical = {150, 5, ClockStatus::Synced};
+    archived.push_back(e);
+    Chunk chunk{"physical-bounded", 1, {100, 0}, {200, 0}, archived, false};
+    chunk.physical_policy = true;
+    ASSERT_TRUE(writer->publish(chunk).ok());
+    source->response.physical_policy = true;
+    for(auto& k: source->response.keepers) k.frontier.physical_frontier = 400;
+    options.read_max_events = 1;
+    HotReplay replay(source, options);
+    auto stream = replay.read(1, {Range::Axis::Physical, {151, 0}, {155, 0}});
+    ASSERT_TRUE(stream.ok());
+    auto batch = (*stream)->next();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1);
+    EXPECT_EQ((**batch).events[0].id, e.id);
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    ASSERT_TRUE((**final).completion);
+    EXPECT_TRUE((**final).completion->complete);
+}
+TEST_F(ColdReplay, LegacyArchiveMarkerDisablesPruningAndCompletion)
+{
+    auto e = event(140);
+    e.hlc = {1000000000000000LL, 0};
+    e.physical = {150, 0, ClockStatus::Synced};
+    Chunk chunk{"physical-legacy", 1, e.hlc, {e.hlc.physical_ns + 1, 0}, {e}, false};
+    ASSERT_TRUE(writer->publish(chunk).ok());
+    source->response.physical_policy = true;
+    for(auto& k: source->response.keepers) k.frontier.physical_frontier = 400;
+    HotReplay replay(source, options);
+    auto stream = replay.read(1, {Range::Axis::Physical, {150, 0}, {151, 0}});
+    ASSERT_TRUE(stream.ok());
+    auto batch = (*stream)->next();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1);
+    EXPECT_EQ((**batch).events[0].id, e.id);
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    ASSERT_TRUE((**final).completion);
+    EXPECT_EQ((**final).completion->reason, IncompleteReason::PhysicalAxisUnbounded);
+}
+
 TEST_F(ColdReplay, PhysicalReadDoesNotTreatAnHlcEvictionFloorAsPhysicalTime)
 {
     auto e = event(140);

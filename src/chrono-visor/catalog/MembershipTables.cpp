@@ -234,6 +234,11 @@ absl::Status SqliteMetadataStore::initializeMembership()
 try
 {
     sql(db_,
+        "CREATE TABLE IF NOT EXISTS physical_constants(id INTEGER PRIMARY KEY,version INTEGER NOT NULL,acceptance "
+        "INTEGER NOT NULL,skew INTEGER NOT NULL,lead INTEGER NOT NULL,cap INTEGER NOT NULL);"
+        "INSERT OR IGNORE INTO physical_constants VALUES(1,1,15000000000,60000000000,61000000000,1000000000);"
+        "CREATE TABLE IF NOT EXISTS static_physical_members(process_id TEXT PRIMARY KEY,version INTEGER NOT NULL);");
+    sql(db_,
         "CREATE TABLE IF NOT EXISTS membership_meta(id INTEGER PRIMARY KEY,policy BLOB NOT NULL,history_floor INTEGER "
         "NOT NULL);"
         "CREATE TABLE IF NOT EXISTS membership_members(process_id TEXT PRIMARY KEY,instance TEXT NOT NULL,role INTEGER "
@@ -294,6 +299,88 @@ try
 }
 MEMBERSHIP_CATCH
 
+absl::StatusOr<PhysicalPolicy> SqliteMetadataStore::physicalPolicy() const
+try
+{
+    std::lock_guard lock(mutex_);
+    Query q(db_, "SELECT version,acceptance,skew,lead,cap FROM physical_constants WHERE id=1");
+    if(!q.next())
+        return absl::UnavailableError("physical policy is missing");
+    PhysicalPolicy policy;
+    policy.version = q.number(0);
+    policy.acceptance_window_ns = static_cast<int64_t>(q.number(1));
+    policy.skew_limit_ns = static_cast<int64_t>(q.number(2));
+    policy.hlc_lead_ns = static_cast<int64_t>(q.number(3));
+    policy.uncertainty_cap_ns = q.number(4);
+    return policy;
+}
+MEMBERSHIP_CATCH
+
+absl::Status SqliteMetadataStore::clearPhysicalPolicy(const std::vector<StoryId>& stories)
+try
+{
+    std::lock_guard lock(mutex_);
+    sql(db_, "BEGIN IMMEDIATE");
+    try
+    {
+        for(const auto story: stories)
+        {
+            auto old = membershipRouteUpdate(story);
+            if(absl::IsNotFound(old.status()))
+                continue;
+            if(!old.ok())
+                throw std::runtime_error(std::string(old.status().message()));
+            if(!old->physical_policy())
+                continue;
+            auto route = *old;
+            route.set_physical_policy(false);
+            writeRoute(db_, route, &*old);
+        }
+        sql(db_, "COMMIT");
+    }
+    catch(...)
+    {
+        sql(db_, "ROLLBACK");
+        throw;
+    }
+    return absl::OkStatus();
+}
+MEMBERSHIP_CATCH
+
+absl::Status SqliteMetadataStore::registerStaticPolicy(const std::string& process, uint64_t version)
+try
+{
+    std::lock_guard lock(mutex_);
+    sql(db_, "BEGIN IMMEDIATE");
+    try
+    {
+        Query entry(db_,
+                    "INSERT INTO static_physical_members VALUES(?1,?2) ON CONFLICT(process_id) DO UPDATE SET "
+                    "version=excluded.version");
+        entry.text(1, process).number(2, version).next();
+        if(version != 1)
+        {
+            auto before = membershipState();
+            if(!before.ok())
+                throw std::runtime_error(std::string(before.status().message()));
+            auto after = *before;
+            for(auto& r: *after.mutable_routes())
+                for(const auto& k: r.route().keepers())
+                    if(k.process_id() == process)
+                        r.set_physical_policy(false);
+            writeChanges(db_, *before, after);
+        }
+        sql(db_, "COMMIT");
+    }
+    catch(...)
+    {
+        sql(db_, "ROLLBACK");
+        throw;
+    }
+    return absl::OkStatus();
+}
+MEMBERSHIP_CATCH
+
 absl::Status SqliteMetadataStore::seedMembershipStory(StoryId id)
 try
 {
@@ -324,8 +411,13 @@ try
         route.set_physical_policy(physical && !route.route().keepers().empty());
     }
     else
+    {
+        bool physical = !route.route().keepers().empty();
         for(const auto& k: route.route().keepers())
         {
+            Query policy(db_, "SELECT version FROM static_physical_members WHERE process_id=?1");
+            policy.text(1, k.process_id());
+            physical = physical && policy.next() && policy.number(0) == 1;
             Query exists(db_, "SELECT 1 FROM membership_members WHERE process_id=?1");
             exists.text(1, k.process_id());
             if(exists.next())
@@ -336,6 +428,8 @@ try
             m->mutable_process()->set_endpoint(k.endpoint());
             m->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
         }
+        route.set_physical_policy(physical);
+    }
     *state.add_routes() = route;
     if(route.revision() > state.route_history_floor())
         *state.add_route_history() = route;
@@ -604,9 +698,12 @@ try
         while(q.next()) stories.insert(q.number(0));
     }
     if(command.has_heartbeat())
+    {
         for(const auto& f: command.heartbeat().story_frontiers())
             if(!f.drained_instance().empty())
                 stories.insert(f.story_id());
+        for(const auto story: command.heartbeat().stories_without_physical_policy()) stories.insert(story);
+    }
     for(auto story: stories)
     {
         auto route = membershipRouteUpdate(story);

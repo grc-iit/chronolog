@@ -2,6 +2,7 @@
 #include "dynamic/MembershipState.h"
 
 #include <chrono>
+#include <algorithm>
 #include <deque>
 #include <optional>
 
@@ -274,18 +275,51 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     if(raft_)
         return dynamicCall(context, request, response, 1);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    auto process = convert::fromProto(request->process());
-    absl::Status status = process.ok() ? membership_.registerProcess(*process) : process.status();
-    *response->mutable_status() = convert::toProto(status);
-    if(status.ok())
+    auto task = [this, request = *request, response, reactor]
     {
-        auto routes = routeSnapshot();
-        if(routes.ok())
-            for(auto& route: *routes) *response->add_routes() = std::move(route);
+        auto process = convert::fromProto(request.process());
+        absl::Status status = process.ok() ? absl::OkStatus() : process.status();
+        const auto* sqlite = dynamic_cast<const SqliteMetadataStore*>(&store_);
+        auto constants = sqlite ? sqlite->physicalPolicy() : absl::StatusOr<PhysicalPolicy>(PhysicalPolicy{});
+        if(!constants.ok())
+            status = constants.status();
+        if(status.ok() && request.policy_version() != 0 && request.policy_version() != constants->version)
+            status = absl::FailedPreconditionError("policy version mismatch");
+        if(status.ok())
+        {
+            if(auto* writable = const_cast<SqliteMetadataStore*>(sqlite);
+               writable && process->role == ProcessRole::Keeper)
+                status = writable->registerStaticPolicy(process->id, request.policy_version());
+            if(status.ok())
+                status = membership_.registerProcess(*process);
+        }
+        *response->mutable_status() = convert::toProto(status);
+        auto* policy = response->mutable_policy();
+        if(constants.ok())
+        {
+            policy->set_version(constants->version);
+            policy->set_acceptance_window_ns(constants->acceptance_window_ns);
+            policy->set_skew_limit_ns(constants->skew_limit_ns);
+            policy->set_hlc_lead_ns(constants->hlc_lead_ns);
+            policy->set_uncertainty_cap_ns(constants->uncertainty_cap_ns);
+        }
+        if(status.ok())
+        {
+            auto routes = routeSnapshot();
+            if(routes.ok())
+                for(auto& route: *routes) *response->add_routes() = std::move(route);
+        }
+        *response->mutable_physical() = nowReading();
+        response->set_authority_tick_ns(authorityTickNs());
+        reactor->Finish(grpc::Status::OK);
+    };
+    if(pool_)
+    {
+        if(!pool_->submit(std::move(task)))
+            reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     }
-    *response->mutable_physical() = nowReading();
-    response->set_authority_tick_ns(authorityTickNs());
-    reactor->Finish(grpc::Status::OK);
+    else
+        task();
     return reactor;
 }
 
@@ -296,12 +330,35 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
     if(raft_)
         return dynamicCall(context, request, response, 2);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    absl::Status status =
-            membership_.heartbeat(request->process_id(), request->instance(), request->applied_revision());
-    *response->mutable_status() = convert::toProto(status);
-    *response->mutable_physical() = nowReading();
-    response->set_authority_tick_ns(authorityTickNs());
-    reactor->Finish(grpc::Status::OK);
+    auto task = [this, request = *request, response, reactor]
+    {
+        absl::Status status =
+                membership_.heartbeat(request.process_id(), request.instance(), request.applied_revision());
+        if(status.ok() && !request.stories_without_physical_policy().empty())
+        {
+            auto process = membership_.process(request.process_id());
+            if(!process || process->role != ProcessRole::Grapher)
+                status = absl::InvalidArgumentError("physical policy reports require a Grapher");
+            else if(request.stories_without_physical_policy_size() > 65536 ||
+                    std::find(request.stories_without_physical_policy().begin(),
+                              request.stories_without_physical_policy().end(),
+                              0) != request.stories_without_physical_policy().end())
+                status = absl::InvalidArgumentError("invalid physical policy story list");
+            else if(auto* sqlite = const_cast<SqliteMetadataStore*>(dynamic_cast<const SqliteMetadataStore*>(&store_)))
+                status = sqlite->clearPhysicalPolicy({request.stories_without_physical_policy().begin(),
+                                                      request.stories_without_physical_policy().end()});
+            else
+                status = absl::UnimplementedError("physical policy clearing needs a persisted Catalog");
+        }
+        *response->mutable_status() = convert::toProto(status);
+        *response->mutable_physical() = nowReading();
+        response->set_authority_tick_ns(authorityTickNs());
+        reactor->Finish(grpc::Status::OK);
+    };
+    if(request->stories_without_physical_policy().empty() || !pool_)
+        task();
+    else if(!pool_->submit(std::move(task)))
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     return reactor;
 }
 
@@ -390,6 +447,13 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
                 update.set_revision(snapshot->revision);
             }
             *update.mutable_route() = convert::toProto(*route);
+            if(const auto* sqlite = dynamic_cast<const SqliteMetadataStore*>(&store_))
+            {
+                auto persisted = sqlite->membershipRouteUpdate(story.id);
+                if(!persisted.ok())
+                    return persisted.status();
+                update.set_physical_policy(persisted->physical_policy());
+            }
             out.push_back(std::move(update));
         }
     }

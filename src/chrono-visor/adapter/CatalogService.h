@@ -4,6 +4,7 @@
 
 #include "adapter/WorkerPool.h"
 #include "chronolog/metadata_store.h"
+#include "chronolog/membership.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 
 namespace chronolog::visor
@@ -17,7 +18,10 @@ class RaftMetadataStore;
 class CatalogService final: public v1::Catalog::CallbackService
 {
 public:
-    CatalogService(MetadataStore& store, WorkerPool& pool, RaftMetadataStore* raft = nullptr);
+    CatalogService(MetadataStore& store,
+                   WorkerPool& pool,
+                   RaftMetadataStore* raft = nullptr,
+                   const Membership* membership = nullptr);
 
     grpc::ServerUnaryReactor* CreateChronicle(grpc::CallbackServerContext* context,
                                               const v1::CreateChronicleRequest* request,
@@ -57,6 +61,8 @@ private:
     template <class Fn>
     grpc::ServerUnaryReactor* dispatch(grpc::CallbackServerContext* context, Fn fn);
 
+    absl::Status fillStory(const Story&, v1::Story*) const;
+    const Membership* membership_;
     RaftMetadataStore* raft_;
     MetadataStore& store_;
     WorkerPool& pool_;

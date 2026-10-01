@@ -34,7 +34,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chronologConfig.cmake" "${CMAKE_CURRE
 install(EXPORT chronologClientTargets NAMESPACE chronolog:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog COMPONENT client)
 
 include(GoogleTest)
-add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp
+add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp tests/physical_read_test.cpp
     "${PROJECT_SOURCE_DIR}/tests/contract/client/client_test.cpp")
 target_link_libraries(chronolog_client_tests PRIVATE chronolog::client chronolog_proto chronolog_warnings GTest::gtest_main Threads::Threads)
 gtest_discover_tests(chronolog_client_tests TEST_PREFIX "sdk." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)

@@ -21,12 +21,14 @@ public:
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
     absl::StatusOr<std::vector<Event>> read(StoryId story, Range range) const override;
-    absl::StatusOr<std::vector<Event>> readRecord(const ManifestRecord& record, Range range) const;
+    absl::StatusOr<std::vector<Event>>
+    readRecord(const ManifestRecord& record, Range range, size_t max_events = SIZE_MAX) const;
     absl::StatusOr<std::vector<ManifestRecord>> manifest(StoryId story) const override;
     absl::StatusOr<Hlc> contiguousWatermark(StoryId story) const override;
     absl::StatusOr<bool> incomplete(StoryId story, Range range) const;
     absl::Status eraseFile(const std::string& file);
     absl::Status compact();
+    absl::StatusOr<std::vector<StoryId>> storiesWithoutPhysicalPolicy() const;
 
 private:
     FileTierStore(std::filesystem::path root,

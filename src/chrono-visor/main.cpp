@@ -134,7 +134,7 @@ int main(int argc, char** argv)
     ledger.setObserver(&feed);
 
     chronolog::visor::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
-    chronolog::visor::CatalogService catalog(catalog_store, pool, raft);
+    chronolog::visor::CatalogService catalog(catalog_store, pool, raft, &membership);
     chronolog::visor::ClusterService cluster(membership,
                                              ledger,
                                              ledger,

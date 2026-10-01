@@ -110,6 +110,9 @@ public:
                 in = e.physical().physical_ns() >= request->physical().start_ns() &&
                      e.physical().physical_ns() < request->physical().end_ns();
             }
+            if(in && request->has_physical_filter())
+                in = e.physical().physical_ns() >= request->physical_filter().start_ns() &&
+                     e.physical().physical_ns() < request->physical_filter().end_ns();
             if(in)
                 *batch.mutable_batch()->add_events() = e;
             if(batch.batch().events_size() == 2)
@@ -423,6 +426,31 @@ TEST_F(replay_adapter, HotFetchSharesOneRetentionBudgetAcrossKeepers)
     }
     EXPECT_EQ(total, 4);
     EXPECT_TRUE(truncated);
+}
+
+TEST_F(replay_adapter, PhysicalReadAboveTheLimitIsTruncatedWithoutClaim)
+{
+    HotReplayOptions options;
+    options.read_max_events = 2;
+    HotReplay replay(source_, options);
+    auto stream = replay.read(kStory, {Range::Axis::Physical, {100, 0}, {200, 0}});
+    ASSERT_TRUE(stream.ok());
+    size_t count = 0;
+    std::optional<Completion> completion;
+    for(size_t i = 0; i < 20; ++i)
+    {
+        auto batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok());
+        if(!*batch)
+            break;
+        count += (**batch).events.size();
+        if((**batch).completion)
+            completion = (**batch).completion;
+    }
+    EXPECT_LE(count, 2);
+    ASSERT_TRUE(completion);
+    EXPECT_FALSE(completion->complete);
+    EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
 }
 
 TEST_F(replay_adapter, PhysicalAxisIsUnbounded)

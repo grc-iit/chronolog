@@ -334,6 +334,17 @@ NB_MODULE(_core, m)
                     "end"_a,
                     "timeout"_a = nb::none())
             .def(
+                    "read_physical",
+                    [](sdk::Client& c, uint64_t id, int64_t start, int64_t end, std::optional<double> t)
+                    {
+                        auto d = deadline(t);
+                        return unwrap(call([&] { return c.readPhysical(id, {start, end}, d); }));
+                    },
+                    "id"_a,
+                    "start"_a,
+                    "end"_a,
+                    "timeout"_a = nb::none())
+            .def(
                     "tail",
                     [](sdk::Client& c, uint64_t id, nb::object after, std::optional<double> t)
                     {

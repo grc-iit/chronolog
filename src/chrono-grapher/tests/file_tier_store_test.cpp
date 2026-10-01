@@ -355,7 +355,8 @@ TEST(FileTierStore, ReadersMergeNewWriterLogsAndDeduplicateInReplayOrder)
     EXPECT_EQ(events->at(0).envelope.attributes, earlier.envelope.attributes);
     EXPECT_EQ(events->at(1).id.writer_id, 2u);
     EXPECT_EQ((*first)->read(1, {Range::Axis::Physical, {9999, 0}, {10000, 0}})->size(), 1u);
-    EXPECT_TRUE((*first)->read(1, {Range::Axis::Physical, {9998, 0}, {9999, 0}})->empty());
+    EXPECT_EQ((*first)->read(1, {Range::Axis::Physical, {9998, 0}, {9999, 0}})->size(), 1u);
+    EXPECT_TRUE((*first)->read(1, {Range::Axis::Physical, {9991, 0}, {9992, 0}})->empty());
 }
 
 TEST(FileTierStore, InvalidInputsAndUnknownStoriesAreRejected)

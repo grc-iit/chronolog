@@ -289,6 +289,7 @@ absl::StatusOr<Result> Database::execute(const std::string& sql, std::span<const
     client::HlcRange range;
     if(s.range)
         range = *s.range;
+    else if(s.physical_range) {}
     else
     {
         auto probe = snapshot(client_, *id, deadline);
@@ -297,7 +298,8 @@ absl::StatusOr<Result> Database::execute(const std::string& sql, std::span<const
         frontier = *probe;
         range = {{}, probe->frontier};
     }
-    auto stream = client_.read(*id, range, deadline);
+    auto stream = s.physical_range ? client_.readPhysical(*id, *s.physical_range, deadline)
+                                   : client_.read(*id, range, deadline);
     if(!stream.ok())
         return stream.status();
     struct Selected

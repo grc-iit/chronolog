@@ -42,7 +42,7 @@ protected:
                 [this](const KeeperRef& keeper, uint64_t revision)
                 { return membership_->waitApplied(keeper.process_id, revision, 50ms); });
         pool_ = std::make_unique<WorkerPool>(2, 64);
-        service_ = std::make_unique<CatalogService>(*store_, *pool_);
+        service_ = std::make_unique<CatalogService>(*store_, *pool_, nullptr, membership_.get());
 
         grpc::ServerBuilder builder;
         int port = 0;
@@ -112,6 +112,25 @@ protected:
     std::unique_ptr<grpc::Server> server_;
     std::unique_ptr<v1::Catalog::Stub> stub_;
 };
+
+TEST_F(catalog_adapter, GetStoryCarriesCurrentRoute)
+{
+    const auto id = makeStory();
+    v1::GetStoryRequest request;
+    request.set_story_id(id);
+    v1::GetStoryResponse response;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::GetStory, request, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    EXPECT_EQ(response.story().route().epoch(), response.story().epoch());
+    EXPECT_FALSE(response.story().route().player().empty());
+    EXPECT_EQ(response.story().route().keepers_size(), 2);
+    v1::ListStoriesRequest list;
+    list.set_chronicle("c");
+    v1::ListStoriesResponse stories;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::ListStories, list, &stories).ok());
+    ASSERT_EQ(stories.stories_size(), 1);
+    EXPECT_EQ(stories.stories(0).route().epoch(), stories.stories(0).epoch());
+}
 
 TEST_F(catalog_adapter, AcquireCarriesAssignedKeeperEpochOneAndAStableWriterId)
 {

@@ -7,6 +7,7 @@
 #include <syncstream>
 #include <grpcpp/grpcpp.h>
 #include "chrono-player/adapter/Convert.h"
+#include "chrono-player/replay/PhysicalRead.h"
 
 namespace chronolog::player
 {
@@ -47,7 +48,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       const Range& range,
                                       Epoch expected_epoch,
                                       const Predecessor* predecessor,
-                                      std::atomic<size_t>& retained) const
+                                      std::atomic<size_t>& retained,
+                                      bool policy) const
 {
     KeeperFetch out;
     out.frontier.process_id = keeper.process_id;
@@ -58,7 +60,18 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         out.frontier.own_cut = predecessor->own_cut;
 
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
-    auto request = convert::fetchHotRequest(story, range, options_.max_events);
+    auto scan = range.axis == Range::Axis::Physical ? physicalWindow(range, policy) : range;
+    if(predecessor)
+    {
+        scan.end = std::min(scan.end, predecessor->own_cut);
+        scan.start = std::min(scan.start, scan.end);
+    }
+    auto request = convert::fetchHotRequest(story, scan, options_.max_events);
+    if(range.axis == Range::Axis::Physical)
+    {
+        request.mutable_physical_filter()->set_start_ns(range.start.physical_ns);
+        request.mutable_physical_filter()->set_end_ns(range.end.physical_ns);
+    }
     request.set_expect_epoch(expected_epoch);
     if(predecessor)
         request.set_expect_instance(predecessor->instance);
@@ -121,6 +134,16 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& range) const
 {
+    return fetchImpl(story, range, true);
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysical(StoryId story, const Range& range, bool policy) const
+{
+    return fetchImpl(story, range, policy);
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy) const
+{
     auto state = routes_->routeState(story);
     if(!state.ok())
         return state.status();
@@ -128,13 +151,15 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& rang
     out.route_epoch = state->route.epoch;
     out.archived_below = state->archived_below;
     out.abandoned = state->abandoned;
-    out.physical_policy = routes_->physicalPolicy(story);
+    out.physical_policy = policy && routes_->physicalPolicy(story);
     std::atomic<size_t> retained{0};
     std::vector<std::future<KeeperFetch>> pending;
     for(const auto& keeper: state->route.keepers)
         pending.push_back(std::async(
                 std::launch::async,
-                [&, keeper] { return fetchOne(keeper, story, range, state->route.epoch, nullptr, retained); }));
+                [&, keeper] {
+                    return fetchOne(keeper, story, range, state->route.epoch, nullptr, retained, out.physical_policy);
+                }));
     for(const auto& p: state->predecessors)
     {
         Range own = range;
@@ -144,7 +169,7 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& rang
                 continue;
             own.end = std::min(range.end, p.own_cut);
         }
-        else
+        else if(out.physical_policy)
         {
             int64_t bound = std::max(p.own_cut.physical_ns, p.own_physical_ceiling_ns);
             int64_t skew = std::max<int64_t>(0, routes_->skewLimitNs());
@@ -153,8 +178,9 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& rang
             if(range.start.physical_ns >= bound)
                 continue;
         }
-        pending.push_back(std::async(std::launch::async,
-                                     [&, p, own] { return fetchOne(p.keeper, story, own, p.epoch, &p, retained); }));
+        pending.push_back(std::async(
+                std::launch::async,
+                [&, p, own] { return fetchOne(p.keeper, story, own, p.epoch, &p, retained, out.physical_policy); }));
     }
     for(auto& f: pending)
     {

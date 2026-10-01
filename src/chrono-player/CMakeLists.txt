@@ -48,3 +48,8 @@ chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.c
 chrono_player_test(chrono_player_m8_replay_test "${PROJECT_SOURCE_DIR}/tests/contract/replay/m8_replay_test.cpp" "M8.")
 
 target_link_libraries(chrono_player_m8_replay_test PRIVATE chronolog_keeper_lib)
+
+if(CHRONOLOG_BUILD_VISOR)
+    chrono_player_test(chrono_player_physical_policy_test tests/physical_policy_catalog_test.cpp "")
+    target_link_libraries(chrono_player_physical_policy_test PRIVATE chronolog_visor_lib)
+endif()

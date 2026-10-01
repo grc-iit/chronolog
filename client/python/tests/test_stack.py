@@ -100,3 +100,17 @@ def test_blocked_tail_releases_gil_and_cancel_unblocks(stack):
             tail.cancel()
             with pytest.raises(StopIteration):
                 blocked.result(timeout=2)
+
+
+def test_physical_read_discovers_route_and_out_of_range_consumes_sequence(stack):
+    _, _, story = stack
+    client = cl.connect(os.environ["CHRONOLOG_TEST_VISOR"], timeout=5)
+    with client.acquire(story, "physical") as writer:
+        with pytest.raises(cl.OutOfRange):
+            writer.append(b"too-old", physical=cl.TimeReading(1), timeout=3)
+        result = writer.append(b"physical-event", timeout=3)
+        assert result.event_id.sequence == 2
+        stream = client.read_physical(story, 0, time.time_ns() + 1_000_000_000, timeout=3)
+        events = list(stream)
+        assert len(events) == 1 and events[0].id == result.event_id
+        assert not stream.completion.complete
