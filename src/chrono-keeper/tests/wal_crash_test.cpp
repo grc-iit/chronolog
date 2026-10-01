@@ -65,9 +65,11 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
             if(child.pid < 0)
                 return false;
             auto channel = grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
+            auto internal = grpc::CreateChannel(archive_endpoint, grpc::InsecureChannelCredentials());
             while(std::chrono::system_clock::now() < deadline)
             {
-                if(channel->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 200ms)))
+                if(channel->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 100ms)) &&
+                   internal->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 100ms)))
                     return true;
                 if(::waitpid(child.pid, nullptr, WNOHANG) == child.pid)
                 {
