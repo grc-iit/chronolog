@@ -252,7 +252,8 @@ TEST_F(DynamicMembershipTest, StoryPhysicalFloorDoesNotFallWhenALowerCeilingKeep
     ASSERT_EQ(change("keeper-a", 0).status().code(), 0);
     EXPECT_EQ(route().physical_floor_ns(), floor);
     auto snapshot = dynamic::snapshot(*store);
-    EXPECT_EQ(snapshot.route_history(snapshot.route_history_size() - 1).physical_floor_ns(), floor);
+    EXPECT_EQ(snapshot.routes(0).physical_floor_ns(), floor);
+    EXPECT_EQ(snapshot.route_history_size(), 0);
 }
 TEST_F(DynamicMembershipTest, MismatchedPolicyRefusesRegistration)
 {
