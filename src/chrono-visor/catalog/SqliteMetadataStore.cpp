@@ -16,7 +16,7 @@ namespace chronolog::visor
 namespace
 {
 
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 constexpr Epoch kInitialEpoch = 1;
 constexpr int kBusyTimeoutMs = 5000;
 
@@ -320,7 +320,7 @@ absl::Status SqliteMetadataStore::initialize()
         return row.status();
     if(*row)
     {
-        if(version.column(0) != static_cast<uint64_t>(kSchemaVersion))
+        if(version.column(0) != 1 && version.column(0) != static_cast<uint64_t>(kSchemaVersion))
             return absl::FailedPreconditionError(
                     absl::StrCat("catalog schema version ", version.column(0), " is not supported"));
     }
@@ -333,6 +333,8 @@ absl::Status SqliteMetadataStore::initialize()
         if(!done.ok())
             return done.status();
     }
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "UPDATE schema_version SET version=2"));
+    CHRONOLOG_RETURN_IF_ERROR(initializeMembership());
     return txn.commit();
 }
 
@@ -479,6 +481,7 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
     auto done = insert.step();
     if(!done.ok())
         return done.status();
+    CHRONOLOG_RETURN_IF_ERROR(seedMembershipStory(*id));
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
     return Story{*id, std::move(chronicle), std::move(name), kInitialEpoch, false};
 }
@@ -783,14 +786,6 @@ absl::StatusOr<Epoch> SqliteMetadataStore::compareAndSetEpoch(StoryId id, Epoch 
     auto done = update.step();
     if(!done.ok())
         return done.status();
-    auto membership = membershipState();
-    if(!membership.ok())
-        return membership.status();
-    for(auto& r: *membership->mutable_routes())
-        if(r.story_id() == id)
-            r.mutable_route()->set_epoch(desired);
-    if(membership->has_policy())
-        CHRONOLOG_RETURN_IF_ERROR(saveMembership(*membership));
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
     return desired;
 }
@@ -959,29 +954,6 @@ absl::Status SqliteMetadataStore::installFrom(const std::string& path)
     return rc == 0 ? absl::OkStatus() : absl::UnavailableError("snapshot directory fsync failed");
 }
 
-absl::StatusOr<internal::v1::MembershipState> SqliteMetadataStore::membershipState() const
-{
-    std::lock_guard lock(mutex_);
-    Statement q(db_, "SELECT value FROM membership_state LIMIT 1");
-    CHRONOLOG_RETURN_IF_ERROR(q.prepared());
-    auto row = q.step();
-    if(!row.ok())
-        return row.status();
-    internal::v1::MembershipState state;
-    if(*row && !state.ParseFromString(q.columnText(0)))
-        return absl::InternalError("invalid membership state");
-    return state;
-}
-absl::Status SqliteMetadataStore::saveMembership(const internal::v1::MembershipState& state)
-{
-    std::lock_guard lock(mutex_);
-    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "DELETE FROM membership_state"));
-    Statement q(db_, "INSERT INTO membership_state(value) VALUES (?1)");
-    CHRONOLOG_RETURN_IF_ERROR(q.prepared());
-    q.text(1, state.SerializeAsString());
-    auto done = q.step();
-    return done.ok() ? absl::OkStatus() : done.status();
-}
 absl::StatusOr<Route> SqliteMetadataStore::membershipRoute(StoryId id) const
 {
     std::lock_guard lock(mutex_);
@@ -990,17 +962,15 @@ absl::StatusOr<Route> SqliteMetadataStore::membershipRoute(StoryId id) const
         return story.status();
     if(story->tombstoned)
         return absl::NotFoundError("destroyed story");
-    auto state = membershipState();
-    if(!state.ok())
-        return state.status();
-    for(const auto& update: state->routes())
-        if(update.story_id() == id)
-        {
-            const auto& r = update.route();
-            Route out{r.epoch(), {}, r.grapher(), r.player()};
-            for(const auto& k: r.keepers()) out.keepers.push_back({k.process_id(), k.endpoint()});
-            return out;
-        }
+    auto update = membershipRouteUpdate(id);
+    if(update.ok())
+    {
+        Route route{update->route().epoch(), {}, update->route().grapher(), update->route().player()};
+        for(const auto& k: update->route().keepers()) route.keepers.push_back({k.process_id(), k.endpoint()});
+        return route;
+    }
+    if(!absl::IsNotFound(update.status()))
+        return update.status();
     return topology_.routeFor(story->epoch, id);
 }
 absl::Status SqliteMetadataStore::fenceRemovedWriters(StoryId id,
@@ -1009,13 +979,11 @@ absl::Status SqliteMetadataStore::fenceRemovedWriters(StoryId id,
                                                       const std::string& replacement)
 {
     std::lock_guard lock(mutex_);
-    auto snapshot = snapshotAcquisitions();
-    if(!snapshot.ok())
-        return snapshot.status();
-    for(auto change: snapshot->active)
+    auto active = storyAcquisitions(id);
+    if(!active.ok())
+        return active.status();
+    for(auto change: *active)
     {
-        if(change.story_id != id)
-            continue;
         bool survives = false;
         for(const auto& k: route.keepers)
             if(k.process_id == change.assigned_keeper.process_id)

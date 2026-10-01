@@ -60,6 +60,16 @@ public:
 
     absl::StatusOr<internal::v1::MembershipState> membershipState() const;
     absl::Status saveMembership(const internal::v1::MembershipState& state);
+    absl::StatusOr<internal::v1::MembershipState>
+    membershipCommandState(const internal::v1::MembershipCommand& command) const;
+    absl::Status saveMembershipChanges(const internal::v1::MembershipState& before,
+                                       internal::v1::MembershipState& after);
+    absl::StatusOr<internal::v1::RouteUpdate> membershipRouteUpdate(StoryId id) const;
+    absl::StatusOr<internal::v1::MembershipState> membershipLivenessState() const;
+    absl::StatusOr<internal::v1::MembershipState> membershipRouteChanges(uint64_t revision) const;
+    absl::StatusOr<uint64_t> membershipRevision() const;
+    bool membershipWouldEmpty(const std::string& id) const;
+    absl::StatusOr<std::vector<AcquisitionChange>> storyAcquisitions(StoryId id) const;
     absl::StatusOr<Route> membershipRoute(StoryId id) const;
     absl::Status
     fenceRemovedWriters(StoryId id, const Route& route, uint64_t revision, const std::string& replacement = "");
@@ -72,6 +82,8 @@ private:
     absl::Status initialize();
 
     std::atomic<uint64_t> snapshot_generation_{};
+    absl::Status initializeMembership();
+    absl::Status seedMembershipStory(StoryId id);
     sqlite3* db_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;

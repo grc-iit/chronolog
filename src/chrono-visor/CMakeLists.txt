@@ -15,6 +15,7 @@ add_library(chronolog_visor_lib STATIC
     catalog/AcquisitionFeed.cpp
     catalog/InMemoryMetadataStore.cpp
     catalog/SqliteMetadataStore.cpp
+    catalog/MembershipTables.cpp
     membership/StaticRouteMembership.cpp)
 target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chronolog_visor_lib

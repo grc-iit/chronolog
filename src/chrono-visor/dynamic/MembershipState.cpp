@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <set>
+#include <unordered_map>
 namespace chronolog::visor::dynamic
 {
 namespace
@@ -70,22 +72,8 @@ void predecessor(wire::RouteUpdate& r, const wire::MemberState& m, const wire::I
     *p->mutable_own_cut() = i.ceiling();
     p->set_own_physical_ceiling_ns(i.physical_ceiling_ns());
 }
-} // namespace
-wire::MembershipState snapshot(SqliteMetadataStore& store)
+void defaults(wire::MembershipState& state)
 {
-    std::lock_guard lock(store.mutex_);
-    auto loaded = store.membershipState();
-    require(loaded.status());
-    auto state = *loaded;
-    auto acquisitions = store.snapshotAcquisitions();
-    require(acquisitions.status());
-    state.set_revision(acquisitions->revision);
-    for(int n = state.routes_size() - 1; n >= 0; --n)
-    {
-        auto story = store.getStory(state.routes(n).story_id());
-        if(!story.ok() || story->tombstoned)
-            state.mutable_routes()->DeleteSubrange(n, 1);
-    }
     if(!state.has_policy())
     {
         auto* p = state.mutable_policy();
@@ -99,62 +87,15 @@ wire::MembershipState snapshot(SqliteMetadataStore& store)
         p->set_hlc_lead_ns(61000000000LL);
         p->set_uncertainty_cap_ns(1000000000LL);
     }
-    auto chronicles = store.listChronicles();
-    require(chronicles.status());
-    for(const auto& c: *chronicles)
-    {
-        if(c.tombstoned)
-            continue;
-        auto stories = store.listStories(c.name);
-        require(stories.status());
-        for(const auto& s: *stories)
-        {
-            if(s.tombstoned)
-                continue;
-            bool found = false;
-            for(const auto& r: state.routes())
-                if(r.story_id() == s.id)
-                    found = true;
-            if(found)
-                continue;
-            auto route = store.membershipRoute(s.id);
-            require(route.status());
-            auto* r = state.add_routes();
-            r->set_story_id(s.id);
-            r->set_revision(state.revision());
-            *r->mutable_route() = convert::toProto(*route);
-            for(const auto& k: route->keepers)
-                if(!member(state, k.process_id))
-                {
-                    auto* m = state.add_members();
-                    m->mutable_process()->set_process_id(k.process_id);
-                    m->mutable_process()->set_endpoint(k.endpoint);
-                    m->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
-                    m->set_joined(true);
-                }
-            if(loaded->has_policy())
-            {
-                auto* keepers = r->mutable_route()->mutable_keepers();
-                keepers->Clear();
-                for(const auto& m: state.members())
-                    if(m.joined() && m.process().role() == wire::PROCESS_ROLE_KEEPER)
-                    {
-                        auto* k = keepers->Add();
-                        k->set_process_id(m.process().process_id());
-                        k->set_endpoint(m.process().endpoint());
-                    }
-            }
-            bool policy = !r->route().keepers().empty();
-            for(const auto& k: r->route().keepers())
-            {
-                auto* m = member(state, k.process_id());
-                if(!m || m->policy_version() != state.policy().version())
-                    policy = false;
-            }
-            r->set_physical_policy(policy);
-            *state.add_route_history() = *r;
-        }
-    }
+}
+} // namespace
+wire::MembershipState snapshot(SqliteMetadataStore& store)
+{
+    std::lock_guard lock(store.mutex_);
+    auto loaded = store.membershipState();
+    require(loaded.status());
+    auto state = *loaded;
+    defaults(state);
     return state;
 }
 bool wouldEmptyRoute(const wire::MembershipState& state, const std::string& id)
@@ -171,6 +112,10 @@ bool heartbeatChanges(const wire::MembershipState& state, const wire::HeartbeatR
         {
             if(m.process().instance() != q.instance())
                 return !q.story_frontiers().empty();
+            std::unordered_map<uint64_t, const wire::SettlementProof*> proofs;
+            for(const auto& i: m.instances())
+                if(i.instance() == q.instance())
+                    for(const auto& p: i.proofs()) proofs[p.story_id()] = &p.proof();
             for(const auto& f: q.story_frontiers())
             {
                 if(!f.drained_instance().empty())
@@ -182,10 +127,8 @@ bool heartbeatChanges(const wire::MembershipState& state, const wire::HeartbeatR
                        hlc(f.settlement().coverage_start()) <= hlc(f.settlement().settled_through()) &&
                        hlc(f.settlement().settled_through()) <= hlc(i.ceiling()))
                     {
-                        const wire::SettlementProof* previous = nullptr;
-                        for(const auto& p: i.proofs())
-                            if(p.story_id() == f.story_id())
-                                previous = &p.proof();
+                        const auto found = proofs.find(f.story_id());
+                        const auto* previous = found == proofs.end() ? nullptr : found->second;
                         if(!previous || (hlc(f.settlement().coverage_start()) == hlc(previous->coverage_start()) &&
                                          hlc(f.settlement().settled_through()) >= hlc(previous->settled_through()) &&
                                          f.settlement().SerializeAsString() != previous->SerializeAsString()))
@@ -215,10 +158,12 @@ RouteState routeState(const wire::RouteUpdate& u)
 }
 std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
 {
-    auto state = snapshot(store);
-    auto acquisitions = store.snapshotAcquisitions();
-    require(acquisitions.status());
-    const uint64_t revision = acquisitions->revision;
+    auto loaded = store.membershipCommandState(q);
+    require(loaded.status());
+    auto state = *loaded;
+    defaults(state);
+    const auto before = state;
+    const uint64_t revision = state.revision();
     std::string id;
     switch(q.operation_case())
     {
@@ -383,8 +328,10 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 for(int n = ks->size() - 1; n >= 0; --n)
                     if(ks->Get(n).process_id() == id)
                         ks->DeleteSubrange(n, 1);
-                for(const auto& a: acquisitions->active)
-                    if(a.story_id == r.story_id() && a.assigned_keeper.process_id == id && !ks->empty())
+                auto acquisitions = store.storyAcquisitions(r.story_id());
+                require(acquisitions.status());
+                for(const auto& a: *acquisitions)
+                    if(a.assigned_keeper.process_id == id && !ks->empty())
                     {
                         auto target =
                                 ks->Get(static_cast<int>(a.writer_id % static_cast<uint64_t>(ks->size()))).process_id();
@@ -481,47 +428,53 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
     if(status.ok() && q.has_heartbeat())
     {
         auto* i = instance(*m, q.heartbeat().instance());
+        std::unordered_map<uint64_t, wire::InstanceProof*> proofs;
+        if(i)
+            for(auto& p: *i->mutable_proofs()) proofs[p.story_id()] = &p;
+        std::unordered_map<uint64_t, wire::RouteUpdate*> routes;
+        for(auto& r: *state.mutable_routes()) routes[r.story_id()] = &r;
         for(const auto& f: q.heartbeat().story_frontiers())
         {
             if(i && f.has_settlement() && f.settlement().instance() == i->instance() &&
                hlc(f.settlement().coverage_start()) <= hlc(f.settlement().settled_through()) &&
                hlc(f.settlement().settled_through()) <= hlc(i->ceiling()))
             {
-                wire::InstanceProof* proof = nullptr;
-                for(auto& p: *i->mutable_proofs())
-                    if(p.story_id() == f.story_id())
-                        proof = &p;
+                auto* proof = proofs[f.story_id()];
                 if(!proof)
                 {
                     proof = i->add_proofs();
                     proof->set_story_id(f.story_id());
+                    proofs[f.story_id()] = proof;
                 }
                 if(!proof->has_proof() ||
                    (hlc(f.settlement().coverage_start()) == hlc(proof->proof().coverage_start()) &&
                     hlc(f.settlement().settled_through()) >= hlc(proof->proof().settled_through())))
                     *proof->mutable_proof() = f.settlement();
             }
-            for(auto& r: *state.mutable_routes())
-                if(r.story_id() == f.story_id())
+            if(auto found = routes.find(f.story_id()); found != routes.end())
+            {
+                auto& r = *found->second;
+                auto* ps = r.mutable_predecessors();
+                for(int n = ps->size() - 1; n >= 0; --n)
                 {
-                    auto* ps = r.mutable_predecessors();
-                    for(int n = ps->size() - 1; n >= 0; --n)
+                    const auto& p = ps->Get(n);
+                    if(p.keeper().process_id() == id && p.instance() == f.drained_instance() &&
+                       p.instance() == q.heartbeat().instance() && p.epoch() == f.drained_epoch() &&
+                       hlc(f.evicted_below()) >= hlc(p.own_cut()) && hlc(f.sealed_frontier()) >= hlc(p.own_cut()))
                     {
-                        const auto& p = ps->Get(n);
-                        if(p.keeper().process_id() == id && p.instance() == f.drained_instance() &&
-                           p.instance() == q.heartbeat().instance() && p.epoch() == f.drained_epoch() &&
-                           hlc(f.evicted_below()) >= hlc(p.own_cut()) && hlc(f.sealed_frontier()) >= hlc(p.own_cut()))
-                        {
-                            set(r.mutable_archived_below(), std::max(hlc(r.archived_below()), hlc(p.own_cut())));
-                            ps->DeleteSubrange(n, 1);
-                            r.set_revision(revision);
-                        }
+                        set(r.mutable_archived_below(), std::max(hlc(r.archived_below()), hlc(p.own_cut())));
+                        ps->DeleteSubrange(n, 1);
+                        r.set_revision(revision);
                     }
                 }
+            }
         }
     }
     if(status.ok() && q.has_abandon())
     {
+        std::unordered_map<std::string, std::unordered_map<uint64_t, const wire::SettlementProof*>> proofs;
+        for(const auto& i: m->instances())
+            for(const auto& proof: i.proofs()) proofs[i.instance()][proof.story_id()] = &proof.proof();
         for(auto& r: *state.mutable_routes())
         {
             auto* ps = r.mutable_predecessors();
@@ -531,13 +484,15 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 if(p.keeper().process_id() != id)
                     continue;
                 Hlc start{};
-                auto* i = instance(*m, p.instance());
-                if(i)
-                    for(const auto& proof: i->proofs())
-                        if(proof.story_id() == r.story_id() && proof.proof().instance() == p.instance() &&
-                           proof.proof().has_first_event() &&
-                           hlc(proof.proof().coverage_start()) <= hlc(proof.proof().first_event()))
-                            start = hlc(proof.proof().settled_through());
+                const auto foundInstance = proofs.find(p.instance());
+                if(foundInstance != proofs.end())
+                    if(auto found = foundInstance->second.find(r.story_id()); found != foundInstance->second.end())
+                    {
+                        const auto& proof = *found->second;
+                        if(proof.instance() == p.instance() && proof.has_first_event() &&
+                           hlc(proof.coverage_start()) <= hlc(proof.first_event()))
+                            start = hlc(proof.settled_through());
+                    }
                 set(r.mutable_archived_below(), std::max(hlc(r.archived_below()), std::min(start, hlc(p.own_cut()))));
                 if(start < hlc(p.own_cut()))
                 {
@@ -552,16 +507,11 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
     }
     if(status.ok())
     {
+        std::set<std::pair<uint64_t, uint64_t>> history;
+        for(const auto& old: state.route_history()) history.emplace(old.revision(), old.story_id());
         for(const auto& r: state.routes())
-            if(r.revision() == revision)
-            {
-                bool exists = false;
-                for(const auto& old: state.route_history())
-                    if(old.story_id() == r.story_id() && old.revision() == revision)
-                        exists = true;
-                if(!exists)
-                    *state.add_route_history() = r;
-            }
+            if(r.revision() == revision && history.emplace(revision, r.story_id()).second)
+                *state.add_route_history() = r;
         if(m && q.has_extend() && status.ok())
             m->set_applied_route_revision(std::max(m->applied_route_revision(), q.extend().applied_route_revision()));
         if(m && q.has_heartbeat() && m->process().instance() == q.heartbeat().instance())
@@ -571,15 +521,7 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
             if(auto* current = member(state, applied.process_id());
                current && current->process().instance() == applied.instance())
                 current->set_applied_route_revision(std::max(current->applied_route_revision(), applied.revision()));
-        uint64_t floor = state.revision();
-        for(const auto& mem: state.members())
-            if(mem.process().role() == wire::PROCESS_ROLE_KEEPER && !mem.process().instance().empty())
-                floor = std::min(floor, mem.applied_route_revision());
-        state.set_route_history_floor(std::max(state.route_history_floor(), floor));
-        for(int n = state.route_history_size() - 1; n >= 0; --n)
-            if(state.route_history(n).revision() <= state.route_history_floor())
-                state.mutable_route_history()->DeleteSubrange(n, 1);
-        require(store.saveMembership(state));
+        require(store.saveMembershipChanges(before, state));
     }
     if(q.has_register_())
     {
@@ -590,7 +532,6 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
             set(r.mutable_ceiling_floor(), maximum(*m));
             r.set_physical_ceiling_floor_ns(physicalMaximum(*m));
             *r.mutable_policy() = state.policy();
-            for(const auto& route: state.routes()) *r.add_routes() = route;
         }
         return r.SerializeAsString();
     }
@@ -628,11 +569,6 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
     }
     wire::MembershipResponse r;
     *r.mutable_status() = convert::toProto(status);
-    if(status.ok())
-    {
-        for(const auto& mem: state.members()) *r.add_members() = mem;
-        for(const auto& route: state.routes()) *r.add_routes() = route;
-    }
     return r.SerializeAsString();
 }
 } // namespace chronolog::visor::dynamic

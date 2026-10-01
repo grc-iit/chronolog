@@ -19,11 +19,10 @@ public:
             return story.status();
         if(story->tombstoned)
             return absl::NotFoundError("destroyed story");
-        auto state = dynamic::snapshot(store_);
-        for(const auto& r: state.routes())
-            if(r.story_id() == id)
-                return dynamic::routeState(r);
-        return absl::NotFoundError("unknown story");
+        auto route = store_.membershipRouteUpdate(id);
+        if(!route.ok())
+            return route.status();
+        return dynamic::routeState(*route);
     }
     absl::StatusOr<Route> route(StoryId id) const override
     {
