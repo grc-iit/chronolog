@@ -27,6 +27,14 @@ with c.acquire(story, "smoke", timeout=5) as writer:
         raise AssertionError("Grafana did not become ready")
     settings = requests.get("http://127.0.0.1:3000/api/plugins/chronolog-viz-datasource/settings", auth=auth, timeout=5)
     assert settings.status_code == 200, settings.text
+    for _ in range(100):
+        datasource = requests.get("http://127.0.0.1:3000/api/datasources/uid/chronolog-viz", auth=auth, timeout=3)
+        if datasource.status_code == 200:
+            assert datasource.json()["type"] == "chronolog-viz-datasource"
+            break
+        time.sleep(.1)
+    else:
+        raise AssertionError("ChronoLog datasource not provisioned: " + datasource.text)
     for base in ("http://127.0.0.1:8087", "http://127.0.0.1:3000/api/datasources/proxy/uid/chronolog-viz"):
         health = requests.get(base + "/health", auth=auth, timeout=8)
         assert health.status_code == 200 and health.json()["status"] == "healthy", health.text

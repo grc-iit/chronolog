@@ -18,7 +18,11 @@ services:
       chrono-player:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "/opt/build/venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=4).close()"]
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/build/venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=4).close()"
+      start_period: 5s
       interval: 2s
       timeout: 5s
       retries: 30

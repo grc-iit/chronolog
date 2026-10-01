@@ -16,7 +16,9 @@ cleanup() {
 }
 trap cleanup EXIT
 timeout 240 "${compose[@]}" build chrono-viz
-if ! timeout 240 "${compose[@]}" up -d --wait --wait-timeout 180 chrono-viz grafana; then
+if ! timeout 240 "${compose[@]}" up -d --no-deps --no-recreate --wait --wait-timeout 180 chrono-viz grafana; then
+    container=$(timeout 10 "${compose[@]}" ps -q chrono-viz)
+    timeout 10 "$engine" inspect --format '{{json .State}}' "$container" || true
     timeout 10 build/viz-venv/bin/python - <<'PYTHON' || true
 import requests
 response = requests.get("http://127.0.0.1:8087/health", timeout=5)

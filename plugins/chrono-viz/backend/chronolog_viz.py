@@ -1,6 +1,7 @@
 import asyncio
 import base64
 from dataclasses import asdict
+from functools import lru_cache
 import json
 import os
 import time
@@ -15,6 +16,7 @@ app = FastAPI()
 DEADLINE = 5.0
 
 
+@lru_cache(maxsize=1)
 def client():
     return cl.connect(os.getenv("CHRONOLOG_CATALOG", "127.0.0.1:50051"),
                       os.getenv("CHRONOLOG_PLAYER", "127.0.0.1:50054"), timeout=DEADLINE)
