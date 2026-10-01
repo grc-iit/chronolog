@@ -1,6 +1,6 @@
 {
   "name": "chronolog",
-  "version": "3.1.1",
+  "version": "4.0.0",
   "builtin-baseline": "4a1c77189c64dae7afd478333a64d1e604d5dc91",
   "dependencies": [
     "grpc",
