@@ -1,0 +1,26 @@
+services:
+  chrono-mcp:
+    image: chronolog-mcp:4.0.0
+    build:
+      context: ../..
+      dockerfile: deploy/containers/mcp.Containerfile
+    environment:
+      CHRONOLOG_CATALOG: chrono-visor:50051
+      CHRONOLOG_PLAYER: chrono-player:50054
+      CHRONOLOG_CHRONICLE: conversations
+    ports: ["127.0.0.1:8000:8000"]
+    networks: [chronolog]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    depends_on:
+      chrono-visor:
+        condition: service_healthy
+      chrono-player:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/build/venv/bin/python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

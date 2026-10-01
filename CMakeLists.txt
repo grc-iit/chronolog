@@ -167,3 +167,7 @@ endif()
 if(CHRONOLOG_BUILD_PYTHON)
     add_subdirectory(client/python/binding)
 endif()
+
+if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/chrono-mcp/CMakeLists.txt")
+    add_subdirectory(plugins/chrono-mcp)
+endif()
