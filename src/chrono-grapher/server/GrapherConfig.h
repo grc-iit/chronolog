@@ -13,6 +13,7 @@ struct GrapherConfig
     std::string self_endpoint = "127.0.0.1:50063";
     std::string visor_internal = "127.0.0.1:50061";
     std::string archive_root = "./archive";
+    std::string archive_codec = "hdf5";
     uint32_t heartbeat_interval_ms = 1000;
     uint32_t rpc_timeout_ms = 2000;
     uint32_t drain_timeout_ms = 5000;

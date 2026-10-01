@@ -13,7 +13,7 @@ public:
     Open(std::filesystem::path root,
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
-         std::shared_ptr<const ChunkCodec> codec = std::make_shared<ProtoChunkCodec>());
+         std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>());
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
     absl::StatusOr<std::vector<Event>> read(StoryId story, Range range) const override;

@@ -38,7 +38,12 @@ int main(int argc, char** argv)
     sigaddset(&signals, SIGINT);
     if(pthread_sigmask(SIG_BLOCK, &signals, nullptr) != 0)
         return 1;
-    auto store = chronolog::FileTierStore::Open(config->archive_root, config->manifest_writer);
+    std::shared_ptr<const chronolog::ChunkCodec> codec;
+    if(config->archive_codec == "proto")
+        codec = std::make_shared<chronolog::ProtoChunkCodec>();
+    else
+        codec = std::make_shared<chronolog::HDF5ChunkCodec>();
+    auto store = chronolog::FileTierStore::Open(config->archive_root, config->manifest_writer, {}, codec);
     if(!store.ok())
     {
         std::cerr << store.status() << '\n';
