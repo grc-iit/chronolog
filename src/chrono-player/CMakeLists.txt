@@ -33,7 +33,7 @@ function(chrono_player_test name sources prefix)
         set_property(TARGET ${name} PROPERTY CROSSCOMPILING_EMULATOR
             "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
     endif()
-    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST)
+    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
 endfunction()
 
 chrono_player_test(chrono_player_replay_merge_test tests/replay_merge_test.cpp "replay_merge.")

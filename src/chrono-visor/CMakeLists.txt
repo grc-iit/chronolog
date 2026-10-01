@@ -42,11 +42,15 @@ if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
     set_property(TARGET chronolog_visor_tests PROPERTY CROSSCOMPILING_EMULATOR
         "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
 endif()
-gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST)
+gtest_discover_tests(chronolog_visor_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
 
 # Tiny Catalog client driven by tests/acceptance.sh against the real binary.
 add_executable(visor_acceptance_client tests/acceptance_client.cpp)
 target_link_libraries(visor_acceptance_client PRIVATE chronolog_proto chronolog_warnings)
+set(visor_acceptance_launcher)
+if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
+    set(visor_acceptance_launcher "${CHRONOLOG_SETARCH}" "${CMAKE_HOST_SYSTEM_PROCESSOR}" -R)
+endif()
 add_test(NAME visor_binary_acceptance
-         COMMAND timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
+         COMMAND ${visor_acceptance_launcher} timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
                  $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_acceptance_client>)

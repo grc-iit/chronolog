@@ -142,3 +142,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/tier/CMakeLists.txt")
     add_subdirectory(src/chrono-grapher/tier)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/server/CMakeLists.txt")
+    add_subdirectory(src/chrono-grapher/server)
+endif()
