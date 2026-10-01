@@ -9,6 +9,8 @@ namespace chronolog::contract
 struct MembershipHarness
 {
     std::unique_ptr<Membership> sut;
+    // Construct the implementation with its production static epoch.
+    std::function<std::unique_ptr<Membership>()> staticEpoch;
 };
 using MembershipFactory = std::function<std::unique_ptr<MembershipHarness>()>;
 class MembershipContract: public ::testing::TestWithParam<MembershipFactory>
@@ -57,5 +59,18 @@ TEST_P(MembershipContract, RegisterHeartbeatAndRestartFencing)
     EXPECT_TRUE(h->sut->heartbeat(p.id, p.instance).ok());
 }
 
+TEST_P(MembershipContract, StaticEpochIsOneAndValidated)
+{
+    if(!h->staticEpoch)
+        GTEST_SKIP() << "dynamic membership has no static epoch configuration";
+    auto membership = h->staticEpoch();
+    auto route = membership->route(1);
+    ASSERT_TRUE(route.ok());
+    EXPECT_EQ(route->epoch, 1u);
+    EXPECT_EQ(membership->validateEpoch(1, 1).code(), absl::StatusCode::kOk);
+    for(Epoch epoch: {0, 2, 7})
+        EXPECT_EQ(membership->validateEpoch(1, epoch).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(membership->route(999).status().code(), absl::StatusCode::kNotFound);
+}
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MembershipContract);
 } // namespace chronolog::contract

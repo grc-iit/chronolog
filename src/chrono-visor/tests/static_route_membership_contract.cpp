@@ -35,6 +35,7 @@ MembershipFactory staticFactory()
     {
         auto harness = std::make_unique<MembershipHarness>();
         harness->sut = make(7);
+        harness->staticEpoch = [] { return make(1); };
         return harness;
     };
 }
@@ -42,17 +43,6 @@ MembershipFactory staticFactory()
 std::string paramName(const ::testing::TestParamInfo<MembershipFactory>&) { return "Default"; }
 
 INSTANTIATE_TEST_SUITE_P(Static, MembershipContract, ::testing::Values(staticFactory()), paramName);
-
-TEST(static_route_membership, EpochOneIsServedAndValidated)
-{
-    auto membership = make(1);
-    auto route = membership->route(1);
-    ASSERT_TRUE(route.ok());
-    EXPECT_EQ(route->epoch, 1u);
-    EXPECT_TRUE(membership->validateEpoch(1, 1).ok());
-    EXPECT_FALSE(membership->validateEpoch(1, 2).ok());
-    EXPECT_EQ(membership->route(2).status().code(), absl::StatusCode::kNotFound);
-}
 
 TEST(static_route_membership, AppliedRevisionNeverLowersAndResetsOnNewInstance)
 {

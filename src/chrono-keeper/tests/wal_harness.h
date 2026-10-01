@@ -89,18 +89,33 @@ private:
     std::unique_ptr<FileSink> sink_;
 };
 
+class ScannedWalJournal final: public WalJournal
+{
+public:
+    using WalJournal::WalJournal;
+    std::function<void()> scanned;
+
+protected:
+    void writerScanned(WriterKey) const override
+    {
+        if(scanned)
+            scanned();
+    }
+};
+
 struct WalRig
 {
     std::shared_ptr<WalControl> control = std::make_shared<WalControl>();
-    std::shared_ptr<FakeClock> clock;
+    std::shared_ptr<AssignmentClock> clock;
     std::shared_ptr<FakeMembership> membership = std::make_shared<FakeMembership>();
     RamJournalConfig ram_config;
     WalJournalConfig config;
-    WalJournal* current{};
+    ScannedWalJournal* current{};
     std::unique_ptr<WalJournal> journal;
 
-    WalRig()
+    explicit WalRig(uint64_t segment_bytes = 64ull << 20)
     {
+        config.wal_segment_bytes = segment_bytes;
         ram_config.causal_floor_skew_limit_ns = 1000;
         config.wal_dir = control->directory;
         reopen();
@@ -112,10 +127,10 @@ struct WalRig
     void reopen()
     {
         journal.reset();
-        clock = std::make_shared<FakeClock>(100);
+        clock = std::make_shared<AssignmentClock>(100);
         clock->setStatus(ClockStatus::Synced);
-        journal = std::make_unique<WalJournal>(clock, membership, ram_config, config, factory());
-        current = journal.get();
+        journal = std::make_unique<ScannedWalJournal>(clock, membership, ram_config, config, factory());
+        current = static_cast<ScannedWalJournal*>(journal.get());
         (void)current->registerWriter(1, 2, 3);
     }
 };

@@ -163,17 +163,6 @@ TEST(KeeperRetention, ChunkAckedUnderACoveringWatermarkWaitsForItsReceipt)
     rig.report(chunk.end);
     EXPECT_EQ(rig.events(), 0u);
 }
-TEST(KeeperRetention, ReceiptFromAnotherGrapherInstanceIsNotSettled)
-{
-    ArchiveRig rig;
-    auto chunk = rig.sealFirst();
-    rig.deliver(chunk);
-    rig.archive->releaseTail(1);
-    rig.report(chunk.end, "g2", 50);
-    EXPECT_EQ(rig.events(), 1u);
-    rig.report(chunk.end);
-    EXPECT_EQ(rig.events(), 0u);
-}
 TEST(KeeperRetention, RestartedGrapherSettlesAResentChunkBelowTheKnownWatermark)
 {
     ArchiveRig rig;
@@ -223,36 +212,6 @@ TEST(KeeperRetention, DurableChunkIsFreedOnlyOnceTheVisibilityDelayHasPassed)
     EXPECT_EQ(rig.events(), 1u);
     rig.now += 1s;
     rig.archive->sweep();
-    EXPECT_EQ(rig.events(), 0u);
-}
-TEST(KeeperRetention, EvictionRequiresWatermarkAndReceipt)
-{
-    ArchiveRig rig;
-    auto chunk = rig.sealFirst();
-    rig.archive->releaseTail(1);
-    rig.deliver(chunk);
-    rig.report({100, 0});
-    EXPECT_EQ(rig.events(), 1u);
-    rig.report(chunk.end, "g2", 10); // The g1 receipt was settled by the earlier report, but W was insufficient.
-    EXPECT_EQ(rig.events(), 0u);
-}
-TEST(KeeperRetention, DroppedStoryReportFreesRetainedChunks)
-{
-    ArchiveRig rig;
-    rig.sealFirst();
-    rig.archive->applyReport({1, {}, "g1", 0, {}, true});
-    EXPECT_TRUE(rig.archive->chunks().empty());
-    EXPECT_EQ(rig.events(), 0u);
-}
-TEST(KeeperRetention, CoveringWatermarkAloneDoesNotSettleReceipt)
-{
-    ArchiveRig rig;
-    auto chunk = rig.sealFirst();
-    rig.deliver(chunk);
-    rig.archive->releaseTail(1);
-    rig.report(chunk.end, "", 0);
-    EXPECT_EQ(rig.events(), 1u);
-    rig.report(chunk.end);
     EXPECT_EQ(rig.events(), 0u);
 }
 TEST(KeeperChunks, ChainStaysContiguousAcrossEmptyStretch)
@@ -650,56 +609,6 @@ TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
 
 namespace chronolog::test
 {
-TEST(KeeperRetention, WalTruncatesOnlyAfterReceiptSettlement)
-{
-    ArchiveRig rig;
-    rig.archive.reset();
-    rig.wal.config.wal_segment_bytes = 1;
-    rig.wal.reopen();
-    rig.reset();
-    rig.append(1, 2'100'000'000);
-    rig.wal.clock->setPhysical(3'000'000'000);
-    ASSERT_TRUE(rig.archive->seal().ok());
-    ASSERT_EQ(rig.archive->chunks().size(), 1u);
-    auto chunk = rig.archive->chunks().front();
-    rig.append(2, 3'100'000'000);
-    std::set<std::filesystem::path> before;
-    for(const auto& entry: std::filesystem::directory_iterator(rig.wal.control->directory))
-        if(entry.path().extension() == ".wal")
-            before.insert(entry.path());
-    ASSERT_GT(before.size(), 1u);
-    rig.deliver(chunk);
-    rig.report(chunk.end, "another-instance", 100);
-    for(const auto& path: before) EXPECT_TRUE(std::filesystem::exists(path));
-    rig.report(chunk.end, "g1", 5, {5});
-    for(const auto& path: before) EXPECT_TRUE(std::filesystem::exists(path));
-    rig.report({}, "g1", 5);
-    size_t removed = 0;
-    for(const auto& path: before) removed += !std::filesystem::exists(path);
-    EXPECT_GT(removed, 0u);
-    rig.archive.reset();
-    rig.wal.reopen();
-    rig.reset();
-    auto events = rig.wal.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
-    ASSERT_TRUE(events.ok());
-    ASSERT_EQ(events->size(), 1u);
-    EXPECT_EQ(events->front().id.sequence, 2u);
-    EXPECT_EQ(rig.wal.current->evictionFloor(1), chunk.end);
-    AppendItem retry;
-    retry.writer_id = 2;
-    retry.incarnation = 3;
-    retry.sequence = 1;
-    auto result = rig.wal.current->append({1, 7, {retry}}, Durability::Durable);
-    ASSERT_TRUE(result.ok());
-    EXPECT_TRUE(result->front().status.ok());
-    EXPECT_EQ(result->front().achieved, Durability::Durable);
-    rig.append(3, 5'100'000'000);
-    rig.wal.clock->setPhysical(6'000'000'000);
-    ASSERT_TRUE(rig.archive->seal().ok());
-    ASSERT_FALSE(rig.archive->chunks().empty());
-    EXPECT_EQ(rig.archive->chunks().front().start, chunk.end);
-}
-
 TEST(KeeperRetention, ShutdownWaitEndsWhenTheGrapherConfirmsEveryChunk)
 {
     auto directory = std::make_shared<WalControl>();

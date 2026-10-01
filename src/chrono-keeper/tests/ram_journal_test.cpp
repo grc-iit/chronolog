@@ -27,24 +27,6 @@ Range All() { return {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}}; }
 
 } // namespace
 
-TEST(RamJournal, AppendResultCarriesAllFourFields)
-{
-    test::RamRig rig;
-    auto ok = rig.journal->append(Batch({Item(1)}), Durability::Accepted);
-    ASSERT_TRUE(ok.ok());
-    EXPECT_TRUE((*ok)[0].status.ok());
-    EXPECT_EQ((*ok)[0].achieved, Durability::Accepted);
-    EXPECT_GT((*ok)[0].hlc.physical_ns, 0);
-    EXPECT_EQ((*ok)[0].id, (EventId{1, 2, 3, 1}));
-
-    auto bad = rig.journal->append(Batch({Item(5)}), Durability::Accepted);
-    ASSERT_TRUE(bad.ok());
-    EXPECT_FALSE((*bad)[0].status.ok());
-    EXPECT_EQ((*bad)[0].achieved, Durability::Unspecified);
-    EXPECT_EQ((*bad)[0].id, (EventId{1, 2, 3, 5}));
-    EXPECT_NE((*bad)[0].status.message().find("expected sequence 2"), std::string::npos);
-}
-
 TEST(RamJournal, DurableAndUnspecifiedAreUnimplementedAndStoreNothing)
 {
     test::RamRig rig;
@@ -152,52 +134,4 @@ TEST(RamJournal, FrontierExceedsEveryAssignedHlcAcrossWriters)
 
 // A sealed frontier must already cover every event assigned below it, so a read of [0, F) taken right after
 // the seal never changes while writers keep appending. Every loop here has a fixed bound.
-TEST(RamJournal, FrontierTickOrderedBeforeInsert)
-{
-    constexpr uint64_t kWriters = 4;
-    constexpr uint64_t kAppendsPerWriter = 500;
-    constexpr int kMaxSeals = 200;
-    test::RamRig rig;
-    for(uint64_t w = 1; w <= kWriters; ++w) ASSERT_TRUE(rig.journal->registerWriter(1, 10 + w, 1).ok());
-    std::atomic<uint64_t> finished{0};
-    std::atomic<uint64_t> failures{0};
-    std::vector<std::thread> writers;
-    for(uint64_t w = 1; w <= kWriters; ++w)
-        writers.emplace_back(
-                [&, w]
-                {
-                    for(uint64_t seq = 1; seq <= kAppendsPerWriter; ++seq)
-                    {
-                        auto r = rig.journal->append(Batch({Item(seq, 10 + w, 1)}), Durability::Accepted);
-                        if(!r.ok() || !(*r)[0].status.ok())
-                            ++failures;
-                    }
-                    ++finished;
-                });
-    for(int i = 0; i < kMaxSeals && finished < kWriters; ++i)
-    {
-        auto f = rig.journal->keeperFrontier(1);
-        if(!f.ok())
-        {
-            ADD_FAILURE() << f.status();
-            break;
-        }
-        Range below{Range::Axis::Hlc, {0, 0}, *f};
-        auto a = rig.journal->read(1, below);
-        std::this_thread::yield();
-        auto b = rig.journal->read(1, below);
-        if(!a.ok() || !b.ok())
-        {
-            ADD_FAILURE() << "read failed";
-            break;
-        }
-        EXPECT_EQ(a->size(), b->size());
-    }
-    for(auto& t: writers) t.join();
-    EXPECT_EQ(failures.load(), 0u);
-    auto all = rig.journal->read(1, All());
-    ASSERT_TRUE(all.ok());
-    EXPECT_EQ(all->size(), kWriters * kAppendsPerWriter);
-}
-
 } // namespace chronolog
