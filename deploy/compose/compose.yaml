@@ -61,7 +61,10 @@ services:
       CHRONOLOG_KEEPER_LISTEN: "0.0.0.0:50052"
       CHRONOLOG_KEEPER_INTERNAL_LISTEN: "0.0.0.0:50062"
       CHRONOLOG_KEEPER_VISOR_INTERNAL: "chrono-visor:50061"
+      CHRONOLOG_KEEPER_WAL_DIR: /var/lib/chronolog/wal
     expose: ["50062"]
+    volumes:
+      - keeper-wal:/var/lib/chronolog
     depends_on:
       chrono-visor:
         condition: service_healthy
@@ -96,6 +99,7 @@ services:
 
 volumes:
   visor-catalog:
+  keeper-wal:
 
 networks:
   chronolog:
