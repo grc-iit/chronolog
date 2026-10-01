@@ -20,7 +20,7 @@ namespace chronolog::visor
 
 // chronolog.internal.v1.Cluster: process registration, heartbeat, route
 // distribution and acquisition updates. ReadClock is not overridden, so it returns
-// UNIMPLEMENTED until the Clock port. Route change notification lands in PR 8, so
+// UNIMPLEMENTED until the Clock port. Route change notification lands in M8, so
 // WatchRoutes sends one full snapshot and then holds the stream open.
 // WatchAcquisitions sends one snapshot of the acquisitions assigned to the Keeper as
 // of revision R, then every change above R in revision order.

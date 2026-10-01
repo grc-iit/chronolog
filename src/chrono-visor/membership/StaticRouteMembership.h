@@ -14,7 +14,7 @@
 namespace chronolog::visor
 {
 
-// Membership with a fixed route from configuration. Epochs are static until PR 8
+// Membership with a fixed route from configuration. Epochs are static until M8
 // but are still carried and validated on every call (I4.3).
 class StaticRouteMembership final: public Membership
 {

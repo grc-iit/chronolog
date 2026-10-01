@@ -41,7 +41,7 @@ service Cluster
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-    // Full snapshots on subscribe/reconnect; epochs are static until PR 8.
+    // Full snapshots on subscribe/reconnect; epochs are static until M8.
     // WatchRoutes: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
@@ -307,7 +307,7 @@ message AcquisitionUpdate
     // Keeper reports applied_revision after applying relevant updates, and
     // heartbeats immediately after RELEASED rather than waiting for interval.
     uint64 revision = 7;
-    // PR 8 handoff: new Keeper must observe this old Keeper frontier before
+    // M8 handoff: new Keeper must observe this old Keeper frontier before
     // accepting the reassigned writer. Absent means no prior reported frontier.
     chronolog.v1.Hlc last_reported_frontier = 6;
     // Catalog-assigned story identity.

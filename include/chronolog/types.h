@@ -12,7 +12,7 @@
 namespace chronolog
 {
 using StoryId = uint64_t;
-// Ownership generation; epochs strictly increase, static until PR 8.
+// Ownership generation; epochs strictly increase, static until M8.
 using Epoch = uint64_t;
 // Identity is independent of timestamps. Sequence starts at one per incarnation.
 struct EventId
@@ -139,7 +139,7 @@ struct AppendResult
 };
 struct Range
 {
-    // OPEN (PR 6): physical-axis completeness requires a policy bounding backdating.
+    // OPEN (M6): physical-axis completeness requires a policy bounding backdating.
     enum class Axis
     {
         Hlc,

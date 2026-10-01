@@ -1,6 +1,6 @@
 syntax = "proto3";
 package chronolog.v1;
-// After PR 1 freezes this API: additive changes only; reserve removed fields.
+// After M1 freezes this API: additive changes only; reserve removed fields.
 // Per-item failures are payload statuses; gRPC errors concern the whole request.
 service Catalog
 {
@@ -394,7 +394,7 @@ message HlcRange
     // end; interpreted according to the message invariants above.
     Hlc end = 2;
 }
-// OPEN (PR 6): physical-axis queries never claim completeness in v1.
+// OPEN (M6): physical-axis queries never claim completeness in v1.
 message PhysicalRange
 {
     // start ns; interpreted according to the message invariants above.
@@ -444,7 +444,7 @@ message EventBatch
 // All writers assigned to a Keeper share its sealed exclusive frontier, including
 // idle writers. Seal cannot pass an assigned DURABILITY_DURABLE event awaiting fsync.
 // After restart assignment must exceed every previously reported frontier;
-// PR 5 persists a reserved HLC high watermark before reporting within it.
+// M5 persists a reserved HLC high watermark before reporting within it.
 message WriterFrontier
 {
     // Catalog-assigned stable writer identity.
@@ -455,7 +455,7 @@ message WriterFrontier
     Hlc frontier = 3;
 }
 // HLC-axis complete for [start,end) iff every Keeper in the story Route answered and its sealed frontier >= end.
-// Read uses exclusive HLC range end as t. OPEN (PR 6): physical-axis reads
+// Read uses exclusive HLC range end as t. OPEN (M6): physical-axis reads
 // MUST return complete=false and INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED until backdating is bounded.
 // Tail never claims completeness. Errors/truncated sources prevent complete=true.
 enum IncompleteReason

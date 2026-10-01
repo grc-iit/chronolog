@@ -145,7 +145,7 @@ public:
 
     /**
      * Atomically replace the per-story ownership epoch.
-     * Preconditions: Live story; desired strictly exceeds expected. Static epochs until PR 8.
+     * Preconditions: Live story; desired strictly exceeds expected. Static epochs until M8.
      * Postconditions: Returns desired only when current equals expected; failure does not mutate.
      * Status codes: OK; NOT_FOUND for unknown story; INVALID_ARGUMENT for non-increasing desired;
      * FAILED_PRECONDITION for mismatch/tombstone; UNAVAILABLE for storage failure.

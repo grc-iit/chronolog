@@ -28,7 +28,7 @@ public:
      * Default/Unspecified requests Durable: fsync WAL before success, never downgrade. Only Durable is an ack.
      * Keeper uses standard HLC tick over local physical, last HLC and causal floor.
      * ACCEPTED is visible on acceptance; DURABLE only after fsync. Assignment and insertion
-     * are atomic under the writer lock. Pending-fsync registration is in that SAME critical section. From PR 8
+     * are atomic under the writer lock. Pending-fsync registration is in that SAME critical section. From M8
      * a reassigned writer's Keeper observes
      * AcquisitionUpdate.last_reported_frontier before accepting that writer; a Keeper seal cannot pass any
      * pending DURABLE HLC.
@@ -71,7 +71,7 @@ public:
      * completes insertion before scanning that writer. With group commit use
      * F = min(initial tick, per-writer pending minima read under each writer lock DURING that writer scan).
      * Slow fsync pins this Keeper.
-     * After restart assignment exceeds every reported F. PR 5 persists reserved HLC high watermark
+     * After restart assignment exceeds every reported F. M5 persists reserved HLC high watermark
      * and never reports F beyond that persisted reservation; RAM restart is a new Keeper instance.
      * Status codes: OK; NOT_FOUND for unknown story; UNAVAILABLE for registry/storage failure.
      * Thread safety: Coherent snapshot; safe concurrently.
@@ -79,7 +79,7 @@ public:
      * DurableInvisibleUntilFsyncAndSealDoesNotPassPendingHlc, RestartResumesAboveReportedFrontier,
      * SealedFrontierExceedsEveryAssignmentWhenNothingPending,
      * IdleRegisteredWriterDoesNotBlockCompleteness.
-     * PR 5 gate to add: PendingFsyncRegisteredWithAssignment (TSAN).
+     * M5 gate to add: PendingFsyncRegisteredWithAssignment (TSAN).
      * Adapter/Keeper gates to add: FetchHotTicksFrontierBeforeScan, FrontierTickOrderedBeforeInsert (TSAN).
      */
     virtual absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const = 0;
@@ -91,7 +91,7 @@ public:
      * Status codes: OK; NOT_FOUND for unknown story; UNAVAILABLE for seal/storage failure.
      * Thread safety: Safe concurrently; assignment and pending registration share the writer critical section.
      * Invariant tests: journal_contract_test.cpp: SealedFrontierExceedsEveryAssignmentWhenNothingPending,
-     * DurableInvisibleUntilFsyncAndSealDoesNotPassPendingHlc; PR 5 PendingFsyncRegisteredWithAssignment to add.
+     * DurableInvisibleUntilFsyncAndSealDoesNotPassPendingHlc; M5 PendingFsyncRegisteredWithAssignment to add.
      */
     virtual absl::StatusOr<Hlc> keeperFrontier(StoryId id) const = 0;
 };

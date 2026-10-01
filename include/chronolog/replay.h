@@ -69,7 +69,7 @@ public:
      * Player obtains the complete Keeper set from the story Route. WatchAcquisitions only names laggards; a
      * stale writer view never authorizes completeness.
      * Unanswered route Keeper makes Read incomplete with SOURCE_FAILED, even with no known writer assigned to
-     * it. From PR 8 reassignment
+     * it. From M8 reassignment
      * observes the old Keeper last_reported_frontier before accepting the writer. Laggards are writers with a
      * missing Keeper response or F < end.
      * Complete reads are stable for DURABLE events; ACCEPTED events can vanish on Keeper crash. Source
