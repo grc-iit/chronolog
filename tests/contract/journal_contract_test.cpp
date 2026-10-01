@@ -966,7 +966,7 @@ namespace chronolog::contract
 {
 TEST_P(JournalContract, NoAssignmentAtOrAboveCeiling)
 {
-    h->enableDynamic({100, 1}, 10'000'000'000);
+    h->enableDynamic({100, 0}, 10'000'000'000);
     auto result = h->sut->append(Batch({Item()}), Durability::Accepted);
     ASSERT_TRUE(result.ok());
     EXPECT_TRUE(absl::IsUnavailable(result->front().status));
@@ -979,7 +979,7 @@ TEST_P(JournalContract, NoAssignmentAtOrAboveCeiling)
 }
 TEST_P(JournalContract, CeilingWaitDoesNotBlockRouteApplication)
 {
-    h->enableDynamic({100, 1}, 10'000'000'000);
+    h->enableDynamic({100, 0}, 10'000'000'000);
     auto append = std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
     for(int attempt = 0; attempt < 1000 && !h->ceilingWaiting(); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
