@@ -203,7 +203,6 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
         take(std::move(keeper.events));
     }
     bool policy = fetch.physical_policy;
-    const Range window = physicalWindow(range, policy);
     if(options.archive || archiveEnd(fetch, range) > range.start)
     {
         archive_failed = !options.archive || !options.archive->refreshNow().ok();
@@ -241,7 +240,7 @@ physicalRead(StoryId story, const Range& range, HotFetch& fetch, const HotReplay
                                                fetch.writers,
                                                archive_failed || abandoned(fetch, range),
                                                policy,
-                                               unbounded || window.end.physical_ns == INT64_MAX);
+                                               unbounded || physicalEndSaturated(range));
     if(limited && completion.reason != IncompleteReason::SourceFailed)
     {
         completion.complete = false;

@@ -17,7 +17,13 @@ inline Range physicalWindow(const Range& range, bool policy)
             static_cast<__int128_t>(range.start.physical_ns) - constants.skew_limit_ns - constants.hlc_lead_ns;
     const __int128_t end =
             static_cast<__int128_t>(range.end.physical_ns) + constants.acceptance_window_ns + constants.hlc_lead_ns;
-    return {Range::Axis::Hlc, {clamp(start), 0}, {clamp(end), end >= high ? UINT32_MAX : 0}};
+    return {Range::Axis::Hlc, {clamp(start), 0}, {clamp(end), end > high ? UINT32_MAX : 0}};
+}
+inline bool physicalEndSaturated(const Range& range)
+{
+    const PhysicalPolicy policy;
+    return static_cast<__int128_t>(range.end.physical_ns) + policy.acceptance_window_ns + policy.hlc_lead_ns >
+           INT64_MAX;
 }
 inline bool physicalBounded(const Event& e)
 {
