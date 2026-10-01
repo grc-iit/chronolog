@@ -1,0 +1,138 @@
+#include <gtest/gtest.h>
+#include <grpcpp/grpcpp.h>
+
+#include <chrono>
+#include <csignal>
+#include <fstream>
+#include <thread>
+#include <sys/wait.h>
+
+#include "chronolog/internal/v1/internal.grpc.pb.h"
+#include "chronolog/v1/chronolog.grpc.pb.h"
+#include "wal_harness.h"
+
+namespace chronolog::test
+{
+namespace
+{
+using namespace std::chrono_literals;
+
+TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
+{
+    auto control = std::make_shared<WalControl>();
+    // Reserve two ephemeral ports while choosing their addresses.
+    grpc::ServerBuilder ports;
+    v1::Journal::CallbackService unused;
+    ports.RegisterService(&unused);
+    int public_port = 0;
+    int internal_port = 0;
+    ports.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &public_port);
+    ports.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &internal_port);
+    auto reservation = ports.BuildAndStart();
+    ASSERT_NE(reservation, nullptr);
+    const auto endpoint = "127.0.0.1:" + std::to_string(public_port);
+    const auto archive_endpoint = "127.0.0.1:" + std::to_string(internal_port);
+    const auto config_path = control->directory + "/keeper.json";
+    std::ofstream(config_path) << "{\"listen\":\"" << endpoint << "\",\"internal_listen\":\"" << archive_endpoint
+                               << "\",\"visor_internal\":\"127.0.0.1:1\",\"wal_dir\":\"" << control->directory
+                               << "\",\"worker_threads\":2,\"static_routes\":[{\"story_id\":1,\"epoch\":7,\"keepers\":["
+                                  "{\"process_id\":\"keeper-1\",\"endpoint\":\""
+                               << endpoint
+                               << "\"}]}],\"static_writers\":[{\"story_id\":1,\"writer_id\":2,\"incarnation\":3}]}";
+    reservation->Shutdown(std::chrono::system_clock::now() + 2s);
+    reservation.reset();
+    struct Child
+    {
+        pid_t pid{-1};
+        ~Child() { kill(); }
+        void kill()
+        {
+            if(pid > 0)
+            {
+                ::kill(pid, SIGKILL);
+                while(::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {}
+                pid = -1;
+            }
+        }
+    } child;
+    auto start = [&]
+    {
+        child.pid = ::fork();
+        if(child.pid == 0)
+        {
+            ::execl(CHRONOLOG_KEEPER_BINARY, CHRONOLOG_KEEPER_BINARY, "--config", config_path.c_str(), nullptr);
+            ::_exit(127);
+        }
+        return child.pid > 0;
+    };
+    constexpr int count = 16;
+    std::vector<v1::Hlc> hlcs;
+    ASSERT_TRUE(start());
+    auto channel = grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
+    ASSERT_TRUE(channel->WaitForConnected(std::chrono::system_clock::now() + 5s));
+    auto journal = v1::Journal::NewStub(channel);
+    for(int sequence = 1; sequence <= count; ++sequence)
+    {
+        v1::AppendRequest request;
+        request.set_story_id(1);
+        request.set_epoch(7);
+        request.set_durability(v1::DURABILITY_DURABLE);
+        auto* item = request.add_items();
+        item->set_writer_id(2);
+        item->set_incarnation(3);
+        item->set_sequence(sequence);
+        item->mutable_envelope()->set_payload("crash event " + std::to_string(sequence));
+        grpc::ClientContext context;
+        context.set_deadline(std::chrono::system_clock::now() + 5s);
+        v1::AppendResponse response;
+        ASSERT_TRUE(journal->Append(&context, request, &response).ok());
+        ASSERT_EQ(response.results_size(), 1);
+        ASSERT_EQ(response.results(0).status().code(), 0);
+        ASSERT_EQ(response.results(0).achieved_durability(), v1::DURABILITY_DURABLE);
+        hlcs.push_back(response.results(0).assigned_hlc());
+    }
+    child.kill();
+    ASSERT_TRUE(start());
+    auto archive_channel = grpc::CreateChannel(archive_endpoint, grpc::InsecureChannelCredentials());
+    ASSERT_TRUE(archive_channel->WaitForConnected(std::chrono::system_clock::now() + 5s));
+    auto archive = internal::v1::Archive::NewStub(archive_channel);
+    internal::v1::FetchHotRequest request;
+    request.set_story_id(1);
+    request.mutable_hlc()->mutable_start();
+    request.mutable_hlc()->mutable_end()->set_physical_ns(INT64_MAX);
+    request.set_max_events(count + 1);
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 5s);
+    auto reader = archive->FetchHot(&context, request);
+    internal::v1::FetchHotResponse response;
+    std::vector<v1::Event> events;
+    bool trailer = false;
+    // At most 16 single-event batches plus a trailer.
+    for(int messages = 0; messages <= count && reader->Read(&response); ++messages)
+    {
+        if(response.has_trailer())
+        {
+            trailer = true;
+            EXPECT_FALSE(response.trailer().truncated());
+        }
+        for(const auto& event: response.batch().events())
+        {
+            ASSERT_LT(events.size(), static_cast<size_t>(count + 1));
+            events.push_back(event);
+        }
+    }
+    EXPECT_TRUE(reader->Finish().ok());
+    EXPECT_TRUE(trailer);
+    ASSERT_EQ(events.size(), static_cast<size_t>(count));
+    for(int i = 0; i < count; ++i)
+    {
+        EXPECT_EQ(events[i].id().sequence(), static_cast<uint64_t>(i + 1));
+        EXPECT_EQ(events[i].hlc().physical_ns(), hlcs[i].physical_ns());
+        EXPECT_EQ(events[i].hlc().logical(), hlcs[i].logical());
+        EXPECT_EQ(events[i].envelope().payload(), "crash event " + std::to_string(i + 1));
+        EXPECT_EQ(events[i].durability(), v1::DURABILITY_DURABLE);
+    }
+}
+
+} // namespace
+} // namespace chronolog::test
