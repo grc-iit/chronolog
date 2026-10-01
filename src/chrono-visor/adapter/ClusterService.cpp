@@ -278,23 +278,30 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     {
         auto process = convert::fromProto(request.process());
         absl::Status status = process.ok() ? absl::OkStatus() : process.status();
-        if(status.ok() && request.policy_version() != 0 && request.policy_version() != 1)
+        const auto* sqlite = dynamic_cast<const SqliteMetadataStore*>(&store_);
+        auto constants = sqlite ? sqlite->physicalPolicy() : absl::StatusOr<PhysicalPolicy>(PhysicalPolicy{});
+        if(!constants.ok())
+            status = constants.status();
+        if(status.ok() && request.policy_version() != 0 && request.policy_version() != constants->version)
             status = absl::FailedPreconditionError("policy version mismatch");
         if(status.ok())
         {
-            if(auto* sqlite = const_cast<SqliteMetadataStore*>(dynamic_cast<const SqliteMetadataStore*>(&store_));
-               sqlite && process->role == ProcessRole::Keeper)
-                status = sqlite->registerStaticPolicy(process->id, request.policy_version());
+            if(auto* writable = const_cast<SqliteMetadataStore*>(sqlite);
+               writable && process->role == ProcessRole::Keeper)
+                status = writable->registerStaticPolicy(process->id, request.policy_version());
             if(status.ok())
                 status = membership_.registerProcess(*process);
         }
         *response->mutable_status() = convert::toProto(status);
         auto* policy = response->mutable_policy();
-        policy->set_version(1);
-        policy->set_acceptance_window_ns(15000000000LL);
-        policy->set_skew_limit_ns(60000000000LL);
-        policy->set_hlc_lead_ns(61000000000LL);
-        policy->set_uncertainty_cap_ns(1000000000LL);
+        if(constants.ok())
+        {
+            policy->set_version(constants->version);
+            policy->set_acceptance_window_ns(constants->acceptance_window_ns);
+            policy->set_skew_limit_ns(constants->skew_limit_ns);
+            policy->set_hlc_lead_ns(constants->hlc_lead_ns);
+            policy->set_uncertainty_cap_ns(constants->uncertainty_cap_ns);
+        }
         if(status.ok())
         {
             auto routes = routeSnapshot();

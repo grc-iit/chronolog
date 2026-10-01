@@ -178,9 +178,23 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::nextPhysical(Deadlin
             continue;
         }
         aggregate.complete &= completion->complete;
-        if(!completion->complete &&
-           (aggregate.reason == IncompleteReason::None || completion->reason == IncompleteReason::SourceFailed ||
-            (completion->reason == IncompleteReason::Truncated && aggregate.reason != IncompleteReason::SourceFailed)))
+        auto rank = [](IncompleteReason reason)
+        {
+            switch(reason)
+            {
+                case IncompleteReason::SourceFailed:
+                    return 4;
+                case IncompleteReason::Truncated:
+                    return 3;
+                case IncompleteReason::PhysicalAxisUnbounded:
+                    return 2;
+                case IncompleteReason::LaggingWriters:
+                    return 1;
+                default:
+                    return 0;
+            }
+        };
+        if(rank(completion->reason) > rank(aggregate.reason))
             aggregate.reason = completion->reason;
         aggregate.laggards.insert(aggregate.laggards.end(), completion->laggards.begin(), completion->laggards.end());
         aggregate.frontier = {physical->end_ns, 0};

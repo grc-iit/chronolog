@@ -299,6 +299,23 @@ try
 }
 MEMBERSHIP_CATCH
 
+absl::StatusOr<PhysicalPolicy> SqliteMetadataStore::physicalPolicy() const
+try
+{
+    std::lock_guard lock(mutex_);
+    Query q(db_, "SELECT version,acceptance,skew,lead,cap FROM physical_constants WHERE id=1");
+    if(!q.next())
+        return absl::UnavailableError("physical policy is missing");
+    PhysicalPolicy policy;
+    policy.version = q.number(0);
+    policy.acceptance_window_ns = static_cast<int64_t>(q.number(1));
+    policy.skew_limit_ns = static_cast<int64_t>(q.number(2));
+    policy.hlc_lead_ns = static_cast<int64_t>(q.number(3));
+    policy.uncertainty_cap_ns = q.number(4);
+    return policy;
+}
+MEMBERSHIP_CATCH
+
 absl::Status SqliteMetadataStore::registerStaticPolicy(const std::string& process, uint64_t version)
 try
 {
