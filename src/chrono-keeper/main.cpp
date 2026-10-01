@@ -121,6 +121,8 @@ int main(int argc, char** argv)
                 return absl::NotFoundError("unknown story");
             });
     RamJournalConfig journal_config;
+    journal_config.process_id = config->process_id;
+    journal_config.instance = instance;
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
     journal_config.dedupe_window = config->dedupe_window;
@@ -141,6 +143,12 @@ int main(int argc, char** argv)
         return 1;
     }
     auto& journal = *owned_journal;
+    const auto recovered_instance = journal.recoveredInstance();
+    if(auto status = journal.recordInstance(instance); !status.ok())
+    {
+        std::cerr << "chrono_keeper: cannot persist instance: " << status << "\n";
+        return 1;
+    }
     *policy_version = journal.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
@@ -180,7 +188,8 @@ int main(int argc, char** argv)
                                   {config->process_id,
                                    instance,
                                    config->self_endpoint,
-                                   std::chrono::milliseconds(config->heartbeat_interval_ms)},
+                                   std::chrono::milliseconds(config->heartbeat_interval_ms),
+                                   recovered_instance},
                                   journal,
                                   *membership,
                                   acquisitions);
@@ -193,7 +202,7 @@ int main(int argc, char** argv)
     }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
-    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance);
+    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance, &journal);
     cluster.start();
     keeper::KeeperArchiveConfig archive_config{config->story_chunk_duration_secs,
                                                config->seal_interval_ms,

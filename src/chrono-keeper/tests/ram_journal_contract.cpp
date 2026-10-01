@@ -41,6 +41,20 @@ std::unique_ptr<JournalHarness> MakeRam()
             return snapshot.status();
         return std::pair{snapshot->view.sealed, std::move(snapshot->events)};
     };
+    h->enableDynamic = [rig](Hlc c, int64_t cp)
+    {
+        rig->journal->enableDynamic("instance");
+        rig->journal->extendCeiling(c, cp);
+        RouteState state;
+        state.route = *rig->membership->route(1);
+        rig->journal->applyRoute(1, state, false, 1, [] {});
+    };
+    h->ceilingWaiting = [rig] { return rig->journal->ceilingWaiters() != 0; };
+    h->extendCeiling = [rig](Hlc c, int64_t cp) { rig->journal->extendCeiling(c, cp); };
+    h->applyRoute = [rig](RouteState state, bool observe, uint64_t revision)
+    { rig->journal->applyRoute(1, state, observe, revision, [&] { rig->membership->setRoute(state.route); }); };
+    h->acceptanceClock = [rig] { return rig->clock->acceptanceClock(); };
+    h->retiredDrained = [rig] { return rig->journal->retiredDrained(1); };
     h->sut = rig->release();
     return h;
 }

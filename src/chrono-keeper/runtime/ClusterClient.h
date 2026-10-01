@@ -28,6 +28,7 @@ public:
         std::string instance;
         std::string endpoint;
         std::chrono::milliseconds interval{5000};
+        std::string recovered_instance{};
     };
 
     ClusterClient(std::shared_ptr<grpc::Channel> channel,
@@ -39,6 +40,7 @@ public:
 
     absl::Status registerNow();
     absl::Status heartbeatNow();
+    absl::Status extendNow();
 
     // Starts the loop: register with backoff, then heartbeat every interval or when kicked.
     void start();
@@ -49,6 +51,7 @@ public:
 
 private:
     void loop(std::stop_token stop);
+    void applyRoutes(const google::protobuf::RepeatedPtrField<internal::v1::RouteUpdate>& routes);
 
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     const Options options_;

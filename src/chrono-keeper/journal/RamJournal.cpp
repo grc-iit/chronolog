@@ -19,7 +19,9 @@ RamJournal::RamJournal(std::shared_ptr<Clock> clock,
     : clock_(std::move(clock))
     , membership_(std::move(membership))
     , config_(config)
-{}
+{
+    instance_ = config.instance;
+}
 
 absl::Status RamJournal::requireStory(StoryId id) const
 {
@@ -383,28 +385,6 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
 
     std::vector<AppendResult> results;
     results.reserve(batch.items.size());
-    absl::Status epoch = membership_->validateEpoch(batch.story_id, batch.epoch);
-    if(!epoch.ok())
-    {
-        if(epoch.code() != absl::StatusCode::kFailedPrecondition && epoch.code() != absl::StatusCode::kNotFound)
-            return done(epoch);
-        auto route =
-                epoch.code() == absl::StatusCode::kFailedPrecondition ? currentRoute(batch.story_id) : std::nullopt;
-        for(const auto& item: batch.items)
-        {
-            AppendResult r;
-            r.id = EventId{batch.story_id, item.writer_id, item.incarnation, item.sequence};
-            r.status = epoch;
-            r.current_route = route;
-            results.push_back(std::move(r));
-        }
-        return done(std::move(results));
-    }
-
-    auto reading = clock_->now();
-    if(!reading.ok())
-        return done(absl::UnavailableError("clock unavailable"));
-
     struct BatchState
     {
         std::mutex mu;
@@ -431,12 +411,65 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
     std::set<std::pair<uint64_t, uint64_t>> poisoned;
     for(size_t i = 0; i < batch.items.size(); ++i)
     {
-        auto result = appendOne(batch.story_id,
-                                batch.items[i],
-                                durability,
-                                reading->physical_ns,
-                                poisoned,
-                                [state, i](AppendResult r) { state->finish(i, std::move(r)); });
+        const auto deadline =
+                std::chrono::steady_clock::now() + std::chrono::milliseconds(config_.append_ceiling_wait_ms);
+        std::optional<AppendResult> result;
+        for(;;)
+        {
+            auto gate = admission(batch.story_id);
+            std::shared_lock gate_lock(gate->gate);
+            auto status = membership_->validateEpoch(batch.story_id, batch.epoch);
+            auto route = currentRoute(batch.story_id);
+            if(status.ok() && !config_.process_id.empty() && route &&
+               std::none_of(route->keepers.begin(),
+                            route->keepers.end(),
+                            [&](const auto& k) { return k.process_id == config_.process_id; }))
+                status = absl::FailedPreconditionError("keeper is not listed in the route");
+            uint64_t generation;
+            {
+                std::lock_guard lock(dynamic_mu_);
+                generation = ceiling_generation_;
+                if(status.ok() && dynamic_ && (!scheduleSteps(*gate) || ceiling_ <= gate->state.ordering_cut))
+                    status = absl::UnavailableError("route clock steps or ceiling deferred");
+            }
+            if(!status.ok())
+            {
+                result = AppendResult{};
+                result->id = {batch.story_id,
+                              batch.items[i].writer_id,
+                              batch.items[i].incarnation,
+                              batch.items[i].sequence};
+                result->status = status;
+                result->current_route = route;
+                break;
+            }
+            auto reading = clock_->now();
+            if(!reading.ok())
+            {
+                result = AppendResult{};
+                result->status = absl::UnavailableError("clock unavailable");
+                break;
+            }
+            result = appendOne(batch.story_id,
+                               batch.items[i],
+                               durability,
+                               reading->physical_ns,
+                               poisoned,
+                               [state, i](AppendResult r) { state->finish(i, std::move(r)); });
+            if(!result || result->status != Clock::wouldExceedCeiling())
+                break;
+            gate_lock.unlock();
+            std::unique_lock lock(dynamic_mu_);
+            ++ceiling_waiters_;
+            const bool changed =
+                    ceiling_cv_.wait_until(lock, deadline, [&] { return generation != ceiling_generation_; });
+            --ceiling_waiters_;
+            if(!changed)
+            {
+                result->status = absl::UnavailableError("ceiling wait timed out");
+                break;
+            }
+        }
         if(result)
             state->finish(i, std::move(*result));
     }
@@ -510,6 +543,8 @@ Hlc RamJournal::seal(StoryId id,
     // F is ticked before any writer lock is taken, so every assignment already made is below F
     // and, once its writer lock is acquired here, inserted. Every later assignment is above F.
     Hlc f = tick ? *tick : reserveFrontier(clock_->tick());
+    if(auto owner = retiredOwner(id))
+        f = owner->own_cut;
     std::vector<std::shared_ptr<Writer>> all;
     std::set<const Writer*> candidates;
     {
@@ -538,7 +573,7 @@ Hlc RamJournal::seal(StoryId id,
         }
         writerScanned(WriterKey{id, w->writer_id, w->incarnation});
     }
-    return f;
+    return capSeal(id, f);
 }
 
 absl::StatusOr<RamJournal::SealedView> RamJournal::sealedView(StoryId id) const
@@ -613,11 +648,21 @@ namespace chronolog
 std::vector<StoryId> RamJournal::storyIds() const
 {
     std::vector<StoryId> out;
+    {
+        std::lock_guard lock(dynamic_mu_);
+        for(const auto& [id, a]: admissions_)
+        {
+            (void)a;
+            out.push_back(id);
+        }
+    }
     for(auto& shard: shards_)
     {
         std::shared_lock lock(shard.mu);
         for(const auto& [id, story]: shard.stories) out.push_back(id);
     }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
 
@@ -690,6 +735,27 @@ absl::StatusOr<int64_t> RamJournal::physicalFrontier(StoryId id) const
                 frontier = std::min(frontier, interval->lo);
         }
     }
+    {
+        std::lock_guard lock(dynamic_mu_);
+        if(dynamic_)
+        {
+            int64_t cp = physical_ceiling_;
+            auto it = admissions_.find(id);
+            if(it != admissions_.end() &&
+               std::none_of(it->second->state.route.keepers.begin(),
+                            it->second->state.route.keepers.end(),
+                            [&](const auto& k) { return k.process_id == config_.process_id; }))
+            {
+                int64_t own = INT64_MIN;
+                for(const auto& owner: it->second->state.predecessors)
+                    if(owner.instance == instance_ && owner.keeper.process_id == config_.process_id)
+                        own = std::max(own, owner.own_physical_ceiling_ns);
+                if(own != INT64_MIN)
+                    cp = std::min(cp, own);
+            }
+            frontier = std::min(frontier, cp < INT64_MIN + window ? INT64_MIN : cp - window);
+        }
+    }
     auto [it, inserted] = physical_reports_.try_emplace(id, INT64_MIN);
     (void)inserted;
     auto persisted = reservePhysicalFrontier(id, std::max(frontier, it->second));
@@ -697,5 +763,175 @@ absl::StatusOr<int64_t> RamJournal::physicalFrontier(StoryId id) const
         return persisted.status();
     it->second = *persisted;
     return *persisted;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+std::shared_ptr<RamJournal::Admission> RamJournal::admission(StoryId story) const
+{
+    std::lock_guard lock(dynamic_mu_);
+    auto& state = admissions_[story];
+    if(!state)
+        state = std::make_shared<Admission>();
+    return state;
+}
+void RamJournal::enableDynamic(std::string instance, Hlc floor, int64_t physical, int64_t bl, int64_t bh)
+{
+    std::lock_guard lock(dynamic_mu_);
+    auto* control = dynamic_cast<CeilingControl*>(clock_.get());
+    if(!control)
+        throw std::invalid_argument("dynamic membership needs a ceiling clock");
+    instance_ = std::move(instance);
+    dynamic_ = true;
+    restart_floor_ = std::max(restart_floor_, floor);
+    restart_physical_ = std::max(restart_physical_, physical);
+    acceptance_budget_ = bl;
+    hlc_budget_ = bh;
+    control->setCeiling(ceiling_);
+}
+void RamJournal::extendCeiling(Hlc ceiling, int64_t physical)
+{
+    std::lock_guard lock(dynamic_mu_);
+    ceiling_ = std::max(ceiling_, ceiling);
+    physical_ceiling_ = std::max(physical_ceiling_, physical);
+    dynamic_cast<CeilingControl*>(clock_.get())->setCeiling(ceiling_);
+    ++ceiling_generation_;
+    ceiling_cv_.notify_all();
+}
+bool RamJournal::scheduleSteps(Admission& a)
+{
+    auto reading = clock_->now();
+    if(!reading.ok() || !a.installed)
+        return false;
+    auto within = [&](int64_t floor, int64_t budget)
+    {
+        return floor <= reading->physical_ns ||
+               (reading->physical_ns <= INT64_MAX - budget && floor <= reading->physical_ns + budget);
+    };
+    Hlc floor = std::max(restart_floor_, a.observe ? a.state.ordering_cut : Hlc{});
+    const int64_t physical = std::max(restart_physical_, a.raise ? a.state.physical_floor : int64_t{0});
+    if(!within(floor.physical_ns, hlc_budget_) || !within(physical, acceptance_budget_))
+        return false;
+    clock_->observeFloor(floor);
+    clock_->raiseAcceptanceClock(physical);
+    a.observe = a.raise = false;
+    return true;
+}
+void RamJournal::applyRoute(StoryId story,
+                            RouteState state,
+                            bool observe,
+                            uint64_t revision,
+                            std::function<void()> install)
+{
+    auto a = admission(story);
+    std::unique_lock gate_lock(a->gate);
+    std::lock_guard lock(dynamic_mu_);
+    if(a->installed && (revision < a->revision || state.route.epoch < a->state.route.epoch))
+        return;
+    auto listed = [&](const Route& route)
+    {
+        return std::any_of(route.keepers.begin(),
+                           route.keepers.end(),
+                           [&](const auto& k) { return k.process_id == config_.process_id; });
+    };
+    bool added = listed(state.route) && (!a->installed || !listed(a->state.route));
+    a->observe = a->observe || observe;
+    a->raise = a->raise || added;
+    a->state = std::move(state);
+    a->revision = revision;
+    a->installed = true;
+    install();
+    if(dynamic_)
+        (void)scheduleSteps(*a);
+    ++ceiling_generation_;
+    ceiling_cv_.notify_all();
+}
+void RamJournal::acknowledgeRoutes(uint64_t revision)
+{
+    std::lock_guard lock(dynamic_mu_);
+    applied_route_revision_ = std::max(applied_route_revision_, revision);
+}
+uint64_t RamJournal::appliedRouteRevision() const
+{
+    std::lock_guard lock(dynamic_mu_);
+    return applied_route_revision_;
+}
+std::string RamJournal::instance() const
+{
+    std::lock_guard lock(dynamic_mu_);
+    return instance_;
+}
+bool RamJournal::dynamic() const
+{
+    std::lock_guard lock(dynamic_mu_);
+    return dynamic_;
+}
+int64_t RamJournal::realtime() const
+{
+    auto r = clock_->now();
+    return r.ok() ? r->physical_ns : 0;
+}
+Hlc RamJournal::wantedCeiling() const { return clock_->tick(); }
+std::vector<Predecessor> RamJournal::predecessorOwners(StoryId story) const
+{
+    std::lock_guard lock(dynamic_mu_);
+    std::vector<Predecessor> owners;
+    auto it = admissions_.find(story);
+    if(it != admissions_.end())
+        for(const auto& p: it->second->state.predecessors)
+            if(p.instance == instance_ && p.keeper.process_id == config_.process_id)
+                owners.push_back(p);
+    return owners;
+}
+std::optional<Predecessor> RamJournal::retiredOwner(StoryId story) const
+{
+    auto route = currentRoute(story);
+    if(route && std::any_of(route->keepers.begin(),
+                            route->keepers.end(),
+                            [&](const auto& k) { return k.process_id == config_.process_id; }))
+        return std::nullopt;
+    auto owners = predecessorOwners(story);
+    if(owners.empty())
+        return std::nullopt;
+    return *std::max_element(owners.begin(),
+                             owners.end(),
+                             [](const auto& a, const auto& b) { return a.own_cut < b.own_cut; });
+}
+Hlc RamJournal::capSeal(StoryId story, Hlc seal) const
+{
+    std::lock_guard lock(dynamic_mu_);
+    if(!dynamic_)
+        return seal;
+    Hlc cap = ceiling_;
+    auto it = admissions_.find(story);
+    if(it != admissions_.end() && std::none_of(it->second->state.route.keepers.begin(),
+                                               it->second->state.route.keepers.end(),
+                                               [&](const auto& k) { return k.process_id == config_.process_id; }))
+    {
+        Hlc own{};
+        for(const auto& p: it->second->state.predecessors)
+            if(p.instance == instance_ && p.keeper.process_id == config_.process_id)
+                own = std::max(own, p.own_cut);
+        if(own != Hlc{})
+            cap = std::min(cap, own);
+    }
+    return std::min(seal, cap);
+}
+bool RamJournal::retiredDrained(StoryId story) const
+{
+    auto p = retiredOwner(story);
+    return p && evictionFloor(story) >= p->own_cut;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+bool RamJournal::neverHeldEvent(StoryId story) const
+{
+    for(const auto& checkpoint: checkpointWriters())
+        if(checkpoint.key.story_id == story && checkpoint.last_hlc != Hlc{})
+            return false;
+    return true;
 }
 } // namespace chronolog

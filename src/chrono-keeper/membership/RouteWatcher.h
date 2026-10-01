@@ -9,6 +9,7 @@
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "membership/ConfigMembership.h"
 #include "membership/Watcher.h"
+#include "journal/RamJournal.h"
 
 namespace chronolog::keeper
 {
@@ -21,11 +22,13 @@ public:
     RouteWatcher(ConfigMembership& membership,
                  std::shared_ptr<grpc::Channel> channel,
                  std::string process_id,
-                 std::string instance);
+                 std::string instance,
+                 RamJournal* journal = nullptr);
 
 private:
     bool session(std::stop_token stop);
 
+    RamJournal* journal_;
     uint64_t applied_revision_{};
     std::map<StoryId, std::pair<uint64_t, Epoch>> applied_;
     ConfigMembership& membership_;

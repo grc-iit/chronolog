@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <condition_variable>
+#include "clock/CeilingControl.h"
 #include <atomic>
 #include <functional>
 #include <deque>
@@ -20,6 +22,9 @@ namespace chronolog
 
 struct RamJournalConfig
 {
+    std::string process_id;
+    std::string instance;
+    uint32_t append_ceiling_wait_ms{1000};
     size_t payload_max_bytes{1048576};
     int64_t causal_floor_skew_limit_ns{60'000'000'000};
     // Results kept per writer for idempotent retries.
@@ -38,6 +43,25 @@ public:
                                                      Durability durability = Durability::Unspecified) override;
     using AppendCallback = std::function<void(absl::StatusOr<std::vector<AppendResult>>)>;
     void appendAsync(const AppendBatch& batch, Durability durability, AppendCallback done);
+    void enableDynamic(std::string instance,
+                       Hlc restart_floor = {},
+                       int64_t physical_floor = 0,
+                       int64_t acceptance_budget = 3'000'000'000,
+                       int64_t hlc_budget = 30'000'000'000);
+    void extendCeiling(Hlc ceiling, int64_t physical_ceiling);
+    void
+    applyRoute(StoryId story, RouteState state, bool observe_floor, uint64_t revision, std::function<void()> install);
+    uint64_t appliedRouteRevision() const;
+    void acknowledgeRoutes(uint64_t revision);
+    std::optional<Predecessor> retiredOwner(StoryId story) const;
+    std::vector<Predecessor> predecessorOwners(StoryId story) const;
+    size_t ceilingWaiters() const { return ceiling_waiters_; }
+    std::string instance() const;
+    Hlc wantedCeiling() const;
+    int64_t realtime() const;
+    bool dynamic() const;
+    bool retiredDrained(StoryId story) const;
+    bool neverHeldEvent(StoryId story) const;
     void setAdmissionReady(bool ready) { admission_ready_.store(ready); }
     absl::StatusOr<std::vector<Event>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const override;
@@ -115,6 +139,62 @@ protected:
 
 
 private:
+    class Gate
+    {
+    public:
+        void lock()
+        {
+            std::unique_lock l(mu);
+            ++waiting;
+            cv.wait(l, [&] { return !writer && readers == 0; });
+            --waiting;
+            writer = true;
+        }
+        void unlock()
+        {
+            std::lock_guard l(mu);
+            writer = false;
+            cv.notify_all();
+        }
+        void lock_shared()
+        {
+            std::unique_lock l(mu);
+            cv.wait(l, [&] { return !writer && waiting == 0; });
+            ++readers;
+        }
+        void unlock_shared()
+        {
+            std::lock_guard l(mu);
+            --readers;
+            cv.notify_all();
+        }
+
+    private:
+        std::mutex mu;
+        std::condition_variable cv;
+        size_t readers{}, waiting{};
+        bool writer{};
+    };
+    struct Admission
+    {
+        Gate gate;
+        RouteState state;
+        bool installed{}, observe{}, raise{};
+        uint64_t revision{};
+    };
+    std::shared_ptr<Admission> admission(StoryId story) const;
+    bool scheduleSteps(Admission& admission);
+    Hlc capSeal(StoryId story, Hlc seal) const;
+    mutable std::mutex dynamic_mu_;
+    mutable std::map<StoryId, std::shared_ptr<Admission>> admissions_;
+    std::atomic<size_t> ceiling_waiters_{};
+    std::condition_variable ceiling_cv_;
+    uint64_t ceiling_generation_{}, applied_route_revision_{};
+    bool dynamic_{};
+    std::string instance_;
+    Hlc ceiling_{}, restart_floor_{};
+    int64_t physical_ceiling_{}, restart_physical_{}, acceptance_budget_{}, hlc_budget_{};
+
     struct Pending
     {
         Event event;

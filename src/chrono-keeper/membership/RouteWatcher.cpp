@@ -10,8 +10,10 @@ namespace iv1 = chronolog::internal::v1;
 RouteWatcher::RouteWatcher(ConfigMembership& membership,
                            std::shared_ptr<grpc::Channel> channel,
                            std::string process_id,
-                           std::string instance)
-    : membership_(membership)
+                           std::string instance,
+                           RamJournal* journal)
+    : journal_(journal)
+    , membership_(membership)
     , stub_(iv1::Cluster::NewStub(std::move(channel)))
     , process_id_(std::move(process_id))
     , instance_(std::move(instance))
@@ -41,7 +43,18 @@ bool RouteWatcher::session(std::stop_token stop)
         applied_revision_ = message.revision();
         prior = {message.revision(), message.route().epoch()};
         progressed = true;
-        membership_.setRoute(message.story_id(), convert::fromProto(message.route()));
+        auto state = convert::routeState(message);
+        auto install = [&] { membership_.setRouteState(message.story_id(), state); };
+        if(journal_)
+            journal_->applyRoute(message.story_id(),
+                                 state,
+                                 std::find(message.observe_floor().begin(),
+                                           message.observe_floor().end(),
+                                           process_id_) != message.observe_floor().end(),
+                                 message.revision(),
+                                 install);
+        else
+            install();
     }
     reader->Finish();
     return progressed;

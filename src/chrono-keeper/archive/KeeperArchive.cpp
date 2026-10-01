@@ -124,7 +124,13 @@ absl::Status KeeperArchive::seal(bool through_frontier)
         auto snapshot = journal_.sealedRead(story_id, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}, tick);
         if(!snapshot.ok())
             return snapshot.status();
-        const Hlc end = through_frontier ? snapshot->view.sealed : align(snapshot->view.sealed);
+        auto owner = journal_.retiredOwner(story_id);
+        if(owner && journal_.neverHeldEvent(story_id))
+        {
+            journal_.eraseEvents(story_id, {Range::Axis::Hlc, {}, owner->own_cut}, true);
+            continue;
+        }
+        const Hlc end = (through_frontier || owner) ? snapshot->view.sealed : align(snapshot->view.sealed);
         Hlc start;
         {
             std::lock_guard lock(mu_);
@@ -136,8 +142,13 @@ absl::Status KeeperArchive::seal(bool through_frontier)
             else
             {
                 if(snapshot->events.empty())
-                    continue;
-                start = align(snapshot->events.front().hlc);
+                {
+                    start = journal_.evictionFloor(story_id);
+                    if(!owner || start == Hlc{})
+                        continue;
+                }
+                else
+                    start = align(snapshot->events.front().hlc);
             }
         }
         if(start >= end)
@@ -168,7 +179,7 @@ absl::Status KeeperArchive::seal(bool through_frontier)
             bytes += record_bytes;
             ++events;
         }
-        if(events != 0)
+        if(events != 0 || owner)
         {
             Chunk chunk;
             chunk.story_id = story_id;

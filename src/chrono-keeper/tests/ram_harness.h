@@ -8,7 +8,9 @@
 namespace chronolog::test
 {
 
-class AssignmentClock final: public Clock
+class AssignmentClock final
+    : public Clock
+    , public CeilingControl
 {
 public:
     explicit AssignmentClock(int64_t physical)
@@ -35,6 +37,7 @@ public:
         auto value = clock_.assignChecked(floor, interval);
         return value;
     }
+    void setCeiling(Hlc ceiling) override { clock_.setCeiling(ceiling); }
     void observeFloor(Hlc floor) override { clock_.observeFloor(floor); }
     int64_t acceptanceClock() override { return clock_.acceptanceClock(); }
     void raiseAcceptanceClock(int64_t floor) override { clock_.raiseAcceptanceClock(floor); }
@@ -48,24 +51,33 @@ private:
 class FakeMembership final: public Membership
 {
 public:
+    void setRoute(Route route)
+    {
+        std::lock_guard lock(mu_);
+        route_ = std::move(route);
+    }
     absl::StatusOr<Route> route(StoryId id) const override
     {
         if(id != 1)
             return absl::NotFoundError("unknown story");
-        return Route{7, {KeeperRef{"self", "self:1"}}, "grapher:1", "player:1"};
+        std::lock_guard lock(mu_);
+        return route_;
     }
-
     absl::Status validateEpoch(StoryId id, Epoch epoch) const override
     {
-        if(id != 1)
-            return absl::NotFoundError("unknown story");
-        if(epoch != 7)
+        auto r = route(id);
+        if(!r.ok())
+            return r.status();
+        if(epoch != r->epoch)
             return absl::FailedPreconditionError("stale epoch");
         return absl::OkStatus();
     }
-
     absl::Status registerProcess(Process) override { return absl::OkStatus(); }
     absl::Status heartbeat(std::string, std::string, uint64_t) override { return absl::OkStatus(); }
+
+private:
+    mutable std::mutex mu_;
+    Route route_{7, {KeeperRef{"self", "self:1"}}, "grapher:1", "player:1"};
 };
 
 class ScannedRamJournal final: public RamJournal
@@ -120,6 +132,9 @@ struct RamRig
 
     explicit RamRig(RamJournalConfig config = {})
     {
+        config.process_id = "self";
+        config.instance = "instance";
+        config.append_ceiling_wait_ms = 100;
         clock = std::make_shared<AssignmentClock>(100);
         clock->setStatus(ClockStatus::Synced);
         membership = std::make_shared<FakeMembership>();

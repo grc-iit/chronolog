@@ -135,6 +135,9 @@ struct WalRig
     explicit WalRig(uint64_t segment_bytes = 64ull << 20)
     {
         config.wal_segment_bytes = segment_bytes;
+        ram_config.process_id = "self";
+        ram_config.instance = "instance";
+        ram_config.append_ceiling_wait_ms = 100;
         ram_config.causal_floor_skew_limit_ns = 1000;
         config.wal_dir = control->directory;
         reopen();

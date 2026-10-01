@@ -49,6 +49,12 @@ struct JournalHarness
     std::function<void()> releaseTail;
     // Inspect durable segment identities without changing WAL state.
     std::function<std::set<std::string>()> walSegments;
+    std::function<void(Hlc, int64_t)> enableDynamic;
+    std::function<void(Hlc, int64_t)> extendCeiling;
+    std::function<bool()> ceilingWaiting;
+    std::function<void(RouteState, bool, uint64_t)> applyRoute;
+    std::function<int64_t()> acceptanceClock;
+    std::function<bool()> retiredDrained;
     // Observe the recovered eviction floor.
     std::function<Hlc()> evictionFloor;
 };
@@ -797,7 +803,15 @@ TEST_P(JournalContract, WalTruncatesOnlyAfterReceiptSettlement)
 }
 TEST_P(JournalContract, ReassignedWriterObservesOldFrontier)
 {
-    GTEST_SKIP() << "M8 dynamic reassignment is not implemented";
+    h->enableDynamic({10000, 0}, 10'000'000'000);
+    RouteState state;
+    state.route = {8, {{"self", "self:1"}}, "grapher:1", "player:1"};
+    state.ordering_cut = {500, 0};
+    h->applyRoute(state, true, 10);
+    auto result = h->sut->append(Batch({Item()}, 8), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok()) << result->front().status;
+    EXPECT_GT(result->front().hlc, state.ordering_cut);
 }
 
 TEST_P(JournalContract, BackdatedReadingIsOutOfRange)
@@ -946,4 +960,164 @@ TEST_P(JournalContract, DurabilityUpgradeDoesNotLowerPhysicalFrontier)
     EXPECT_GE(*after, *before);
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(JournalContract);
+} // namespace chronolog::contract
+
+namespace chronolog::contract
+{
+TEST_P(JournalContract, NoAssignmentAtOrAboveCeiling)
+{
+    h->enableDynamic({100, 1}, 10'000'000'000);
+    auto result = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+    EXPECT_EQ(eventCount(), 0);
+    h->extendCeiling({10000, 0}, 10'000'000'000);
+    result = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok());
+    EXPECT_LT(result->front().hlc, (Hlc{10000, 0}));
+}
+TEST_P(JournalContract, CeilingWaitDoesNotBlockRouteApplication)
+{
+    h->enableDynamic({100, 1}, 10'000'000'000);
+    auto append = std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+    for(int attempt = 0; attempt < 1000 && !h->ceilingWaiting(); ++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_TRUE(h->ceilingWaiting());
+    RouteState state;
+    state.route = {8, {{"self", "self:1"}}, "grapher:1", "player:1"};
+    auto apply = std::async(std::launch::async, [&] { h->applyRoute(state, false, 10); });
+    EXPECT_EQ(apply.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    apply.get();
+    h->extendCeiling({10000, 0}, 10'000'000'000);
+    ASSERT_EQ(append.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    auto result = append.get();
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsFailedPrecondition(result->front().status));
+    EXPECT_EQ(result->front().current_route->epoch, 8);
+}
+TEST_P(JournalContract, TransitionsCannotRatchetTheAcceptanceClock)
+{
+    h->enableDynamic({100'000'000'000, 0}, 100'000'000'000);
+    for(uint64_t epoch = 8; epoch < 24; epoch += 2)
+    {
+        RouteState removed;
+        removed.route = {epoch, {{"other", "other:1"}}, "grapher:1", ""};
+        h->applyRoute(removed, false, epoch * 2);
+        RouteState added;
+        added.route = {epoch + 1, {{"self", "self:1"}}, "grapher:1", ""};
+        added.physical_floor = static_cast<int64_t>(epoch) * 3'000'000'000;
+        added.ordering_cut = {static_cast<int64_t>(epoch) * 30'000'000'000, 0};
+        h->applyRoute(added, true, epoch * 2 + 1);
+        auto result = h->sut->append(Batch({Item()}, epoch + 1), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+        EXPECT_LE(h->acceptanceClock(), 100 + 3'000'000'000);
+    }
+}
+TEST_P(JournalContract, RouteChangeWaitsOutValidatedAdmissions)
+{
+    h->enableDynamic({10000, 0}, 10'000'000'000);
+    std::promise<void> assigned, resume;
+    auto ready = assigned.get_future();
+    auto unblock = resume.get_future().share();
+    h->onAssignment(
+            [&](Hlc)
+            {
+                assigned.set_value();
+                unblock.wait_for(std::chrono::seconds(3));
+            });
+    auto append = std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+    ASSERT_EQ(ready.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "grapher:1", ""};
+    auto apply = std::async(std::launch::async, [&] { h->applyRoute(state, false, 10); });
+    EXPECT_EQ(apply.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+    resume.set_value();
+    ASSERT_EQ(apply.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    apply.get();
+    auto result = append.get();
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->front().status.ok());
+    h->onAssignment(nullptr);
+    result = h->sut->append(Batch({Item(2)}, 8), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsFailedPrecondition(result->front().status));
+}
+TEST_P(JournalContract, NewMemberAcceptanceClockCoversTheStoryPhysicalFloor)
+{
+    h->enableDynamic({100'000'000'000, 0}, 100'000'000'000);
+    RouteState removed;
+    removed.route = {8, {{"other", "other:1"}}, "grapher:1", ""};
+    h->applyRoute(removed, false, 10);
+    RouteState added;
+    added.route = {9, {{"self", "self:1"}}, "grapher:1", ""};
+    added.physical_floor = 4'000'000'000;
+    added.ordering_cut = {5'000'000'000, 0};
+    h->applyRoute(added, true, 11);
+    auto result = h->sut->append(Batch({Item()}, 9), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+    h->setPhysical(2'000'000'000);
+    auto item = Item();
+    item.physical.physical_ns = 4'000'000'000;
+    result = h->sut->append(Batch({item}, 9), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok()) << result->front().status;
+    EXPECT_GE(h->acceptanceClock(), added.physical_floor);
+    EXPECT_GT(result->front().hlc, added.ordering_cut);
+}
+TEST_P(JournalContract, UnlistedKeeperRejectsAppend)
+{
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "grapher:1", ""};
+    h->applyRoute(state, false, 10);
+    auto result = h->sut->append(Batch({Item()}, 8), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsFailedPrecondition(result->front().status));
+    ASSERT_TRUE(result->front().current_route);
+    EXPECT_EQ(result->front().current_route->epoch, 8);
+    EXPECT_EQ(eventCount(), 0);
+}
+TEST_P(JournalContract, RetiredKeeperDrainsWithAnAlreadyEvictedFinalChunk)
+{
+    if(!h->supports_durable)
+        GTEST_SKIP() << "archive drain requires WAL";
+    auto chunk = archiveChunk();
+    ASSERT_TRUE(chunk.ok());
+    h->deliverChunk(*chunk, "grapher", 1);
+    h->releaseTail();
+    h->reportArchive({1, chunk->end, "grapher", 1, {}, false});
+    EXPECT_EQ(eventCount(), 0);
+    h->enableDynamic({10'000'000'000, 0}, 20'000'000'000);
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "127.0.0.1:1", ""};
+    const Hlc cut{2'000'000'000, 0};
+    state.predecessors.push_back({{"self", "self:1"}, "instance", 7, cut, 20'000'000'000});
+    h->applyRoute(state, false, 10);
+    auto chunks = h->sealArchive();
+    ASSERT_TRUE(chunks.ok());
+    ASSERT_FALSE(chunks->empty());
+    EXPECT_EQ(chunks->back().start, chunk->end);
+    EXPECT_EQ(chunks->back().end, cut);
+    h->deliverChunk(chunks->back(), "grapher", 2);
+    h->releaseTail();
+    h->reportArchive({1, cut, "grapher", 2, {}, false});
+    EXPECT_TRUE(h->retiredDrained());
+}
+TEST_P(JournalContract, WriterlessRetiredStoryDrainsAtItsOwnCut)
+{
+    if(!h->supports_durable)
+        GTEST_SKIP() << "archive drain requires WAL";
+    h->enableDynamic({10'000'000'000, 0}, 20'000'000'000);
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "127.0.0.1:1", ""};
+    state.predecessors.push_back({{"self", "self:1"}, "instance", 7, {2'000'000'000, 0}, 20'000'000'000});
+    h->applyRoute(state, false, 10);
+    auto chunks = h->sealArchive();
+    ASSERT_TRUE(chunks.ok());
+    EXPECT_TRUE(chunks->empty());
+    EXPECT_TRUE(h->retiredDrained());
+    EXPECT_EQ(h->evictionFloor(), (Hlc{2'000'000'000, 0}));
+}
 } // namespace chronolog::contract

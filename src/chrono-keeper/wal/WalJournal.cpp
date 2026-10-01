@@ -151,10 +151,12 @@ uint64_t WalJournal::recover()
             }
             else if(payload.front() == 'R')
                 reservation_ = std::max(reservation_, wal::decodeReserve(body));
+            else if(payload.front() == 'I')
+                recovered_instance_ = wal_instance_ = std::string(body);
             else if(payload.front() == 'W')
                 restoreWriters(body);
             else if(payload.front() != 'S' && payload.front() != 'T' && payload.front() != 'Q' &&
-                    payload.front() != 'F')
+                    payload.front() != 'F' && payload.front() != 'B')
                 throw std::runtime_error("unknown WAL record type");
             trackRecord(payload, sequence);
             offset += 8 + length;
@@ -356,6 +358,19 @@ absl::Status WalJournal::persistRecord(std::string payload)
 
 absl::Status WalJournal::recordSeal(const Chunk& chunk)
 {
+    auto events = read(chunk.story_id, {Range::Axis::Hlc, chunk.start, chunk.end});
+    if(!events.ok())
+        return events.status();
+    if(!events->empty())
+    {
+        const auto first = events->front().hlc;
+        auto known = firstEvent(chunk.story_id);
+        if(!known || first < *known)
+            if(auto status = persistRecord("B" + std::to_string(chunk.story_id) + " " +
+                                           std::to_string(first.physical_ns) + " " + std::to_string(first.logical));
+               !status.ok())
+                return status;
+    }
     internal::v1::ChunkIdentity identity;
     identity.set_physical_policy(physical_policy_);
     identity.set_chunk_id(chunk.id);
@@ -456,10 +471,28 @@ void WalJournal::restoreWriters(std::string_view payload)
 void WalJournal::trackRecord(std::string_view payload, uint64_t segment)
 {
     const auto body = payload.substr(1);
-    if(payload.front() == 'E')
+    if(payload.front() == 'I')
+        wal_instance_ = std::string(body);
+    else if(payload.front() == 'E')
     {
         const auto event = wal::decode(body);
         segments_[segment].events.emplace_back(event.id.story_id, event.hlc);
+        std::lock_guard lock(archive_mu_);
+        auto [it, inserted] = first_events_.try_emplace(event.id.story_id, event.hlc);
+        if(!inserted)
+            it->second = std::min(it->second, event.hlc);
+    }
+    else if(payload.front() == 'B')
+    {
+        std::istringstream in{std::string(body)};
+        StoryId story;
+        Hlc first;
+        if(!(in >> story >> first.physical_ns >> first.logical))
+            throw std::runtime_error("invalid first event record");
+        std::lock_guard lock(archive_mu_);
+        auto [it, inserted] = first_events_.try_emplace(story, first);
+        if(!inserted)
+            it->second = std::min(it->second, first);
     }
     else if(payload.front() == 'R')
         persisted_reservation_ = std::max(persisted_reservation_, wal::decodeReserve(body));
@@ -517,6 +550,15 @@ absl::Status WalJournal::rotate()
         return sink->write(bytes);
     };
     auto status = write(physical_policy_ ? "Q1" : "Q0");
+    if(status.ok() && !wal_instance_.empty())
+        status = write("I" + wal_instance_);
+    {
+        std::lock_guard lock(archive_mu_);
+        for(const auto& [story, first]: first_events_)
+            if(status.ok())
+                status = write("B" + std::to_string(story) + " " + std::to_string(first.physical_ns) + " " +
+                               std::to_string(first.logical));
+    }
     if(status.ok())
         status = write(writersRecord());
     for(const auto& [story, frontier]: persisted_physical_)
@@ -599,5 +641,20 @@ absl::StatusOr<int64_t> WalJournal::reservePhysicalFrontier(StoryId story, int64
     if(!status.ok())
         return status;
     return frontier;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+absl::Status WalJournal::recordInstance(std::string instance) { return persistRecord("I" + instance); }
+} // namespace chronolog
+
+namespace chronolog
+{
+std::optional<Hlc> WalJournal::firstEvent(StoryId story) const
+{
+    std::lock_guard lock(archive_mu_);
+    auto it = first_events_.find(story);
+    return it == first_events_.end() ? std::nullopt : std::optional<Hlc>{it->second};
 }
 } // namespace chronolog
