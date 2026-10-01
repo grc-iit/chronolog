@@ -1,6 +1,8 @@
 // Instantiates ReplayContract against HotReplay over an in-process fake HotSource.
 #include <algorithm>
 #include <mutex>
+#include <filesystem>
+#include <unistd.h>
 #include "replay_contract_test.cpp"
 #include "chrono-player/replay/HotReplay.h"
 
@@ -47,6 +49,8 @@ public:
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range&) const override
     {
         std::lock_guard lk(mu_);
+        if(tombstoned_)
+            return absl::FailedPreconditionError("story is tombstoned");
         if(story != 1)
             return absl::NotFoundError("unknown story");
         HotFetch f;
@@ -85,6 +89,16 @@ public:
         for(const auto& [keeper, hlc]: seal) (keeper == "keeper-a" ? a_ : b_).frontier.sealed = hlc;
     }
 
+    void tombstone()
+    {
+        std::lock_guard lk(mu_);
+        tombstoned_ = true;
+    }
+    void requireArchive()
+    {
+        std::lock_guard lk(mu_);
+        a_.frontier.evicted_below = {200, 0};
+    }
     void hideWriter()
     {
         std::lock_guard lk(mu_);
@@ -117,6 +131,14 @@ private:
     KeeperFetch a_, b_;
     std::vector<WriterAssignment> writers_, view_;
     bool closed_{};
+    bool tombstoned_{};
+};
+
+struct ArchiveWindow
+{
+    std::filesystem::path root =
+            std::filesystem::temp_directory_path() / ("replay-contract-" + std::to_string(::getpid()));
+    ~ArchiveWindow() { std::filesystem::remove_all(root); }
 };
 
 std::unique_ptr<ReplayHarness> makeHarness()
@@ -136,6 +158,32 @@ std::unique_ptr<ReplayHarness> makeHarness()
     h->registerIdleWriter = [src](uint64_t w, uint64_t i) { src->addIdleWriter(w, i); };
     // Seeded events are DURABLE and the fake keeps them, so a crash restart is a reopen.
     h->crashRestart = [] {};
+    h->tombstoneStory = [src] { src->tombstone(); };
+    h->loseWindowBelowWatermark = [src, harness = h.get(), options]
+    {
+        auto window = std::make_shared<ArchiveWindow>();
+        std::filesystem::remove_all(window->root);
+        auto opened = FileTierStore::Open(window->root, "writer", {{1, {100, 0}}});
+        ASSERT_TRUE(opened.ok()) << opened.status();
+        auto writer = *std::move(opened);
+        auto record = writer->publish({"lost", 1, {100, 0}, {200, 0}, {ev(2, 2, 120)}, false});
+        ASSERT_TRUE(record.ok()) << record.status();
+        std::filesystem::remove(window->root / record->file);
+        writer.reset();
+        opened = FileTierStore::Open(window->root, "writer", {{1, {100, 0}}});
+        ASSERT_TRUE(opened.ok()) << opened.status();
+        writer = *std::move(opened);
+        auto watermark = writer->contiguousWatermark(1);
+        ASSERT_TRUE(watermark.ok());
+        EXPECT_EQ(*watermark, (Hlc{200, 0}));
+        auto archive = FileTierStore::OpenReadOnly(window->root, std::chrono::hours(1));
+        ASSERT_TRUE(archive.ok()) << archive.status();
+        auto lost_options = options;
+        lost_options.archive =
+                std::shared_ptr<FileTierStore>(archive->release(), [window](FileTierStore* store) { delete store; });
+        src->requireArchive();
+        harness->sut = std::make_unique<HotReplay>(src, lost_options);
+    };
     return h;
 }
 

@@ -49,6 +49,7 @@ struct TimeReading
     std::optional<uint64_t> uncertainty_ns;
     ClockStatus status{ClockStatus::Unavailable};
 };
+// Unspecified requests Durable and is never an achieved durability level.
 enum class Durability
 {
     Unspecified = 0,
@@ -236,6 +237,7 @@ enum class ManifestState
     Empty,
     Deleted,
     Failed,
+    // LOST preserves the watermark; reads over a missing/corrupt persisted window are SOURCE_FAILED.
     Lost
 };
 struct ManifestRecord

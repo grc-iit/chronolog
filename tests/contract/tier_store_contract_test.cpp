@@ -73,6 +73,38 @@ TEST_P(TierStoreContract, WatermarkCannotJumpGap)
     EXPECT_EQ(*w, (Hlc{400, 0}));
 }
 
+TEST_P(TierStoreContract, WatermarkNeverRegresses)
+{
+    ASSERT_TRUE(h->eraseFile);
+    ASSERT_TRUE(h->restart);
+    auto published = h->sut->publish(Window());
+    ASSERT_TRUE(published.ok());
+    ASSERT_TRUE(h->sut->publish(Window(200, 300, true)).ok());
+    auto watermark = h->sut->contiguousWatermark(1);
+    ASSERT_TRUE(watermark.ok());
+    ASSERT_EQ(*watermark, (Hlc{300, 0}));
+    auto check = [&]
+    {
+        auto next = h->sut->contiguousWatermark(1);
+        ASSERT_TRUE(next.ok());
+        EXPECT_GE(*next, *watermark);
+        watermark = next;
+    };
+    auto overlap = Window(100, 150);
+    overlap.id = "overlap";
+    ASSERT_TRUE(h->sut->publish(overlap).ok());
+    check();
+    ASSERT_TRUE(h->failNextPublish);
+    h->failNextPublish();
+    auto failed = h->sut->publish(Window(300, 400));
+    EXPECT_TRUE(!failed.ok() || failed->state == ManifestState::Failed);
+    check();
+    h->eraseFile(published->file);
+    check();
+    h->restart();
+    check();
+}
+
 TEST_P(TierStoreContract, EmptyWindowMaintainsContinuity)
 {
     auto a = h->sut->publish(Window(100, 200, true));

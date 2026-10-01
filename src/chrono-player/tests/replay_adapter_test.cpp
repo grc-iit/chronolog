@@ -325,7 +325,9 @@ TEST_F(replay_adapter, CachedChannelRecoversAfterKeeperRestart)
     EXPECT_EQ(after.events.size(), 6u);
     EXPECT_EQ(after.completions.size(), 1u);
     if(!after.completions.empty())
+    {
         EXPECT_TRUE(after.completions[0].complete());
+    }
     b_server_->Shutdown(std::chrono::system_clock::now() + 1s);
     b_server_.reset();
 }

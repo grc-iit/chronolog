@@ -36,6 +36,7 @@ public:
      * whole-service failure. Per-item: OK; INVALID_ARGUMENT for invalid identity/envelope/causal skew; FAILED_PRECONDITION for sequence gap (message includes expected next sequence);
      * FAILED_PRECONDITION for stale epoch, released incarnation or wrong assigned Keeper; UNIMPLEMENTED for unbuilt requested durability; UNAVAILABLE for built durability failing; NOT_FOUND
      * for unknown story/writer; RESOURCE_EXHAUSTED for admission capacity; UNAVAILABLE for WAL/provider failure;
+     * Any failed item achieves Durability::Unspecified, never a downgraded success level.
      * Validate external causal floors before infallible HLC assignment. Stale epoch NEVER becomes a gRPC error: adapter returns OK, item
      * FAILED_PRECONDITION/current_route, and optional batch current_route if all rejected for epoch. No
      * trailing metadata.

@@ -4,48 +4,48 @@ package chronolog.v1;
 // Per-item failures are payload statuses; gRPC errors concern the whole request.
 service Catalog
 {
-    // CreateChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // CreateChronicle: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc CreateChronicle(CreateChronicleRequest) returns (CreateChronicleResponse);
-    // GetChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // GetChronicle: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc GetChronicle(GetChronicleRequest) returns (GetChronicleResponse);
-    // ListChronicles: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // ListChronicles: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc ListChronicles(ListChroniclesRequest) returns (ListChroniclesResponse);
-    // DestroyChronicle: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // DestroyChronicle: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc DestroyChronicle(DestroyChronicleRequest) returns (DestroyChronicleResponse);
-    // CreateStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // CreateStory: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc CreateStory(CreateStoryRequest) returns (CreateStoryResponse);
-    // GetStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // GetStory: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc GetStory(GetStoryRequest) returns (GetStoryResponse);
-    // ListStories: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // ListStories: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc ListStories(ListStoriesRequest) returns (ListStoriesResponse);
-    // DestroyStory: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // DestroyStory: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc DestroyStory(DestroyStoryRequest) returns (DestroyStoryResponse);
-    // Acquire: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // Acquire: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc Acquire(AcquireRequest) returns (AcquireResponse);
     // Release commits a fence revision and waits a configured timeout for Keeper
     // confirmation. fenced=false explicitly reports committed but unconfirmed.
-    // Whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE for service
+    // Whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE for service
     // failure, UNIMPLEMENTED before port; domain release failures use ItemStatus.
     rpc Release(ReleaseRequest) returns (ReleaseResponse);
-    // CompareAndSetEpoch: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
+    // CompareAndSetEpoch: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc CompareAndSetEpoch(CompareAndSetEpochRequest) returns (CompareAndSetEpochResponse);
@@ -53,30 +53,34 @@ service Catalog
 service Journal
 {
     // Unary batch and bidi stream have identical per-item acceptance semantics.
+    // ItemStatus: unbuilt durability UNIMPLEMENTED, built but failing UNAVAILABLE;
+    // sequence gap FAILED_PRECONDITION with expected sequence; payload or trace INVALID_ARGUMENT;
+    // stale epoch or released incarnation FAILED_PRECONDITION. Failed items achieve UNSPECIFIED.
     // Append returns gRPC OK on epoch rejection; item FAILED_PRECONDITION and
     // current_route are payload fields. Whole-request INVALID_ARGUMENT for malformed
-    // batch, CLOCK_STATUS_UNAVAILABLE for service failure, UNIMPLEMENTED before port.
+    // batch, UNAVAILABLE for service failure, UNIMPLEMENTED before port.
     rpc Append(AppendRequest) returns (AppendResponse);
     // Responses echo batch_id; cancellation does not roll back accepted items.
     // AppendStream uses the same payload epoch failures; no stale-epoch gRPC error.
-    // INVALID_ARGUMENT for malformed stream requests, CLOCK_STATUS_UNAVAILABLE for service
+    // INVALID_ARGUMENT for malformed stream requests, UNAVAILABLE for service
     // failure, UNIMPLEMENTED before port; cancellation uses CANCELLED.
     rpc AppendStream(stream AppendStreamRequest) returns (stream AppendStreamResponse);
 }
 service Replay
 {
     // Half-open range; exactly one final Completion, then EOF on normal success.
-    // Read: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
-    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
-    // in ItemStatus where present; fatal stream failures terminate transport.
+    // Read: whole-request INVALID_ARGUMENT for malformed input or an unset range,
+    // UNAVAILABLE for service failure, UNIMPLEMENTED before port, FAILED_PRECONDITION
+    // for unknown or tombstoned stories. Failed Keepers or LOST archive windows yield
+    // complete=false with SOURCE_FAILED in Completion.
     rpc Read(ReadRequest) returns (stream ReadResponse);
     // Exclusive resume; final Completion on orderly termination is always false.
-    // Tail: whole-request INVALID_ARGUMENT for malformed input, CLOCK_STATUS_UNAVAILABLE
-    // for service failure, UNIMPLEMENTED before its port. Domain failures remain
-    // in ItemStatus where present; fatal stream failures terminate transport.
+    // Tail: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE for
+    // service failure, UNIMPLEMENTED before port, FAILED_PRECONDITION for unknown
+    // or tombstoned stories. LOST archive windows terminate with SOURCE_FAILED.
     rpc Tail(TailRequest) returns (stream TailResponse);
 }
-// Unspecified is a request default for DURABILITY_DURABLE, never an achieved success level.
+// UNSPECIFIED means DURABLE in a request and is never an achieved durability level.
 enum Durability
 {
     DURABILITY_UNSPECIFIED = 0;
