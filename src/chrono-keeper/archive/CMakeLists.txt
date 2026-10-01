@@ -6,6 +6,6 @@ target_link_libraries(chronolog_keeper_archive PUBLIC chronolog_keeper_lib chron
 include(GoogleTest)
 add_executable(chronolog_keeper_archive_tests ../tests/keeper_archive_test.cpp)
 target_include_directories(chronolog_keeper_archive_tests PRIVATE ../tests)
-target_link_libraries(chronolog_keeper_archive_tests PRIVATE chronolog_keeper_archive
+target_link_libraries(chronolog_keeper_archive_tests PRIVATE chronolog_keeper_archive chronolog_grapher_server
     GTest::gtest GTest::gtest_main chronolog_warnings Threads::Threads)
 gtest_discover_tests(chronolog_keeper_archive_tests DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)

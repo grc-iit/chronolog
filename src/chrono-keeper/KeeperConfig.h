@@ -52,6 +52,7 @@ struct KeeperConfig
     uint32_t story_chunk_duration_secs = 10;
     uint32_t seal_interval_ms = 1000;
     size_t chunk_max_bytes = 32u << 20;
+    uint32_t chunk_max_events = 65536;
     size_t frame_bytes = 1u << 20;
     uint32_t watermark_resend_timeout_secs = 300;
     uint32_t archive_visibility_delay_secs = 10;

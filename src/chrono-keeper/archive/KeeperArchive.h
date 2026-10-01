@@ -25,6 +25,7 @@ struct KeeperArchiveConfig
     uint32_t watermark_resend_timeout_secs{300};
     uint32_t archive_visibility_delay_secs{10};
     uint64_t retention_cap_mb{4096};
+    uint32_t chunk_max_events{65536};
 };
 
 class KeeperArchive

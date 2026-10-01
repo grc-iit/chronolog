@@ -187,7 +187,8 @@ int main(int argc, char** argv)
                                                config->frame_bytes,
                                                config->watermark_resend_timeout_secs,
                                                config->archive_visibility_delay_secs,
-                                               config->retention_cap_mb};
+                                               config->retention_cap_mb,
+                                               config->chunk_max_events};
     keeper::KeeperArchive archive(journal, *membership, config->process_id, archive_config);
     archive.start();
 

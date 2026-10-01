@@ -69,6 +69,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "story_chunk_duration_secs",
                                                 "seal_interval_ms",
                                                 "chunk_max_bytes",
+                                                "chunk_max_events",
                                                 "frame_bytes",
                                                 "watermark_resend_timeout_secs",
                                                 "archive_visibility_delay_secs",
@@ -118,6 +119,8 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.seal_interval_ms = json.at("seal_interval_ms").get<decltype(cfg.seal_interval_ms)>();
         if(json.contains("chunk_max_bytes"))
             cfg.chunk_max_bytes = json.at("chunk_max_bytes").get<decltype(cfg.chunk_max_bytes)>();
+        if(json.contains("chunk_max_events"))
+            cfg.chunk_max_events = json.at("chunk_max_events").get<uint32_t>();
         if(json.contains("frame_bytes"))
             cfg.frame_bytes = json.at("frame_bytes").get<decltype(cfg.frame_bytes)>();
         if(json.contains("watermark_resend_timeout_secs"))
@@ -241,6 +244,7 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
                             {"story_chunk_duration_secs", &cfg.story_chunk_duration_secs},
                             {"seal_interval_ms", &cfg.seal_interval_ms},
+                            {"chunk_max_events", &cfg.chunk_max_events},
                             {"watermark_resend_timeout_secs", &cfg.watermark_resend_timeout_secs},
                             {"archive_visibility_delay_secs", &cfg.archive_visibility_delay_secs}})
     {
@@ -281,7 +285,8 @@ absl::Status KeeperConfig::validate() const
         return absl::InvalidArgumentError(
                 "wal_dir, group_commit_max_bytes, reserve_ahead_ms and wal_max_bytes must be set");
     if(story_chunk_duration_secs == 0 || seal_interval_ms == 0 || chunk_max_bytes == 0 ||
-       chunk_max_bytes > (64u << 20) || frame_bytes == 0 || frame_bytes > (4u << 20))
+       chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
+       frame_bytes > (4u << 20))
         return absl::InvalidArgumentError("invalid archive chunk, frame or timer configuration");
     for(const auto& writer: static_writers)
         if(writer.story_id == 0 || writer.writer_id == 0 || writer.incarnation == 0)

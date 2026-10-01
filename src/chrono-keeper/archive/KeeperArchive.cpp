@@ -36,7 +36,8 @@ KeeperArchive::KeeperArchive(WalJournal& journal,
     , now_(std::move(now))
 {
     if(config_.story_chunk_duration_secs == 0 || config_.seal_interval_ms == 0 || config_.chunk_max_bytes == 0 ||
-       config_.chunk_max_bytes > (64u << 20) || config_.frame_bytes == 0 || config_.frame_bytes > (4u << 20))
+       config_.chunk_max_bytes > (64u << 20) || config_.chunk_max_events == 0 || config_.chunk_max_events > 65536 ||
+       config_.frame_bytes == 0 || config_.frame_bytes > (4u << 20))
         throw std::invalid_argument("invalid Keeper archive configuration");
     for(const auto& seal: journal_.sealedChunks())
     {
@@ -124,37 +125,39 @@ absl::Status KeeperArchive::seal()
         }
         if(start >= end)
             continue;
-        iv1::ChunkPayload payload;
+        size_t bytes = 0;
+        uint32_t events = 0;
         for(const auto& event: snapshot->events)
         {
             if(event.hlc < start || event.hlc >= end)
                 continue;
-            *payload.add_events() = convert::toProto(event);
-            if(payload.ByteSizeLong() > config_.chunk_max_bytes)
+            const size_t event_bytes = convert::toProto(event).ByteSizeLong();
+            size_t record_bytes = event_bytes + 2;
+            for(size_t value = event_bytes; value >= 128; value >>= 7) ++record_bytes;
+            if(events != 0 && (bytes + record_bytes > config_.chunk_max_bytes || events == config_.chunk_max_events))
             {
-                payload.mutable_events()->RemoveLast();
-                if(payload.events().empty())
-                    return absl::ResourceExhaustedError("one event exceeds chunk_max_bytes");
                 Chunk chunk;
                 chunk.story_id = story_id;
                 chunk.start = start;
                 chunk.end = event.hlc;
-                if(auto status = addChunk(std::move(chunk), payload.ByteSizeLong()); !status.ok())
+                if(auto status = addChunk(std::move(chunk), bytes); !status.ok())
                     return status;
                 start = event.hlc;
-                payload.Clear();
-                *payload.add_events() = convert::toProto(event);
-                if(payload.ByteSizeLong() > config_.chunk_max_bytes)
-                    return absl::ResourceExhaustedError("one event exceeds chunk_max_bytes");
+                bytes = 0;
+                events = 0;
             }
+            if(record_bytes > config_.chunk_max_bytes)
+                return absl::ResourceExhaustedError("one event exceeds chunk_max_bytes");
+            bytes += record_bytes;
+            ++events;
         }
-        if(!payload.events().empty())
+        if(events != 0)
         {
             Chunk chunk;
             chunk.story_id = story_id;
             chunk.start = start;
             chunk.end = end;
-            if(auto status = addChunk(std::move(chunk), payload.ByteSizeLong()); !status.ok())
+            if(auto status = addChunk(std::move(chunk), bytes); !status.ok())
                 return status;
         }
     }
@@ -379,41 +382,50 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     iv1::TransferChunkResponse response;
     auto stream = stub->TransferChunk(&context, &response);
+    auto finish = [&]
+    {
+        const auto status = stream->Finish();
+        if(status.error_code() == grpc::StatusCode::NOT_FOUND ||
+           response.status().code() == static_cast<int>(absl::StatusCode::kNotFound))
+        {
+            applyReport({chunk.story_id, {}, {}, 0, {}, true});
+            return true;
+        }
+        if(!status.ok())
+            return fail();
+        iv1::ChunkReceipt receipt;
+        *receipt.mutable_status() = response.status();
+        receipt.set_chunk_id(response.chunk_id());
+        receipt.set_bytes(response.bytes());
+        receipt.set_grapher_instance(response.grapher_instance());
+        receipt.set_receipt(response.receipt());
+        delivered(chunk.id, receipt, bytes.size());
+        return true;
+    };
     size_t offset = 0;
     do {
-        iv1::TransferChunkRequest request;
-        auto* frame = &request;
-        auto* identity = frame->mutable_identity();
+        iv1::TransferChunkRequest frame;
+        auto* identity = frame.mutable_identity();
         identity->set_chunk_id(chunk.id);
         identity->set_story_id(chunk.story_id);
         *identity->mutable_start() = convert::toProto(chunk.start);
         *identity->mutable_end() = convert::toProto(chunk.end);
-        frame->set_offset(offset);
-        frame->set_total_bytes(bytes.size());
-        frame->set_checksum(checksum);
-        frame->set_checksum_algorithm(iv1::CHECKSUM_ALGORITHM_CRC32C);
-        const auto size = std::min(config_.frame_bytes, bytes.size() - offset);
-        frame->set_data(bytes.data() + offset, size);
+        frame.set_offset(offset);
+        frame.set_total_bytes(bytes.size());
+        frame.set_checksum(checksum);
+        frame.set_checksum_algorithm(iv1::CHECKSUM_ALGORITHM_CRC32C);
+        const auto size = std::min({config_.frame_bytes, size_t{1u << 20}, bytes.size() - offset});
+        frame.set_data(bytes.data() + offset, size);
         offset += size;
-        frame->set_final(offset == bytes.size());
-        if(!stream->Write(request))
+        frame.set_final(offset == bytes.size());
+        if(!stream->Write(frame))
         {
             stream->WritesDone();
-            (void)stream->Finish();
-            return fail();
+            return finish();
         }
     } while(offset < bytes.size());
     stream->WritesDone();
-    if(!stream->Finish().ok())
-        return fail();
-    iv1::ChunkReceipt receipt;
-    *receipt.mutable_status() = response.status();
-    receipt.set_chunk_id(response.chunk_id());
-    receipt.set_bytes(response.bytes());
-    receipt.set_grapher_instance(response.grapher_instance());
-    receipt.set_receipt(response.receipt());
-    delivered(chunk.id, receipt, bytes.size());
-    return true;
+    return finish();
 }
 
 void KeeperArchive::refreshSubscriptions()
