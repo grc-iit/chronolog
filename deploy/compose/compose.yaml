@@ -1,0 +1,55 @@
+# Compose-spec file for podman compose and docker compose, rootless.
+# Run from the repository root:
+#   podman build -f deploy/containers/builder.Containerfile -t chronolog-builder:local .
+#   podman compose -f deploy/compose/compose.yaml up --build -d
+# Every service is the stub server until the real components are ported.
+
+x-chronolog-service: &chronolog-service
+  image: chronolog-runtime:local
+  build:
+    context: ../..
+    dockerfile: deploy/containers/runtime.Containerfile
+    args:
+      BUILDER_IMAGE: chronolog-builder:local
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: "no"
+  networks: [chronolog]
+
+services:
+  chrono-visor:
+    <<: *chronolog-service
+    environment:
+      CHRONOLOG_PORT: "50051"
+    ports: ["127.0.0.1:50051:50051"]
+    healthcheck: &healthcheck
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${CHRONOLOG_PORT}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chrono-keeper:
+    <<: *chronolog-service
+    environment:
+      CHRONOLOG_PORT: "50052"
+    ports: ["127.0.0.1:50052:50052"]
+    healthcheck: *healthcheck
+
+  chrono-grapher:
+    <<: *chronolog-service
+    environment:
+      CHRONOLOG_PORT: "50053"
+    ports: ["127.0.0.1:50053:50053"]
+    healthcheck: *healthcheck
+
+  chrono-player:
+    <<: *chronolog-service
+    environment:
+      CHRONOLOG_PORT: "50054"
+    ports: ["127.0.0.1:50054:50054"]
+    healthcheck: *healthcheck
+
+networks:
+  chronolog:
+    driver: bridge
