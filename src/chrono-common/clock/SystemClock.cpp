@@ -51,13 +51,13 @@ absl::StatusOr<TimeReading> SystemClock::now() const { return sample(); }
 Hlc SystemClock::tick()
 {
     auto reading = sample();
-    return hlc_.tick(reading.status == ClockStatus::Unavailable ? 0 : reading.physical_ns);
+    return hlc_.tick(reading.physical_ns);
 }
 
 Hlc SystemClock::observe(Hlc remote)
 {
     auto reading = sample();
-    return hlc_.observe(reading.status == ClockStatus::Unavailable ? 0 : reading.physical_ns, remote);
+    return hlc_.observe(reading.physical_ns, remote);
 }
 
 absl::StatusOr<std::optional<uint64_t>> SystemClock::uncertainty() const { return sample().uncertainty_ns; }

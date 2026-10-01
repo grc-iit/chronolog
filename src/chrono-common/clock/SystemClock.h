@@ -36,15 +36,13 @@ public:
     absl::StatusOr<CheckedAssignment> assignChecked(Hlc floor, PhysicalInterval interval) override
     {
         auto reading = sample();
-        return hlc_.assignChecked(reading.status == ClockStatus::Unavailable ? INT64_MIN : reading.physical_ns,
-                                  floor,
-                                  interval);
+        return hlc_.assignChecked(reading.physical_ns, floor, interval);
     }
     void observeFloor(Hlc floor) override { hlc_.observeFloor(floor); }
     int64_t acceptanceClock() override
     {
         auto reading = sample();
-        return hlc_.acceptanceClock(reading.status == ClockStatus::Unavailable ? INT64_MIN : reading.physical_ns);
+        return hlc_.acceptanceClock(reading.physical_ns);
     }
     void raiseAcceptanceClock(int64_t floor) override { hlc_.raiseAcceptanceClock(floor); }
 
