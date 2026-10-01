@@ -193,6 +193,8 @@ message Story
     uint64 epoch = 4;
     // tombstoned; interpreted according to the message invariants above.
     bool tombstoned = 5;
+    // Current Route snapshot; route.epoch equals epoch; absent when tombstoned (W10.16).
+    Route route = 6;
 }
 message CreateChronicleRequest
 {
