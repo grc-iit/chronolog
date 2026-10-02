@@ -32,6 +32,8 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/chronologConfigVer
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chronologConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/chronologConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog COMPONENT client)
 install(EXPORT chronologClientTargets NAMESPACE chronolog:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog COMPONENT client)
+configure_file(cmake/chronolog.pc.in "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig COMPONENT client)
 
 include(GoogleTest)
 add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp tests/physical_read_test.cpp

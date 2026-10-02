@@ -173,6 +173,52 @@ TEST(Pubsub, LatestFrontierCheckpointResumesBeforeAnyDelivery)
     (*resumed)->stop();
     EXPECT_EQ(*received, next->event_id);
 }
+TEST(Pubsub, TopicsAreIsolatedAndStopEndsDelivery)
+{
+    auto c = connect();
+    pubsub::Bus bus(c, "pubsub-topics");
+    ASSERT_TRUE(bus.publish("alpha", "a1").ok());
+    ASSERT_TRUE(bus.publish("beta", "b1").ok());
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<pubsub::Message> alpha, beta;
+    auto collect = [&](std::vector<pubsub::Message>& into)
+    {
+        return [&](const pubsub::Message& message)
+        {
+            std::lock_guard lock(mutex);
+            into.push_back(message);
+            changed.notify_all();
+            return absl::OkStatus();
+        };
+    };
+    pubsub::SubscribeOptions options{.start = pubsub::Start::Earliest,
+                                     .deadline = std::chrono::system_clock::now() + 10s};
+    auto first = bus.subscribe("alpha", collect(alpha), options);
+    auto second = bus.subscribe("beta", collect(beta), options);
+    ASSERT_TRUE(first.ok()) << first.status();
+    ASSERT_TRUE(second.ok()) << second.status();
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return alpha.size() == 1 && beta.size() == 1; }));
+    }
+    EXPECT_EQ(alpha[0].topic, "alpha");
+    EXPECT_EQ(alpha[0].event.envelope.payload, "a1");
+    EXPECT_EQ(beta[0].topic, "beta");
+    EXPECT_EQ(beta[0].event.envelope.payload, "b1");
+    (*second)->stop();
+    (*second)->stop();
+    ASSERT_TRUE(bus.publish("beta", "b2").ok());
+    ASSERT_TRUE(bus.publish("alpha", "a2").ok());
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return alpha.size() == 2; }));
+    }
+    (*first)->stop();
+    std::lock_guard lock(mutex);
+    EXPECT_EQ(alpha[1].event.envelope.payload, "a2");
+    EXPECT_EQ(beta.size(), 1u);
+}
 TEST(Pubsub, ValidationDeadlineAndCallbackStop)
 {
     auto c = connect();

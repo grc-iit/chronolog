@@ -1,5 +1,6 @@
 #include "chronolog/client/client.h"
 #include <iostream>
+#include <set>
 #include <thread>
 
 namespace sdk = chronolog::client;
@@ -83,6 +84,7 @@ int main(int argc, char** argv)
     for(size_t i = 0; i < events.size(); ++i)
     {
         REQUIRE(events[i].id == (*appended)[i]->event_id);
+        REQUIRE(events[i].id.story_id == story->id);
         REQUIRE(events[i].hlc == (*appended)[i]->hlc);
         REQUIRE(events[i].envelope.payload == specs[i].envelope.payload);
         REQUIRE(events[i].envelope.attributes == specs[i].envelope.attributes);
@@ -112,6 +114,40 @@ int main(int argc, char** argv)
     afterRejection.envelope.payload = "after-rejection";
     auto resumed = writer->append(afterRejection);
     REQUIRE(resumed.ok() && resumed->event_id.sequence == 1002);
+
+    constexpr int threads = 4, perThread = 25;
+    std::vector<std::thread> pool;
+    std::vector<int> failed(threads, 0);
+    std::vector<uint64_t> writerIds(threads, 0);
+    for(int t = 0; t < threads; ++t)
+        pool.emplace_back(
+                [&, t]
+                {
+                    auto concurrent = client->acquire(story->id, "thread-" + std::to_string(t));
+                    if(!concurrent.ok())
+                    {
+                        failed[t] = 1;
+                        return;
+                    }
+                    writerIds[t] = concurrent->acquisition().writer_id;
+                    for(int i = 1; i <= perThread; ++i)
+                    {
+                        sdk::AppendSpec spec;
+                        spec.envelope.payload = "t" + std::to_string(t) + "-" + std::to_string(i);
+                        auto result = concurrent->append(spec);
+                        if(!result.ok() || !result->acked() || result->event_id.sequence != static_cast<uint64_t>(i) ||
+                           result->event_id.writer_id != writerIds[t])
+                        {
+                            failed[t] = 1;
+                            break;
+                        }
+                    }
+                    if(!concurrent->release().ok())
+                        failed[t] = 1;
+                });
+    for(auto& worker: pool) worker.join();
+    for(int flag: failed) REQUIRE(flag == 0);
+    REQUIRE(std::set<uint64_t>(writerIds.begin(), writerIds.end()).size() == static_cast<size_t>(threads));
 
     auto released = writer->release();
     REQUIRE(released.ok() && *released);
