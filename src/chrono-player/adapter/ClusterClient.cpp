@@ -1,3 +1,4 @@
+#include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include <algorithm>
 #include "chrono-player/adapter/Convert.h"
@@ -32,8 +33,7 @@ absl::Status ClusterClient::refresh() const
     process->set_role(internal::v1::PROCESS_ROLE_PLAYER);
 
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + deadline_);
-    context.set_wait_for_ready(true);
+    rpc::withDeadline(context, std::chrono::system_clock::now() + deadline_);
     internal::v1::RegisterResponse response;
     grpc::Status rpc = stub_->Register(&context, request, &response);
     if(!rpc.ok())

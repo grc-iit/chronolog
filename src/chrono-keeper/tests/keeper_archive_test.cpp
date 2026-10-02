@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <thread>
 
+#include "rpc/Channel.h"
 #include "adapter/ArchiveService.h"
 #include "archive/KeeperArchive.h"
 #include "chrono-grapher/server/ArchiveService.h"
@@ -349,6 +350,7 @@ TEST(KeeperChunks, FetchHotReportsEvictedBelow)
     keeper::WorkerPool pool(1, 8);
     keeper::ArchiveService service(*rig.wal.current, rig.membership, pool);
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -454,6 +456,7 @@ TEST(KeeperTransfer, RealGrapherPersistsSplitChunksAndConfirmsTheirReceipts)
     ASSERT_TRUE(store.ok());
     grapher::ArchiveService service(**store, "grapher-instance");
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -500,6 +503,7 @@ TEST(KeeperTransfer, RealGrapherNotFoundDropsEveryRetainedChunk)
     grapher::ArchiveService service(**store, "grapher-instance");
     service.dropStory(1);
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -525,6 +529,7 @@ TEST(KeeperTransfer, WatermarkWatcherResubscribesWhenRetainedStorySetGrows)
 {
     SubscriptionService service;
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -621,6 +626,7 @@ TEST(KeeperRetention, ShutdownWaitEndsWhenTheGrapherConfirmsEveryChunk)
     ASSERT_TRUE(store.ok());
     grapher::ArchiveService service(**store, "shutdown-grapher");
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -652,6 +658,7 @@ TEST(KeeperRetention, ShutdownWaitSendsAgainAChunkTheGrapherNeverWrote)
     ASSERT_TRUE(store.ok());
     grapher::ArchiveService service(**store, "restarted-grapher");
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
@@ -746,6 +753,7 @@ TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
         }
     } receiver;
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&receiver);

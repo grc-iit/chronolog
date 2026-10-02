@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -64,6 +65,10 @@ struct KeeperConfig
     // Zero selects std::thread::hardware_concurrency().
     uint32_t worker_threads = 0;
     uint32_t heartbeat_interval_ms = 5000;
+    // Must equal the Visor's keeper_failure_timeout_ms and release_fence_timeout_ms: the deadline of every
+    // call that feeds those timers is derived from them (M11.3).
+    uint32_t keeper_failure_timeout_ms = 15000;
+    uint32_t release_fence_timeout_ms = 2000;
     uint32_t append_ceiling_wait_ms = 1000;
     // Allows internal_listen on a wildcard address. Refused otherwise (S14.3).
     bool insecure_bind_all = false;
@@ -80,6 +85,9 @@ struct KeeperConfig
 
     absl::Status validate() const;
     uint32_t effectiveWorkerThreads() const;
+    // Register and Heartbeat must answer before the next heartbeat can be missed and before a release fence
+    // times out.
+    std::chrono::milliseconds heartbeatDeadline() const;
 };
 
 } // namespace chronolog::keeper

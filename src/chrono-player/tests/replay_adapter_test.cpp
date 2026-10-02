@@ -7,6 +7,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include "rpc/Channel.h"
 #include "chrono-player/adapter/ReplayService.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
@@ -198,6 +199,7 @@ protected:
         service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options),
                                                    std::make_shared<FakeCatalog>());
         grpc::ServerBuilder builder;
+        chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
         builder.RegisterService(service_.get());
@@ -219,6 +221,7 @@ protected:
     std::unique_ptr<grpc::Server> serve(FakeArchive& archive, std::string& address)
     {
         grpc::ServerBuilder builder;
+        chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
         builder.RegisterService(&archive);
@@ -324,6 +327,7 @@ TEST_F(replay_adapter, CachedChannelRecoversAfterKeeperRestart)
     FakeArchive restarted;
     for(auto time: {120, 140, 160}) restarted.add(protoEvent(4, (time - 100) / 20, time));
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     builder.AddListeningPort(b_addr_, grpc::InsecureServerCredentials());
     builder.RegisterService(&restarted);
     b_server_ = builder.BuildAndStart();

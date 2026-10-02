@@ -58,6 +58,8 @@ public:
                                                  v1::CompareAndSetEpochResponse* response) override;
 
 private:
+    template <class Call>
+    grpc::Status forward(grpc::CallbackServerContext* context, Call call) const;
     template <class Fn>
     grpc::ServerUnaryReactor* dispatch(grpc::CallbackServerContext* context, Fn fn);
 

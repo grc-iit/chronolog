@@ -5,6 +5,7 @@
 #include <absl/crc/crc32c.h>
 #include <absl/log/log.h>
 #include "adapter/Convert.h"
+#include "rpc/Channel.h"
 
 namespace chronolog::keeper
 {
@@ -27,21 +28,7 @@ WatermarkReport report(const T& proto)
 
 std::shared_ptr<grpc::Channel> KeeperArchive::archiveChannel(const std::string& endpoint)
 {
-    std::lock_guard lock(mu_);
-    auto& channel = channels_[endpoint];
-    if(channel)
-        return channel;
-    grpc::ChannelArguments args;
-    args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
-    args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
-    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
-    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
-    args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
-    args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
-    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 5000);
-    args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
-    channel = grpc::CreateCustomChannel(endpoint, grpc::InsecureChannelCredentials(), args);
-    return channel;
+    return rpc::peerChannel(endpoint);
 }
 
 KeeperArchive::KeeperArchive(WalJournal& journal,
@@ -427,8 +414,7 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     auto channel = archiveChannel(route->grapher);
     auto stub = iv1::Archive::NewStub(channel);
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-    context.set_wait_for_ready(true);
+    rpc::withTimeout(context, std::chrono::seconds(5));
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     iv1::TransferChunkResponse response;
     LOG(INFO) << "archive_transfer_start chunk=" << chunk.id << " grapher=" << route->grapher;
@@ -529,7 +515,7 @@ bool KeeperArchive::watch(const std::string& endpoint, Subscription& subscriptio
 {
     auto stub = iv1::Archive::NewStub(archiveChannel(endpoint));
     auto context = std::make_shared<grpc::ClientContext>();
-    context->set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
+    rpc::withTimeout(*context, std::chrono::seconds(30));
     iv1::WatchWatermarksRequest request;
     request.set_keeper_id(process_id_);
     {
