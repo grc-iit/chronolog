@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs a ChronoLog benchmark suite and writes JSON lines outside git.
 #   run.sh micro|append|replay|tail|archive|all [--quick] [--perf] [--binaries DIR] [--out DIR]
+#   run.sh custom [--keeper-extra '"key":value,...'] [--perf] -- SCENARIO --key value ...
+# custom starts one stack, runs one load scenario (optionally under perf) and is how a fix is compared before and after.
 # On dragon run it through rbuild so the build lock is held and nothing else shares the machine:
 #   BENCH=...; rbuild "BENCH_COMMIT=$(git rev-parse --short HEAD) bash tools/bench/run.sh all --perf"
 # Results land in ~/chronolog-sprint/bench/<commit>/ unless --out is given. --quick uses reduced parameters
@@ -9,9 +11,11 @@ set -uo pipefail
 
 suite=${1:-all}
 shift || true
-quick=0 perf=0 binaries="" out=""
+quick=0 perf=0 binaries="" out="" keeper_extra="" custom_args=()
 while [ $# -gt 0 ]; do
     case "$1" in
+        --keeper-extra) keeper_extra=$2; shift ;;
+        --) shift; custom_args=("$@"); break ;;
         --quick) quick=1 ;;
         --perf) perf=1 ;;
         --binaries) binaries=$2; shift ;;
@@ -75,7 +79,7 @@ start_stack() {
 {"listen":"127.0.0.1:$port","internal_listen":"127.0.0.1:$((port+1))","db_path":"$scratch/catalog.sqlite","keepers":[{"process_id":"keeper-1","endpoint":"127.0.0.1:$((port+2))"}],"grapher":"127.0.0.1:$gport","player":"127.0.0.1:$((port+4))"}
 JSON
         cat > "$scratch/keeper.json" <<JSON
-{"listen":"127.0.0.1:$((port+2))","internal_listen":"127.0.0.1:$((port+3))","self_endpoint":"127.0.0.1:$((port+2))","visor_internal":"127.0.0.1:$((port+1))","wal_dir":"$scratch/wal","worker_threads":4,"heartbeat_interval_ms":100,"story_chunk_duration_secs":1,"seal_interval_ms":200,"archive_visibility_delay_secs":1,"shutdown_confirm_timeout_secs":1,"retention_cap_mb":$cap,"wal_max_bytes":8589934592}
+{"listen":"127.0.0.1:$((port+2))","internal_listen":"127.0.0.1:$((port+3))","self_endpoint":"127.0.0.1:$((port+2))","visor_internal":"127.0.0.1:$((port+1))","wal_dir":"$scratch/wal","worker_threads":4,"heartbeat_interval_ms":100,"story_chunk_duration_secs":1,"seal_interval_ms":200,"archive_visibility_delay_secs":1,"shutdown_confirm_timeout_secs":1,"retention_cap_mb":$cap,"wal_max_bytes":8589934592${keeper_extra:+,$keeper_extra}}
 JSON
         cat > "$scratch/grapher.json" <<JSON
 {"process_id":"grapher-1","internal_listen":"127.0.0.1:$gport","self_endpoint":"127.0.0.1:$gport","visor_internal":"127.0.0.1:$((port+1))","archive_root":"$scratch/archive","heartbeat_interval_ms":200}
@@ -201,8 +205,19 @@ suite_archive() {
     finish archive
 }
 
+suite_custom() {
+    current=custom
+    start_stack 4096 200 || return 1
+    start_perf custom
+    run_load "${custom_args[@]}" || return 1
+    stop_perf custom
+    stop_stack
+    finish custom
+}
+
 rc=0
 case "$suite" in
+    custom) suite_custom || rc=1 ;;
     micro|append|replay|tail|archive) "suite_$suite" || rc=1 ;;
     all) for s in micro append replay tail archive; do "suite_$s" || { echo "run.sh: suite $s failed"; rc=1; }; done ;;
     *) echo "usage: run.sh micro|append|replay|tail|archive|all [--quick] [--perf] [--binaries DIR] [--out DIR]"; exit 2 ;;
