@@ -10,6 +10,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(CHRONOLOG_WERROR "Treat warnings in ChronoLog targets as errors" ON)
 option(CHRONOLOG_BUILD_VISOR "Build the ChronoVisor catalog service" ON)
+set(CHRONOLOG_LINK_JOBS 4 CACHE STRING "Concurrent link steps under Ninja; each debug link of a gRPC binary peaks near 3 GB")
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS chronolog_link=${CHRONOLOG_LINK_JOBS})
+set(CMAKE_JOB_POOL_LINK chronolog_link)
 set(CHRONOLOG_SANITIZERS "" CACHE STRING
     "Semicolon separated sanitizer list applied to every target, for example address;undefined or thread")
 
