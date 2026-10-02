@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
+#include <atomic>
 #include <filesystem>
 #include <future>
 #include <limits>

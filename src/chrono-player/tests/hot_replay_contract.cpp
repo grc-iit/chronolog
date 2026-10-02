@@ -51,8 +51,8 @@ public:
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override
     {
         std::lock_guard lk(mu_);
-        // A Tail asks for an open-ended range; its Keepers refuse a destroyed story, a Read fails at admission.
-        if(tombstoned_ && range.end != player::maxHlc())
+        // A Read of a destroyed story fails at admission; a Tail's Keepers refuse it instead (fetchTail).
+        if(tombstoned_)
             return absl::FailedPreconditionError("story is tombstoned");
         if(story != 1)
             return absl::NotFoundError("unknown story");
@@ -218,7 +218,8 @@ private:
             const auto& id = k.frontier.process_id;
             Hlc start = from;
             if(starts)
-                if(auto it = starts->find({id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
+                if(auto it = starts->find(
+                           player::SourceId{id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
                    it != starts->end())
                     start = std::max(from, it->second);
             source_start_[id] = start;

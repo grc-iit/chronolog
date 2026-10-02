@@ -602,9 +602,12 @@ TEST_F(replay_adapter, TailResumesExclusivelyAndFollowsNewEvents)
     };
     pump(3);
     EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160}));
-    a_.add(protoEvent(2, 4, 170));
+    // A Keeper never shows an event below the seal it reported, so the new event lies above it and the seals move on.
+    a_.add(protoEvent(2, 4, 210));
+    a_.seal(300);
+    b_.seal(300);
     pump(4);
-    EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160, 170}));
+    EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160, 210}));
     ctx->TryCancel();
     while(reader->Read(&response)) {}
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);

@@ -563,16 +563,16 @@ TEST_P(ReplayContract, TailDoesNotMovePastASilentKeeper)
     TailPull pull(**tail);
     h->awaitPolls(2);
     EXPECT_EQ(pull.delivered(), 1u);
-    // keeper-b falls silent while keeper-a keeps appending: the poll is dropped whole.
+    // keeper-b falls silent while keeper-a keeps appending above the seal it reported: the poll moves nothing.
     h->setKeeperFrontiers({{"keeper-b", 7, {120, 0}, false}});
-    a.push_back(TailEvent(2, 4, 150));
-    h->setKeeper("keeper-a", {a, {500, 0}});
+    a.push_back(TailEvent(2, 4, 520));
+    h->setKeeper("keeper-a", {a, {600, 0}});
     h->awaitPolls(3);
     EXPECT_EQ(pull.delivered(), 1u);
     // It returns holding an event below the ones keeper-a showed meanwhile.
-    h->setKeeper("keeper-b", {{TailEvent(4, 1, 125)}, {500, 0}});
-    h->setKeeperFrontiers({{"keeper-b", 7, {500, 0}, true}});
-    EXPECT_EQ(HlcsOf(pull.get(5)), (std::vector<int64_t>{110, 125, 130, 140, 150}));
+    h->setKeeper("keeper-b", {{TailEvent(4, 1, 125)}, {700, 0}});
+    h->setKeeperFrontiers({{"keeper-b", 7, {700, 0}, true}});
+    EXPECT_EQ(HlcsOf(pull.get(5)), (std::vector<int64_t>{110, 125, 130, 140, 520}));
     h->awaitPolls(3);
     EXPECT_EQ(pull.delivered(), 5u);
 }
