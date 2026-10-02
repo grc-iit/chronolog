@@ -2,7 +2,10 @@
 
 #include "chronolog/types.h"
 #include <filesystem>
+#include <sys/types.h>
+#include <map>
 #include <mutex>
+#include <set>
 
 namespace chronolog
 {
@@ -10,6 +13,11 @@ struct ManifestIndex
 {
     std::vector<ManifestRecord> records;
     std::map<StoryId, Hlc> watermarks;
+    // Positions in records per story, so a story's view is rebuilt only when it changed and never by scanning the
+    // whole manifest. generation changes whenever the index is rebuilt from scratch.
+    std::map<StoryId, std::vector<size_t>> by_story;
+    std::set<StoryId> without_physical_policy;
+    uint64_t generation{};
 };
 
 class ManifestLog
@@ -21,6 +29,10 @@ public:
     absl::Status append(ManifestRecord record);
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     absl::StatusOr<ManifestIndex> load() const;
+    // Reads only what every writer appended since the previous call and returns the cached index. The pointer stays
+    // valid until the next sync, compact or load, and the caller serialises calls.
+    absl::StatusOr<const ManifestIndex*> sync() const;
+    const ManifestIndex* current() const { return &cache_; }
     absl::Status compact();
     std::filesystem::path logPath() const;
     std::filesystem::path snapshotPath() const;
@@ -28,9 +40,27 @@ public:
 private:
     ManifestLog(std::filesystem::path directory, std::string writer, int fd);
     absl::Status appendLine(std::string line);
+    struct Cursor
+    {
+        dev_t device{};
+        ino_t inode{};
+        off_t offset{};
+        bool present{};
+    };
+    struct WriterCursors
+    {
+        Cursor log, snapshot;
+    };
+    absl::Status rebuild() const;
+    absl::Status advance(bool& changed) const;
+    absl::Status applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const;
     std::filesystem::path directory_;
     std::string writer_;
     int fd_;
     mutable std::mutex mutex_;
+    mutable ManifestIndex cache_;
+    mutable std::map<std::string, WriterCursors> cursors_;
+    mutable bool synced_{};
+    mutable uint64_t generations_{};
 };
 } // namespace chronolog

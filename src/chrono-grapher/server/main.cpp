@@ -16,6 +16,7 @@
 
 int main(int argc, char** argv)
 {
+    const auto process_start = std::chrono::steady_clock::now();
     absl::InitializeLog();
     std::optional<std::string> path;
     bool allow_bind_all = false;
@@ -104,7 +105,14 @@ int main(int argc, char** argv)
                         const auto status = stub->Register(&context, request, &response);
                         registered = status.ok() && response.status().code() == 0;
                         if(registered)
+                        {
+                            LOG(INFO) << "grapher registered "
+                                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                 std::chrono::steady_clock::now() - process_start)
+                                                 .count()
+                                      << " ms after start";
                             std::cout << "grapher registered instance=" << instance << std::endl;
+                        }
                         if(!registered && !stop.stop_requested())
                             LOG(WARNING) << "grapher registration failed";
                     }
