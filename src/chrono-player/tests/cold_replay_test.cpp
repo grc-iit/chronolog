@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <future>
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
@@ -77,6 +78,14 @@ protected:
                 completion = (**batch).completion;
         }
         FAIL() << "read did not terminate";
+    }
+    // A Tail that never ends is cancelled after a few seconds so the missing end fails the test instead of hanging it.
+    static absl::StatusOr<std::optional<ReplayBatch>> nextWithin(ReplayStream& stream)
+    {
+        auto pulled = std::async(std::launch::async, [&] { return stream.next(); });
+        if(pulled.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+            stream.cancel();
+        return pulled.get();
     }
     std::filesystem::path root;
     std::unique_ptr<FileTierStore> writer;
@@ -424,6 +433,93 @@ TEST_F(ColdReplay, TailCatchesUpFromArchiveExclusivelyAfterPosition)
     ASSERT_TRUE(*final);
     ASSERT_TRUE((**final).completion);
     EXPECT_FALSE((**final).completion->complete);
+}
+
+// The Catalog decides: a recorded tombstone is evidence that ends the Tail FAILED_PRECONDITION once confirmed, and
+// ends it SOURCE_FAILED while the Catalog does not confirm (PI 14:50, I6.7, I13.11).
+TEST_F(ColdReplay, ATailOverATombstonedStoryEndsFailedPreconditionWhenTheCatalogConfirms)
+{
+    publish(140);
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(archive->refreshNow().ok());
+    options.story_live = [](StoryId) { return absl::FailedPreconditionError("story is tombstoned"); };
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto next = nextWithin(**stream);
+    ASSERT_FALSE(next.ok());
+    EXPECT_EQ(next.status().code(), absl::StatusCode::kFailedPrecondition);
+}
+
+TEST_F(ColdReplay, ATailOverATombstonedStoryEndsSourceFailedWhileTheCatalogDoesNotConfirm)
+{
+    publish(140);
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(archive->refreshNow().ok());
+    options.story_live = [](StoryId) { return absl::OkStatus(); };
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    ASSERT_TRUE((**final).completion);
+    EXPECT_EQ((**final).completion->reason, IncompleteReason::SourceFailed);
+}
+
+TEST_F(ColdReplay, ATailWhoseKeeperIsDownStillEndsWhenTheCatalogConfirmsARecordedTombstone)
+{
+    publish(140);
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(archive->refreshNow().ok());
+    source->response.keepers[1].frontier.answered = false;
+    options.story_live = [](StoryId) { return absl::FailedPreconditionError("story is tombstoned"); };
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto next = nextWithin(**stream);
+    ASSERT_FALSE(next.ok());
+    EXPECT_EQ(next.status().code(), absl::StatusCode::kFailedPrecondition);
+}
+
+// Archived events wait for the lowest seal exactly as hot events do: an event a second Keeper has not caught up to
+// could still arrive below them.
+TEST_F(ColdReplay, TailWithholdsAnArchivedEventAtOrAboveTheLowestSeal)
+{
+    publish(140, 100, 400);
+    publish(450, 400, 500);
+    source->response.keepers[0].frontier.evicted_below = {500, 0};
+    source->response.keepers[0].frontier.sealed = {600, 0};
+    source->response.keepers[1].frontier.sealed = {300, 0};
+    source->response.closed = true;
+    auto run = [&](std::vector<Event>& events, std::optional<Completion>& completion)
+    {
+        HotReplay replay(source, options);
+        auto stream = replay.tail(1, event(120));
+        ASSERT_TRUE(stream.ok());
+        for(int i = 0; i < 10; ++i)
+        {
+            auto batch = (*stream)->next();
+            ASSERT_TRUE(batch.ok());
+            if(!*batch)
+                return;
+            events.insert(events.end(), (**batch).events.begin(), (**batch).events.end());
+            if((**batch).completion)
+                completion = (**batch).completion;
+        }
+    };
+    std::vector<Event> events;
+    std::optional<Completion> completion;
+    run(events, completion);
+    ASSERT_EQ(events.size(), 1);
+    EXPECT_EQ(events[0].hlc, (Hlc{140, 1}));
+    ASSERT_TRUE(completion);
+    EXPECT_EQ(completion->frontier, (Hlc{300, 0}));
+    source->response.keepers[1].frontier.sealed = {600, 0};
+    events.clear();
+    run(events, completion);
+    ASSERT_EQ(events.size(), 2);
+    EXPECT_EQ(events[1].hlc, (Hlc{450, 1}));
 }
 
 TEST_F(ColdReplay, LimitCutsAtRecordStartAndContinuationHasNoGapOrDuplicate)

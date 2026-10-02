@@ -129,6 +129,7 @@ int main(int argc, char** argv)
     replay_options.read_max_events = cfg.read_max_events;
     replay_options.batch_size = cfg.batch_size;
     replay_options.tail_poll = std::chrono::milliseconds(cfg.tail_poll_ms);
+    replay_options.story_live = [catalog](StoryId story) { return catalog->ensureLive(story); };
     if(!cfg.archive_root.empty())
     {
         auto archive = FileTierStore::OpenReadOnly(cfg.archive_root, std::chrono::milliseconds(cfg.manifest_poll_ms));

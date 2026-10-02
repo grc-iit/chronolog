@@ -272,8 +272,6 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options.batch_size));
 }
 
-Hlc maxHlc() { return {std::numeric_limits<int64_t>::max(), std::numeric_limits<uint32_t>::max()}; }
-
 class TailStream final: public ReplayStream
 {
 public:

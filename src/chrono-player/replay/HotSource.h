@@ -1,5 +1,7 @@
 #pragma once
 
+#include <limits>
+#include <map>
 #include <string>
 #include <vector>
 #include "chronolog/types.h"
@@ -21,6 +23,10 @@ struct KeeperFrontier
     Hlc own_cut{};
     std::optional<Hlc> truncated_at{};
     std::optional<int64_t> physical_frontier{};
+    // The Keeper's instance as its trailer reported it, empty when it did not answer.
+    std::string instance{};
+    // The FetchHot status; a FAILED_PRECONDITION names a destroyed story or a Route or instance change.
+    absl::StatusCode status{absl::StatusCode::kOk};
 };
 
 struct KeeperFetch
@@ -50,6 +56,18 @@ struct HotFetch
     bool physical_policy{};
 };
 
+inline Hlc maxHlc() { return {std::numeric_limits<int64_t>::max(), std::numeric_limits<uint32_t>::max()}; }
+
+// One source of a Tail round: a Route Keeper, or a predecessor by the epoch it owned.
+struct SourceId
+{
+    std::string process_id;
+    Epoch predecessor_epoch{};
+    auto operator<=>(const SourceId&) const = default;
+};
+// Where each source's next reply must start; a source not listed starts at the Tail's frontier.
+using TailStarts = std::map<SourceId, Hlc>;
+
 class HotSource
 {
 public:
@@ -60,6 +78,12 @@ public:
     virtual absl::StatusOr<HotFetch> fetchPhysical(StoryId story, const Range& range, bool) const
     {
         return fetch(story, range);
+    }
+    // A Tail round (I6.13): every source answers from its own lower bound in `starts`, which is never below `from`,
+    // with a budget of its own. The default asks every source from `from`, which the Tail tolerates.
+    virtual absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const TailStarts&) const
+    {
+        return fetch(story, Range{Range::Axis::Hlc, from, maxHlc()});
     }
 };
 

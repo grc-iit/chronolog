@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include "chrono-player/replay/HotSource.h"
 #include "chrono-grapher/tier/FileTierStore.h"
@@ -15,6 +16,9 @@ struct HotReplayOptions
     size_t read_max_events{262144};
     std::chrono::milliseconds tail_poll{200};
     std::shared_ptr<const FileTierStore> archive;
+    // The Catalog's answer for a story. A Tail asks it when a Keeper refused with FAILED_PRECONDITION or the archive
+    // records a tombstone, and ends FAILED_PRECONDITION when the answer is FAILED_PRECONDITION. Empty means never.
+    std::function<absl::Status(StoryId)> story_live;
 };
 
 class HotReplay final: public Replay

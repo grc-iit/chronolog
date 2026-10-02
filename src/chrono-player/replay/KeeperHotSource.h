@@ -38,16 +38,18 @@ public:
 
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
     absl::StatusOr<HotFetch> fetchPhysical(StoryId story, const Range& range, bool policy) const override;
+    absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const TailStarts& starts) const override;
 
 private:
-    absl::StatusOr<HotFetch> fetchImpl(StoryId story, const Range& range, bool policy) const;
+    absl::StatusOr<HotFetch> fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts) const;
     KeeperFetch fetchOne(const KeeperRef& keeper,
                          StoryId story,
                          const Range& range,
                          Epoch expected_epoch,
                          const Predecessor* predecessor,
                          std::atomic<size_t>& retained,
-                         bool policy) const;
+                         bool policy,
+                         bool tail) const;
     std::shared_ptr<internal::v1::Archive::Stub> stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;

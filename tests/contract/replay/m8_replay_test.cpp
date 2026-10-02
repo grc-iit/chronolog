@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
 #include <filesystem>
+#include <future>
 #include <limits>
 #include <mutex>
 #include <unistd.h>
@@ -10,6 +11,8 @@
 #include "adapter/ArchiveService.h"
 #include "membership/ConfigMembership.h"
 #include "clock/FakeClock.h"
+#include "runtime/WorkerPool.h"
+#include "tests/ram_harness.h"
 
 namespace chronolog::player
 {
@@ -440,6 +443,121 @@ TEST_F(ReplayContract, TruncatedEmptyPredecessorHasNoCompletePrefix)
     EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
     EXPECT_EQ(completion.frontier, (Hlc{100, 0}));
     EXPECT_TRUE(returned.empty());
+}
+// A real Keeper behind its own server, so the Tail rule meets the seal the Keeper really computes. The seal ticks F,
+// scans writer 2 (still empty), and writers 2 and 4 then assign above F before the scan reaches writer 4, whose event it
+// returns: no DURABLE event and no second Keeper is needed for an event at or above F to arrive before one below it.
+class RealKeeperTail: public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        ASSERT_TRUE(rig.journal->registerWriter(1, 4, 3).ok());
+        pool = std::make_unique<keeper::WorkerPool>(2, 16);
+        archive = std::make_unique<keeper::ArchiveService>(*rig.journal, *rig.membership, *pool);
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(archive.get());
+        server = builder.BuildAndStart();
+        ASSERT_NE(server, nullptr);
+        routes->state.route = {7, {{"self", "127.0.0.1:" + std::to_string(port)}}, "", ""};
+        source = std::make_shared<KeeperHotSource>(
+                routes,
+                nullptr,
+                [](const KeeperRef& k) { return k.endpoint; },
+                KeeperHotSourceOptions{std::chrono::milliseconds(2000), 0, 100});
+    }
+    void TearDown() override
+    {
+        rig.journal->onScanned({});
+        source.reset();
+        server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(1));
+    }
+    void armLostEvent()
+    {
+        rig.journal->onScanned(
+                [this]
+                {
+                    if(fired.exchange(true))
+                        return;
+                    for(uint64_t writer: {2, 4})
+                    {
+                        AppendItem item;
+                        item.writer_id = writer;
+                        item.incarnation = 3;
+                        item.sequence = 1;
+                        auto appended = rig.journal->append({1, 7, {item}}, Durability::Accepted);
+                        EXPECT_TRUE(appended.ok());
+                        if(appended.ok())
+                        {
+                            std::lock_guard lock(assigned_mu);
+                            assigned.push_back(appended->front().hlc);
+                        }
+                    }
+                });
+    }
+    test::RamRig rig;
+    std::unique_ptr<keeper::WorkerPool> pool;
+    std::unique_ptr<keeper::ArchiveService> archive;
+    std::unique_ptr<grpc::Server> server;
+    std::shared_ptr<Routes> routes = std::make_shared<Routes>();
+    std::shared_ptr<KeeperHotSource> source;
+    std::vector<Hlc> assignedByTheHook()
+    {
+        std::lock_guard lock(assigned_mu);
+        return assigned;
+    }
+    std::atomic<bool> fired{false};
+    std::mutex assigned_mu;
+    std::vector<Hlc> assigned;
+};
+TEST_F(RealKeeperTail, FetchHotReturnsEventsAtOrAboveItsSeal)
+{
+    armLostEvent();
+    auto fetched = source->fetchTail(1, Hlc{}, {});
+    ASSERT_TRUE(fetched.ok()) << fetched.status();
+    const auto assigned = assignedByTheHook();
+    ASSERT_EQ(assigned.size(), 2u);
+    ASSERT_EQ(fetched->keepers.size(), 1u);
+    ASSERT_EQ(fetched->keepers[0].events.size(), 1u);
+    EXPECT_EQ(fetched->keepers[0].events[0].id.writer_id, 4u);
+    EXPECT_LT(fetched->keepers[0].frontier.sealed, assigned[0]);
+    EXPECT_LT(assigned[0], fetched->keepers[0].events[0].hlc);
+}
+TEST_F(RealKeeperTail, TailDeliversAnEventAssignedWhileTheSealScansAnotherWriter)
+{
+    armLostEvent();
+    HotReplayOptions options;
+    options.tail_poll = std::chrono::milliseconds(5);
+    HotReplay replay(source, options);
+    Event start;
+    start.id.story_id = 1;
+    auto stream = replay.tail(1, start);
+    ASSERT_TRUE(stream.ok()) << stream.status();
+    auto pulled = std::async(std::launch::async,
+                             [&]
+                             {
+                                 std::vector<Event> got;
+                                 while(got.size() < 2)
+                                 {
+                                     auto batch = (*stream)->next();
+                                     if(!batch.ok() || !*batch)
+                                         break;
+                                     got.insert(got.end(), (**batch).events.begin(), (**batch).events.end());
+                                 }
+                                 return got;
+                             });
+    if(pulled.wait_for(std::chrono::seconds(8)) != std::future_status::ready)
+        (*stream)->cancel();
+    auto got = pulled.get();
+    const auto assigned = assignedByTheHook();
+    ASSERT_EQ(got.size(), 2u);
+    ASSERT_EQ(assigned.size(), 2u);
+    EXPECT_EQ(got[0].id.writer_id, 2u);
+    EXPECT_EQ(got[0].hlc, assigned[0]);
+    EXPECT_EQ(got[1].id.writer_id, 4u);
+    EXPECT_EQ(got[1].hlc, assigned[1]);
 }
 } // namespace
 } // namespace chronolog::player
