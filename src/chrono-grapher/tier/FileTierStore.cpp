@@ -166,12 +166,14 @@ FileTierStore::FileTierStore(std::filesystem::path root,
                              std::unique_ptr<ManifestLog> log,
                              std::map<StoryId, Hlc> anchors,
                              std::shared_ptr<const ChunkCodec> codec,
-                             Unlink unlink)
+                             Unlink unlink,
+                             ReadFile read_file)
     : root_(std::move(root))
     , writer_(std::move(writer))
     , log_(std::move(log))
     , codec_(std::move(codec))
     , unlink_(std::move(unlink))
+    , read_file_(std::move(read_file))
 {
     for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
 }
@@ -180,12 +182,15 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                    std::string writer,
                                                                    std::map<StoryId, Hlc> anchors,
                                                                    std::shared_ptr<const ChunkCodec> codec,
-                                                                   Unlink unlink)
+                                                                   Unlink unlink,
+                                                                   ReadFile read_file)
 {
     if(!codec || anchors.contains(0))
         return absl::InvalidArgumentError("invalid tier configuration");
     if(!unlink)
         unlink = [](const std::filesystem::path& path) { return ::unlink(path.c_str()); };
+    if(!read_file)
+        read_file = ReadChunkFile;
     auto log = ManifestLog::Open(root, writer);
     if(!log.ok())
         return log.status();
@@ -194,7 +199,8 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   *std::move(log),
                                                                   std::move(anchors),
                                                                   std::move(codec),
-                                                                  std::move(unlink)));
+                                                                  std::move(unlink),
+                                                                  std::move(read_file)));
     const auto started = std::chrono::steady_clock::now();
     const auto status = store->recover();
     if(!status.ok())
@@ -211,14 +217,21 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     return store;
 }
 
-absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::filesystem::path root,
-                                                                           std::chrono::milliseconds manifest_poll)
+absl::StatusOr<std::unique_ptr<FileTierStore>>
+FileTierStore::OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll, ReadFile read_file)
 {
     if(manifest_poll.count() <= 0)
         return absl::InvalidArgumentError("manifest poll must be positive");
+    if(!read_file)
+        read_file = ReadChunkFile;
     auto log = ManifestLog::OpenReadOnly(root);
-    auto store = std::unique_ptr<FileTierStore>(
-            new FileTierStore(std::move(root), "", std::move(log), {}, std::make_shared<ProtoChunkCodec>()));
+    auto store = std::unique_ptr<FileTierStore>(new FileTierStore(std::move(root),
+                                                                  "",
+                                                                  std::move(log),
+                                                                  {},
+                                                                  std::make_shared<ProtoChunkCodec>(),
+                                                                  {},
+                                                                  std::move(read_file)));
     store->read_only_ = true;
     store->manifest_poll_ = manifest_poll;
     auto status = store->refreshNow();
@@ -565,7 +578,7 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         return valid;
     if(record.state != ManifestState::Published)
         return absl::InvalidArgumentError("record is not published");
-    auto events = ReadChunkFile(root_ / record.file);
+    auto events = read_file_(root_ / record.file);
     if(!events.ok())
         return events.status();
     if(events->size() != record.event_count)

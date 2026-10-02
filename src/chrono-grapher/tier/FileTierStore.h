@@ -14,14 +14,18 @@ class FileTierStore final: public TierStore
 {
 public:
     using Unlink = std::function<int(const std::filesystem::path&)>;
+    using ReadFile = std::function<absl::StatusOr<std::vector<Event>>(const std::filesystem::path&)>;
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     Open(std::filesystem::path root,
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
          std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
-         Unlink unlink = {});
+         Unlink unlink = {},
+         ReadFile read_file = {});
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
-    OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000));
+    OpenReadOnly(std::filesystem::path root,
+                 std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000),
+                 ReadFile read_file = {});
     absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
@@ -50,7 +54,8 @@ private:
                   std::unique_ptr<ManifestLog> log,
                   std::map<StoryId, Hlc> anchors,
                   std::shared_ptr<const ChunkCodec> codec,
-                  Unlink unlink = {});
+                  Unlink unlink = {},
+                  ReadFile read_file = {});
     absl::Status recover();
     void collectDeletedFiles(const ManifestIndex& index);
     absl::Status unlinkDeletedFile(const std::string& file);
@@ -84,6 +89,7 @@ private:
     std::unique_ptr<ManifestLog> log_;
     std::shared_ptr<const ChunkCodec> codec_;
     Unlink unlink_;
+    ReadFile read_file_;
     std::map<std::string, StoryId> pending_unlinks_;
     uint64_t deletion_generation_{};
     size_t deletion_applied_{};

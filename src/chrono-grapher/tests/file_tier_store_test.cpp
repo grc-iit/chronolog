@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <set>
 #include <thread>
 #include <fcntl.h>
@@ -126,6 +127,125 @@ std::string Bytes(const fs::path& path)
 {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+class BlockingRead
+{
+public:
+    std::string filename;
+    absl::StatusOr<std::vector<Event>> operator()(const fs::path& path)
+    {
+        if(!filename.empty() && path.filename() != filename)
+            return ReadChunkFile(path);
+        {
+            std::unique_lock lock(mutex_);
+            ++entered_;
+            changed_.notify_all();
+            if(!changed_.wait_for(lock, std::chrono::seconds(5), [&] { return released_; }))
+                timed_out_ = true;
+        }
+        return ReadChunkFile(path);
+    }
+    bool waitEntered(int count)
+    {
+        std::unique_lock lock(mutex_);
+        return changed_.wait_for(lock, std::chrono::seconds(5), [&] { return entered_ >= count; });
+    }
+    bool release()
+    {
+        std::lock_guard lock(mutex_);
+        released_ = true;
+        changed_.notify_all();
+        return !timed_out_;
+    }
+
+private:
+    std::mutex mutex_;
+    std::condition_variable changed_;
+    int entered_{};
+    bool released_{}, timed_out_{};
+};
+
+TEST(FileTierStore, ConcurrentReadsDoNotSerialize)
+{
+    auto directory = TestDirectory();
+    BlockingRead gate;
+    auto store = FileTierStore::Open(*directory,
+                                     "primary",
+                                     {{1, {100, 0}}},
+                                     std::make_shared<ProtoChunkCodec>(),
+                                     {},
+                                     std::ref(gate));
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window()).ok());
+    ASSERT_TRUE((*store)->publish(contract::Window(200, 300)).ok());
+    auto first =
+            std::async(std::launch::async, [&] { return (*store)->read(1, {Range::Axis::Hlc, {100, 0}, {200, 0}}); });
+    ASSERT_TRUE(gate.waitEntered(1));
+    auto second =
+            std::async(std::launch::async, [&] { return (*store)->read(1, {Range::Axis::Hlc, {200, 0}, {300, 0}}); });
+    const bool concurrent = gate.waitEntered(2);
+    EXPECT_TRUE(gate.release());
+    EXPECT_TRUE(concurrent);
+    auto a = first.get(), b = second.get();
+    ASSERT_TRUE(a.ok()) << a.status();
+    ASSERT_TRUE(b.ok()) << b.status();
+    ASSERT_EQ(a->size(), 1u);
+    ASSERT_EQ(b->size(), 1u);
+    EXPECT_EQ(a->front().id.sequence, 100u);
+    EXPECT_EQ(b->front().id.sequence, 200u);
+}
+
+TEST(FileTierStore, PublishIsNotBlockedByARead)
+{
+    auto directory = TestDirectory();
+    BlockingRead gate;
+    auto store = FileTierStore::Open(*directory,
+                                     "primary",
+                                     {{1, {100, 0}}},
+                                     std::make_shared<ProtoChunkCodec>(),
+                                     {},
+                                     std::ref(gate));
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window()).ok());
+    auto reading = std::async(std::launch::async, [&] { return (*store)->read(1, contract::WholeArchive()); });
+    ASSERT_TRUE(gate.waitEntered(1));
+    auto publishing = std::async(std::launch::async, [&] { return (*store)->publish(contract::Window(200, 300)); });
+    const auto ready = publishing.wait_for(std::chrono::seconds(5));
+    EXPECT_TRUE(gate.release());
+    EXPECT_EQ(ready, std::future_status::ready);
+    ASSERT_TRUE(publishing.get().ok());
+    const auto events = reading.get();
+    ASSERT_TRUE(events.ok()) << events.status();
+    EXPECT_EQ(events->size(), 1u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+}
+
+TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
+{
+    auto directory = TestDirectory();
+    BlockingRead gate;
+    auto store = FileTierStore::Open(*directory,
+                                     "primary",
+                                     {{1, {100, 0}}},
+                                     std::make_shared<ProtoChunkCodec>(),
+                                     {},
+                                     std::ref(gate));
+    ASSERT_TRUE(store.ok());
+    auto erased = (*store)->publish(contract::Window());
+    ASSERT_TRUE(erased.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window(200, 300)).ok());
+    gate.filename = fs::path(erased->file).filename();
+    auto reading = std::async(std::launch::async, [&] { return (*store)->read(1, contract::WholeArchive()); });
+    ASSERT_TRUE(gate.waitEntered(1));
+    auto erasing = std::async(std::launch::async, [&] { return (*store)->eraseFile(erased->file); });
+    const auto ready = erasing.wait_for(std::chrono::seconds(5));
+    EXPECT_TRUE(gate.release());
+    EXPECT_EQ(ready, std::future_status::ready);
+    ASSERT_TRUE(erasing.get().ok());
+    EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+    EXPECT_TRUE(absl::IsUnavailable((*store)->readRecord(*erased, contract::WholeArchive()).status()));
 }
 
 TEST(FileTierStore, WatermarkStopsAtTheFirstGap)
