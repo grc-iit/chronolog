@@ -184,10 +184,10 @@ def test_http_sessions_share_one_process_writer():
                     await asyncio.sleep(0.05)
             else:
                 pytest.fail("HTTP server did not start")
-            async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read1, write1, _):
+            async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read1, write1):
                 async with ClientSession(read1, write1) as first:
                     await first.initialize()
-                    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read2, write2, _):
+                    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read2, write2):
                         async with ClientSession(read2, write2) as second:
                             await second.initialize()
                             created = await first.call_tool("create_story", {"story": "shared"})

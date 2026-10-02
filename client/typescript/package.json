@@ -22,11 +22,11 @@
     "test": "node --test --test-timeout=60000 test/*.test.js"
   },
   "dependencies": {
-    "node-addon-api": "8.5.0"
+    "node-addon-api": "8.9.2"
   },
   "devDependencies": {
-    "@types/node": "22.19.0",
+    "@types/node": "22.20.5",
     "cmake-js": "8.0.0",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   }
 }
