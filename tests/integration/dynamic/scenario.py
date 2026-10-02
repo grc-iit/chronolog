@@ -258,14 +258,25 @@ class Scenario:
         result = self.hot(keeper, story)
         return result['transport'] == 0 and result['trailer']
 
+    def retained(self, keeper, story):
+        result = self.hot(keeper, story)
+        if result['transport'] == 0 and result['trailer'] and result['events'] > 0:
+            return True
+        raise RuntimeError(f'{keeper} has no retained events for story {story}: {result}')
+
     def freed(self, keeper, story):
         result = self.hot(keeper, story)
-        return result['transport'] == 9 and 'destroyed' in result['error']
+        if result['transport'] == 9 and 'destroyed' in result['error']:
+            assert not result['events'] and not result['trailer'], result
+            return True
+        raise RuntimeError(f'{keeper} still serves story {story}: {result}')
 
     def refused_read(self, story):
         end = (2 ** 62, 0)
         result = self.raw('Read', dict(story_id=story, hlc=dict(start=wire((0, 0)), end=wire(end))), self.player)
-        return result['transport'] == 9 and not result['frames']
+        if result['transport'] == 9 and not result['frames']:
+            return True
+        raise RuntimeError(f'Read on destroyed story {story}: {result}')
 
     def seed(self, chronicle, names):
         # Stories with one writer on each Keeper, so every Keeper holds data for each.
@@ -334,8 +345,8 @@ class Scenario:
         # Archived chunks at the Grapher and fresh events at the Keepers, then the destroy.
         gone = cases['gone']
         self.feed(gone, 2)
-        self.wait(lambda: all(self.serving(keeper, gone['id']) for keeper in keepers))
         self.release(gone)
+        self.wait(lambda: all(self.retained(keeper, gone['id']) for keeper in keepers))
         self.call('DestroyStory', dict(story_id=gone['id']))
         self.destroyed(gone)
         after_gone = {keeper: self.log_size(keeper) for keeper in keepers}
@@ -346,8 +357,8 @@ class Scenario:
         self.stack.stop('grapher-a')
         self.feed(orphan, 2)
         self.feed(sibling, 2)
-        self.wait(lambda: all(self.serving(keeper, orphan['id']) for keeper in keepers))
         self.release(orphan)
+        self.wait(lambda: all(self.retained(keeper, orphan['id']) for keeper in keepers))
         self.call('DestroyStory', dict(story_id=orphan['id']))
         for keeper in keepers:
             self.wait(lambda: self.freed(keeper, orphan['id']))
@@ -368,21 +379,25 @@ class Scenario:
         # written here: the Grapher's own Tombstoned line, files still in place, and a restart that cannot reach the
         # Catalog.
         resume = cases['resume']
-        self.release(resume)
         self.stack.stop('grapher-a')
+        self.feed(resume, 2)
+        self.release(resume)
+        self.wait(lambda: all(self.retained(keeper, resume['id']) for keeper in keepers))
         self.call('DestroyStory', dict(story_id=resume['id']))
         for keeper in keepers:
             self.wait(lambda: self.freed(keeper, resume['id']))
         assert self.files(resume['id']) and resume['id'] not in self.tombstones()
         with open(self.manifest(), 'a') as log:
             log.write(json.dumps(dict(story=resume['id'], tombstoned=True), sort_keys=True, separators=(',', ':')) + '\n')
+            log.flush()
+            os.fsync(log.fileno())
         node, _, config = self.stack.services['grapher-a']
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))
             unreachable = '127.0.0.1:' + str(probe.getsockname()[1])
             self.stack.write('grapher-a', node, dict(config, visor_internal=unreachable))
             self.stack.start('grapher-a')
-        self.wait(lambda: not self.files(resume['id']))
+            self.wait(lambda: not self.files(resume['id']))
         self.stack.stop('grapher-a')
         self.stack.write('grapher-a', node, config)
         self.stack.start('grapher-a')
@@ -392,21 +407,41 @@ class Scenario:
         # afterwards puts a route revision above the tombstone's, so the snapshot it gets on reconnecting is
         # newer than the tombstone and only Catalog.GetStory can tell it the story is gone (W10.17).
         missed = cases['missed']
+        # Keep dropped reports out of this case until the Keeper has reconciled through the Catalog.
+        self.stack.stop('grapher-a')
+        self.feed(missed, 2)
         self.release(missed)
+        self.wait(lambda: all(self.retained(keeper, missed['id']) for keeper in keepers))
+        partition_offset = self.log_size('proxy-keeper-1')
         self.stack.block('keeper-1', True)
+        self.wait(lambda: 'partition applied' in self.log_since('proxy-keeper-1', partition_offset))
         self.call('DestroyStory', dict(story_id=missed['id']))
         later = int(self.call('CreateStory', dict(chronicle='destroy', name='later'))['story']['story_id'])
         self.call('Acquire', dict(story_id=later, writer_identity='later'))
         self.wait(lambda: self.freed('keeper-2', missed['id']))
-        assert self.serving('keeper-1', missed['id']), 'keeper-1 learned of the destroy through the partition'
+        result = self.hot('keeper-1', missed['id'])
+        # FetchHot checks the dropped set before the read gate that an acquisition watch reconnect closes.
+        retained = result['transport'] == 0 and result['trailer'] and result['events'] > 0
+        gated = result['transport'] == 14 and result['error'] == 'acquisition snapshot is not applied'
+        assert retained or gated, f'keeper-1 applied the destroy while partitioned: {result}'
         self.stack.block('keeper-1', False)
+        self.wait(lambda: self.freed('keeper-1', missed['id']))
+        self.stack.start('grapher-a')
         self.destroyed(missed)
         self.rejoin('keeper-1', primary)
 
         # Destroying a chronicle frees every story in it.
+        self.stack.stop('grapher-a')
+        for record in pair.values():
+            self.feed(record, 2)
         for record in pair.values():
             self.release(record)
+        self.wait(lambda: all(self.retained(keeper, record['id']) for record in pair.values() for keeper in keepers))
         self.call('DestroyChronicle', dict(name='destroy-all'))
+        for record in pair.values():
+            for keeper in keepers:
+                self.wait(lambda: self.freed(keeper, record['id']))
+        self.stack.start('grapher-a')
         for record in pair.values():
             self.destroyed(record)
         for keeper in keepers:
