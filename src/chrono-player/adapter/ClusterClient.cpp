@@ -33,6 +33,7 @@ absl::Status ClusterClient::refresh() const
 
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + deadline_);
+    context.set_wait_for_ready(true);
     internal::v1::RegisterResponse response;
     grpc::Status rpc = stub_->Register(&context, request, &response);
     if(!rpc.ok())

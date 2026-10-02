@@ -22,6 +22,8 @@ KeeperHotSource::KeeperHotSource(std::shared_ptr<const RouteSource> routes,
     , options_(options)
 {}
 
+void KeeperHotSource::warm(const std::string& address) const { (void)stubFor(address); }
+
 std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std::string& address) const
 {
     std::lock_guard lk(mu_);
@@ -37,8 +39,9 @@ std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std:
         args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
         args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 5000);
         args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
-        stub = internal::v1::Archive::NewStub(
-                grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args));
+        auto channel = grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args);
+        channel->GetState(true);
+        stub = internal::v1::Archive::NewStub(std::move(channel));
     }
     return stub;
 }

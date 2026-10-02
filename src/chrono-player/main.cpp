@@ -117,6 +117,7 @@ int main(int argc, char** argv)
             writers,
             [&cfg](const KeeperRef& keeper) { return cfg.keeperInternal(keeper); },
             source_options);
+    for(const auto& [id, address]: cfg.keeper_internal) source->warm(address);
     player::HotReplayOptions replay_options;
     replay_options.read_max_events = cfg.read_max_events;
     replay_options.batch_size = cfg.batch_size;
