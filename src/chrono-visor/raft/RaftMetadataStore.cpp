@@ -1,8 +1,12 @@
 #include "raft/RaftMetadataStore.h"
+#include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <filesystem>
+#include <arpa/inet.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include "adapter/Convert.h"
 #include "dynamic/MembershipState.h"
@@ -273,6 +277,31 @@ private:
     std::string path_;
     std::recursive_mutex mutex_;
 };
+namespace
+{
+// NuRaft's launcher reports a failed listener as a null server and nothing else.
+std::string listenerFailure(const std::string& endpoint, int port)
+{
+    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if(fd < 0)
+        return "raft endpoint " + endpoint + " could not start: socket: " + std::strerror(errno);
+    int on = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
+    address.sin_port = htons(static_cast<uint16_t>(port));
+    int rc = ::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+    int error = errno;
+    ::close(fd);
+    if(rc == 0)
+        return "raft endpoint " + endpoint + " could not start: NuRaft listener failed although port " +
+               std::to_string(port) + " binds";
+    if(error == EADDRINUSE)
+        return "raft port " + endpoint + " in use";
+    return "raft endpoint " + endpoint + " could not bind: " + std::strerror(error);
+}
+} // namespace
 RaftMetadataStore::RaftMetadataStore(std::unique_ptr<SqliteMetadataStore> store, RaftConfig config, FenceWaiter waiter)
     : store_(std::move(store))
     , config_(std::move(config))
@@ -299,14 +328,16 @@ RaftMetadataStore::open(const std::string& path, Topology topology, RaftConfig c
         asio_service::options options;
         options.thread_pool_size_ = 2;
         auto colon = config.raft_endpoint.rfind(':');
+        if(colon == std::string::npos)
+            return absl::InvalidArgumentError("raft endpoint " + config.raft_endpoint + " has no port");
         int port = std::stoi(config.raft_endpoint.substr(colon + 1));
         out->server_ = out->launcher_.init(out->machine_, out->durable_, nullptr, port, options, p);
         if(!out->server_)
-            return absl::UnavailableError("Raft initialization failed");
+            return absl::UnavailableError("Raft initialization failed: " + listenerFailure(config.raft_endpoint, port));
     }
     catch(const std::exception& e)
     {
-        return absl::UnavailableError(e.what());
+        return absl::UnavailableError("Raft initialization failed for " + config.raft_endpoint + ": " + e.what());
     }
     return out;
 }
