@@ -30,6 +30,17 @@ services:
     image: grafana/grafana:11.6.0
     networks: [chronolog]
     ports: ["127.0.0.1:3000:3000"]
+    tmpfs:
+      - /var/lib/grafana:mode=1777
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O - http://127.0.0.1:3000/api/health | grep -Eq '"database":[[:space:]]*"ok"'
+      start_period: 10s
+      interval: 2s
+      timeout: 3s
+      retries: 60
     environment:
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: chronolog-viz-datasource
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
