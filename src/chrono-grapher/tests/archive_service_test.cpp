@@ -7,6 +7,8 @@
 #include <chrono>
 #include <filesystem>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <unistd.h>
 
@@ -63,6 +65,15 @@ public:
     {
         if(fail_.exchange(false))
             return absl::UnavailableError("injected chunk write failure");
+        {
+            std::unique_lock lock(mu_);
+            if(gate_)
+            {
+                entered_ = true;
+                cv_.notify_all();
+                cv_.wait(lock, [this] { return !gate_; });
+            }
+        }
         return inner_.writeChunk(file, chunk);
     }
     absl::Status write(const std::filesystem::path& file, std::span<const Event> events) const override
@@ -74,10 +85,31 @@ public:
         return inner_.read(file);
     }
     void failNext() { fail_ = true; }
+    void closeGate()
+    {
+        std::lock_guard lock(mu_);
+        gate_ = true;
+    }
+    bool waitEntered()
+    {
+        std::unique_lock lock(mu_);
+        return cv_.wait_for(lock, std::chrono::seconds(5), [this] { return entered_; });
+    }
+    void release()
+    {
+        {
+            std::lock_guard lock(mu_);
+            gate_ = false;
+        }
+        cv_.notify_all();
+    }
 
 private:
     ProtoChunkCodec inner_;
     mutable std::atomic<bool> fail_{false};
+    mutable std::mutex mu_;
+    mutable std::condition_variable cv_;
+    mutable bool gate_{}, entered_{};
 };
 
 std::string Crc(const std::string& bytes)
@@ -243,6 +275,39 @@ TEST(ArchiveWatermarkTest, WatchReflectsPublishAndDroppedStory)
     auto [dropped_status, dropped_receipt] = Send(server, {Frame()});
     EXPECT_EQ(dropped_status.error_code(), grpc::StatusCode::NOT_FOUND);
     EXPECT_EQ(dropped_receipt.receipt(), 0u);
+}
+
+TEST(ArchiveWatermarkTest, ReceiptStaysPendingUntilTheChunkIsWritten)
+{
+    auto codec = std::make_shared<FailingCodec>();
+    Server server(codec);
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
+    wire::WatchWatermarksRequest subscription;
+    subscription.set_keeper_id("keeper-1");
+    subscription.add_story_ids(1);
+    auto watch = server.stub->WatchWatermarks(&context, subscription);
+    wire::WatchWatermarksResponse report;
+    ASSERT_TRUE(watch->Read(&report));
+    codec->closeGate();
+    std::pair<grpc::Status, wire::TransferChunkResponse> sent;
+    std::thread sender([&] { sent = Send(server, {Frame()}); });
+    ASSERT_TRUE(codec->waitEntered());
+    bool pending = false;
+    for(int i = 0; i < 5 && !pending && watch->Read(&report); ++i)
+        pending = report.pending_receipts_size() == 1 && report.pending_receipts(0) == 1 &&
+                  report.highest_receipt() == 1 && report.watermark().physical_ns() == 100;
+    codec->release();
+    sender.join();
+    EXPECT_TRUE(pending);
+    ASSERT_TRUE(sent.first.ok());
+    EXPECT_EQ(sent.second.receipt(), 1u);
+    bool settled = false;
+    for(int i = 0; i < 5 && !settled && watch->Read(&report); ++i)
+        settled = report.pending_receipts().empty() && report.highest_receipt() == 1 &&
+                  report.watermark().physical_ns() == 200;
+    EXPECT_TRUE(settled);
+    context.TryCancel();
 }
 
 TEST(ArchiveTransferTest, AFailedPublishReturnsNoReceiptHoldsTheWatermarkAndNeverReusesTheNumber)
