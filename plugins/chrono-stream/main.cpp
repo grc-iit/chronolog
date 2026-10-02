@@ -20,6 +20,11 @@ void pause(std::chrono::milliseconds time)
     while(!stopping && std::chrono::steady_clock::now() < until)
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
 }
+// A long-running collector or exporter rides through Keeper and Player restarts instead of exiting.
+bool transient(const absl::Status& s)
+{
+    return absl::IsUnavailable(s) || absl::IsDeadlineExceeded(s) || absl::IsAborted(s) || absl::IsResourceExhausted(s);
+}
 } // namespace
 int main(int argc, char** argv)
 {
@@ -119,18 +124,24 @@ int main(int argc, char** argv)
                                            deadline);
             if(!result.ok())
             {
-                std::cerr << result.status() << '\n';
-                return 1;
-            }
-            for(const auto& r: *result)
-            {
-                if(!r.ok())
-                {
-                    std::cerr << r.status() << '\n';
+                std::cerr << (transient(result.status()) ? "transient, retrying next sample: " : "") << result.status()
+                          << '\n';
+                if(!transient(result.status()))
                     return 1;
-                }
-                std::cout << "sample " << n << " acked=" << r->acked() << "\n";
             }
+            else
+                for(const auto& r: *result)
+                {
+                    if(!r.ok())
+                    {
+                        std::cerr << (transient(r.status()) ? "transient, retrying next sample: " : "") << r.status()
+                                  << '\n';
+                        if(!transient(r.status()))
+                            return 1;
+                        continue;
+                    }
+                    std::cout << "sample " << n << " acked=" << r->acked() << "\n";
+                }
             std::cout.flush();
             if(!samples || n + 1 < samples)
                 pause(std::chrono::milliseconds(interval));
@@ -158,7 +169,7 @@ int main(int argc, char** argv)
                 break;
             at = comma + 1;
         } while(stories.size() < 65);
-        auto readyUntil = std::chrono::system_clock::now() + std::chrono::seconds(30);
+        auto readyUntil = std::chrono::system_clock::now() + std::chrono::seconds(120);
         if(deadline)
             readyUntil = std::min(readyUntil, *deadline);
         for(const auto& story: stories)
@@ -172,7 +183,7 @@ int main(int argc, char** argv)
                     ready = true;
                     break;
                 }
-                if(!absl::IsNotFound(found.status()))
+                if(!absl::IsNotFound(found.status()) && !transient(found.status()))
                 {
                     std::cerr << found.status() << '\n';
                     return 1;
@@ -185,14 +196,24 @@ int main(int argc, char** argv)
                 return stopping ? 0 : 1;
             }
         }
-        stream::Exporter exporter(*client, positions, chronicle, stories, sink, exportOptions);
-        auto result = exporter.run([] { return stopping != 0; }, deadline);
-        if(!result.ok())
+        for(;;)
         {
-            std::cerr << result.status() << '\n';
-            return 1;
+            // Each run resumes from the positions saved after the last acknowledged batch (at least once).
+            stream::Exporter exporter(*client, positions, chronicle, stories, sink, exportOptions);
+            auto result = exporter.run([] { return stopping != 0; }, deadline);
+            if(result.ok())
+            {
+                std::cout << "exported=" << result->events << " batches=" << result->batches << '\n';
+                break;
+            }
+            if(!transient(result.status()) || stopping || (deadline && std::chrono::system_clock::now() >= *deadline))
+            {
+                std::cerr << result.status() << '\n';
+                return 1;
+            }
+            std::cerr << "transient, resuming export: " << result.status() << '\n';
+            pause(std::chrono::seconds(1));
         }
-        std::cout << "exported=" << result->events << " batches=" << result->batches << '\n';
 #endif
         return 0;
     }
