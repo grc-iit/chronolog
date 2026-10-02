@@ -569,7 +569,7 @@ int tailScenario(const Args& args)
             {
                 while(!done.load())
                 {
-                    auto item = tail->next(std::chrono::system_clock::now() + std::chrono::seconds(1));
+                    auto item = tail->next();
                     if(!item.ok())
                     {
                         if(item.status().code() == absl::StatusCode::kDeadlineExceeded)

@@ -95,28 +95,32 @@ JSON
 }
 
 # Starts perf on the service processes when --perf is set; stop_perf folds the profile into profiles.jsonl.
-perf_pid=""
+perf_pids=()
+roles=(visor keeper grapher player)
 start_perf() {
     [ "$perf" = 1 ] || return 0
-    local name=$1 list
-    list=$(IFS=,; echo "${pids[*]}")
-    perf record -q -F 499 -g --call-graph fp -p "$list" -o "$scratch/perf-$name.data" > "$scratch/perf-$name.log" 2>&1 &
-    perf_pid=$!
+    local name=$1 i
+    perf_pids=()
+    for i in "${!pids[@]}"; do
+        perf record -q -F 499 -g --call-graph fp -p "${pids[$i]}" -o "$scratch/perf-$name-${roles[$i]}.data" \
+            > "$scratch/perf-$name-${roles[$i]}.log" 2>&1 &
+        perf_pids+=("$!")
+    done
     sleep 0.5
 }
 stop_perf() {
-    [ "$perf" = 1 ] && [ -n "$perf_pid" ] || return 0
-    local name=$1
-    kill -INT "$perf_pid" 2>/dev/null
-    wait "$perf_pid" 2>/dev/null
-    perf_pid=""
-    python3 "$here/records.py" profile --data "$scratch/perf-$name.data" --workload "$name" --meta "$out/meta.json" \
-        >> "$out/profiles.jsonl" 2>> "$scratch/perf-$name.log" \
-        || echo "run.sh: no profile for $name: $(tail -2 "$scratch/perf-$name.log")"
+    [ "$perf" = 1 ] && [ "${#perf_pids[@]}" -gt 0 ] || return 0
+    local name=$1 i spec=""
+    for pid in "${perf_pids[@]}"; do kill -INT "$pid" 2>/dev/null; done
+    for pid in "${perf_pids[@]}"; do wait "$pid" 2>/dev/null; done
+    perf_pids=()
+    for i in "${!roles[@]}"; do spec+="${roles[$i]}=$scratch/perf-$name-${roles[$i]}.data,"; done
+    python3 "$here/records.py" profile --data "${spec%,}" --workload "$name" --meta "$out/meta.json" \
+        >> "$out/profiles.jsonl" 2> "$scratch/perf-$name.err" \
+        || echo "run.sh: no profile for $name: $(tail -2 "$scratch/perf-$name.err")"
     [ -f "$out/profile-$name.txt" ] && cat "$out/profile-$name.txt"
 }
 
-current=""
 # run_load SCENARIO [--key value ...] writes raw lines; records.py adds the metadata.
 run_load() {
     "$load" "$@" --catalog "127.0.0.1:$port" --player "127.0.0.1:$((port+4))" --keeper-log "$scratch/keeper.log" \

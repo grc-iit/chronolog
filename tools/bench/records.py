@@ -107,15 +107,16 @@ def wrap(args):
 
 
 BUCKETS = [
-    ("fdatasync_and_block_io", r"fdatasync|fsync|ext4|jbd2|blk_|nvme|io_schedule|vfs_write|__x64_sys_(p?write|fdatasync)|generic_perform_write|submit_bio"),
+    ("fdatasync_and_block_io", r"fdatasync|fsync|ext4|jbd2|blk_|nvme|io_schedule|vfs_write|generic_perform_write|submit_bio"),
     ("checksum", r"crc32|Crc32"),
     ("hdf5", r"\bH5|hdf5"),
-    ("serialization", r"google::protobuf|protobuf|_InternalSerialize|ByteSizeLong|MergeFrom|ParseFrom|Serialize|Parse|upb_|nlohmann"),
-    ("grpc_and_http2", r"grpc|chttp2|hpack|http2|promise|Arena|EventEngine|iomgr|ev_|absl::.*(Cord|Status)"),
-    ("network_and_syscalls", r"epoll|tcp_|sock|inet|loopback|net_rx|__sys_(send|recv)|__x64_sys|entry_SYSCALL|do_syscall|skb|ip_|__dev_"),
-    ("locks_and_scheduling", r"mutex|[Ll]ock|futex|pthread_cond|spin|sched|schedule|__lll|Mutex|wake|resched"),
-    ("allocation", r"malloc|free\b|operator new|operator delete|_int_|tcache|brk|mmap|page_fault|clear_page|alloc_pages|memcg|zap_pte|handle_mm_fault|asm_exc_page_fault"),
+    ("serialization", r"google::protobuf|protobuf|_InternalSerialize|ByteSizeLong|MergeFrom|ParseFrom|Serialize|nlohmann|upb_"),
+    ("grpc_and_http2", r"grpc|chttp2|hpack|http2|promise|EventEngine|iomgr"),
+    ("network_stack", r"epoll|tcp_|sock|inet|loopback|net_rx|__sys_(send|recv)|skb|ip_|__dev_|_copy_to_iter|_copy_from_iter"),
+    ("locks_and_scheduling", r"mutex|[Ll]ock|futex|pthread_cond|spin|sched|schedule|__lll|Mutex|wake|resched|dequeue_|enqueue_|psi_group"),
+    ("allocation_and_page_faults", r"malloc|free\b|cfree|operator new|operator delete|_int_|tcache|brk|mmap|page_fault|clear_page|alloc_pages|memcg|zap_pte|handle_mm_fault"),
     ("memcpy_and_memset", r"memcpy|memmove|memset|__copy|copy_user|rep_movs"),
+    ("syscall_entry_and_mitigations", r"entry_SYS|srso|__irqentry|do_syscall|ret_from_fork|syscall_exit|swapgs|retbleed|spec_"),
 ]
 
 
@@ -126,44 +127,66 @@ def bucket(symbol):
     return "other"
 
 
-LINE = re.compile(r"^\s*(\d+\.\d+)%\s+(\S+)\s+(\S+)\s+\[(.)\]\s+(.+?)\s*$")
+LINE = re.compile(r"^\s*(\d+\.\d+)%\s+(\S+)\s+\[(.)\]\s+(.+?)\s*$")
 
 
-def profile(args):
-    data = load_meta(args.meta)
-    report = subprocess.run(["perf", "report", "-i", args.data, "--no-children", "--stdio", "-g", "none",
-                             "--sort", "comm,dso,sym", "--percent-limit", "0.05"],
-                            capture_output=True, text=True)
+def one_role(path):
+    report = subprocess.run(["perf", "report", "-i", path, "--no-children", "--stdio", "-g", "none",
+                             "--sort", "dso,sym", "--percent-limit", "0"], capture_output=True, text=True)
     if report.returncode != 0:
-        sys.stderr.write(report.stderr)
-        sys.exit(1)
+        raise RuntimeError(report.stderr.strip())
     rows = []
     for line in report.stdout.splitlines():
         m = LINE.match(line)
         if m:
-            rows.append({"percent": float(m.group(1)), "process": m.group(2), "dso": m.group(3),
-                         "kernel": m.group(4) == "k", "symbol": m.group(5)})
-    by_process = {}
+            rows.append({"percent": float(m.group(1)), "dso": m.group(2), "kernel": m.group(3) == "k",
+                         "symbol": m.group(4)})
+    samples = 0
+    for line in report.stdout.splitlines():
+        m = re.match(r"# Samples: ([\d.]+)([KMG]?)", line)
+        if m:
+            samples = int(float(m.group(1)) * {"": 1, "K": 1000, "M": 1000000, "G": 1000000000}[m.group(2)])
+            break
+    buckets = {}
     for row in rows:
         row["bucket"] = bucket(row["symbol"])
-        cell = by_process.setdefault(row["process"], {})
-        cell[row["bucket"]] = round(cell.get(row["bucket"], 0.0) + row["percent"], 2)
-    top = sorted(rows, key=lambda r: -r["percent"])[:12]
+        buckets[row["bucket"]] = buckets.get(row["bucket"], 0.0) + row["percent"]
+    return samples, rows, buckets
+
+
+def profile(args):
+    data = load_meta(args.meta)
+    roles = {}
+    for item in args.data.split(","):
+        role, path = item.split("=", 1)
+        try:
+            roles[role] = one_role(path)
+        except (RuntimeError, OSError) as error:
+            sys.stderr.write(f"{role}: {error}\n")
+    if not roles:
+        sys.exit(1)
+    total = sum(s for s, _, _ in roles.values()) or 1
+    names = sorted(roles, key=lambda r: -roles[r][0])
+    order = [b for b, _ in BUCKETS] + ["other"]
+    lines = [f"profile {args.workload}: perf -F 499 -g per service process, percent of that process's own samples"]
+    lines.append("%-30s" % "cpu samples" + "".join("%12d" % roles[n][0] for n in names))
+    lines.append("%-30s" % "share of all samples" + "".join("%11.0f%%" % (100.0 * roles[n][0] / total) for n in names))
+    lines.append("%-30s" % "bucket" + "".join("%12s" % n for n in names))
+    for b in order:
+        lines.append("%-30s" % b + "".join("%11.1f%%" % roles[n][2].get(b, 0.0) for n in names))
+    top = {}
+    for n in names:
+        top[n] = sorted(roles[n][1], key=lambda r: -r["percent"])[:6]
+        lines.append(f"top symbols of {n}:")
+        for r in top[n]:
+            lines.append("  %5.1f%%  %-26s %s" % (r["percent"], r["bucket"], r["symbol"][:96]))
     out_dir = os.path.dirname(args.meta)
-    names = sorted(by_process, key=lambda p: -sum(by_process[p].values()))
-    buckets = [b for b, _ in BUCKETS] + ["other"]
-    lines = [f"profile {args.workload}: share of all samples in the service processes (perf -F 499 -g, frame pointers)"]
-    lines.append("%-24s" % "bucket" + "".join("%16s" % n for n in names))
-    for b in buckets:
-        lines.append("%-24s" % b + "".join("%15.1f%%" % by_process[n].get(b, 0.0) for n in names))
-    lines.append("top symbols:")
-    for r in top:
-        lines.append("  %5.1f%%  %-16s %-10s %s" % (r["percent"], r["process"], r["bucket"], r["symbol"][:90]))
     with open(os.path.join(out_dir, f"profile-{args.workload}.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
     print(json.dumps({"layer": "profile", "suite": args.workload, "params": {"sample_hz": 499},
-                      "result": {"by_process_and_bucket_percent": by_process,
-                                 "top_symbols": [{k: r[k] for k in ("percent", "process", "bucket", "symbol")} for r in top]},
+                      "result": {"samples": {n: roles[n][0] for n in names},
+                                 "bucket_percent_of_process": {n: {k: round(v, 2) for k, v in roles[n][2].items()} for n in names},
+                                 "top_symbols": {n: [{k: r[k] for k in ("percent", "bucket", "symbol")} for r in top[n]] for n in names}},
                       "meta": data}))
 
 
