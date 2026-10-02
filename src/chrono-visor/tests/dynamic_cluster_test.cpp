@@ -153,9 +153,12 @@ protected:
         }
         size_t selected = leader();
         ASSERT_LT(selected, 3u);
+        if(!seed_story_)
+            return;
         ASSERT_TRUE(stores[selected]->createChronicle("c").ok());
         ASSERT_TRUE(stores[selected]->createStory("c", "s").ok());
     }
+    bool seed_story_ = true;
     size_t leader()
     {
         const auto until = std::chrono::steady_clock::now() + 8s;
@@ -377,6 +380,41 @@ TEST_F(DynamicClusterTest, FailureDetectionRemovesSilentKeeperAfterFullTimeout)
         std::this_thread::sleep_for(50ms);
     }
     EXPECT_TRUE(removed);
+}
+class DynamicClusterBeforeFirstStoryTest: public DynamicClusterTest
+{
+public:
+    DynamicClusterBeforeFirstStoryTest() { seed_story_ = false; }
+};
+// I4.3 and I4.9: a configured Keeper that has not registered yet is not failed, whatever the timeout.
+TEST_F(DynamicClusterBeforeFirstStoryTest, FailureDetectionIgnoresConfiguredKeeperThatHasNotRegistered)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[selected], "keeper-a", "a1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    const auto until = std::chrono::steady_clock::now() + 3500ms;
+    while(std::chrono::steady_clock::now() < until)
+    {
+        ASSERT_EQ(a.Heartbeat().status().code(), 0);
+        std::this_thread::sleep_for(50ms);
+    }
+    auto state = stores[selected]->appliedStore().membershipLivenessState();
+    ASSERT_TRUE(state.ok());
+    bool seen = false;
+    for(const auto& member: state->members())
+        if(member.process().process_id() == "keeper-b")
+        {
+            seen = true;
+            EXPECT_TRUE(member.joined());
+        }
+    EXPECT_TRUE(seen);
+    ASSERT_TRUE(stores[selected]->createChronicle("c").ok());
+    auto story = stores[selected]->createStory("c", "s");
+    ASSERT_TRUE(story.ok());
+    auto route = stores[selected]->appliedStore().membershipRouteUpdate(story->id);
+    ASSERT_TRUE(route.ok());
+    EXPECT_EQ(route->route().keepers_size(), 2);
 }
 } // namespace
 } // namespace chronolog::visor

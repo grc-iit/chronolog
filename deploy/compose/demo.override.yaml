@@ -1,0 +1,11 @@
+# Advertises host-reachable endpoints so host clients (Python, CLIs, MCP) can reach the
+# Keeper and Player the Visor routes them to. Combine with smoke.override.yaml for the
+# fast seal and chunk settings.
+services:
+  chrono-visor:
+    environment:
+      CHRONOLOG_VISOR_KEEPERS: "keeper-1=127.0.0.1:50052"
+      CHRONOLOG_VISOR_PLAYER: "127.0.0.1:50054"
+  chrono-keeper:
+    environment:
+      CHRONOLOG_KEEPER_SELF_ENDPOINT: "127.0.0.1:50052"

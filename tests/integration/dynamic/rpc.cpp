@@ -1,0 +1,123 @@
+#include <chrono>
+#include <iostream>
+#include <stdexcept>
+#include <grpcpp/grpcpp.h>
+#include <google/protobuf/util/json_util.h>
+#include <nlohmann/json.hpp>
+#include "chronolog/v1/chronolog.grpc.pb.h"
+#include "chronolog/internal/v1/internal.grpc.pb.h"
+
+using Json = nlohmann::json;
+namespace pub = chronolog::v1;
+namespace internal = chronolog::internal::v1;
+
+Json encode(const google::protobuf::Message& message)
+{
+    std::string text;
+    google::protobuf::util::JsonPrintOptions options;
+    options.preserve_proto_field_names = true;
+    auto status = google::protobuf::util::MessageToJsonString(message, &text, options);
+    if(!status.ok())
+        throw std::runtime_error(status.ToString());
+    return Json::parse(text);
+}
+
+template <class Request, class Response, class Fn>
+Json unary(const Json& input, grpc::ClientContext& context, Fn fn)
+{
+    Request request;
+    auto parsed = google::protobuf::util::JsonStringToMessage(input.dump(), &request);
+    if(!parsed.ok())
+        throw std::runtime_error(parsed.ToString());
+    Response response;
+    auto status = fn(&context, request, &response);
+    Json result = {{"transport", status.error_code()},
+                   {"error", status.error_message()},
+                   {"response", encode(response)}};
+    auto metadata = context.GetServerInitialMetadata();
+    auto it = metadata.find("chronolog-raft-leader");
+    if(it != metadata.end())
+        result["leader"] = std::stoi(std::string(it->second.data(), it->second.length()));
+    return result;
+}
+
+Json call(const Json& command)
+{
+    auto channel = grpc::CreateChannel(command.at("endpoint"), grpc::InsecureChannelCredentials());
+    auto catalog = pub::Catalog::NewStub(channel);
+    auto cluster = internal::Cluster::NewStub(channel);
+    auto journal = pub::Journal::NewStub(channel);
+    auto replay = pub::Replay::NewStub(channel);
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(command.value("timeout_ms", 3000)));
+    std::string op = command.at("op");
+    Json input = command.value("request", Json::object());
+#define RPC(NAME, SERVICE, NS)                                                                                         \
+    if(op == #NAME)                                                                                                    \
+        return unary<NS::NAME##Request, NS::NAME##Response>(input,                                                     \
+                                                            context,                                                   \
+                                                            [&](auto* ctx, const auto& request, auto* response)        \
+                                                            { return SERVICE->NAME(ctx, request, response); });
+    RPC(CreateChronicle, catalog, pub)
+    RPC(CreateStory, catalog, pub)
+    RPC(Acquire, catalog, pub)
+    RPC(Release, catalog, pub)
+    RPC(Append, journal, pub)
+    RPC(Register, cluster, internal)
+    RPC(ExtendCeiling, cluster, internal)
+#undef RPC
+    if(op == "DrainKeeper" || op == "JoinKeeper" || op == "AbandonKeeper" || op == "ListMembers")
+    {
+        auto fn = [&](auto* ctx, const internal::KeeperRequest& request, auto* response)
+        {
+            if(op == "DrainKeeper")
+                return cluster->DrainKeeper(ctx, request, response);
+            if(op == "JoinKeeper")
+                return cluster->JoinKeeper(ctx, request, response);
+            return cluster->AbandonKeeper(ctx, request, response);
+        };
+        if(op == "ListMembers")
+            return unary<internal::ListMembersRequest, internal::MembershipResponse>(
+                    input,
+                    context,
+                    [&](auto* ctx, const auto& request, auto* response)
+                    { return cluster->ListMembers(ctx, request, response); });
+        return unary<internal::KeeperRequest, internal::MembershipResponse>(input, context, fn);
+    }
+    if(op == "Read")
+    {
+        pub::ReadRequest request;
+        auto parsed = google::protobuf::util::JsonStringToMessage(input.dump(), &request);
+        if(!parsed.ok())
+            throw std::runtime_error(parsed.ToString());
+        auto reader = replay->Read(&context, request);
+        pub::ReadResponse response;
+        Json frames = Json::array();
+        while(reader->Read(&response))
+        {
+            if(frames.size() >= 1024)
+                throw std::runtime_error("unbounded Read");
+            frames.push_back(encode(response));
+        }
+        auto status = reader->Finish();
+        return {{"transport", status.error_code()}, {"error", status.error_message()}, {"frames", frames}};
+    }
+    throw std::runtime_error("unknown RPC " + op);
+}
+
+int main()
+{
+    std::string line;
+    while(std::getline(std::cin, line))
+    {
+        try
+        {
+            std::cout << call(Json::parse(line)).dump() << std::endl;
+        }
+        catch(const std::exception& error)
+        {
+            std::cout << Json({{"exception", error.what()}}).dump() << std::endl;
+        }
+    }
+}

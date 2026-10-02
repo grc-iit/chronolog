@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+# ChronoLog 4.0 demo stack: build, up, tour, status, logs, down, bundle, load.
+#   chronolog-demo build [--no-artifacts]    source tree only: binaries, runtime, viz and MCP images
+#   chronolog-demo up [--full]               Visor, Keeper, Grapher, Player; --full adds Grafana, InfluxDB, viz, stream
+#   chronolog-demo tour [--pause]            narrated, self-checking tour (deploy/demo/tour.py)
+#   chronolog-demo status | logs SERVICE | down [--volumes]
+#   chronolog-demo bundle DIR                source tree only: portable directory with images, wheels, CLIs
+#   chronolog-demo load                      bundle only: load images and create .venv
+# Every subcommand takes --engine docker|podman (default: podman when present, else docker)
+# and --project NAME (default chronolog-demo).
+set -euo pipefail
+
+self=$(readlink -f "${BASH_SOURCE[0]}")
+here=$(dirname "$self")
+root=$(cd "$here/../.." && pwd)
+orig_args=("$@")
+
+runtime_image=chronolog-demo-runtime:4.0.0
+viz_image=chronolog-viz:4.0.0
+mcp_image=chronolog-mcp:4.0.0
+
+if [ -f "$root/SHA256SUMS" ] && [ -d "$root/images" ]; then
+    mode=bundle
+    state=$root/.state bin=$root/bin lib=$root/lib venv=$root/.venv
+    plugin_dir=$root/viz-plugin wheels=$root/wheels
+else
+    mode=source
+    state=$root/build/demo bin=$root/build/demo-bin lib=$root/build/lib
+    venv=$root/build/smoke-venv plugin_dir=$root/build/viz/dist wheels=$root/build/smoke/wheels
+fi
+
+die() { echo "chronolog-demo: $*" >&2; exit 1; }
+note() { echo "chronolog-demo: $*"; }
+
+[ $# -ge 1 ] || { sed -n '2,10p' "$self" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+command=$1
+shift
+engine="" project=chronolog-demo full=0 pause=0 volumes=0 artifacts=1 positional=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --engine) engine=${2:?--engine needs docker or podman}; shift ;;
+        --engine=*) engine=${1#--engine=} ;;
+        --project) project=${2:?--project needs a name}; shift ;;
+        --project=*) project=${1#--project=} ;;
+        --full) full=1 ;;
+        --pause) pause=1 ;;
+        --volumes) volumes=1 ;;
+        --no-artifacts) artifacts=0 ;;
+        -*) die "unknown option $1" ;;
+        *) positional+=("$1") ;;
+    esac
+    shift
+done
+
+if [ -z "$engine" ] && [ -f "$state/engine" ]; then engine=$(cat "$state/engine"); fi
+if [ -z "$engine" ]; then
+    if command -v podman > /dev/null 2>&1; then engine=podman
+    elif command -v docker > /dev/null 2>&1; then engine=docker
+    else die "neither podman nor docker is installed"; fi
+fi
+case "$engine" in
+    docker)
+        if [ -z "${DOCKER_HOST:-}" ] && [ -S "/run/user/$(id -u)/docker.sock" ]; then
+            export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock
+        fi
+        compose_cmd=(docker compose)
+        ;;
+    podman)
+        unset DOCKER_HOST
+        systemctl --user start podman.socket > /dev/null 2>&1 || true
+        compose_cmd=(podman compose)
+        ;;
+    *) die "unknown engine $engine (docker or podman)" ;;
+esac
+command -v "$engine" > /dev/null 2>&1 || die "$engine is not installed"
+
+# On a shared build host, compose calls queue behind the stack lock.
+stack_lock() {
+    local lockfile=$HOME/chronolog-sprint/stack.lock
+    if [ -d "$(dirname "$lockfile")" ] && [ "${RBUILD_HELD:-}" != stack ] && [ "${CHRONOLOG_STACK_LOCKED:-0}" != 1 ]; then
+        exec flock "$lockfile" env CHRONOLOG_STACK_LOCKED=1 bash "$self" "${orig_args[@]}"
+    fi
+}
+
+cdir=$root/deploy/compose
+compose=("${compose_cmd[@]}" -p "$project" -f "$cdir/compose.yaml" -f "$cdir/smoke.override.yaml"
+         -f "$cdir/demo.override.yaml" -f "$cdir/stream.override.yaml" -f "$cdir/viz.override.yaml"
+         -f "$cdir/demo-full.override.yaml")
+export CHRONOLOG_IMAGE=${CHRONOLOG_IMAGE:-$runtime_image}
+export CHRONOLOG_DEMO_GRAFANA_DIR=$root/deploy/grafana/demo
+export CHRONOLOG_DEMO_PLUGIN_DIR=$plugin_dir
+
+http_ok() {
+    python3 - "$1" <<'PY'
+import sys, urllib.request
+try:
+    urllib.request.urlopen(sys.argv[1], timeout=2).close()
+except Exception:
+    sys.exit(1)
+PY
+}
+tcp_ok() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
+wait_for() {
+    local what=$1 seconds=$2
+    shift 2
+    local end=$((SECONDS + seconds))
+    until "$@"; do
+        [ "$SECONDS" -lt "$end" ] || die "$what did not become ready within ${seconds}s"
+        sleep 1
+    done
+}
+grafana_ready() { python3 - <<'PY'
+import json, sys, urllib.request
+try:
+    sys.exit(0 if json.load(urllib.request.urlopen("http://127.0.0.1:3000/api/health", timeout=2)).get("database") == "ok" else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+need_images() {
+    local image
+    for image in "$runtime_image"; do
+        "$engine" image inspect "$image" > /dev/null 2>&1 \
+            || die "image $image is missing ($engine); run 'chronolog-demo $([ "$mode" = bundle ] && echo load || echo build) --engine $engine'"
+    done
+    if [ "$full" = 1 ]; then
+        for image in "$viz_image"; do
+            "$engine" image inspect "$image" > /dev/null 2>&1 || die "image $image is missing ($engine)"
+        done
+        [ -f "$plugin_dir/module.js" ] || die "Grafana plugin $plugin_dir/module.js is missing"
+    fi
+}
+
+ensure_venv() {
+    if [ -x "$venv/bin/python" ] && "$venv/bin/python" -c 'import chronolog, mcp, opentelemetry.sdk.trace' > /dev/null 2>&1; then return; fi
+    [ "$mode" = source ] || die "no usable $venv; run 'chronolog-demo load'"
+    ls "$wheels"/chronolog-4.0.0-*.whl > /dev/null 2>&1 || die "no chronolog wheel in $wheels; run 'chronolog-demo build'"
+    note "creating $venv"
+    python3 -m venv "$venv"
+    "$venv/bin/pip" install --quiet "$wheels"/chronolog-4.0.0-*.whl "$wheels"/chronolog_mcp-4.0.0-*.whl \
+        'opentelemetry-sdk>=1.39,<2' 'mcp>=1.30,<2'
+}
+
+endpoints() {
+    printf '%-12s %s\n' Visor 127.0.0.1:50051 Keeper 127.0.0.1:50052 Player 127.0.0.1:50054
+    if [ "$(cat "$state/full" 2> /dev/null || echo "$full")" = 1 ]; then
+        printf '%-12s %s\n' Grafana "http://127.0.0.1:3000 (admin / admin)" \
+            "Viz backend" http://127.0.0.1:8087 InfluxDB http://127.0.0.1:8086 \
+            Dashboards "http://127.0.0.1:3000/d/chronolog-stream  http://127.0.0.1:3000/d/chronolog-events"
+    fi
+}
+
+cmd_build() {
+    [ "$mode" = source ] || die "build needs a source tree"
+    cd "$root"
+    if [ "$artifacts" = 1 ]; then bash tests/smoke/build_artifacts.sh; fi
+    bash deploy/demo/stage.sh binaries "$root"
+    bash deploy/demo/stage.sh image "$engine" "$root" "$runtime_image"
+    "$engine" build -f deploy/containers/viz.Containerfile -t "$viz_image" "$wheels"
+    "$engine" build -f deploy/containers/mcp.Containerfile -t "$mcp_image" "$wheels"
+    note "built $runtime_image $viz_image $mcp_image with $engine"
+}
+
+cmd_up() {
+    stack_lock
+    need_images
+    local services=(chrono-visor chrono-keeper chrono-grapher chrono-player)
+    if [ "$full" = 1 ]; then services=(); fi
+    "${compose[@]}" up -d --no-build --wait --wait-timeout 180 ${services[@]+"${services[@]}"}
+    mkdir -p "$state"
+    echo "$engine" > "$state/engine"
+    echo "$project" > "$state/project"
+    echo "$full" > "$state/full"
+    wait_for "Visor" 60 tcp_ok 50051
+    wait_for "Player" 60 tcp_ok 50054
+    if [ "$full" = 1 ]; then
+        wait_for "Grafana" 90 grafana_ready
+        wait_for "viz backend" 60 http_ok http://127.0.0.1:8087/health
+    fi
+    echo
+    endpoints
+    echo
+    note "stack is up (engine $engine, project $project); next: chronolog-demo tour"
+}
+
+cmd_tour() {
+    stack_lock
+    local tour=${CHRONOLOG_DEMO_TOUR:-$here/tour.py}
+    [ -f "$tour" ] || die "$tour is missing"
+    tcp_ok 50051 || die "no Visor on 127.0.0.1:50051; run 'chronolog-demo up' first"
+    ensure_venv
+    local demo_full=0
+    if [ -f "$state/full" ] && [ "$(cat "$state/project" 2> /dev/null)" = "$project" ]; then demo_full=$(cat "$state/full"); fi
+    local demo_bin=""
+    if [ -x "$bin/chronolog_kvs" ]; then demo_bin=$bin; fi
+    export CHRONOLOG_CATALOG=127.0.0.1:50051 CHRONOLOG_PLAYER=127.0.0.1:50054
+    export CHRONOLOG_DEMO_ENGINE=$engine CHRONOLOG_DEMO_PROJECT=$project
+    CHRONOLOG_DEMO_COMPOSE=$(printf '%q ' "${compose[@]}")
+    export CHRONOLOG_DEMO_COMPOSE="${CHRONOLOG_DEMO_COMPOSE% }"
+    export CHRONOLOG_DEMO_BIN=$demo_bin CHRONOLOG_DEMO_FULL=$demo_full
+    export LD_LIBRARY_PATH=$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+    local args=()
+    if [ "$pause" = 1 ]; then args+=(--pause); fi
+    exec "$venv/bin/python" "$tour" ${args[@]+"${args[@]}"}
+}
+
+cmd_status() {
+    "${compose[@]}" ps
+    echo
+    local name port
+    for name in Visor:50051 Keeper:50052 Player:50054; do
+        port=${name#*:}
+        if tcp_ok "$port"; then echo "$(printf '%-8s' "${name%%:*}") up   127.0.0.1:$port"; else echo "$(printf '%-8s' "${name%%:*}") down 127.0.0.1:$port"; fi
+    done
+    if [ "$(cat "$state/full" 2> /dev/null || echo 0)" = 1 ]; then
+        http_ok http://127.0.0.1:3000/api/health && echo "Grafana  up   http://127.0.0.1:3000" || echo "Grafana  down http://127.0.0.1:3000"
+        http_ok http://127.0.0.1:8087/health && echo "Viz      up   http://127.0.0.1:8087" || echo "Viz      down http://127.0.0.1:8087"
+    fi
+}
+
+cmd_logs() {
+    [ ${#positional[@]} -eq 1 ] || die "usage: chronolog-demo logs SERVICE (chrono-visor, chrono-keeper, chrono-grapher, chrono-player, grafana, ...)"
+    "${compose[@]}" logs --no-color --tail 200 "${positional[0]}"
+}
+
+cmd_down() {
+    stack_lock
+    local args=(--remove-orphans --timeout 20)
+    if [ "$volumes" = 1 ]; then args+=(-v); fi
+    "${compose[@]}" down "${args[@]}"
+    rm -f "$state/engine" "$state/project" "$state/full"
+}
+
+cmd_bundle() {
+    [ "$mode" = source ] || die "bundle needs a source tree"
+    [ ${#positional[@]} -eq 1 ] || die "usage: chronolog-demo bundle DIR"
+    local out=${positional[0]}
+    mkdir -p "$out"
+    out=$(cd "$out" && pwd)
+    [ -z "$(ls -A "$out")" ] || die "$out is not empty"
+    case "$out" in "$root"/*) die "bundle directory must be outside the repository" ;; esac
+    local image
+    for image in "$runtime_image" "$viz_image" "$mcp_image"; do
+        "$engine" image inspect "$image" > /dev/null 2>&1 || die "image $image is missing; run 'chronolog-demo build --engine $engine'"
+    done
+    [ -x "$bin/chronolog_kvs" ] || die "$bin has no CLIs; run 'chronolog-demo build'"
+    mkdir -p "$out"/{images,wheels/deps,bin,lib,viz-plugin,skills,deploy/compose,deploy/grafana,deploy/demo}
+    "$engine" save -o "$out/images/runtime.tar" "$runtime_image"
+    "$engine" save -o "$out/images/viz.tar" "$viz_image"
+    "$engine" save -o "$out/images/mcp.tar" "$mcp_image"
+    cp "$wheels"/chronolog-4.0.0-*.whl "$wheels"/chronolog_mcp-4.0.0-*.whl "$wheels"/chronolog_viz-4.0.0-*.whl "$out/wheels/"
+    "$venv/bin/python" -m pip download --quiet --dest "$out/wheels/deps" "$out"/wheels/chronolog-4.0.0-*.whl \
+        "$out"/wheels/chronolog_mcp-4.0.0-*.whl 'opentelemetry-sdk>=1.39,<2' 'mcp>=1.30,<2'
+    cp "$bin"/* "$out/bin/"
+    cp -a "$lib"/. "$out/lib/"
+    cp -r "$plugin_dir"/. "$out/viz-plugin/"
+    local f
+    for f in compose smoke.override demo.override stream.override viz.override demo-full.override; do
+        cp "$cdir/$f.yaml" "$out/deploy/compose/"
+    done
+    cp -r "$root/deploy/grafana/." "$out/deploy/grafana/"
+    cp "$here/chronolog-demo" "$out/deploy/demo/"
+    if [ -f "$here/tour.py" ]; then cp "$here/tour.py" "$out/deploy/demo/"; fi
+    if [ -d "$root/skills/chronolog" ]; then cp -r "$root/skills/chronolog" "$out/skills/"; fi
+    chmod +x "$out/deploy/demo/chronolog-demo"
+    ln -s deploy/demo/chronolog-demo "$out/chronolog-demo"
+    (cd "$out" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+    note "bundle written to $out ($(du -sh "$out" | cut -f1)); on the target host: cd $out && ./chronolog-demo load && ./chronolog-demo up --full && ./chronolog-demo tour"
+}
+
+cmd_load() {
+    [ "$mode" = bundle ] || die "load runs from inside a bundle"
+    (cd "$root" && sha256sum --quiet -c SHA256SUMS) || die "SHA256SUMS verification failed"
+    python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' || die "Python 3.12 or newer is required"
+    local image
+    for image in "$root"/images/*.tar; do "$engine" load -i "$image" > /dev/null; done
+    rm -rf "$venv"
+    python3 -m venv "$venv"
+    "$venv/bin/pip" install --quiet --no-index --find-links "$wheels/deps" "$wheels"/chronolog-4.0.0-*.whl \
+        "$wheels"/chronolog_mcp-4.0.0-*.whl opentelemetry-sdk mcp
+    note "images loaded with $engine and $venv created; next: ./chronolog-demo up --full"
+}
+
+case "$command" in
+    build) cmd_build ;;
+    up) cmd_up ;;
+    tour) cmd_tour ;;
+    status) cmd_status ;;
+    logs) cmd_logs ;;
+    down) cmd_down ;;
+    bundle) cmd_bundle ;;
+    load) cmd_load ;;
+    *) die "unknown subcommand $command (build up tour status logs down bundle load)" ;;
+esac

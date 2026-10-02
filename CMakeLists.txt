@@ -129,6 +129,7 @@ add_subdirectory(tools/stub_server)
 # The legacy CMakeLists.txt files under src/chrono-common and src/chrono-keeper are not built; the new
 # components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
+add_subdirectory(src/chrono-common/rpc)
 add_subdirectory(src/chrono-keeper/journal)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-keeper/wal/CMakeLists.txt")
     add_subdirectory(src/chrono-keeper/wal)
@@ -202,4 +203,8 @@ endif()
 
 if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
     add_subdirectory(plugins/chrono-ldms)
+endif()
+
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player)
+    add_subdirectory(tests/integration/dynamic)
 endif()

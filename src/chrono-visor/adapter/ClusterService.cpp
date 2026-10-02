@@ -203,7 +203,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                     if(!state.ok())
                                         continue;
                                     for(const auto& member: state->members())
-                                        if(member.joined() &&
+                                        if(member.joined() && !member.process().instance().empty() &&
                                            !raft_->appliedStore().membershipWouldEmpty(member.process().process_id()))
                                         {
                                             auto it = heartbeats_.find(member.process().process_id());

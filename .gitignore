@@ -51,7 +51,8 @@ coverage/
 # AI / agent tooling (local)
 # --------------------------
 .cursor/
-.claude/
+.claude/*
+!.claude/skills/
 .aider/
 .aider*
 .windsurf/
@@ -77,7 +78,8 @@ coverage/
 # Some agents/editors create these
 .mcp/
 .agent/
-.agents/
+.agents/*
+!.agents/skills/
 .sessions/
 .chat/
 .conversations/

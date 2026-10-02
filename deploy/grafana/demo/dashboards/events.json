@@ -1,0 +1,124 @@
+{
+ "title": "ChronoLog Events",
+ "uid": "chronolog-events",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "5s",
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "chronicle",
+    "label": "Chronicle",
+    "type": "textbox",
+    "query": "demo",
+    "current": {
+     "text": "demo",
+     "value": "demo"
+    },
+    "options": [
+     {
+      "selected": true,
+      "text": "demo",
+      "value": "demo"
+     }
+    ]
+   },
+   {
+    "name": "story_a",
+    "label": "Story A",
+    "type": "textbox",
+    "query": "agent-a/notes",
+    "current": {
+     "text": "agent-a/notes",
+     "value": "agent-a/notes"
+    },
+    "options": [
+     {
+      "selected": true,
+      "text": "agent-a/notes",
+      "value": "agent-a/notes"
+     }
+    ]
+   },
+   {
+    "name": "story_b",
+    "label": "Story B",
+    "type": "textbox",
+    "query": "shared/plan",
+    "current": {
+     "text": "shared/plan",
+     "value": "shared/plan"
+    },
+    "options": [
+     {
+      "selected": true,
+      "text": "shared/plan",
+      "value": "shared/plan"
+     }
+    ]
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "table",
+   "title": "Story A",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 9
+   },
+   "datasource": {
+    "type": "chronolog-viz-datasource",
+    "uid": "chronolog-viz"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "chronicle": "$chronicle",
+     "story": "$story_a",
+     "fields": [],
+     "limit": 200,
+     "datasource": {
+      "type": "chronolog-viz-datasource",
+      "uid": "chronolog-viz"
+     }
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "table",
+   "title": "Story B",
+   "gridPos": {
+    "x": 0,
+    "y": 9,
+    "w": 24,
+    "h": 9
+   },
+   "datasource": {
+    "type": "chronolog-viz-datasource",
+    "uid": "chronolog-viz"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "chronicle": "$chronicle",
+     "story": "$story_b",
+     "fields": [],
+     "limit": 200,
+     "datasource": {
+      "type": "chronolog-viz-datasource",
+      "uid": "chronolog-viz"
+     }
+    }
+   ]
+  }
+ ]
+}
