@@ -21,7 +21,7 @@ using namespace chronolog::bench;
 
 constexpr size_t maxMessageBytes = 16u << 20;
 
-void codecArgs(benchmark::internal::Benchmark* b)
+void codecArgs(benchmark::Benchmark* b)
 {
     for(int message = 0; message < 3; ++message)
         for(int payload: {64, 1024, 16384, 262144})
