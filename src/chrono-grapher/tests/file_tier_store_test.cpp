@@ -1029,6 +1029,16 @@ TEST(HDF5ChunkCodec, ArchiveFilesAreReadableWhileAnotherHandleHoldsAnExclusiveLo
     EXPECT_EQ(read->size(), 1u);
 }
 
+TEST(HDF5ChunkCodec, RejectsOversizedFileBeforeAllocating)
+{
+    auto directory = TestDirectory();
+    const auto path = *directory / "oversized.h5";
+    std::ofstream(path).close();
+    fs::resize_file(path, 512 * 1024 * 1024 + 1);
+    auto read = HDF5ChunkCodec().read(path);
+    EXPECT_EQ(read.status().code(), absl::StatusCode::kUnavailable);
+}
+
 TEST(HDF5ChunkCodec, LosslessEveryEventField)
 {
     auto directory = TestDirectory();
