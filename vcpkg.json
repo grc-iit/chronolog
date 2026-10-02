@@ -20,5 +20,13 @@
         "ssl"
       ]
     }
-  ]
+  ],
+  "features": {
+    "bench": {
+      "description": "Google Benchmark for tools/bench",
+      "dependencies": [
+        "benchmark"
+      ]
+    }
+  }
 }
