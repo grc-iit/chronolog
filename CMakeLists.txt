@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(CHRONOLOG_WERROR "Treat warnings in ChronoLog targets as errors" ON)
+option(CHRONOLOG_BUILD_BENCH "Build the benchmark and profiling harness under tools/bench" OFF)
 option(CHRONOLOG_BUILD_VISOR "Build the ChronoVisor catalog service" ON)
 set(CHRONOLOG_LINK_JOBS 4 CACHE STRING "Concurrent link steps under Ninja; each debug link of a gRPC binary peaks near 3 GB")
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS chronolog_link=${CHRONOLOG_LINK_JOBS})
@@ -220,4 +221,8 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TA
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/bind_guard_test.sh
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher>)
     set_tests_properties(bind_guard_integration PROPERTIES TIMEOUT 180 LABELS "integration")
+endif()
+
+if(CHRONOLOG_BUILD_BENCH)
+    add_subdirectory(tools/bench)
 endif()
