@@ -7,6 +7,8 @@
 #   RBUILD_LOCK=stack rbuild 'bash tests/smoke/run_dragon.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
 # SKIP_NATIVE_BUILD=1 reuses build/dev; SKIP_BINDING_BUILD=1 requires build_artifacts.sh outputs.
+# CHRONOLOG_IMAGE_TAG (rbuild sets wt-<worktree>) tags the runtime, viz and MCP images so two trees on one
+# host never replace each other's image.
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -24,8 +26,10 @@ overall=0
 # Binaries to ship, shared with deploy/demo/chronolog-demo.
 mapfile -t targets < <(bash deploy/demo/stage.sh targets)
 stage=$root/build/image-stage
-image=chronolog-runtime-local:dev
+image=chronolog-runtime-local:${CHRONOLOG_IMAGE_TAG:-dev}
 export CHRONOLOG_IMAGE=$image
+export CHRONOLOG_VIZ_IMAGE=chronolog-viz:${CHRONOLOG_IMAGE_TAG:-4.0.0}
+export CHRONOLOG_MCP_IMAGE=chronolog-mcp:${CHRONOLOG_IMAGE_TAG:-4.0.0}
 
 if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     echo "-- native dev build: ${targets[*]}"

@@ -1,6 +1,47 @@
+# Fast seal and chunk settings, plus a pinned Podman-safe network. Every service has a fixed
+# address and /etc/hosts entries for its peers, so no DNS lookup or restart IP change can stall a
+# gRPC channel (Podman's aardvark-dns intermittently stops answering for up to 36 s after a start).
+# CHRONOLOG_NET_PREFIX moves the /24 when 10.231.77.0/24 collides with a local network.
 services:
+  chrono-visor:
+    networks:
+      chronolog:
+        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.201
+    extra_hosts:
+      - "chrono-keeper:${CHRONOLOG_NET_PREFIX:-10.231.77}.202"
+      - "chrono-grapher:${CHRONOLOG_NET_PREFIX:-10.231.77}.203"
+      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
   chrono-keeper:
     environment:
       CHRONOLOG_KEEPER_STORY_CHUNK_DURATION_SECS: "1"
       CHRONOLOG_KEEPER_SEAL_INTERVAL_MS: "200"
       CHRONOLOG_KEEPER_ARCHIVE_VISIBILITY_DELAY_SECS: "1"
+    networks:
+      chronolog:
+        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.202
+    extra_hosts:
+      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
+      - "chrono-grapher:${CHRONOLOG_NET_PREFIX:-10.231.77}.203"
+      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
+  chrono-grapher:
+    networks:
+      chronolog:
+        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.203
+    extra_hosts:
+      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
+      - "chrono-keeper:${CHRONOLOG_NET_PREFIX:-10.231.77}.202"
+      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
+  chrono-player:
+    networks:
+      chronolog:
+        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.204
+    extra_hosts:
+      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
+      - "chrono-keeper:${CHRONOLOG_NET_PREFIX:-10.231.77}.202"
+      - "chrono-grapher:${CHRONOLOG_NET_PREFIX:-10.231.77}.203"
+networks:
+  chronolog:
+    ipam:
+      config:
+        - subnet: ${CHRONOLOG_NET_PREFIX:-10.231.77}.0/24
+          ip_range: ${CHRONOLOG_NET_PREFIX:-10.231.77}.0/25

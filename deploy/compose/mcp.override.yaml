@@ -1,6 +1,6 @@
 services:
   chrono-mcp:
-    image: chronolog-mcp:4.0.0
+    image: ${CHRONOLOG_MCP_IMAGE:-chronolog-mcp:4.0.0}
     build:
       context: ../../build/smoke/wheels
       dockerfile: ../../../deploy/containers/mcp.Containerfile
@@ -9,7 +9,12 @@ services:
       CHRONOLOG_PLAYER: chrono-player:50054
       CHRONOLOG_CHRONICLE: conversations
     ports: ["127.0.0.1:8000:8000"]
-    networks: [chronolog]
+    networks:
+      chronolog:
+        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.207
+    extra_hosts:
+      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
+      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
