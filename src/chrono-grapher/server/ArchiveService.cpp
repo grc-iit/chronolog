@@ -1,9 +1,12 @@
 #include "chrono-grapher/server/ArchiveService.h"
+#include "chrono-grapher/server/WorkerPool.h"
 #include <absl/crc/crc32c.h>
+#include <absl/log/log.h>
+#include <algorithm>
 #include <chrono>
+#include <future>
 #include <limits>
-#include <iostream>
-#include <syncstream>
+#include <memory>
 
 namespace chronolog::grapher
 {
@@ -63,7 +66,11 @@ ArchiveService::ArchiveService(FileTierStore& store, std::string instance, Trans
     : store_(store)
     , instance_(std::move(instance))
     , limits_(limits)
+    , pool_(std::make_unique<WorkerPool>(std::max<uint32_t>(1, limits.concurrent_transfers),
+                                         std::max<uint32_t>(1, limits.concurrent_transfers)))
 {}
+
+ArchiveService::~ArchiveService() = default;
 
 grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
                                            grpc::ServerReader<wire::TransferChunkRequest>* reader,
@@ -146,54 +153,61 @@ grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
             return Fail(*response, grpc::StatusCode::INVALID_ARGUMENT, std::string(event.status().message()));
         chunk.events.push_back(*std::move(event));
     }
-    uint64_t receipt = 0;
+    auto publish = [&]() -> grpc::Status
     {
-        std::lock_guard lock(mutex_);
-        auto& story = receipts_[chunk.story_id];
-        if(story.dropped)
-            return Fail(*response, grpc::StatusCode::NOT_FOUND, "story dropped");
-        if(next_receipt_ == std::numeric_limits<uint64_t>::max())
-            return Fail(*response, grpc::StatusCode::RESOURCE_EXHAUSTED, "receipt counter exhausted");
-        auto known = store_.contiguousWatermark(chunk.story_id);
-        if(!known.ok())
+        CHRONOLOG_ASSERT_WORKER_THREAD();
+        uint64_t receipt = 0;
         {
-            if(!absl::IsNotFound(known.status()))
-                return Fail(*response, grpc::StatusCode::UNAVAILABLE, std::string(known.status().message()));
-            const auto registered = store_.registerStory(chunk.story_id);
-            if(!registered.ok())
-                return Fail(*response, grpc::StatusCode::UNAVAILABLE, std::string(registered.message()));
+            std::lock_guard lock(mutex_);
+            auto& story = receipts_[chunk.story_id];
+            if(story.dropped)
+                return Fail(*response, grpc::StatusCode::NOT_FOUND, "story dropped");
+            if(next_receipt_ == std::numeric_limits<uint64_t>::max())
+                return Fail(*response, grpc::StatusCode::RESOURCE_EXHAUSTED, "receipt counter exhausted");
+            auto known = store_.contiguousWatermark(chunk.story_id);
+            if(!known.ok())
+            {
+                if(!absl::IsNotFound(known.status()))
+                    return Fail(*response, grpc::StatusCode::UNAVAILABLE, std::string(known.status().message()));
+                const auto registered = store_.registerStory(chunk.story_id);
+                if(!registered.ok())
+                    return Fail(*response, grpc::StatusCode::UNAVAILABLE, std::string(registered.message()));
+            }
+            receipt = ++next_receipt_;
+            story.highest = receipt;
+            story.pending.insert(receipt);
+            ++revision_;
+            changed_.notify_all();
         }
-        receipt = ++next_receipt_;
-        story.highest = receipt;
-        story.pending.insert(receipt);
-        ++revision_;
-        changed_.notify_all();
-    }
-    auto published = store_.publish(std::move(chunk));
-    {
-        std::lock_guard lock(mutex_);
-        receipts_[id.story_id()].pending.erase(receipt);
-        ++revision_;
-        changed_.notify_all();
-    }
-    if(!published.ok())
-        return Fail(*response,
-                    static_cast<grpc::StatusCode>(published.status().code()),
-                    std::string(published.status().message()));
-    if(published->state != ManifestState::Published && published->state != ManifestState::Empty)
-        return Fail(*response, grpc::StatusCode::UNAVAILABLE, "chunk was not persisted");
-    std::osyncstream(std::clog) << "archive_published chunk=" << id.chunk_id() << " story=" << id.story_id()
-                                << " monotonic_ns="
-                                << std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                           std::chrono::steady_clock::now().time_since_epoch())
-                                           .count()
-                                << std::endl;
-    response->mutable_status()->set_code(0);
-    response->set_chunk_id(id.chunk_id());
-    response->set_bytes(bytes.size());
-    response->set_grapher_instance(instance_);
-    response->set_receipt(receipt);
-    return grpc::Status::OK;
+        auto published = store_.publish(std::move(chunk));
+        {
+            std::lock_guard lock(mutex_);
+            receipts_[id.story_id()].pending.erase(receipt);
+            ++revision_;
+            changed_.notify_all();
+        }
+        if(!published.ok())
+            return Fail(*response,
+                        static_cast<grpc::StatusCode>(published.status().code()),
+                        std::string(published.status().message()));
+        if(published->state != ManifestState::Published && published->state != ManifestState::Empty)
+            return Fail(*response, grpc::StatusCode::UNAVAILABLE, "chunk was not persisted");
+        LOG(INFO) << "archive_published chunk=" << id.chunk_id() << " story=" << id.story_id() << " monotonic_ns="
+                  << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now().time_since_epoch())
+                             .count();
+        response->mutable_status()->set_code(0);
+        response->set_chunk_id(id.chunk_id());
+        response->set_bytes(bytes.size());
+        response->set_grapher_instance(instance_);
+        response->set_receipt(receipt);
+        return grpc::Status::OK;
+    };
+    std::packaged_task<grpc::Status()> task(std::move(publish));
+    auto done = task.get_future();
+    if(!pool_->submit([&task] { task(); }))
+        return Fail(*response, grpc::StatusCode::RESOURCE_EXHAUSTED, "grapher saturated");
+    return done.get();
 }
 
 grpc::Status ArchiveService::WatchWatermarks(grpc::ServerContext* context,

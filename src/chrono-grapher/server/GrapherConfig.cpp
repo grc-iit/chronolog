@@ -29,6 +29,7 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
                                                    {"self_endpoint", &config.self_endpoint},
                                                    {"visor_internal", &config.visor_internal},
                                                    {"archive_codec", &config.archive_codec},
+                                                   {"log_level", &config.log_level},
                                                    {"archive_root", &config.archive_root}};
     std::map<std::string, uint64_t> numbers = {{"heartbeat_interval_ms", config.heartbeat_interval_ms},
                                                {"rpc_timeout_ms", config.rpc_timeout_ms},
@@ -104,6 +105,8 @@ absl::Status GrapherConfig::validate() const
 {
     if(archive_codec != "proto" && archive_codec != "hdf5")
         return absl::InvalidArgumentError("archive_codec must be proto or hdf5");
+    if(log_level != "info" && log_level != "warning" && log_level != "error")
+        return absl::InvalidArgumentError("log_level must be info, warning or error");
     if(process_id.empty() || manifest_writer.empty() || internal_listen.empty() || self_endpoint.empty() ||
        visor_internal.empty() || archive_root.empty())
         return absl::InvalidArgumentError("grapher identities and endpoints required");

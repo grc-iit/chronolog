@@ -1,11 +1,12 @@
-add_library(chronolog_grapher_server STATIC ArchiveService.cpp GrapherConfig.cpp)
+add_library(chronolog_grapher_server STATIC ArchiveService.cpp GrapherConfig.cpp WorkerPool.cpp)
 target_include_directories(chronolog_grapher_server PUBLIC "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(chronolog_grapher_server PUBLIC
     chronolog_grapher_tier chronolog_common_rpc chronolog_internal_proto absl::crc32c
-    PRIVATE chronolog_warnings nlohmann_json::nlohmann_json)
+    PRIVATE chronolog_warnings nlohmann_json::nlohmann_json absl::log)
 
 add_executable(chrono_grapher main.cpp)
-target_link_libraries(chrono_grapher PRIVATE chronolog_grapher_server chronolog_warnings)
+target_link_libraries(chrono_grapher PRIVATE chronolog_grapher_server chronolog_warnings
+    absl::log absl::log_initialize absl::log_globals)
 
 add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp)
 target_link_libraries(chronolog_grapher_server_tests PRIVATE
