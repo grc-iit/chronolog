@@ -29,6 +29,13 @@ public:
     absl::StatusOr<Hlc> contiguousWatermark(StoryId story) const override;
     absl::StatusOr<bool> incomplete(StoryId story, Range range) const;
     absl::Status eraseFile(const std::string& file);
+    // Appends the Tombstoned record and fsyncs it; publish refuses the story from then on, across restarts (I13.11).
+    // Idempotent. A tombstone does not touch the story's files or its watermark.
+    absl::Status tombstone(StoryId story);
+    absl::StatusOr<bool> tombstoned(StoryId story) const;
+    absl::StatusOr<std::vector<StoryId>> tombstonedStories() const;
+    // Stories the manifest holds records for and no tombstone covers.
+    absl::StatusOr<std::vector<StoryId>> liveStories() const;
     absl::Status compact();
     absl::StatusOr<std::vector<StoryId>> storiesWithoutPhysicalPolicy() const;
 

@@ -81,6 +81,17 @@ Hlc archiveEnd(const HotFetch& fetch, const Range& range)
     return std::min(range.end, boundary);
 }
 
+// A Read admitted before a story was destroyed may reach archive files the Grapher has since erased, and nothing in the
+// manifest says which windows were affected. The tombstone line precedes every Deleted record it causes, so a view that
+// shows a removed file also shows the tombstone; checked after the archive reads (I6.7, I13.11).
+bool archiveTombstoned(const HotReplayOptions& options, StoryId story)
+{
+    if(!options.archive)
+        return false;
+    const auto tombstoned = options.archive->tombstoned(story);
+    return !tombstoned.ok() || *tombstoned;
+}
+
 bool loadArchive(const HotReplayOptions& options,
                  StoryId story,
                  const Range& range,
@@ -99,7 +110,7 @@ bool loadArchive(const HotReplayOptions& options,
     auto lost = options.archive->incomplete(story, cold);
     if(archived.ok())
         events = *std::move(archived);
-    return archived.ok() && lost.ok() && !*lost;
+    return archived.ok() && lost.ok() && !*lost && !archiveTombstoned(options, story);
 }
 
 class HotReplayStream final: public ReplayStream
@@ -243,6 +254,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
         else
             take(*std::move(events));
     }
+    if(!records.empty() && archiveTombstoned(options, story))
+        archive_failed = true;
     auto completion = CompletionPolicy::decide(range,
                                                fetch.route_epoch,
                                                frontiers,
@@ -569,6 +582,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                 inputs.push_back(*std::move(events));
             }
         }
+        if(!records.empty() && archiveTombstoned(options_, id))
+            archive_ok = false;
     }
     Completion completion = CompletionPolicy::decide(covered,
                                                      fetched->route_epoch,

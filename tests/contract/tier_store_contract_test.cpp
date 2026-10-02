@@ -8,11 +8,13 @@ namespace chronolog::contract
 // A fresh store is anchored at HLC {100,0}. Fault injection affects the next
 // publish only. restart reopens the durable archive. eraseFile appends deletion.
 // injectTornRecord appends incomplete manifest bytes; writerLogs exposes log ids.
+// tombstone appends the durable story-tombstone record (I13.11).
 struct TierStoreHarness
 {
     std::unique_ptr<TierStore> sut;
     std::function<void()> restart, failNextPublish, injectTornRecord;
     std::function<void(std::string)> eraseFile;
+    std::function<void(StoryId)> tombstone;
     std::function<std::vector<std::string>()> writerLogs;
     std::function<absl::StatusOr<ManifestRecord>(Chunk)> publishOtherWriter;
 };
@@ -184,6 +186,29 @@ TEST_P(TierStoreContract, DeletedFileSupersedesPublishedRecord)
     auto e = h->sut->read(1, WholeArchive());
     ASSERT_TRUE(e.ok());
     EXPECT_TRUE(e->empty());
+    auto w = h->sut->contiguousWatermark(1);
+    ASSERT_TRUE(w.ok());
+    EXPECT_EQ(*w, (Hlc{200, 0}));
+}
+
+TEST_P(TierStoreContract, TombstoneRecordRefusesLatePublish)
+{
+    ASSERT_TRUE(h->tombstone);
+    ASSERT_TRUE(h->sut->publish(Window()).ok());
+    h->tombstone(1);
+    auto late = h->sut->publish(Window(200, 300));
+    ASSERT_FALSE(late.ok());
+    EXPECT_EQ(late.status().code(), absl::StatusCode::kFailedPrecondition);
+    h->restart();
+    late = h->sut->publish(Window(200, 300));
+    ASSERT_FALSE(late.ok());
+    EXPECT_EQ(late.status().code(), absl::StatusCode::kFailedPrecondition);
+    auto manifest = h->sut->manifest(1);
+    ASSERT_TRUE(manifest.ok());
+    EXPECT_EQ(manifest->size(), 1u);
+    auto events = h->sut->read(1, WholeArchive());
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
     auto w = h->sut->contiguousWatermark(1);
     ASSERT_TRUE(w.ok());
     EXPECT_EQ(*w, (Hlc{200, 0}));

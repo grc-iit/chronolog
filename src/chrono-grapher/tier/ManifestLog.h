@@ -13,6 +13,7 @@ struct ManifestIndex
 {
     std::vector<ManifestRecord> records;
     std::map<StoryId, Hlc> watermarks;
+    std::set<StoryId> tombstoned;
     // Positions in records per story, so a story's view is rebuilt only when it changed and never by scanning the
     // whole manifest. generation changes whenever the index is rebuilt from scratch.
     std::map<StoryId, std::vector<size_t>> by_story;
@@ -28,6 +29,8 @@ public:
     ~ManifestLog();
     absl::Status append(ManifestRecord record);
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
+    // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).
+    absl::Status appendTombstone(StoryId story);
     absl::StatusOr<ManifestIndex> load() const;
     // Reads only what every writer appended since the previous call and returns the cached index. The pointer stays
     // valid until the next sync, compact or load, and the caller serialises calls.

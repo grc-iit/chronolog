@@ -201,6 +201,12 @@ absl::Status ManifestLog::rememberWatermark(StoryId story, Hlc watermark)
     return appendLine(Json{{"watermark", {watermark.physical_ns, watermark.logical}}, {"story", story}}.dump());
 }
 
+absl::Status ManifestLog::appendTombstone(StoryId story)
+{
+    std::lock_guard lock(mutex_);
+    return appendLine(Json{{"tombstoned", true}, {"story", story}}.dump());
+}
+
 absl::Status ManifestLog::applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const
 {
     try
@@ -213,6 +219,14 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
             auto [it, inserted] = index.watermarks.emplace(story, value);
             if(!inserted)
                 it->second = std::max(it->second, value);
+            return absl::OkStatus();
+        }
+        if(json.contains("tombstoned"))
+        {
+            const auto story = json.at("story").get<StoryId>();
+            if(!story)
+                return absl::UnavailableError("invalid tombstoned story");
+            index.tombstoned.insert(story);
             return absl::OkStatus();
         }
         auto record = Decode(json);

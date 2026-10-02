@@ -1,5 +1,7 @@
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
+#include "chrono-grapher/server/TombstoneWatcher.h"
+#include "chronolog/v1/chronolog.grpc.pb.h"
 #include "rpc/Channel.h"
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
@@ -80,7 +82,8 @@ int main(int argc, char** argv)
         LOG(ERROR) << "cannot listen on " << config->internal_listen;
         return 1;
     }
-    auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::peerChannel(config->visor_internal));
+    const auto visor = chronolog::rpc::peerChannel(config->visor_internal);
+    auto stub = chronolog::internal::v1::Cluster::NewStub(visor);
     std::jthread cluster(
             [&](std::stop_token stop)
             {
@@ -142,6 +145,31 @@ int main(int argc, char** argv)
                                    std::chrono::milliseconds(config->heartbeat_interval_ms),
                                    [] { return false; });
                 }
+            });
+    // The Catalog answers on the Visor internal port in both modes. A story the snapshot did not list is confirmed
+    // here, never inferred from absence (W10.17).
+    auto catalog = std::shared_ptr<chronolog::v1::Catalog::Stub>(chronolog::v1::Catalog::NewStub(visor));
+    chronolog::grapher::TombstoneWatcher routes(
+            archive,
+            visor,
+            config->process_id,
+            instance,
+            [catalog, timeout = config->rpc_timeout_ms](chronolog::StoryId story) -> absl::StatusOr<bool>
+            {
+                grpc::ClientContext context;
+                chronolog::rpc::withTimeout(context, std::chrono::milliseconds(timeout));
+                chronolog::v1::GetStoryRequest request;
+                request.set_story_id(story);
+                chronolog::v1::GetStoryResponse response;
+                const auto status = catalog->GetStory(&context, request, &response);
+                if(!status.ok())
+                    return absl::Status(static_cast<absl::StatusCode>(status.error_code()), status.error_message());
+                const auto code = static_cast<absl::StatusCode>(response.status().code());
+                if(code == absl::StatusCode::kNotFound)
+                    return false;
+                if(code != absl::StatusCode::kOk)
+                    return absl::Status(code, response.status().message());
+                return response.story().tombstoned();
             });
     std::cout << "grapher ready instance=" << instance << " internal_listen=" << config->internal_listen << std::endl;
     int signal = 0;

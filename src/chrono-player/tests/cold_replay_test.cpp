@@ -234,6 +234,80 @@ TEST_F(ColdReplay, MissingArchiveFileIsSourceFailed)
     EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
 }
 
+TEST_F(ColdReplay, AFileRemovedByAStoryDestroyEndsSourceFailed)
+{
+    publish(140);
+    source->response.keepers[0].events = {event(120)};
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(writer->eraseFile(records->front().file).ok());
+    read();
+    ASSERT_TRUE(completion);
+    EXPECT_FALSE(completion->complete);
+    EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
+    ASSERT_EQ(events.size(), 1);
+    EXPECT_EQ(events[0].hlc, (Hlc{120, 1}));
+}
+
+TEST_F(ColdReplay, ARetentionDeletionWithoutATombstoneStaysComplete)
+{
+    publish(140);
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_TRUE(writer->eraseFile(records->front().file).ok());
+    read();
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+}
+
+TEST_F(ColdReplay, APhysicalReadAfterAStoryDestroyEndsSourceFailed)
+{
+    auto e = event(140);
+    e.physical = {150, 5, ClockStatus::Synced};
+    Chunk chunk{"physical-destroyed", 1, {100, 0}, {200, 0}, {e}, false};
+    chunk.physical_policy = true;
+    ASSERT_TRUE(writer->publish(chunk).ok());
+    source->response.physical_policy = true;
+    for(auto& k: source->response.keepers) k.frontier.physical_frontier = 400;
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(writer->eraseFile(records->front().file).ok());
+    HotReplay replay(source, options);
+    auto stream = replay.read(1, {Range::Axis::Physical, {145, 0}, {155, 0}});
+    ASSERT_TRUE(stream.ok());
+    std::optional<Completion> physical;
+    for(int i = 0; i < 4 && !physical; ++i)
+    {
+        auto batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok());
+        ASSERT_TRUE(*batch);
+        physical = (**batch).completion;
+    }
+    ASSERT_TRUE(physical);
+    EXPECT_FALSE(physical->complete);
+    EXPECT_EQ(physical->reason, IncompleteReason::SourceFailed);
+}
+
+TEST_F(ColdReplay, ATailOverAFileRemovedByAStoryDestroyEndsSourceFailed)
+{
+    publish(140);
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    ASSERT_TRUE(writer->eraseFile(records->front().file).ok());
+    ASSERT_TRUE(archive->refreshNow().ok());
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto final = (*stream)->next();
+    ASSERT_TRUE(final.ok());
+    ASSERT_TRUE(*final);
+    ASSERT_TRUE((**final).completion);
+    EXPECT_EQ((**final).completion->reason, IncompleteReason::SourceFailed);
+}
+
 TEST_F(ColdReplay, DisabledArchiveWithEvictedEventsIsSourceFailed)
 {
     options.archive.reset();
