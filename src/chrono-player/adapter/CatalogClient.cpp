@@ -4,9 +4,13 @@ namespace chronolog::player
 {
 
 CatalogClient::CatalogClient(std::shared_ptr<grpc::Channel> visor, std::chrono::milliseconds deadline)
-    : stub_(v1::Catalog::NewStub(std::move(visor)))
-    , deadline_(deadline)
-{}
+    : deadline_(deadline)
+{
+    // Connect now, while name resolution works; a later resolver outage then cannot fail a Read that finds
+    // the connection up.
+    visor->GetState(true);
+    stub_ = v1::Catalog::NewStub(std::move(visor));
+}
 
 absl::Status CatalogClient::ensureLive(StoryId story) const
 {
@@ -14,6 +18,7 @@ absl::Status CatalogClient::ensureLive(StoryId story) const
     request.set_story_id(story);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + deadline_);
+    context.set_wait_for_ready(true);
     v1::GetStoryResponse response;
     grpc::Status rpc = stub_->GetStory(&context, request, &response);
     if(!rpc.ok())

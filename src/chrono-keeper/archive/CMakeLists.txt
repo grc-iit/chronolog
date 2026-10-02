@@ -12,4 +12,4 @@ if("thread" IN_LIST CHRONOLOG_SANITIZERS AND CHRONOLOG_SETARCH)
     set_property(TARGET chronolog_keeper_archive_tests PROPERTY CROSSCOMPILING_EMULATOR
         "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
 endif()
-gtest_discover_tests(chronolog_keeper_archive_tests DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+gtest_discover_tests(chronolog_keeper_archive_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)

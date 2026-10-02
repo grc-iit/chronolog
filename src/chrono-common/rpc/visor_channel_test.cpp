@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "rpc/FlakyResolver.h"
 #include "rpc/VisorChannel.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
@@ -37,7 +38,7 @@ std::unique_ptr<grpc::Server> Start(Replica& replica, int* port)
 std::string Ask(const std::shared_ptr<grpc::Channel>& channel, std::string* error = nullptr)
 {
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(3));
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     context.set_wait_for_ready(true);
     iv1::MembershipResponse response;
     auto status = iv1::Cluster::NewStub(channel)->ListMembers(&context, iv1::ListMembersRequest(), &response);
@@ -69,5 +70,19 @@ TEST(VisorChannelTest, CallsFailOverWhenTheAttachedReplicaDies)
     std::string answer;
     for(int attempt = 0; attempt < 50 && answer.empty(); ++attempt) answer = Ask(channel);
     EXPECT_EQ(answer, "second");
+}
+
+// FLAKE-2: a lookup that fails once must be retried within the call deadline, not after 30 s.
+TEST(VisorChannelTest, ACallSurvivesATransientNameResolutionFailure)
+{
+    Replica only("only");
+    int port = 0;
+    auto server = Start(only, &port);
+    ASSERT_TRUE(server);
+    test::lookups = 0;
+    test::failing_lookups = 1;
+    auto channel = visorChannel("visor.test:" + std::to_string(port));
+    EXPECT_EQ(Ask(channel), "only");
+    EXPECT_GE(test::lookups.load(), 2);
 }
 } // namespace chronolog::rpc

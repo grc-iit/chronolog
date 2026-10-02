@@ -33,7 +33,7 @@ function(chrono_player_test name sources prefix)
         set_property(TARGET ${name} PROPERTY CROSSCOMPILING_EMULATOR
             "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
     endif()
-    gtest_discover_tests(${name} TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
+    gtest_discover_tests(${name} DISCOVERY_TIMEOUT 60 TEST_PREFIX "${prefix}" DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
 endfunction()
 
 chrono_player_test(chrono_player_replay_merge_test tests/replay_merge_test.cpp "replay_merge.")
@@ -44,6 +44,7 @@ chrono_player_test(chrono_player_adapter_test "tests/replay_adapter_test.cpp;tes
 chrono_player_test(chrono_player_cold_replay_test tests/cold_replay_test.cpp "")
 
 chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.cpp "")
+chrono_player_test(chrono_player_catalog_client_dns_test tests/catalog_client_dns_test.cpp "")
 
 chrono_player_test(chrono_player_m8_replay_test "${PROJECT_SOURCE_DIR}/tests/contract/replay/m8_replay_test.cpp" "M8.")
 

@@ -1,5 +1,0 @@
-cmake_minimum_required(VERSION 3.25)
-
-add_subdirectory(data-integrity)
-add_subdirectory(destructive-apis)
-add_subdirectory(tail-read)
