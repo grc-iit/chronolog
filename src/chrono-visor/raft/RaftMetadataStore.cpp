@@ -371,6 +371,21 @@ absl::StatusOr<std::string> RaftMetadataStore::propose(const internal::v1::Catal
         return absl::UnavailableError("Raft proposal failed");
     return string(*result->get());
 }
+// A restarted replica holds only what it applied before it was killed until a leader of the new term commits.
+// A watch snapshot from that state can sit below revisions a Keeper already applied, and the Keeper rejects it and
+// keeps its admission gate closed for as long as the stream stays open. The state is current once it holds an entry
+// of the present term that the leader has declared committed, because every earlier entry precedes that one.
+bool RaftMetadataStore::appliedStateCurrent() const
+{
+    if(leaderLease())
+        return true;
+    const auto leader = server_->get_leader();
+    if(leader < 0 || leader == config_.server_id || !server_->is_leader_alive())
+        return false;
+    auto applied = store_->appliedIndex();
+    return applied.ok() && *applied >= server_->get_target_committed_log_idx() &&
+           durable_->term_at(*applied) == server_->get_term();
+}
 absl::StatusOr<AcquisitionSnapshot> RaftMetadataStore::snapshotAcquisitions() const
 {
     return store_->snapshotAcquisitions();

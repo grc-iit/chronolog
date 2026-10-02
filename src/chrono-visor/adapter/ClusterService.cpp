@@ -542,6 +542,13 @@ ClusterService::WatchAcquisitions(grpc::CallbackServerContext*, const internal::
     if(request->keeper_id().empty())
         return new FailedStream<internal::v1::WatchAcquisitionsResponse>(
                 grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "keeper_id is required"));
+    if(raft_ && !raft_->appliedStateCurrent())
+    {
+        LOG_EVERY_N_SEC(INFO, 2) << "acquisition_watch refused keeper=" << request->keeper_id()
+                                 << " leader=" << raft_->leaderId() << " term=" << raft_->term();
+        return new FailedStream<internal::v1::WatchAcquisitionsResponse>(
+                grpc::Status(grpc::StatusCode::UNAVAILABLE, "replica has not applied the committed log of the term"));
+    }
     // The subscription registers for changes before it reads the ledger, so the
     // snapshot at revision R and the queued changes above R leave no gap.
     auto subscription = feed_.subscribe(ledger_, request->keeper_id());
@@ -549,6 +556,9 @@ ClusterService::WatchAcquisitions(grpc::CallbackServerContext*, const internal::
         return new FailedStream<internal::v1::WatchAcquisitionsResponse>(
                 grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(subscription.status().message())));
     std::shared_ptr<AcquisitionFeed::Subscription> sub = *subscription;
+    if(raft_)
+        LOG(INFO) << "acquisition_watch keeper=" << request->keeper_id() << " revision=" << sub->snapshot().revision
+                  << " leader=" << raft_->leaderId() << " term=" << raft_->term();
     std::deque<internal::v1::WatchAcquisitionsResponse> initial;
     *initial.emplace_back().mutable_snapshot() = convert::toProto(sub->snapshot());
     return startStream<internal::v1::WatchAcquisitionsResponse>(
