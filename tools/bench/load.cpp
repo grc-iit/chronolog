@@ -176,11 +176,17 @@ void appendWorker(sdk::Writer& writer,
         spec.envelope.payload.assign(payload, 'x');
         spec.durability = durable ? chronolog::Durability::Durable : chronolog::Durability::Accepted;
     }
+    uint64_t warm_written = 0;
     for(;;)
     {
         const auto t0 = Clock::now();
         if(t0 >= end || written.load(std::memory_order_relaxed) >= cap_bytes)
             break;
+        if(t0 < warm_end && warm_written >= cap_bytes / 32)
+        {
+            std::this_thread::sleep_until(warm_end);
+            continue;
+        }
         uint64_t ok = 0, failed = 0;
         std::string error;
         if(batch == 1)
@@ -215,9 +221,11 @@ void appendWorker(sdk::Writer& writer,
                 }
         }
         const auto t1 = Clock::now();
-        written.fetch_add(ok * payload, std::memory_order_relaxed);
+        if(t0 < warm_end)
+            warm_written += ok * payload;
         if(t0 >= warm_end)
         {
+            written.fetch_add(ok * payload, std::memory_order_relaxed);
             stats.latencies_us.push_back(micros(t1 - t0));
             stats.events += ok;
             stats.errors += failed;
