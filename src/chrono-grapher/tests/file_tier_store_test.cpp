@@ -523,6 +523,32 @@ TEST(ManifestLog, CompactionKeepsEveryRecordAndLaterAppendsLoadOnTopOfIt)
     EXPECT_EQ(chunks().size(), 5u);
 }
 
+TEST(ManifestLog, SyncSeesAnotherWritersAppendsAndSurvivesItsCompaction)
+{
+    auto directory = TestDirectory();
+    auto mine = ManifestLog::Open(*directory, "mine");
+    auto theirs = ManifestLog::Open(*directory, "theirs");
+    ASSERT_TRUE(mine.ok());
+    ASSERT_TRUE(theirs.ok());
+    auto count = [&]
+    {
+        auto index = (*mine)->sync();
+        EXPECT_TRUE(index.ok());
+        return index.ok() ? (*index)->records.size() : size_t{0};
+    };
+    ASSERT_TRUE((*mine)->append(Record(100, 200)).ok());
+    EXPECT_EQ(count(), 1u);
+    ASSERT_TRUE((*theirs)->append(Record(200, 300)).ok());
+    EXPECT_EQ(count(), 2u);
+    ASSERT_TRUE((*theirs)->append(Record(300, 400)).ok());
+    ASSERT_TRUE((*theirs)->compact().ok());
+    EXPECT_EQ(count(), 3u);
+    ASSERT_TRUE((*theirs)->append(Record(400, 500)).ok());
+    ASSERT_TRUE((*mine)->compact().ok());
+    EXPECT_EQ(count(), 4u);
+    EXPECT_EQ((*mine)->sync().value()->by_story.at(1).size(), 4u);
+}
+
 TEST(ManifestLog, ConcurrentAppendsAllSurvive)
 {
     auto directory = TestDirectory();

@@ -8,7 +8,7 @@ version = "4.0.0"
 description = "Conversation logging and Replay through the ChronoLog MCP server"
 requires-python = ">=3.12"
 license = "BSD-3-Clause"
-dependencies = ["chronolog>=4.0.0,<5", "mcp>=1.30,<2"]
+dependencies = ["chronolog>=4.0.0,<5", "mcp>=2.2,<3"]
 
 [project.scripts]
 chronolog-mcp = "chronomcp.server:main"

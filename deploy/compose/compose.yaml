@@ -22,9 +22,10 @@ x-chronolog-service: &chronolog-service
 
 x-service-healthcheck: &service-healthcheck
   test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${CHRONOLOG_PORT}"]
-  interval: 5s
-  timeout: 3s
-  retries: 10
+  interval: 1s
+  timeout: 1s
+  start_period: 10s
+  retries: 50
 
 services:
   chrono-visor:
@@ -45,9 +46,10 @@ services:
       - visor-catalog:/var/lib/chronolog
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/50051"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      interval: 1s
+      timeout: 1s
+      start_period: 10s
+      retries: 50
 
   chrono-keeper:
     <<: *chronolog-service

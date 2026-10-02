@@ -28,7 +28,7 @@ def test_mcp_stdio_session():
 
                     async def tool(name, args):
                         result = await session.call_tool(name, args)
-                        assert not result.isError, result
+                        assert not result.is_error, result
                         return json.loads(result.content[0].text)
 
                     created = await tool("create_story", {"story": "events"})
@@ -101,13 +101,13 @@ def test_conversation_workflow_resource_prompt_and_replay_reader():
                         "start_chronolog", "record_interaction", "retrieve_interaction", "stop_chronolog",
                         "list_stories", "create_story", "append", "read", "tail"}
                     invalid = await session.call_tool("record_interaction", {"user_message": "before", "assistant_message": "start"})
-                    assert invalid.isError
+                    assert invalid.is_error
                     status = await session.read_resource("chronolog://status")
                     assert json.loads(status.contents[0].text)["status"] == "idle"
                     prompt = await session.get_prompt("logging_workflow", {"time_range": "a requested HLC range"})
                     assert "Replay Completion" in prompt.messages[0].content.text
                     started = await session.call_tool("start_chronolog", {})
-                    assert not started.isError
+                    assert not started.is_error
                     story = json.loads(started.content[0].text)["story"]["id"]
                     again = await session.call_tool("start_chronolog", {})
                     assert json.loads(again.content[0].text)["story"]["id"] == story
@@ -120,7 +120,7 @@ def test_conversation_workflow_resource_prompt_and_replay_reader():
                     end["logical"] += 1
                     for _ in range(40):
                         fetched = await session.call_tool("retrieve_interaction", {"end_hlc": end})
-                        assert not fetched.isError
+                        assert not fetched.is_error
                         replay = json.loads(fetched.content[0].text)
                         if replay["completion"]["complete"]:
                             break
@@ -136,7 +136,7 @@ def test_conversation_workflow_resource_prompt_and_replay_reader():
                     assert json.loads(stopped.content[0].text)["status"] == "stopped"
                     status = await session.read_resource("chronolog://status")
                     assert json.loads(status.contents[0].text)["writer_id"] is None
-                    assert (await session.call_tool("record_interaction", {"user_message": "after", "assistant_message": "stop"})).isError
+                    assert (await session.call_tool("record_interaction", {"user_message": "after", "assistant_message": "stop"})).is_error
             with client.acquire(story, "conversation-test", timeout=3) as writer:
                 assert writer.incarnation == 2
             process = await asyncio.create_subprocess_exec(sys.executable, "-m", "chronomcp.reader", str(story),
@@ -184,22 +184,22 @@ def test_http_sessions_share_one_process_writer():
                     await asyncio.sleep(0.05)
             else:
                 pytest.fail("HTTP server did not start")
-            async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read1, write1, _):
+            async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read1, write1):
                 async with ClientSession(read1, write1) as first:
                     await first.initialize()
-                    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read2, write2, _):
+                    async with streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (read2, write2):
                         async with ClientSession(read2, write2) as second:
                             await second.initialize()
                             created = await first.call_tool("create_story", {"story": "shared"})
-                            assert not created.isError
+                            assert not created.is_error
                             story = json.loads(created.content[0].text)["id"]
                             one = await first.call_tool("append", {"story": story, "content": "first"})
                             two = await second.call_tool("append", {"story": story, "content": "second"})
-                            assert not one.isError and not two.isError
+                            assert not one.is_error and not two.is_error
                             id1, id2 = [json.loads(r.content[0].text)["event_id"] for r in (one, two)]
                             assert id1["writer_id"] == id2["writer_id"]
                             assert id2["sequence"] == id1["sequence"] + 1
-                            assert not (await second.call_tool("stop_chronolog", {})).isError
+                            assert not (await second.call_tool("stop_chronolog", {})).is_error
         finally:
             process.terminate()
             try:

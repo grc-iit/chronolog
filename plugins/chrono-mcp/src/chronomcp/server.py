@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import threading
 import uuid
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 
 from .reader import _json, _bound, _event, read_story
 
@@ -57,7 +57,7 @@ class _State:
         if self.writer is None:
             if self.identity is None:
                 params = ctx.session.client_params
-                name = params.clientInfo.name if params else "mcp"
+                name = params.client_info.name if params else "mcp"
                 self.identity = f"{name}-{self.suffix}"
             self.writer = self.client.acquire(story, self.identity, timeout=self.timeout)
         return self.writer
@@ -88,29 +88,18 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
         raise ValueError("timeout must be finite and between 0 and 300 seconds")
 
     shared_state = None
-    active_sessions = 0
-    session_lock = threading.Lock()
 
     @asynccontextmanager
     async def lifespan(server):
-        nonlocal shared_state, active_sessions
-        with session_lock:
-            if shared_state is None:
-                shared_state = _State(catalog, player, chronicle, identity, timeout)
-            active_sessions += 1
-            current = shared_state
+        nonlocal shared_state
+        current = shared_state = _State(catalog, player, chronicle, identity, timeout)
         try:
             yield current
         finally:
-            with session_lock:
-                active_sessions -= 1
-                if active_sessions == 0:
-                    try:
-                        current.close()
-                    finally:
-                        shared_state = None
+            shared_state = None
+            current.close()
 
-    server = FastMCP("chronolog", lifespan=lifespan, host=host, port=port)
+    server = MCPServer("chronolog", lifespan=lifespan)
 
     def state(ctx):
         return ctx.request_context.lifespan_context
@@ -232,7 +221,10 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
     @_threaded
     def chronolog_status() -> str:
         """Report actual conversation and writer state."""
-        s = state(server.get_context())
+        s = shared_state
+        if s is None:
+            return _json({"service": "chronolog", "status": "idle", "chronicle": chronicle,
+                          "story": None, "writer_id": None})
         with s.lock:
             return _json({"service": "chronolog", "status": "active" if s.writer else "idle",
                           "chronicle": s.chronicle,
@@ -247,7 +239,7 @@ def create_server(catalog, player=None, chronicle="chronolog", identity=None, ti
                 "Report complete, reason and frontier before drawing conclusions. Use tail to follow new events, "
                 "and stop_chronolog to release the writer. acked means DURABLE only.")
 
-    return server
+    return server, dict(host=host, port=port)
 
 
 def main():
@@ -262,8 +254,12 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    server = create_server(args.catalog, args.player, args.chronicle, args.identity, args.timeout, args.host, args.port)
-    server.run(transport="streamable-http" if args.http or args.transport == "http" else "stdio")
+    server, address = create_server(args.catalog, args.player, args.chronicle, args.identity, args.timeout,
+                                    args.host, args.port)
+    if args.http or args.transport == "http":
+        server.run(transport="streamable-http", **address)
+    else:
+        server.run(transport="stdio")
 
 
 if __name__ == "__main__":
