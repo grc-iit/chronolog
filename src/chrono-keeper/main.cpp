@@ -22,7 +22,7 @@
 #include "membership/ConfigMembership.h"
 #include "membership/RouteWatcher.h"
 #include "runtime/ClusterClient.h"
-#include "rpc/VisorChannel.h"
+#include "rpc/Channel.h"
 #include "runtime/WorkerPool.h"
 
 namespace
@@ -38,6 +38,7 @@ std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Serv
     // SO_REUSEPORT would let two Keepers share one port silently.
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
+    rpc::applyServerPolicy(builder);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
     builder.RegisterService(&service);
     return builder.BuildAndStart();
@@ -88,10 +89,7 @@ int main(int argc, char** argv)
 
     using namespace chronolog;
     auto clock = std::make_shared<KernelClock>();
-    grpc::ChannelArguments channel_args;
-    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
-    channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
-    auto visor = rpc::visorChannel(config->visor_internal, channel_args);
+    auto visor = rpc::peerChannel(config->visor_internal);
     const std::string instance = newInstanceId();
     auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
     auto recovered_identity = std::make_shared<std::string>();
@@ -106,7 +104,7 @@ int main(int argc, char** argv)
              recovered_identity](StoryId story) -> absl::StatusOr<Route>
             {
                 grpc::ClientContext context;
-                context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(2));
+                rpc::withTimeout(context, std::chrono::seconds(2));
                 internal::v1::RegisterRequest request;
                 request.set_policy_version(policy_version->load());
                 request.set_recovered_instance(*recovered_identity);
@@ -193,7 +191,8 @@ int main(int argc, char** argv)
                                    instance,
                                    config->self_endpoint,
                                    std::chrono::milliseconds(config->heartbeat_interval_ms),
-                                   recovered_instance},
+                                   recovered_instance,
+                                   config->heartbeatDeadline()},
                                   journal,
                                   *membership,
                                   acquisitions);

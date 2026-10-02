@@ -13,6 +13,7 @@
 #include "journal/RamJournal.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
+#include "rpc/Channel.h"
 
 namespace chronolog::keeper
 {
@@ -29,6 +30,8 @@ public:
         std::string endpoint;
         std::chrono::milliseconds interval{5000};
         std::string recovered_instance{};
+        // Deadline of Register and Heartbeat, shorter than the Visor's failure and fence timers (M11.3).
+        std::chrono::milliseconds deadline{1000};
     };
 
     ClusterClient(std::shared_ptr<grpc::Channel> channel,
@@ -53,20 +56,27 @@ private:
     void loop(std::stop_token stop);
     void applyRoutes(const google::protobuf::RepeatedPtrField<internal::v1::RouteUpdate>& routes);
 
+    // One deadline for the whole call: the budget is shared by the attached Visor and its replicas, so
+    // failing over never outlasts the timer the call feeds.
     template <class Call>
-    grpc::Status invoke(Call call)
+    grpc::Status invoke(Call call, std::chrono::milliseconds deadline)
     {
         std::lock_guard lock(rpc_mutex_);
-        grpc::ClientContext context;
-        context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-        auto status = call(*stub_, context);
+        const auto end = std::chrono::system_clock::now() + deadline;
+        auto attempt = [&](auto& stub, size_t remaining)
+        {
+            grpc::ClientContext context;
+            const auto now = std::chrono::system_clock::now();
+            rpc::withDeadline(context, now + (end - now) / static_cast<long>(remaining));
+            return call(stub, context);
+        };
+        size_t remaining = 1 + replicas_.size();
+        auto status = attempt(*stub_, remaining--);
         if(status.error_code() != grpc::StatusCode::UNAVAILABLE)
             return status;
         for(auto& replica: replicas_)
         {
-            grpc::ClientContext retry;
-            retry.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-            status = call(*replica, retry);
+            status = attempt(*replica, remaining--);
             if(status.ok())
             {
                 stub_.swap(replica);
@@ -84,6 +94,7 @@ private:
     RamJournal& journal_;
     ConfigMembership& membership_;
     const AcquisitionWatcher& acquisitions_;
+    std::atomic<std::chrono::milliseconds::rep> extend_deadline_ms_{0};
     std::atomic<bool> registered_{false};
     std::mutex mutex_;
     std::condition_variable_any cv_;

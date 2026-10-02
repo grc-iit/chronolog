@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "absl/strings/str_cat.h"
+#include "rpc/Channel.h"
 
 namespace chronolog::keeper
 {
@@ -79,6 +80,8 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
 
                                                 "worker_threads",
                                                 "heartbeat_interval_ms",
+                                                "keeper_failure_timeout_ms",
+                                                "release_fence_timeout_ms",
                                                 "append_ceiling_wait_ms",
                                                 "insecure_bind_all",
                                                 "static_routes",
@@ -144,6 +147,10 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.append_ceiling_wait_ms = json.at("append_ceiling_wait_ms").get<uint32_t>();
         if(json.contains("heartbeat_interval_ms"))
             cfg.heartbeat_interval_ms = json.at("heartbeat_interval_ms").get<uint32_t>();
+        if(json.contains("keeper_failure_timeout_ms"))
+            cfg.keeper_failure_timeout_ms = json.at("keeper_failure_timeout_ms").get<uint32_t>();
+        if(json.contains("release_fence_timeout_ms"))
+            cfg.release_fence_timeout_ms = json.at("release_fence_timeout_ms").get<uint32_t>();
         if(json.contains("insecure_bind_all"))
             cfg.insecure_bind_all = json.at("insecure_bind_all").get<bool>();
         if(json.contains("static_routes"))
@@ -251,6 +258,8 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"worker_threads", &cfg.worker_threads},
                             {"shutdown_confirm_timeout_secs", &cfg.shutdown_confirm_timeout_secs},
                             {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
+                            {"keeper_failure_timeout_ms", &cfg.keeper_failure_timeout_ms},
+                            {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
                             {"append_ceiling_wait_ms", &cfg.append_ceiling_wait_ms},
                             {"group_commit_window_ms", &cfg.group_commit_window_ms},
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
@@ -283,6 +292,15 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
     return cfg;
 }
 
+std::chrono::milliseconds KeeperConfig::heartbeatDeadline() const
+{
+    using std::chrono::milliseconds;
+    const auto next_beat = keeper_failure_timeout_ms > heartbeat_interval_ms
+                                   ? milliseconds(keeper_failure_timeout_ms - heartbeat_interval_ms)
+                                   : milliseconds(0);
+    return rpc::livenessDeadline({next_beat, milliseconds(release_fence_timeout_ms)});
+}
+
 absl::Status KeeperConfig::validate() const
 {
     if(listen.empty() || internal_listen.empty() || process_id.empty() || self_endpoint.empty() ||
@@ -293,6 +311,14 @@ absl::Status KeeperConfig::validate() const
         return absl::InvalidArgumentError(
                 "payload_max_bytes, dedupe_window and heartbeat_interval_ms must be positive and the skew limit "
                 "non-negative");
+    if(heartbeatDeadline() < rpc::kMinLivenessDeadline)
+        return absl::InvalidArgumentError(absl::StrCat(
+                "heartbeat_interval_ms, keeper_failure_timeout_ms and release_fence_timeout_ms leave no deadline of ",
+                rpc::kMinLivenessDeadline.count(),
+                " ms for a heartbeat: keeper_failure_timeout_ms minus heartbeat_interval_ms and "
+                "release_fence_timeout_ms must each be at least ",
+                rpc::kLivenessDeadlineDivisor * rpc::kMinLivenessDeadline.count(),
+                " ms"));
     if(wal_dir.empty() || group_commit_max_bytes == 0 || reserve_ahead_ms == 0 || wal_max_bytes == 0 ||
        wal_segment_bytes == 0)
         return absl::InvalidArgumentError(

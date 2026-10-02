@@ -40,6 +40,25 @@ TEST(KeeperConfig, DefaultsAreValid)
     EXPECT_GE(cfg->effectiveWorkerThreads(), 1u);
 }
 
+TEST(KeeperConfig, HeartbeatDeadlineIsShorterThanTheTimersItFeeds)
+{
+    auto cfg = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(cfg.ok()) << cfg.status();
+    EXPECT_LT(cfg->heartbeatDeadline().count(), cfg->release_fence_timeout_ms);
+    EXPECT_LT(cfg->heartbeatDeadline().count() + cfg->heartbeat_interval_ms, cfg->keeper_failure_timeout_ms);
+}
+
+TEST(KeeperConfig, ImpossibleLivenessCombinationsAreRefused)
+{
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_HEARTBEAT_INTERVAL_MS", "15000"}})).ok());
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_RELEASE_FENCE_TIMEOUT_MS", "150"}})).ok());
+    EXPECT_TRUE(KeeperConfig::load(std::nullopt,
+                                   Env({{"CHRONOLOG_KEEPER_HEARTBEAT_INTERVAL_MS", "200"},
+                                        {"CHRONOLOG_KEEPER_KEEPER_FAILURE_TIMEOUT_MS", "3000"},
+                                        {"CHRONOLOG_KEEPER_RELEASE_FENCE_TIMEOUT_MS", "1000"}}))
+                        .ok());
+}
+
 TEST(KeeperConfig, EnvironmentOverridesFile)
 {
     auto path = WriteFile(R"({"process_id":"keeper-9","payload_max_bytes":10,

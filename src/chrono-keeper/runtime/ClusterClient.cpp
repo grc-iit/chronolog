@@ -36,7 +36,9 @@ ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> channel,
     , journal_(journal)
     , membership_(membership)
     , acquisitions_(acquisitions)
-{}
+{
+    extend_deadline_ms_ = options_.deadline.count();
+}
 
 ClusterClient::~ClusterClient()
 {
@@ -60,7 +62,8 @@ absl::Status ClusterClient::registerNow()
                {
                    response.Clear();
                    return stub.Register(&context, request, &response);
-               });
+               },
+               options_.deadline);
        !rpc.ok())
         return toStatus(rpc);
     if(auto status = toStatus(response.status()); !status.ok())
@@ -70,8 +73,7 @@ absl::Status ClusterClient::registerNow()
         std::lock_guard lock(rpc_mutex_);
         replicas_.clear();
         for(const auto& endpoint: response.visor_replicas())
-            replicas_.push_back(
-                    iv1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials())));
+            replicas_.push_back(iv1::Cluster::NewStub(rpc::peerChannel(endpoint)));
     }
     if(response.has_policy())
     {
@@ -87,11 +89,20 @@ absl::Status ClusterClient::registerNow()
         if(auto status = wal->recordInstance(options_.instance); !status.ok())
             return status;
     if(response.has_policy() && response.policy().ceiling_ahead_ns() > 0)
+    {
+        const auto ahead = std::chrono::nanoseconds(response.policy().ceiling_ahead_ns());
+        const auto deadline =
+                std::min(options_.deadline,
+                         rpc::livenessDeadline({std::chrono::duration_cast<std::chrono::milliseconds>(ahead)}));
+        if(deadline < rpc::kMinLivenessDeadline)
+            return absl::FailedPreconditionError("ceiling_ahead is too short to renew within a deadline");
+        extend_deadline_ms_ = deadline.count();
         journal_.enableDynamic(options_.instance,
                                convert::fromProto(response.ceiling_floor()),
                                response.physical_ceiling_floor_ns(),
                                response.policy().acceptance_budget_ns(),
                                response.policy().hlc_budget_ns());
+    }
     applyRoutes(response.routes());
     if(journal_.dynamic())
     {
@@ -171,7 +182,8 @@ absl::Status ClusterClient::heartbeatNow()
                {
                    response.Clear();
                    return stub.Heartbeat(&context, request, &response);
-               });
+               },
+               options_.deadline);
        !rpc.ok())
         return toStatus(rpc);
     applyRoutes(response.routes());
@@ -214,7 +226,8 @@ absl::Status ClusterClient::extendNow()
                 {
                     response.Clear();
                     return stub.ExtendCeiling(&context, request, &response);
-                });
+                },
+                std::chrono::milliseconds(extend_deadline_ms_));
         if(!rpc.ok())
             return toStatus(rpc);
         auto status = toStatus(response.status());
