@@ -33,12 +33,12 @@ TEST(Pubsub, EarliestRetriesCallbackWithIdentityAndMetadata)
     options.metadata.span_id = std::string(8, 's');
     options.metadata.attributes["gen_ai.agent.id"] = "worker";
     auto first = producer.publish("memory", "one", options);
-    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(first.ok()) << first.status();
     EXPECT_TRUE(first->acked());
     auto second = producer.publish("memory", "two", options);
-    ASSERT_TRUE(second.ok());
+    ASSERT_TRUE(second.ok()) << second.status();
     auto third = producer.publish("memory", "three", options);
-    ASSERT_TRUE(third.ok());
+    ASSERT_TRUE(third.ok()) << third.status();
     std::mutex mutex;
     std::condition_variable changed;
     std::vector<Event> events;
@@ -87,7 +87,7 @@ TEST(Pubsub, LatestAndDurableSavedKvsPositionResume)
     auto other = connect();
     pubsub::Bus producer(c, "pubsub-saved"), consumer(other, "pubsub-saved");
     auto old = producer.publish("memory", "old");
-    ASSERT_TRUE(old.ok());
+    ASSERT_TRUE(old.ok()) << old.status();
     std::mutex mutex;
     std::condition_variable changed;
     std::vector<EventId> delivered;
@@ -103,7 +103,7 @@ TEST(Pubsub, LatestAndDurableSavedKvsPositionResume)
     auto latest = consumer.subscribe("memory", callback);
     ASSERT_TRUE(latest.ok()) << latest.status();
     auto one = producer.publish("memory", "one");
-    ASSERT_TRUE(one.ok());
+    ASSERT_TRUE(one.ok()) << one.status();
     {
         std::unique_lock lock(mutex);
         ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return delivered.size() == 1; }));
@@ -113,10 +113,10 @@ TEST(Pubsub, LatestAndDurableSavedKvsPositionResume)
     EXPECT_EQ(delivered[0], one->event_id);
     kvs::Store checkpoint(c, "pubsub-checkpoints");
     auto saved = pubsub::savePosition(checkpoint, "consumer", *(*latest)->position());
-    ASSERT_TRUE(saved.ok());
+    ASSERT_TRUE(saved.ok()) << saved.status();
     EXPECT_TRUE(saved->acked());
     auto next = producer.publish("memory", "next");
-    ASSERT_TRUE(next.ok());
+    ASSERT_TRUE(next.ok()) << next.status();
     auto fresh = connect();
     kvs::Store restored(fresh, "pubsub-checkpoints");
     auto position = pubsub::loadPosition(restored, "consumer", {.causal_floor = saved->hlc});
@@ -137,9 +137,9 @@ TEST(Pubsub, LatestFrontierCheckpointResumesBeforeAnyDelivery)
     auto c = connect();
     pubsub::Bus producer(c, "pubsub-frontier");
     auto old = producer.publish("memory", "old");
-    ASSERT_TRUE(old.ok());
+    ASSERT_TRUE(old.ok()) << old.status();
     auto latest = producer.subscribe("memory", [](const pubsub::Message&) { return absl::OkStatus(); });
-    ASSERT_TRUE(latest.ok());
+    ASSERT_TRUE(latest.ok()) << latest.status();
     ASSERT_TRUE((*latest)->position());
     auto frontier = *(*latest)->position();
     (*latest)->stop();
@@ -147,7 +147,7 @@ TEST(Pubsub, LatestFrontierCheckpointResumesBeforeAnyDelivery)
     auto saved = pubsub::savePosition(checkpoints, "consumer", frontier);
     ASSERT_TRUE(saved.ok()) << saved.status();
     auto next = producer.publish("memory", "new");
-    ASSERT_TRUE(next.ok());
+    ASSERT_TRUE(next.ok()) << next.status();
     auto other = connect();
     kvs::Store restored(other, "pubsub-frontier-checkpoints");
     auto position = pubsub::loadPosition(restored, "consumer", {.causal_floor = saved->hlc});
@@ -165,7 +165,7 @@ TEST(Pubsub, LatestFrontierCheckpointResumesBeforeAnyDelivery)
                                           return absl::OkStatus();
                                       },
                                       {.start = pubsub::Start::Saved, .position = *position});
-    ASSERT_TRUE(resumed.ok());
+    ASSERT_TRUE(resumed.ok()) << resumed.status();
     {
         std::unique_lock lock(mutex);
         ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return received.has_value(); }));
@@ -177,8 +177,10 @@ TEST(Pubsub, TopicsAreIsolatedAndStopEndsDelivery)
 {
     auto c = connect();
     pubsub::Bus bus(c, "pubsub-topics");
-    ASSERT_TRUE(bus.publish("alpha", "a1").ok());
-    ASSERT_TRUE(bus.publish("beta", "b1").ok());
+    auto alpha_first = bus.publish("alpha", "a1");
+    ASSERT_TRUE(alpha_first.ok()) << alpha_first.status();
+    auto beta_first = bus.publish("beta", "b1");
+    ASSERT_TRUE(beta_first.ok()) << beta_first.status();
     std::mutex mutex;
     std::condition_variable changed;
     std::vector<pubsub::Message> alpha, beta;
@@ -208,8 +210,10 @@ TEST(Pubsub, TopicsAreIsolatedAndStopEndsDelivery)
     EXPECT_EQ(beta[0].event.envelope.payload, "b1");
     (*second)->stop();
     (*second)->stop();
-    ASSERT_TRUE(bus.publish("beta", "b2").ok());
-    ASSERT_TRUE(bus.publish("alpha", "a2").ok());
+    auto beta_second = bus.publish("beta", "b2");
+    ASSERT_TRUE(beta_second.ok()) << beta_second.status();
+    auto alpha_second = bus.publish("alpha", "a2");
+    ASSERT_TRUE(alpha_second.ok()) << alpha_second.status();
     {
         std::unique_lock lock(mutex);
         ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return alpha.size() == 2; }));
@@ -228,7 +232,7 @@ TEST(Pubsub, ValidationDeadlineAndCallbackStop)
     auto callback = [](const pubsub::Message&) { return absl::OkStatus(); };
     EXPECT_TRUE(absl::IsInvalidArgument(bus.subscribe("topic", callback, {.start = pubsub::Start::Saved}).status()));
     auto first = bus.publish("topic", "one");
-    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(first.ok()) << first.status();
     client::Position wrong{first->hlc, first->event_id};
     EXPECT_TRUE(absl::IsInvalidArgument(
             bus.subscribe("another", callback, {.start = pubsub::Start::Saved, .position = wrong}).status()));
@@ -236,7 +240,7 @@ TEST(Pubsub, ValidationDeadlineAndCallbackStop)
             "idle",
             callback,
             {.deadline = std::chrono::system_clock::now() + 100ms, .pull_timeout = 20ms, .retry_delay = 10ms});
-    ASSERT_TRUE(short_lived.ok());
+    ASSERT_TRUE(short_lived.ok()) << short_lived.status();
     for(int attempt = 0; attempt < 100 && (*short_lived)->status().ok(); ++attempt) std::this_thread::sleep_for(10ms);
     (*short_lived)->stop();
     EXPECT_TRUE(absl::IsDeadlineExceeded((*short_lived)->status()));
@@ -253,9 +257,10 @@ TEST(Pubsub, ValidationDeadlineAndCallbackStop)
                                   changed.notify_all();
                                   return absl::OkStatus();
                               });
-    ASSERT_TRUE(self.ok());
+    ASSERT_TRUE(self.ok()) << self.status();
     handle.store(self->get());
-    ASSERT_TRUE(bus.publish("self", "stop").ok());
+    auto stop_message = bus.publish("self", "stop");
+    ASSERT_TRUE(stop_message.ok()) << stop_message.status();
     {
         std::unique_lock lock(mutex);
         ASSERT_TRUE(changed.wait_for(lock, 5s, [&] { return stopped; }));
@@ -264,11 +269,13 @@ TEST(Pubsub, ValidationDeadlineAndCallbackStop)
     EXPECT_TRUE((*self)->status().ok());
     kvs::Store positions(c, "pubsub-invalid-positions");
     EXPECT_TRUE(absl::IsInvalidArgument(pubsub::savePosition(positions, "invalid", {}).status()));
-    ASSERT_TRUE(positions.put("invalid", "not a position").ok());
+    auto invalid_position = positions.put("invalid", "not a position");
+    ASSERT_TRUE(invalid_position.ok()) << invalid_position.status();
     EXPECT_TRUE(absl::IsInvalidArgument(pubsub::loadPosition(positions, "invalid").status()));
     kvs::PutOptions metadata;
     metadata.metadata.content_type = "application/vnd.chronolog.pubsub.position";
-    ASSERT_TRUE(positions.put("overflow", "0 4294967296 1 1 1 1", metadata).ok());
+    auto overflow_position = positions.put("overflow", "0 4294967296 1 1 1 1", metadata);
+    ASSERT_TRUE(overflow_position.ok()) << overflow_position.status();
     EXPECT_TRUE(absl::IsInvalidArgument(pubsub::loadPosition(positions, "overflow").status()));
     EXPECT_TRUE(absl::IsNotFound(pubsub::loadPosition(positions, "absent").status()));
 }
@@ -292,11 +299,11 @@ TEST(Pubsub, PlayerRestartKeepsEveryEventAndCursor)
                                    return absl::OkStatus();
                                },
                                {.start = pubsub::Start::Earliest, .deadline = std::chrono::system_clock::now() + 20s});
-    ASSERT_TRUE(subscription.ok());
+    ASSERT_TRUE(subscription.ok()) << subscription.status();
     for(int i = 0; i < 20; ++i)
     {
         auto p = producer.publish("memory", std::to_string(i));
-        ASSERT_TRUE(p.ok());
+        ASSERT_TRUE(p.ok()) << p.status();
         published.push_back(p->event_id);
     }
     {
@@ -315,7 +322,7 @@ TEST(Pubsub, PlayerRestartKeepsEveryEventAndCursor)
     for(int i = 20; i < 40; ++i)
     {
         auto p = producer.publish("memory", std::to_string(i));
-        ASSERT_TRUE(p.ok());
+        ASSERT_TRUE(p.ok()) << p.status();
         published.push_back(p->event_id);
     }
     std::ofstream(scratch + "/resume-request").put('1');
