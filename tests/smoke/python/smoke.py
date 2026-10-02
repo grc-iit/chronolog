@@ -88,27 +88,33 @@ class Smoke:
             raise RuntimeError("Replay missing Completion")
         return events, completion
 
+    def container_state(self, service, deadline):
+        """State of the service container, or None while the engine lists none."""
+        ids = subprocess.check_output([*self.compose, "ps", "-a", "-q", service], text=True,
+                                      timeout=max(0.5, min(5, deadline - time.monotonic()))).split()
+        if not ids:
+            return None
+        return json.loads(subprocess.check_output([self.engine, "inspect", ids[0]], text=True,
+                                                  timeout=max(0.5, min(5, deadline - time.monotonic()))))[0]["State"]
+
+    def wait_state(self, service, deadline, accept, what):
+        while time.monotonic() < deadline:
+            state = self.container_state(service, deadline)
+            if state is not None and accept(state):
+                return state
+            time.sleep(0.1)
+        raise RuntimeError(f"{service} {what} within the bound")
+
     def restart(self, service):
         subprocess.run([*self.compose, "kill", "-s", "SIGKILL", service], check=True, timeout=15,
                        stdout=subprocess.DEVNULL)
-        subprocess.run([*self.compose, "start", service], check=True, timeout=15,
-                       stdout=subprocess.DEVNULL)
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            ids = subprocess.check_output([*self.compose, "ps", "-q", service], text=True,
-                                          timeout=min(5, remaining)).split()
-            if ids:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                state = json.loads(subprocess.check_output([self.engine, "inspect", ids[0]], text=True,
-                                                           timeout=min(5, remaining)))[0]["State"]
-                health = state.get("Health", state.get("Healthcheck", {}))
-                if state.get("Running") and health.get("Status") == "healthy":
-                    return
-            time.sleep(min(0.2, max(0, deadline - time.monotonic())))
-        raise RuntimeError(f"{service} did not become healthy within 30 seconds")
+        # compose start is a no-op while the engine still reports the killed container as running.
+        self.wait_state(service, time.monotonic() + 15, lambda state: not state.get("Running"), "was not reported stopped")
+        subprocess.run([*self.compose, "start", service], check=True, timeout=15, stdout=subprocess.DEVNULL)
+        self.wait_state(service, time.monotonic() + 10, lambda state: state.get("Running"), "did not start")
+        self.wait_state(service, time.monotonic() + 30,
+                        lambda state: state.get("Running") and state.get("Health", state.get("Healthcheck", {})).get("Status") == "healthy",
+                        "did not become healthy")
 
     def settled_chunks(self, story):
         """(start, end) HLC pairs of the chunks the Keeper has settled with the Grapher for one story."""
