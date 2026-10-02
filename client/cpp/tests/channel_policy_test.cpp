@@ -34,7 +34,16 @@ public:
         builder.RegisterService(this);
         server_ = builder.BuildAndStart();
     }
-    ~Peer() override { server_->Shutdown(std::chrono::system_clock::now() + 2s); }
+    ~Peer() override { stop(); }
+    void stop()
+    {
+        if(server_)
+        {
+            server_->Shutdown(std::chrono::system_clock::now() + 2s);
+            server_->Wait();
+            server_.reset();
+        }
+    }
     grpc::Status
     ListChronicles(grpc::ServerContext*, const wire::ListChroniclesRequest*, wire::ListChroniclesResponse* p) override
     {
@@ -166,6 +175,38 @@ void CatalogCallReachesThePeerAfterTheHopGoesDark(bool bandwidth_probe)
             std::this_thread::sleep_for(20ms);
     }
     EXPECT_EQ(answer, "after");
+}
+
+TEST(ClientChannelPolicy, ClientReachesTheCatalogThroughTheNextReplicaWhenItsVisorDies)
+{
+    Peer first("first"), second("second"), third("third");
+    auto options = sdk::ClientOptions{};
+    options.catalog_endpoint = "localhost:" + std::to_string(first.port) + ",127.0.0.1:" + std::to_string(second.port) +
+                               ",localhost:" + std::to_string(third.port);
+    auto client = sdk::Client::Connect(options, std::chrono::system_clock::now() + 2s);
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto initial = client->listChronicles();
+    ASSERT_TRUE(initial.ok()) << initial.status();
+    ASSERT_EQ(initial->size(), 1u);
+    ASSERT_EQ(initial->front().name, "first");
+    first.stop();
+    const auto end = std::chrono::system_clock::now() + 8s;
+    std::string answer;
+    absl::Status last;
+    for(int attempt = 0; attempt < 400 && std::chrono::system_clock::now() < end; ++attempt)
+    {
+        auto result = client->listChronicles(end);
+        last = result.status();
+        if(result.ok() && !result->empty())
+        {
+            answer = result->front().name;
+            break;
+        }
+        if(!absl::IsUnavailable(last))
+            break;
+        std::this_thread::sleep_for(20ms);
+    }
+    EXPECT_EQ(answer, "second") << last;
 }
 
 TEST(ClientChannelPolicy, ACatalogCallThroughAHopThatStopsForwardingReachesTheSuccessorWithinTheKeepaliveBound)
