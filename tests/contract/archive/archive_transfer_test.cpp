@@ -36,8 +36,9 @@ TEST(ArchiveTransferTest, TombstonedStoryRefusesLateChunks)
         EXPECT_EQ(late_status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
         EXPECT_EQ(late.receipt(), 0u);
     }
-    for(const auto& record: *server.store->manifest(1))
-        EXPECT_NE(record.state, ManifestState::Published) << record.file;
+    const auto records = server.store->manifest(1);
+    ASSERT_TRUE(records.ok());
+    for(const auto& record: *records) EXPECT_NE(record.state, ManifestState::Published) << record.file;
     size_t files = 0;
     for(const auto& entry: std::filesystem::directory_iterator(server.root / "1")) files += entry.is_regular_file();
     EXPECT_EQ(files, 0u) << "the refused chunk leaves no file behind and the destroyed one is erased";
