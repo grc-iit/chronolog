@@ -53,6 +53,8 @@ struct VisorConfig
     uint32_t worker_threads = 4;
     // Allows internal_listen on a wildcard address. Refused otherwise (S14.3).
     bool insecure_bind_all = false;
+    // Stderr threshold: info, warning or error.
+    std::string log_level = "info";
 
     using Getenv = std::function<const char*(const char*)>;
 

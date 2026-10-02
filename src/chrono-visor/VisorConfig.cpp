@@ -89,7 +89,8 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
                                                 "keeper_failure_timeout_ms",
                                                 "release_fence_timeout_ms",
                                                 "worker_threads",
-                                                "insecure_bind_all"};
+                                                "insecure_bind_all",
+                                                "log_level"};
     if(!json.is_object())
         return absl::InvalidArgumentError("configuration must be a JSON object");
     for(const auto& [key, value]: json.items())
@@ -146,6 +147,8 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
             cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
         if(json.contains("insecure_bind_all"))
             cfg.insecure_bind_all = json.at("insecure_bind_all").get<bool>();
+        if(json.contains("log_level"))
+            cfg.log_level = json.at("log_level").get<std::string>();
     }
     catch(const nlohmann::json::exception& e)
     {
@@ -209,6 +212,8 @@ VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv, 
     }
     if(auto v = env("player"))
         cfg.player = *v;
+    if(auto v = env("log_level"))
+        cfg.log_level = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"keeper_failure_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
@@ -270,6 +275,8 @@ absl::Status VisorConfig::validate() const
         return absl::InvalidArgumentError("graphers endpoints must be nonempty");
     if(worker_threads == 0)
         return absl::InvalidArgumentError("worker_threads must be positive");
+    if(log_level != "info" && log_level != "warning" && log_level != "error")
+        return absl::InvalidArgumentError("log_level must be info, warning or error");
     const std::string host = hostOf(internal_listen);
     const bool wildcard = host.empty() || host == "0.0.0.0" || host == "[::]" || host == "::" || host == "*";
     if(wildcard && !insecure_bind_all)

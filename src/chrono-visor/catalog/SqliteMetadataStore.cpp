@@ -566,7 +566,64 @@ absl::Status SqliteMetadataStore::destroyStory(StoryId id)
     return txn.commit();
 }
 
+void SqliteMetadataStore::setOwnerFence(FenceWaiter fence)
+{
+    std::lock_guard lock(mutex_);
+    owner_fence_ = std::move(fence);
+}
+
+absl::Status SqliteMetadataStore::awaitOldOwnerFence(StoryId id, const std::string& writer_identity) const
+{
+    KeeperRef old_owner;
+    uint64_t release_revision = 0;
+    FenceWaiter fence;
+    {
+        std::lock_guard lock(mutex_);
+        fence = owner_fence_;
+        if(!fence)
+            return absl::OkStatus();
+        Statement find(db_,
+                       "SELECT a.incarnation, a.released, a.keeper_id, a.keeper_endpoint, a.writer_id FROM writers w"
+                       " JOIN acquisitions a ON a.writer_id = w.writer_id"
+                       " WHERE w.writer_identity = ?1 AND a.story_id = ?2");
+        CHRONOLOG_RETURN_IF_ERROR(find.prepared());
+        find.text(1, writer_identity).integer(2, id);
+        auto row = find.step();
+        if(!row.ok())
+            return row.status();
+        if(!*row || find.column(1) == 0)
+            return absl::OkStatus();
+        old_owner = KeeperRef{find.columnText(2), find.columnText(3)};
+        auto route = membershipRoute(id);
+        if(!route.ok())
+            return absl::OkStatus();
+        for(const auto& keeper: route->keepers)
+            if(keeper.process_id == old_owner.process_id)
+                return absl::OkStatus();
+        Statement released(db_,
+                           "SELECT revision FROM releases WHERE story_id = ?1 AND writer_id = ?2 AND incarnation = ?3");
+        CHRONOLOG_RETURN_IF_ERROR(released.prepared());
+        released.integer(1, id).integer(2, find.column(4)).integer(3, find.column(0));
+        auto revision = released.step();
+        if(!revision.ok())
+            return revision.status();
+        if(!*revision)
+            return absl::OkStatus();
+        release_revision = released.column(0);
+    }
+    // The wait runs outside the store lock so a slow Keeper never stalls the Catalog.
+    if(!fence(old_owner, release_revision))
+        return absl::UnavailableError("the previous owner has not fenced the old incarnation");
+    return absl::OkStatus();
+}
+
 absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string writer_identity)
+{
+    CHRONOLOG_RETURN_IF_ERROR(awaitOldOwnerFence(id, writer_identity));
+    return acquireAfterFence(id, std::move(writer_identity));
+}
+
+absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, std::string writer_identity)
 {
     if(writer_identity.empty())
         return absl::InvalidArgumentError("writer identity is empty");

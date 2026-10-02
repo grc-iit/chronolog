@@ -90,6 +90,26 @@ TEST(static_route_membership, GraphersEnvironmentOverridesJsonAndRejectsEmptyEnd
     EXPECT_FALSE(visor::VisorConfig::load(path, [](const char*) -> const char* { return nullptr; }).ok());
 }
 
+TEST(static_route_membership, LogLevelDefaultsToInfoTakesEnvironmentAndRejectsUnknownValues)
+{
+    auto none = [](const char*) -> const char* { return nullptr; };
+    auto cfg = visor::VisorConfig::load(std::nullopt, none);
+    ASSERT_TRUE(cfg.ok());
+    EXPECT_EQ(cfg->log_level, "info");
+    cfg = visor::VisorConfig::load(std::nullopt,
+                                   [](const char* key) -> const char*
+                                   { return std::string(key) == "CHRONOLOG_VISOR_LOG_LEVEL" ? "warning" : nullptr; });
+    ASSERT_TRUE(cfg.ok());
+    EXPECT_EQ(cfg->log_level, "warning");
+    visor::testing::TempDir dir;
+    const auto path = (dir.path() / "visor.json").string();
+    {
+        std::ofstream file(path);
+        file << R"({"log_level":"debug"})";
+    }
+    EXPECT_FALSE(visor::VisorConfig::load(path, none).ok());
+}
+
 TEST(static_route_membership, AppliedRevisionNeverLowersAndResetsOnNewInstance)
 {
     auto membership = make(1);

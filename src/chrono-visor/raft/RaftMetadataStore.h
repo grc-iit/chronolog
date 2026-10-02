@@ -28,6 +28,7 @@ public:
     absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const override;
     void setObserver(AcquisitionObserver* observer) override;
     bool leaderLease() const;
+    bool appliedStateCurrent() const;
     int leaderId() const;
     bool isLocalLeader() const { return leaderId() == config_.server_id; }
     std::string leaderEndpoint(bool internal) const;

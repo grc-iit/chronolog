@@ -222,3 +222,82 @@ TEST(RaftStorageTest, LinearizableReadsAndMutationsStopWithoutQuorum)
     EXPECT_EQ(replicas[leader]->appliedStore().appliedIndex().value_or(0), *applied);
 }
 } // namespace chronolog::visor
+namespace chronolog::visor
+{
+TEST(RaftStorageTest, RestartedReplicaServesNoWatchSnapshotBelowTheCommittedRevision)
+{
+    testing::TempDir directory;
+    std::vector<RaftPeer> peers;
+    for(int i = 0; i < 3; ++i)
+    {
+        auto endpoint = "127.0.0.1:" + std::to_string(contract::port());
+        peers.push_back({i + 1, endpoint, endpoint, endpoint});
+    }
+    std::array<std::unique_ptr<RaftMetadataStore>, 3> replicas;
+    auto open = [&](size_t i)
+    {
+        RaftConfig config{static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers};
+        auto opened = RaftMetadataStore::open((directory.path() / std::to_string(i)).string(),
+                                              testing::twoKeeperTopology(),
+                                              config);
+        ASSERT_TRUE(opened.ok()) << opened.status();
+        replicas[i] = std::move(*opened);
+    };
+    for(size_t i = 0; i < 3; ++i) open(i);
+    size_t leader = 3;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while(std::chrono::steady_clock::now() < until && leader == 3)
+    {
+        for(size_t i = 0; i < 3; ++i)
+            if(replicas[i]->leaderLease())
+                leader = i;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    ASSERT_LT(leader, 3u);
+    ASSERT_TRUE(replicas[leader]->createChronicle("c").ok());
+    auto story = replicas[leader]->createStory("c", "s");
+    ASSERT_TRUE(story.ok());
+    ASSERT_TRUE(replicas[leader]->acquire(story->id, "w0").ok());
+    const size_t lagging = (leader + 1) % 3;
+    const size_t other = (leader + 2) % 3;
+    const auto applied = replicas[leader]->appliedStore().appliedIndex().value_or(0);
+    const auto caught_up = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while(replicas[lagging]->appliedStore().appliedIndex().value_or(0) < applied &&
+          std::chrono::steady_clock::now() < caught_up)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_GE(replicas[lagging]->appliedStore().appliedIndex().value_or(0), applied);
+    replicas[lagging].reset();
+    for(int n = 1; n <= 5; ++n) ASSERT_TRUE(replicas[leader]->acquire(story->id, "w" + std::to_string(n)).ok());
+    auto committed = replicas[leader]->snapshotAcquisitions();
+    ASSERT_TRUE(committed.ok());
+    replicas[leader].reset();
+    replicas[other].reset();
+
+    // Alone and behind, with no leader to tell it what is committed, it has nothing it may serve.
+    open(lagging);
+    const auto alone = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while(std::chrono::steady_clock::now() < alone)
+    {
+        EXPECT_FALSE(replicas[lagging]->appliedStateCurrent());
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    open(leader);
+    open(other);
+    bool served = false;
+    const auto rejoined = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while(!served && std::chrono::steady_clock::now() < rejoined)
+    {
+        if(replicas[lagging]->appliedStateCurrent())
+        {
+            auto snapshot = replicas[lagging]->appliedStore().snapshotAcquisitions();
+            ASSERT_TRUE(snapshot.ok());
+            EXPECT_GE(snapshot->revision, committed->revision);
+            served = true;
+        }
+        else
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_TRUE(served);
+}
+} // namespace chronolog::visor
