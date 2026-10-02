@@ -8,7 +8,7 @@ add_library(chronolog_grapher_tier STATIC
 target_include_directories(chronolog_grapher_tier PUBLIC "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(chronolog_grapher_tier PUBLIC
     chronolog_contracts chronolog_proto Threads::Threads
-    PRIVATE hdf5::hdf5-static chronolog_warnings nlohmann_json::nlohmann_json)
+    PRIVATE hdf5::hdf5-static chronolog_warnings nlohmann_json::nlohmann_json absl::log)
 
 add_executable(chronolog_grapher_tier_tests ../tests/file_tier_store_test.cpp)
 target_link_libraries(chronolog_grapher_tier_tests PRIVATE

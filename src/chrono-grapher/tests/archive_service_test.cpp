@@ -6,6 +6,8 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <filesystem>
+#include <atomic>
+#include <thread>
 #include <unistd.h>
 
 namespace chronolog::grapher
@@ -21,13 +23,13 @@ struct Server
     std::unique_ptr<ArchiveService> service;
     std::unique_ptr<grpc::Server> server;
     std::unique_ptr<wire::Archive::Stub> stub;
-    Server()
+    explicit Server(std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>())
     {
         root = std::filesystem::temp_directory_path() /
                ("chronolog_archive_" + std::to_string(::getpid()) + "_" +
                 ::testing::UnitTest::GetInstance()->current_test_info()->name());
         std::filesystem::remove_all(root);
-        auto opened = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}});
+        auto opened = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}}, std::move(codec));
         if(!opened.ok())
             throw std::runtime_error(std::string(opened.status().message()));
         store = *std::move(opened);
@@ -51,6 +53,31 @@ struct Server
         store.reset();
         std::filesystem::remove_all(root);
     }
+};
+
+class FailingCodec final: public ChunkCodec
+{
+public:
+    std::string extension() const override { return inner_.extension(); }
+    absl::Status writeChunk(const std::filesystem::path& file, const Chunk& chunk) const override
+    {
+        if(fail_.exchange(false))
+            return absl::UnavailableError("injected chunk write failure");
+        return inner_.writeChunk(file, chunk);
+    }
+    absl::Status write(const std::filesystem::path& file, std::span<const Event> events) const override
+    {
+        return inner_.write(file, events);
+    }
+    absl::StatusOr<std::vector<Event>> read(const std::filesystem::path& file) const override
+    {
+        return inner_.read(file);
+    }
+    void failNext() { fail_ = true; }
+
+private:
+    ProtoChunkCodec inner_;
+    mutable std::atomic<bool> fail_{false};
 };
 
 std::string Crc(const std::string& bytes)
@@ -216,6 +243,126 @@ TEST(ArchiveWatermarkTest, WatchReflectsPublishAndDroppedStory)
     auto [dropped_status, dropped_receipt] = Send(server, {Frame()});
     EXPECT_EQ(dropped_status.error_code(), grpc::StatusCode::NOT_FOUND);
     EXPECT_EQ(dropped_receipt.receipt(), 0u);
+}
+
+TEST(ArchiveTransferTest, AFailedPublishReturnsNoReceiptHoldsTheWatermarkAndNeverReusesTheNumber)
+{
+    auto codec = std::make_shared<FailingCodec>();
+    Server server(codec);
+    codec->failNext();
+    auto [status, receipt] = Send(server, {Frame()});
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(receipt.receipt(), 0u);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{100, 0}));
+    EXPECT_TRUE(server.store->read(1, {Range::Axis::Hlc, {0, 0}, {1000, 0}})->empty());
+    auto [retry_status, retry] = Send(server, {Frame()});
+    ASSERT_TRUE(retry_status.ok());
+    EXPECT_EQ(retry.receipt(), 2u);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+}
+
+TEST(ArchiveTransferTest, AnEmptyWindowGetsAReceiptAndAdvancesTheWatermark)
+{
+    Server server;
+    auto frame = Frame();
+    frame.set_data(wire::ChunkPayload().SerializeAsString());
+    frame.set_total_bytes(0);
+    frame.set_checksum(Crc(""));
+    auto [status, receipt] = Send(server, {frame});
+    ASSERT_TRUE(status.ok()) << status.error_message();
+    EXPECT_EQ(receipt.receipt(), 1u);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+    EXPECT_TRUE(server.store->read(1, {Range::Axis::Hlc, {0, 0}, {1000, 0}})->empty());
+}
+
+TEST(ArchiveWatermarkTest, DroppedStoryRefusesEveryChunkAndIsReportedEvenIfNeverRecorded)
+{
+    Server server;
+    server.service->dropStory(7);
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    wire::WatchWatermarksRequest subscription;
+    subscription.set_keeper_id("keeper-1");
+    subscription.add_story_ids(7);
+    auto watch = server.stub->WatchWatermarks(&context, subscription);
+    wire::WatchWatermarksResponse report;
+    ASSERT_TRUE(watch->Read(&report));
+    EXPECT_TRUE(report.dropped());
+    EXPECT_EQ(report.watermark().physical_ns(), 0);
+    for(int attempt = 0; attempt < 2; ++attempt)
+    {
+        auto [status, receipt] = Send(server, {Frame(7)});
+        EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+        EXPECT_EQ(receipt.receipt(), 0u);
+    }
+    auto [other_status, other] = Send(server, {Frame(8)});
+    ASSERT_TRUE(other_status.ok());
+    EXPECT_EQ(other.receipt(), 1u);
+    context.TryCancel();
+}
+
+TEST(ArchiveWatermarkTest, ARestartedGrapherReportsTheRecoveredWatermarkUnderANewInstance)
+{
+    Server server;
+    auto [first_status, first] = Send(server, {Frame(1)});
+    ASSERT_TRUE(first_status.ok());
+    auto [second_status, second] = Send(server, {Frame(2)});
+    ASSERT_TRUE(second_status.ok());
+    EXPECT_EQ(server.store->contiguousWatermark(2).value(), (Hlc{200, 0}));
+    ArchiveService restarted(*server.store, "restarted-instance");
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&restarted);
+    auto endpoint = builder.BuildAndStart();
+    ASSERT_NE(endpoint, nullptr);
+    auto stub = wire::Archive::NewStub(
+            grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    wire::WatchWatermarksRequest subscription;
+    subscription.set_keeper_id("keeper-1");
+    subscription.add_story_ids(1);
+    subscription.add_story_ids(2);
+    auto watch = stub->WatchWatermarks(&context, subscription);
+    wire::WatchWatermarksResponse report;
+    std::map<StoryId, int64_t> watermarks;
+    for(int i = 0; i < 2 && watch->Read(&report); ++i)
+    {
+        EXPECT_EQ(report.grapher_instance(), "restarted-instance");
+        EXPECT_EQ(report.highest_receipt(), 0u);
+        EXPECT_TRUE(report.pending_receipts().empty());
+        watermarks[report.story_id()] = report.watermark().physical_ns();
+    }
+    EXPECT_EQ(watermarks, (std::map<StoryId, int64_t>{{1, 200}, {2, 200}}));
+    context.TryCancel();
+    restarted.shutdown();
+    endpoint->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
+}
+
+TEST(ArchiveWatermarkTest, AReportIsSentOnlyWhenItChanges)
+{
+    Server server;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(800));
+    wire::WatchWatermarksRequest subscription;
+    subscription.set_keeper_id("keeper-1");
+    subscription.add_story_ids(1);
+    auto watch = server.stub->WatchWatermarks(&context, subscription);
+    wire::WatchWatermarksResponse report;
+    ASSERT_TRUE(watch->Read(&report));
+    EXPECT_FALSE(watch->Read(&report));
+}
+
+TEST(GrapherConfigTest, LogLevelDefaultsToInfoAndRejectsUnknownLevels)
+{
+    auto loaded = GrapherConfig::load(std::nullopt);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_EQ(loaded->log_level, "info");
+    loaded->log_level = "error";
+    EXPECT_TRUE(loaded->validate().ok());
+    loaded->log_level = "debug";
+    EXPECT_FALSE(loaded->validate().ok());
 }
 
 TEST(GrapherConfigTest, ValidatesLimitsAndInternalBindGuard)

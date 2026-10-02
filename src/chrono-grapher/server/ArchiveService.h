@@ -7,6 +7,7 @@
 
 namespace chronolog::grapher
 {
+class WorkerPool;
 struct TransferLimits
 {
     uint64_t chunk_bytes = 64 * 1024 * 1024;
@@ -18,6 +19,7 @@ class ArchiveService final: public internal::v1::Archive::Service
 {
 public:
     ArchiveService(FileTierStore& store, std::string instance, TransferLimits limits = {});
+    ~ArchiveService() override;
     grpc::Status TransferChunk(grpc::ServerContext*,
                                grpc::ServerReader<internal::v1::TransferChunkRequest>*,
                                internal::v1::TransferChunkResponse*) override;
@@ -44,5 +46,6 @@ private:
     uint32_t active_{};
     uint64_t revision_{};
     bool draining_{};
+    std::unique_ptr<WorkerPool> pool_;
 };
 } // namespace chronolog::grapher

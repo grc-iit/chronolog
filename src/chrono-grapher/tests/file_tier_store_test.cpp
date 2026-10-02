@@ -214,6 +214,44 @@ TEST(ManifestLog, CompactionLeavesOtherWritersLogsAlone)
     EXPECT_EQ((*first)->load()->records.size(), 2u);
 }
 
+TEST(FileTierStore, ReRegisteringAStoryKeepsItsWatermarkAndRefusesAMovedAnchor)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window()).ok());
+    ASSERT_TRUE((*store)->publish(contract::Window(200, 300)).ok());
+    EXPECT_TRUE((*store)->registerStory(1, Hlc{100, 0}).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+    EXPECT_EQ((*store)->registerStory(1, Hlc{500, 0}).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+}
+
+TEST(FileTierStore, AWindowStartingBelowTheAnchorOrOverlappingTheRunExtendsIt)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window(50, 150)).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{150, 0}));
+    ASSERT_TRUE((*store)->publish(contract::Window(120, 250)).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{250, 0}));
+}
+
+TEST(FileTierStore, AnEmptyExemptWindowDoesNotAdvanceTheWatermark)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window()).ok());
+    auto salvage = contract::Window(200, 300, true);
+    salvage.exempt = true;
+    ASSERT_TRUE((*store)->publish(salvage).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{200, 0}));
+    ASSERT_TRUE((*store)->publish(contract::Window(300, 400)).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{200, 0}));
+}
+
 TEST(FileTierStore, PublishNeverOverwrites)
 {
     auto directory = TestDirectory();

@@ -243,7 +243,7 @@ int hot(const char* keeper, const char* out)
     fail("replay from the WAL: " + why);
 }
 
-int verify(const char* catalog, const char* keeper, const char* out)
+int verify(const char* catalog, const char* keeper, const char* out, const char* dump = nullptr)
 {
     const auto rows = durable(out);
     const auto story = loadStory(out);
@@ -298,6 +298,14 @@ int verify(const char* catalog, const char* keeper, const char* out)
             for(size_t i = 1; i < events.size(); ++i)
                 if(events[i - 1].hlc >= events[i].hlc)
                     fail("complete read is not in HLC order");
+            if(dump)
+            {
+                std::ofstream lines(dump);
+                for(const auto& event: events)
+                    lines << event.id.story_id << ' ' << event.id.writer_id << ' ' << event.id.incarnation << ' '
+                          << event.id.sequence << ' ' << event.hlc.physical_ns << ' ' << event.hlc.logical << ' '
+                          << event.envelope.payload << '\n';
+            }
             std::cout << "verified durable=" << rows.size() << " read=" << events.size()
                       << " evicted_below=" << evicted.physical_ns << '\n';
             return 0;
@@ -335,8 +343,8 @@ int main(int argc, char** argv)
         return append(argv[2], argv[3]);
     if(command == "hot" && argc == 4)
         return hot(argv[2], argv[3]);
-    if(command == "verify" && argc == 5)
-        return verify(argv[2], argv[3], argv[4]);
+    if(command == "verify" && (argc == 5 || argc == 6))
+        return verify(argv[2], argv[3], argv[4], argc == 6 ? argv[5] : nullptr);
     if(command == "after" && argc == 3)
         return after(argv[2]);
     std::cerr << "usage: driver write|frontier|append|hot|verify|after ...\n";

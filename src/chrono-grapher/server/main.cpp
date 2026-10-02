@@ -1,6 +1,9 @@
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
 #include "rpc/Channel.h"
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 #include <grpcpp/grpcpp.h>
 #include <chrono>
 #include <algorithm>
@@ -13,6 +16,7 @@
 
 int main(int argc, char** argv)
 {
+    absl::InitializeLog();
     std::optional<std::string> path;
     bool allow_bind_all = false;
     for(int i = 1; i < argc; ++i)
@@ -24,16 +28,21 @@ int main(int argc, char** argv)
             allow_bind_all = true;
         else
         {
-            std::cerr << "usage: chrono_grapher [--config PATH] [--insecure-bind-all]\n";
+            LOG(ERROR) << "usage: chrono_grapher [--config PATH] [--insecure-bind-all]";
             return 2;
         }
     }
     auto config = chronolog::grapher::GrapherConfig::load(path, allow_bind_all);
     if(!config.ok())
     {
-        std::cerr << config.status() << '\n';
+        LOG(ERROR) << config.status();
         return 2;
     }
+    const auto severity = config->log_level == "error"     ? absl::LogSeverityAtLeast::kError
+                          : config->log_level == "warning" ? absl::LogSeverityAtLeast::kWarning
+                                                           : absl::LogSeverityAtLeast::kInfo;
+    absl::SetStderrThreshold(severity);
+    absl::SetMinLogLevel(severity);
     sigset_t signals;
     sigemptyset(&signals);
     sigaddset(&signals, SIGTERM);
@@ -48,7 +57,7 @@ int main(int argc, char** argv)
     auto store = chronolog::FileTierStore::Open(config->archive_root, config->manifest_writer, {}, codec);
     if(!store.ok())
     {
-        std::cerr << store.status() << '\n';
+        LOG(ERROR) << store.status();
         return 1;
     }
     std::random_device random;
@@ -67,7 +76,7 @@ int main(int argc, char** argv)
     auto server = builder.BuildAndStart();
     if(!server || !port)
     {
-        std::cerr << "cannot listen on " << config->internal_listen << '\n';
+        LOG(ERROR) << "cannot listen on " << config->internal_listen;
         return 1;
     }
     auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::peerChannel(config->visor_internal));
@@ -97,7 +106,7 @@ int main(int argc, char** argv)
                         if(registered)
                             std::cout << "grapher registered instance=" << instance << std::endl;
                         if(!registered && !stop.stop_requested())
-                            std::cerr << "grapher registration failed\n";
+                            LOG(WARNING) << "grapher registration failed";
                     }
                     else
                     {
@@ -117,7 +126,7 @@ int main(int argc, char** argv)
                         const auto status = stub->Heartbeat(&context, request, &response);
                         registered = status.ok() && response.status().code() == 0;
                         if(!registered && !stop.stop_requested())
-                            std::cerr << "grapher heartbeat failed\n";
+                            LOG_EVERY_N_SEC(WARNING, 5) << "grapher heartbeat failed";
                     }
                     std::unique_lock lock(mutex);
                     pause.wait_for(lock,

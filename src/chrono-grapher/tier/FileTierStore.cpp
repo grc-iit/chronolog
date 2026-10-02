@@ -1,3 +1,4 @@
+#include <absl/log/log.h>
 #include "chrono-grapher/tier/FileTierStore.h"
 #include "chrono-grapher/tier/FileIO.h"
 #include <algorithm>
@@ -207,6 +208,7 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::
     auto status = store->refreshNow();
     if(!status.ok())
         return status;
+    LOG(INFO) << "archive index loaded from manifest records=" << store->cached_index_->records.size();
     return store;
 }
 
