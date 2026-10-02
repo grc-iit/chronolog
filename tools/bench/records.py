@@ -48,7 +48,7 @@ def read(path):
 
 
 def meta(args):
-    fs = subprocess.run(["stat", "-f", "-c", "%T", args.wal_dir], capture_output=True, text=True).stdout.strip()
+    fs = subprocess.run(["findmnt", "-no", "FSTYPE", "-T", args.wal_dir], capture_output=True, text=True).stdout.strip()
     device = subprocess.run(["df", "--output=source", args.wal_dir], capture_output=True, text=True).stdout.split("\n")[-2:-1]
     print(json.dumps({
         "commit": os.environ.get("BENCH_COMMIT", "unknown"),

@@ -571,6 +571,8 @@ int tailScenario(const Args& args)
                     {
                         if(item.status().code() == absl::StatusCode::kDeadlineExceeded)
                             continue;
+                        if(done.load() && item.status().code() == absl::StatusCode::kCancelled)
+                            return;
                         tail_error = item.status().ToString();
                         tail_failed = true;
                         return;
