@@ -14,7 +14,7 @@ add_executable(chronolog_grapher_tier_tests ../tests/file_tier_store_test.cpp)
 target_link_libraries(chronolog_grapher_tier_tests PRIVATE
     chronolog_grapher_tier chronolog_warnings GTest::gtest GTest::gtest_main)
 include(GoogleTest)
-gtest_discover_tests(chronolog_grapher_tier_tests
+gtest_discover_tests(chronolog_grapher_tier_tests DISCOVERY_TIMEOUT 60
     TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
 
 add_executable(chronolog_hdf5_interop_writer ../tests/hdf5_interop_writer.cpp)
