@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 #include "chronolog/client/client.h"
+#include "../lib/catalog_target.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 
 namespace
@@ -34,7 +35,16 @@ public:
         builder.RegisterService(this);
         server_ = builder.BuildAndStart();
     }
-    ~Peer() override { server_->Shutdown(std::chrono::system_clock::now() + 2s); }
+    ~Peer() override { stop(); }
+    void stop()
+    {
+        if(server_)
+        {
+            server_->Shutdown(std::chrono::system_clock::now() + 2s);
+            server_->Wait();
+            server_.reset();
+        }
+    }
     grpc::Status
     ListChronicles(grpc::ServerContext*, const wire::ListChroniclesRequest*, wire::ListChroniclesResponse* p) override
     {
@@ -166,6 +176,92 @@ void CatalogCallReachesThePeerAfterTheHopGoesDark(bool bandwidth_probe)
             std::this_thread::sleep_for(20ms);
     }
     EXPECT_EQ(answer, "after");
+}
+
+TEST(ClientChannelPolicy, CatalogTargetAcceptsEndpointsAndResolvesReplicaLists)
+{
+    for(const auto& endpoint: {"localhost:50051",
+                               "127.0.0.1:50051",
+                               "[::1]:50051",
+                               "dns:///localhost:50051",
+                               "unix:///tmp/chronolog.sock",
+                               "ipv4:127.0.0.1:1,127.0.0.1:2",
+                               "ipv4:///127.0.0.1:1,127.0.0.1:2",
+                               "ipv6:[::1]:1,[::1]:2"})
+    {
+        auto target = sdk::detail::catalogTarget(endpoint);
+        ASSERT_TRUE(target.ok()) << endpoint << ": " << target.status();
+        EXPECT_EQ(*target, endpoint);
+    }
+    for(const auto& endpoints: {"127.0.0.1:1,127.0.0.1:2", "localhost:1,127.0.0.1:2", "localhost:1,localhost:2"})
+    {
+        auto target = sdk::detail::catalogTarget(endpoints);
+        ASSERT_TRUE(target.ok()) << endpoints << ": " << target.status();
+        EXPECT_EQ(*target, "ipv4:127.0.0.1:1,127.0.0.1:2");
+    }
+}
+TEST(ClientChannelPolicy, CatalogTargetRejectsMalformedEndpointsBeforeConnecting)
+{
+    for(const auto& endpoints: {"",
+                                "localhost",
+                                ":50051",
+                                "localhost:",
+                                "localhost:abc",
+                                "localhost:0",
+                                "localhost:65536",
+                                "localhost:1,",
+                                ",localhost:1",
+                                "localhost:1,,localhost:2",
+                                "localhost:1,missing-port",
+                                "localhost:1,localhost:-1",
+                                "localhost:1,localhost:2x",
+                                "localhost:1, localhost:2",
+                                "localhost:1,[::1]:2",
+                                "[invalid]:1",
+                                "ipv4:",
+                                "ipv4:localhost:1,127.0.0.1:2",
+                                "ipv4:999.0.0.1:1",
+                                "dns:///localhost:1,localhost:2"})
+    {
+        auto target = sdk::detail::catalogTarget(endpoints);
+        EXPECT_EQ(target.status().code(), absl::StatusCode::kInvalidArgument) << endpoints << ": " << target.status();
+        auto options = sdk::ClientOptions{};
+        options.catalog_endpoint = endpoints;
+        auto client = sdk::Client::Connect(options);
+        EXPECT_EQ(client.status().code(), absl::StatusCode::kInvalidArgument) << endpoints << ": " << client.status();
+    }
+}
+
+TEST(ClientChannelPolicy, ClientReachesTheCatalogThroughTheNextReplicaWhenItsVisorDies)
+{
+    Peer first("first"), second("second"), third("third");
+    auto options = sdk::ClientOptions{};
+    options.catalog_endpoint = "localhost:" + std::to_string(first.port) + ",127.0.0.1:" + std::to_string(second.port) +
+                               ",localhost:" + std::to_string(third.port);
+    auto client = sdk::Client::Connect(options, std::chrono::system_clock::now() + 2s);
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto initial = client->listChronicles();
+    ASSERT_TRUE(initial.ok()) << initial.status();
+    ASSERT_EQ(initial->size(), 1u);
+    ASSERT_EQ(initial->front().name, "first");
+    first.stop();
+    const auto end = std::chrono::system_clock::now() + 8s;
+    std::string answer;
+    absl::Status last;
+    for(int attempt = 0; attempt < 400 && std::chrono::system_clock::now() < end; ++attempt)
+    {
+        auto result = client->listChronicles(end);
+        last = result.status();
+        if(result.ok() && !result->empty())
+        {
+            answer = result->front().name;
+            break;
+        }
+        if(!absl::IsUnavailable(last))
+            break;
+        std::this_thread::sleep_for(20ms);
+    }
+    EXPECT_EQ(answer, "second") << last;
 }
 
 TEST(ClientChannelPolicy, ACatalogCallThroughAHopThatStopsForwardingReachesTheSuccessorWithinTheKeepaliveBound)

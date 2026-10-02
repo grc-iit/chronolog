@@ -170,7 +170,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
     , feed_(feed)
     , failure_timeout_(failure_timeout)
 {
-    // Static mode wakes streams on the same cadence so a destroy reaches WatchRoutes subscribers (W10.17).
+    // Static mode wakes streams on the same cadence for every route history update (W10.6, W10.17).
     if(raft_ || dynamic_cast<const SqliteMetadataStore*>(&store_))
         route_notifications_ = std::jthread(
                 [this](std::stop_token stop)
@@ -456,6 +456,7 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
                 auto persisted = sqlite->membershipRouteUpdate(story.id);
                 if(!persisted.ok())
                     return persisted.status();
+                update.set_revision(persisted->revision());
                 update.set_physical_policy(persisted->physical_policy());
             }
             out.push_back(std::move(update));
@@ -467,21 +468,23 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
 grpc::ServerWriteReactor<internal::v1::WatchRoutesResponse>*
 ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::WatchRoutesRequest*)
 {
-    // The history pull runs in both modes. Static mode delivers only tombstones: its routes never change, and
-    // a Keeper learns a new story's route on demand.
     const SqliteMetadataStore* history =
             raft_ ? &raft_->appliedStore() : dynamic_cast<const SqliteMetadataStore*>(&store_);
-    // Read before the snapshot so a destroy committed in between is delivered again rather than lost.
     uint64_t cursor = 0;
-    if(history && !raft_)
+    absl::StatusOr<std::vector<internal::v1::RouteUpdate>> routes;
+    if(history)
     {
-        auto revision = history->membershipRevision();
-        if(!revision.ok())
+        // Snapshot and cursor share the store lock, so every later creation, policy change or destroy is a delta.
+        auto state = history->membershipState();
+        if(!state.ok())
             return new FailedStream<internal::v1::WatchRoutesResponse>(
-                    grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(revision.status().message())));
-        cursor = *revision;
+                    grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(state.status().message())));
+        cursor = state->revision();
+        routes = std::vector<internal::v1::RouteUpdate>(state->routes().begin(), state->routes().end());
+        for(auto& update: *routes) update.set_revision(cursor);
     }
-    auto routes = routeSnapshot();
+    else
+        routes = routeSnapshot();
     if(!routes.ok())
         return new FailedStream<internal::v1::WatchRoutesResponse>(
                 grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(routes.status().message())));
@@ -500,8 +503,7 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
         auto state = std::make_shared<std::pair<uint64_t, std::deque<internal::v1::WatchRoutesResponse>>>();
         state->first = cursor;
         for(const auto& message: snapshot) state->first = std::max(state->first, message.revision());
-        const bool tombstones_only = !raft_;
-        pull = [history, tombstones_only, state]() -> std::optional<internal::v1::WatchRoutesResponse>
+        pull = [history, state]() -> std::optional<internal::v1::WatchRoutesResponse>
         {
             if(state->second.empty())
             {
@@ -515,10 +517,12 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
                 bool trimmed = state->first < current.route_history_floor();
                 const auto& updates = trimmed ? current.routes() : current.route_history();
                 for(const auto& update: updates)
-                    if((trimmed || update.revision() > state->first) && (!tombstones_only || update.tombstoned()))
+                    if(trimmed || update.revision() > state->first)
                     {
                         auto& message = state->second.emplace_back();
                         message.ParseFromString(update.SerializeAsString());
+                        if(trimmed)
+                            message.set_revision(current.revision());
                     }
                 state->first = current.revision();
             }

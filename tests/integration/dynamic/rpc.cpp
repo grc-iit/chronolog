@@ -48,6 +48,7 @@ Json call(const Json& command)
     auto cluster = internal::Cluster::NewStub(channel);
     auto journal = pub::Journal::NewStub(channel);
     auto replay = pub::Replay::NewStub(channel);
+    auto archive = internal::Archive::NewStub(channel);
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(command.value("timeout_ms", 3000)));
@@ -63,6 +64,9 @@ Json call(const Json& command)
     RPC(CreateStory, catalog, pub)
     RPC(Acquire, catalog, pub)
     RPC(Release, catalog, pub)
+    RPC(GetStory, catalog, pub)
+    RPC(DestroyStory, catalog, pub)
+    RPC(DestroyChronicle, catalog, pub)
     RPC(Append, journal, pub)
     RPC(Register, cluster, internal)
     RPC(ExtendCeiling, cluster, internal)
@@ -102,6 +106,27 @@ Json call(const Json& command)
         }
         auto status = reader->Finish();
         return {{"transport", status.error_code()}, {"error", status.error_message()}, {"frames", frames}};
+    }
+    if(op == "FetchHot")
+    {
+        internal::FetchHotRequest request;
+        auto parsed = google::protobuf::util::JsonStringToMessage(input.dump(), &request);
+        if(!parsed.ok())
+            throw std::runtime_error(parsed.ToString());
+        auto reader = archive->FetchHot(&context, request);
+        internal::FetchHotResponse response;
+        uint64_t events = 0;
+        bool trailer = false;
+        while(reader->Read(&response))
+        {
+            events += response.has_batch() ? response.batch().events_size() : 0;
+            trailer = trailer || response.has_trailer();
+        }
+        auto status = reader->Finish();
+        return {{"transport", status.error_code()},
+                {"error", status.error_message()},
+                {"events", events},
+                {"trailer", trailer}};
     }
     throw std::runtime_error("unknown RPC " + op);
 }
