@@ -325,6 +325,25 @@ TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloor
     context->TryCancel();
     (void)reader->Finish();
 }
+TEST_F(DynamicClusterTest, AcquisitionWatchIsRefusedByAReplicaWithoutALeaderLease)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    stop((selected + 1) % 3);
+    stop((selected + 2) % 3);
+    const auto until = std::chrono::steady_clock::now() + 5s;
+    while(stores[selected]->leaderLease() && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(20ms);
+    ASSERT_FALSE(stores[selected]->leaderLease());
+    wire::WatchAcquisitionsRequest request;
+    request.set_keeper_id("keeper-a");
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 5s);
+    auto reader = stubs[selected]->WatchAcquisitions(&context, request);
+    wire::WatchAcquisitionsResponse message;
+    EXPECT_FALSE(reader->Read(&message));
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::UNAVAILABLE);
+}
 TEST_F(DynamicClusterTest, PlainHeartbeatsDoNotAppendRaftEntries)
 {
     auto selected = leader();
