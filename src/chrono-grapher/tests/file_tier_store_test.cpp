@@ -248,6 +248,49 @@ TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
     EXPECT_TRUE(absl::IsUnavailable((*store)->readRecord(*erased, contract::WholeArchive()).status()));
 }
 
+TEST(FileTierStore, RecordsFromOneSnapshotAreReadInParallel)
+{
+    for(const auto axis: {Range::Axis::Hlc, Range::Axis::Physical})
+    {
+        auto directory = TestDirectory();
+        auto writer = Open(*directory);
+        ASSERT_TRUE(writer.ok());
+        ASSERT_TRUE((*writer)->publish(contract::Window(200, 300)).ok());
+        ASSERT_TRUE((*writer)->publish(contract::Window()).ok());
+        writer->reset();
+        BlockingRead gate;
+        auto store = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), std::ref(gate), 2);
+        ASSERT_TRUE(store.ok());
+        auto reading = std::async(std::launch::async, [&] { return (*store)->read(1, {axis, {0, 0}, {1000, 0}}); });
+        const bool concurrent = gate.waitEntered(2);
+        EXPECT_TRUE(gate.release());
+        EXPECT_TRUE(concurrent);
+        const auto events = reading.get();
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 2u);
+        EXPECT_EQ(events->at(0).id.sequence, 100u);
+        EXPECT_EQ(events->at(1).id.sequence, 200u);
+    }
+}
+
+TEST(FileTierStore, ReadRecordErasedBeforeOpenIsUnavailable)
+{
+    auto directory = TestDirectory();
+    auto writer = Open(*directory);
+    ASSERT_TRUE(writer.ok());
+    auto record = (*writer)->publish(contract::Window());
+    ASSERT_TRUE(record.ok());
+    BlockingRead gate;
+    auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), std::ref(gate));
+    ASSERT_TRUE(reader.ok());
+    auto reading =
+            std::async(std::launch::async, [&] { return (*reader)->readRecord(*record, contract::WholeArchive()); });
+    ASSERT_TRUE(gate.waitEntered(1));
+    ASSERT_TRUE((*writer)->eraseFile(record->file).ok());
+    EXPECT_TRUE(gate.release());
+    EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
+}
+
 TEST(FileTierStore, WatermarkStopsAtTheFirstGap)
 {
     auto directory = TestDirectory();
