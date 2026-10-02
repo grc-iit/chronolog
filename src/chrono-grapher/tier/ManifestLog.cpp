@@ -211,6 +211,8 @@ absl::StatusOr<ManifestIndex> ManifestLog::load() const
         if(it->path().extension() == ".log" || it->path().extension() == ".snap")
             writers.insert(it->path().stem().string());
     }
+    if(error == std::errc::no_such_file_or_directory)
+        return index;
     if(error)
         return absl::UnavailableError(error.message());
     try
