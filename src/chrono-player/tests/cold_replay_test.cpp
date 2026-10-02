@@ -598,6 +598,43 @@ TEST_F(ColdReplay, TailReadsAnArchiveLargerThanItsCapAcrossRounds)
     EXPECT_GE(calls, 4u);
 }
 
+TEST_F(ColdReplay, TailDeliversAnEventLargerThanItsByteShare)
+{
+    auto first = event(110);
+    first.envelope.payload = std::string(100, 'a');
+    auto tied = first;
+    tied.id.writer_id = 3;
+    tied.envelope.payload = std::string(100, 'b');
+    auto later = event(130);
+    later.envelope.payload = std::string(100, 'c');
+    ASSERT_TRUE(writer->publish({"oversized", 1, {100, 0}, {200, 0}, {first, tied, later}, false}).ok());
+    options.tail_max_bytes = 144;
+    options.read_max_events = 2;
+    options.batch_size = 10;
+    HotReplay replay(source, options);
+    Event start;
+    start.id.story_id = 1;
+    auto stream = replay.tail(1, start);
+    ASSERT_TRUE(stream.ok());
+    auto batch = nextWithin(**stream);
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 2u);
+    EXPECT_EQ((**batch).events[0].id, first.id);
+    EXPECT_EQ((**batch).events[1].id, tied.id);
+    EXPECT_EQ((**batch).events[0].envelope.payload, first.envelope.payload);
+    EXPECT_EQ((**batch).events[1].envelope.payload, tied.envelope.payload);
+    EXPECT_FALSE((**batch).completion);
+    batch = nextWithin(**stream);
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].id, later.id);
+    EXPECT_EQ((**batch).events[0].envelope.payload, later.envelope.payload);
+    EXPECT_FALSE((**batch).completion);
+    (*stream)->cancel();
+}
+
 TEST_F(ColdReplay, ATailOverATombstonedStoryEndsFailedPreconditionWhenTheCatalogConfirms)
 {
     publish(140);

@@ -777,6 +777,55 @@ TEST_F(replay_adapter, TailBoundsBufferedPayloadAndResumesAfterDelivery)
     (*stream)->cancel();
 }
 
+TEST_F(replay_adapter, TailDeliversAnEventLargerThanItsByteShare)
+{
+    a_.hold("a1", {}, 300);
+    for(int64_t time: {110, 130})
+    {
+        auto e = protoEvent(2, time, time);
+        e.mutable_envelope()->set_payload(std::string(100, 'x'));
+        a_.add(std::move(e));
+    }
+    b_.hold("b1", {}, 100);
+    HotReplayOptions options;
+    options.tail_max_bytes = 96;
+    options.batch_size = 10;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto before = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    b_.seal(300);
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto batch = next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, before);
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc, (Hlc{110, 0}));
+    EXPECT_EQ((**batch).events[0].envelope.payload, std::string(100, 'x'));
+    EXPECT_FALSE((**batch).completion);
+    next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    batch = next.get();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc, (Hlc{130, 0}));
+    EXPECT_EQ((**batch).events[0].envelope.payload, std::string(100, 'x'));
+    EXPECT_FALSE((**batch).completion);
+    EXPECT_GT(a_.calls.load(), before);
+    (*stream)->cancel();
+}
+
 TEST_F(replay_adapter, TailAcrossAKeeperRestartHasNoGapOrDuplicate)
 {
     a_.setInstance("a1");
