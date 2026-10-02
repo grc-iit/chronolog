@@ -214,6 +214,8 @@ void KeeperArchive::settleLocked(State& state)
     if(auto status = journal_.recordSettled(state.chunk.id); !status.ok())
         return;
     std::osyncstream(std::clog) << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id
+                                << " start=" << state.chunk.start.physical_ns << ':' << state.chunk.start.logical
+                                << " end=" << state.chunk.end.physical_ns << ':' << state.chunk.end.logical
                                 << std::endl;
     state.settled = true;
     state.settled_at = now_();
