@@ -39,7 +39,7 @@ class Workload(threading.Thread):
                 self.sequence += 1
                 # A refused append is retried, so the sequence always advances through acknowledged events.
                 self.probe.append(self.acquired, self.sequence)
-                self.stop_flag.wait(0.02)
+                self.stop_flag.wait(0.1)
         except Exception as error:  # noqa: BLE001
             self.error = error
 
@@ -159,6 +159,11 @@ def main():
             try:
                 stack = run.Local(args)
                 peers = run.configure(stack)
+                # Failure detection is not under test here, and a sanitizer build can stall heartbeats for seconds, so
+                # a slow Keeper must not be drained as silent while the Visors are killed.
+                for role, (node, _, config) in list(stack.services.items()):
+                    if role.startswith('visor-'):
+                        stack.write(role, node, dict(config, keeper_failure_timeout_ms=8000))
                 for role in stack.services:
                     stack.start(role)
                 stack.alive()
