@@ -96,6 +96,7 @@ private:
     std::atomic<uint64_t> snapshot_generation_{};
     absl::Status initializeMembership();
     absl::Status seedMembershipStory(StoryId id);
+    uint64_t routeMutationRevision();
     // Inside the destroy transaction: one fresh acquisition revision, then a tombstoned RouteUpdate per story
     // in membership_history (W10.17). Under Raft apply the command's own revision is the fresh one.
     absl::Status tombstoneStories(const std::vector<StoryId>& stories);
