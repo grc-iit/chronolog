@@ -290,11 +290,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                 for(size_t i = 0; i < pending->outcomes.size(); ++i)
                     if(!pending->outcomes[i])
                         pending->outcomes[i] =
-                                specs[i].durability == Durability::Durable
-                                        ? absl::UnknownError(
-                                                  "DURABLE append outcome unknown; writer keeper removed; re-acquire")
-                                        : absl::FailedPreconditionError(
-                                                  "writer keeper removed; re-acquire before appending");
+                                absl::UnknownError("append outcome unknown; writer keeper removed; re-acquire");
                 break;
             }
             acquired.assigned_keeper = *survivor;

@@ -337,40 +337,42 @@ TEST(ClientContract, ClientKeepsItsSurvivingKeeperAfterAnEpochChange)
 }
 TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquires)
 {
-    Server server, replacement;
-    server.stale = true;
-    wire::Route route;
-    route.set_epoch(2);
-    route.set_player(server.endpoint);
-    auto* keeper = route.add_keepers();
-    keeper->set_process_id("replacement");
-    keeper->set_endpoint(replacement.endpoint);
-    server.redirect_route = route;
-    auto client = sdk::Client::Connect(server.options());
-    ASSERT_TRUE(client.ok()) << client.status();
-    auto writer = client->acquire(1, "writer");
-    ASSERT_TRUE(writer.ok()) << writer.status();
-    sdk::AppendSpec spec{{"", "payload", "", "", {}}};
-    auto result = writer->append(spec);
-    EXPECT_EQ(result.status().code(), absl::StatusCode::kUnknown) << result.status();
-    EXPECT_NE(result.status().message().find("outcome unknown"), std::string::npos);
-    EXPECT_NE(result.status().message().find("re-acquire"), std::string::npos);
-    EXPECT_TRUE(replacement.seen.empty());
-    auto again = writer->append(spec);
-    EXPECT_EQ(again.status().code(), absl::StatusCode::kFailedPrecondition) << again.status();
-    EXPECT_NE(again.status().message().find("re-acquire"), std::string::npos);
-    ASSERT_EQ(server.seen.size(), 1u);
-    EXPECT_EQ(server.acquisitions.load(), 1);
-    server.acquisition_route = route;
-    server.acquired_incarnation = 2;
-    auto fresh = client->acquire(1, "writer");
-    ASSERT_TRUE(fresh.ok()) << fresh.status();
-    auto appended = fresh->append(spec);
-    ASSERT_TRUE(appended.ok()) << appended.status();
-    EXPECT_TRUE(appended->acked());
-    EXPECT_EQ(appended->event_id.incarnation, 2u);
-    EXPECT_EQ(appended->event_id.sequence, 1u);
-    ASSERT_EQ(replacement.seen.size(), 1u);
+    for(auto durability: {chronolog::Durability::Durable, chronolog::Durability::Accepted})
+    {
+        Server server, replacement;
+        server.stale = true;
+        wire::Route route;
+        route.set_epoch(2);
+        route.set_player(server.endpoint);
+        auto* keeper = route.add_keepers();
+        keeper->set_process_id("replacement");
+        keeper->set_endpoint(replacement.endpoint);
+        server.redirect_route = route;
+        auto client = sdk::Client::Connect(server.options());
+        ASSERT_TRUE(client.ok()) << client.status();
+        auto writer = client->acquire(1, "writer");
+        ASSERT_TRUE(writer.ok()) << writer.status();
+        sdk::AppendSpec spec{{"", "payload", "", "", {}}, durability};
+        auto result = writer->append(spec);
+        EXPECT_EQ(result.status().code(), absl::StatusCode::kUnknown) << result.status();
+        EXPECT_EQ(result.status().message(), "append outcome unknown; writer keeper removed; re-acquire");
+        EXPECT_TRUE(replacement.seen.empty());
+        auto again = writer->append(spec);
+        EXPECT_EQ(again.status().code(), absl::StatusCode::kFailedPrecondition) << again.status();
+        EXPECT_NE(again.status().message().find("re-acquire"), std::string::npos);
+        ASSERT_EQ(server.seen.size(), 1u);
+        EXPECT_EQ(server.acquisitions.load(), 1);
+        server.acquisition_route = route;
+        server.acquired_incarnation = 2;
+        auto fresh = client->acquire(1, "writer");
+        ASSERT_TRUE(fresh.ok()) << fresh.status();
+        auto appended = fresh->append(spec);
+        ASSERT_TRUE(appended.ok()) << appended.status();
+        EXPECT_EQ(appended->acked(), durability == chronolog::Durability::Durable);
+        EXPECT_EQ(appended->event_id.incarnation, 2u);
+        EXPECT_EQ(appended->event_id.sequence, 1u);
+        ASSERT_EQ(replacement.seen.size(), 1u);
+    }
 }
 TEST(ClientContract, ClientBatchKeepsReceiptsAndMarksUnresolvedItemsAfterKeeperRemoval)
 {
@@ -396,12 +398,11 @@ TEST(ClientContract, ClientBatchKeepsReceiptsAndMarksUnresolvedItemsAfterKeeperR
     ASSERT_EQ(result->size(), 4u);
     ASSERT_TRUE((*result)[0].ok()) << (*result)[0].status();
     EXPECT_TRUE((*result)[0]->acked());
-    for(size_t i: {1u, 2u})
+    for(size_t i: {1u, 2u, 3u})
     {
         EXPECT_EQ((*result)[i].status().code(), absl::StatusCode::kUnknown);
-        EXPECT_NE((*result)[i].status().message().find("outcome unknown"), std::string::npos);
+        EXPECT_EQ((*result)[i].status().message(), "append outcome unknown; writer keeper removed; re-acquire");
     }
-    EXPECT_EQ((*result)[3].status().code(), absl::StatusCode::kFailedPrecondition);
     EXPECT_TRUE(replacement.seen.empty());
     EXPECT_EQ(server.seen.size(), specs.size());
     auto again = writer->appendBatch(specs);
