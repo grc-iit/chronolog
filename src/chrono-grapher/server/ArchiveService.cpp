@@ -60,6 +60,16 @@ uint32_t Checksum(const std::string& bytes)
     for(unsigned char byte: bytes) result = (result << 8) | byte;
     return result;
 }
+
+constexpr std::chrono::seconds kDestroyRetryDelay{1};
+
+bool HasPublishedFiles(const FileTierStore& store, StoryId story)
+{
+    const auto records = store.manifest(story);
+    return records.ok() && std::any_of(records->begin(),
+                                       records->end(),
+                                       [](const auto& record) { return record.state == ManifestState::Published; });
+}
 } // namespace
 
 ArchiveService::ArchiveService(FileTierStore& store, std::string instance, TransferLimits limits)
@@ -68,9 +78,18 @@ ArchiveService::ArchiveService(FileTierStore& store, std::string instance, Trans
     , limits_(limits)
     , pool_(std::make_unique<WorkerPool>(std::max<uint32_t>(1, limits.concurrent_transfers),
                                          std::max<uint32_t>(1, limits.concurrent_transfers)))
-{}
+    , destroyer_(std::make_unique<WorkerPool>(1, 1))
+{
+    // A restart resumes the deletion of every tombstoned story that still has Published files, from the manifest
+    // alone, without asking the Catalog (I13.11).
+    if(const auto stories = store_.tombstonedStories(); stories.ok())
+        for(const auto story: *stories)
+            if(HasPublishedFiles(store_, story))
+                destroy_queue_.push_back(story);
+    destroyer_->submit([this] { destroyLoop(); });
+}
 
-ArchiveService::~ArchiveService() = default;
+ArchiveService::~ArchiveService() { shutdown(); }
 
 grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
                                            grpc::ServerReader<wire::TransferChunkRequest>* reader,
@@ -159,9 +178,14 @@ grpc::Status ArchiveService::TransferChunk(grpc::ServerContext* context,
         uint64_t receipt = 0;
         {
             std::lock_guard lock(mutex_);
+            // The refusal is decided from the manifest, so it survives a restart. It shares this critical section with
+            // the receipt, so a tombstone either refuses the chunk or finds its receipt pending (I13.11).
+            const auto tombstoned = store_.tombstoned(chunk.story_id);
+            if(!tombstoned.ok())
+                return Fail(*response, grpc::StatusCode::UNAVAILABLE, std::string(tombstoned.status().message()));
+            if(*tombstoned)
+                return Fail(*response, grpc::StatusCode::FAILED_PRECONDITION, "story tombstoned");
             auto& story = receipts_[chunk.story_id];
-            if(story.dropped)
-                return Fail(*response, grpc::StatusCode::NOT_FOUND, "story dropped");
             if(next_receipt_ == std::numeric_limits<uint64_t>::max())
                 return Fail(*response, grpc::StatusCode::RESOURCE_EXHAUSTED, "receipt counter exhausted");
             auto known = store_.contiguousWatermark(chunk.story_id);
@@ -245,10 +269,13 @@ grpc::Status ArchiveService::WatchWatermarks(grpc::ServerContext* context,
                     return {grpc::StatusCode::UNAVAILABLE, std::string(w.status().message())};
                 else
                     report.mutable_watermark();
+                const auto tombstoned = store_.tombstoned(story_id);
+                if(!tombstoned.ok())
+                    return {grpc::StatusCode::UNAVAILABLE, std::string(tombstoned.status().message())};
+                report.set_dropped(*tombstoned);
                 if(state != receipts_.end())
                 {
                     report.set_highest_receipt(state->second.highest);
-                    report.set_dropped(state->second.dropped);
                     for(const auto pending: state->second.pending) report.add_pending_receipts(pending);
                 }
                 const auto encoded = report.SerializeAsString();
@@ -268,18 +295,131 @@ grpc::Status ArchiveService::WatchWatermarks(grpc::ServerContext* context,
     return {grpc::StatusCode::CANCELLED, "watch cancelled"};
 }
 
-void ArchiveService::dropStory(StoryId story)
+void ArchiveService::tombstone(StoryId story)
 {
-    std::lock_guard lock(mutex_);
-    receipts_[story].dropped = true;
-    ++revision_;
+    if(!story)
+        return;
+    {
+        std::lock_guard lock(mutex_);
+        if(draining_ || std::find(destroy_queue_.begin(), destroy_queue_.end(), story) != destroy_queue_.end())
+            return;
+        destroy_queue_.push_back(story);
+    }
     changed_.notify_all();
+}
+
+std::vector<StoryId> ArchiveService::storiesToConfirm() const
+{
+    auto stories = store_.liveStories();
+    return stories.ok() ? *std::move(stories) : std::vector<StoryId>{};
+}
+
+bool ArchiveService::waitDestroyed(StoryId story, std::chrono::milliseconds timeout)
+{
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock,
+                             timeout,
+                             [&]
+                             {
+                                 const auto recorded = store_.tombstoned(story);
+                                 return recorded.ok() && *recorded &&
+                                        std::find(destroy_queue_.begin(), destroy_queue_.end(), story) ==
+                                                destroy_queue_.end();
+                             });
+}
+
+// One worker (M11.7) takes the queued stories in turn. Per story: the Tombstoned record first, so the dropped report
+// and the refusal of late chunks exist before anything is freed; then the wait for the story's pending receipts; then
+// the deletion. A failed step requeues the story behind the others and retries after a delay.
+void ArchiveService::destroyLoop()
+{
+    CHRONOLOG_ASSERT_WORKER_THREAD();
+    std::unique_lock lock(mutex_);
+    while(true)
+    {
+        changed_.wait(lock, [&] { return draining_ || !destroy_queue_.empty(); });
+        if(draining_)
+            return;
+        const auto story = destroy_queue_.front();
+        lock.unlock();
+        const auto recorded = store_.tombstone(story);
+        lock.lock();
+        bool done = false;
+        if(recorded.ok())
+        {
+            ++revision_;
+            changed_.notify_all();
+            changed_.wait(lock,
+                          [&]
+                          {
+                              const auto receipts = receipts_.find(story);
+                              return draining_ || receipts == receipts_.end() || receipts->second.pending.empty();
+                          });
+            if(draining_)
+                return;
+            lock.unlock();
+            done = eraseFiles(story);
+            lock.lock();
+        }
+        else
+        {
+            LOG_EVERY_N_SEC(WARNING, 10) << "tombstone record for story " << story << " failed: " << recorded;
+        }
+        destroy_queue_.pop_front();
+        if(done)
+        {
+            ++revision_;
+            changed_.notify_all();
+            continue;
+        }
+        destroy_queue_.push_back(story);
+        changed_.wait_for(lock, kDestroyRetryDelay, [&] { return draining_; });
+    }
+}
+
+// Erases Published files through Deleted records until none remain. True when none remain; a file whose unlink
+// failed after its Deleted record was appended is logged and left, since the manifest no longer names it.
+bool ArchiveService::eraseFiles(StoryId story)
+{
+    CHRONOLOG_ASSERT_WORKER_THREAD();
+    while(true)
+    {
+        const auto records = store_.manifest(story);
+        if(absl::IsNotFound(records.status()))
+            return true;
+        if(!records.ok())
+        {
+            LOG_EVERY_N_SEC(WARNING, 10) << "manifest of story " << story << " unreadable: " << records.status();
+            return false;
+        }
+        bool any = false, failed = false;
+        for(const auto& record: *records)
+        {
+            if(record.state != ManifestState::Published)
+                continue;
+            any = true;
+            const auto erased = store_.eraseFile(record.file);
+            if(!erased.ok() && !absl::IsNotFound(erased))
+            {
+                LOG(ERROR) << "cannot erase " << record.file << " of tombstoned story " << story << ": " << erased;
+                failed = true;
+            }
+        }
+        if(!any)
+            return true;
+        if(failed)
+            return false;
+    }
 }
 
 void ArchiveService::shutdown()
 {
-    std::lock_guard lock(mutex_);
-    draining_ = true;
+    {
+        std::lock_guard lock(mutex_);
+        draining_ = true;
+    }
     changed_.notify_all();
+    // Joined here so no deletion is still touching the store when the caller releases it.
+    destroyer_->stop();
 }
 } // namespace chronolog::grapher

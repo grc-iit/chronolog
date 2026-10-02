@@ -266,14 +266,14 @@ TEST(ArchiveWatermarkTest, WatchReflectsPublishAndDroppedStory)
     EXPECT_EQ(report.highest_receipt(), receipt.receipt());
     EXPECT_EQ(report.grapher_instance(), receipt.grapher_instance());
     EXPECT_FALSE(report.dropped());
-    server.service->dropStory(1);
+    server.service->tombstone(1);
     ASSERT_TRUE(watch->Read(&report));
     EXPECT_TRUE(report.dropped());
     EXPECT_EQ(report.highest_receipt(), receipt.receipt());
     context.TryCancel();
     EXPECT_FALSE(watch->Finish().ok());
     auto [dropped_status, dropped_receipt] = Send(server, {Frame()});
-    EXPECT_EQ(dropped_status.error_code(), grpc::StatusCode::NOT_FOUND);
+    EXPECT_EQ(dropped_status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
     EXPECT_EQ(dropped_receipt.receipt(), 0u);
 }
 
@@ -343,7 +343,8 @@ TEST(ArchiveTransferTest, AnEmptyWindowGetsAReceiptAndAdvancesTheWatermark)
 TEST(ArchiveWatermarkTest, DroppedStoryRefusesEveryChunkAndIsReportedEvenIfNeverRecorded)
 {
     Server server;
-    server.service->dropStory(7);
+    server.service->tombstone(7);
+    ASSERT_TRUE(server.service->waitDestroyed(7, std::chrono::seconds(5)));
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
     wire::WatchWatermarksRequest subscription;
@@ -357,13 +358,58 @@ TEST(ArchiveWatermarkTest, DroppedStoryRefusesEveryChunkAndIsReportedEvenIfNever
     for(int attempt = 0; attempt < 2; ++attempt)
     {
         auto [status, receipt] = Send(server, {Frame(7)});
-        EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+        EXPECT_EQ(status.error_code(), grpc::StatusCode::FAILED_PRECONDITION);
         EXPECT_EQ(receipt.receipt(), 0u);
     }
     auto [other_status, other] = Send(server, {Frame(8)});
     ASSERT_TRUE(other_status.ok());
     EXPECT_EQ(other.receipt(), 1u);
     context.TryCancel();
+}
+
+TEST(ArchiveWatermarkTest, TombstoneProducesDroppedReport)
+{
+    Server server;
+    auto [status, receipt] = Send(server, {Frame()});
+    ASSERT_TRUE(status.ok());
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    wire::WatchWatermarksRequest subscription;
+    subscription.set_keeper_id("keeper-1");
+    subscription.add_story_ids(1);
+    subscription.add_story_ids(7);
+    auto watch = server.stub->WatchWatermarks(&context, subscription);
+    wire::WatchWatermarksResponse report;
+    std::set<StoryId> dropped;
+    for(int i = 0; i < 2 && watch->Read(&report); ++i) EXPECT_FALSE(report.dropped());
+    server.service->tombstone(1);
+    server.service->tombstone(7);
+    while(dropped.size() < 2 && watch->Read(&report))
+    {
+        if(!report.dropped())
+            continue;
+        // A dropped report is only ever sent after the Tombstoned record is durable (W10.5, I13.11).
+        EXPECT_TRUE(server.store->tombstoned(report.story_id()).value());
+        dropped.insert(report.story_id());
+        if(report.story_id() == 1)
+        {
+            EXPECT_EQ(report.watermark().physical_ns(), 200);
+            EXPECT_EQ(report.highest_receipt(), receipt.receipt());
+        }
+        else
+            EXPECT_EQ(report.watermark().physical_ns(), 0);
+    }
+    EXPECT_EQ(dropped, (std::set<StoryId>{1, 7}));
+    context.TryCancel();
+    grpc::ClientContext late_context;
+    late_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    auto late = server.stub->WatchWatermarks(&late_context, subscription);
+    for(int i = 0; i < 2; ++i)
+    {
+        ASSERT_TRUE(late->Read(&report));
+        EXPECT_TRUE(report.dropped()) << "a Keeper that subscribes after the tombstone is told at once";
+    }
+    late_context.TryCancel();
 }
 
 TEST(ArchiveWatermarkTest, ARestartedGrapherReportsTheRecoveredWatermarkUnderANewInstance)

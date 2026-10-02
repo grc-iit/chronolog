@@ -2,7 +2,9 @@
 
 #include "chrono-grapher/tier/FileTierStore.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
+#include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <set>
 
 namespace chronolog::grapher
@@ -26,15 +28,23 @@ public:
     grpc::Status WatchWatermarks(grpc::ServerContext*,
                                  const internal::v1::WatchWatermarksRequest*,
                                  grpc::ServerWriter<internal::v1::WatchWatermarksResponse>*) override;
-    void dropStory(StoryId story);
+    // Queues the destruction of a story the Catalog reports tombstoned (RFC-C, I13.11). A worker appends the
+    // Tombstoned manifest record, waits until no receipt of the story is pending, then erases every Published file
+    // through Deleted records. Idempotent, and a failed step is retried.
+    void tombstone(StoryId story);
+    // Stories whose data this Grapher holds that no tombstone covers; the Catalog confirms each after a snapshot.
+    std::vector<StoryId> storiesToConfirm() const;
+    // True once the story's Tombstoned record is durable and no deletion is queued or running for it.
+    bool waitDestroyed(StoryId story, std::chrono::milliseconds timeout);
     void shutdown();
 
 private:
+    void destroyLoop();
+    bool eraseFiles(StoryId story);
     struct Receipts
     {
         uint64_t highest{};
         std::set<uint64_t> pending;
-        bool dropped{};
     };
     FileTierStore& store_;
     const std::string instance_;
@@ -46,6 +56,8 @@ private:
     uint32_t active_{};
     uint64_t revision_{};
     bool draining_{};
+    std::deque<StoryId> destroy_queue_;
     std::unique_ptr<WorkerPool> pool_;
+    std::unique_ptr<WorkerPool> destroyer_;
 };
 } // namespace chronolog::grapher
