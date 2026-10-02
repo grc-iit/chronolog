@@ -32,6 +32,8 @@ public:
     absl::StatusOr<Hlc> contiguousWatermark(StoryId story) const override;
     absl::StatusOr<bool> incomplete(StoryId story, Range range) const;
     absl::Status eraseFile(const std::string& file);
+    absl::Status retryDeletedFiles();
+    absl::StatusOr<bool> hasPendingUnlinks(StoryId story);
     // Appends the Tombstoned record and fsyncs it; publish refuses the story from then on, across restarts (I13.11).
     // Idempotent. A tombstone does not touch the story's files or its watermark.
     absl::Status tombstone(StoryId story);
@@ -50,6 +52,8 @@ private:
                   std::shared_ptr<const ChunkCodec> codec,
                   Unlink unlink = {});
     absl::Status recover();
+    void collectDeletedFiles(const ManifestIndex& index);
+    absl::Status unlinkDeletedFile(const std::string& file);
     struct StoryView
     {
         bool built{};
@@ -80,6 +84,9 @@ private:
     std::unique_ptr<ManifestLog> log_;
     std::shared_ptr<const ChunkCodec> codec_;
     Unlink unlink_;
+    std::map<std::string, StoryId> pending_unlinks_;
+    uint64_t deletion_generation_{};
+    size_t deletion_applied_{};
     mutable std::mutex mutex_;
     std::map<StoryId, std::optional<Hlc>> anchors_;
     mutable std::map<StoryId, Hlc> watermarks_;

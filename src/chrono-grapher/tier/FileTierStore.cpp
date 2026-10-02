@@ -199,6 +199,11 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     const auto status = store->recover();
     if(!status.ok())
         return status;
+    // A durable Deleted record is terminal even when its unlink failed or the process stopped before the unlink.
+    // Failures remain pending for the deletion worker and do not prevent serving from the recovered manifest.
+    const auto cleanup = store->retryDeletedFiles();
+    if(!cleanup.ok())
+        LOG_EVERY_N_SEC(ERROR, 10) << "archive Deleted file cleanup failed: " << cleanup;
     LOG(INFO)
             << "archive recovered records=" << store->log_->current()->records.size() << " in "
             << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()
@@ -638,7 +643,7 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
 {
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     auto index = refresh();
     if(!index.ok())
         return index.status();
@@ -656,9 +661,89 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     status = log_->append(record);
     if(!status.ok())
         return status;
-    if(unlink_(root_ / file) != 0 && errno != ENOENT)
-        return tier_detail::IoError("delete archived file");
-    return tier_detail::SyncDirectory((root_ / file).parent_path());
+    pending_unlinks_[file] = record.story_id;
+    index = refresh();
+    if(!index.ok())
+        return index.status();
+    collectDeletedFiles(**index);
+    lock.unlock();
+    status = unlinkDeletedFile(file);
+    if(status.ok())
+    {
+        lock.lock();
+        pending_unlinks_.erase(file);
+    }
+    return status;
+}
+
+void FileTierStore::collectDeletedFiles(const ManifestIndex& index)
+{
+    if(deletion_generation_ != index.generation || deletion_applied_ > index.records.size())
+    {
+        deletion_generation_ = index.generation;
+        deletion_applied_ = 0;
+    }
+    while(deletion_applied_ < index.records.size())
+    {
+        const auto& record = index.records[deletion_applied_++];
+        if(record.state == ManifestState::Deleted && !record.file.empty())
+            pending_unlinks_[record.file] = record.story_id;
+    }
+}
+
+absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
+{
+    if(unlink_(root_ / file) != 0)
+    {
+        if(errno == ENOENT)
+            return absl::OkStatus();
+        const auto status = tier_detail::IoError("delete archived file");
+        LOG_EVERY_N_SEC(ERROR, 10) << "cannot unlink Deleted archive file " << file << ": " << status;
+        return status;
+    }
+    const auto status = tier_detail::SyncDirectory((root_ / file).parent_path());
+    if(!status.ok())
+        LOG_EVERY_N_SEC(ERROR, 10) << "cannot sync Deleted archive file directory " << file << ": " << status;
+    return status;
+}
+
+absl::Status FileTierStore::retryDeletedFiles()
+{
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
+    std::vector<std::string> files;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        collectDeletedFiles(**index);
+        for(const auto& [file, story]: pending_unlinks_) files.push_back(file);
+    }
+    absl::Status result;
+    for(const auto& file: files)
+    {
+        const auto status = unlinkDeletedFile(file);
+        result.Update(status);
+        if(status.ok())
+        {
+            std::lock_guard lock(mutex_);
+            pending_unlinks_.erase(file);
+        }
+    }
+    return result;
+}
+
+absl::StatusOr<bool> FileTierStore::hasPendingUnlinks(StoryId story)
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    collectDeletedFiles(**index);
+    return std::any_of(pending_unlinks_.begin(),
+                       pending_unlinks_.end(),
+                       [story](const auto& pending) { return pending.second == story; });
 }
 
 absl::Status FileTierStore::tombstone(StoryId story)

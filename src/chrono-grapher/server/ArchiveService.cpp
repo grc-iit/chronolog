@@ -322,7 +322,8 @@ bool ArchiveService::waitDestroyed(StoryId story, std::chrono::milliseconds time
                              [&]
                              {
                                  const auto recorded = store_.tombstoned(story);
-                                 return recorded.ok() && *recorded &&
+                                 const auto pending = store_.hasPendingUnlinks(story);
+                                 return recorded.ok() && *recorded && pending.ok() && !*pending &&
                                         std::find(destroy_queue_.begin(), destroy_queue_.end(), story) ==
                                                 destroy_queue_.end();
                              });
@@ -335,11 +336,28 @@ void ArchiveService::destroyLoop()
 {
     CHRONOLOG_ASSERT_WORKER_THREAD();
     std::unique_lock lock(mutex_);
+    auto next_unlink_retry = std::chrono::steady_clock::now() + kDestroyRetryDelay;
+    const auto retry_unlinks = [&]
+    {
+        if(std::chrono::steady_clock::now() < next_unlink_retry)
+            return;
+        lock.unlock();
+        const auto cleanup = store_.retryDeletedFiles();
+        if(!cleanup.ok())
+            LOG_EVERY_N_SEC(ERROR, 10) << "archive Deleted file cleanup failed: " << cleanup;
+        lock.lock();
+        next_unlink_retry = std::chrono::steady_clock::now() + kDestroyRetryDelay;
+        ++revision_;
+        changed_.notify_all();
+    };
     while(true)
     {
-        changed_.wait(lock, [&] { return draining_ || !destroy_queue_.empty(); });
+        changed_.wait_until(lock, next_unlink_retry, [&] { return draining_ || !destroy_queue_.empty(); });
         if(draining_)
             return;
+        retry_unlinks();
+        if(destroy_queue_.empty())
+            continue;
         const auto story = destroy_queue_.front();
         lock.unlock();
         const auto recorded = store_.tombstone(story);
@@ -349,12 +367,17 @@ void ArchiveService::destroyLoop()
         {
             ++revision_;
             changed_.notify_all();
-            changed_.wait(lock,
-                          [&]
-                          {
-                              const auto receipts = receipts_.find(story);
-                              return draining_ || receipts == receipts_.end() || receipts->second.pending.empty();
-                          });
+            const auto ready = [&]
+            {
+                const auto receipts = receipts_.find(story);
+                return draining_ || receipts == receipts_.end() || receipts->second.pending.empty();
+            };
+            while(!ready())
+            {
+                changed_.wait_until(lock, next_unlink_retry, ready);
+                if(!draining_)
+                    retry_unlinks();
+            }
             if(draining_)
                 return;
             lock.unlock();
@@ -373,12 +396,11 @@ void ArchiveService::destroyLoop()
             continue;
         }
         destroy_queue_.push_back(story);
-        changed_.wait_for(lock, kDestroyRetryDelay, [&] { return draining_; });
+        changed_.wait_until(lock, next_unlink_retry, [&] { return draining_; });
     }
 }
 
-// Erases Published files through Deleted records until none remain. True when none remain; a file whose unlink
-// failed after its Deleted record was appended is logged and left, since the manifest no longer names it.
+// A story is finished only after its Published files and any pending Deleted files have been unlinked.
 bool ArchiveService::eraseFiles(StoryId story)
 {
     CHRONOLOG_ASSERT_WORKER_THREAD();
@@ -401,12 +423,16 @@ bool ArchiveService::eraseFiles(StoryId story)
             const auto erased = store_.eraseFile(record.file);
             if(!erased.ok() && !absl::IsNotFound(erased))
             {
-                LOG(ERROR) << "cannot erase " << record.file << " of tombstoned story " << story << ": " << erased;
+                LOG_EVERY_N_SEC(ERROR, 10)
+                        << "cannot erase " << record.file << " of tombstoned story " << story << ": " << erased;
                 failed = true;
             }
         }
         if(!any)
-            return true;
+        {
+            const auto pending = store_.hasPendingUnlinks(story);
+            return pending.ok() && !*pending;
+        }
         if(failed)
             return false;
     }
