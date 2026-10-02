@@ -4,6 +4,7 @@
 #include <grpcpp/grpcpp.h>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <map>
 #include <mutex>
 #include <thread>
@@ -69,11 +70,29 @@ public:
     std::atomic<unsigned> unavailable{0};
     std::atomic<unsigned> calls{0};
 
+    // Both keepers of a read must be inside FetchHot at once for every call to see its peer.
+    struct Rendezvous
+    {
+        std::mutex mu;
+        std::condition_variable cv;
+        unsigned arrived{0};
+    };
+    std::shared_ptr<Rendezvous> rendezvous;
+    std::atomic<unsigned> met{0};
+
     grpc::Status FetchHot(grpc::ServerContext* context,
                           const iv1::FetchHotRequest* request,
                           grpc::ServerWriter<iv1::FetchHotResponse>* writer) override
     {
         ++calls;
+        if(rendezvous)
+        {
+            std::unique_lock lk(rendezvous->mu);
+            ++rendezvous->arrived;
+            rendezvous->cv.notify_all();
+            if(rendezvous->cv.wait_for(lk, 5s, [&] { return rendezvous->arrived >= 2; }))
+                ++met;
+        }
         unsigned remaining = unavailable.load();
         while(remaining && !unavailable.compare_exchange_weak(remaining, remaining - 1)) {}
         if(remaining)
@@ -364,6 +383,17 @@ TEST_F(replay_adapter, KeeperReadinessRetriesStopAtDeadline)
     EXPECT_EQ(r.completions[0].reason(), v1::INCOMPLETE_REASON_SOURCE_FAILED);
     EXPECT_GE(b_.calls.load(), 2u);
     EXPECT_LT(b_.calls.load(), 20u);
+}
+
+TEST_F(replay_adapter, EveryKeeperOfAReadIsFetchedConcurrently)
+{
+    auto rendezvous = std::make_shared<FakeArchive::Rendezvous>();
+    a_.rendezvous = rendezvous;
+    b_.rendezvous = rendezvous;
+    auto result = read(hlcRead(100, 300));
+    EXPECT_TRUE(result.status.ok());
+    EXPECT_GE(a_.met.load(), 1u) << "keeper a never saw keeper b in flight, so the fetches ran one after another";
+    EXPECT_GE(b_.met.load(), 1u);
 }
 
 TEST_F(replay_adapter, KeeperThatIsDownIsSourceFailed)

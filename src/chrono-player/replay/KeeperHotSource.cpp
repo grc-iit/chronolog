@@ -4,8 +4,7 @@
 #include <algorithm>
 #include <limits>
 #include <thread>
-#include <iostream>
-#include <syncstream>
+#include <absl/log/log.h>
 #include <grpcpp/grpcpp.h>
 #include "chrono-player/adapter/Convert.h"
 #include "chrono-player/replay/PhysicalRead.h"
@@ -112,9 +111,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         out.frontier.truncated |= limited;
         out.frontier.answered = status.ok() && trailer && instance_matches && out.frontier.epoch == expected_epoch;
         if(!out.frontier.answered)
-            std::osyncstream(std::clog) << "fetch_hot_failed keeper=" << keeper.process_id
-                                        << " status=" << status.error_code() << " trailer=" << trailer
-                                        << " message=" << status.error_message() << std::endl;
+            LOG(WARNING) << "fetch_hot_failed keeper=" << keeper.process_id << " status=" << status.error_code()
+                         << " trailer=" << trailer << " message=" << status.error_message();
         // Retry readiness failures without replaying a partially received stream or extending the deadline.
         if(received || status.error_code() != grpc::StatusCode::UNAVAILABLE)
             break;

@@ -68,6 +68,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "tail_poll_ms",
                                                 "archive_root",
                                                 "manifest_poll_ms",
+                                                "log_level",
                                                 "static_routes"};
     if(!json.is_object())
         return absl::InvalidArgumentError("configuration must be a JSON object");
@@ -98,6 +99,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         num("tail_poll_ms", cfg.tail_poll_ms);
         str("archive_root", cfg.archive_root);
         num("manifest_poll_ms", cfg.manifest_poll_ms);
+        str("log_level", cfg.log_level);
         if(json.contains("keeper_internal"))
             cfg.keeper_internal = json.at("keeper_internal").get<std::map<std::string, std::string>>();
         if(json.contains("static_routes"))
@@ -145,7 +147,8 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"visor", &cfg.visor},
                             {"visor_internal", &cfg.visor_internal},
                             {"keeper_internal_suffix", &cfg.keeper_internal_suffix},
-                            {"archive_root", &cfg.archive_root}})
+                            {"archive_root", &cfg.archive_root},
+                            {"log_level", &cfg.log_level}})
         if(auto v = env(key))
             *field = *v;
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"keeper_deadline_ms", &cfg.keeper_deadline_ms},
@@ -181,6 +184,8 @@ absl::Status PlayerConfig::validate() const
     if(read_max_events == 0 || batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0 || manifest_poll_ms == 0)
         return absl::InvalidArgumentError(
                 "read_max_events, batch_size, tail_poll_ms, keeper_deadline_ms and manifest_poll_ms must be positive");
+    if(log_level != "info" && log_level != "warning" && log_level != "error")
+        return absl::InvalidArgumentError("log_level must be info, warning or error");
     if(!static_routes && visor_internal.empty())
         return absl::InvalidArgumentError("visor_internal is required without static_routes");
     if(static_routes && static_routes->keepers.empty())
