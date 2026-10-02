@@ -12,7 +12,7 @@ otel = ["opentelemetry-sdk>=1.39,<2"]
 
 [tool.scikit-build]
 cmake.source-dir = "../.."
-cmake.args = ["--preset=python", "-DCMAKE_MAKE_PROGRAM=make"]
+cmake.args = ["--preset=python"]
 cmake.build-type = "Debug"
 build.targets = ["_core"]
 install.components = ["python"]
