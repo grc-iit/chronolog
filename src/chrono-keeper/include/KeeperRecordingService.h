@@ -13,9 +13,10 @@
 #include <chronolog_errcode.h>
 #include <KeeperIdCard.h>
 #include <chronolog_types.h>
+#include <HotRangeResponse.h>
 
 #include "IngestionQueue.h"
-#include "KeeperTailStore.h"
+#include "KeeperChunkRetentionStore.h"
 
 namespace tl = thallium;
 
@@ -28,7 +29,7 @@ public:
     static KeeperRecordingService* CreateKeeperRecordingService(tl::engine& tl_engine,
                                                                 uint16_t service_provider_id,
                                                                 IngestionQueue& ingestion_queue,
-                                                                KeeperTailStore& tail_store)
+                                                                KeeperChunkRetentionStore& tail_store)
     {
         return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store);
     }
@@ -67,11 +68,34 @@ public:
         request.respond(theTailStore.getTailEvents(story_id, seqs));
     }
 
+    // Replay hot fetch: every retained event in [start, end) plus this
+    // keeper's hot floor and last-seen persisted watermark. The player fans
+    // this out over the story's keeper roster and splits the replay with
+    // splitHotRange.
+    void story_range_fetch(tl::request const& request,
+                           StoryId const& story_id,
+                           uint64_t start_time,
+                           uint64_t end_time,
+                           uint64_t max_events)
+    {
+        HotRangeResponse response = theTailStore.fetchRange(story_id, start_time, end_time, (std::size_t)max_events);
+        LOG_DEBUG("[KeeperRecordingService] story_range_fetch StoryId={} {}-{} -> {} event(s), hot_floor={}, "
+                  "known_W={}, truncated={}",
+                  story_id,
+                  start_time,
+                  end_time,
+                  response.events.size(),
+                  response.hot_floor,
+                  response.known_W,
+                  response.truncated);
+        request.respond(response);
+    }
+
 private:
     KeeperRecordingService(tl::engine& tl_engine,
                            uint16_t service_provider_id,
                            IngestionQueue& ingestion_queue,
-                           KeeperTailStore& tail_store)
+                           KeeperChunkRetentionStore& tail_store)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
         , theTailStore(tail_store)
@@ -79,6 +103,7 @@ private:
         define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
         define("tail_get_sequences", &KeeperRecordingService::tail_get_sequences);
         define("tail_get_events", &KeeperRecordingService::tail_get_events);
+        define("story_range_fetch", &KeeperRecordingService::story_range_fetch);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
@@ -88,7 +113,7 @@ private:
     KeeperRecordingService& operator=(KeeperRecordingService const&) = delete;
 
     IngestionQueue& theIngestionQueue;
-    KeeperTailStore& theTailStore;
+    KeeperChunkRetentionStore& theTailStore;
 };
 
 } // namespace chronolog

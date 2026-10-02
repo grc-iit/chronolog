@@ -36,6 +36,10 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
 
     // Get dataStoreMutex, check for story_id_presense & add new KeeperStoryPipeline if needed
     std::lock_guard storeLock(dataStoreMutex);
+    // The id is in use again, so a drop this keeper was told about earlier
+    // belongs to a story that no longer exists -- story ids are a hash of the
+    // chronicle and story name, so a recreated story reuses the id.
+    theTailStore.clearDroppedStory(story_id);
     auto pipeline_iter = theMapOfStoryPipelines.find(story_id);
     if(pipeline_iter != theMapOfStoryPipelines.end())
     {
@@ -148,11 +152,6 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
     {
         (*pipeline_iter).second->extractDecayedStoryChunks(current_time);
     }
-
-    // Chunks sealed above went into the tail store, which forwards them for
-    // archival only on capacity eviction or shutdown. Age them out on the same
-    // clock reading so a low-volume story is still archived while the keeper runs.
-    theTailStore.ageOutChunks(current_time);
 }
 ////////////////////////
 
@@ -176,15 +175,18 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
             {
                 //current_time >= pipeline exit_time
                 KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
+                chl::StoryId const story_id = pipeline->getStoryId();
                 // remember the story's names before the pipeline is gone so that
                 // any late orphaned events (which carry only a storyId) can still
                 // be sealed with the correct chronicle/story identity.
-                retiredStoryNames[pipeline->getStoryId()] =
-                        std::make_pair(pipeline->getChronicleName(), pipeline->getStoryName());
-                theMapOfStoryPipelines.erase(pipeline->getStoryId());
-                theIngestionQueue.removeIngestionHandle(pipeline->getStoryId());
+                retiredStoryNames[story_id] = std::make_pair(pipeline->getChronicleName(), pipeline->getStoryName());
+                theMapOfStoryPipelines.erase(story_id);
+                theIngestionQueue.removeIngestionHandle(story_id);
                 pipeline_iter = pipelinesWaitingForExit.erase(pipeline_iter); //pipeline->getStoryId());
+                // deleting the pipeline seals its last chunks into the retention
+                // store; after that nothing records the story here
                 delete pipeline;
+                theTailStore.releaseStoryTail(story_id);
             }
             else
             {
@@ -271,9 +273,28 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
                         "chunk for archival.",
                         recovery_chunk->getEventCount(),
                         story_id);
-            theExtractionQueue.stashStoryChunk(recovery_chunk);
+            // through the retention store (which stashes it to the extraction
+            // queue itself) so the recovery data gets the same durability
+            // gating as a regular sealed chunk
+            theTailStore.ingestSealedChunk(story_id, recovery_chunk);
+            // the story is retired: nothing reads its tail, and without the
+            // release the recovery chunk would never be freed
+            theTailStore.releaseStoryTail(story_id);
         }
     }
+}
+
+////////////////////////
+
+void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id, uint64_t w)
+{
+    theTailStore.confirmPersisted(story_id, w);
+}
+
+void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id,
+                                                      chronolog::StoryWatermarkReport const& report)
+{
+    theTailStore.applyReport(story_id, report);
 }
 
 ////////////////////////
@@ -300,6 +321,13 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         }
         extractDecayedStoryChunks();
         retireDecayedPipelines();
+        // re-send retained chunks whose ack or covering watermark never
+        // arrived (transient grapher outage); the store's mutex makes the
+        // call safe and idempotent across the data-collection ULTs
+        theTailStore.requeueStalled(std::chrono::seconds(watermark_resend_timeout_secs));
+        // free durable chunks the archive visibility delay kept past the
+        // report that made them durable
+        theTailStore.freeDurableChunks();
     }
     LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
 }

@@ -38,7 +38,7 @@
 #include <IngestionQueue.h>
 #include <KeeperDataStore.h>
 #include <KeeperStoryPipeline.h>
-#include <KeeperTailStore.h>
+#include <KeeperChunkRetentionStore.h>
 #include <StoryChunkExtractionQueue.h>
 
 namespace chl = chronolog;
@@ -71,14 +71,17 @@ static void ensureArgobots()
 static uint64_t nowNs() { return std::chrono::high_resolution_clock::now().time_since_epoch().count(); }
 
 // Drain the extraction queue and return the total number of events that were
-// actually handed off for persistence (RDMA to grapher / CSV archival).
-static int countPersistedEvents(chl::StoryChunkExtractionQueue& eq)
+// actually handed off for persistence (RDMA to grapher / CSV archival). Each
+// chunk goes back to the retention store as shipped, as the keeper's drain
+// hands it over: the store owns every sealed chunk and the queue only holds a
+// pointer, so deleting it here would leave the store with a dangling one.
+static int countPersistedEvents(chl::StoryChunkExtractionQueue& eq, chl::KeeperChunkRetentionStore& retention_store)
 {
     int total = 0;
     while(chl::StoryChunk* chunk = eq.ejectStoryChunk())
     {
         total += chunk->getEventCount();
-        delete chunk;
+        retention_store.markShipped(chunk);
     }
     return total;
 }
@@ -90,7 +93,7 @@ TEST(KeeperReleaseDataLoss, AcceptanceWindowGetterDoesNotTruncate)
 {
     ensureLogger();
     chl::StoryChunkExtractionQueue eq;
-    chl::KeeperTailStore tail(eq, 1024);
+    chl::KeeperChunkRetentionStore tail(eq, 1024);
 
     const uint32_t acceptance_window_secs = 60;
     chl::KeeperStoryPipeline pipeline(eq,
@@ -122,7 +125,7 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     // 1s grace window: long enough that a straggler arriving ~100ms after
     // release must still be captured; short enough to keep the test fast.
@@ -166,7 +169,7 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
     store.extractDecayedStoryChunks();
     store.retireDecayedPipelines();
 
-    const int persisted = countPersistedEvents(extractionQueue);
+    const int persisted = countPersistedEvents(extractionQueue, tailStore);
 
     EXPECT_EQ(persisted, 2) << "Ingested 2 events (one before release, one straggler within the "
                             << acceptance_window_secs << "s acceptance window) but only " << persisted
@@ -188,6 +191,7 @@ TEST(KeeperReleaseDataLoss, EventArrivingWithinGraceWindowAfterReleaseIsPersiste
 static int persistOrphansThroughImmediateRetirement(chl::KeeperDataStore& store,
                                                     chl::IngestionQueue& ingestionQueue,
                                                     chl::StoryChunkExtractionQueue& extractionQueue,
+                                                    chl::KeeperChunkRetentionStore& retentionStore,
                                                     chl::StoryId story_id,
                                                     uint64_t base_time,
                                                     int orphan_count)
@@ -216,7 +220,7 @@ static int persistOrphansThroughImmediateRetirement(chl::KeeperDataStore& store,
     // drainOrphanEvents() inside retireDecayedPipelines().
     store.retireDecayedPipelines();
 
-    return countPersistedEvents(extractionQueue);
+    return countPersistedEvents(extractionQueue, retentionStore);
 }
 
 // Single-shot, timing-free reproduction of root cause #2.
@@ -229,7 +233,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementLosesOrp
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     const int orphan_count = 3;
     chl::KeeperDataStore store(ingestionQueue,
@@ -243,6 +247,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementLosesOrp
     const int persisted = persistOrphansThroughImmediateRetirement(store,
                                                                    ingestionQueue,
                                                                    extractionQueue,
+                                                                   tailStore,
                                                                    /*story_id=*/901,
                                                                    /*base_time=*/nowNs(),
                                                                    orphan_count);
@@ -263,7 +268,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementReproduc
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     constexpr int iterations = 100;
     constexpr int orphan_count = 2;
@@ -286,6 +291,7 @@ TEST(KeeperOrphanAtRetirementDataLoss, OrphanQueueNotDrainedAtRetirementReproduc
         const int persisted = persistOrphansThroughImmediateRetirement(store,
                                                                        ingestionQueue,
                                                                        extractionQueue,
+                                                                       tailStore,
                                                                        sid,
                                                                        story_base,
                                                                        orphan_count);
@@ -324,7 +330,7 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
 
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
-    chl::KeeperTailStore tailStore(extractionQueue, 1024);
+    chl::KeeperChunkRetentionStore tailStore(extractionQueue, 1024);
 
     const uint32_t acceptance_window_secs = 1;
     chl::KeeperDataStore store(ingestionQueue,
@@ -358,7 +364,7 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
     store.extractDecayedStoryChunks();
     store.retireDecayedPipelines();
 
-    const int persisted = countPersistedEvents(extractionQueue);
+    const int persisted = countPersistedEvents(extractionQueue, tailStore);
 
     EXPECT_EQ(persisted, 2) << "Ingested 2 events (one parked in the orphan queue before the "
                                "handle was registered, one in the live deque) but only "

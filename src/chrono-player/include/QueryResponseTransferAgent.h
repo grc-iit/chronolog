@@ -49,7 +49,12 @@ public:
 
     int stashQueryResponseRecord(ClientQueryId const&, PlaybackQueryResponse*, bool);
 
-    int addArchivedEventsToQueryResponse(ClientQueryId const& query_id, std::list<StoryChunk*> const&);
+    // read_status is what the archive reader returned for the range: anything
+    // but CL_SUCCESS means a file in it could not be read, so the response
+    // cannot claim to be complete.
+    int addArchivedEventsToQueryResponse(ClientQueryId const& query_id,
+                                         std::list<StoryChunk*> const&,
+                                         int read_status = CL_SUCCESS);
 
     void drainQueryResponses();
 

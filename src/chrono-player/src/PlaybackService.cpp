@@ -39,6 +39,12 @@ chronolog::PlaybackService::~PlaybackService()
 {
     LOG_DEBUG("[PlaybackService] Destructor called. Cleaning up...");
 
+    {
+        std::lock_guard<std::mutex> lock(hotFetchMutex);
+        for(auto& client: hotFetchClients) { delete client.second; }
+        hotFetchClients.clear();
+    }
+
     std::lock_guard<std::mutex> lock(playbackServiceMutex);
     for(auto& agent: responseSenders)
     {
@@ -49,6 +55,34 @@ chronolog::PlaybackService::~PlaybackService()
 
     //remove provider finalization callback from the engine's list
     playbackEngine.pop_finalize_callback(this);
+}
+
+//////////////////
+
+chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(chl::ServiceId const& keeper_service_id)
+{
+    {
+        std::lock_guard<std::mutex> lock(hotFetchMutex);
+        auto client_iter = hotFetchClients.find(keeper_service_id.get_service_endpoint());
+        if(client_iter != hotFetchClients.end())
+        {
+            return client_iter->second;
+        }
+    }
+    // engine lookup happens outside the cache mutex
+    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(playbackEngine, keeper_service_id);
+    if(client == nullptr)
+    {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(hotFetchMutex);
+    auto emplaced = hotFetchClients.emplace(keeper_service_id.get_service_endpoint(), client);
+    if(!emplaced.second)
+    {
+        // another thread won the race; keep the cached one
+        delete client;
+    }
+    return emplaced.first->second;
 }
 
 //////////////////
@@ -105,65 +139,135 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
         }
     }
 
-    chl::chrono_time active_window_boundary = theActiveDataStore.get_active_window_boundary();
+    // The hot portion of the response comes straight from the story's keepers
+    // (on-demand pull over the roster the visor delivered at story start),
+    // and splitHotRange decides where the archive portion ends; see
+    // HotRangeSplit.h. No keepers at all -> archive-only (degraded, correct
+    // for persisted data).
+    // TODO(replay paging): a keeper stops at this many events and sets
+    // truncated, and the reply is then marked incomplete so the client gets
+    // CL_ERR_PARTIAL_RESULT -- honest, but short. Fetch again from the last
+    // EventSequence returned until the range is exhausted, so a range holding
+    // more than the cap on one keeper comes back complete instead. The response
+    // already carries what paging needs (truncated, and the events in order);
+    // what is missing is the loop here and a keeper-side start-after argument.
+    constexpr uint64_t kHotFetchMaxEvents = 262144;
 
-    LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} active_window_boundary {}",
+    std::vector<chl::ServiceId> story_keepers = theActiveDataStore.getStoryKeepers(story_id);
+
+    bool all_keepers_answered = true;
+    bool any_truncated = false;
+
+    // Issue every keeper's fetch before waiting on any of them: a keeper that
+    // never answers then costs this query one deadline in total, not one each.
+    std::vector<std::pair<chl::KeeperHotFetchClient*, tl::async_response>> pending_fetches;
+    pending_fetches.reserve(story_keepers.size());
+    for(auto const& keeper_service_id: story_keepers)
+    {
+        chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
+        if(fetch_client == nullptr)
+        {
+            // unreachable keeper: the split is left to the keepers that answer,
+            // and the reply cannot claim to hold what this one still has
+            all_keepers_answered = false;
+            continue;
+        }
+        try
+        {
+            pending_fetches.emplace_back(
+                    fetch_client,
+                    fetch_client->fetchRangeAsync(story_id, start_time, end_time, kHotFetchMaxEvents));
+        }
+        catch(tl::exception const& ex)
+        {
+            all_keepers_answered = false;
+            LOG_WARNING("[PlaybackService] query {} story {} could not issue a hot fetch to {}: {}",
+                        query_id,
+                        story_id,
+                        chl::to_string(keeper_service_id),
+                        ex.what());
+        }
+    }
+
+    std::vector<chl::HotRangeResponse> hot_responses;
+    hot_responses.reserve(pending_fetches.size());
+    for(auto& pending: pending_fetches)
+    {
+        hot_responses.push_back(pending.first->waitForRange(pending.second));
+        all_keepers_answered = all_keepers_answered && hot_responses.back().answered;
+        any_truncated = any_truncated || hot_responses.back().truncated;
+        if(hot_responses.back().truncated)
+        {
+            LOG_WARNING("[PlaybackService] query {} story {} hot fetch from {} truncated at {} events",
+                        query_id,
+                        story_id,
+                        chl::to_string(pending.first->getKeeperServiceId()),
+                        kHotFetchMaxEvents);
+        }
+    }
+    chl::HotRangeSplit split = chl::splitHotRange(hot_responses, start_time, end_time);
+
+    LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",
               query_id,
               story_id,
               start_time,
               end_time,
-              active_window_boundary);
+              story_keepers.size(),
+              split.boundary,
+              split.hotEvents.size());
 
     // allocate PlaybackQueryResponse instance for this query
     // and put it on the ResponseTransferAgent's active_queries map
 
     chl::PlaybackQueryResponse* query_response = new chl::PlaybackQueryResponse(query_id);
 
-    // handle the active in-memory portion of the query response
-    if(active_window_boundary < end_time)
+    // hot side: merged keeper events at or above B
+    for(auto const& log_event: split.hotEvents)
     {
-        // portion of the playback response is coming from
-        // the active PlayerDataStore
-        theActiveDataStore.get_active_story_events(
-                story_id,
-                (start_time < active_window_boundary ? active_window_boundary : start_time),
-                end_time,
-                query_response->events);
-
-        LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} events from active DataStore",
-                  query_id,
-                  story_id,
-                  query_response->events.size());
+        query_response->events.push_back(
+                chl::Event{log_event.eventTime, log_event.clientId, log_event.eventIndex, log_event.logRecord});
     }
 
-    bool response_is_complete = false;
-    if(active_window_boundary <= start_time)
+    LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} hot events from {} keeper(s)",
+              query_id,
+              story_id,
+              query_response->events.size(),
+              story_keepers.size());
+
+    // where the archive read ends, and whether this reply holds every event in
+    // the range; see planReplay in HotRangeSplit.h
+    chl::ReplayPlan const plan = chl::planReplay(split, start_time, end_time, all_keepers_answered, any_truncated);
+    query_response->complete = plan.complete;
+    if(!plan.complete)
     {
-        response_is_complete = true;
+        LOG_WARNING("[PlaybackService] query {} story {} is answered short: keepers all answered {}, truncated {}",
+                    query_id,
+                    story_id,
+                    all_keepers_answered,
+                    any_truncated);
     }
 
-    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, response_is_complete))
+    // the record is handed over as complete only when no archive read follows it
+    if(chl::CL_SUCCESS != queryResponseSender->stashQueryResponseRecord(query_id, query_response, !plan.archiveNeeded))
     {
         delete query_response;
         request.respond(0);
         return;
     }
 
-    if(!response_is_complete)
+    if(plan.archiveNeeded)
     {
-        // end_time > active_window_boundary
         // portion of the playback response is coming from the archived files
 
         // create an archiveRequest and put it
         // onto the ArchiveReadingRequestQueue
 
-        chl::ArchiveReadingRequest* a_request =
-                new chl::ArchiveReadingRequest(queryResponseSender,
-                                               query_id,
-                                               chronicle_name,
-                                               story_name,
-                                               start_time,
-                                               (end_time < active_window_boundary ? end_time : active_window_boundary));
+        chl::ArchiveReadingRequest* a_request = new chl::ArchiveReadingRequest(queryResponseSender,
+                                                                               query_id,
+                                                                               chronicle_name,
+                                                                               story_name,
+                                                                               start_time,
+                                                                               plan.archiveEnd);
 
         theArchiveReadingRequestQueue.pushReadingRequest(a_request);
     }

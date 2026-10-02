@@ -107,7 +107,7 @@ inline int fail(std::string const& msg)
 
 // Count HDF5 chunk files the Grapher would have written for a story:
 //   <hdf5Dir>/<chronicle>.<story>.<startSec>.vlen.h5
-// (plus the rotated <...>.<n>.vlen.h5 form). Returns 0 when the directory
+// (plus the numbered <...>.vlen.<n>.h5 form). Returns 0 when the directory
 // doesn't exist (an empty deployment hasn't created it yet).
 inline size_t count_story_files(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
 {

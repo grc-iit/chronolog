@@ -135,8 +135,8 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
             json_object* extraction_module_json_object = json_object_object_get(json_conf, "ExtractionModule");
             if(EXTRACTION_MODULE_CONF.parse_json_object(extraction_module_json_object) != chl::CL_SUCCESS)
             {
+                std::cerr << "[GrapherConfiguration] Error parsing ExtractionModule configuration" << std::endl;
                 return chl::CL_ERR_INVALID_CONF;
-                std::cerr << "[GrapherConfiguration] Error parsing ExtractionModule  configuration: " << std::endl;
             }
         }
 
@@ -144,6 +144,31 @@ int chronolog::GrapherConfiguration::parseJsonConf(json_object* json_conf)
         {
             std::cerr << "[GrapherConfiguration] Unknown Grapher configuration " << key << std::endl;
         }
+    }
+
+    // Only the HDF5 extractor advances the persisted watermark W and settles
+    // the receipts keepers wait for, so without it no keeper ever frees a chunk
+    // and each is sent again every resend interval. With no extractors listed
+    // the grapher gets it; a list that leaves it out is rejected. Other
+    // extractors may run alongside it.
+    auto& extractors = EXTRACTION_MODULE_CONF.extractors;
+    if(extractors.empty())
+    {
+        json_object* hdf5_extractor = json_object_new_object();
+        json_object_object_add(hdf5_extractor, "type", json_object_new_string("hdf5_extractor"));
+        json_object_object_add(hdf5_extractor, "hdf5_archive_dir", json_object_new_string("/tmp"));
+        extractors["hdf5_extractor"] = hdf5_extractor;
+        std::cerr << "[GrapherConfiguration] ExtractionModule lists no extractors; using hdf5_extractor with "
+                     "hdf5_archive_dir /tmp"
+                  << std::endl;
+    }
+    else if(extractors.find("hdf5_extractor") == extractors.end())
+    {
+        std::cerr << "[GrapherConfiguration] Invalid ExtractionModule: a grapher needs an hdf5_extractor. It is the "
+                     "only extractor that confirms chunks written, so without it keepers never free them; other "
+                     "extractors may run alongside it"
+                  << std::endl;
+        return chl::CL_ERR_INVALID_CONF;
     }
     return chronolog::CL_SUCCESS;
 }

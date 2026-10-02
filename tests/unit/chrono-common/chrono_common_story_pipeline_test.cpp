@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 #include <limits>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
+#include <ReceiptTracker.h>
 #include <StoryPipeline.h>
 #include <StoryChunkIngestionHandle.h>
+#include <StoryChunkExtractionQueue.h>
 
 namespace chl = chronolog;
 
@@ -306,7 +310,9 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
 
 
 // We call extract just after a future chunks starttime
-// Ensure that only the decayed empty head chunks are removed and the pipeline keeps exactly two chunks without appending new
+// Ensure that only the decayed head chunks are removed and the pipeline keeps exactly two chunks without appending new.
+// Empty decayed windows now travel too (they extend the grapher's persisted
+// watermark vacuously), so they appear in the extracted vector.
 TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
 {
     initLogger();
@@ -322,8 +328,13 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractLeavesTwo)
     uint64_t extractTime = 3 * NS + 1;
     std::vector<chl::StoryChunk*> q;
     p.extractDecayedStoryChunks(extractTime, q);
-    // no non empty events in the first two chunks so no stashes
-    EXPECT_EQ(q.size(), 0);
+    // the two decayed head windows are empty but still extracted
+    ASSERT_EQ(q.size(), 2);
+    for(auto* chunk: q)
+    {
+        EXPECT_TRUE(chunk->empty());
+        delete chunk;
+    }
 
     // the timeline must now be [2,4)
     EXPECT_EQ(p.TimelineStart(), 2 * NS);
@@ -412,7 +423,224 @@ TEST(StoryPipeline_MergeEvents, testMultipleAppend)
 }
 
 /* ----------------------------------
-  Tests on prependStoryChunk() 
+  Tests on the prepend-failure path of mergeEvents()
+  ---------------------------------- */
+
+// mergeEvents() falls back to salvaging (or, with no queue attached,
+// discarding) events below the timeline only when prependStoryChunk() fails,
+// i.e. when the key TimelineStart() - granularity is already taken. Every
+// window key is a multiple of the granularity, so that happens only once the
+// timeline wraps past 2^64: a pipeline started two windows below the largest
+// representable window start has its third window wrap to a start below one
+// granularity, which becomes TimelineStart(), and prepending below it wraps
+// onto the second window's key.
+static uint64_t wrappingPipelineStart()
+{
+    uint64_t const last_window_start = (std::numeric_limits<uint64_t>::max() / NS) * NS;
+    return last_window_start - NS;
+}
+
+// The salvage chunk must be watermark-exempt: it holds one keeper's rescued
+// events, not a merged timeline window, so the grapher's HDF5 extractor must
+// not advance the persisted watermark W over its interval.
+TEST(StoryPipeline_PrependFailure, testSalvagedEventsAreStashedWatermarkExempt)
+{
+    initLogger();
+    chl::StoryChunkExtractionQueue queue;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachExtractionQueue(&queue);
+    uint64_t const timeline_start = p.TimelineStart();
+    ASSERT_GT(timeline_start, 0u);
+    ASSERT_LT(timeline_start, NS);
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    p.mergeEvents(late);
+
+    EXPECT_TRUE(late.empty());
+    ASSERT_EQ(queue.size(), 1);
+    chl::StoryChunk* salvage = queue.ejectStoryChunk();
+    ASSERT_NE(salvage, nullptr);
+    EXPECT_TRUE(salvage->isWatermarkExempt());
+    EXPECT_EQ(salvage->getEventCount(), 1);
+    EXPECT_EQ(salvage->firstEventTime(), timeline_start / 2);
+    delete salvage;
+}
+
+// With no queue attached the events are discarded; the merge must still
+// return once the incoming chunk has been drained.
+TEST(StoryPipeline_PrependFailure, testDiscardDrainsIncomingChunkAndReturns)
+{
+    initLogger();
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    uint64_t const timeline_start = p.TimelineStart();
+    ASSERT_LT(timeline_start, NS);
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    p.mergeEvents(late);
+
+    EXPECT_TRUE(late.empty());
+    EXPECT_EQ(p.TimelineStart(), timeline_start);
+}
+
+/* ----------------------------------
+  Tests on the receipts mergeEvents() carries
+  ---------------------------------- */
+
+// A grapher gives every chunk a keeper delivers a receipt, which settles only
+// once every chunk holding its events is written. mergeEvents has to put the
+// receipt on each window or salvage chunk the events go to, and must not
+// report the merge complete if it discarded any of them.
+
+struct RecordingReceiptTracker: public chl::ReceiptTracker
+{
+    std::map<uint64_t, int> holds;
+    std::set<uint64_t> merged;
+
+    void holdReceipt(chl::StoryId const&, uint64_t receipt) override { holds[receipt]++; }
+
+    void releaseReceipt(chl::StoryId const&, uint64_t) override {}
+
+    void receiptMerged(chl::StoryId const&, uint64_t receipt) override { merged.insert(receipt); }
+};
+
+// Finalizes the pipeline and counts the windows that carry the receipt.
+static int windowsCarrying(chl::StoryPipeline& p, uint64_t receipt)
+{
+    std::vector<chl::StoryChunk*> windows;
+    p.finalize(windows);
+    int carrying = 0;
+    for(chl::StoryChunk* window: windows)
+    {
+        carrying += static_cast<int>(window->carriedReceipts().count(receipt));
+        delete window;
+    }
+    return carrying;
+}
+
+TEST(StoryPipeline_Receipts, testWindowTakingTheEventsHoldsTheReceipt)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 1);
+}
+
+TEST(StoryPipeline_Receipts, testEventsSpanningTwoWindowsHoldTheReceiptTwice)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, 2 * NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "first"));
+    c.insertEvent(chl::LogEvent(1, NS + NS / 2, 0, 1, "second"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 2);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 2);
+}
+
+TEST(StoryPipeline_Receipts, testLateChunkIsHeldByTheReopenedWindow)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 2 * NS, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk c("C", "S", 1, 0, NS);
+    c.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "late"));
+    c.carryReceipt(4);
+    p.mergeEvents(c);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    EXPECT_EQ(windowsCarrying(p, 4), 1);
+}
+
+TEST(StoryPipeline_Receipts, testSalvageChunkHoldsTheReceipt)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryChunkExtractionQueue queue;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachExtractionQueue(&queue);
+    p.attachReceiptTracker(&tracker);
+    uint64_t const timeline_start = p.TimelineStart();
+
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    late.carryReceipt(4);
+    p.mergeEvents(late);
+
+    EXPECT_EQ(tracker.holds[4], 1);
+    EXPECT_EQ(tracker.merged.count(4), 1u);
+    ASSERT_EQ(queue.size(), 1);
+    chl::StoryChunk* salvage = queue.ejectStoryChunk();
+    ASSERT_NE(salvage, nullptr);
+    EXPECT_EQ(salvage->carriedReceipts().count(4), 1u);
+    delete salvage;
+    // the salvage chunk holds the events, not a timeline window
+    EXPECT_EQ(windowsCarrying(p, 4), 0);
+}
+
+TEST(StoryPipeline_Receipts, testDiscardedEventsLeaveTheReceiptUnmerged)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 7, wrappingPipelineStart(), 1, 1);
+    p.attachReceiptTracker(&tracker);
+    uint64_t const timeline_start = p.TimelineStart();
+
+    // no extraction queue attached: the late event is discarded
+    chl::StoryChunk late("C", "S", 7, 0, NS);
+    late.insertEvent(chl::LogEvent(7, timeline_start / 2, 0, 0, "late"));
+    late.carryReceipt(4);
+    p.mergeEvents(late);
+
+    EXPECT_EQ(tracker.merged.count(4), 0u);
+    EXPECT_EQ(windowsCarrying(p, 4), 0);
+}
+
+TEST(StoryPipeline_Receipts, testEventAlreadyInTheWindowStillHoldsItForTheResend)
+{
+    initLogger();
+    RecordingReceiptTracker tracker;
+    chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
+    p.attachReceiptTracker(&tracker);
+
+    chl::StoryChunk first("C", "S", 1, 0, NS);
+    first.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    first.carryReceipt(4);
+    p.mergeEvents(first);
+
+    // the keeper re-sends the same chunk before the window is written: nothing
+    // new is inserted, but the window still has to be written for receipt 5
+    chl::StoryChunk resent("C", "S", 1, 0, NS);
+    resent.insertEvent(chl::LogEvent(1, NS / 2, 0, 0, "e"));
+    resent.carryReceipt(5);
+    p.mergeEvents(resent);
+
+    EXPECT_EQ(tracker.holds[5], 1);
+    EXPECT_EQ(tracker.merged.count(5), 1u);
+    EXPECT_EQ(windowsCarrying(p, 5), 1);
+}
+
+/* ----------------------------------
+  Tests on prependStoryChunk()
   ---------------------------------- */
 
 // Basic test where there is no chunk at start and we insert valid
@@ -454,18 +682,42 @@ TEST(StoryPipeline_TestAppendStoryChunk, testSuccess)
 }
 
 /* ----------------------------------
-  Tests on finalize() 
+  Tests on finalize()
   ---------------------------------- */
 
+// finalize() (like extractDecayedStoryChunks) now hands out EVERY timeline
+// window, empty ones included: an empty window still extends the grapher's
+// persisted watermark (vacuously). The payload assertions below therefore
+// count and inspect the non-empty chunks, and every returned chunk is freed.
+static std::size_t countNonEmpty(std::vector<chl::StoryChunk*> const& q)
+{
+    std::size_t n = 0;
+    for(auto* chunk: q)
+    {
+        if(chunk != nullptr && !chunk->empty())
+        {
+            n++;
+        }
+    }
+    return n;
+}
+
+static void freeChunks(std::vector<chl::StoryChunk*>& q)
+{
+    for(auto* chunk: q) { delete chunk; }
+    q.clear();
+}
+
 // Call finalize on a fresh pipeline with no pending chunks
-// Ensure no stash/actions/errors
+// Ensure no stash/actions/errors; only empty windows come out
 TEST(StoryPipeline_TestFinalize, testNoPendingChunks)
 {
     initLogger();
     chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
     std::vector<chl::StoryChunk*> q;
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 0);
+    EXPECT_EQ(countNonEmpty(q), 0);
+    freeChunks(q);
 }
 
 // Test if finalize processes the chunk in the passive deque
@@ -482,7 +734,8 @@ TEST(StoryPipeline_TestFinalize, testOnlyPassiveDeque)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test if finalize processes the chunk in the active deque
@@ -499,7 +752,8 @@ TEST(StoryPipeline_TestFinalize, testOnlyActiveDeque)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test if finalize handles both passive and active deques in FIFO
@@ -519,27 +773,29 @@ TEST(StoryPipeline_TestFinalize, testMixedDeques)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 2);
+    ASSERT_EQ(countNonEmpty(q), 2);
 
-    // Now validate the order by checking payload of the event of the chunk
-    auto* firstChunk = q[0];
-    ASSERT_NE(firstChunk, nullptr);
-    std::vector<chl::Event> ev;
-    firstChunk->extractEventSeries(ev);
-    ASSERT_EQ(ev.size(), 1);
-    EXPECT_EQ(ev[0].log_record(), "passive");
-    delete firstChunk;
-
-    auto* secondChunk = q[1];
-    ASSERT_NE(secondChunk, nullptr);
-    ev.clear();
-    secondChunk->extractEventSeries(ev);
-    ASSERT_EQ(ev.size(), 1);
-    EXPECT_EQ(ev[0].log_record(), "active");
-    delete secondChunk;
+    // Now validate the order by checking payload of the events of the
+    // non-empty chunks (windows come out in start-time order)
+    std::vector<std::string> records;
+    for(auto* chunk: q)
+    {
+        if(chunk == nullptr || chunk->empty())
+        {
+            continue;
+        }
+        std::vector<chl::Event> ev;
+        chunk->extractEventSeries(ev);
+        ASSERT_EQ(ev.size(), 1);
+        records.push_back(ev[0].log_record());
+    }
+    ASSERT_EQ(records.size(), 2);
+    EXPECT_EQ(records[0], "passive");
+    EXPECT_EQ(records[1], "active");
+    freeChunks(q);
 }
 
-// Test if finalize removes all initial empty chunks from the timeline and stashes the one non empty chunk
+// Test if finalize drains the whole timeline and stashes the one non empty chunk
 TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 {
     initLogger();
@@ -552,7 +808,8 @@ TEST(StoryPipeline_TestFinalize, testEmptyVsNonTimeline)
 
     std::vector<chl::StoryChunk*> q;
     p.finalize(q);
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(countNonEmpty(q), 1);
+    freeChunks(q);
 }
 
 // Test calling finalize safely twice
@@ -568,14 +825,15 @@ TEST(StoryPipeline_TestFinalize, testFinalizeDoubleCall)
     h->getActiveDeque().push_back(chunk);
 
     std::vector<chl::StoryChunk*> q;
-    // first finalize should stash the one chunk
+    // first finalize should stash the one non-empty chunk
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 1);
-
+    EXPECT_EQ(countNonEmpty(q), 1);
+    std::size_t const after_first = q.size();
 
     // second finalize should not stash anything new
     EXPECT_NO_THROW(p.finalize(q));
-    EXPECT_EQ(q.size(), 1);
+    EXPECT_EQ(q.size(), after_first);
+    freeChunks(q);
 }
 
 // finalize should stash all the non empty chunks
@@ -602,5 +860,6 @@ TEST(StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline)
 
     // all three non empty chunks should be stashed
     p.finalize(q);
-    EXPECT_EQ(q.size(), 3);
+    EXPECT_EQ(countNonEmpty(q), 3);
+    freeChunks(q);
 }

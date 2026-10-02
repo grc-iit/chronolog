@@ -12,7 +12,7 @@
 #include <KeeperRegClient.h>
 #include <IngestionQueue.h>
 #include <StoryChunkExtractionQueue.h>
-#include <KeeperTailStore.h>
+#include <KeeperChunkRetentionStore.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
@@ -199,6 +199,10 @@ int main(int argc, char** argv)
                                                       extractionEngine,
                                                       KEEPER_CONF.EXTRACTION_MODULE_CONF);
 
+    // Every grapher-bound chunk carries this keeper's DataStoreAdminService
+    // identity so the grapher knows where to push watermark reports.
+    theExtractionModule.getExtractionChain().set_watermark_reporter(dataStoreServiceId);
+
     theExtractionModule.initialize(KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 
     if(!theExtractionModule.is_initialized())
@@ -207,24 +211,30 @@ int main(int argc, char** argv)
         return (-1);
     }
 
-    // Instantiate the TailStore (serves keeper-memory tail reads) and DataStore.
-    // tail_capacity = max number of most-recent sealed events retained per story
-    // for last-N playback before they age out to the extraction/archive path.
-    // Configurable via DataStoreInternals.tail_capacity (default 65536).
+    // Instantiate the chunk retention store (owns every sealed chunk) and DataStore.
+    // tail_capacity = max number of most-recent sealed events indexed per story
+    // for last-N playback (DataStoreInternals.tail_capacity, default 65536).
+    // retention_cap_mb = soft cap on retained-chunk memory; on exceed the store
+    // WARNs (watermark lagging) but never drops unpersisted data
+    // (DataStoreInternals.retention_cap_mb, default 4096, 0 disables the warning).
     // live_tail_read (default false): when true, tail reads also serve events from
     // the active/unsealed timeline, cutting write-to-visible latency below the
     // seal window at the cost of provisional (eventually-consistent) reads.
     const std::size_t keeper_tail_capacity = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.tail_capacity);
-    // tail_retention_secs bounds how long a sealed chunk waits in the tail before
-    // it is handed over for archival, so archival is time-driven rather than
-    // dependent on the story's write volume (DataStoreInternals.tail_retention_secs,
-    // default 60; 0 disables age-out).
-    const uint64_t keeper_tail_retention_ns =
-            static_cast<uint64_t>(KEEPER_CONF.DATA_STORE_CONF.tail_retention_secs) * 1000000000ULL;
-    chronolog::KeeperTailStore theTailStore(theExtractionModule.getExtractionQueue(),
-                                            keeper_tail_capacity,
-                                            KEEPER_CONF.DATA_STORE_CONF.live_tail_read,
-                                            keeper_tail_retention_ns);
+    const std::size_t keeper_retention_cap_mb = static_cast<std::size_t>(KEEPER_CONF.DATA_STORE_CONF.retention_cap_mb);
+    // archive_visibility_delay_secs (default 10): how long after the grapher
+    // reports a chunk written the store keeps it and serves it as unconfirmed,
+    // so a player that has not listed the new archive file yet still replays it.
+    const int archive_visibility_delay_secs = KEEPER_CONF.DATA_STORE_CONF.archive_visibility_delay_secs;
+    chronolog::KeeperChunkRetentionStore theTailStore(theExtractionModule.getExtractionQueue(),
+                                                      keeper_tail_capacity,
+                                                      keeper_retention_cap_mb,
+                                                      KEEPER_CONF.DATA_STORE_CONF.live_tail_read,
+                                                      std::chrono::seconds(archive_visibility_delay_secs));
+
+    // The extraction chain reports every drain outcome (grapher ack / transfer
+    // failure) back to the store; chunks are never freed by the drain loop.
+    theExtractionModule.getExtractionChain().attachRetentionStore(&theTailStore);
 
     // Instantiate KeeperDataStore
     chronolog::IngestionQueue ingestionQueue;
@@ -234,7 +244,8 @@ int main(int argc, char** argv)
                                             KEEPER_CONF.DATA_STORE_CONF.max_story_chunk_size,
                                             KEEPER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs);
+                                            KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
+                                            KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs);
 
     // Instantiate KeeperRecordingService
     tl::engine* dataAdminEngine = nullptr;
@@ -382,15 +393,38 @@ int main(int argc, char** argv)
     LOG_INFO("[ChronoKeeperInstance] Initiating shutdown procedures.");
     // Stop recording events
     delete keeperRecordingService;
-    delete keeperDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
-    // Hand the tail store's retained chunks over BEFORE extraction stops: data
-    // collection has finished, so nothing new will seal, and the extraction module
-    // is still draining. Leaving this to ~KeeperTailStore would run it after
-    // shutdownExtraction() below, at which point the queue only frees what it holds
-    // -- silently dropping up to tail_retention_secs of sealed data per story.
-    theTailStore.flushRetainedChunks();
+    // Data collection has finished, so nothing new will seal. Before extraction
+    // stops, wait for the grapher to confirm every chunk this keeper holds
+    // written: an acked chunk may still exist only in the grapher's memory, and a
+    // send can fail after its chunk was handed over. The wait sends unacked
+    // chunks again, so the extraction module must still be draining, and it
+    // learns of confirmations through watermark reports, so the data admin
+    // service stays up until it ends. ~KeeperChunkRetentionStore logs and frees
+    // whatever is still unconfirmed.
+    // TODO(shutdown recovery): with the template values (shutdown 150 s, resend
+    // 300 s) a chunk acked shortly before SIGTERM stays younger than the stall
+    // age for the whole wait, so requeueStalled never fires here. Settling
+    // deliveries already in flight works -- that is the common case -- but a
+    // delivery whose grapher-side write failed cannot be rescued: its receipt
+    // never settles, the wait times out, and the destructor frees the last copy
+    // with a warning. Recovering it needs the wait to outlast a stall age plus a
+    // write window (resend_age + write_window <= shutdown_confirm, so >= 390 s
+    // with today's numbers), or a shorter stall age used only during shutdown --
+    // which the keeper cannot derive, since the grapher's window is not in its
+    // configuration. Documented rather than changed; see the shutdown-wait
+    // recovery follow-up.
+    const int shutdown_confirm_timeout_secs = KEEPER_CONF.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
+    if(!theTailStore.waitUntilDurable(std::chrono::seconds(shutdown_confirm_timeout_secs),
+                                      std::chrono::seconds(1),
+                                      std::chrono::seconds(KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs)))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
+                    "shutdown_confirm_timeout_secs={}",
+                    shutdown_confirm_timeout_secs);
+    }
+    delete keeperDataAdminService;
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();

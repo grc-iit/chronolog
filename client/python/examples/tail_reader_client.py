@@ -86,11 +86,11 @@ def parse_args():
         type=int,
         default=0,
         help="read mode: keep retrying playback for up to this many seconds until "
-        "--expect-min events come back. A single shot is inherently racy: events "
-        "are only in the tail between their chunk sealing (chunk_duration + "
-        "acceptance_window) and ageing out (tail_retention_secs measured from the "
-        "chunk's end), so the readable window is roughly "
-        "tail_retention_secs - acceptance_window_secs.",
+        "--expect-min events come back. A single shot is inherently racy: an event "
+        "is readable only once its chunk seals (story_chunk_duration_secs + "
+        "acceptance_window_secs after it), and stays readable while it is among "
+        "the story's newest tail_capacity events and the story is still recorded "
+        "on the keeper.",
     )
     return parser.parse_args()
 
