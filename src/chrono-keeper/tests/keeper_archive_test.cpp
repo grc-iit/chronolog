@@ -312,7 +312,8 @@ TEST(KeeperChunks, SealReplayAfterKillRequeuesIdenticalIdentity)
         if(!archive.seal().ok())
             ::_exit(2);
         const auto id = archive.chunks().front().id;
-        (void)::write(pipefd[1], id.data(), id.size());
+        if(::write(pipefd[1], id.data(), id.size()) != static_cast<ssize_t>(id.size()))
+            ::_exit(4);
         ::pause();
         ::_exit(3);
     }
