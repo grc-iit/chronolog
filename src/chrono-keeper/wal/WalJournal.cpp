@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
-#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <sstream>
@@ -14,6 +13,7 @@
 #include <unistd.h>
 
 #include <absl/crc/crc32c.h>
+#include <absl/log/log.h>
 #include "wal/Record.h"
 #include "chronolog/internal/v1/internal.pb.h"
 
@@ -329,7 +329,7 @@ void WalJournal::commit()
             if(bytes_ > config_.wal_max_bytes && !warned_)
             {
                 warned_ = true;
-                std::cerr << "chrono_keeper: WAL exceeds wal_max_bytes; unsettled events remain protected\n";
+                LOG(WARNING) << "WAL exceeds wal_max_bytes; unsettled events remain protected";
             }
         }
         for(auto& write: group)

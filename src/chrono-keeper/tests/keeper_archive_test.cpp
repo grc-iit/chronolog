@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 #include <absl/crc/crc32c.h>
+#include <absl/log/log_sink.h>
+#include <absl/log/log_sink_registry.h>
 
 #include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <future>
+#include <mutex>
 #include <poll.h>
 #include <sys/wait.h>
 #include <thread>
@@ -893,12 +896,28 @@ struct TwoStoryRig
     }
 };
 
-size_t occurrences(const std::string& text, const std::string& needle)
+class CapturingSink final: public absl::LogSink
 {
-    size_t count = 0;
-    for(auto at = text.find(needle); at != std::string::npos; at = text.find(needle, at + needle.size())) ++count;
-    return count;
-}
+public:
+    CapturingSink() { absl::AddLogSink(this); }
+    ~CapturingSink() override { absl::RemoveLogSink(this); }
+    void Send(const absl::LogEntry& entry) override
+    {
+        std::lock_guard lock(mu_);
+        messages_.emplace_back(entry.text_message());
+    }
+    size_t count(const std::string& needle)
+    {
+        std::lock_guard lock(mu_);
+        return std::count_if(messages_.begin(),
+                             messages_.end(),
+                             [&](const std::string& text) { return text.find(needle) != std::string::npos; });
+    }
+
+private:
+    std::mutex mu_;
+    std::vector<std::string> messages_;
+};
 
 TEST(KeeperRetention, WatermarkBelowTheChunkEndFreesNothing)
 {
@@ -1050,9 +1069,9 @@ TEST(KeeperRetention, CapWarningRepeatsForEachCrossing)
         rig.archive->sweep();
         rig.archive->sweep();
     };
-    testing::internal::CaptureStderr();
+    CapturingSink sink;
     crossing(1, 100'000'000);
-    EXPECT_EQ(occurrences(testing::internal::GetCapturedStderr(), "retention cap exceeded"), 1u);
+    EXPECT_EQ(sink.count("retention cap exceeded"), 1u);
     uint64_t receipt = 0;
     Hlc end{};
     for(const auto& chunk: rig.archive->chunks())
@@ -1064,9 +1083,8 @@ TEST(KeeperRetention, CapWarningRepeatsForEachCrossing)
     rig.archive->releaseTail(1);
     rig.archive->sweep();
     ASSERT_TRUE(rig.archive->chunks().empty());
-    testing::internal::CaptureStderr();
     crossing(3, 2'100'000'000);
-    EXPECT_EQ(occurrences(testing::internal::GetCapturedStderr(), "retention cap exceeded"), 1u);
+    EXPECT_EQ(sink.count("retention cap exceeded"), 2u);
     EXPECT_EQ(rig.archive->chunks().size(), 2u);
 }
 

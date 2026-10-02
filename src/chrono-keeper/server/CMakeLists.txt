@@ -16,10 +16,11 @@ target_include_directories(chronolog_keeper_lib PUBLIC "${KEEPER_DIR}")
 target_link_libraries(chronolog_keeper_lib
     PUBLIC chronolog_keeper_wal chronolog_keeper_journal chronolog_common_clock chronolog_contracts
            chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json Threads::Threads
-    PRIVATE chronolog_warnings)
+    PRIVATE chronolog_warnings absl::log)
 
 add_executable(chrono_keeper "${KEEPER_DIR}/main.cpp")
-target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_archive chronolog_keeper_lib chronolog_warnings)
+target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_archive chronolog_keeper_lib chronolog_warnings
+    absl::log absl::log_initialize absl::log_globals)
 set_target_properties(chrono_keeper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/src/chrono-keeper")
 install(TARGETS chrono_keeper RUNTIME DESTINATION bin)

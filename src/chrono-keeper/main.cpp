@@ -1,4 +1,7 @@
 #include <grpcpp/grpcpp.h>
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 
 #include <atomic>
 #include <chrono>
@@ -55,6 +58,7 @@ std::string newInstanceId()
 
 int main(int argc, char** argv)
 {
+    absl::InitializeLog();
     std::optional<std::string> config_path;
     for(int i = 1; i < argc; ++i)
     {
@@ -65,8 +69,8 @@ int main(int argc, char** argv)
         }
         else
         {
-            std::cerr << "usage: chrono_keeper [--config PATH]\n"
-                      << "environment overrides: CHRONOLOG_KEEPER_<KEY>, for example CHRONOLOG_KEEPER_PROCESS_ID\n";
+            LOG(ERROR) << "usage: chrono_keeper [--config PATH]; environment overrides: CHRONOLOG_KEEPER_<KEY>, for "
+                          "example CHRONOLOG_KEEPER_PROCESS_ID";
             return 2;
         }
     }
@@ -74,9 +78,14 @@ int main(int argc, char** argv)
     auto config = chronolog::keeper::KeeperConfig::load(config_path);
     if(!config.ok())
     {
-        std::cerr << "chrono_keeper: " << config.status().message() << "\n";
+        LOG(ERROR) << config.status().message();
         return 2;
     }
+    const auto severity = config->log_level == "error"     ? absl::LogSeverityAtLeast::kError
+                          : config->log_level == "warning" ? absl::LogSeverityAtLeast::kWarning
+                                                           : absl::LogSeverityAtLeast::kInfo;
+    absl::SetStderrThreshold(severity);
+    absl::SetMinLogLevel(severity);
 
     // Block the termination signals before any thread exists so every thread inherits the
     // mask and only the watcher below consumes them.
@@ -147,7 +156,7 @@ int main(int argc, char** argv)
     }
     catch(const std::exception& error)
     {
-        std::cerr << "chrono_keeper: " << error.what() << "\n";
+        LOG(ERROR) << error.what();
         return 1;
     }
     auto& journal = *owned_journal;
@@ -177,13 +186,13 @@ int main(int argc, char** argv)
     auto public_server = startServer(config->listen, journal_service, public_port);
     if(!public_server || public_port == 0)
     {
-        std::cerr << "chrono_keeper: cannot listen on " << config->listen << "\n";
+        LOG(ERROR) << "cannot listen on " << config->listen;
         return 1;
     }
     auto internal_server = startServer(config->internal_listen, archive_service, internal_port);
     if(!internal_server || internal_port == 0)
     {
-        std::cerr << "chrono_keeper: cannot listen on " << config->internal_listen << "\n";
+        LOG(ERROR) << "cannot listen on " << config->internal_listen;
         public_server->Shutdown();
         return 1;
     }
@@ -199,7 +208,7 @@ int main(int argc, char** argv)
                                   acquisitions);
     if(auto status = cluster.registerNow(); absl::IsFailedPrecondition(status))
     {
-        std::cerr << "chrono_keeper: registration refused: " << status << "\n";
+        LOG(ERROR) << "registration refused: " << status;
         internal_server->Shutdown();
         public_server->Shutdown();
         return 1;
@@ -233,7 +242,7 @@ int main(int argc, char** argv)
                     const int received = sigtimedwait(&signals, nullptr, &poll);
                     if(received > 0)
                     {
-                        std::cout << "chrono_keeper shutting down on signal " << received << std::endl;
+                        LOG(INFO) << "chrono_keeper shutting down on signal " << received;
                         const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
                         internal_server->Shutdown(deadline);
                         public_server->Shutdown(deadline);
@@ -249,7 +258,7 @@ int main(int argc, char** argv)
     // Queued tasks run to completion before the pool joins, then the clients stop.
     pool.stop();
     if(!archive.shutdown())
-        std::cerr << "chrono_keeper: archive confirmation timed out or sealing failed\n";
+        LOG(ERROR) << "archive confirmation timed out or sealing failed";
     cluster_ptr = nullptr;
     return 0;
 }

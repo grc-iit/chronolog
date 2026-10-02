@@ -1,10 +1,9 @@
 #include "archive/KeeperArchive.h"
 
 #include <algorithm>
-#include <iostream>
-#include <syncstream>
 
 #include <absl/crc/crc32c.h>
+#include <absl/log/log.h>
 #include "adapter/Convert.h"
 
 namespace chronolog::keeper
@@ -213,10 +212,9 @@ void KeeperArchive::settleLocked(State& state)
         return;
     if(auto status = journal_.recordSettled(state.chunk.id); !status.ok())
         return;
-    std::osyncstream(std::clog) << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id
-                                << " start=" << state.chunk.start.physical_ns << ':' << state.chunk.start.logical
-                                << " end=" << state.chunk.end.physical_ns << ':' << state.chunk.end.logical
-                                << std::endl;
+    LOG(INFO) << "archive_settled chunk=" << state.chunk.id << " story=" << state.chunk.story_id
+              << " start=" << state.chunk.start.physical_ns << ':' << state.chunk.start.logical
+              << " end=" << state.chunk.end.physical_ns << ':' << state.chunk.end.logical;
     state.settled = true;
     state.settled_at = now_();
 }
@@ -357,7 +355,7 @@ void KeeperArchive::sweep()
         if(!cap_warned_)
         {
             cap_warned_ = true;
-            std::cerr << "chrono_keeper: retention cap exceeded by archive-protected chunks\n";
+            LOG(WARNING) << "retention cap exceeded by archive-protected chunks";
         }
     }
     else
@@ -433,8 +431,7 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     context.set_wait_for_ready(true);
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     iv1::TransferChunkResponse response;
-    std::osyncstream(std::clog) << "archive_transfer_start chunk=" << chunk.id << " grapher=" << route->grapher
-                                << std::endl;
+    LOG(INFO) << "archive_transfer_start chunk=" << chunk.id << " grapher=" << route->grapher;
     auto stream = stub->TransferChunk(&context, &response);
     auto finish = [&]
     {
@@ -447,8 +444,8 @@ bool KeeperArchive::shipOne(std::stop_token stop)
         }
         if(!status.ok())
         {
-            std::cerr << "chrono_keeper: archive transfer " << chunk.id << " failed: " << status.error_code() << " "
-                      << status.error_message() << '\n';
+            LOG(WARNING) << "archive transfer " << chunk.id << " failed: " << status.error_code() << " "
+                         << status.error_message();
             return fail();
         }
         iv1::ChunkReceipt receipt;
@@ -567,7 +564,7 @@ void KeeperArchive::start()
                 while(!stop.stop_requested())
                 {
                     if(auto status = seal(); !status.ok())
-                        std::cerr << "chrono_keeper: archive seal failed: " << status << '\n';
+                        LOG_EVERY_N_SEC(WARNING, 5) << "archive seal failed: " << status;
                     sweep();
                     refreshSubscriptions();
                     std::unique_lock lock(mu_);
