@@ -195,6 +195,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 // A term has one leader, so a lease lapse inside it keeps this term's liveness.
                                 if(leader_term_ != raft_->term())
                                 {
+                                    LOG(INFO) << "visor_leader term=" << raft_->term();
                                     leader_term_ = raft_->term();
                                     leader_since_ = now;
                                     heartbeats_.clear();
@@ -597,6 +598,8 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
             auto endpoint = raft_->leaderEndpoint(true);
             if(endpoint.empty() || raft_->isLocalLeader())
             {
+                LOG_EVERY_N_SEC(WARNING, 2)
+                        << "cluster call without a leader to forward to, leader id " << raft_->leaderId();
                 reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease"));
                 return;
             }
@@ -621,6 +624,9 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 else
                     result = stub->AbandonKeeper(&ctx, *request, response);
             }
+            if(!result.ok())
+                LOG_EVERY_N_SEC(WARNING, 2) << "cluster_forward to leader " << endpoint
+                                            << " failed: " << result.error_code() << " " << result.error_message();
             reactor->Finish(result);
             return;
         }
@@ -774,7 +780,11 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                     if(current_instance)
                     {
                         std::lock_guard lock(heartbeat_mutex_);
-                        heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
+                        auto [entry, fresh] = heartbeats_.try_emplace(request->process_id());
+                        entry->second = std::chrono::steady_clock::now();
+                        // The first heartbeat of a leader term, so a drain can be read against the election.
+                        if(fresh)
+                            LOG(INFO) << "keeper_live process=" << request->process_id() << " term=" << leader_term_;
                     }
                 }
             }

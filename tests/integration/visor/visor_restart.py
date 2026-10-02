@@ -20,6 +20,25 @@ import run  # noqa: E402
 from scenario import Scenario  # noqa: E402
 
 
+class Direct(run.Local):
+    """The dynamic stack with Keepers connecting to the Visors directly. The harness proxy only exists to partition a
+    Keeper, which this gate never does, and the product reaches the replicas through one gRPC channel over the list."""
+
+    def configure_direct(self):
+        for role in [r for r in self.services if r.startswith('proxy-')]:
+            del self.services[role]
+
+    def start(self, role):
+        node, path, config = self.services[role]
+        if not role.startswith('keeper-'):
+            return super().start(role)
+        log = open(self.folder / (role + '.log'), 'ab')
+        process = run.subprocess.Popen(['timeout', '-k', '5', '340', self.args.keeper, '--config', str(path)],
+                                       stdout=log, stderr=log, start_new_session=True)
+        self.processes[role] = (process, log)
+        self.ready(role, run.endpoints(config), process)
+
+
 class Workload(threading.Thread):
     """Appends one event after another through its own RPC probe until stopped."""
 
@@ -39,7 +58,7 @@ class Workload(threading.Thread):
                 self.sequence += 1
                 # A refused append is retried, so the sequence always advances through acknowledged events.
                 self.probe.append(self.acquired, self.sequence)
-                self.stop_flag.wait(0.1)
+                self.stop_flag.wait(0.02)
         except Exception as error:  # noqa: BLE001
             self.error = error
 
@@ -157,13 +176,9 @@ def main():
     try:
         for attempt in range(1, run.STARTUP_ATTEMPTS + 1):
             try:
-                stack = run.Local(args)
+                stack = Direct(args)
                 peers = run.configure(stack)
-                # Failure detection is not under test here, and a sanitizer build can stall heartbeats for seconds, so
-                # a slow Keeper must not be drained as silent while the Visors are killed.
-                for role, (node, _, config) in list(stack.services.items()):
-                    if role.startswith('visor-'):
-                        stack.write(role, node, dict(config, keeper_failure_timeout_ms=8000))
+                stack.configure_direct()
                 for role in stack.services:
                     stack.start(role)
                 stack.alive()
