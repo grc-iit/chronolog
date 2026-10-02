@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.25)
 # ctest body for build.no_legacy_transport (M11.4). Usage: cmake -DROOT=<source dir> -P NoLegacyTransportCheck.cmake
 # Walks every CMakeLists.txt the build reads, starting at the root and following literal add_subdirectory calls,
 # and checks them and vcpkg.json for Argobots, Thallium, Margo, Mochi and RDMA packages.
