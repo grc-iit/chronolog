@@ -561,6 +561,9 @@ int tailScenario(const Args& args)
     std::atomic<size_t> received{0};
     std::string tail_error;
     std::atomic<bool> tail_failed{false};
+    std::string consumer_exit = "done";
+    Clock::time_point last_receipt = Clock::now();
+    const auto tail_started = Clock::now();
     std::thread consumer(
             [&]
             {
@@ -578,8 +581,12 @@ int tailScenario(const Args& args)
                         return;
                     }
                     if(!*item)
+                    {
+                        consumer_exit = "end_of_stream";
                         return;
+                    }
                     const auto now = steadyNs();
+                    last_receipt = Clock::now();
                     for(const auto& event: (**item).events)
                     {
                         int64_t sent = 0;
@@ -620,7 +627,9 @@ int tailScenario(const Args& args)
                    {"append_ack", latencyJson(ack_us)},
                    {"received", received.load() > warm ? received.load() - warm : 0},
                    {"expected", events},
-                   {"tail_error", tail_error}};
+                   {"tail_error", tail_error},
+                   {"consumer_exit", consumer_exit},
+                   {"last_receipt_after_tail_start_s", seconds(last_receipt - tail_started)}};
     emit("tail", args.asJson(), result);
     return 0;
 }
