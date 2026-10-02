@@ -19,7 +19,9 @@ namespace chronolog::keeper
 // Holds Cluster.WatchAcquisitions open, applies the full snapshot and then each delta to
 // the journal's writer admission, and reconnects with backoff. A snapshot also fences
 // every local writer it no longer lists, because a RELEASED delta can be missed while
-// disconnected. applied_revision is what the Keeper reports in heartbeats.
+// disconnected. A snapshot below the applied revision is rejected and ends the session, so
+// admission stays closed until a current snapshot arrives on the next one. applied_revision
+// is what the Keeper reports in heartbeats.
 class AcquisitionWatcher
 {
 public:
@@ -36,7 +38,8 @@ public:
     // Starts the background stream against the Visor's Cluster service.
     void start(std::shared_ptr<grpc::Channel> channel);
 
-    void applySnapshot(const internal::v1::AcquisitionSnapshot& snapshot);
+    // False when the snapshot regresses the applied revision; nothing is applied then.
+    bool applySnapshot(const internal::v1::AcquisitionSnapshot& snapshot);
     void applyUpdate(const internal::v1::AcquisitionUpdate& update);
 
     uint64_t appliedRevision() const;

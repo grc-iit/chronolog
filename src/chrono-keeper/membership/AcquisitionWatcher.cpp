@@ -2,6 +2,8 @@
 
 #include <set>
 
+#include <absl/log/log.h>
+
 namespace chronolog::keeper
 {
 
@@ -41,11 +43,23 @@ bool AcquisitionWatcher::session(std::stop_token stop)
     bool progressed = false;
     while(reader->Read(&message))
     {
-        progressed = true;
         if(message.has_snapshot())
-            applySnapshot(message.snapshot());
+        {
+            // Admission stays closed on a regressed snapshot and no later message on this stream reopens it, so the
+            // session ends and the Watcher resubscribes, to any replica, with its own backoff.
+            if(!applySnapshot(message.snapshot()))
+            {
+                LOG(WARNING) << "acquisition_watch snapshot revision=" << message.snapshot().revision()
+                             << " is below applied=" << appliedRevision() << ", resubscribing";
+                context.TryCancel();
+                break;
+            }
+        }
         else if(message.has_update())
+        {
             applyUpdate(message.update());
+        }
+        progressed = true;
     }
     reader->Finish();
     return progressed;
@@ -60,10 +74,10 @@ void AcquisitionWatcher::advance(uint64_t revision)
     cv_.notify_all();
 }
 
-void AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
+bool AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
 {
     if(snapshot.revision() < appliedRevision())
-        return;
+        return false;
     if(gate_admission_)
         journal_.setAdmissionReady(false);
     std::set<RamJournal::WriterKey> listed;
@@ -92,6 +106,7 @@ void AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
     advance(snapshot.revision());
     if(fenced && on_fence_)
         on_fence_();
+    return true;
 }
 
 void AcquisitionWatcher::applyWriter(const iv1::AcquisitionUpdate& update)
