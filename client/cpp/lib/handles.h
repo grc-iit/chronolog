@@ -16,6 +16,7 @@ struct Writer::Impl
     Acquisition acquired;
     uint64_t sequence{1};
     uint64_t batch_id{};
+    bool requires_reacquisition{};
     struct Pending
     {
         std::vector<AppendSpec> specs;

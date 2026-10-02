@@ -98,6 +98,11 @@ inline grpc::ChannelArguments channelPolicy()
     args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
+    // gRPC sends a bandwidth probe ping on its own and allows one ping in flight. If the path goes silent while that
+    // probe is out, the keepalive ping queues behind it and the only limit left is the transport's ping timeout, one
+    // minute by default, so the dead path would not be noticed for that long. The same bound as the keepalive timeout
+    // closes the transport on any unanswered ping. The argument has no public macro.
+    args.SetInt("grpc.http2.ping_timeout_ms", 1000);
     args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
     args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
     args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
