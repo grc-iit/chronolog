@@ -61,5 +61,6 @@ private:
     mutable ManifestIndex cache_;
     mutable std::map<std::string, WriterCursors> cursors_;
     mutable bool synced_{};
+    mutable uint64_t generations_{};
 };
 } // namespace chronolog

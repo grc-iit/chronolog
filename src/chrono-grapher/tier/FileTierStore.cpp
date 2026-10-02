@@ -189,9 +189,14 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   *std::move(log),
                                                                   std::move(anchors),
                                                                   std::move(codec)));
+    const auto started = std::chrono::steady_clock::now();
     const auto status = store->recover();
     if(!status.ok())
         return status;
+    LOG(INFO)
+            << "archive recovered records=" << store->log_->current()->records.size() << " in "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()
+            << " ms";
     return store;
 }
 
@@ -462,7 +467,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     struct Claim
     {
         FileTierStore& store;
-        const std::string& file;
+        std::string file;
         ~Claim()
         {
             {

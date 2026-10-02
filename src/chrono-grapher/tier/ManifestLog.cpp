@@ -299,7 +299,7 @@ absl::Status ManifestLog::rebuild() const
 {
     cache_ = ManifestIndex{};
     cursors_.clear();
-    ++cache_.generation;
+    cache_.generation = ++generations_;
     std::error_code error;
     std::set<std::string> writers;
     for(std::filesystem::directory_iterator it(directory_, error), end; !error && it != end; it.increment(error))
@@ -379,8 +379,7 @@ absl::Status ManifestLog::advance(bool& changed) const
             auto tail = ReadTail(path, cursor.offset);
             if(!tail.ok())
                 return tail.status();
-            auto status = ForEachLine(tail->data,
-                                      [&](std::string line) { return applyLine(writer, line, cache_); });
+            auto status = ForEachLine(tail->data, [&](std::string line) { return applyLine(writer, line, cache_); });
             if(!status.ok())
                 return status;
             if(tail->consumed != cursor.offset)
