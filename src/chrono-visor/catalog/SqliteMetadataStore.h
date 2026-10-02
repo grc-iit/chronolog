@@ -3,6 +3,7 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include <sqlite3.h>
@@ -87,6 +88,9 @@ private:
     std::atomic<uint64_t> snapshot_generation_{};
     absl::Status initializeMembership();
     absl::Status seedMembershipStory(StoryId id);
+    // Inside the destroy transaction: one fresh acquisition revision, then a tombstoned RouteUpdate per story
+    // in membership_history (W10.17). Under Raft apply the command's own revision is the fresh one.
+    absl::Status tombstoneStories(const std::vector<StoryId>& stories);
     sqlite3* db_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;
@@ -94,6 +98,7 @@ private:
     // lock it too, so it is mutable.
     mutable std::recursive_mutex mutex_;
     AcquisitionObserver* observer_{};
+    std::optional<uint64_t> apply_revision_;
 };
 
 } // namespace chronolog::visor

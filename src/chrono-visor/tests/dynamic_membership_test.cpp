@@ -37,6 +37,30 @@ INSTANTIATE_TEST_SUITE_P(
                             return absl::InternalError("invalid response");
                         return absl::Status(static_cast<absl::StatusCode>(r.status().code()), r.status().message());
                     };
+                    harness->destroyStory = [store]
+                    {
+                        auto applied = store->applyRaft(store->appliedIndex().value_or(0) + 1,
+                                                        [&]
+                                                        {
+                                                            auto status = store->destroyStory(1);
+                                                            return std::string(status.ok() ? "" : "failed");
+                                                        });
+                        if(!applied.ok())
+                            return applied.status();
+                        return *applied == "" ? absl::OkStatus() : absl::InternalError("destroy failed");
+                    };
+                    harness->revision = [store] { return store->membershipRevision().value_or(0); };
+                    harness->deltasSince = [store](uint64_t cursor)
+                    {
+                        std::vector<MembershipHarness::RouteDelta> out;
+                        auto changes = store->membershipRouteChanges(cursor);
+                        if(changes.ok())
+                            for(const auto& r: changes->route_history())
+                                if(r.revision() > cursor)
+                                    out.push_back({r.story_id(), r.revision(), r.tombstoned()});
+                        return out;
+                    };
+                    harness->storyEpoch = [store] { return store->getStory(1)->epoch; };
                     harness->registerPolicy = [send](uint64_t version)
                     {
                         internal::v1::CatalogCommand c;

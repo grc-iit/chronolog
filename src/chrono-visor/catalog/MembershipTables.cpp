@@ -308,6 +308,33 @@ try
 }
 MEMBERSHIP_CATCH
 
+absl::Status SqliteMetadataStore::tombstoneStories(const std::vector<StoryId>& stories)
+try
+{
+    if(stories.empty())
+        return absl::OkStatus();
+    uint64_t at = 0;
+    if(apply_revision_)
+        at = *apply_revision_;
+    else
+    {
+        Query bump(db_, "UPDATE counters SET value = value + 1 WHERE name='acquisition_revision'");
+        bump.next();
+        at = revision(db_);
+    }
+    for(const auto id: stories)
+    {
+        wire::RouteUpdate update;
+        update.set_story_id(id);
+        update.set_revision(at);
+        update.set_tombstoned(true);
+        Query insert(db_, "INSERT OR REPLACE INTO membership_history(revision,story_id,value) VALUES(?1,?2,?3)");
+        insert.number(1, at).number(2, id).blob(3, update.SerializeAsString()).next();
+    }
+    return absl::OkStatus();
+}
+MEMBERSHIP_CATCH
+
 absl::StatusOr<PhysicalPolicy> SqliteMetadataStore::physicalPolicy() const
 try
 {

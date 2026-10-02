@@ -7,6 +7,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -14,6 +15,7 @@
 #include "adapter/ClusterService.h"
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/InMemoryMetadataStore.h"
+#include "catalog/SqliteMetadataStore.h"
 #include "membership/StaticRouteMembership.h"
 
 namespace chronolog::visor
@@ -281,6 +283,92 @@ TEST(acquisition_feed, SubscriptionSeesOnlyItsKeepersChanges)
     ASSERT_TRUE(change.has_value());
     EXPECT_EQ(change->revision, 2u);
     EXPECT_FALSE((*subscription)->pop().has_value());
+}
+
+// Static mode on the persisted Catalog: a destroy reaches WatchRoutes subscribers as tombstoned updates (W10.17).
+class cluster_adapter_sqlite: public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        auto opened = SqliteMetadataStore::open((dir_.path() / "catalog").string(), twoKeeperTopology());
+        ASSERT_TRUE(opened.ok());
+        store_ = std::move(*opened);
+        membership_ = std::make_unique<StaticRouteMembership>(
+                twoKeeperTopology(),
+                1,
+                [this](StoryId id)
+                {
+                    auto story = store_->getStory(id);
+                    return story.ok() && !story->tombstoned;
+                },
+                15s);
+        feed_ = std::make_unique<AcquisitionFeed>();
+        store_->setObserver(feed_.get());
+        service_ = std::make_unique<ClusterService>(*membership_, *store_, *store_, *feed_);
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(service_.get());
+        server_ = builder.BuildAndStart();
+        ASSERT_NE(server_, nullptr);
+        stub_ = iv1::Cluster::NewStub(
+                grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
+        ASSERT_TRUE(store_->createChronicle("c").ok());
+    }
+
+    void TearDown() override
+    {
+        service_->shutdown();
+        server_->Shutdown(std::chrono::system_clock::now() + 2s);
+        store_->setObserver(nullptr);
+    }
+
+    testing::TempDir dir_;
+    std::unique_ptr<SqliteMetadataStore> store_;
+    std::unique_ptr<StaticRouteMembership> membership_;
+    std::unique_ptr<AcquisitionFeed> feed_;
+    std::unique_ptr<ClusterService> service_;
+    std::unique_ptr<grpc::Server> server_;
+    std::unique_ptr<iv1::Cluster::Stub> stub_;
+};
+
+TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversStoryAndChronicleDestroyAsTombstones)
+{
+    const auto kept = store_->createStory("c", "kept")->id;
+    const auto gone = store_->createStory("c", "gone")->id;
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&ctx, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    for(int i = 0; i < 2; ++i)
+    {
+        ASSERT_TRUE(reader->Read(&update));
+        EXPECT_FALSE(update.tombstoned());
+    }
+    ASSERT_TRUE(store_->destroyStory(gone).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), gone);
+    EXPECT_TRUE(update.tombstoned());
+    const auto first_revision = update.revision();
+    EXPECT_GT(first_revision, 0u);
+
+    // One chronicle destroy takes one revision for every story it destroys, and skips the story already gone.
+    const auto also = store_->createStory("c", "also")->id;
+    ASSERT_TRUE(store_->destroyChronicle("c").ok());
+    std::set<StoryId> tombstoned;
+    uint64_t revision = 0;
+    while(tombstoned.size() < 2 && reader->Read(&update))
+    {
+        if(!update.tombstoned())
+            continue;
+        tombstoned.insert(update.story_id());
+        if(revision == 0)
+            revision = update.revision();
+        EXPECT_EQ(update.revision(), revision);
+    }
+    EXPECT_EQ(tombstoned, (std::set<StoryId>{kept, also}));
+    EXPECT_GT(revision, first_revision);
 }
 
 } // namespace

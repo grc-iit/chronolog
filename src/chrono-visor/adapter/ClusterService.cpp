@@ -169,11 +169,12 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
     , feed_(feed)
     , failure_timeout_(failure_timeout)
 {
-    if(raft_)
+    // Static mode wakes streams on the same cadence so a destroy reaches WatchRoutes subscribers (W10.17).
+    if(raft_ || dynamic_cast<const SqliteMetadataStore*>(&store_))
         route_notifications_ = std::jthread(
                 [this](std::stop_token stop)
                 {
-                    uint64_t generation = raft_->appliedStore().snapshotGeneration();
+                    uint64_t generation = raft_ ? raft_->appliedStore().snapshotGeneration() : 0;
                     while(!stop.stop_requested())
                     {
                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -184,7 +185,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 return;
                             streams = streams_;
                         }
-                        if(raft_->leaderLease())
+                        if(raft_ && raft_->leaderLease())
                         {
                             std::vector<std::string> failed;
                             {
@@ -220,7 +221,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 (void)raft_->propose(command);
                             }
                         }
-                        auto current = raft_->appliedStore().snapshotGeneration();
+                        auto current = raft_ ? raft_->appliedStore().snapshotGeneration() : 0;
                         for(auto& stream: streams)
                         {
                             if(current != generation)
@@ -463,6 +464,20 @@ absl::StatusOr<std::vector<internal::v1::RouteUpdate>> ClusterService::routeSnap
 grpc::ServerWriteReactor<internal::v1::WatchRoutesResponse>*
 ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::WatchRoutesRequest*)
 {
+    // The history pull runs in both modes. Static mode delivers only tombstones: its routes never change, and
+    // a Keeper learns a new story's route on demand.
+    const SqliteMetadataStore* history =
+            raft_ ? &raft_->appliedStore() : dynamic_cast<const SqliteMetadataStore*>(&store_);
+    // Read before the snapshot so a destroy committed in between is delivered again rather than lost.
+    uint64_t cursor = 0;
+    if(history && !raft_)
+    {
+        auto revision = history->membershipRevision();
+        if(!revision.ok())
+            return new FailedStream<internal::v1::WatchRoutesResponse>(
+                    grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(revision.status().message())));
+        cursor = *revision;
+    }
     auto routes = routeSnapshot();
     if(!routes.ok())
         return new FailedStream<internal::v1::WatchRoutesResponse>(
@@ -477,25 +492,27 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
         snapshot.push_back(std::move(message));
     }
     std::function<std::optional<internal::v1::WatchRoutesResponse>()> pull;
-    if(raft_)
+    if(history)
     {
         auto state = std::make_shared<std::pair<uint64_t, std::deque<internal::v1::WatchRoutesResponse>>>();
+        state->first = cursor;
         for(const auto& message: snapshot) state->first = std::max(state->first, message.revision());
-        pull = [this, state]() -> std::optional<internal::v1::WatchRoutesResponse>
+        const bool tombstones_only = !raft_;
+        pull = [history, tombstones_only, state]() -> std::optional<internal::v1::WatchRoutesResponse>
         {
             if(state->second.empty())
             {
-                auto revision = raft_->appliedStore().membershipRevision();
+                auto revision = history->membershipRevision();
                 if(!revision.ok() || *revision <= state->first)
                     return std::nullopt;
-                auto loaded = raft_->appliedStore().membershipRouteChanges(state->first);
+                auto loaded = history->membershipRouteChanges(state->first);
                 if(!loaded.ok())
                     return std::nullopt;
                 const auto& current = *loaded;
                 bool trimmed = state->first < current.route_history_floor();
                 const auto& updates = trimmed ? current.routes() : current.route_history();
                 for(const auto& update: updates)
-                    if(trimmed || update.revision() > state->first)
+                    if((trimmed || update.revision() > state->first) && (!tombstones_only || update.tombstoned()))
                     {
                         auto& message = state->second.emplace_back();
                         message.ParseFromString(update.SerializeAsString());
