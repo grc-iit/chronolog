@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "catalog_target.h"
 #include "handles.h"
 
 namespace chronolog::client
@@ -19,6 +20,10 @@ absl::StatusOr<Client> Client::Connect(ClientOptions options, Deadline deadline)
        !options.max_in_flight || options.max_in_flight > 64 || !options.batch_size || !options.max_batch_items ||
        options.batch_size > options.max_batch_items || !options.max_batch_bytes)
         return absl::InvalidArgumentError("invalid client options");
+    auto target = detail::catalogTarget(options.catalog_endpoint);
+    if(!target.ok())
+        return target.status();
+    options.catalog_endpoint = std::move(*target);
     auto state = std::make_shared<detail::State>(std::move(options));
     auto channel = state->channel(state->options.catalog_endpoint);
     if(!channel->WaitForConnected(state->deadline(deadline)))
