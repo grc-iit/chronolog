@@ -12,7 +12,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
-#include "rpc/VisorChannel.h"
+#include "rpc/Channel.h"
 #include "chrono-player/PlayerConfig.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/adapter/ReplayService.h"
@@ -68,7 +68,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        auto visor = rpc::visorChannel(config->visor_internal);
+        auto visor = rpc::peerChannel(config->visor_internal);
         writers = std::make_shared<player::WriterDirectory>(visor);
         Process self{config->player_id,
                      config->player_id + "-" + std::to_string(::getpid()) + "-" +
@@ -105,7 +105,7 @@ int main(int argc, char** argv)
 
     std::shared_ptr<const player::StoryCatalog> catalog = std::make_shared<player::AnyStoryCatalog>();
     if(!config->visor.empty())
-        catalog = std::make_shared<player::CatalogClient>(rpc::visorChannel(config->visor),
+        catalog = std::make_shared<player::CatalogClient>(rpc::peerChannel(config->visor),
                                                           std::chrono::milliseconds(config->keeper_deadline_ms));
 
     const player::PlayerConfig& cfg = *config;
@@ -138,6 +138,7 @@ int main(int argc, char** argv)
     int port = 0;
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+    rpc::applyServerPolicy(builder);
     builder.AddListeningPort(cfg.listen, grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);
     auto server = builder.BuildAndStart();

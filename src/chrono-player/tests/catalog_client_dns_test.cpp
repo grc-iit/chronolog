@@ -3,7 +3,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "rpc/FlakyResolver.h"
-#include "rpc/VisorChannel.h"
+#include "rpc/Channel.h"
 #include "chrono-player/adapter/StoryCatalog.h"
 
 namespace chronolog::player
@@ -26,13 +26,14 @@ TEST(PlayerCatalogClientTest, EnsureLiveRetriesATransientNameResolutionFailureWi
 {
     Catalog catalog;
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&catalog);
     auto server = builder.BuildAndStart();
     ASSERT_NE(server, nullptr);
     rpc::test::failing_lookups = 1;
-    CatalogClient client(rpc::visorChannel("visor.test:" + std::to_string(port)), std::chrono::seconds(5));
+    CatalogClient client(rpc::peerChannel("visor.test:" + std::to_string(port)), std::chrono::seconds(5));
     EXPECT_TRUE(client.ensureLive(1).ok());
     server->Shutdown(std::chrono::system_clock::now());
 }
@@ -43,13 +44,14 @@ TEST(PlayerCatalogClientTest, ConnectsAtConstructionSoAResolverOutageDoesNotFail
 {
     Catalog catalog;
     grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&catalog);
     auto server = builder.BuildAndStart();
     ASSERT_NE(server, nullptr);
     rpc::test::failing_lookups = 0;
-    auto channel = rpc::visorChannel("visor.test:" + std::to_string(port));
+    auto channel = rpc::peerChannel("visor.test:" + std::to_string(port));
     CatalogClient client(channel, std::chrono::milliseconds(500));
     ASSERT_TRUE(channel->WaitForConnected(std::chrono::system_clock::now() + std::chrono::seconds(5)));
     rpc::test::failing_lookups = 1 << 20;
