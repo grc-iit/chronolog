@@ -46,6 +46,26 @@ absl::StatusOr<std::vector<unsigned char>> ReadImage(const std::filesystem::path
     return image;
 }
 
+struct ReadOnlyImage
+{
+    unsigned char* data;
+    std::size_t size;
+    static void* Allocate(std::size_t size, H5FD_file_image_op_t, void* context)
+    {
+        auto& image = *static_cast<ReadOnlyImage*>(context);
+        return size == image.size ? image.data : nullptr;
+    }
+    static void* Copy(void* dest, const void* source, std::size_t size, H5FD_file_image_op_t, void* context)
+    {
+        auto& image = *static_cast<ReadOnlyImage*>(context);
+        return dest == image.data && source == image.data && size <= image.size ? dest : nullptr;
+    }
+    static void* Resize(void*, std::size_t, H5FD_file_image_op_t, void*) { return nullptr; }
+    static herr_t Free(void*, H5FD_file_image_op_t, void*) { return 0; }
+    static void* CopyContext(void* context) { return context; }
+    static herr_t FreeContext(void*) { return 0; }
+};
+
 void Check(herr_t result)
 {
     if(result < 0)
@@ -339,8 +359,18 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::p
             return image.status();
         // The non-thread-safe HDF5 API only sees memory; disk reads can overlap.
         std::lock_guard lock(hdf5_mutex);
+        ReadOnlyImage borrowed{image->data(), image->size()};
         Handle access(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
         Check(H5Pset_fapl_core(access, 64 * 1024, false));
+        // Every HDF5 handle closes before the borrowed read-only image is released.
+        H5FD_file_image_callbacks_t callbacks{ReadOnlyImage::Allocate,
+                                              ReadOnlyImage::Copy,
+                                              ReadOnlyImage::Resize,
+                                              ReadOnlyImage::Free,
+                                              ReadOnlyImage::CopyContext,
+                                              ReadOnlyImage::FreeContext,
+                                              &borrowed};
+        Check(H5Pset_file_image_callbacks(access, &callbacks));
         Check(H5Pset_file_image(access, image->data(), image->size()));
         Handle input(H5Fopen("chronolog-archive-file-image", H5F_ACC_RDONLY, access), H5Fclose);
         Handle group(H5Gopen2(input, "chunk", H5P_DEFAULT), H5Gclose);
