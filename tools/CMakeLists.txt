@@ -1,4 +1,0 @@
-cmake_minimum_required(VERSION 3.25)
-
-add_subdirectory(cli)
-add_subdirectory(benchmark)

@@ -16,7 +16,7 @@ add_executable(chronolog_ldms_tests tests/bridge_test.cpp)
 target_include_directories(chronolog_ldms_tests PRIVATE .)
 target_link_libraries(chronolog_ldms_tests PRIVATE chronolog::ldms_bridge chronolog::client nlohmann_json::nlohmann_json GTest::gtest chronolog_warnings Threads::Threads)
 include(GoogleTest)
-gtest_discover_tests(chronolog_ldms_tests TEST_PREFIX "ldms." TEST_FILTER "-LdmsStack.*" DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+gtest_discover_tests(chronolog_ldms_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "ldms." TEST_FILTER "-LdmsStack.*" DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME ldms.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_ldms_tests>)

@@ -162,7 +162,8 @@ std::string hostOf(const std::string& address)
 
 } // namespace
 
-absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv)
+absl::StatusOr<VisorConfig>
+VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv, bool allow_bind_all)
 {
     VisorConfig cfg;
     if(path)
@@ -229,6 +230,7 @@ absl::StatusOr<VisorConfig> VisorConfig::load(const std::optional<std::string>& 
         cfg.insecure_bind_all = *parsed;
     }
 
+    cfg.insecure_bind_all = cfg.insecure_bind_all || allow_bind_all;
     absl::Status valid = cfg.validate();
     if(!valid.ok())
         return valid;

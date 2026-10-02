@@ -78,7 +78,8 @@ struct KeeperConfig
     // Defaults, then the JSON file when `path` is given, then the environment.
     static absl::StatusOr<KeeperConfig> load(
             const std::optional<std::string>& path,
-            const Getenv& getenv = [](const char* name) { return std::getenv(name); });
+            const Getenv& getenv = [](const char* name) { return std::getenv(name); },
+            bool allow_bind_all = false);
 
     absl::Status validate() const;
     uint32_t effectiveWorkerThreads() const;

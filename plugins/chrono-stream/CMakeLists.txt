@@ -13,7 +13,7 @@ endforeach()
 add_executable(chronolog_stream_tests tests/stream_test.cpp)
 target_link_libraries(chronolog_stream_tests PRIVATE chronolog::stream GTest::gtest chronolog_warnings Threads::Threads)
 include(GoogleTest)
-gtest_discover_tests(chronolog_stream_tests TEST_PREFIX "stream." TEST_FILTER "-StreamStack.*" DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
+gtest_discover_tests(chronolog_stream_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "stream." TEST_FILTER "-StreamStack.*" DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME stream.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_stream_tests>)

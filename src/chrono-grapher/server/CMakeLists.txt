@@ -11,5 +11,5 @@ add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp)
 target_link_libraries(chronolog_grapher_server_tests PRIVATE
     chronolog_grapher_server chronolog_warnings GTest::gtest GTest::gtest_main)
 include(GoogleTest)
-gtest_discover_tests(chronolog_grapher_server_tests
+gtest_discover_tests(chronolog_grapher_server_tests DISCOVERY_TIMEOUT 60
     DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)

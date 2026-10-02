@@ -1,0 +1,10 @@
+prefix=${pcfiledir}/../..
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: ChronoLog
+Description: ChronoLog 4.0 C++ client SDK
+Version: @PROJECT_VERSION@
+Requires: absl_status absl_statusor
+Libs: -L${libdir} -lchronolog_client
+Cflags: -I${includedir}

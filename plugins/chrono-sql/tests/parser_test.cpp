@@ -54,6 +54,38 @@ TEST(SqlParser, RejectionsNameTokens)
     std::vector<Value> parameters = {1};
     EXPECT_FALSE(parse("SELECT * FROM t", parameters).ok());
 }
+TEST(SqlParser, KeywordsAndIdentifiersAreCaseInsensitive)
+{
+    auto mixed = parse("SeLeCt A,B FrOm Events WhErE A = 1 oRdEr By TiMe LiMiT 3");
+    auto lower = parse("select a,b from events where a = 1 order by time limit 3");
+    ASSERT_TRUE(mixed.ok()) << mixed.status();
+    ASSERT_TRUE(lower.ok()) << lower.status();
+    EXPECT_EQ(mixed->table, "events");
+    EXPECT_EQ(mixed->table, lower->table);
+    EXPECT_EQ(mixed->columns, lower->columns);
+    EXPECT_EQ(mixed->limit, lower->limit);
+    ASSERT_EQ(mixed->predicates.size(), 1u);
+    EXPECT_EQ(mixed->predicates[0].column, "a");
+}
+TEST(SqlParser, EscapedQuoteSurvivesAndIncompleteStatementsAreRejected)
+{
+    auto quoted = parse("INSERT INTO t VALUES ('O''Brien')");
+    ASSERT_TRUE(quoted.ok()) << quoted.status();
+    EXPECT_EQ(quoted->tuples[0][0], Value("O'Brien"));
+    for(const auto& query: {"INSERT INTO t (a)", "SELECT * FROM t extra", "UPDATE t SET a = 1"})
+        EXPECT_FALSE(parse(query).ok()) << query;
+}
+TEST(SqlCodec, QuotesAndBackslashesRoundTrip)
+{
+    std::vector<Value> values = {std::string("say \"hi\" \\ 'x'"), std::string("C:\\path\\n"), std::string("a\nb\t")};
+    auto decoded = decodeRow(encodeRow(values));
+    ASSERT_TRUE(decoded.ok()) << decoded.status();
+    EXPECT_EQ(*decoded, values);
+}
+TEST(SqlCodec, NonObjectRootAndInvalidJsonAreRejected)
+{
+    for(const auto& payload: {"[1,2,3]", "not json"}) EXPECT_FALSE(decodeRow(payload).ok()) << payload;
+}
 TEST(SqlCodec, VersionedTypedRoundTrip)
 {
     std::vector<Value> values =

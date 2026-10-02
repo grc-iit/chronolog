@@ -57,6 +57,7 @@ std::string newInstanceId()
 int main(int argc, char** argv)
 {
     std::optional<std::string> config_path;
+    bool allow_bind_all = false;
     for(int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -64,15 +65,22 @@ int main(int argc, char** argv)
         {
             config_path = argv[++i];
         }
+        else if(arg == "--insecure-bind-all")
+        {
+            allow_bind_all = true;
+        }
         else
         {
-            std::cerr << "usage: chrono_keeper [--config PATH]\n"
+            std::cerr << "usage: chrono_keeper [--config PATH] [--insecure-bind-all]\n"
                       << "environment overrides: CHRONOLOG_KEEPER_<KEY>, for example CHRONOLOG_KEEPER_PROCESS_ID\n";
             return 2;
         }
     }
 
-    auto config = chronolog::keeper::KeeperConfig::load(config_path);
+    auto config = chronolog::keeper::KeeperConfig::load(
+            config_path,
+            [](const char* name) { return std::getenv(name); },
+            allow_bind_all);
     if(!config.ok())
     {
         std::cerr << "chrono_keeper: " << config.status().message() << "\n";

@@ -23,6 +23,7 @@ find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+include(cmake/ForbiddenTransport.cmake)
 find_program(CHRONOLOG_SETARCH setarch)
 
 if(CHRONOLOG_SANITIZERS)
@@ -123,12 +124,15 @@ if(CHRONOLOG_CONTRACT_TEST_SOURCES)
                 "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
         endif()
     endif()
-    gtest_discover_tests(chronolog_contract_tests DISCOVERY_MODE PRE_TEST)
+    gtest_discover_tests(chronolog_contract_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST)
 else()
     message(STATUS "tests/contract has no sources yet, skipping chronolog_contract_tests")
 endif()
 
 add_subdirectory(tools/stub_server)
+add_test(NAME build.no_legacy_transport
+    COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NoLegacyTransportCheck.cmake)
+set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gate")
 # The legacy CMakeLists.txt files under src/chrono-common and src/chrono-keeper are not built; the new
 # components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
@@ -210,4 +214,8 @@ endif()
 
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player)
     add_subdirectory(tests/integration/dynamic)
+    add_test(NAME bind_guard_integration
+        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/bind_guard_test.sh
+        $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher>)
+    set_tests_properties(bind_guard_integration PROPERTIES TIMEOUT 180 LABELS "integration")
 endif()

@@ -10,7 +10,7 @@ target_link_libraries(chronolog_sql_example PRIVATE chronolog::sql chronolog_war
 add_executable(chronolog_sql_tests tests/parser_test.cpp)
 target_link_libraries(chronolog_sql_tests PRIVATE chronolog::sql GTest::gtest_main chronolog_warnings)
 include(GoogleTest)
-gtest_discover_tests(chronolog_sql_tests TEST_PREFIX "sql." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 20)
+gtest_discover_tests(chronolog_sql_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "sql." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 20)
 add_executable(chronolog_sql_acceptance tests/acceptance.cpp)
 target_link_libraries(chronolog_sql_acceptance PRIVATE chronolog::sql GTest::gtest Threads::Threads chronolog_warnings)
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
