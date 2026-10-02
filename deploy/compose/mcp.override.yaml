@@ -9,12 +9,7 @@ services:
       CHRONOLOG_PLAYER: chrono-player:50054
       CHRONOLOG_CHRONICLE: conversations
     ports: ["127.0.0.1:8000:8000"]
-    networks:
-      chronolog:
-        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.207
-    extra_hosts:
-      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
-      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
+    networks: [chronolog]
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

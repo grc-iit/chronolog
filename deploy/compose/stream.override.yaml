@@ -8,9 +8,7 @@ services:
       CHRONOLOG_KEEPER_SELF_ENDPOINT: "127.0.0.1:50052"
   influxdb:
     image: influxdb:2.7.12
-    networks:
-      chronolog:
-        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.206
+    networks: [chronolog]
     ports: ["127.0.0.1:8086:8086"]
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
@@ -29,8 +27,6 @@ services:
   grafana:
     image: grafana/grafana:11.6.0
     networks: [chronolog]
-    extra_hosts:
-      - "influxdb:${CHRONOLOG_NET_PREFIX:-10.231.77}.206"
     ports: ["127.0.0.1:3000:3000"]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]

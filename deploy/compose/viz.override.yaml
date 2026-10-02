@@ -8,12 +8,7 @@ services:
       CHRONOLOG_CATALOG: chrono-visor:50051
       CHRONOLOG_PLAYER: chrono-player:50054
     ports: ["127.0.0.1:8087:8087"]
-    networks:
-      chronolog:
-        ipv4_address: ${CHRONOLOG_NET_PREFIX:-10.231.77}.205
-    extra_hosts:
-      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
-      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
+    networks: [chronolog]
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -33,10 +28,8 @@ services:
       retries: 30
   grafana:
     image: grafana/grafana:11.6.0
-    ports: ["127.0.0.1:3000:3000"]
-    extra_hosts:
-      - "chrono-viz:${CHRONOLOG_NET_PREFIX:-10.231.77}.205"
     networks: [chronolog]
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: chronolog-viz-datasource
       GF_PLUGINS_PREINSTALL_DISABLED: "true"

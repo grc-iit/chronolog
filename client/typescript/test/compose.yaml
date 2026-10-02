@@ -6,9 +6,6 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [chronolog]
-    extra_hosts:
-      - "chrono-visor:${CHRONOLOG_NET_PREFIX:-10.231.77}.201"
-      - "chrono-player:${CHRONOLOG_NET_PREFIX:-10.231.77}.204"
     working_dir: /package
     volumes:
       - ${CHRONOLOG_TYPESCRIPT_PACKAGE}:/package:ro
