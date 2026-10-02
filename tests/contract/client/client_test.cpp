@@ -13,6 +13,8 @@ namespace wire = chronolog::v1;
 namespace sdk = chronolog::client;
 using namespace std::chrono_literals;
 
+constexpr auto kBusyPause = 10ms;
+
 class Server final
     : public wire::Catalog::Service
     , public wire::Journal::Service
@@ -47,13 +49,18 @@ public:
         ++acquisitions;
         p->set_story_id(r->story_id());
         p->set_writer_id(1);
-        p->set_incarnation(1);
+        p->set_incarnation(acquired_incarnation);
         p->mutable_route()->set_epoch(stale ? 1 : 2);
         p->mutable_route()->set_player(endpoint);
         auto* k = p->mutable_route()->add_keepers();
         k->set_process_id("keeper");
         k->set_endpoint(endpoint);
         *p->mutable_assigned_keeper() = *k;
+        if(acquisition_route)
+        {
+            *p->mutable_route() = *acquisition_route;
+            *p->mutable_assigned_keeper() = acquisition_route->keepers(0);
+        }
         return grpc::Status::OK;
     }
     template <class Request, class Response>
@@ -65,7 +72,20 @@ public:
         {
             seen.push_back(item);
             auto* result = p.add_results();
-            if(stale && r.epoch() == 1)
+            if(refusals > 0)
+            {
+                --refusals;
+                result->mutable_status()->set_code(9);
+                result->mutable_status()->set_message("incarnation not yet registered at this keeper");
+                auto* route = result->mutable_current_route();
+                route->set_epoch(refusal_epoch);
+                auto* keeper = route->add_keepers();
+                keeper->set_process_id("keeper");
+                keeper->set_endpoint(endpoint);
+                route->set_player(endpoint);
+                continue;
+            }
+            if(stale && r.epoch() == 1 && item.envelope().payload() != "accepted-before-redirect")
             {
                 result->mutable_status()->set_code(9);
                 auto* route = result->mutable_current_route();
@@ -74,6 +94,8 @@ public:
                 keeper->set_process_id("keeper");
                 keeper->set_endpoint(endpoint);
                 route->set_player(endpoint);
+                if(redirect_route)
+                    *route = *redirect_route;
                 continue;
             }
             result->mutable_id()->set_story_id(r.story_id());
@@ -128,9 +150,36 @@ public:
         for(const auto& p: window) stream->Write(p);
         return grpc::Status::OK;
     }
-    grpc::Status
-    Read(grpc::ServerContext*, const wire::ReadRequest*, grpc::ServerWriter<wire::ReadResponse>* stream) override
+    template <class Response>
+    static Response eventResponse(uint64_t sequence)
     {
+        Response p;
+        auto* e = p.mutable_batch()->add_events();
+        e->mutable_id()->set_story_id(1);
+        e->mutable_id()->set_writer_id(1);
+        e->mutable_id()->set_incarnation(1);
+        e->mutable_id()->set_sequence(sequence);
+        e->mutable_hlc()->set_physical_ns(1000 + static_cast<int64_t>(sequence));
+        return p;
+    }
+    grpc::Status Read(grpc::ServerContext* context,
+                      const wire::ReadRequest*,
+                      grpc::ServerWriter<wire::ReadResponse>* stream) override
+    {
+        if(busy_events)
+        {
+            for(uint64_t sequence = 1; sequence <= busy_events; ++sequence)
+            {
+                if(context->IsCancelled())
+                    return {grpc::StatusCode::CANCELLED, "cancelled"};
+                std::this_thread::sleep_for(kBusyPause);
+                stream->Write(eventResponse<wire::ReadResponse>(sequence));
+            }
+            wire::ReadResponse end;
+            end.mutable_completion()->set_complete(true);
+            stream->Write(end);
+            return grpc::Status::OK;
+        }
         wire::ReadResponse p;
         p.mutable_completion()->set_reason(wire::INCOMPLETE_REASON_TRUNCATED);
         p.mutable_completion()->mutable_frontier()->set_physical_ns(500);
@@ -146,6 +195,22 @@ public:
             std::lock_guard lock(mutex);
             resumes.push_back(r->from());
         }
+        if(refuse_tail)
+            return {grpc::StatusCode::UNAVAILABLE, "refused"};
+        if(busy_events)
+        {
+            for(uint64_t sequence = r->from().id().sequence() + 1; sequence <= busy_events; ++sequence)
+            {
+                if(context->IsCancelled())
+                    return {grpc::StatusCode::CANCELLED, "cancelled"};
+                std::this_thread::sleep_for(kBusyPause);
+                stream->Write(eventResponse<wire::TailResponse>(sequence));
+            }
+            wire::TailResponse end;
+            end.mutable_completion();
+            stream->Write(end);
+            return grpc::Status::OK;
+        }
         if(block_tail)
         {
             while(!context->IsCancelled()) std::this_thread::sleep_for(1ms);
@@ -159,7 +224,7 @@ public:
         e->mutable_id()->set_sequence(static_cast<uint64_t>(call));
         e->mutable_hlc()->set_physical_ns(1000 + call);
         stream->Write(p);
-        if(call == 1)
+        if(call <= flaky_calls)
             return {grpc::StatusCode::UNAVAILABLE, "disconnected"};
         p.Clear();
         p.mutable_completion();
@@ -173,9 +238,177 @@ public:
     std::vector<wire::Position> resumes;
     std::atomic<int> tails{}, acquisitions{};
     std::atomic<bool> lose_response{};
-    bool stale{}, reorder{}, block_tail{};
+    bool stale{}, reorder{}, block_tail{}, refuse_tail{};
+    int flaky_calls{1};
+    int refusals{};
+    uint64_t refusal_epoch{2};
+    uint64_t acquired_incarnation{1};
+    std::optional<wire::Route> redirect_route, acquisition_route;
+    uint64_t busy_events{};
 };
 
+TEST(ClientContract, ClientRetriesAnAppendRefusedBeforeTheKeeperLearnsTheAcquisition)
+{
+    for(bool streaming: {false, true})
+    {
+        Server server;
+        server.refusals = 2;
+        auto client = sdk::Client::Connect(server.options());
+        ASSERT_TRUE(client.ok()) << client.status();
+        auto writer = client->acquire(1, "writer");
+        ASSERT_TRUE(writer.ok()) << writer.status();
+        sdk::AppendSpec spec{{"", "payload", "", "", {}}};
+        auto result = streaming ? writer->appendBatch(std::span(&spec, 1)) : [&]() -> absl::StatusOr<sdk::BatchResult>
+        {
+            auto one = writer->append(spec);
+            if(!one.ok())
+                return one.status();
+            return sdk::BatchResult{*one};
+        }();
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->size(), 1u);
+        ASSERT_TRUE(result->front().ok()) << result->front().status();
+        EXPECT_TRUE(result->front()->acked());
+        EXPECT_EQ(result->front()->event_id.writer_id, writer->acquisition().writer_id);
+        EXPECT_EQ(result->front()->event_id.incarnation, writer->acquisition().incarnation);
+        EXPECT_EQ(result->front()->event_id.sequence, 1u);
+        ASSERT_EQ(server.seen.size(), 3u);
+        for(const auto& item: server.seen) EXPECT_EQ(item.SerializeAsString(), server.seen.front().SerializeAsString());
+    }
+}
+TEST(ClientContract, ClientEndsAPersistentSameEpochRefusalFailedPrecondition)
+{
+    Server server;
+    server.refusals = 100;
+    auto options = server.options();
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto writer = client->acquire(1, "writer");
+    ASSERT_TRUE(writer.ok()) << writer.status();
+    auto result = writer->append({{"", "payload", "", "", {}}});
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kFailedPrecondition) << result.status();
+    EXPECT_EQ(result.status().message(), "incarnation not yet registered at this keeper");
+    ASSERT_EQ(server.seen.size(), options.retry.max_retries + 1);
+    for(const auto& item: server.seen) EXPECT_EQ(item.SerializeAsString(), server.seen.front().SerializeAsString());
+}
+TEST(ClientContract, ClientRetriesAnAppendWhileTheKeeperEpochLags)
+{
+    Server server;
+    server.refusals = 2;
+    server.refusal_epoch = 1;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto writer = client->acquire(1, "writer");
+    ASSERT_TRUE(writer.ok()) << writer.status();
+    auto result = writer->append({{"", "payload", "", "", {}}});
+    ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_TRUE(result->acked());
+    EXPECT_EQ(writer->acquisition().route.epoch, 2u);
+    ASSERT_EQ(server.seen.size(), 3u);
+    for(const auto& item: server.seen) EXPECT_EQ(item.SerializeAsString(), server.seen.front().SerializeAsString());
+}
+TEST(ClientContract, ClientKeepsItsSurvivingKeeperAfterAnEpochChange)
+{
+    Server server, joined;
+    server.stale = true;
+    wire::Route route;
+    route.set_epoch(2);
+    route.set_player(server.endpoint);
+    auto* survivor = route.add_keepers();
+    survivor->set_process_id("keeper");
+    survivor->set_endpoint(server.endpoint);
+    auto* newcomer = route.add_keepers();
+    newcomer->set_process_id("joined");
+    newcomer->set_endpoint(joined.endpoint);
+    server.redirect_route = route;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto writer = client->acquire(1, "writer");
+    ASSERT_TRUE(writer.ok()) << writer.status();
+    auto result = writer->append({{"", "payload", "", "", {}}});
+    ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_TRUE(result->acked());
+    EXPECT_EQ(writer->acquisition().assigned_keeper.process_id, "keeper");
+    EXPECT_EQ(writer->acquisition().route.epoch, 2u);
+    ASSERT_EQ(server.seen.size(), 2u);
+    EXPECT_EQ(server.seen[0].SerializeAsString(), server.seen[1].SerializeAsString());
+    EXPECT_TRUE(joined.seen.empty());
+    EXPECT_EQ(server.acquisitions.load(), 1);
+}
+TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquires)
+{
+    for(auto durability: {chronolog::Durability::Durable, chronolog::Durability::Accepted})
+    {
+        Server server, replacement;
+        server.stale = true;
+        wire::Route route;
+        route.set_epoch(2);
+        route.set_player(server.endpoint);
+        auto* keeper = route.add_keepers();
+        keeper->set_process_id("replacement");
+        keeper->set_endpoint(replacement.endpoint);
+        server.redirect_route = route;
+        auto client = sdk::Client::Connect(server.options());
+        ASSERT_TRUE(client.ok()) << client.status();
+        auto writer = client->acquire(1, "writer");
+        ASSERT_TRUE(writer.ok()) << writer.status();
+        sdk::AppendSpec spec{{"", "payload", "", "", {}}, durability};
+        auto result = writer->append(spec);
+        EXPECT_EQ(result.status().code(), absl::StatusCode::kUnknown) << result.status();
+        EXPECT_EQ(result.status().message(), "append outcome unknown; writer keeper removed; re-acquire");
+        EXPECT_TRUE(replacement.seen.empty());
+        auto again = writer->append(spec);
+        EXPECT_EQ(again.status().code(), absl::StatusCode::kFailedPrecondition) << again.status();
+        EXPECT_NE(again.status().message().find("re-acquire"), std::string::npos);
+        ASSERT_EQ(server.seen.size(), 1u);
+        EXPECT_EQ(server.acquisitions.load(), 1);
+        server.acquisition_route = route;
+        server.acquired_incarnation = 2;
+        auto fresh = client->acquire(1, "writer");
+        ASSERT_TRUE(fresh.ok()) << fresh.status();
+        auto appended = fresh->append(spec);
+        ASSERT_TRUE(appended.ok()) << appended.status();
+        EXPECT_EQ(appended->acked(), durability == chronolog::Durability::Durable);
+        EXPECT_EQ(appended->event_id.incarnation, 2u);
+        EXPECT_EQ(appended->event_id.sequence, 1u);
+        ASSERT_EQ(replacement.seen.size(), 1u);
+    }
+}
+TEST(ClientContract, ClientBatchKeepsReceiptsAndMarksUnresolvedItemsAfterKeeperRemoval)
+{
+    Server server, replacement;
+    server.stale = true;
+    wire::Route route;
+    route.set_epoch(2);
+    route.set_player(server.endpoint);
+    auto* keeper = route.add_keepers();
+    keeper->set_process_id("replacement");
+    keeper->set_endpoint(replacement.endpoint);
+    server.redirect_route = route;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto writer = client->acquire(1, "writer");
+    ASSERT_TRUE(writer.ok()) << writer.status();
+    std::vector<sdk::AppendSpec> specs{{{"", "accepted-before-redirect", "", "", {}}},
+                                       {{"", "uncertain-one", "", "", {}}},
+                                       {{"", "uncertain-two", "", "", {}}},
+                                       {{"", "accepted-only", "", "", {}}, chronolog::Durability::Accepted}};
+    auto result = writer->appendBatch(specs);
+    ASSERT_TRUE(result.ok()) << result.status();
+    ASSERT_EQ(result->size(), 4u);
+    ASSERT_TRUE((*result)[0].ok()) << (*result)[0].status();
+    EXPECT_TRUE((*result)[0]->acked());
+    for(size_t i: {1u, 2u, 3u})
+    {
+        EXPECT_EQ((*result)[i].status().code(), absl::StatusCode::kUnknown);
+        EXPECT_EQ((*result)[i].status().message(), "append outcome unknown; writer keeper removed; re-acquire");
+    }
+    EXPECT_TRUE(replacement.seen.empty());
+    EXPECT_EQ(server.seen.size(), specs.size());
+    auto again = writer->appendBatch(specs);
+    EXPECT_EQ(again.status().code(), absl::StatusCode::kFailedPrecondition) << again.status();
+    EXPECT_EQ(server.seen.size(), specs.size());
+}
 TEST(ClientContract, ClientRetriesOnStaleEpochWithSameEventIds)
 {
     Server server;
@@ -313,6 +546,118 @@ TEST(ClientContract, TruncatedReadExposesContinuationWithoutAcquiring)
     ASSERT_TRUE((**item).continuation);
     EXPECT_EQ((**item).continuation->physical_ns, 500);
     EXPECT_EQ(server.acquisitions.load(), 0);
+}
+TEST(ClientContract, ClientTailSurvivesLongerThanRpcTimeout)
+{
+    constexpr uint64_t events = 250;
+    constexpr auto rpc_timeout = 400ms;
+    static_assert(events * kBusyPause > 4 * rpc_timeout);
+    Server server;
+    server.busy_events = events;
+    auto options = server.options();
+    options.rpc_timeout = rpc_timeout;
+    options.retry.max_retries = 3;
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto tail = client->tail(1);
+    ASSERT_TRUE(tail.ok());
+    std::vector<uint64_t> sequences;
+    for(bool completed = false; !completed;)
+    {
+        auto item = tail->next();
+        ASSERT_TRUE(item.ok()) << "after " << sequences.size() << " events: " << item.status();
+        ASSERT_TRUE(*item);
+        for(const auto& event: (**item).events) sequences.push_back(event.id.sequence);
+        completed = (**item).completion.has_value();
+    }
+    ASSERT_EQ(sequences.size(), events);
+    for(size_t i = 0; i < sequences.size(); ++i) EXPECT_EQ(sequences[i], i + 1);
+    EXPECT_EQ(server.tails.load(), 1);
+}
+TEST(ClientContract, ClientReadSurvivesLongerThanRpcTimeout)
+{
+    constexpr uint64_t events = 250;
+    constexpr auto rpc_timeout = 400ms;
+    static_assert(events * kBusyPause > 4 * rpc_timeout);
+    Server server;
+    server.busy_events = events;
+    auto options = server.options();
+    options.rpc_timeout = rpc_timeout;
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto read = client->read(1, {{0, 0}, {1000000, 0}});
+    ASSERT_TRUE(read.ok());
+    std::vector<uint64_t> sequences;
+    for(bool completed = false; !completed;)
+    {
+        auto item = read->next();
+        ASSERT_TRUE(item.ok()) << "after " << sequences.size() << " events: " << item.status();
+        ASSERT_TRUE(*item);
+        for(const auto& event: (**item).events) sequences.push_back(event.id.sequence);
+        completed = (**item).completion.has_value();
+    }
+    ASSERT_EQ(sequences.size(), events);
+    for(size_t i = 0; i < sequences.size(); ++i) EXPECT_EQ(sequences[i], i + 1);
+}
+TEST(ClientContract, ClientTailRetryCounterResetsOnDelivery)
+{
+    Server server;
+    server.flaky_calls = 6;
+    auto options = server.options();
+    options.retry.max_retries = 3;
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok());
+    auto tail = client->tail(1);
+    ASSERT_TRUE(tail.ok());
+    for(uint64_t expected = 1; expected <= 7; ++expected)
+    {
+        auto item = tail->next();
+        ASSERT_TRUE(item.ok()) << "event " << expected << ": " << item.status();
+        ASSERT_TRUE(*item);
+        ASSERT_EQ((**item).events.size(), 1u);
+        EXPECT_EQ((**item).events[0].id.sequence, expected);
+    }
+    auto completion = tail->next();
+    ASSERT_TRUE(completion.ok()) << completion.status();
+    ASSERT_TRUE(*completion);
+    EXPECT_TRUE((**completion).completion.has_value());
+    EXPECT_EQ(server.tails.load(), 7);
+    ASSERT_EQ(server.resumes.size(), 7u);
+    for(size_t i = 1; i < server.resumes.size(); ++i) EXPECT_EQ(server.resumes[i].id().sequence(), i);
+}
+TEST(ClientContract, ClientTailGivesUpAfterMaxConsecutiveFailures)
+{
+    Server server;
+    server.refuse_tail = true;
+    auto options = server.options();
+    options.retry.max_retries = 3;
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok());
+    auto tail = client->tail(1);
+    ASSERT_TRUE(tail.ok());
+    auto item = tail->next();
+    EXPECT_EQ(item.status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(server.tails.load(), 4);
+}
+TEST(ClientContract, CancelDuringTailBackoffReturnsCancelled)
+{
+    Server server;
+    server.refuse_tail = true;
+    auto options = server.options();
+    options.rpc_timeout = 30s;
+    options.retry.backoff = 15s;
+    auto client = sdk::Client::Connect(options);
+    ASSERT_TRUE(client.ok());
+    auto tail = client->tail(1);
+    ASSERT_TRUE(tail.ok());
+    auto pulling = std::async(std::launch::async, [&] { return tail->next(); });
+    for(int i = 0; i < 5000 && !server.tails.load(); ++i) std::this_thread::sleep_for(1ms);
+    ASSERT_EQ(server.tails.load(), 1);
+    std::this_thread::sleep_for(100ms);
+    tail->cancel();
+    ASSERT_EQ(pulling.wait_for(5s), std::future_status::ready);
+    EXPECT_EQ(pulling.get().status().code(), absl::StatusCode::kCancelled);
+    EXPECT_EQ(server.tails.load(), 1);
 }
 } // namespace
 

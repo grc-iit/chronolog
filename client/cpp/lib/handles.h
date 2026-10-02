@@ -16,6 +16,7 @@ struct Writer::Impl
     Acquisition acquired;
     uint64_t sequence{1};
     uint64_t batch_id{};
+    bool requires_reacquisition{};
     struct Pending
     {
         std::vector<AppendSpec> specs;
@@ -42,20 +43,34 @@ struct ReplayState
     Deadline overall;
     std::timed_mutex pull_mutex;
     std::mutex cancel_mutex;
+    std::condition_variable cancel_cv;
     std::shared_ptr<grpc::ClientContext> context;
     std::atomic<bool> cancelled{};
     bool done{};
     void cancel()
     {
-        cancelled = true;
-        std::lock_guard lock(cancel_mutex);
-        if(context)
-            context->TryCancel();
+        {
+            std::lock_guard lock(cancel_mutex);
+            cancelled = true;
+            if(context)
+                context->TryCancel();
+        }
+        cancel_cv.notify_all();
     }
-    std::shared_ptr<grpc::ClientContext> newContext(TimePoint end)
+    // Waits until `until`; false when cancel() interrupted the wait.
+    bool backoff(TimePoint until)
+    {
+        std::unique_lock lock(cancel_mutex);
+        return !cancel_cv.wait_until(lock, until, [&] { return cancelled.load(); });
+    }
+    // A stream RPC carries only the caller's overall deadline. Each next() is bounded by PullDeadline.
+    std::shared_ptr<grpc::ClientContext> newContext(std::optional<TimePoint> end = {})
     {
         auto result = std::make_shared<grpc::ClientContext>();
-        result->set_deadline(overall ? std::min(*overall, end) : end);
+        if(overall)
+            end = end ? std::min(*overall, *end) : *overall;
+        if(end)
+            result->set_deadline(*end);
         std::lock_guard lock(cancel_mutex);
         context = result;
         if(cancelled)
@@ -99,7 +114,7 @@ struct TailStream::Impl: detail::ReplayState
     {}
     std::optional<Position> position;
     std::unique_ptr<grpc::ClientReader<v1::TailResponse>> stream;
-    size_t retries{};
+    size_t retries{}; // consecutive failures since the last delivered event
     absl::StatusOr<std::optional<StreamItem>> next(Deadline);
 };
 } // namespace chronolog::client
