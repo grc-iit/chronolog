@@ -3,6 +3,10 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <thread>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 namespace chronolog
@@ -377,6 +381,302 @@ TEST(FileTierStore, InvalidInputsAndUnknownStoriesAreRejected)
     EXPECT_EQ((*store)->read(1, {static_cast<Range::Axis>(99), {100, 0}, {200, 0}}).status().code(),
               absl::StatusCode::kInvalidArgument);
 }
+TEST(ManifestLog, EveryRecordStateRoundTripsAsOneJsonLineInAppendOrder)
+{
+    auto directory = TestDirectory();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    std::vector<ManifestRecord> written;
+    int64_t start = 100;
+    for(auto state: {ManifestState::Published,
+                     ManifestState::Empty,
+                     ManifestState::Deleted,
+                     ManifestState::Failed,
+                     ManifestState::Lost})
+    {
+        auto record = Record(start, start + 100, state);
+        record.exempt = state == ManifestState::Failed;
+        record.physical_policy = state == ManifestState::Lost;
+        ASSERT_TRUE((*log)->append(record).ok());
+        written.push_back(record);
+        start += 100;
+    }
+    std::ifstream input((*log)->logPath());
+    std::string line;
+    size_t lines = 0;
+    while(std::getline(input, line))
+    {
+        ++lines;
+        EXPECT_FALSE(line.empty());
+    }
+    EXPECT_EQ(lines, written.size());
+    auto index = (*log)->load();
+    ASSERT_TRUE(index.ok());
+    ASSERT_EQ(index->records.size(), written.size());
+    for(size_t i = 0; i < written.size(); ++i)
+    {
+        const auto& actual = index->records[i];
+        EXPECT_EQ(actual.chunk_id, written[i].chunk_id);
+        EXPECT_EQ(actual.manifest_writer, "primary");
+        EXPECT_EQ(actual.file, written[i].file);
+        EXPECT_EQ(actual.story_id, written[i].story_id);
+        EXPECT_EQ(actual.start, written[i].start);
+        EXPECT_EQ(actual.end, written[i].end);
+        EXPECT_EQ(actual.event_count, written[i].event_count);
+        EXPECT_EQ(actual.state, written[i].state);
+        EXPECT_EQ(actual.exempt, written[i].exempt);
+        EXPECT_EQ(actual.physical_policy, written[i].physical_policy);
+    }
+}
+
+TEST(ManifestLog, AMalformedCompleteLineFailsTheWholeLoad)
+{
+    for(const char* bad:
+        {"not json",
+         R"({"story":1})",
+         R"({"chunk":"x","writer":"primary","file":"1/x.pb","story":1,"start":[5,0],"end":[5,0],"count":1,"state":0,"exempt":false})",
+         R"({"chunk":"x","writer":"primary","file":"1/x.pb","story":1,"start":[5,0],"end":[9,0],"count":1,"state":9,"exempt":false})"})
+    {
+        auto directory = TestDirectory();
+        auto log = ManifestLog::Open(*directory, "primary");
+        ASSERT_TRUE(log.ok());
+        ASSERT_TRUE((*log)->append(Record(100, 200)).ok());
+        {
+            std::ofstream out((*log)->logPath(), std::ios::app);
+            out << bad << '\n';
+        }
+        EXPECT_FALSE((*log)->load().ok()) << bad;
+    }
+}
+
+TEST(ManifestLog, AnAbsentManifestLoadsAsEmpty)
+{
+    auto directory = TestDirectory();
+    auto log = ManifestLog::OpenReadOnly(*directory / "never-created");
+    auto index = log->load();
+    ASSERT_TRUE(index.ok()) << index.status();
+    EXPECT_TRUE(index->records.empty());
+    EXPECT_TRUE(index->watermarks.empty());
+    EXPECT_TRUE(FileTierStore::OpenReadOnly(*directory / "never-created").ok());
+}
+
+TEST(ManifestLog, CompactionKeepsEveryRecordAndLaterAppendsLoadOnTopOfIt)
+{
+    auto directory = TestDirectory();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    auto chunks = [&]
+    {
+        std::set<std::string> ids;
+        auto index = (*log)->load();
+        EXPECT_TRUE(index.ok());
+        if(index.ok())
+            for(const auto& record: index->records) ids.insert(record.chunk_id);
+        return ids;
+    };
+    for(int64_t start: {100, 200, 300}) ASSERT_TRUE((*log)->append(Record(start, start + 100)).ok());
+    ASSERT_TRUE((*log)->compact().ok());
+    EXPECT_EQ(fs::file_size((*log)->logPath()), 0u);
+    EXPECT_GT(fs::file_size((*log)->snapshotPath()), 0u);
+    EXPECT_EQ(chunks(), (std::set<std::string>{"100", "200", "300"}));
+    for(int64_t start: {400, 500}) ASSERT_TRUE((*log)->append(Record(start, start + 100)).ok());
+    EXPECT_EQ(chunks(), (std::set<std::string>{"100", "200", "300", "400", "500"}));
+    ASSERT_TRUE((*log)->compact().ok());
+    EXPECT_EQ(chunks().size(), 5u);
+}
+
+TEST(ManifestLog, ConcurrentAppendsAllSurvive)
+{
+    auto directory = TestDirectory();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    std::vector<std::thread> threads;
+    std::atomic<int> failures{0};
+    for(int64_t thread = 0; thread < 4; ++thread)
+        threads.emplace_back(
+                [&, thread]
+                {
+                    for(int64_t i = 0; i < 40; ++i)
+                        if(!(*log)->append(Record(1000 * (thread + 1) + 10 * i, 1000 * (thread + 1) + 10 * i + 5)).ok())
+                            ++failures;
+                });
+    for(auto& thread: threads) thread.join();
+    EXPECT_EQ(failures.load(), 0);
+    auto index = (*log)->load();
+    ASSERT_TRUE(index.ok());
+    std::set<std::string> ids;
+    for(const auto& record: index->records) ids.insert(record.chunk_id);
+    EXPECT_EQ(index->records.size(), 160u);
+    EXPECT_EQ(ids.size(), 160u);
+}
+
+TEST(FileTierStore, WatermarksAreIndependentPerStory)
+{
+    auto directory = TestDirectory();
+    auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}, {2, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    auto window = [](StoryId story, int64_t start, int64_t end)
+    {
+        auto chunk = contract::Window(start, end);
+        chunk.story_id = story;
+        chunk.events[0].id.story_id = story;
+        return chunk;
+    };
+    ASSERT_TRUE((*store)->publish(window(1, 100, 200)).ok());
+    ASSERT_TRUE((*store)->publish(window(1, 200, 300)).ok());
+    ASSERT_TRUE((*store)->publish(window(2, 100, 200)).ok());
+    ASSERT_TRUE((*store)->publish(window(2, 300, 400)).ok());
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
+    EXPECT_EQ((*store)->contiguousWatermark(2).value(), (Hlc{200, 0}));
+}
+
+TEST(FileTierStore, AStoryIdAboveInt64MaxSurvivesTheManifestAndARestart)
+{
+    constexpr StoryId big = 0xfedcba9876543210ULL;
+    auto directory = TestDirectory();
+    auto store = FileTierStore::Open(*directory, "primary", {{big, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    auto chunk = contract::Window();
+    chunk.story_id = big;
+    chunk.events[0].id.story_id = big;
+    ASSERT_TRUE((*store)->publish(chunk).ok());
+    store->reset();
+    store = FileTierStore::Open(*directory, "primary", {{big, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    EXPECT_EQ((*store)->contiguousWatermark(big).value(), (Hlc{200, 0}));
+    auto events = (*store)->read(big, contract::WholeArchive());
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().id.story_id, big);
+    auto manifest = (*store)->manifest(big);
+    ASSERT_TRUE(manifest.ok());
+    ASSERT_EQ(manifest->size(), 1u);
+    EXPECT_EQ(manifest->front().story_id, big);
+}
+
+TEST(FileTierStore, DeletingOneWritersFileLeavesTheOtherWritersCopyOfTheWindow)
+{
+    auto directory = TestDirectory();
+    auto first = Open(*directory);
+    auto second = Open(*directory, "secondary");
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(second.ok());
+    auto mine = (*first)->publish(contract::Window());
+    auto theirs = (*second)->publish(contract::Window());
+    ASSERT_TRUE(mine.ok());
+    ASSERT_TRUE(theirs.ok());
+    ASSERT_NE(mine->file, theirs->file);
+    ASSERT_TRUE((*first)->eraseFile(mine->file).ok());
+    EXPECT_FALSE(fs::exists(*directory / mine->file));
+    EXPECT_TRUE(fs::exists(*directory / theirs->file));
+    EXPECT_EQ((*first)->read(1, contract::WholeArchive())->size(), 1u);
+    EXPECT_EQ((*first)->contiguousWatermark(1).value(), (Hlc{200, 0}));
+}
+
+TEST(FileTierStore, APublishLeavesOnlyItsWindowFileAndAFailedOneLeavesNothing)
+{
+    auto directory = TestDirectory();
+    auto codec = std::make_shared<FailingCodec>(std::make_shared<ProtoChunkCodec>());
+    auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+    ASSERT_TRUE(store.ok());
+    auto files = [&]
+    {
+        std::vector<std::string> names;
+        for(const auto& entry: fs::recursive_directory_iterator(*directory / "1"))
+            if(entry.is_regular_file())
+                names.push_back(entry.path().filename().string());
+        return names;
+    };
+    codec->fail = true;
+    EXPECT_FALSE((*store)->publish(contract::Window()).ok());
+    EXPECT_TRUE(!fs::exists(*directory / "1") || files().empty());
+    auto record = (*store)->publish(contract::Window());
+    ASSERT_TRUE(record.ok());
+    const auto names = files();
+    ASSERT_EQ(names.size(), 1u);
+    EXPECT_EQ(names.front(), fs::path(record->file).filename().string());
+}
+
+TEST(FileTierStore, ConcurrentPublishesOfTheSameWindowsFromTwoWritersEachKeepTheirOwnFile)
+{
+    auto directory = TestDirectory();
+    auto first = Open(*directory);
+    auto second = Open(*directory, "secondary");
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(second.ok());
+    std::atomic<int> failures{0};
+    auto publish = [&](FileTierStore& store)
+    {
+        for(int64_t i = 0; i < 8; ++i)
+            if(!store.publish(contract::Window(100 + 100 * i, 200 + 100 * i)).ok())
+                ++failures;
+    };
+    std::thread a([&] { publish(**first); });
+    std::thread b([&] { publish(**second); });
+    a.join();
+    b.join();
+    EXPECT_EQ(failures.load(), 0);
+    size_t files = 0;
+    for(const auto& entry: fs::recursive_directory_iterator(*directory / "1"))
+        if(entry.is_regular_file())
+            ++files;
+    EXPECT_EQ(files, 16u);
+    EXPECT_EQ((*first)->manifest(1)->size(), 16u);
+    EXPECT_EQ((*first)->read(1, contract::WholeArchive())->size(), 8u);
+    EXPECT_EQ((*first)->contiguousWatermark(1).value(), (Hlc{900, 0}));
+}
+
+TEST(FileTierStore, EventsOutsideTheWindowAreRejectedAndPublishedEventsComeBackSorted)
+{
+    auto directory = TestDirectory();
+    auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    auto rejected = [&](auto mutate)
+    {
+        auto chunk = contract::Window();
+        mutate(chunk);
+        return (*store)->publish(chunk).status().code() == absl::StatusCode::kInvalidArgument;
+    };
+    EXPECT_TRUE(rejected([](Chunk& chunk) { chunk.events[0].hlc = {99, 0}; }));
+    EXPECT_TRUE(rejected([](Chunk& chunk) { chunk.events[0].id.story_id = 2; }));
+    EXPECT_TRUE(rejected([](Chunk& chunk) { chunk.events[0].id.sequence = 0; }));
+    EXPECT_TRUE(rejected([](Chunk& chunk) { chunk.events[0].envelope.payload.assign((1u << 20) + 1, 'x'); }));
+    auto large = contract::Window();
+    large.events[0].envelope.payload.assign(1u << 20, 'x');
+    ASSERT_TRUE((*store)->publish(large).ok());
+    auto unsorted = contract::Window(200, 300);
+    unsorted.events.clear();
+    for(int64_t at: {250, 210, 230})
+    {
+        Event event;
+        event.id = {1, 2, 3, static_cast<uint64_t>(at)};
+        event.hlc = {at, 0};
+        unsorted.events.push_back(event);
+    }
+    ASSERT_TRUE((*store)->publish(unsorted).ok());
+    auto events = (*store)->read(1, {Range::Axis::Hlc, {200, 0}, {300, 0}});
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 3u);
+    EXPECT_EQ(events->at(0).hlc, (Hlc{210, 0}));
+    EXPECT_EQ(events->at(1).hlc, (Hlc{230, 0}));
+    EXPECT_EQ(events->at(2).hlc, (Hlc{250, 0}));
+}
+
+TEST(HDF5ChunkCodec, ArchiveFilesAreReadableWhileAnotherHandleHoldsAnExclusiveLock)
+{
+    auto directory = TestDirectory();
+    HDF5ChunkCodec codec;
+    const auto path = *directory / "locked.h5";
+    ASSERT_TRUE(codec.writeChunk(path, contract::Window()).ok());
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    ASSERT_GE(fd, 0);
+    ASSERT_EQ(::flock(fd, LOCK_EX | LOCK_NB), 0);
+    auto read = codec.read(path);
+    ::close(fd);
+    ASSERT_TRUE(read.ok()) << read.status();
+    EXPECT_EQ(read->size(), 1u);
+}
+
 TEST(HDF5ChunkCodec, LosslessEveryEventField)
 {
     auto directory = TestDirectory();
