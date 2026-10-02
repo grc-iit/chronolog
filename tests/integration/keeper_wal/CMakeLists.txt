@@ -5,3 +5,8 @@ add_test(NAME keeper.wal_restart
     $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher> $<TARGET_FILE:chrono_player>
     $<TARGET_FILE:keeper_wal_driver>)
 set_tests_properties(keeper.wal_restart PROPERTIES TIMEOUT 240 LABELS integration)
+add_test(NAME grapher.manifest_restart
+    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/tests/integration/manifest_restart_test.sh"
+    $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher> $<TARGET_FILE:chrono_player>
+    $<TARGET_FILE:keeper_wal_driver>)
+set_tests_properties(grapher.manifest_restart PROPERTIES TIMEOUT 240 LABELS integration)
