@@ -1,5 +1,6 @@
 #include "wal/Record.h"
 
+#include <charconv>
 #include <limits>
 #include <stdexcept>
 
@@ -99,6 +100,17 @@ Hlc decodeReserve(std::string_view payload)
     if(!proto.ParseFromArray(payload.data(), static_cast<int>(payload.size())) || proto.physical_ns() < 0)
         throw std::runtime_error("invalid WAL reservation");
     return {proto.physical_ns(), proto.logical()};
+}
+
+std::string drop(StoryId story) { return "D" + std::to_string(story); }
+
+StoryId decodeDrop(std::string_view payload)
+{
+    StoryId story{};
+    const auto parsed = std::from_chars(payload.data(), payload.data() + payload.size(), story);
+    if(parsed.ec != std::errc{} || parsed.ptr != payload.data() + payload.size() || story == 0)
+        throw std::runtime_error("invalid WAL story drop");
+    return story;
 }
 
 } // namespace chronolog::wal

@@ -57,6 +57,8 @@ struct JournalHarness
     std::function<bool()> retiredDrained;
     // Observe the recovered eviction floor.
     std::function<Hlc()> evictionFloor;
+    // Apply the Visor tombstone of story 1, as the route stream or the Catalog reconciliation delivers it.
+    std::function<void()> tombstone;
 };
 AppendItem Item(uint64_t sequence = 1)
 {
@@ -743,6 +745,86 @@ TEST_P(JournalContract, DroppedStoryReportFreesRetainedChunks)
     ASSERT_TRUE(chunks.ok());
     EXPECT_TRUE(chunks->empty());
     EXPECT_EQ(h->evictionFloor(), second->end);
+}
+TEST_P(JournalContract, TombstonedStoryRefusesAppend)
+{
+    auto before = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(before.ok());
+    ASSERT_TRUE(before->front().status.ok());
+    h->tombstone();
+    auto after = h->sut->append(Batch({Item(2)}), Durability::Accepted);
+    ASSERT_TRUE(after.ok());
+    EXPECT_EQ(after->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    // An idempotent retry of an acknowledged append is refused too, and FetchHot reads fail whole-request.
+    auto retry = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(h->snapshot().status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(eventCount(), 0u);
+}
+TEST_P(JournalContract, TombstoneFreesRetainedChunks)
+{
+    if(!h->sealArchive)
+        GTEST_SKIP() << "RAM Journal has no archive retention";
+    auto first = archiveChunk();
+    ASSERT_TRUE(first.ok());
+    auto second = archiveChunk(2);
+    ASSERT_TRUE(second.ok());
+    h->tombstone();
+    EXPECT_EQ(eventCount(), 0u);
+    auto chunks = h->sealArchive();
+    ASSERT_TRUE(chunks.ok());
+    EXPECT_TRUE(chunks->empty());
+    EXPECT_EQ(h->evictionFloor(), second->end);
+}
+TEST_P(JournalContract, WalTruncatesDroppedStoryRecords)
+{
+    if(!h->walSegments || !h->sealArchive)
+        GTEST_SKIP() << "RAM Journal has no WAL segments";
+    // No chunk is delivered, so only the story-drop record can settle these records.
+    auto chunk = archiveChunk();
+    ASSERT_TRUE(chunk.ok());
+    h->setPhysical(1'100'000'000);
+    auto second = h->sut->append(Batch({Item(2)}), Durability::Durable);
+    ASSERT_TRUE(second.ok());
+    ASSERT_EQ(second->front().status.code(), absl::StatusCode::kOk);
+    auto before = h->walSegments();
+    ASSERT_GT(before.size(), 1u);
+    h->tombstone();
+    auto after = h->walSegments();
+    size_t removed = 0;
+    for(const auto& segment: before) removed += !after.contains(segment);
+    EXPECT_GT(removed, 0u);
+    h->crashRestart();
+    EXPECT_EQ(eventCount(), 0u);
+}
+TEST_P(JournalContract, DroppedStorySurvivesRestart)
+{
+    if(!h->walSegments || !h->sealArchive)
+        GTEST_SKIP() << "RAM Journal keeps nothing across a restart";
+    // Tombstone first, then report first: the report alone frees but writes no D record, and the tombstone that
+    // follows it does. Either order leaves the story refused and empty after a crash.
+    for(const bool report_first: {false, true})
+    {
+        h = GetParam()();
+        ASSERT_NE(h, nullptr);
+        ASSERT_TRUE(archiveChunk().ok());
+        if(report_first)
+        {
+            h->reportArchive({1, {}, "g1", 0, {}, true});
+            EXPECT_EQ(eventCount(), 0u);
+            auto during = h->sut->append(Batch({Item(8)}), Durability::Accepted);
+            ASSERT_TRUE(during.ok());
+            EXPECT_EQ(during->front().status.code(), absl::StatusCode::kFailedPrecondition);
+        }
+        h->tombstone();
+        h->crashRestart();
+        auto after = h->sut->append(Batch({Item(9)}), Durability::Accepted);
+        ASSERT_TRUE(after.ok());
+        EXPECT_EQ(after->front().status.code(), absl::StatusCode::kFailedPrecondition)
+                << "report_first=" << report_first;
+        EXPECT_EQ(eventCount(), 0u);
+    }
 }
 TEST_P(JournalContract, ReceiptFromAnotherGrapherInstanceIsNotSettled)
 {

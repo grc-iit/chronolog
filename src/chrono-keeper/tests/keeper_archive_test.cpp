@@ -496,7 +496,8 @@ TEST(KeeperTransfer, RealGrapherPersistsSplitChunksAndConfirmsTheirReceipts)
     server->Shutdown(std::chrono::system_clock::now() + 2s);
 }
 
-TEST(KeeperTransfer, RealGrapherNotFoundDropsEveryRetainedChunk)
+// I12.3: a refusal is a send failure. Only a tombstone or a dropped=true report frees a story's chunks.
+TEST(KeeperTransfer, RealGrapherNotFoundIsASendFailureNotADropSignal)
 {
     auto directory = std::make_shared<WalControl>();
     auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
@@ -518,10 +519,10 @@ TEST(KeeperTransfer, RealGrapherNotFoundDropsEveryRetainedChunk)
     ASSERT_TRUE(rig.archive->seal().ok());
     ASSERT_EQ(rig.archive->chunks().size(), 2u);
     ASSERT_TRUE(rig.archive->shipOne());
-    EXPECT_TRUE(rig.archive->chunks().empty());
-    EXPECT_EQ(rig.events(), 0u);
-    EXPECT_EQ(rig.wal.current->evictionFloor(1), (Hlc{2'000'000'000, 0}));
-    for(const auto& seal: rig.wal.current->sealedChunks()) EXPECT_TRUE(seal.settled);
+    EXPECT_EQ(rig.archive->chunks().size(), 2u);
+    EXPECT_EQ(rig.events(), 2u);
+    EXPECT_FALSE(rig.wal.current->dropped(1));
+    for(const auto& seal: rig.wal.current->sealedChunks()) EXPECT_FALSE(seal.settled);
     service.shutdown();
     server->Shutdown(std::chrono::system_clock::now() + 2s);
 }
@@ -1048,18 +1049,26 @@ TEST(KeeperRetention, DropReportLeavesOtherStoriesAlone)
     EXPECT_EQ(rig.events(2).size(), 1u);
 }
 
-TEST(KeeperRetention, ChunkSealedAfterADropIsNotRetained)
+TEST(KeeperRetention, NoChunkIsSealedForADroppedStory)
 {
     TwoStoryRig rig;
     rig.append(1, 1, 100'000'000);
     rig.archive->applyReport({1, {}, "g1", 0, {}, true});
-    rig.append(1, 2, 1'100'000'000);
+    // Append is refused after the drop, so nothing of story 1 can reach a later seal.
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 2;
+    auto refused = rig.journal->append({1, 7, {item}}, Durability::Durable);
+    ASSERT_TRUE(refused.ok());
+    EXPECT_EQ(refused->front().status.code(), absl::StatusCode::kFailedPrecondition);
     rig.append(2, 1, 1'100'000'000);
     rig.clock->setPhysical(2'000'000'000);
     ASSERT_TRUE(rig.archive->seal().ok());
     const auto chunks = rig.archive->chunks();
     ASSERT_EQ(chunks.size(), 1u);
     EXPECT_EQ(chunks.front().story_id, 2u);
+    EXPECT_TRUE(rig.events(1).empty());
 }
 
 TEST(KeeperRetention, CapWarningRepeatsForEachCrossing)

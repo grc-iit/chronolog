@@ -53,6 +53,14 @@ public:
     applyRoute(StoryId story, RouteState state, bool observe_floor, uint64_t revision, std::function<void()> install);
     uint64_t appliedRouteRevision() const;
     void acknowledgeRoutes(uint64_t revision);
+    // Story destroy (RFC-C, W10.5, I13.11). The first signal, a Visor tombstone or a dropped=true report, refuses
+    // Append and FetchHot for the story and frees its events. Only a known tombstone is journaled, so a report alone
+    // leaves the story unconfirmed until the Catalog answers.
+    absl::Status dropStory(StoryId story, bool tombstone);
+    bool dropped(StoryId story) const;
+    std::vector<StoryId> droppedUnconfirmed() const;
+    // Called once per story, on its first signal, after the tombstone record when one is written.
+    void onDrop(std::function<void(StoryId)> listener);
     std::optional<Predecessor> retiredOwner(StoryId story) const;
     std::vector<Predecessor> predecessorOwners(StoryId story) const;
     size_t ceilingWaiters() const { return ceiling_waiters_; }
@@ -127,6 +135,8 @@ protected:
     virtual void endPersistBatch() {}
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
     virtual absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
+    virtual absl::Status persistDrop(StoryId) { return absl::OkStatus(); }
+    void restoreDrop(StoryId story);
     virtual void writerScanned(WriterKey) const {}
     virtual void assignmentObserved(Hlc) {}
     void restore(const Event& event);
@@ -194,6 +204,10 @@ private:
     bool scheduleSteps(Admission& admission);
     Hlc capSeal(StoryId story, Hlc seal) const;
     mutable std::mutex dynamic_mu_;
+    // Guarded by dynamic_mu_, the membership lock of the I4.9 order. confirmed_ holds the stories whose tombstone
+    // is known and journaled.
+    std::set<StoryId> dropped_, confirmed_;
+    std::function<void(StoryId)> drop_listener_;
     mutable std::map<StoryId, std::shared_ptr<Admission>> admissions_;
     std::atomic<size_t> ceiling_waiters_{};
     std::condition_variable ceiling_cv_;

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <set>
 #include <thread>
 
 #include "journal/RamJournal.h"
@@ -45,6 +46,8 @@ public:
     size_t queuedRecords() const;
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
+    // Stories whose D record is journaled.
+    std::set<StoryId> droppedStories() const;
 
 protected:
     bool supportsDurable() const override { return true; }
@@ -55,6 +58,7 @@ protected:
     void endPersistBatch() override;
     Hlc reserveFrontier(Hlc frontier) const override;
     absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
+    absl::Status persistDrop(StoryId story) override;
 
 private:
     struct Write
@@ -92,6 +96,7 @@ private:
 
     mutable std::mutex archive_mu_;
     std::map<std::string, SealedChunk> archive_seals_;
+    std::set<StoryId> dropped_stories_;
     std::map<StoryId, Hlc> first_events_;
     std::shared_ptr<Clock> clock_;
     WalJournalConfig config_;
