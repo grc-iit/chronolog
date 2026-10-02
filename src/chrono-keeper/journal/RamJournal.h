@@ -134,7 +134,9 @@ protected:
         bool released{}, assigned{};
         std::vector<AppendResult> window;
     };
-    std::vector<WriterCheckpoint> checkpointWriters() const;
+    // Body of the WAL writers record: "v2 <count>" then one block per writer. Window lines are formatted once and
+    // cached per writer, so the cost of a checkpoint follows what changed since the last one, not the dedupe window.
+    std::string checkpointText() const;
     void restoreWriter(const WriterCheckpoint& checkpoint);
 
 
@@ -213,6 +215,17 @@ private:
         // Results for recent sequences; back() is next_sequence - 1.
         std::map<uint64_t, AppendResult> window;
         std::map<uint64_t, Pending> pending;
+        // Formatted checkpoint lines of the window entries below cache_next, in blocks so a trim drops whole blocks.
+        // Entries below cache_next never change except through complete(), which resets the cache.
+        struct CacheBlock
+        {
+            std::string text;
+            uint64_t last_sequence{};
+            size_t entries{};
+        };
+        std::deque<CacheBlock> cache;
+        uint64_t cache_next{};
+        size_t cache_entries{};
         // Sorted by hlc because assignment and insertion are atomic under mu.
         std::vector<Event> events;
     };

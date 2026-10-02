@@ -254,11 +254,6 @@ void WalJournal::commit()
             queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
             if(queue_.empty() && stopping_)
                 return;
-            const auto deadline =
-                    std::chrono::steady_clock::now() + std::chrono::milliseconds(config_.group_commit_window_ms);
-            queue_cv_.wait_until(lock,
-                                 deadline,
-                                 [this] { return stopping_ || queued_bytes_ >= config_.group_commit_max_bytes; });
             size_t bytes = 0;
             while(!queue_.empty() &&
                   (group.empty() || bytes + queue_.front().bytes.size() <= config_.group_commit_max_bytes))
@@ -405,23 +400,7 @@ std::vector<WalJournal::SealedChunk> WalJournal::sealedChunks() const
 
 namespace chronolog
 {
-std::string WalJournal::writersRecord() const
-{
-    std::ostringstream out;
-    out << "Wv2 ";
-    const auto writers = checkpointWriters();
-    out << writers.size() << '\n';
-    for(const auto& writer: writers)
-    {
-        out << writer.key.story_id << ' ' << writer.key.writer_id << ' ' << writer.key.incarnation << ' '
-            << writer.next_sequence << ' ' << writer.last_hlc.physical_ns << ' ' << writer.last_hlc.logical << ' '
-            << writer.released << ' ' << writer.assigned << ' ' << writer.window.size() << '\n';
-        for(const auto& result: writer.window)
-            out << result.id.sequence << ' ' << result.hlc.physical_ns << ' ' << result.hlc.logical << ' '
-                << static_cast<int>(result.status.code()) << '\n';
-    }
-    return out.str();
-}
+std::string WalJournal::writersRecord() const { return "W" + checkpointText(); }
 
 void WalJournal::restoreWriters(std::string_view payload)
 {
@@ -600,26 +579,47 @@ absl::Status WalJournal::rotate()
 
 void WalJournal::truncate()
 {
-    const auto seals = sealedChunks();
+    // Settled seals per story ordered by start, with the running maximum of their ends: an event is covered when
+    // some seal that starts at or before it ends after it, which one binary search decides.
+    struct Settled
+    {
+        std::vector<Hlc> starts, max_ends;
+    };
+    std::map<StoryId, Settled> settled;
+    {
+        std::map<StoryId, std::vector<std::pair<Hlc, Hlc>>> ranges;
+        for(const auto& seal: sealedChunks())
+            if(seal.settled)
+                ranges[seal.chunk.story_id].emplace_back(seal.chunk.start, seal.chunk.end);
+        for(auto& [story, list]: ranges)
+        {
+            std::sort(list.begin(), list.end());
+            auto& entry = settled[story];
+            for(const auto& [start, end]: list)
+            {
+                entry.starts.push_back(start);
+                entry.max_ends.push_back(entry.max_ends.empty() ? end : std::max(entry.max_ends.back(), end));
+            }
+        }
+    }
+    const auto covered = [&](StoryId story, Hlc hlc)
+    {
+        const auto found = settled.find(story);
+        if(found == settled.end())
+            return false;
+        const auto& starts = found->second.starts;
+        const auto count = static_cast<size_t>(std::upper_bound(starts.begin(), starts.end(), hlc) - starts.begin());
+        return count != 0 && hlc < found->second.max_ends[count - 1];
+    };
+    bool removed = false;
     for(auto it = segments_.begin(); it != segments_.end();)
     {
         if(it->first == segment_)
             break;
-        const bool settled = std::all_of(it->second.events.begin(),
-                                         it->second.events.end(),
-                                         [&](const auto& event)
-                                         {
-                                             return std::any_of(seals.begin(),
-                                                                seals.end(),
-                                                                [&](const SealedChunk& seal)
-                                                                {
-                                                                    return seal.settled &&
-                                                                           seal.chunk.story_id == event.first &&
-                                                                           seal.chunk.start <= event.second &&
-                                                                           event.second < seal.chunk.end;
-                                                                });
-                                         });
-        if(!settled)
+        const bool all_settled = std::all_of(it->second.events.begin(),
+                                             it->second.events.end(),
+                                             [&](const auto& event) { return covered(event.first, event.second); });
+        if(!all_settled)
         {
             ++it;
             continue;
@@ -627,8 +627,10 @@ void WalJournal::truncate()
         fs::remove(fs::path(config_.wal_dir) / (std::to_string(it->first) + ".wal"));
         bytes_ -= it->second.bytes;
         it = segments_.erase(it);
+        removed = true;
     }
-    syncDirectory(config_.wal_dir);
+    if(removed)
+        syncDirectory(config_.wal_dir);
 }
 } // namespace chronolog
 

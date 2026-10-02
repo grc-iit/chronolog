@@ -14,7 +14,6 @@ namespace chronolog
 struct WalJournalConfig
 {
     std::string wal_dir{"wal"};
-    uint32_t group_commit_window_ms{1};
     size_t group_commit_max_bytes{4u << 20};
     uint32_t reserve_ahead_ms{1000};
     uint64_t wal_max_bytes{1ull << 30};
@@ -66,6 +65,7 @@ private:
     absl::Status rotate();
     void truncate();
     void trackRecord(std::string_view payload, uint64_t segment);
+    // Wv2 record: every writer's counters and the dedupe window entries that are acknowledged or rejected.
     std::string writersRecord() const;
     void restoreWriters(std::string_view payload);
     struct Segment

@@ -50,6 +50,7 @@ struct WalControl
     std::condition_variable cv;
     bool blocked{};
     bool fail{};
+    size_t syncs{};
     std::optional<Hlc> pending;
 };
 
@@ -76,6 +77,7 @@ public:
     absl::Status sync() override
     {
         std::unique_lock lock(control_->mu);
+        ++control_->syncs;
         if(!control_->cv.wait_for(lock, std::chrono::seconds(10), [this] { return !control_->blocked; }))
             return absl::UnavailableError("test fsync block timed out");
         if(control_->fail)
@@ -94,6 +96,7 @@ class ScannedWalJournal final: public WalJournal
 public:
     using WalJournal::WalJournal;
     std::function<void()> scanned;
+    std::string checkpoint() const { return checkpointText(); }
     void onAssignment(std::function<void(Hlc)> hook)
     {
         std::lock_guard lock(assignment_mu_);

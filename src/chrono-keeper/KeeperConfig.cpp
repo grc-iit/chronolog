@@ -63,7 +63,6 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "causal_floor_skew_limit_ns",
                                                 "dedupe_window",
                                                 "wal_dir",
-                                                "group_commit_window_ms",
                                                 "group_commit_max_bytes",
                                                 "reserve_ahead_ms",
                                                 "wal_max_bytes",
@@ -109,8 +108,6 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.causal_floor_skew_limit_ns = json.at("causal_floor_skew_limit_ns").get<int64_t>();
         if(json.contains("dedupe_window"))
             cfg.dedupe_window = json.at("dedupe_window").get<size_t>();
-        if(json.contains("group_commit_window_ms"))
-            cfg.group_commit_window_ms = json.at("group_commit_window_ms").get<uint32_t>();
         if(json.contains("group_commit_max_bytes"))
             cfg.group_commit_max_bytes = json.at("group_commit_max_bytes").get<size_t>();
         if(json.contains("reserve_ahead_ms"))
@@ -256,7 +253,6 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
                             {"shutdown_confirm_timeout_secs", &cfg.shutdown_confirm_timeout_secs},
                             {"heartbeat_interval_ms", &cfg.heartbeat_interval_ms},
                             {"append_ceiling_wait_ms", &cfg.append_ceiling_wait_ms},
-                            {"group_commit_window_ms", &cfg.group_commit_window_ms},
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
                             {"story_chunk_duration_secs", &cfg.story_chunk_duration_secs},
                             {"seal_interval_ms", &cfg.seal_interval_ms},
