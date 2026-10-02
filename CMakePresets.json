@@ -48,6 +48,18 @@
       }
     },
     {
+      "name": "bench",
+      "displayName": "RelWithDebInfo with frame pointers for tools/bench",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
+        "CHRONOLOG_BUILD_BENCH": "ON",
+        "CHRONOLOG_WERROR": "OFF",
+        "VCPKG_MANIFEST_FEATURES": "bench"
+      }
+    },
+    {
       "name": "python",
       "displayName": "Debug build of the Python binding, separate cache from dev",
       "inherits": "dev",
@@ -58,7 +70,8 @@
     { "name": "dev", "configurePreset": "dev" },
     { "name": "release", "configurePreset": "release" },
     { "name": "asan", "configurePreset": "asan" },
-    { "name": "tsan", "configurePreset": "tsan" }
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "bench", "configurePreset": "bench" }
   ],
   "testPresets": [
     {
@@ -69,6 +82,7 @@
     },
     { "name": "dev", "inherits": "base", "configurePreset": "dev" },
     { "name": "release", "inherits": "base", "configurePreset": "release" },
+    { "name": "bench", "inherits": "base", "configurePreset": "bench" },
     {
       "name": "asan",
       "inherits": "base",
