@@ -245,6 +245,8 @@ message RouteUpdate
     uint64 story_id = 1;
     // route; interpreted according to the message invariants above.
     chronolog.v1.Route route = 2;
+    // Story destroyed at this revision; no route follows (W10.17).
+    bool tombstoned = 11;
 }
 
 message ReadClockRequest {}
@@ -449,6 +451,8 @@ message WatchRoutesResponse
     uint64 story_id = 1;
     // route; interpreted according to the message invariants above.
     chronolog.v1.Route route = 2;
+    // Story destroyed at this revision; no route follows (W10.17).
+    bool tombstoned = 11;
 }
 
 message CatalogCommand
