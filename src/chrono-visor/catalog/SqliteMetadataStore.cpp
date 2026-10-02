@@ -429,6 +429,22 @@ absl::Status SqliteMetadataStore::destroyChronicle(std::string name)
         if(*row)
             return absl::FailedPreconditionError("story has an active acquisition");
     }
+    std::vector<StoryId> destroyed;
+    {
+        Statement live(db_, "SELECT id FROM stories WHERE chronicle_id = ?1 AND tombstoned = 0 ORDER BY id");
+        CHRONOLOG_RETURN_IF_ERROR(live.prepared());
+        live.integer(1, chronicle_id);
+        while(true)
+        {
+            auto row = live.step();
+            if(!row.ok())
+                return row.status();
+            if(!*row)
+                break;
+            destroyed.push_back(live.column(0));
+        }
+    }
+    CHRONOLOG_RETURN_IF_ERROR(tombstoneStories(destroyed));
     {
         Statement stories(db_, "UPDATE stories SET tombstoned = 1 WHERE chronicle_id = ?1");
         CHRONOLOG_RETURN_IF_ERROR(stories.prepared());
@@ -539,6 +555,8 @@ absl::Status SqliteMetadataStore::destroyStory(StoryId id)
         return active.status();
     if(*active)
         return absl::FailedPreconditionError("story has an active acquisition");
+    if(!(*story)->tombstoned)
+        CHRONOLOG_RETURN_IF_ERROR(tombstoneStories({id}));
     Statement update(db_, "UPDATE stories SET tombstoned = 1 WHERE id = ?1");
     CHRONOLOG_RETURN_IF_ERROR(update.prepared());
     update.integer(1, id);
@@ -871,6 +889,7 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
         return revision.status();
     auto* observer = observer_;
     observer_ = &pending;
+    apply_revision_ = *revision;
     std::string result;
     try
     {
@@ -879,9 +898,11 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
     catch(...)
     {
         observer_ = observer;
+        apply_revision_.reset();
         throw;
     }
     observer_ = observer;
+    apply_revision_.reset();
     Statement update(db_, "UPDATE counters SET value=?1 WHERE name='raft_index'");
     CHRONOLOG_RETURN_IF_ERROR(update.prepared());
     update.integer(1, index);

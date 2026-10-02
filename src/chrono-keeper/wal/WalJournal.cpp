@@ -155,6 +155,8 @@ uint64_t WalJournal::recover()
                 recovered_instance_ = wal_instance_ = std::string(body);
             else if(payload.front() == 'W')
                 restoreWriters(body);
+            else if(payload.front() == 'D')
+                restoreDrop(wal::decodeDrop(body));
             else if(payload.front() != 'S' && payload.front() != 'T' && payload.front() != 'Q' &&
                     payload.front() != 'F' && payload.front() != 'B')
                 throw std::runtime_error("unknown WAL record type");
@@ -177,6 +179,10 @@ uint64_t WalJournal::recover()
         eraseEvents(seal.chunk.story_id,
                     {Range::Axis::Hlc, seal.settled ? seal.chunk.start : seal.chunk.end, seal.chunk.end},
                     true);
+    {
+        std::lock_guard lock(archive_mu_);
+        for(auto story: dropped_stories_) eraseEvents(story, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    }
     if(!segments.empty())
     {
         const auto restart = std::max(maximum, reservation_);
@@ -329,10 +335,12 @@ void WalJournal::commit()
                 }
                 if(status.ok())
                     status = sink_->sync();
-                const bool settled =
-                        std::any_of(group.begin(),
-                                    group.end(),
-                                    [](const Write& write) { return write.bytes.size() > 8 && write.bytes[8] == 'T'; });
+                const bool settled = std::any_of(group.begin(),
+                                                 group.end(),
+                                                 [](const Write& write) {
+                                                     return write.bytes.size() > 8 &&
+                                                            (write.bytes[8] == 'T' || write.bytes[8] == 'D');
+                                                 });
                 if(status.ok() && settled)
                 {
                     for(auto& write: group)
@@ -425,6 +433,14 @@ absl::Status WalJournal::recordSettled(const std::string& chunk_id)
             return absl::NotFoundError("unknown sealed chunk");
     }
     return persistRecord(std::string(1, 'T') + chunk_id);
+}
+
+absl::Status WalJournal::persistDrop(StoryId story) { return persistRecord(wal::drop(story)); }
+
+std::set<StoryId> WalJournal::droppedStories() const
+{
+    std::lock_guard lock(archive_mu_);
+    return dropped_stories_;
 }
 
 std::vector<WalJournal::SealedChunk> WalJournal::sealedChunks() const
@@ -544,6 +560,11 @@ void WalJournal::trackRecord(std::string_view payload, uint64_t segment)
         const bool settled = archive_seals_.contains(id) && archive_seals_.at(id).settled;
         archive_seals_[id] = SealedChunk{std::move(chunk), settled};
     }
+    else if(payload.front() == 'D')
+    {
+        std::lock_guard lock(archive_mu_);
+        dropped_stories_.insert(wal::decodeDrop(body));
+    }
     else if(payload.front() == 'T')
     {
         std::lock_guard lock(archive_mu_);
@@ -580,6 +601,9 @@ absl::Status WalJournal::rotate()
     }
     if(status.ok())
         status = write(writersRecord());
+    for(const auto story: droppedStories())
+        if(status.ok())
+            status = write(wal::drop(story));
     for(const auto& [story, frontier]: persisted_physical_)
         if(status.ok())
             status = write("F" + std::to_string(story) + " " + std::to_string(frontier));
@@ -622,7 +646,8 @@ namespace
 class SettledIndex
 {
 public:
-    explicit SettledIndex(const std::vector<WalJournal::SealedChunk>& seals)
+    SettledIndex(const std::vector<WalJournal::SealedChunk>& seals, std::set<StoryId> dropped)
+        : dropped_(std::move(dropped))
     {
         std::map<StoryId, std::vector<std::pair<Hlc, Hlc>>> ranges;
         for(const auto& seal: seals)
@@ -639,8 +664,11 @@ public:
             }
         }
     }
+    // A D record settles every record of its story.
     bool covers(StoryId story, Hlc hlc) const
     {
+        if(dropped_.contains(story))
+            return true;
         const auto found = stories_.find(story);
         if(found == stories_.end())
             return false;
@@ -662,12 +690,13 @@ private:
         std::vector<Hlc> starts, max_ends;
     };
     std::map<StoryId, Entry> stories_;
+    std::set<StoryId> dropped_;
 };
 } // namespace
 
 void WalJournal::truncate()
 {
-    const SettledIndex settled(sealedChunks());
+    const SettledIndex settled(sealedChunks(), droppedStories());
     bool removed = false;
     for(auto it = segments_.begin(); it != segments_.end();)
     {
@@ -694,7 +723,7 @@ absl::Status WalJournal::reclaim()
     // the active segment still holds unsettled events a rotation frees nothing, and the size trigger in commit()
     // rotates it long before the WAL grows beyond wal_segment_bytes.
     const auto& active = segments_[segment_].events;
-    if(active.empty() || !SettledIndex(sealedChunks()).coversAll(active))
+    if(active.empty() || !SettledIndex(sealedChunks(), droppedStories()).coversAll(active))
         return absl::OkStatus();
     auto status = rotate();
     if(status.ok())

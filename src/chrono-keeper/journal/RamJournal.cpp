@@ -539,8 +539,10 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             {
                 std::lock_guard lock(dynamic_mu_);
                 generation = ceiling_generation_;
-                if(status.ok() && dynamic_ &&
-                   (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
+                if(dropped_.contains(batch.story_id))
+                    status = absl::FailedPreconditionError("story was destroyed");
+                else if(status.ok() && dynamic_ &&
+                        (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
                     status = absl::UnavailableError("route clock steps or ceiling deferred");
             }
             if(!status.ok())
@@ -715,6 +717,8 @@ RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick, std::op
         return absl::InvalidArgumentError("range start is after end");
     if(!admission_ready_.load())
         return absl::UnavailableError("acquisition snapshot is not applied");
+    if(dropped(id))
+        return absl::FailedPreconditionError("story was destroyed");
     if(auto status = requireStory(id); !status.ok())
         return status;
     std::vector<std::shared_ptr<Writer>> live;
@@ -956,6 +960,8 @@ void RamJournal::applyRoute(StoryId story,
     auto a = admission(story);
     std::unique_lock gate_lock(a->gate);
     std::lock_guard lock(dynamic_mu_);
+    if(dropped_.contains(story))
+        return;
     if(a->installed && (revision < a->revision || state.route.epoch < a->state.route.epoch))
         return;
     auto listed = [&](const Route& route)
@@ -1075,5 +1081,85 @@ bool RamJournal::neverHeldEvent(StoryId story) const
             return false;
     }
     return true;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+bool RamJournal::dropped(StoryId story) const
+{
+    std::lock_guard lock(dynamic_mu_);
+    return dropped_.contains(story);
+}
+
+std::vector<StoryId> RamJournal::droppedUnconfirmed() const
+{
+    std::lock_guard lock(dynamic_mu_);
+    std::vector<StoryId> out;
+    for(auto story: dropped_)
+        if(!confirmed_.contains(story))
+            out.push_back(story);
+    return out;
+}
+
+void RamJournal::onDrop(std::function<void(StoryId)> listener)
+{
+    std::lock_guard lock(dynamic_mu_);
+    drop_listener_ = std::move(listener);
+}
+
+void RamJournal::restoreDrop(StoryId story)
+{
+    std::lock_guard lock(dynamic_mu_);
+    dropped_.insert(story);
+    confirmed_.insert(story);
+}
+
+absl::Status RamJournal::dropStory(StoryId story, bool tombstone)
+{
+    bool first = false;
+    bool record = false;
+    std::function<void(StoryId)> listener;
+    {
+        // The exclusive gate waits out every append already validated, so none registers after the drop. A story
+        // with no admission has no append in flight, and any later one finds it in dropped_.
+        std::shared_ptr<Admission> a;
+        {
+            std::lock_guard lock(dynamic_mu_);
+            if(auto it = admissions_.find(story); it != admissions_.end())
+                a = it->second;
+        }
+        std::unique_lock<Gate> gate_lock;
+        if(a)
+            gate_lock = std::unique_lock<Gate>(a->gate);
+        std::lock_guard lock(dynamic_mu_);
+        first = dropped_.insert(story).second;
+        record = tombstone && !confirmed_.contains(story);
+        listener = drop_listener_;
+    }
+    absl::Status status;
+    if(record)
+    {
+        bool held;
+        {
+            auto& sh = shard(story);
+            std::shared_lock lock(sh.mu);
+            held = sh.stories.contains(story);
+        }
+        if(held)
+            status = persistDrop(story);
+        if(status.ok())
+        {
+            std::lock_guard lock(dynamic_mu_);
+            confirmed_.insert(story);
+        }
+    }
+    if(first)
+    {
+        eraseEvents(story, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+        if(listener)
+            listener(story);
+    }
+    return status;
 }
 } // namespace chronolog

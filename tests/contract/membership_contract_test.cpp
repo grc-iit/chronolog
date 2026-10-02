@@ -16,6 +16,18 @@ struct MembershipHarness
     std::function<absl::Status(std::string)> drainKeeper, joinKeeper, abandonKeeper;
     std::function<absl::Status(std::string, std::string, Epoch, Hlc)> reportDrain;
     std::function<absl::Status(std::string, std::string, Hlc, Hlc, Hlc)> reportSettlement;
+    // Catalog side of story destroy (W10.17); empty when the implementation owns no Catalog.
+    struct RouteDelta
+    {
+        StoryId story_id{};
+        uint64_t revision{};
+        bool tombstoned{};
+    };
+    std::function<absl::Status()> destroyStory;
+    std::function<uint64_t()> revision;
+    // Updates with revision above the cursor in revision order, as WatchRoutes would deliver them.
+    std::function<std::vector<RouteDelta>(uint64_t)> deltasSince;
+    std::function<Epoch()> storyEpoch;
 };
 using MembershipFactory = std::function<std::unique_ptr<MembershipHarness>()>;
 class MembershipContract: public ::testing::TestWithParam<MembershipFactory>
@@ -142,6 +154,52 @@ TEST_P(MembershipContract, AbandonedRangeUsesOnlyTheSameInstanceProof)
     EXPECT_EQ(state->abandoned[0].start, Hlc{});
     EXPECT_EQ(state->abandoned[1].start, (Hlc{50, 0}));
     EXPECT_EQ(state->archived_below, (Hlc{50, 0}));
+}
+TEST_P(MembershipContract, DestroyEmitsTombstoneDelta)
+{
+    if(!h->destroyStory)
+        GTEST_SKIP() << "no Catalog behind this membership";
+    const auto cursor = h->revision();
+    ASSERT_TRUE(h->destroyStory().ok());
+    const auto deltas = h->deltasSince(cursor);
+    ASSERT_EQ(deltas.size(), 1u);
+    EXPECT_EQ(deltas[0].story_id, 1u);
+    EXPECT_TRUE(deltas[0].tombstoned);
+    EXPECT_GT(deltas[0].revision, cursor);
+    EXPECT_EQ(deltas[0].revision, h->revision());
+    EXPECT_FALSE(h->sut->route(1).ok());
+    // Destroying again changes nothing and emits no second tombstone.
+    ASSERT_TRUE(h->destroyStory().ok());
+    EXPECT_EQ(h->deltasSince(cursor).size(), 1u);
+}
+
+TEST_P(MembershipContract, NoRouteChangeAfterTombstone)
+{
+    if(!h->destroyStory || !h->drainKeeper)
+        GTEST_SKIP() << "no Catalog or dynamic membership behind this membership";
+    auto initial = h->sut->route(1);
+    ASSERT_TRUE(initial.ok());
+    ASSERT_GE(initial->keepers.size(), 2u);
+    auto a = initial->keepers[0], b = initial->keepers[1];
+    ASSERT_TRUE(h->sut->registerProcess({a.process_id, "i-a", a.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->sut->registerProcess({b.process_id, "i-b", b.endpoint, ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(h->grantCeiling(a.process_id, "i-a").ok());
+    ASSERT_TRUE(h->grantCeiling(b.process_id, "i-b").ok());
+    ASSERT_TRUE(h->destroyStory().ok());
+    const auto epoch = h->storyEpoch();
+    const auto cursor = h->revision();
+    // A route change for a Keeper that listed the story still commits for its live stories, and skips this one.
+    ASSERT_TRUE(h->drainKeeper(a.process_id).ok());
+    ASSERT_TRUE(h->joinKeeper(a.process_id).ok());
+    for(const auto& delta: h->deltasSince(cursor))
+    {
+        if(delta.story_id == 1)
+        {
+            EXPECT_TRUE(delta.tombstoned) << "revision " << delta.revision;
+        }
+    }
+    EXPECT_EQ(h->storyEpoch(), epoch);
+    EXPECT_FALSE(h->sut->routeState(1).ok());
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MembershipContract);
 } // namespace chronolog::contract

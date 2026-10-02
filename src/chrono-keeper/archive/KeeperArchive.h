@@ -91,6 +91,8 @@ private:
     bool watch(const std::string& endpoint, Subscription& subscription, std::stop_token stop);
     Hlc align(Hlc hlc) const;
     absl::Status addChunk(Chunk chunk, size_t bytes);
+    // First drop signal for a story: forget and settle its retained chunks (W10.5).
+    void freeDropped(StoryId story);
 
     WalJournal& journal_;
     const Membership& membership_;

@@ -161,7 +161,7 @@ int main(int argc, char** argv)
         std::cerr << "chrono_visor: cannot listen on " << config->listen << "\n";
         return 1;
     }
-    auto internal_server = startServer(config->internal_listen, cluster, internal_port, raft ? &catalog : nullptr);
+    auto internal_server = startServer(config->internal_listen, cluster, internal_port, &catalog);
     if(!internal_server || internal_port == 0)
     {
         std::cerr << "chrono_visor: cannot listen on " << config->internal_listen << "\n";

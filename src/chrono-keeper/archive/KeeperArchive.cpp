@@ -58,6 +58,11 @@ KeeperArchive::KeeperArchive(WalJournal& journal,
             for(const auto& event: *events) bytes += convert::toProto(event).ByteSizeLong();
         if(seal.settled)
             continue;
+        if(journal_.dropped(chunk.story_id))
+        {
+            story.dropped = true;
+            continue;
+        }
         State state;
         state.chunk = chunk;
         state.bytes = bytes;
@@ -65,8 +70,13 @@ KeeperArchive::KeeperArchive(WalJournal& journal,
         state.settled_at = state.activity = now_();
         chunks_[chunk.id] = std::move(state);
     }
+    journal_.onDrop([this](StoryId story) { freeDropped(story); });
 }
-KeeperArchive::~KeeperArchive() { stop(); }
+KeeperArchive::~KeeperArchive()
+{
+    journal_.onDrop(nullptr);
+    stop();
+}
 
 Hlc KeeperArchive::align(Hlc hlc) const
 {
@@ -108,6 +118,8 @@ absl::Status KeeperArchive::seal(bool through_frontier)
     const Hlc tick = journal_.sealTick();
     for(StoryId story_id: journal_.storyIds())
     {
+        if(journal_.dropped(story_id))
+            continue;
         auto route = membership_.route(story_id);
         if(!route.ok() || route->grapher.empty())
             continue;
@@ -261,28 +273,34 @@ void KeeperArchive::sendFailed(const std::string& id)
     cv_.notify_all();
 }
 
-void KeeperArchive::applyReport(const WatermarkReport& report)
+void KeeperArchive::freeDropped(StoryId story_id)
 {
     std::lock_guard lock(mu_);
-    auto& story = stories_[report.story_id];
+    stories_[story_id].dropped = true;
+    for(auto it = chunks_.begin(); it != chunks_.end();)
+    {
+        if(it->second.chunk.story_id != story_id)
+        {
+            ++it;
+            continue;
+        }
+        (void)journal_.recordSettled(it->first);
+        journal_.eraseEvents(story_id, range(it->second.chunk), true);
+        it = chunks_.erase(it);
+    }
+    cv_.notify_all();
+}
+
+void KeeperArchive::applyReport(const WatermarkReport& report)
+{
     if(report.dropped)
     {
-        story.dropped = true;
-        for(auto it = chunks_.begin(); it != chunks_.end();)
-        {
-            if(it->second.chunk.story_id != report.story_id)
-            {
-                ++it;
-                continue;
-            }
-            (void)journal_.recordSettled(it->first);
-            journal_.eraseEvents(report.story_id, range(it->second.chunk), true);
-            it = chunks_.erase(it);
-        }
-        journal_.eraseEvents(report.story_id, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
-        cv_.notify_all();
+        // The journal frees on the first signal through freeDropped; a report never proves the tombstone itself.
+        (void)journal_.dropStory(report.story_id, false);
         return;
     }
+    std::lock_guard lock(mu_);
+    auto& story = stories_[report.story_id];
     story.watermark = std::max(story.watermark, report.watermark);
     if(!report.grapher_instance.empty())
     {
@@ -422,12 +440,6 @@ bool KeeperArchive::shipOne(std::stop_token stop)
     auto finish = [&]
     {
         const auto status = stream->Finish();
-        if(status.error_code() == grpc::StatusCode::NOT_FOUND ||
-           response.status().code() == static_cast<int>(absl::StatusCode::kNotFound))
-        {
-            applyReport({chunk.story_id, {}, {}, 0, {}, true});
-            return true;
-        }
         if(!status.ok())
         {
             LOG(WARNING) << "archive transfer " << chunk.id << " failed: " << status.error_code() << " "

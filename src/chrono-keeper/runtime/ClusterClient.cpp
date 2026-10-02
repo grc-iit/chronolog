@@ -198,6 +198,12 @@ void ClusterClient::applyRoutes(const google::protobuf::RepeatedPtrField<iv1::Ro
     uint64_t revision = 0;
     for(const auto& update: routes)
     {
+        // A tombstone is applied whatever its revision and never moves the applied revision (W10.17).
+        if(update.tombstoned())
+        {
+            (void)journal_.dropStory(update.story_id(), true);
+            continue;
+        }
         auto state = convert::routeState(update);
         journal_.applyRoute(update.story_id(),
                             state,

@@ -221,7 +221,32 @@ int main(int argc, char** argv)
     }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
-    keeper::RouteWatcher routes(*membership, visor, config->process_id, instance, &journal);
+    // The Catalog answers on the Visor internal port in both modes. A story the snapshot did not list is confirmed
+    // here, never inferred from absence (W10.17).
+    auto catalog = std::shared_ptr<v1::Catalog::Stub>(v1::Catalog::NewStub(visor));
+    keeper::RouteWatcher routes(*membership,
+                                visor,
+                                config->process_id,
+                                instance,
+                                &journal,
+                                [catalog](StoryId story) -> absl::StatusOr<bool>
+                                {
+                                    grpc::ClientContext context;
+                                    rpc::withTimeout(context, std::chrono::seconds(2));
+                                    v1::GetStoryRequest request;
+                                    request.set_story_id(story);
+                                    v1::GetStoryResponse response;
+                                    auto status = catalog->GetStory(&context, request, &response);
+                                    if(!status.ok())
+                                        return absl::Status(static_cast<absl::StatusCode>(status.error_code()),
+                                                            status.error_message());
+                                    const auto code = static_cast<absl::StatusCode>(response.status().code());
+                                    if(code == absl::StatusCode::kNotFound)
+                                        return false;
+                                    if(code != absl::StatusCode::kOk)
+                                        return absl::Status(code, response.status().message());
+                                    return response.story().tombstoned();
+                                });
     cluster.start();
     keeper::KeeperArchiveConfig archive_config{config->story_chunk_duration_secs,
                                                config->seal_interval_ms,

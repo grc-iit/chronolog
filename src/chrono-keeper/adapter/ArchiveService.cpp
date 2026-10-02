@@ -70,6 +70,8 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
 
                 if(req.story_id() == 0)
                     return fail(absl::InvalidArgumentError("story_id is required"));
+                if(journal_.dropped(req.story_id()))
+                    return fail(absl::FailedPreconditionError("story was destroyed"));
                 auto route = membership_.route(req.story_id());
                 if(!route.ok())
                     return fail(route.status());

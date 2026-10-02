@@ -55,6 +55,7 @@ std::unique_ptr<JournalHarness> MakeRam()
     { rig->journal->applyRoute(1, state, observe, revision, [&] { rig->membership->setRoute(state.route); }); };
     h->acceptanceClock = [rig] { return rig->clock->acceptanceClock(); };
     h->retiredDrained = [rig] { return rig->journal->retiredDrained(1); };
+    h->tombstone = [rig] { (void)rig->journal->dropStory(1, true); };
     h->sut = rig->release();
     return h;
 }
