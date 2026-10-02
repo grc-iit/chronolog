@@ -6,6 +6,7 @@
 #include <deque>
 #include <optional>
 
+#include <absl/log/log.h>
 #include "adapter/Convert.h"
 #include "rpc/Channel.h"
 #include "adapter/WorkerPool.h"
@@ -216,6 +217,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                             }
                             for(const auto& id: failed)
                             {
+                                LOG(WARNING) << "keeper_silent process=" << id << ", proposing drain";
                                 internal::v1::CatalogCommand command;
                                 command.mutable_membership()->mutable_drain()->set_process_id(id);
                                 (void)raft_->propose(command);
