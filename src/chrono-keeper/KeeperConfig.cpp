@@ -184,7 +184,8 @@ std::string hostOf(const std::string& address)
 
 } // namespace
 
-absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv)
+absl::StatusOr<KeeperConfig>
+KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv, bool allow_bind_all)
 {
     KeeperConfig cfg;
     if(path)
@@ -278,6 +279,7 @@ absl::StatusOr<KeeperConfig> KeeperConfig::load(const std::optional<std::string>
         cfg.insecure_bind_all = *parsed;
     }
 
+    cfg.insecure_bind_all = cfg.insecure_bind_all || allow_bind_all;
     if(auto valid = cfg.validate(); !valid.ok())
         return valid;
     return cfg;
