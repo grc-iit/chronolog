@@ -407,5 +407,80 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversEveryRouteChangeInStaticMode)
     (void)reader->Finish();
 }
 
+TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectsWithoutDestroyedStoriesAfterHistoryTrim)
+{
+    const auto gone = store_->createStory("c", "gone")->id;
+    const auto kept = store_->createStory("c", "kept")->id;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&context, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    for(int i = 0; i < 2; ++i) ASSERT_TRUE(reader->Read(&update));
+
+    absl::Status mutation;
+    auto applied = store_->applyRaft(1,
+                                     [&]
+                                     {
+                                         mutation = store_->destroyStory(gone);
+                                         if(!mutation.ok())
+                                             return mutation.ToString();
+                                         auto state = store_->membershipState();
+                                         if(!state.ok())
+                                         {
+                                             mutation = state.status();
+                                             return mutation.ToString();
+                                         }
+                                         state->set_route_history_floor(state->revision());
+                                         mutation = store_->saveMembershipChanges(*state, *state);
+                                         return mutation.ToString();
+                                     });
+    ASSERT_TRUE(applied.ok()) << applied.status();
+    ASSERT_TRUE(mutation.ok()) << mutation;
+    EXPECT_FALSE(reader->Read(&update));
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED);
+
+    grpc::ClientContext resumed;
+    resumed.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reconnect = stub_->WatchRoutes(&resumed, iv1::WatchRoutesRequest());
+    ASSERT_TRUE(reconnect->Read(&update));
+    EXPECT_EQ(update.story_id(), kept);
+    EXPECT_FALSE(update.tombstoned());
+    EXPECT_EQ(update.revision(), store_->membershipRevision().value_or(0));
+    auto state = store_->membershipState();
+    ASSERT_TRUE(state.ok());
+    ASSERT_EQ(state->routes_size(), 1);
+    EXPECT_EQ(state->routes(0).story_id(), kept);
+    resumed.TryCancel();
+    (void)reconnect->Finish();
+}
+
+TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
+{
+    const auto gone = store_->createStory("c", "gone")->id;
+    const auto kept = store_->createStory("c", "kept")->id;
+    ASSERT_TRUE(store_->createChronicle("removed").ok());
+    ASSERT_TRUE(store_->createStory("removed", "first").ok());
+    ASSERT_TRUE(store_->createStory("removed", "second").ok());
+    grpc::ClientContext initial;
+    initial.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&initial, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    for(int i = 0; i < 4; ++i) ASSERT_TRUE(reader->Read(&update));
+    initial.TryCancel();
+    (void)reader->Finish();
+    ASSERT_TRUE(store_->destroyStory(gone).ok());
+    ASSERT_TRUE(store_->destroyChronicle("removed").ok());
+
+    grpc::ClientContext resumed;
+    resumed.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reconnect = stub_->WatchRoutes(&resumed, iv1::WatchRoutesRequest());
+    ASSERT_TRUE(reconnect->Read(&update));
+    EXPECT_EQ(update.story_id(), kept);
+    EXPECT_FALSE(update.tombstoned());
+    EXPECT_EQ(update.revision(), store_->membershipRevision().value_or(0));
+    resumed.TryCancel();
+    (void)reconnect->Finish();
+}
+
 } // namespace
 } // namespace chronolog::visor

@@ -344,6 +344,36 @@ TEST_F(DynamicClusterTest, AcquisitionWatchIsRefusedByAReplicaWithoutALeaderLeas
     EXPECT_FALSE(reader->Read(&message));
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::UNAVAILABLE);
 }
+
+TEST_F(DynamicClusterTest, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    const auto kept = stores[selected]->createStory("c", "kept");
+    ASSERT_TRUE(kept.ok()) << kept.status();
+    ASSERT_TRUE(stores[selected]->createChronicle("removed").ok());
+    ASSERT_TRUE(stores[selected]->createStory("removed", "first").ok());
+    ASSERT_TRUE(stores[selected]->createStory("removed", "second").ok());
+    grpc::ClientContext initial;
+    rpc::withTimeout(initial, 10s);
+    auto reader = stubs[selected]->WatchRoutes(&initial, wire::WatchRoutesRequest());
+    wire::WatchRoutesResponse update;
+    for(int i = 0; i < 4; ++i) ASSERT_TRUE(reader->Read(&update));
+    initial.TryCancel();
+    (void)reader->Finish();
+    ASSERT_TRUE(stores[selected]->destroyStory(1).ok());
+    ASSERT_TRUE(stores[selected]->destroyChronicle("removed").ok());
+
+    grpc::ClientContext resumed;
+    rpc::withTimeout(resumed, 10s);
+    auto reconnect = stubs[selected]->WatchRoutes(&resumed, wire::WatchRoutesRequest());
+    ASSERT_TRUE(reconnect->Read(&update));
+    EXPECT_EQ(update.story_id(), kept->id);
+    EXPECT_FALSE(update.tombstoned());
+    EXPECT_EQ(update.revision(), stores[selected]->appliedStore().membershipRevision().value_or(0));
+    resumed.TryCancel();
+    (void)reconnect->Finish();
+}
 TEST_F(DynamicClusterTest, PlainHeartbeatsDoNotAppendRaftEntries)
 {
     auto selected = leader();
