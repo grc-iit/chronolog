@@ -175,7 +175,10 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
     std::lock_guard lock(hdf5_mutex);
     try
     {
-        Handle file(H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT), H5Fclose);
+        // Shared archives sit on NFS or PFS, where flock fails or blocks readers, so HDF5 must not lock.
+        Handle access(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
+        Check(H5Pset_file_locking(access, false, true));
+        Handle file(H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, access), H5Fclose);
         {
             Handle group(H5Gcreate2(file, "chunk", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT), H5Gclose);
             Scalar(group, "story_id", H5T_NATIVE_UINT64, &story);
@@ -301,7 +304,9 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::p
     std::lock_guard lock(hdf5_mutex);
     try
     {
-        Handle input(H5Fopen(file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
+        Handle access(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
+        Check(H5Pset_file_locking(access, false, true));
+        Handle input(H5Fopen(file.c_str(), H5F_ACC_RDONLY, access), H5Fclose);
         Handle group(H5Gopen2(input, "chunk", H5P_DEFAULT), H5Gclose);
         Handle type(EventType(), H5Tclose);
         Handle attr_type(AttributeType(), H5Tclose);

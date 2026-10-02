@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <set>
 #include <thread>
 
@@ -88,6 +89,30 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
     for(const auto& [key, value]: json.items())
         if(!known.contains(key))
             return absl::InvalidArgumentError(absl::StrCat("unknown configuration key ", key));
+    // nlohmann converts a negative or oversized number into an unsigned field by wrapping, which would
+    // quietly turn a mechanism off instead of failing the daemon at startup.
+    static const std::map<std::string, uint64_t> unsigned_keys = {{"payload_max_bytes", UINT64_MAX},
+                                                                  {"dedupe_window", UINT64_MAX},
+                                                                  {"group_commit_window_ms", UINT32_MAX},
+                                                                  {"group_commit_max_bytes", UINT64_MAX},
+                                                                  {"reserve_ahead_ms", UINT32_MAX},
+                                                                  {"wal_max_bytes", UINT64_MAX},
+                                                                  {"wal_segment_bytes", UINT64_MAX},
+                                                                  {"shutdown_confirm_timeout_secs", UINT32_MAX},
+                                                                  {"story_chunk_duration_secs", UINT32_MAX},
+                                                                  {"seal_interval_ms", UINT32_MAX},
+                                                                  {"chunk_max_bytes", UINT64_MAX},
+                                                                  {"chunk_max_events", UINT32_MAX},
+                                                                  {"frame_bytes", UINT64_MAX},
+                                                                  {"watermark_resend_timeout_secs", UINT32_MAX},
+                                                                  {"archive_visibility_delay_secs", UINT32_MAX},
+                                                                  {"retention_cap_mb", UINT64_MAX},
+                                                                  {"worker_threads", UINT32_MAX},
+                                                                  {"heartbeat_interval_ms", UINT32_MAX},
+                                                                  {"append_ceiling_wait_ms", UINT32_MAX}};
+    for(const auto& [key, maximum]: unsigned_keys)
+        if(json.contains(key) && (!json.at(key).is_number_unsigned() || json.at(key).get<uint64_t>() > maximum))
+            return absl::InvalidArgumentError(absl::StrCat(key, " must be a non-negative integer in range"));
     try
     {
         auto str = [&](const char* key, std::string& field)
@@ -298,6 +323,9 @@ absl::Status KeeperConfig::validate() const
        wal_segment_bytes == 0)
         return absl::InvalidArgumentError(
                 "wal_dir, group_commit_max_bytes, reserve_ahead_ms, wal_max_bytes and wal_segment_bytes must be set");
+    // Zero would send every unconfirmed chunk again on each pass and replace its receipt each time.
+    if(watermark_resend_timeout_secs == 0)
+        return absl::InvalidArgumentError("watermark_resend_timeout_secs must be positive");
     if(story_chunk_duration_secs == 0 || seal_interval_ms == 0 || chunk_max_bytes == 0 ||
        chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
        frame_bytes > (4u << 20))

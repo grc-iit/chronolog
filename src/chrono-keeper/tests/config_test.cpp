@@ -123,6 +123,24 @@ TEST(KeeperConfig, LogLevelDefaultsToInfoAndRejectsUnknownLevels)
     EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_LOG_LEVEL", "debug"}})).ok());
 }
 
+TEST(KeeperConfig, NegativeOversizedAndZeroResendValuesFailAtStartup)
+{
+    for(const char* body: {R"({"retention_cap_mb":-1})",
+                           R"({"watermark_resend_timeout_secs":-1})",
+                           R"({"heartbeat_interval_ms":-5})",
+                           R"({"seal_interval_ms":4294967296})",
+                           R"({"retention_cap_mb":1.5})",
+                           R"({"watermark_resend_timeout_secs":0})"})
+    {
+        auto path = WriteFile(body);
+        auto loaded = KeeperConfig::load(path, Env({}));
+        std::filesystem::remove(path);
+        EXPECT_FALSE(loaded.ok()) << body;
+    }
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_RETENTION_CAP_MB", "-1"}})).ok());
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_WATERMARK_RESEND_TIMEOUT_SECS", "0"}})).ok());
+}
+
 TEST(ConfigMembership, SeedsAndReplacesRoutes)
 {
     ConfigMembership membership({StaticRoute{1, Route{3, {{"k", "k:1"}}, "g", "p"}}});

@@ -15,16 +15,10 @@ with c.acquire(story, "smoke", timeout=5) as writer:
     body = dict(chronicle=chronicle.name, story=story.name, from_ns=receipts[0].hlc.physical_ns,
                 to_ns=receipts[-1].hlc.physical_ns + 1, fields=["value"])
     auth = ("admin", "chronolog-viz-password")
-    for _ in range(100):
-        try:
-            response = requests.get("http://127.0.0.1:3000/api/health", timeout=3)
-            if response.status_code == 200 and response.json().get("database") == "ok":
-                break
-        except requests.RequestException:
-            pass
-        time.sleep(.2)
-    else:
-        raise AssertionError("Grafana did not become ready")
+    # compose waited for the Grafana healthcheck, so the API must already answer.
+    response = requests.get("http://127.0.0.1:3000/api/health", timeout=5)
+    assert response.status_code == 200 and response.json().get("database") == "ok", \
+        "Grafana is compose-healthy but /api/health says: " + response.text
     settings = requests.get("http://127.0.0.1:3000/api/plugins/chronolog-viz-datasource/settings", auth=auth, timeout=5)
     assert settings.status_code == 200, settings.text
     for _ in range(100):
