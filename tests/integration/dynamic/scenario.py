@@ -1,8 +1,10 @@
 import base64
 import json
 import os
+from pathlib import Path
 import select
 import signal
+import socket
 import subprocess
 import time
 
@@ -224,6 +226,193 @@ class Scenario:
         assert code in (0, 14), result
         return 0
 
+    def files(self, story):
+        folder = Path(self.stack.archive) / str(story)
+        return [p for p in folder.iterdir() if p.is_file()] if folder.is_dir() else []
+
+    def manifest(self):
+        return Path(self.stack.archive) / 'manifest' / 'grapher-a.log'
+
+    def tombstones(self):
+        found = set()
+        for line in self.manifest().read_text(errors='replace').splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get('tombstoned'):
+                found.add(int(entry['story']))
+        return found
+
+    def log_size(self, keeper):
+        return (self.stack.folder / (keeper + '.log')).stat().st_size
+
+    def log_since(self, keeper, offset=0):
+        return (self.stack.folder / (keeper + '.log')).read_bytes()[offset:].decode(errors='replace')
+
+    def hot(self, keeper, story):
+        window = dict(start=dict(physical_ns=0, logical=0), end=dict(physical_ns=2 ** 63 - 1, logical=0))
+        return self.raw('FetchHot', dict(story_id=story, hlc=window), self.stack.services[keeper][2]['internal_listen'])
+
+    def serving(self, keeper, story):
+        result = self.hot(keeper, story)
+        return result['transport'] == 0 and result['trailer']
+
+    def freed(self, keeper, story):
+        result = self.hot(keeper, story)
+        return result['transport'] == 9 and 'destroyed' in result['error']
+
+    def refused_read(self, story):
+        end = (2 ** 62, 0)
+        result = self.raw('Read', dict(story_id=story, hlc=dict(start=wire((0, 0)), end=wire(end))), self.player)
+        return result['transport'] == 9 and not result['frames']
+
+    def seed(self, chronicle, names):
+        # Stories with one writer on each Keeper, so every Keeper holds data for each.
+        self.call('CreateChronicle', dict(name=chronicle))
+        stories = {}
+        for name in names:
+            story = int(self.call('CreateStory', dict(chronicle=chronicle, name=name))['story']['story_id'])
+            writers = {}
+            for n in range(16):
+                acquired = self.call('Acquire', dict(story_id=story, writer_identity=f'{name}-{n}'))
+                writers.setdefault(acquired['assigned_keeper']['process_id'], [acquired, 0])
+                if len(writers) == 2:
+                    break
+            assert len(writers) == 2, f'no writer was assigned to each Keeper for story {name}'
+            self.expected[story] = {}
+            stories[name] = dict(id=story, writers=writers)
+        return stories
+
+    def feed(self, record, count):
+        self.story = record['id']
+        for slot in record['writers'].values():
+            for _ in range(count):
+                slot[1] += 1
+                self.append(slot[0], slot[1])
+
+    def release(self, record):
+        for acquired, _ in record['writers'].values():
+            self.call('Release', dict(story_id=record['id'], writer_id=acquired['writer_id'],
+                                      incarnation=acquired['incarnation']))
+
+    def archived(self, record):
+        return bool(self.files(record['id'])) and all(
+            f'archive_settled chunk={keeper}:{record["id"]}:' in self.log_since(keeper) for keeper in record['writers'])
+
+    def destroyed(self, record):
+        story = record['id']
+        assert self.call('GetStory', dict(story_id=story))['story'].get('tombstoned'), f'story {story} is not tombstoned'
+        for keeper in ('keeper-1', 'keeper-2'):
+            self.wait(lambda: self.freed(keeper, story))
+        self.wait(lambda: story in self.tombstones() and not self.files(story))
+        self.wait(lambda: self.refused_read(story))
+
+    def member(self, keeper):
+        return next(m for m in self.state()['members'] if m['process']['process_id'] == keeper)
+
+    def rejoin(self, keeper, primary):
+        # A partition past keeper_failure_timeout_ms drains the Keeper from every Route. It registers again by
+        # itself and JoinKeeper puts it back.
+        self.wait(lambda: any(i.get('granted') for i in self.member(keeper).get('instances', [])))
+        if not self.member(keeper).get('joined'):
+            self.admin('JoinKeeper', keeper)
+        self.wait(lambda: self.member(keeper).get('joined'))
+        self.story = primary
+        self.wait(lambda: self.applied(keeper, int(self.route()['revision'])))
+
+    def destroy(self):
+        primary = self.story
+        keepers = ('keeper-1', 'keeper-2')
+        cases = self.seed('destroy', ['gone', 'orphan', 'sibling', 'resume', 'missed'])
+        pair = self.seed('destroy-all', ['first', 'second'])
+        everything = [*cases.values(), *pair.values()]
+        for record in everything:
+            self.feed(record, 4)
+        self.wait(lambda: all(self.archived(record) for record in everything), 90)
+
+        # Archived chunks at the Grapher and fresh events at the Keepers, then the destroy.
+        gone = cases['gone']
+        self.feed(gone, 2)
+        self.wait(lambda: all(self.serving(keeper, gone['id']) for keeper in keepers))
+        self.release(gone)
+        self.call('DestroyStory', dict(story_id=gone['id']))
+        self.destroyed(gone)
+        after_gone = {keeper: self.log_size(keeper) for keeper in keepers}
+
+        # The Grapher is down when the story is destroyed: the Keepers free their retained chunks without it
+        # (I13.9) and the Grapher, back later, records the tombstone and deletes the files.
+        orphan, sibling = cases['orphan'], cases['sibling']
+        self.stack.stop('grapher-a')
+        self.feed(orphan, 2)
+        self.feed(sibling, 2)
+        self.wait(lambda: all(self.serving(keeper, orphan['id']) for keeper in keepers))
+        self.release(orphan)
+        self.call('DestroyStory', dict(story_id=orphan['id']))
+        for keeper in keepers:
+            self.wait(lambda: self.freed(keeper, orphan['id']))
+        assert self.files(orphan['id']) and orphan['id'] not in self.tombstones(), 'the Grapher saw the destroy while down'
+        offsets = {keeper: self.log_size(keeper) for keeper in keepers}
+        self.stack.start('grapher-a')
+        self.destroyed(orphan)
+        # The sibling's backlog reaches the restarted Grapher; the destroyed story's never does.
+        self.wait(lambda: all(f'archive_settled chunk={keeper}:{sibling["id"]}:' in self.log_since(keeper, offsets[keeper])
+                              for keeper in sibling['writers']), 60)
+        for keeper in keepers:
+            assert f'archive_transfer_start chunk={keeper}:{orphan["id"]}:' not in self.log_since(keeper, offsets[keeper])
+        assert not self.files(orphan['id'])
+        self.wait(lambda: all(self.serving(keeper, sibling['id']) for keeper in keepers))
+
+        # A Grapher that recorded the tombstone and stopped before it deleted anything resumes from the manifest
+        # alone (I13.11). The kill between the two steps is not reachable from outside, so the state it leaves is
+        # written here: the Grapher's own Tombstoned line, files still in place, and a restart that cannot reach the
+        # Catalog.
+        resume = cases['resume']
+        self.release(resume)
+        self.stack.stop('grapher-a')
+        self.call('DestroyStory', dict(story_id=resume['id']))
+        for keeper in keepers:
+            self.wait(lambda: self.freed(keeper, resume['id']))
+        assert self.files(resume['id']) and resume['id'] not in self.tombstones()
+        with open(self.manifest(), 'a') as log:
+            log.write(json.dumps(dict(story=resume['id'], tombstoned=True), sort_keys=True, separators=(',', ':')) + '\n')
+        node, _, config = self.stack.services['grapher-a']
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            unreachable = '127.0.0.1:' + str(probe.getsockname()[1])
+            self.stack.write('grapher-a', node, dict(config, visor_internal=unreachable))
+            self.stack.start('grapher-a')
+        self.wait(lambda: not self.files(resume['id']))
+        self.stack.stop('grapher-a')
+        self.stack.write('grapher-a', node, config)
+        self.stack.start('grapher-a')
+        self.destroyed(resume)
+
+        # A Keeper that is cut off from the Visors while the destroy commits misses the delta. A story created
+        # afterwards puts a route revision above the tombstone's, so the snapshot it gets on reconnecting is
+        # newer than the tombstone and only Catalog.GetStory can tell it the story is gone (W10.17).
+        missed = cases['missed']
+        self.release(missed)
+        self.stack.block('keeper-1', True)
+        self.call('DestroyStory', dict(story_id=missed['id']))
+        later = int(self.call('CreateStory', dict(chronicle='destroy', name='later'))['story']['story_id'])
+        self.call('Acquire', dict(story_id=later, writer_identity='later'))
+        self.wait(lambda: self.freed('keeper-2', missed['id']))
+        assert self.serving('keeper-1', missed['id']), 'keeper-1 learned of the destroy through the partition'
+        self.stack.block('keeper-1', False)
+        self.destroyed(missed)
+        self.rejoin('keeper-1', primary)
+
+        # Destroying a chronicle frees every story in it.
+        for record in pair.values():
+            self.release(record)
+        self.call('DestroyChronicle', dict(name='destroy-all'))
+        for record in pair.values():
+            self.destroyed(record)
+        for keeper in keepers:
+            assert f'archive_transfer_start chunk={keeper}:{gone["id"]}:' not in self.log_since(keeper, after_gone[keeper])
+        self.story = primary
+
     def run(self):
         self.call('CreateChronicle', dict(name='m8e'))
         created = self.call('CreateStory', dict(chronicle='m8e', name='failover'))
@@ -384,6 +573,13 @@ class Scenario:
         self.complete()
         self.story = primary
         self.mark('join with stale Player I4.9 I6.11', started)
+
+        started = self.begin('story and chronicle destroy')
+        if hasattr(self.stack, 'cluster'):
+            print('SKIP story and chronicle destroy: the archive is on another host', flush=True)
+        else:
+            self.destroy()
+            self.mark('story and chronicle destroy W10.5 W10.17 I13.11 I6.7', started)
 
         started = self.begin('abandonment')
         # Keep a new acknowledged event unsettled, so the instance proof leaves a real gap.
