@@ -437,6 +437,8 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             auto index = refresh();
             if(!index.ok())
                 return index.status();
+            if((*index)->tombstoned.contains(chunk.story_id))
+                return absl::FailedPreconditionError("story tombstoned");
             if(!known(**index, chunk.story_id))
                 return absl::NotFoundError("unknown story");
             for(const auto& existing: viewOf(**index, chunk.story_id).effective)
@@ -651,6 +653,52 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     if(::unlink((root_ / file).c_str()) != 0 && errno != ENOENT)
         return tier_detail::IoError("delete archived file");
     return tier_detail::SyncDirectory((root_ / file).parent_path());
+}
+
+absl::Status FileTierStore::tombstone(StoryId story)
+{
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
+    if(!story)
+        return absl::InvalidArgumentError("zero story id");
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    if((*index)->tombstoned.contains(story))
+        return absl::OkStatus();
+    return log_->appendTombstone(story);
+}
+
+absl::StatusOr<bool> FileTierStore::tombstoned(StoryId story) const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    return (*index)->tombstoned.contains(story);
+}
+
+absl::StatusOr<std::vector<StoryId>> FileTierStore::tombstonedStories() const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    return std::vector<StoryId>((*index)->tombstoned.begin(), (*index)->tombstoned.end());
+}
+
+absl::StatusOr<std::vector<StoryId>> FileTierStore::liveStories() const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    std::vector<StoryId> stories;
+    for(const auto& [story, positions]: (*index)->by_story)
+        if(!(*index)->tombstoned.contains(story))
+            stories.push_back(story);
+    return stories;
 }
 
 absl::StatusOr<std::vector<StoryId>> FileTierStore::storiesWithoutPhysicalPolicy() const

@@ -1,4 +1,4 @@
-add_library(chronolog_grapher_server STATIC ArchiveService.cpp GrapherConfig.cpp WorkerPool.cpp)
+add_library(chronolog_grapher_server STATIC ArchiveService.cpp GrapherConfig.cpp TombstoneWatcher.cpp WorkerPool.cpp)
 target_include_directories(chronolog_grapher_server PUBLIC "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(chronolog_grapher_server PUBLIC
     chronolog_grapher_tier chronolog_common_rpc chronolog_internal_proto absl::crc32c
@@ -8,7 +8,7 @@ add_executable(chrono_grapher main.cpp)
 target_link_libraries(chrono_grapher PRIVATE chronolog_grapher_server chronolog_warnings
     absl::log absl::log_initialize absl::log_globals)
 
-add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp)
+add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp ../tests/tombstone_watcher_test.cpp)
 target_link_libraries(chronolog_grapher_server_tests PRIVATE
     chronolog_grapher_server chronolog_warnings GTest::gtest GTest::gtest_main)
 include(GoogleTest)

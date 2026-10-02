@@ -83,6 +83,8 @@ std::unique_ptr<contract::TierStoreHarness> MakeFileStore(std::shared_ptr<const 
     };
     harness->eraseFile = [h = harness.get()](std::string file)
     { ASSERT_TRUE(static_cast<FileTierStore*>(h->sut.get())->eraseFile(file).ok()); };
+    harness->tombstone = [h = harness.get()](StoryId story)
+    { ASSERT_TRUE(static_cast<FileTierStore*>(h->sut.get())->tombstone(story).ok()); };
     harness->writerLogs = [directory]
     {
         std::vector<std::string> logs;
@@ -820,6 +822,35 @@ TEST(FileTierStore, MixedCodecsRecoverOrphansAndReadByExtension)
     EXPECT_EQ((*proto)->contiguousWatermark(1).value(), (Hlc{300, 0}));
 }
 
+TEST(FileTierStore, ATombstoneIsIdempotentSurvivesCompactionAndNeedsNoKnownStory)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->publish(contract::Window()).ok());
+    EXPECT_EQ((*store)->tombstoned(1).value(), false);
+    EXPECT_EQ((*store)->liveStories().value(), (std::vector<StoryId>{1}));
+    ASSERT_TRUE((*store)->tombstone(1).ok());
+    ASSERT_TRUE((*store)->tombstone(1).ok());
+    ASSERT_TRUE((*store)->tombstone(7).ok());
+    EXPECT_FALSE((*store)->tombstone(0).ok());
+    std::ifstream before(*directory / "manifest/primary.log");
+    EXPECT_EQ(std::count(std::istreambuf_iterator<char>(before), std::istreambuf_iterator<char>(), '\n'), 3)
+            << "one record and two tombstone lines";
+    ASSERT_TRUE((*store)->compact().ok());
+    store->reset();
+    store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    EXPECT_EQ((*store)->tombstoned(1).value(), true);
+    EXPECT_EQ((*store)->tombstoned(7).value(), true);
+    EXPECT_EQ((*store)->tombstoned(2).value(), false);
+    EXPECT_EQ((*store)->tombstonedStories().value(), (std::vector<StoryId>{1, 7}));
+    EXPECT_TRUE((*store)->liveStories().value().empty());
+    EXPECT_EQ((*store)->publish(contract::Window(200, 300)).status().code(), absl::StatusCode::kFailedPrecondition);
+    auto reader = FileTierStore::OpenReadOnly(*directory);
+    ASSERT_TRUE(reader.ok());
+    EXPECT_EQ((*reader)->tombstoned(1).value(), true);
+}
 } // namespace
 
 namespace contract
