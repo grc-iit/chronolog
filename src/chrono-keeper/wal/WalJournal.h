@@ -14,7 +14,6 @@ namespace chronolog
 struct WalJournalConfig
 {
     std::string wal_dir{"wal"};
-    uint32_t group_commit_window_ms{1};
     size_t group_commit_max_bytes{4u << 20};
     uint32_t reserve_ahead_ms{1000};
     uint64_t wal_max_bytes{1ull << 30};
@@ -42,6 +41,8 @@ public:
     std::optional<Hlc> firstEvent(StoryId story) const;
     bool hasPhysicalPolicy() const override { return physical_policy_; }
     absl::Status flush();
+    // Records waiting for the commit loop; tests use it to know a group has formed behind a blocked fsync.
+    size_t queuedRecords() const;
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
 
@@ -50,6 +51,8 @@ protected:
     bool durableAvailable() const override { return !failed_.load(); }
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
     void persist(const Event& event, std::function<void(absl::Status)> done) override;
+    void beginPersistBatch() override;
+    void endPersistBatch() override;
     Hlc reserveFrontier(Hlc frontier) const override;
     absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
 
@@ -60,12 +63,17 @@ private:
         std::function<void(absl::Status)> done;
     };
     void enqueue(Write write);
+    static void flushCollected(WalJournal& journal);
+    static thread_local bool collecting_;
+    static thread_local std::vector<Write> collected_;
     absl::Status persistRecord(std::string payload);
     void commit();
     uint64_t recover();
     absl::Status rotate();
     void truncate();
+    absl::Status reclaim();
     void trackRecord(std::string_view payload, uint64_t segment);
+    // Wv2 record: every writer's counters and the dedupe window entries that are acknowledged or rejected.
     std::string writersRecord() const;
     void restoreWriters(std::string_view payload);
     struct Segment
@@ -94,7 +102,7 @@ private:
     bool warned_{};
     mutable std::mutex reserve_mu_;
     mutable Hlc reservation_;
-    std::mutex queue_mu_;
+    mutable std::mutex queue_mu_;
     std::condition_variable queue_cv_;
     std::deque<Write> queue_;
     size_t queued_bytes_{};

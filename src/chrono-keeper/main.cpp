@@ -150,7 +150,6 @@ int main(int argc, char** argv)
     journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
     journal_config.dedupe_window = config->dedupe_window;
     WalJournalConfig wal_config{config->wal_dir,
-                                config->group_commit_window_ms,
                                 config->group_commit_max_bytes,
                                 config->reserve_ahead_ms,
                                 config->wal_max_bytes,

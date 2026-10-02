@@ -48,7 +48,6 @@ struct KeeperConfig
     int64_t causal_floor_skew_limit_ns = 60'000'000'000;
     size_t dedupe_window = 65536;
     std::string wal_dir = "wal";
-    uint32_t group_commit_window_ms = 1;
     size_t group_commit_max_bytes = 4u << 20;
     uint32_t reserve_ahead_ms = 1000;
     uint64_t wal_max_bytes = 1ull << 30;

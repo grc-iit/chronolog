@@ -35,7 +35,7 @@ mkdir -p "$walbase"
 scratch=$(mktemp -d "$walbase/run.XXXXXX")
 
 visor=$binaries/src/chrono-visor/chrono_visor
-keeper=$binaries/src/chrono-keeper/chrono_keeper
+keeper=${BENCH_KEEPER:-$binaries/src/chrono-keeper/chrono_keeper}
 grapher=$binaries/src/chrono-grapher/server/chrono_grapher
 player=$binaries/src/chrono-player/chrono_player
 micro=$binaries/tools/bench/chronolog_bench_micro
@@ -210,6 +210,7 @@ suite_custom() {
     start_stack 4096 200 || return 1
     start_perf custom
     run_load "${custom_args[@]}" || return 1
+    [ -z "${BENCH_SHOW_KEEPER:-}" ] || grep -E "$BENCH_SHOW_KEEPER" "$scratch/keeper.log" | tail -n "${BENCH_SHOW_LINES:-40}"
     stop_perf custom
     stop_stack
     finish custom

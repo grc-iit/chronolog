@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <fstream>
 #include <future>
+#include <map>
+#include <set>
+#include <sstream>
 
 #include "adapter/JournalService.h"
 #include "wal_harness.h"
@@ -73,6 +76,201 @@ TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
     auto next = rig.current->append(batch({3}), Durability::Durable);
     ASSERT_TRUE(next.ok());
     EXPECT_TRUE((*next)[0].status.ok());
+}
+
+// The window lines of the one writer in a "v2" checkpoint, by sequence.
+std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::string& text, size_t* declared = nullptr)
+{
+    std::istringstream in(text);
+    std::string line;
+    std::getline(in, line);
+    EXPECT_EQ(line, "v2 1");
+    std::getline(in, line);
+    std::istringstream header(line);
+    uint64_t story, writer, incarnation, next, released, assigned;
+    int64_t physical;
+    uint32_t logical;
+    size_t count;
+    header >> story >> writer >> incarnation >> next >> physical >> logical >> released >> assigned >> count;
+    if(declared)
+        *declared = count;
+    std::map<uint64_t, std::pair<int64_t, uint32_t>> window;
+    uint64_t sequence;
+    int code;
+    while(in >> sequence >> physical >> logical >> code)
+    {
+        EXPECT_EQ(code, 0);
+        EXPECT_TRUE(window.emplace(sequence, std::pair{physical, logical}).second)
+                << "sequence " << sequence << " twice";
+    }
+    return window;
+}
+
+TEST(WalJournal, AppendsQueuedBehindAnFsyncAreAcknowledgedByTheNextSingleFsync)
+{
+    WalRig rig;
+    rig.control->block();
+    auto first = std::async(std::launch::async, [&] { return rig.current->append(batch({1}), Durability::Durable); });
+    (void)rig.control->waitPending();
+    std::vector<std::future<absl::StatusOr<std::vector<AppendResult>>>> queued;
+    for(uint64_t writer = 10; writer < 15; ++writer)
+    {
+        ASSERT_TRUE(rig.current->registerWriter(1, writer, 3).ok());
+        AppendBatch own{1, 7, {}};
+        AppendItem item;
+        item.writer_id = writer;
+        item.incarnation = 3;
+        item.sequence = 1;
+        item.envelope.payload = "writer " + std::to_string(writer);
+        own.items.push_back(std::move(item));
+        queued.push_back(std::async(std::launch::async,
+                                    [&rig, own = std::move(own)]
+                                    { return rig.current->append(own, Durability::Durable); }));
+    }
+    const auto give_up = std::chrono::steady_clock::now() + 10s;
+    while(rig.current->queuedRecords() < queued.size() && std::chrono::steady_clock::now() < give_up)
+        std::this_thread::yield();
+    ASSERT_EQ(rig.current->queuedRecords(), queued.size());
+    size_t before;
+    {
+        std::lock_guard lock(rig.control->mu);
+        before = rig.control->syncs;
+    }
+    rig.control->release();
+    ASSERT_EQ(first.wait_for(5s), std::future_status::ready);
+    EXPECT_TRUE(first.get()->front().status.ok());
+    for(auto& call: queued)
+    {
+        ASSERT_EQ(call.wait_for(5s), std::future_status::ready);
+        auto results = call.get();
+        ASSERT_TRUE(results.ok());
+        EXPECT_TRUE(results->front().status.ok());
+        EXPECT_EQ(results->front().achieved, Durability::Durable);
+    }
+    std::lock_guard lock(rig.control->mu);
+    // The group that was already syncing, then one group for everything that queued behind it.
+    EXPECT_LE(rig.control->syncs - before, 1u);
+}
+
+TEST(WalJournal, CheckpointCacheMatchesTheWindowAcrossBlocksTrimsAndUpgrades)
+{
+    WalRig rig(256 * 1024);
+    rig.ram_config.dedupe_window = 1500;
+    rig.reopen();
+    std::map<uint64_t, Hlc> hlcs;
+    for(uint64_t from = 1; from <= 4000; from += 500)
+    {
+        AppendBatch many{1, 7, {}};
+        for(uint64_t sequence = from; sequence < from + 500; ++sequence)
+            many.items.push_back(batch({sequence}).items.front());
+        auto appended = rig.current->append(many, Durability::Durable);
+        ASSERT_TRUE(appended.ok());
+        for(const auto& result: *appended)
+        {
+            ASSERT_TRUE(result.status.ok());
+            hlcs[result.id.sequence] = result.hlc;
+        }
+        size_t declared = 0;
+        const auto window = checkpointWindow(rig.current->checkpoint(), &declared);
+        EXPECT_EQ(declared, window.size());
+        const uint64_t last = from + 499, low = last > 1500 ? last - 1500 + 1 : 1;
+        for(uint64_t sequence = low; sequence <= last; ++sequence)
+        {
+            ASSERT_TRUE(window.contains(sequence)) << "sequence " << sequence << " missing after " << last;
+            EXPECT_EQ(window.at(sequence), std::pair(hlcs[sequence].physical_ns, hlcs[sequence].logical));
+        }
+        // Whole cache blocks of 1024 may extend below the window, never above it and never without a result.
+        ASSERT_FALSE(window.empty());
+        EXPECT_EQ(window.rbegin()->first, last);
+        EXPECT_GE(window.begin()->first + 1024 + 1500, last);
+    }
+    // A retry inside the window returns the original result after a restart; one outside it is refused.
+    rig.reopen();
+    auto retry = rig.current->append(batch({3990}), Durability::Durable);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_TRUE(retry->front().status.ok());
+    EXPECT_EQ(retry->front().hlc, hlcs[3990]);
+    auto outside = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(outside.ok());
+    EXPECT_EQ(outside->front().status.code(), absl::StatusCode::kFailedPrecondition);
+}
+
+TEST(WalJournal, CheckpointCacheSkipsAcceptedEntriesUntilARetryMakesThemDurable)
+{
+    WalRig rig;
+    ASSERT_TRUE(rig.current->append(batch({1, 2, 3}), Durability::Accepted).ok());
+    auto durable = rig.current->append(batch({4, 5}), Durability::Durable);
+    ASSERT_TRUE(durable.ok());
+    auto window = checkpointWindow(rig.current->checkpoint());
+    EXPECT_EQ(window.size(), 2u);
+    EXPECT_TRUE(window.contains(4) && window.contains(5));
+    // The first checkpoint cached everything below the newest entries; upgrading entry 2 must reach the next one.
+    auto upgraded = rig.current->append(batch({2}), Durability::Durable);
+    ASSERT_TRUE(upgraded.ok());
+    ASSERT_TRUE(upgraded->front().status.ok());
+    EXPECT_EQ(upgraded->front().achieved, Durability::Durable);
+    window = checkpointWindow(rig.current->checkpoint());
+    EXPECT_EQ(window.size(), 3u);
+    ASSERT_TRUE(window.contains(2));
+    EXPECT_EQ(window.at(2), std::pair(upgraded->front().hlc.physical_ns, upgraded->front().hlc.logical));
+}
+
+TEST(WalJournal, ReleasedWriterKeepsItsCountersButNotItsWindowInTheCheckpoint)
+{
+    WalRig rig;
+    auto appended = rig.current->append(batch({1, 2, 3}), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    size_t declared = 0;
+    EXPECT_EQ(checkpointWindow(rig.current->checkpoint(), &declared).size(), 3u);
+    rig.current->releaseWriter(1, 2, 3);
+    const auto window = checkpointWindow(rig.current->checkpoint(), &declared);
+    EXPECT_TRUE(window.empty());
+    EXPECT_EQ(declared, 0u);
+    auto retry = rig.current->append(batch({3}), Durability::Durable);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->front().status.code(), absl::StatusCode::kFailedPrecondition);
+}
+
+TEST(WalJournal, SettlingRotatesOnlyWhenTheWholeActiveSegmentCanBeFreed)
+{
+    WalRig rig;
+    const auto segments = [&]
+    {
+        std::set<uint64_t> numbers;
+        for(const auto& entry: std::filesystem::directory_iterator(rig.control->directory))
+            if(entry.path().extension() == ".wal")
+                numbers.insert(std::stoull(entry.path().stem().string()));
+        return numbers;
+    };
+    const auto append = [&](uint64_t first, uint64_t last)
+    {
+        std::vector<Hlc> hlcs;
+        for(uint64_t sequence = first; sequence <= last; ++sequence)
+        {
+            auto result = rig.current->append(batch({sequence}), Durability::Durable);
+            EXPECT_TRUE(result.ok() && result->front().status.ok());
+            hlcs.push_back(result->front().hlc);
+        }
+        return hlcs;
+    };
+    const auto settle = [&](const std::string& id, Hlc start, Hlc last)
+    {
+        ASSERT_TRUE(rig.current->recordSeal({id, 1, start, {last.physical_ns, last.logical + 1}, {}, false}).ok());
+        ASSERT_TRUE(rig.current->recordSettled(id).ok());
+    };
+    const auto first_segment = *segments().begin();
+    const auto ten = append(1, 10);
+    // Every event of the active segment is settled: it is rotated away, leaving one new segment.
+    settle("all", ten.front(), ten.back());
+    ASSERT_EQ(segments().size(), 1u);
+    EXPECT_EQ(*segments().begin(), first_segment + 1);
+    const auto more = append(11, 20);
+    // Half of the new active segment is still unsettled: nothing is rotated and nothing can be removed yet.
+    settle("half", more.front(), more[4]);
+    EXPECT_EQ(segments(), std::set<uint64_t>{first_segment + 1});
+    // The rest settles: the active segment goes the same way as the first one.
+    settle("rest", more[5], more.back());
+    EXPECT_EQ(segments(), std::set<uint64_t>{first_segment + 2});
 }
 
 TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)

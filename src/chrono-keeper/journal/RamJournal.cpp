@@ -4,12 +4,35 @@
 #include <algorithm>
 #include <future>
 
+#include <absl/strings/str_cat.h>
+
 namespace chronolog
 {
 namespace
 {
 
 std::string ExpectedSequence(uint64_t next) { return "expected sequence " + std::to_string(next); }
+
+// Window entries that a checkpoint records: acknowledged DURABLE results and physical rejections.
+bool checkpointEligible(const AppendResult& result)
+{
+    return absl::IsOutOfRange(result.status) || (result.status.ok() && result.achieved == Durability::Durable);
+}
+
+void formatWindowLine(std::string& out, const AppendResult& result)
+{
+    absl::StrAppend(&out,
+                    result.id.sequence,
+                    " ",
+                    result.hlc.physical_ns,
+                    " ",
+                    result.hlc.logical,
+                    " ",
+                    static_cast<int>(result.status.code()),
+                    "\n");
+}
+
+constexpr size_t kCacheBlockEntries = 1024;
 
 } // namespace
 
@@ -270,16 +293,25 @@ void RamJournal::complete(const std::shared_ptr<Writer>& writer, uint64_t sequen
         auto original = writer->window.find(sequence);
         if(original != writer->window.end() &&
            (result.status.ok() || original->second.achieved != Durability::Accepted))
+        {
             original->second = result;
+            if(sequence < writer->cache_next)
+            {
+                writer->cache.clear();
+                writer->cache_next = 0;
+                writer->cache_entries = 0;
+            }
+        }
         waiters = std::move(pending->second.waiters);
         writer->pending.erase(pending);
     }
     for(auto& waiter: waiters) waiter(result);
 }
 
-std::vector<RamJournal::WriterCheckpoint> RamJournal::checkpointWriters() const
+std::string RamJournal::checkpointText() const
 {
-    std::vector<WriterCheckpoint> out;
+    std::string body;
+    size_t writers = 0;
     for(auto& sh: shards_)
     {
         std::shared_lock lock(sh.mu);
@@ -288,21 +320,91 @@ std::vector<RamJournal::WriterCheckpoint> RamJournal::checkpointWriters() const
             {
                 std::lock_guard writer_lock(writer->mu);
                 const auto& slot = story.slots.at(key.first);
-                WriterCheckpoint checkpoint{{story_id, key.first, key.second},
-                                            writer->next_sequence,
-                                            writer->last_hlc,
-                                            writer->released,
-                                            slot.current == writer && slot.assigned,
-                                            {}};
-                for(const auto& [sequence, result]: writer->window)
-                    if((absl::IsOutOfRange(result.status) ||
-                        (result.status.ok() && result.achieved == Durability::Durable)) &&
-                       !writer->pending.contains(sequence))
-                        checkpoint.window.push_back(result);
-                out.push_back(std::move(checkpoint));
+                // Only the current, unreleased incarnation can still be asked for a window entry: an append from a
+                // released or superseded one is refused before the dedupe lookup, so its window is not carried.
+                const bool carries = slot.current == writer && !writer->released;
+                if(!carries)
+                {
+                    writer->cache.clear();
+                    writer->cache_next = 0;
+                    writer->cache_entries = 0;
+                    absl::StrAppend(&body,
+                                    story_id,
+                                    " ",
+                                    key.first,
+                                    " ",
+                                    key.second,
+                                    " ",
+                                    writer->next_sequence,
+                                    " ",
+                                    writer->last_hlc.physical_ns,
+                                    " ",
+                                    writer->last_hlc.logical,
+                                    " ",
+                                    writer->released ? 1 : 0,
+                                    " ",
+                                    (slot.current == writer && slot.assigned) ? 1 : 0,
+                                    " 0\n");
+                    ++writers;
+                    continue;
+                }
+                // Drop cached blocks that lie wholly below the window.
+                while(!writer->cache.empty() &&
+                      (writer->window.empty() || writer->cache.front().last_sequence < writer->window.begin()->first))
+                {
+                    writer->cache_entries -= writer->cache.front().entries;
+                    writer->cache.pop_front();
+                }
+                // Extend the cache over entries that can no longer change: everything below the oldest pending one.
+                for(auto it = writer->window.lower_bound(writer->cache_next); it != writer->window.end(); ++it)
+                {
+                    if(writer->pending.contains(it->first))
+                        break;
+                    if(checkpointEligible(it->second))
+                    {
+                        if(writer->cache.empty() || writer->cache.back().entries >= kCacheBlockEntries)
+                            writer->cache.emplace_back();
+                        auto& block = writer->cache.back();
+                        formatWindowLine(block.text, it->second);
+                        block.last_sequence = it->first;
+                        ++block.entries;
+                        ++writer->cache_entries;
+                    }
+                    writer->cache_next = it->first + 1;
+                }
+                std::string fresh;
+                size_t fresh_entries = 0;
+                for(auto it = writer->window.lower_bound(writer->cache_next); it != writer->window.end(); ++it)
+                    if(checkpointEligible(it->second) && !writer->pending.contains(it->first))
+                    {
+                        formatWindowLine(fresh, it->second);
+                        ++fresh_entries;
+                    }
+                absl::StrAppend(&body,
+                                story_id,
+                                " ",
+                                key.first,
+                                " ",
+                                key.second,
+                                " ",
+                                writer->next_sequence,
+                                " ",
+                                writer->last_hlc.physical_ns,
+                                " ",
+                                writer->last_hlc.logical,
+                                " ",
+                                writer->released ? 1 : 0,
+                                " ",
+                                (slot.current == writer && slot.assigned) ? 1 : 0,
+                                " ",
+                                writer->cache_entries + fresh_entries,
+                                "\n");
+                for(const auto& block: writer->cache) body += block.text;
+                body += fresh;
+                ++writers;
             }
     }
-    return out;
+    return absl::StrCat("v2 ", writers, "\n", body);
 }
 
 void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
@@ -322,6 +424,9 @@ void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
     writer->last_hlc = std::max(writer->last_hlc, checkpoint.last_hlc);
     writer->released = writer->released || checkpoint.released;
     for(const auto& result: checkpoint.window) writer->window[result.id.sequence] = result;
+    writer->cache.clear();
+    writer->cache_next = 0;
+    writer->cache_entries = 0;
     while(!writer->window.empty() && writer->next_sequence > std::max<size_t>(config_.dedupe_window, 1) &&
           writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
         writer->window.erase(writer->window.begin());
@@ -357,6 +462,9 @@ void RamJournal::restore(const Event& event)
     writer->next_sequence = std::max(writer->next_sequence, event.id.sequence + 1);
     writer->window[event.id.sequence] =
             AppendResult{absl::OkStatus(), event.durability, event.hlc, event.id, std::nullopt};
+    writer->cache.clear();
+    writer->cache_next = 0;
+    writer->cache_entries = 0;
     while(!writer->window.empty() && writer->next_sequence > std::max<size_t>(config_.dedupe_window, 1) &&
           writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
         writer->window.erase(writer->window.begin());
@@ -410,6 +518,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
     state->remaining = batch.items.size() + 1;
     state->done = std::move(done);
     std::set<std::pair<uint64_t, uint64_t>> poisoned;
+    beginPersistBatch();
     for(size_t i = 0; i < batch.items.size(); ++i)
     {
         const auto deadline =
@@ -466,11 +575,14 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             if(!result || result->status != Clock::wouldExceedCeiling())
                 break;
             gate_lock.unlock();
+            // The ceiling can depend on records already queued, so they go out before waiting.
+            endPersistBatch();
             std::unique_lock lock(dynamic_mu_);
             ++ceiling_waiters_;
             const bool changed =
                     ceiling_cv_.wait_until(lock, deadline, [&] { return generation != ceiling_generation_; });
             --ceiling_waiters_;
+            beginPersistBatch();
             if(!changed)
             {
                 result->status = absl::UnavailableError("ceiling wait timed out");
@@ -480,6 +592,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         if(result)
             state->finish(i, std::move(*result));
     }
+    endPersistBatch();
     state->finish(batch.items.size(), {});
 }
 
@@ -950,9 +1063,17 @@ namespace chronolog
 {
 bool RamJournal::neverHeldEvent(StoryId story) const
 {
-    for(const auto& checkpoint: checkpointWriters())
-        if(checkpoint.key.story_id == story && checkpoint.last_hlc != Hlc{})
+    auto& sh = shard(story);
+    std::shared_lock lock(sh.mu);
+    const auto found = sh.stories.find(story);
+    if(found == sh.stories.end())
+        return true;
+    for(const auto& [key, writer]: found->second.writers)
+    {
+        std::lock_guard writer_lock(writer->mu);
+        if(writer->last_hlc != Hlc{})
             return false;
+    }
     return true;
 }
 } // namespace chronolog

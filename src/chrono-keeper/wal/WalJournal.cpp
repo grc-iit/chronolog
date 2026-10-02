@@ -221,9 +221,41 @@ void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<Ap
                   }});
 }
 
+thread_local bool WalJournal::collecting_ = false;
+thread_local std::vector<WalJournal::Write> WalJournal::collected_;
+
 void WalJournal::persist(const Event& event, std::function<void(absl::Status)> done)
 {
-    enqueue(Write{wal::frame(wal::encode(event)), std::move(done)});
+    Write write{wal::frame(wal::encode(event)), std::move(done)};
+    if(collecting_)
+        collected_.push_back(std::move(write));
+    else
+        enqueue(std::move(write));
+}
+
+void WalJournal::beginPersistBatch() { collecting_ = true; }
+
+void WalJournal::endPersistBatch()
+{
+    collecting_ = false;
+    flushCollected(*this);
+}
+
+// One lock and one wake-up for every record of the batch.
+void WalJournal::flushCollected(WalJournal& journal)
+{
+    if(collected_.empty())
+        return;
+    {
+        std::lock_guard lock(journal.queue_mu_);
+        for(auto& write: collected_)
+        {
+            journal.queued_bytes_ += write.bytes.size();
+            journal.queue_.push_back(std::move(write));
+        }
+    }
+    collected_.clear();
+    journal.queue_cv_.notify_one();
 }
 
 Hlc WalJournal::reserveFrontier(Hlc frontier) const
@@ -231,6 +263,8 @@ Hlc WalJournal::reserveFrontier(Hlc frontier) const
     std::unique_lock lock(reserve_mu_);
     if(frontier < reservation_)
         return frontier;
+    // Records of the batch being assembled on this thread keep their place ahead of the reservation.
+    flushCollected(*const_cast<WalJournal*>(this));
     Hlc next = frontier;
     const auto ahead = static_cast<int64_t>(config_.reserve_ahead_ms) * 1'000'000;
     next.physical_ns = frontier.physical_ns > INT64_MAX - ahead ? INT64_MAX : frontier.physical_ns + ahead;
@@ -254,11 +288,6 @@ void WalJournal::commit()
             queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
             if(queue_.empty() && stopping_)
                 return;
-            const auto deadline =
-                    std::chrono::steady_clock::now() + std::chrono::milliseconds(config_.group_commit_window_ms);
-            queue_cv_.wait_until(lock,
-                                 deadline,
-                                 [this] { return stopping_ || queued_bytes_ >= config_.group_commit_max_bytes; });
             size_t bytes = 0;
             while(!queue_.empty() &&
                   (group.empty() || bytes + queue_.front().bytes.size() <= config_.group_commit_max_bytes))
@@ -312,9 +341,7 @@ void WalJournal::commit()
                             write.done(status);
                             write.done = {};
                         }
-                    status = rotate();
-                    if(status.ok())
-                        truncate();
+                    status = reclaim();
                 }
             }
             catch(const std::exception& error)
@@ -342,6 +369,12 @@ void WalJournal::commit()
 
 namespace chronolog
 {
+size_t WalJournal::queuedRecords() const
+{
+    std::lock_guard lock(queue_mu_);
+    return queue_.size();
+}
+
 absl::Status WalJournal::flush()
 {
     std::promise<absl::Status> promise;
@@ -405,23 +438,7 @@ std::vector<WalJournal::SealedChunk> WalJournal::sealedChunks() const
 
 namespace chronolog
 {
-std::string WalJournal::writersRecord() const
-{
-    std::ostringstream out;
-    out << "Wv2 ";
-    const auto writers = checkpointWriters();
-    out << writers.size() << '\n';
-    for(const auto& writer: writers)
-    {
-        out << writer.key.story_id << ' ' << writer.key.writer_id << ' ' << writer.key.incarnation << ' '
-            << writer.next_sequence << ' ' << writer.last_hlc.physical_ns << ' ' << writer.last_hlc.logical << ' '
-            << writer.released << ' ' << writer.assigned << ' ' << writer.window.size() << '\n';
-        for(const auto& result: writer.window)
-            out << result.id.sequence << ' ' << result.hlc.physical_ns << ' ' << result.hlc.logical << ' '
-                << static_cast<int>(result.status.code()) << '\n';
-    }
-    return out.str();
-}
+std::string WalJournal::writersRecord() const { return "W" + checkpointText(); }
 
 void WalJournal::restoreWriters(std::string_view payload)
 {
@@ -598,28 +615,65 @@ absl::Status WalJournal::rotate()
     return absl::OkStatus();
 }
 
+namespace
+{
+// Settled seals per story ordered by start, with the running maximum of their ends: an event is covered when some
+// seal that starts at or before it ends after it, which one binary search decides.
+class SettledIndex
+{
+public:
+    explicit SettledIndex(const std::vector<WalJournal::SealedChunk>& seals)
+    {
+        std::map<StoryId, std::vector<std::pair<Hlc, Hlc>>> ranges;
+        for(const auto& seal: seals)
+            if(seal.settled)
+                ranges[seal.chunk.story_id].emplace_back(seal.chunk.start, seal.chunk.end);
+        for(auto& [story, list]: ranges)
+        {
+            std::sort(list.begin(), list.end());
+            auto& entry = stories_[story];
+            for(const auto& [start, end]: list)
+            {
+                entry.starts.push_back(start);
+                entry.max_ends.push_back(entry.max_ends.empty() ? end : std::max(entry.max_ends.back(), end));
+            }
+        }
+    }
+    bool covers(StoryId story, Hlc hlc) const
+    {
+        const auto found = stories_.find(story);
+        if(found == stories_.end())
+            return false;
+        const auto& starts = found->second.starts;
+        const auto count = static_cast<size_t>(std::upper_bound(starts.begin(), starts.end(), hlc) - starts.begin());
+        return count != 0 && hlc < found->second.max_ends[count - 1];
+    }
+    template <typename Events>
+    bool coversAll(const Events& events) const
+    {
+        return std::all_of(events.begin(),
+                           events.end(),
+                           [&](const auto& event) { return covers(event.first, event.second); });
+    }
+
+private:
+    struct Entry
+    {
+        std::vector<Hlc> starts, max_ends;
+    };
+    std::map<StoryId, Entry> stories_;
+};
+} // namespace
+
 void WalJournal::truncate()
 {
-    const auto seals = sealedChunks();
+    const SettledIndex settled(sealedChunks());
+    bool removed = false;
     for(auto it = segments_.begin(); it != segments_.end();)
     {
         if(it->first == segment_)
             break;
-        const bool settled = std::all_of(it->second.events.begin(),
-                                         it->second.events.end(),
-                                         [&](const auto& event)
-                                         {
-                                             return std::any_of(seals.begin(),
-                                                                seals.end(),
-                                                                [&](const SealedChunk& seal)
-                                                                {
-                                                                    return seal.settled &&
-                                                                           seal.chunk.story_id == event.first &&
-                                                                           seal.chunk.start <= event.second &&
-                                                                           event.second < seal.chunk.end;
-                                                                });
-                                         });
-        if(!settled)
+        if(!settled.coversAll(it->second.events))
         {
             ++it;
             continue;
@@ -627,8 +681,25 @@ void WalJournal::truncate()
         fs::remove(fs::path(config_.wal_dir) / (std::to_string(it->first) + ".wal"));
         bytes_ -= it->second.bytes;
         it = segments_.erase(it);
+        removed = true;
     }
-    syncDirectory(config_.wal_dir);
+    if(removed)
+        syncDirectory(config_.wal_dir);
+}
+
+absl::Status WalJournal::reclaim()
+{
+    truncate();
+    // Rotating writes a checkpoint of every writer, so it pays only when it lets the whole active segment go. While
+    // the active segment still holds unsettled events a rotation frees nothing, and the size trigger in commit()
+    // rotates it long before the WAL grows beyond wal_segment_bytes.
+    const auto& active = segments_[segment_].events;
+    if(active.empty() || !SettledIndex(sealedChunks()).coversAll(active))
+        return absl::OkStatus();
+    auto status = rotate();
+    if(status.ok())
+        truncate();
+    return status;
 }
 } // namespace chronolog
 
@@ -637,6 +708,7 @@ namespace chronolog
 absl::StatusOr<int64_t> WalJournal::reservePhysicalFrontier(StoryId story, int64_t frontier) const
 {
     frontier = std::min(frontier, reserveFrontier(Hlc{frontier, 0}).physical_ns);
+    flushCollected(*const_cast<WalJournal*>(this));
     std::lock_guard lock(reserve_mu_);
     auto status =
             const_cast<WalJournal*>(this)->persistRecord("F" + std::to_string(story) + " " + std::to_string(frontier));
