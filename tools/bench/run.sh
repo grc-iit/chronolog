@@ -35,7 +35,7 @@ mkdir -p "$walbase"
 scratch=$(mktemp -d "$walbase/run.XXXXXX")
 
 visor=$binaries/src/chrono-visor/chrono_visor
-keeper=$binaries/src/chrono-keeper/chrono_keeper
+keeper=${BENCH_KEEPER:-$binaries/src/chrono-keeper/chrono_keeper}
 grapher=$binaries/src/chrono-grapher/server/chrono_grapher
 player=$binaries/src/chrono-player/chrono_player
 micro=$binaries/tools/bench/chronolog_bench_micro
