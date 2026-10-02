@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
+#include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-visor/adapter/ClusterService.h"
@@ -40,6 +41,68 @@ public:
 private:
     std::shared_ptr<ClusterClient> routes_;
 };
+TEST(PhysicalPolicyCatalog, WatchReportsPolicyDowngradeBeforeLaterTombstone)
+{
+    visor::testing::TempDir dir;
+    auto opened =
+            visor::SqliteMetadataStore::open((dir.path() / "catalog").string(), visor::testing::twoKeeperTopology());
+    ASSERT_TRUE(opened.ok());
+    auto store = *std::move(opened);
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-b", 1).ok());
+    ASSERT_TRUE(store->createChronicle("c").ok());
+    auto story = store->createStory("c", "s");
+    auto barrier = store->createStory("c", "barrier");
+    ASSERT_TRUE(story.ok());
+    ASSERT_TRUE(barrier.ok());
+    visor::StaticRouteMembership membership(visor::testing::twoKeeperTopology(), 1, [](StoryId) { return true; }, 15s);
+    visor::AcquisitionFeed feed;
+    visor::WorkerPool pool(2, 64);
+    visor::ClusterService cluster(membership, *store, *store, feed, nullptr, &pool);
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&cluster);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    auto stub = wire::Cluster::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
+    grpc::ClientContext context;
+    rpc::withTimeout(context, 5s);
+    wire::WatchRoutesRequest request;
+    auto reader = stub->WatchRoutes(&context, request);
+    wire::WatchRoutesResponse update;
+    bool saw_story = false;
+    for(int i = 0; i < 2; ++i)
+    {
+        ASSERT_TRUE(reader->Read(&update));
+        if(update.story_id() == story->id)
+        {
+            saw_story = true;
+            EXPECT_TRUE(update.physical_policy());
+        }
+    }
+    ASSERT_TRUE(saw_story);
+    ASSERT_TRUE(store->clearPhysicalPolicy({story->id}).ok());
+    ASSERT_FALSE(store->membershipRouteUpdate(story->id)->physical_policy());
+    ASSERT_TRUE(store->destroyStory(barrier->id).ok());
+    bool saw_downgrade = false;
+    bool saw_barrier = false;
+    for(int i = 0; i < 8 && reader->Read(&update); ++i)
+    {
+        if(update.story_id() == story->id && !update.tombstoned() && !update.physical_policy())
+            saw_downgrade = true;
+        if(update.story_id() == barrier->id && update.tombstoned())
+        {
+            saw_barrier = true;
+            break;
+        }
+    }
+    context.TryCancel();
+    (void)reader->Finish();
+    EXPECT_TRUE(saw_barrier);
+    EXPECT_TRUE(saw_downgrade) << "WatchRoutes omitted the physical-policy downgrade before the later destroy";
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
 TEST(PhysicalPolicyCatalog, UnmarkedArchiveHeartbeatPermanentlyPreventsPhysicalCompletion)
 {
     visor::testing::TempDir dir;

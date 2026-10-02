@@ -8,6 +8,7 @@
 
 #include "TestSupport.h"
 #include "VisorConfig.h"
+#include "catalog/SqliteMetadataStore.h"
 #include "membership/StaticRouteMembership.h"
 #include "membership_contract_test.cpp"
 
@@ -31,20 +32,116 @@ make(Epoch epoch, std::function<StaticRouteMembership::TimePoint()> now = &std::
             std::move(now));
 }
 
-MembershipFactory staticFactory()
+MembershipFactory staticFactory(bool raft)
 {
-    return []
+    return [raft]
     {
+        auto dir = std::make_shared<visor::testing::TempDir>();
+        auto opened = visor::SqliteMetadataStore::open((dir->path() / "catalog").string(), twoKeeperTopology());
+        if(!opened.ok())
+            throw std::runtime_error(opened.status().ToString());
+        auto store = std::shared_ptr<visor::SqliteMetadataStore>(std::move(*opened));
+        if(!store->registerStaticPolicy("keeper-a", 1).ok() || !store->registerStaticPolicy("keeper-b", 1).ok() ||
+           !store->createChronicle("c").ok() || !store->createStory("c", "s").ok() ||
+           !store->compareAndSetEpoch(1, 1, 7).ok())
+            throw std::runtime_error("setup failed");
         auto harness = std::make_unique<MembershipHarness>();
-        harness->sut = make(7);
+        harness->sut = std::make_unique<StaticRouteMembership>(
+                twoKeeperTopology(),
+                7,
+                [store](StoryId id)
+                {
+                    auto story = store->getStory(id);
+                    return story.ok() && !story->tombstoned;
+                },
+                15s);
         harness->staticEpoch = [] { return make(1); };
+        harness->destroyStory = [store, raft]
+        {
+            if(!raft)
+                return store->destroyStory(1);
+            absl::Status status;
+            auto applied = store->applyRaft(store->appliedIndex().value_or(0) + 1,
+                                            [&]
+                                            {
+                                                status = store->destroyStory(1);
+                                                return status.ToString();
+                                            });
+            return applied.ok() ? status : applied.status();
+        };
+        harness->storyEpoch = [store] { return store->getStory(1)->epoch; };
+        harness->revision = [store] { return store->membershipRevision().value_or(0); };
+        harness->deltasSince = [store](uint64_t cursor)
+        {
+            std::vector<MembershipHarness::RouteDelta> out;
+            auto changes = store->membershipRouteChanges(cursor);
+            if(!changes.ok())
+                throw std::runtime_error(changes.status().ToString());
+            for(const auto& r: changes->route_history())
+                out.push_back({r.story_id(), r.revision(), r.tombstoned(), r.route().epoch(), r.physical_policy()});
+            return out;
+        };
+        harness->createPolicyStory = [store, dir]() -> absl::StatusOr<StoryId>
+        {
+            auto story = store->createStory("c", "policy");
+            if(!story.ok())
+                return story.status();
+            if(!store->membershipRouteUpdate(1)->physical_policy() ||
+               !store->membershipRouteUpdate(story->id)->physical_policy())
+                return absl::InternalError("policy setup failed");
+            return story->id;
+        };
+        harness->clearPhysicalPolicy = [store, raft](const std::vector<StoryId>& stories)
+        {
+            if(!raft)
+                return store->clearPhysicalPolicy(stories);
+            absl::Status status;
+            auto applied = store->applyRaft(store->appliedIndex().value_or(0) + 1,
+                                            [&]
+                                            {
+                                                status = store->clearPhysicalPolicy(stories);
+                                                return status.ToString();
+                                            });
+            return applied.ok() ? status : applied.status();
+        };
         return harness;
     };
 }
 
 std::string paramName(const ::testing::TestParamInfo<MembershipFactory>&) { return "Default"; }
 
-INSTANTIATE_TEST_SUITE_P(Static, MembershipContract, ::testing::Values(staticFactory()), paramName);
+INSTANTIATE_TEST_SUITE_P(Sqlite, MembershipContract, ::testing::Values(staticFactory(false)), paramName);
+INSTANTIATE_TEST_SUITE_P(Raft, MembershipContract, ::testing::Values(staticFactory(true)), paramName);
+
+TEST(sqlite_route_history, FailedPolicyHistoryWriteRollsBackEveryRouteAndRevision)
+{
+    visor::testing::TempDir dir;
+    const auto path = (dir.path() / "catalog").string();
+    auto opened = visor::SqliteMetadataStore::open(path, twoKeeperTopology());
+    ASSERT_TRUE(opened.ok());
+    auto store = std::move(*opened);
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-b", 1).ok());
+    ASSERT_TRUE(store->createChronicle("c").ok());
+    ASSERT_TRUE(store->createStory("c", "a").ok());
+    ASSERT_TRUE(store->createStory("c", "b").ok());
+    const auto cursor = store->membershipRevision().value_or(0);
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    EXPECT_EQ(sqlite3_exec(db,
+                           "CREATE TRIGGER refuse_policy_history BEFORE INSERT ON membership_history WHEN "
+                           "NEW.story_id=2 BEGIN SELECT RAISE(ABORT,'history write refused'); END",
+                           nullptr,
+                           nullptr,
+                           nullptr),
+              SQLITE_OK);
+    sqlite3_close(db);
+    EXPECT_FALSE(store->clearPhysicalPolicy({1, 2}).ok());
+    EXPECT_EQ(store->membershipRevision().value_or(0), cursor);
+    EXPECT_TRUE(store->membershipRouteUpdate(1)->physical_policy());
+    EXPECT_TRUE(store->membershipRouteUpdate(2)->physical_policy());
+    EXPECT_EQ(store->membershipRouteChanges(cursor)->route_history_size(), 0);
+}
 
 TEST(static_route_membership, AssignsGraphersByStoryAcrossRepeatedRoutes)
 {

@@ -150,6 +150,54 @@ TEST(RaftStorageTest, SnapshotRestoresAppliedIndexAndReplayDoesNotDuplicateMutat
     ASSERT_TRUE(second.ok());
     EXPECT_EQ(*second, "2");
 }
+
+TEST(RaftStorageTest, PolicyDowngradeHistorySurvivesReplayAndSnapshot)
+{
+    testing::TempDir dir;
+    const auto path = (dir.path() / "catalog").string();
+    auto opened = SqliteMetadataStore::open(path, testing::twoKeeperTopology());
+    ASSERT_TRUE(opened.ok());
+    auto store = std::move(*opened);
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store->registerStaticPolicy("keeper-b", 1).ok());
+    ASSERT_TRUE(store->createChronicle("c").ok());
+    ASSERT_TRUE(store->createStory("c", "a").ok());
+    ASSERT_TRUE(store->createStory("c", "b").ok());
+    const auto cursor = store->membershipRevision().value_or(0);
+    auto applied = store->applyRaft(1, [&] { return store->clearPhysicalPolicy({2, 1, 2}).ToString(); });
+    ASSERT_TRUE(applied.ok());
+    EXPECT_EQ(*applied, "OK");
+    auto changes = store->membershipRouteChanges(cursor);
+    ASSERT_TRUE(changes.ok());
+    ASSERT_EQ(changes->route_history_size(), 2);
+    EXPECT_EQ(changes->revision(), cursor + 1);
+    for(const auto& r: changes->route_history())
+    {
+        EXPECT_EQ(r.revision(), cursor + 1);
+        EXPECT_EQ(r.route().epoch(), 1u);
+        EXPECT_FALSE(r.physical_policy());
+    }
+    const auto expected = changes->SerializeAsString();
+    const auto snapshot = (dir.path() / "snapshot").string();
+    ASSERT_TRUE(store->backupTo(snapshot).ok());
+    ASSERT_TRUE(store->createStory("c", "later").ok());
+    ASSERT_TRUE(store->installFrom(snapshot).ok());
+    bool replayed = false;
+    ASSERT_TRUE(store->applyRaft(1,
+                                 [&]
+                                 {
+                                     replayed = true;
+                                     return store->clearPhysicalPolicy({1, 2}).ToString();
+                                 })
+                        .ok());
+    EXPECT_FALSE(replayed);
+    EXPECT_EQ(store->membershipRouteChanges(cursor)->SerializeAsString(), expected);
+    store.reset();
+    opened = SqliteMetadataStore::open(path, testing::twoKeeperTopology());
+    ASSERT_TRUE(opened.ok());
+    EXPECT_EQ((*opened)->membershipRouteChanges(cursor)->SerializeAsString(), expected);
+}
+
 TEST(RaftStorageTest, DurableLogTruncationPackingAndCompactionSurviveReopen)
 {
     testing::TempDir dir;

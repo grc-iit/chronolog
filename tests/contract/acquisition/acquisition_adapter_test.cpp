@@ -134,7 +134,7 @@ struct MembershipDriver
         auto* extend = extension.mutable_extend();
         extend->set_process_id(id);
         extend->set_instance(instance);
-        extend->set_applied_route_revision(10000);
+        extend->set_applied_route_revision(store.membershipRevision().value());
         extend->set_realtime_ns(100);
         extend->mutable_wanted_hlc()->set_physical_ns(100);
         apply(extension);
@@ -227,11 +227,13 @@ TEST(AcquisitionWatcherTest, DeadOldOwnerDoesNotHoldTheNewOwner)
 TEST(AcquisitionWatcherTest, RevisionGapsAreSkipped)
 {
     AcquisitionRig rig;
+    const auto counter = rig.store->membershipRevision();
+    ASSERT_TRUE(counter.ok());
     auto first = rig.store->acquire(1, "first");
     ASSERT_TRUE(first.ok());
     ASSERT_EQ(first->assigned_keeper.process_id, "keeper-b");
     rig.watcher->start(rig.channel);
-    ASSERT_TRUE(rig.watcher->waitApplied(1, 5s));
+    ASSERT_TRUE(rig.watcher->waitApplied(*counter + 1, 5s));
     auto accepted = rig.append(1);
     ASSERT_EQ(accepted.first.error_code(), grpc::StatusCode::OK);
     ASSERT_EQ(accepted.second.results_size(), 1);
@@ -239,12 +241,13 @@ TEST(AcquisitionWatcherTest, RevisionGapsAreSkipped)
     auto other = rig.store->acquire(1, "other");
     ASSERT_TRUE(other.ok());
     ASSERT_EQ(other->assigned_keeper.process_id, "keeper-a");
-    EXPECT_FALSE(rig.watcher->waitApplied(2, 20ms));
+    EXPECT_FALSE(rig.watcher->waitApplied(*counter + 2, 20ms));
+    EXPECT_EQ(rig.watcher->appliedRevision(), *counter + 1);
     auto released = rig.store->release(1, first->writer_id, first->incarnation);
     ASSERT_TRUE(released.ok());
-    ASSERT_EQ(released->revision, 3u);
-    ASSERT_TRUE(rig.watcher->waitApplied(3, 5s));
-    EXPECT_EQ(rig.watcher->appliedRevision(), 3u);
+    ASSERT_EQ(released->revision, *counter + 3);
+    ASSERT_TRUE(rig.watcher->waitApplied(released->revision, 5s));
+    EXPECT_EQ(rig.watcher->appliedRevision(), released->revision);
     auto fenced = rig.append(2);
     ASSERT_EQ(fenced.first.error_code(), grpc::StatusCode::OK);
     ASSERT_EQ(fenced.second.results_size(), 1);
@@ -254,10 +257,12 @@ TEST(AcquisitionWatcherTest, RevisionGapsAreSkipped)
 TEST(AcquisitionWatcherTest, RestartRestoresFencesBeforeAdmission)
 {
     AcquisitionRig rig;
+    const auto counter = rig.store->membershipRevision();
+    ASSERT_TRUE(counter.ok());
     auto acquired = rig.store->acquire(1, "writer");
     ASSERT_TRUE(acquired.ok());
     rig.watcher->start(rig.channel);
-    ASSERT_TRUE(rig.watcher->waitApplied(1, 5s));
+    ASSERT_TRUE(rig.watcher->waitApplied(*counter + 1, 5s));
     auto accepted = rig.append(1);
     ASSERT_EQ(accepted.first.error_code(), grpc::StatusCode::OK);
     ASSERT_EQ(accepted.second.results_size(), 1);
