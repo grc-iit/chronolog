@@ -64,6 +64,7 @@ private:
     uint64_t recover();
     absl::Status rotate();
     void truncate();
+    absl::Status reclaim();
     void trackRecord(std::string_view payload, uint64_t segment);
     // Wv2 record: every writer's counters and the dedupe window entries that are acknowledged or rejected.
     std::string writersRecord() const;

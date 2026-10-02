@@ -307,9 +307,7 @@ void WalJournal::commit()
                             write.done(status);
                             write.done = {};
                         }
-                    status = rotate();
-                    if(status.ok())
-                        truncate();
+                    status = reclaim();
                 }
             }
             catch(const std::exception& error)
@@ -577,24 +575,23 @@ absl::Status WalJournal::rotate()
     return absl::OkStatus();
 }
 
-void WalJournal::truncate()
+namespace
 {
-    // Settled seals per story ordered by start, with the running maximum of their ends: an event is covered when
-    // some seal that starts at or before it ends after it, which one binary search decides.
-    struct Settled
-    {
-        std::vector<Hlc> starts, max_ends;
-    };
-    std::map<StoryId, Settled> settled;
+// Settled seals per story ordered by start, with the running maximum of their ends: an event is covered when some
+// seal that starts at or before it ends after it, which one binary search decides.
+class SettledIndex
+{
+public:
+    explicit SettledIndex(const std::vector<WalJournal::SealedChunk>& seals)
     {
         std::map<StoryId, std::vector<std::pair<Hlc, Hlc>>> ranges;
-        for(const auto& seal: sealedChunks())
+        for(const auto& seal: seals)
             if(seal.settled)
                 ranges[seal.chunk.story_id].emplace_back(seal.chunk.start, seal.chunk.end);
         for(auto& [story, list]: ranges)
         {
             std::sort(list.begin(), list.end());
-            auto& entry = settled[story];
+            auto& entry = stories_[story];
             for(const auto& [start, end]: list)
             {
                 entry.starts.push_back(start);
@@ -602,24 +599,41 @@ void WalJournal::truncate()
             }
         }
     }
-    const auto covered = [&](StoryId story, Hlc hlc)
+    bool covers(StoryId story, Hlc hlc) const
     {
-        const auto found = settled.find(story);
-        if(found == settled.end())
+        const auto found = stories_.find(story);
+        if(found == stories_.end())
             return false;
         const auto& starts = found->second.starts;
         const auto count = static_cast<size_t>(std::upper_bound(starts.begin(), starts.end(), hlc) - starts.begin());
         return count != 0 && hlc < found->second.max_ends[count - 1];
+    }
+    template <typename Events>
+    bool coversAll(const Events& events) const
+    {
+        return std::all_of(events.begin(),
+                           events.end(),
+                           [&](const auto& event) { return covers(event.first, event.second); });
+    }
+
+private:
+    struct Entry
+    {
+        std::vector<Hlc> starts, max_ends;
     };
+    std::map<StoryId, Entry> stories_;
+};
+} // namespace
+
+void WalJournal::truncate()
+{
+    const SettledIndex settled(sealedChunks());
     bool removed = false;
     for(auto it = segments_.begin(); it != segments_.end();)
     {
         if(it->first == segment_)
             break;
-        const bool all_settled = std::all_of(it->second.events.begin(),
-                                             it->second.events.end(),
-                                             [&](const auto& event) { return covered(event.first, event.second); });
-        if(!all_settled)
+        if(!settled.coversAll(it->second.events))
         {
             ++it;
             continue;
@@ -631,6 +645,21 @@ void WalJournal::truncate()
     }
     if(removed)
         syncDirectory(config_.wal_dir);
+}
+
+absl::Status WalJournal::reclaim()
+{
+    truncate();
+    // Rotating writes a checkpoint of every writer, so it pays only when it lets the whole active segment go. While
+    // the active segment still holds unsettled events a rotation frees nothing, and the size trigger in commit()
+    // rotates it long before the WAL grows beyond wal_segment_bytes.
+    const auto& active = segments_[segment_].events;
+    if(active.empty() || !SettledIndex(sealedChunks()).coversAll(active))
+        return absl::OkStatus();
+    auto status = rotate();
+    if(status.ok())
+        truncate();
+    return status;
 }
 } // namespace chronolog
 

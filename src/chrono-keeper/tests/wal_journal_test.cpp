@@ -4,6 +4,7 @@
 #include <fstream>
 #include <future>
 #include <map>
+#include <set>
 #include <sstream>
 
 #include "adapter/JournalService.h"
@@ -215,6 +216,48 @@ TEST(WalJournal, ReleasedWriterKeepsItsCountersButNotItsWindowInTheCheckpoint)
     auto retry = rig.current->append(batch({3}), Durability::Durable);
     ASSERT_TRUE(retry.ok());
     EXPECT_EQ(retry->front().status.code(), absl::StatusCode::kFailedPrecondition);
+}
+
+TEST(WalJournal, SettlingRotatesOnlyWhenTheWholeActiveSegmentCanBeFreed)
+{
+    WalRig rig;
+    const auto segments = [&]
+    {
+        std::set<uint64_t> numbers;
+        for(const auto& entry: std::filesystem::directory_iterator(rig.control->directory))
+            if(entry.path().extension() == ".wal")
+                numbers.insert(std::stoull(entry.path().stem().string()));
+        return numbers;
+    };
+    const auto append = [&](uint64_t first, uint64_t last)
+    {
+        std::vector<Hlc> hlcs;
+        for(uint64_t sequence = first; sequence <= last; ++sequence)
+        {
+            auto result = rig.current->append(batch({sequence}), Durability::Durable);
+            EXPECT_TRUE(result.ok() && result->front().status.ok());
+            hlcs.push_back(result->front().hlc);
+        }
+        return hlcs;
+    };
+    const auto settle = [&](const std::string& id, Hlc start, Hlc last)
+    {
+        ASSERT_TRUE(rig.current->recordSeal({id, 1, start, {last.physical_ns, last.logical + 1}, {}, false}).ok());
+        ASSERT_TRUE(rig.current->recordSettled(id).ok());
+    };
+    const auto first_segment = *segments().begin();
+    const auto ten = append(1, 10);
+    // Every event of the active segment is settled: it is rotated away, leaving one new segment.
+    settle("all", ten.front(), ten.back());
+    ASSERT_EQ(segments().size(), 1u);
+    EXPECT_EQ(*segments().begin(), first_segment + 1);
+    const auto more = append(11, 20);
+    // Half of the new active segment is still unsettled: nothing is rotated and nothing can be removed yet.
+    settle("half", more.front(), more[4]);
+    EXPECT_EQ(segments(), std::set<uint64_t>{first_segment + 1});
+    // The rest settles: the active segment goes the same way as the first one.
+    settle("rest", more[5], more.back());
+    EXPECT_EQ(segments(), std::set<uint64_t>{first_segment + 2});
 }
 
 TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)
