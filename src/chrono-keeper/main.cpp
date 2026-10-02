@@ -38,7 +38,7 @@ std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Serv
     // SO_REUSEPORT would let two Keepers share one port silently.
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
-    rpc::applyServerPolicy(builder);
+    chronolog::rpc::applyServerPolicy(builder);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
     builder.RegisterService(&service);
     return builder.BuildAndStart();
