@@ -84,7 +84,13 @@ def serve(client):
     upstream.settimeout(None)
     pair = (client, upstream)
     with lock:
-        connections[pair] = destination
+        partitioned = blocked.exists() and destination in targets
+        if not partitioned:
+            connections[pair] = destination
+    if partitioned:
+        log('refused', 'partitioned CONNECT ' + target)
+        close(pair)
+        return
     try:
         client.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
     except OSError:
@@ -96,6 +102,7 @@ def serve(client):
 
 
 def partition():
+    active = False
     while True:
         time.sleep(.05)
         if blocked.exists():
@@ -103,6 +110,11 @@ def partition():
                 cut = [pair for pair, destination in connections.items() if destination in targets]
             for pair in cut:
                 close(pair)
+            if not active:
+                log('partition applied')
+            active = True
+        else:
+            active = False
 
 
 listener = socket.socket()
