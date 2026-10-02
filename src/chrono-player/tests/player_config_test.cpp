@@ -47,6 +47,17 @@ TEST(player_config, EnvironmentOverrides)
     EXPECT_EQ(cfg->keeperInternal({"k2", "x:9"}), "h:2");
 }
 
+TEST(player_config, LogLevelDefaultsToInfoAndRejectsUnknownLevels)
+{
+    auto defaults = PlayerConfig::load(std::nullopt, env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_EQ(defaults->log_level, "info");
+    auto overridden = PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_LOG_LEVEL", "warning"}}));
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->log_level, "warning");
+    EXPECT_FALSE(PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_LOG_LEVEL", "debug"}})).ok());
+}
+
 TEST(player_config, KeeperInternalAddressFallsBackToTheEndpointHostPlusSuffix)
 {
     auto cfg = PlayerConfig::load(std::nullopt, env({}));

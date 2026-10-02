@@ -32,6 +32,8 @@ struct PlayerConfig
     uint32_t tail_poll_ms = 200;
     std::string archive_root;
     uint32_t manifest_poll_ms = 1000;
+    // Stderr threshold: info, warning or error.
+    std::string log_level = "info";
     // One Route for every story, replacing registration with the Visor.
     std::optional<Route> static_routes;
 

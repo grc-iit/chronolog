@@ -1,12 +1,14 @@
 // ChronoPlayer: serves chronolog.v1.Replay on `listen`, reading hot data from every Keeper in
 // the story Route through Archive.FetchHot.
 
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 #include <grpcpp/grpcpp.h>
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <ctime>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +33,7 @@ constexpr int kRegisterAttempts = 60;
 int main(int argc, char** argv)
 {
     using namespace chronolog;
+    absl::InitializeLog();
     std::optional<std::string> config_path;
     for(int i = 1; i < argc; ++i)
     {
@@ -41,17 +44,22 @@ int main(int argc, char** argv)
         }
         else
         {
-            std::cerr << "usage: chrono_player [--config PATH]\n"
-                      << "environment overrides: CHRONOLOG_PLAYER_<KEY>, for example CHRONOLOG_PLAYER_VISOR\n";
+            LOG(ERROR) << "usage: chrono_player [--config PATH]; environment overrides: CHRONOLOG_PLAYER_<KEY>, for "
+                          "example CHRONOLOG_PLAYER_VISOR";
             return 2;
         }
     }
     auto config = player::PlayerConfig::load(config_path);
     if(!config.ok())
     {
-        std::cerr << "chrono_player: " << config.status().message() << "\n";
+        LOG(ERROR) << "chrono_player: " << config.status().message();
         return 2;
     }
+    const auto severity = config->log_level == "error"     ? absl::LogSeverityAtLeast::kError
+                          : config->log_level == "warning" ? absl::LogSeverityAtLeast::kWarning
+                                                           : absl::LogSeverityAtLeast::kInfo;
+    absl::SetStderrThreshold(severity);
+    absl::SetMinLogLevel(severity);
 
     // Block the termination signals before any thread exists so only the watcher consumes them.
     sigset_t signals;
@@ -89,15 +97,14 @@ int main(int argc, char** argv)
             registered = cluster->registerSelf();
             if(registered.ok())
                 break;
-            std::cerr << "chrono_player: register attempt " << attempt + 1 << " failed: " << registered.message()
-                      << std::endl;
+            LOG(WARNING) << "chrono_player: register attempt " << attempt + 1 << " failed: " << registered.message();
             const timespec pause = {1, 0};
             if(sigtimedwait(&signals, nullptr, &pause) > 0)
                 return 0;
         }
         if(!registered.ok())
         {
-            std::cerr << "chrono_player: cannot register with the visor\n";
+            LOG(ERROR) << "chrono_player: cannot register with the visor";
             return 1;
         }
         routes = cluster;
@@ -127,7 +134,7 @@ int main(int argc, char** argv)
         auto archive = FileTierStore::OpenReadOnly(cfg.archive_root, std::chrono::milliseconds(cfg.manifest_poll_ms));
         if(!archive.ok())
         {
-            std::cerr << "chrono_player: cannot open archive: " << archive.status().message() << "\n";
+            LOG(ERROR) << "chrono_player: cannot open archive: " << archive.status().message();
             return 1;
         }
         replay_options.archive = std::shared_ptr<FileTierStore>(*std::move(archive));
@@ -144,10 +151,10 @@ int main(int argc, char** argv)
     auto server = builder.BuildAndStart();
     if(!server || port == 0)
     {
-        std::cerr << "chrono_player: cannot listen on " << cfg.listen << "\n";
+        LOG(ERROR) << "chrono_player: cannot listen on " << cfg.listen;
         return 1;
     }
-    std::cout << "player ready id=" << cfg.player_id << " listen=" << cfg.listen << std::endl;
+    LOG(INFO) << "player ready id=" << cfg.player_id << " listen=" << cfg.listen;
 
     std::atomic<bool> finished{false};
     std::thread watcher(
@@ -159,7 +166,7 @@ int main(int argc, char** argv)
                     const int received = sigtimedwait(&signals, nullptr, &poll);
                     if(received > 0)
                     {
-                        std::cout << "chrono_player shutting down on signal " << received << std::endl;
+                        LOG(INFO) << "chrono_player shutting down on signal " << received;
                         service.shutdown();
                         server->Shutdown(std::chrono::system_clock::now() + kShutdownDeadline);
                         return;
