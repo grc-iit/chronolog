@@ -172,6 +172,29 @@ class Scenario:
     def admin(self, op, keeper):
         return self.rpc(op, dict(process_id=keeper), self.internal)
 
+    def deferral(self, keeper, until, turn):
+        # A Keeper new to the Route admits only once its clock is within acceptance_budget of the Route's
+        # physical floor (I4.8), so before `until` an append to it must answer UNAVAILABLE. Both the floor
+        # and the Keeper's applied revision are read from the Catalog, so nothing here depends on timing:
+        # an attempt that finished inside the window is asserted, one that straddled it is not counted.
+        tolerance = 100_000_000
+        for n in range(16):
+            acquired = self.acquire(f'deferral-{turn}-{n}')
+            if acquired['assigned_keeper']['process_id'] == keeper:
+                break
+        else:
+            raise AssertionError('no writer was assigned to ' + keeper)
+        start = time.time_ns()
+        result = self.append(acquired, retry=False)
+        end = time.time_ns()
+        code = int(result.get('status', {}).get('code', 0))
+        print(f'deferral turn {turn} {keeper} window left {(until - start) / 1e9:.3f}s code {code}', flush=True)
+        if end + tolerance < until:
+            assert code == 14, f'I4.8 {keeper} admitted {(until - end) / 1e9:.3f}s before its clock reached the floor: {result}'
+            return 1
+        assert code in (0, 14), result
+        return 0
+
     def run(self):
         self.wait(lambda: self.rpc('CreateChronicle', dict(name='m8e')))
         created = self.rpc('CreateStory', dict(chronicle='m8e', name='failover'))
@@ -253,8 +276,10 @@ class Scenario:
         route = self.wait(lambda: self.changed(before, 'keeper-1', False))
         predecessor = next(p for p in route['predecessors'] if p['keeper']['process_id'] == 'keeper-1')
         cut = hlc(route['ordering_cut'])
-        # No ceiling renewal is possible; the still-running old owner must stop admitting.
-        time.sleep(int(self.policy['ceiling_ahead_ns']) / 1e9 + .3)
+        # No ceiling renewal is possible; the still-running old owner must stop admitting once its
+        # last granted ceiling, recorded as the predecessor's own cut, is behind the wall clock.
+        passed = hlc(predecessor['own_cut'])[0] + 100_000_000
+        self.wait(lambda: time.time_ns() >= passed)
         rejected = self.append(old, 2, retry=False, whole_rpc_unavailable=True)
         assert int(rejected.get('status', {}).get('code', 0)) == 14, 'I4.7 partitioned owner admitted beyond ceiling'
         self.stack.stop('keeper-1')
@@ -295,21 +320,27 @@ class Scenario:
         unavailable = 0
         for turn in range(6):
             other = 'keeper-1' if owner == 'keeper-2' else 'keeper-2'
+            before = int(self.route()['route']['epoch'])
             self.admin('JoinKeeper', other)
+            joined = self.wait(lambda: self.changed(before, other, True))
+            self.wait(lambda: self.applied(other, int(joined['revision'])))
+            until = int(joined.get('physical_floor_ns', 0)) - int(self.policy['acceptance_budget_ns'])
+            unavailable += self.deferral(other, until, turn)
             before = int(self.route()['route']['epoch'])
             self.admin('DrainKeeper', owner)
             route = self.wait(lambda: self.changed(before, owner, False))
             self.wait(lambda: self.applied(other, int(route['revision'])))
             a = self.acquire(identity)
             assert a['assigned_keeper']['process_id'] == other
-            time.sleep(.2)
             attempt_time = time.time_ns()
             r = self.append(a, retry=False)
-            if int(r.get('status', {}).get('code', 0)) == 14:
-                unavailable += 1
-            else:
-                assert int(r.get('status', {}).get('code', 0)) == 0, r
+            end = time.time_ns()
+            code = int(r.get('status', {}).get('code', 0))
+            if code == 0:
+                assert end + 100_000_000 >= until, 'I4.8 admitted before the physical floor was within budget'
                 assert hlc(r['assigned_hlc'])[0] <= attempt_time + int(self.policy['hlc_budget_ns']) + 1_000_000_000
+            else:
+                assert code == 14, r
             r = self.append(a)
             assert hlc(r['assigned_hlc']) > hlc(route['ordering_cut'])
             assert hlc(r['assigned_hlc'])[0] <= time.time_ns() + int(self.policy['hlc_budget_ns']) + 1_000_000_000

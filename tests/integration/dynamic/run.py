@@ -17,6 +17,28 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+STARTUP_ATTEMPTS = 4
+
+
+class StartupError(RuntimeError):
+    pass
+
+
+def endpoints(config):
+    found = [config[key] for key in ('listen', 'internal_listen') if key in config]
+    if 'raft' in config:
+        found.append(config['raft']['raft_endpoint'])
+    return found
+
+
+def bindable(port):
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(('0.0.0.0', port))
+        except OSError:
+            return False
+    return True
 
 
 class Local:
@@ -50,10 +72,19 @@ class Local:
         process = subprocess.Popen(['timeout', '-k', '5', '340', *command], stdout=log, stderr=log,
                                    start_new_session=True, env=env)
         self.processes[role] = (process, log)
-        self.ready(config.get('listen', config.get('internal_listen')))
-        time.sleep(.05)
-        if process.poll() is not None:
-            raise RuntimeError('server exited during launch ' + role)
+        self.ready(role, endpoints(config), process)
+
+    def alive(self):
+        for role, (process, _) in self.processes.items():
+            if process.poll() is not None:
+                raise StartupError(f'{role} exited {process.returncode} after startup: {self.tail(role)}')
+
+    def tail(self, role):
+        try:
+            lines = (self.folder / (role + '.log')).read_text(errors='replace').strip().splitlines()
+        except OSError:
+            return 'no log'
+        return ' | '.join(lines[-3:]) or 'empty log'
 
     def stop(self, role):
         entry = self.processes.pop(role, None)
@@ -66,16 +97,20 @@ class Local:
             process.wait(timeout=5)
             log.close()
 
-    def ready(self, endpoint):
-        host, port = endpoint.rsplit(':', 1)
+    def ready(self, role, listening, process=None):
         deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
+        pending = list(listening)
+        while pending and time.monotonic() < deadline:
+            if process is not None and process.poll() is not None:
+                raise StartupError(f'{role} exited {process.returncode} during startup: {self.tail(role)}')
+            host, port = pending[0].rsplit(':', 1)
             try:
                 with socket.create_connection((host, int(port)), timeout=.2):
-                    return
+                    pending.pop(0)
             except OSError:
                 time.sleep(.1)
-        raise RuntimeError('readiness timeout ' + endpoint)
+        if pending:
+            raise StartupError(f'{role} not listening on {pending[0]} after 30s: {self.tail(role)}')
 
     def block(self, role, value):
         path = Path(self.services['proxy-' + role][2]['blocked'])
@@ -89,8 +124,13 @@ class Local:
             self.stop(role)
 
     def ports(self):
-        blocks = random.sample(range(4400), 6)
-        return [[f'127.0.0.1:{10000 + block * 5 + i}' for i in range(5)] for block in blocks]
+        free = []
+        for block in random.sample(range(4400), 200):
+            if all(bindable(10000 + block * 5 + i) for i in range(5)):
+                free.append(block)
+            if len(free) == 6:
+                return [[f'127.0.0.1:{10000 + block * 5 + i}' for i in range(5)] for block in free]
+        raise StartupError('no free 5-port blocks in 200 random draws')
 
 
 class Homelab(Local):
@@ -160,10 +200,16 @@ class Homelab(Local):
             command = ['env', 'grpc_proxy=http://' + self.services['proxy-' + role][2]['listen'],
                        'no_grpc_proxy=', 'no_proxy=', *command]
         self.cluster.launch(role, node, 'exec ' + shlex.join(command) + ' >>' + shlex.quote(str(path.with_suffix('.log'))) + ' 2>&1', 340)
-        self.ready(config.get('listen', config.get('internal_listen')))
+        self.ready(role, endpoints(config))
 
     def stop(self, role):
         self.cluster.stop(role)
+
+    def alive(self):
+        pass
+
+    def tail(self, role):
+        return 'see the node log'
 
     def block(self, role, value):
         node, _, config = self.services['proxy-' + role]
@@ -243,33 +289,40 @@ def main():
     signal.signal(signal.SIGINT, interrupted)
     stack = None
     try:
-        for attempt in range(3):
-            stack = Homelab(args) if args.homelab else Local(args)
-            peers = configure(stack)
-            if args.homelab:
-                stack.stage()
+        for attempt in range(1, STARTUP_ATTEMPTS + 1):
             try:
+                stack = Homelab(args) if args.homelab else Local(args)
+                peers = configure(stack)
+                if args.homelab:
+                    stack.stage()
                 for role in stack.services:
                     stack.start(role)
+                stack.alive()
                 break
-            except Exception:
-                stack.close()
-                if args.homelab or attempt == 2:
-                    raise
+            except StartupError as error:
+                print(f'STARTUP attempt {attempt}/{STARTUP_ATTEMPTS} failed: {error}', flush=True)
+                if stack:
+                    stack.close()
+                    print('Logs ' + str(stack.folder), flush=True)
+                    stack = None
+                if args.homelab or attempt == STARTUP_ATTEMPTS:
+                    print('FAIL startup: ' + str(error), flush=True)
+                    return 1
         from scenario import Scenario
         scenario = Scenario(stack, peers, args.rpc)
         try:
             scenario.run()
         except Exception as error:
-            line = f'FAIL {scenario.phase} {time.monotonic() - scenario.phase_started:.3f}s {error}'
+            line = f'FAIL scenario {scenario.phase} {time.monotonic() - scenario.phase_started:.3f}s {error}'
             with open(stack.folder / 'scenarios.log', 'a') as log:
                 log.write(line + '\n')
-            raise
+            print(line, flush=True)
+            return 1
         finally:
             scenario.close()
         return 0
     except Exception as error:
-        print('FAIL ' + str(error), flush=True)
+        print('FAIL driver: ' + str(error), flush=True)
         return 1
     finally:
         if stack:
