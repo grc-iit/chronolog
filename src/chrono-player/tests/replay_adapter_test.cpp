@@ -727,7 +727,7 @@ TEST_F(replay_adapter, TailStopsFetchingASourceWhoseBufferIsFull)
     const bool polled = b_.waitCalls(b_.calls.load() + 5);
     const auto after = a_.calls.load();
     (*stream)->cancel();
-    next.get();
+    (void)next.get();
     ASSERT_TRUE(polled);
     EXPECT_EQ(after, calls);
 }

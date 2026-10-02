@@ -487,7 +487,7 @@ TEST_F(ColdReplay, TailCancelDoesNotWaitForAnArchiveRead)
     ::close(pipe);
     ::close(watch);
     cancel.get();
-    next.get();
+    (void)next.get();
     EXPECT_TRUE(reading);
     EXPECT_TRUE(cancelled);
 }
@@ -548,6 +548,7 @@ TEST_F(ColdReplay, TailDoesNotReconfirmAnUnchangedRefusalSet)
 
 TEST_F(ColdReplay, TailWithNoKeepersDoesNotAdvanceToAnAbandonedRange)
 {
+    publish(140);
     source->response.keepers.clear();
     source->response.abandoned = {{Range::Axis::Hlc, {200, 0}, {300, 0}}};
     source->response.closed = true;
@@ -563,7 +564,10 @@ TEST_F(ColdReplay, TailWithNoKeepersDoesNotAdvanceToAnAbandonedRange)
 
 TEST_F(ColdReplay, TailReadsAnArchiveLargerThanItsCapAcrossRounds)
 {
-    for(int64_t t = 110; t < 180; t += 10) publish(t, t, t + 10);
+    ASSERT_TRUE(
+            writer->publish({"large", 1, {100, 0}, {150, 0}, {event(110), event(120), event(130), event(140)}, false})
+                    .ok());
+    ASSERT_TRUE(writer->publish({"later", 1, {150, 0}, {200, 0}, {event(150), event(160), event(170)}, false}).ok());
     options.read_max_events = 2;
     options.batch_size = 100;
     unsigned calls = 0;
