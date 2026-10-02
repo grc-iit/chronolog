@@ -165,11 +165,13 @@ FileTierStore::FileTierStore(std::filesystem::path root,
                              std::string writer,
                              std::unique_ptr<ManifestLog> log,
                              std::map<StoryId, Hlc> anchors,
-                             std::shared_ptr<const ChunkCodec> codec)
+                             std::shared_ptr<const ChunkCodec> codec,
+                             Unlink unlink)
     : root_(std::move(root))
     , writer_(std::move(writer))
     , log_(std::move(log))
     , codec_(std::move(codec))
+    , unlink_(std::move(unlink))
 {
     for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
 }
@@ -177,10 +179,13 @@ FileTierStore::FileTierStore(std::filesystem::path root,
 absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesystem::path root,
                                                                    std::string writer,
                                                                    std::map<StoryId, Hlc> anchors,
-                                                                   std::shared_ptr<const ChunkCodec> codec)
+                                                                   std::shared_ptr<const ChunkCodec> codec,
+                                                                   Unlink unlink)
 {
     if(!codec || anchors.contains(0))
         return absl::InvalidArgumentError("invalid tier configuration");
+    if(!unlink)
+        unlink = [](const std::filesystem::path& path) { return ::unlink(path.c_str()); };
     auto log = ManifestLog::Open(root, writer);
     if(!log.ok())
         return log.status();
@@ -188,7 +193,8 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   std::move(writer),
                                                                   *std::move(log),
                                                                   std::move(anchors),
-                                                                  std::move(codec)));
+                                                                  std::move(codec),
+                                                                  std::move(unlink)));
     const auto started = std::chrono::steady_clock::now();
     const auto status = store->recover();
     if(!status.ok())
@@ -650,7 +656,7 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     status = log_->append(record);
     if(!status.ok())
         return status;
-    if(::unlink((root_ / file).c_str()) != 0 && errno != ENOENT)
+    if(unlink_(root_ / file) != 0 && errno != ENOENT)
         return tier_detail::IoError("delete archived file");
     return tier_detail::SyncDirectory((root_ / file).parent_path());
 }

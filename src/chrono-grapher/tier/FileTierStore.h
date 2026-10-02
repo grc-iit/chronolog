@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <set>
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/ManifestLog.h"
@@ -12,11 +13,13 @@ namespace chronolog
 class FileTierStore final: public TierStore
 {
 public:
+    using Unlink = std::function<int(const std::filesystem::path&)>;
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     Open(std::filesystem::path root,
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
-         std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>());
+         std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
+         Unlink unlink = {});
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000));
     absl::Status refreshNow() const;
@@ -44,7 +47,8 @@ private:
                   std::string writer,
                   std::unique_ptr<ManifestLog> log,
                   std::map<StoryId, Hlc> anchors,
-                  std::shared_ptr<const ChunkCodec> codec);
+                  std::shared_ptr<const ChunkCodec> codec,
+                  Unlink unlink = {});
     absl::Status recover();
     struct StoryView
     {
@@ -75,6 +79,7 @@ private:
     std::string writer_;
     std::unique_ptr<ManifestLog> log_;
     std::shared_ptr<const ChunkCodec> codec_;
+    Unlink unlink_;
     mutable std::mutex mutex_;
     std::map<StoryId, std::optional<Hlc>> anchors_;
     mutable std::map<StoryId, Hlc> watermarks_;

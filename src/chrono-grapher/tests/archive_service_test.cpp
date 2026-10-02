@@ -1,10 +1,12 @@
 #include "rpc/Channel.h"
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
+#include "chrono-grapher/server/WorkerPool.h"
 #include <absl/crc/crc32c.h>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 #include <chrono>
+#include <cerrno>
 #include <filesystem>
 #include <atomic>
 #include <condition_variable>
@@ -25,13 +27,14 @@ struct Server
     std::unique_ptr<ArchiveService> service;
     std::unique_ptr<grpc::Server> server;
     std::unique_ptr<wire::Archive::Stub> stub;
-    explicit Server(std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>())
+    explicit Server(std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
+                    FileTierStore::Unlink unlink = {})
     {
         root = std::filesystem::temp_directory_path() /
                ("chronolog_archive_" + std::to_string(::getpid()) + "_" +
                 ::testing::UnitTest::GetInstance()->current_test_info()->name());
         std::filesystem::remove_all(root);
-        auto opened = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}}, std::move(codec));
+        auto opened = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}}, std::move(codec), std::move(unlink));
         if(!opened.ok())
             throw std::runtime_error(std::string(opened.status().message()));
         store = *std::move(opened);
@@ -338,6 +341,66 @@ TEST(ArchiveTransferTest, AnEmptyWindowGetsAReceiptAndAdvancesTheWatermark)
     EXPECT_EQ(receipt.receipt(), 1u);
     EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
     EXPECT_TRUE(server.store->read(1, {Range::Axis::Hlc, {0, 0}, {1000, 0}})->empty());
+}
+
+TEST(ArchiveService, ADeletedFileWhoseUnlinkFailedIsRetried)
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    int attempts = 0;
+    bool release = false, on_worker = false;
+    Server server(std::make_shared<ProtoChunkCodec>(),
+                  [&](const std::filesystem::path& path)
+                  {
+                      std::unique_lock lock(mutex);
+                      ++attempts;
+                      if(attempts == 1)
+                      {
+                          errno = EACCES;
+                          return -1;
+                      }
+                      on_worker = WorkerPool::onWorkerThread();
+                      changed.notify_all();
+                      if(!changed.wait_for(lock, std::chrono::seconds(5), [&] { return release; }))
+                      {
+                          errno = EACCES;
+                          return -1;
+                      }
+                      return ::unlink(path.c_str());
+                  });
+    ASSERT_TRUE(Send(server, {Frame()}).first.ok());
+    ASSERT_TRUE(Send(server, {Frame(2)}).first.ok());
+    const auto deleted = server.store->manifest(1)->front();
+    const auto published = server.store->manifest(2)->front();
+    ASSERT_FALSE(server.store->eraseFile(deleted.file).ok());
+    ASSERT_EQ(server.store->manifest(1)->front().state, ManifestState::Deleted);
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(5), [&] { return attempts >= 2; }));
+        EXPECT_TRUE(on_worker);
+    }
+    EXPECT_TRUE(std::filesystem::exists(server.root / deleted.file));
+    EXPECT_TRUE(std::filesystem::exists(server.root / published.file));
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+    EXPECT_TRUE(Send(server, {Frame(3)}).first.ok());
+    {
+        std::lock_guard lock(mutex);
+        release = true;
+    }
+    changed.notify_all();
+    server.service->tombstone(1);
+    ASSERT_TRUE(server.service->waitDestroyed(1, std::chrono::seconds(5)));
+    EXPECT_FALSE(std::filesystem::exists(server.root / deleted.file));
+    EXPECT_TRUE(std::filesystem::exists(server.root / published.file));
+    EXPECT_EQ(server.store->manifest(2)->front().state, ManifestState::Published);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+    auto log = ManifestLog::OpenReadOnly(server.root)->load();
+    ASSERT_TRUE(log.ok());
+    EXPECT_EQ(std::count_if(log->records.begin(),
+                            log->records.end(),
+                            [&](const auto& record)
+                            { return record.file == deleted.file && record.state == ManifestState::Deleted; }),
+              1);
 }
 
 TEST(ArchiveWatermarkTest, DroppedStoryRefusesEveryChunkAndIsReportedEvenIfNeverRecorded)

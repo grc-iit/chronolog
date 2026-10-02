@@ -363,6 +363,78 @@ TEST(FileTierStore, RetentionDeletionPreservesWatermarkAcrossRestart)
     EXPECT_EQ((*store)->manifest(1)->at(0).state, ManifestState::Deleted);
 }
 
+TEST(FileTierStore, ADeletedFileLeftOnDiskIsUnlinkedOnOpen)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    auto record = (*store)->publish(contract::Window());
+    ASSERT_TRUE(record.ok());
+    store->reset();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    ASSERT_TRUE((*log)->rememberWatermark(1, {200, 0}).ok());
+    record->state = ManifestState::Deleted;
+    ASSERT_TRUE((*log)->append(*record).ok());
+    log->reset();
+    const auto manifest_bytes = Bytes(*directory / "manifest/primary.log");
+    ASSERT_TRUE(fs::exists(*directory / record->file));
+    auto reader = FileTierStore::OpenReadOnly(*directory);
+    ASSERT_TRUE(reader.ok());
+    EXPECT_TRUE(fs::exists(*directory / record->file));
+    reader->reset();
+    for(int restart = 0; restart < 2; ++restart)
+    {
+        store = Open(*directory);
+        ASSERT_TRUE(store.ok()) << store.status();
+        EXPECT_FALSE(fs::exists(*directory / record->file));
+        EXPECT_EQ((*store)->manifest(1)->front().state, ManifestState::Deleted);
+        EXPECT_TRUE((*store)->read(1, contract::WholeArchive())->empty());
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{200, 0}));
+        EXPECT_EQ(Bytes(*directory / "manifest/primary.log"), manifest_bytes);
+        store->reset();
+    }
+}
+
+TEST(FileTierStore, DeletedFileCleanupLeavesPublishedAndAdoptedFilesUntouched)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    auto deleted = (*store)->publish(contract::Window());
+    auto published = (*store)->publish(contract::Window(200, 300));
+    ASSERT_TRUE(deleted.ok());
+    ASSERT_TRUE(published.ok());
+    auto orphan_writer = Open(*directory, "orphan-writer");
+    ASSERT_TRUE(orphan_writer.ok());
+    auto orphan = (*orphan_writer)->publish(contract::Window(300, 400));
+    ASSERT_TRUE(orphan.ok());
+    orphan_writer->reset();
+    fs::resize_file(*directory / "manifest/orphan-writer.log", 0);
+    const auto published_bytes = Bytes(*directory / published->file);
+    const auto orphan_bytes = Bytes(*directory / orphan->file);
+    store->reset();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    ASSERT_TRUE((*log)->rememberWatermark(1, {300, 0}).ok());
+    deleted->state = ManifestState::Deleted;
+    ASSERT_TRUE((*log)->append(*deleted).ok());
+    log->reset();
+    store = Open(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_FALSE(fs::exists(*directory / deleted->file));
+    EXPECT_EQ(Bytes(*directory / published->file), published_bytes);
+    EXPECT_EQ(Bytes(*directory / orphan->file), orphan_bytes);
+    EXPECT_EQ((*store)->read(1, contract::WholeArchive())->size(), 2u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{400, 0}));
+    auto records = (*store)->manifest(1);
+    ASSERT_TRUE(records.ok());
+    EXPECT_EQ(std::count_if(records->begin(),
+                            records->end(),
+                            [](const auto& record) { return record.state == ManifestState::Published; }),
+              2);
+}
+
 TEST(FileTierStore, ReadersMergeNewWriterLogsAndDeduplicateInReplayOrder)
 {
     auto directory = TestDirectory();
