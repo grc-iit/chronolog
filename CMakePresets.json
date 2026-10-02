@@ -55,7 +55,6 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer",
         "CHRONOLOG_BUILD_BENCH": "ON",
-        "CHRONOLOG_WERROR": "OFF",
         "VCPKG_MANIFEST_FEATURES": "bench"
       }
     },
