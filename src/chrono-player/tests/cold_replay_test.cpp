@@ -4,6 +4,10 @@
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/inotify.h>
+#include <sys/stat.h>
 #include "chrono-player/replay/HotReplay.h"
 
 namespace chronolog::player
@@ -24,6 +28,11 @@ class FakeHotSource final: public HotSource
 {
 public:
     HotFetch response;
+    std::function<HotFetch(Hlc)> tail;
+    absl::StatusOr<HotFetch> fetchTail(StoryId, Hlc from, const TailStarts&) const override
+    {
+        return tail ? tail(from) : response;
+    }
     absl::StatusOr<HotFetch> fetch(StoryId, const Range&) const override { return response; }
 };
 
@@ -437,6 +446,154 @@ TEST_F(ColdReplay, TailCatchesUpFromArchiveExclusivelyAfterPosition)
 
 // The Catalog decides: a recorded tombstone is evidence that ends the Tail FAILED_PRECONDITION once confirmed, and
 // ends it SOURCE_FAILED while the Catalog does not confirm (PI 14:50, I6.7, I13.11).
+TEST_F(ColdReplay, TailCancelDoesNotWaitForAnArchiveRead)
+{
+    for(auto& k: source->response.keepers)
+    {
+        k.frontier.evicted_below = {};
+        k.frontier.sealed = {130, 0};
+    }
+    source->response.keepers[0].events = {event(120)};
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto first = (*stream)->next();
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(*first);
+    ASSERT_EQ((**first).events.size(), 1u);
+    auto proto = FileTierStore::Open(root, "proto", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(proto.ok());
+    auto record = (*proto)->publish({"blocked", 1, {130, 0}, {200, 0}, {event(140)}, false});
+    ASSERT_TRUE(record.ok());
+    const auto file = root / record->file;
+    ASSERT_TRUE(std::filesystem::remove(file));
+    ASSERT_EQ(::mkfifo(file.c_str(), 0600), 0);
+    const int pipe = ::open(file.c_str(), O_RDWR | O_NONBLOCK);
+    ASSERT_GE(pipe, 0);
+    const int watch = ::inotify_init1(IN_NONBLOCK);
+    ASSERT_GE(watch, 0);
+    ASSERT_GE(::inotify_add_watch(watch, file.c_str(), IN_OPEN), 0);
+    for(auto& k: source->response.keepers)
+    {
+        k.frontier.evicted_below = {200, 0};
+        k.frontier.sealed = {300, 0};
+    }
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    pollfd opened{watch, POLLIN, 0};
+    const bool reading = ::poll(&opened, 1, 5000) == 1;
+    auto cancel = std::async(std::launch::async, [&] { (*stream)->cancel(); });
+    const bool cancelled = cancel.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+    // Closing the only writer releases the archive reader even when the cancel assertion fails.
+    ::close(pipe);
+    ::close(watch);
+    cancel.get();
+    next.get();
+    EXPECT_TRUE(reading);
+    EXPECT_TRUE(cancelled);
+}
+
+TEST_F(ColdReplay, TailConfirmsATombstoneFirstSeenDuringArchiveRefresh)
+{
+    publish(140);
+    for(auto& k: source->response.keepers) k.frontier.sealed = {150, 0};
+    unsigned confirmations = 0;
+    options.story_live = [&](StoryId)
+    {
+        ++confirmations;
+        return absl::FailedPreconditionError("destroyed");
+    };
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto first = (*stream)->next();
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(*first);
+    ASSERT_EQ((**first).events.size(), 1u);
+    ASSERT_TRUE(writer->tombstone(1).ok());
+    for(auto& k: source->response.keepers) k.frontier.sealed = {300, 0};
+    auto next = nextWithin(**stream);
+    EXPECT_EQ(next.status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(confirmations, 1u);
+}
+
+TEST_F(ColdReplay, TailDoesNotReconfirmAnUnchangedRefusalSet)
+{
+    options.archive.reset();
+    options.tail_poll = std::chrono::milliseconds(1);
+    unsigned calls = 0, confirmations = 0;
+    source->tail = [&](Hlc)
+    {
+        auto reply = source->response;
+        for(auto& k: reply.keepers) k.frontier.evicted_below = {};
+        auto& refused = reply.keepers[0].frontier;
+        refused.answered = false;
+        refused.status = absl::StatusCode::kFailedPrecondition;
+        refused.instance = ++calls < 6 ? "one" : "two";
+        reply.closed = calls == 10;
+        return reply;
+    };
+    options.story_live = [&](StoryId)
+    {
+        ++confirmations;
+        return absl::OkStatus();
+    };
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto next = nextWithin(**stream);
+    ASSERT_TRUE(next.ok());
+    EXPECT_EQ(calls, 10u);
+    EXPECT_EQ(confirmations, 2u);
+}
+
+TEST_F(ColdReplay, TailWithNoKeepersDoesNotAdvanceToAnAbandonedRange)
+{
+    source->response.keepers.clear();
+    source->response.abandoned = {{Range::Axis::Hlc, {200, 0}, {300, 0}}};
+    source->response.closed = true;
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(110));
+    ASSERT_TRUE(stream.ok());
+    auto next = (*stream)->next();
+    ASSERT_TRUE(next.ok());
+    ASSERT_TRUE(*next);
+    ASSERT_TRUE((**next).completion);
+    EXPECT_EQ((**next).completion->frontier, event(110).hlc);
+}
+
+TEST_F(ColdReplay, TailReadsAnArchiveLargerThanItsCapAcrossRounds)
+{
+    for(int64_t t = 110; t < 180; t += 10) publish(t, t, t + 10);
+    options.read_max_events = 2;
+    options.batch_size = 100;
+    unsigned calls = 0;
+    source->tail = [&](Hlc from)
+    {
+        ++calls;
+        auto reply = source->response;
+        reply.closed = from >= Hlc{200, 0};
+        return reply;
+    };
+    HotReplay replay(source, options);
+    Event start;
+    start.id.story_id = 1;
+    auto stream = replay.tail(1, start);
+    ASSERT_TRUE(stream.ok());
+    std::vector<Event> got;
+    for(unsigned i = 0; i < 10; ++i)
+    {
+        auto next = nextWithin(**stream);
+        ASSERT_TRUE(next.ok());
+        if(!*next || (**next).completion)
+            break;
+        EXPECT_LE((**next).events.size(), 2u);
+        got.insert(got.end(), (**next).events.begin(), (**next).events.end());
+    }
+    ASSERT_EQ(got.size(), 7u);
+    for(size_t i = 0; i < got.size(); ++i) EXPECT_EQ(got[i].hlc, event(110 + 10 * i).hlc);
+    EXPECT_GE(calls, 4u);
+}
+
 TEST_F(ColdReplay, ATailOverATombstonedStoryEndsFailedPreconditionWhenTheCatalogConfirms)
 {
     publish(140);

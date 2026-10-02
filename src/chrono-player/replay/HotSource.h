@@ -66,7 +66,11 @@ struct SourceId
     auto operator<=>(const SourceId&) const = default;
 };
 // Where each source's next reply must start; a source not listed starts at the Tail's frontier.
-using TailStarts = std::map<SourceId, Hlc>;
+struct TailStarts: std::map<SourceId, Hlc>
+{
+    // Full buffers supply their final coverage without another FetchHot in the same epoch and instance.
+    std::map<SourceId, KeeperFrontier> retained;
+};
 
 class HotSource
 {
@@ -80,7 +84,8 @@ public:
         return fetch(story, range);
     }
     // A Tail round (I6.13): every source answers from its own lower bound in `starts`, which is never below `from`,
-    // with a budget of its own. The default asks every source from `from`, which the Tail tolerates.
+    // with a budget of its own. The default is only for untruncated finite test sources; it cannot
+    // make progress through a truncated suffix or suspend a full buffer. Production overrides it.
     virtual absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const TailStarts&) const
     {
         return fetch(story, Range{Range::Axis::Hlc, from, maxHlc()});

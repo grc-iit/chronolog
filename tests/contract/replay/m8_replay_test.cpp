@@ -14,6 +14,7 @@
 #include "clock/FakeClock.h"
 #include "runtime/WorkerPool.h"
 #include "tests/ram_harness.h"
+#include "tests/wal_harness.h"
 
 namespace chronolog::player
 {
@@ -454,8 +455,12 @@ protected:
     void SetUp() override
     {
         ASSERT_TRUE(rig.journal->registerWriter(1, 4, 3).ok());
+        start(*rig.journal, *rig.membership);
+    }
+    void start(RamJournal& journal, Membership& membership)
+    {
         pool = std::make_unique<keeper::WorkerPool>(2, 16);
-        archive = std::make_unique<keeper::ArchiveService>(*rig.journal, *rig.membership, *pool);
+        archive = std::make_unique<keeper::ArchiveService>(journal, membership, *pool);
         grpc::ServerBuilder builder;
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -499,6 +504,7 @@ protected:
                 });
     }
     test::RamRig rig;
+    std::unique_ptr<test::WalRig> wal;
     std::unique_ptr<keeper::WorkerPool> pool;
     std::unique_ptr<keeper::ArchiveService> archive;
     std::unique_ptr<grpc::Server> server;
@@ -513,6 +519,78 @@ protected:
     std::mutex assigned_mu;
     std::vector<Hlc> assigned;
 };
+TEST_F(RealKeeperTail, TailDeliversAPendingDurableEventBelowAVisibleOne)
+{
+    server->Shutdown();
+    server.reset();
+    archive.reset();
+    pool.reset();
+    wal = std::make_unique<test::WalRig>();
+    ASSERT_TRUE(wal->journal->registerWriter(1, 4, 3).ok());
+    start(*wal->journal, *wal->membership);
+    std::future<absl::StatusOr<std::vector<AppendResult>>> durable;
+    Hlc pending;
+    Hlc visible;
+    std::promise<void> scheduled;
+    auto schedule = scheduled.get_future();
+    // FetchHot has persisted its physical frontier when sealedRead ticks. Hold the event sync from that tick onward.
+    wal->clock->ticked = [&](Hlc)
+    {
+        if(fired.exchange(true))
+            return;
+        wal->control->block();
+        AppendItem item;
+        item.writer_id = 2;
+        item.incarnation = 3;
+        item.sequence = 1;
+        durable = std::async(std::launch::async,
+                             [&, item] { return wal->journal->append({1, 7, {item}}, Durability::Durable); });
+        pending = wal->control->waitPending();
+        item.writer_id = 4;
+        auto accepted = wal->journal->append({1, 7, {item}}, Durability::Accepted);
+        EXPECT_TRUE(accepted.ok());
+        if(accepted.ok())
+            visible = accepted->front().hlc;
+        scheduled.set_value();
+    };
+    HotReplayOptions options;
+    options.tail_poll = std::chrono::milliseconds(1);
+    HotReplay replay(source, options);
+    Event position;
+    position.id.story_id = 1;
+    auto stream = replay.tail(1, position);
+    wal->control->release();
+    ASSERT_TRUE(stream.ok()) << stream.status();
+    ASSERT_EQ(schedule.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    schedule.get();
+    ASSERT_TRUE(durable.valid());
+    auto committed = durable.get();
+    ASSERT_TRUE(committed.ok());
+    ASSERT_EQ(committed->size(), 1u);
+    ASSERT_TRUE(committed->front().status.ok());
+    ASSERT_LT(pending, visible);
+    auto pulled = std::async(std::launch::async,
+                             [&]
+                             {
+                                 std::vector<Event> events;
+                                 for(unsigned i = 0; i < 4 && events.size() < 2; ++i)
+                                 {
+                                     auto batch = (*stream)->next();
+                                     if(!batch.ok() || !*batch || (**batch).completion)
+                                         break;
+                                     events.insert(events.end(), (**batch).events.begin(), (**batch).events.end());
+                                 }
+                                 return events;
+                             });
+    if(pulled.wait_for(std::chrono::seconds(8)) != std::future_status::ready)
+        (*stream)->cancel();
+    auto events = pulled.get();
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].hlc, pending);
+    EXPECT_EQ(events[0].durability, Durability::Durable);
+    EXPECT_EQ(events[1].hlc, visible);
+}
+
 TEST_F(RealKeeperTail, FetchHotReturnsEventsAtOrAboveItsSeal)
 {
     armLostEvent();

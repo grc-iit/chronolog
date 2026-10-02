@@ -121,25 +121,63 @@ Hlc prefixCut(const Range& range,
     return cut;
 }
 
+size_t payloadBytes(const std::vector<Event>& events)
+{
+    size_t bytes = 0;
+    for(const auto& e: events) bytes += e.envelope.payload.size();
+    return bytes;
+}
+
 bool loadArchive(const HotReplayOptions& options,
                  StoryId story,
-                 const Range& range,
+                 Hlc from,
+                 Hlc& bound,
                  const HotFetch& fetch,
+                 size_t byte_limit,
                  std::vector<Event>& events)
 {
-    Hlc end = archiveEnd(fetch, range);
-    if(end <= range.start)
+    Hlc end = archiveEnd(fetch, Range{Range::Axis::Hlc, from, bound});
+    if(end <= from)
         return true;
-    if(!options.archive)
+    if(!options.archive || !options.archive->refreshNow().ok())
         return false;
-    if(!options.archive->refreshNow().ok())
+    auto manifest = options.archive->manifest(story);
+    if(!manifest.ok())
         return false;
-    Range cold{range.axis, range.start, end};
-    auto archived = options.archive->read(story, cold);
-    auto lost = options.archive->incomplete(story, cold);
-    if(archived.ok())
-        events = *std::move(archived);
-    return archived.ok() && lost.ok() && !*lost && !archiveTombstoned(options, story);
+    std::stable_sort(manifest->begin(),
+                     manifest->end(),
+                     [](const auto& a, const auto& b)
+                     { return std::tie(a.start, a.file) < std::tie(b.start, b.file); });
+    for(const auto& record: *manifest)
+    {
+        if(record.state != ManifestState::Published || record.end <= from || record.start >= end)
+            continue;
+        auto part =
+                options.archive->readRecord(record, Range{Range::Axis::Hlc, from, end}, options.read_max_events + 1);
+        if(!part.ok())
+            return false;
+        std::vector<std::vector<Event>> inputs;
+        inputs.push_back(std::move(events));
+        inputs.push_back(*std::move(part));
+        events = mergeReplay(std::move(inputs));
+        size_t bytes = 0, kept = 0;
+        while(kept < events.size() && kept < options.read_max_events &&
+              events[kept].envelope.payload.size() <= byte_limit - bytes)
+        {
+            bytes += events[kept].envelope.payload.size();
+            ++kept;
+        }
+        if(kept < events.size())
+        {
+            bound = std::min(bound, events[kept].hlc);
+            end = std::min(end, bound);
+            std::erase_if(events, [&](const Event& e) { return e.hlc >= bound; });
+        }
+    }
+    if(end <= from)
+        return !archiveTombstoned(options, story);
+    auto lost = options.archive->incomplete(story, Range{Range::Axis::Hlc, from, end});
+    return lost.ok() && !*lost && !archiveTombstoned(options, story);
 }
 
 class HotReplayStream final: public ReplayStream
@@ -313,6 +351,8 @@ class TailStream final: public ReplayStream
         // [asked from, covered) is final for this source and held in `events`; the next ask starts at `covered`.
         Hlc covered;
         std::vector<Event> events;
+        KeeperFrontier retained{};
+        bool full{};
     };
 
 public:
@@ -342,7 +382,7 @@ public:
         std::unique_lock lk(mu_);
         for(;;)
         {
-            if(cancelled_)
+            if(cancelled_.load())
                 return finish();
             if(pending_pos_ < pending_.size())
                 return takeBatch();
@@ -353,8 +393,9 @@ public:
                 lk.unlock();
                 const absl::Status live = options_.story_live ? options_.story_live(story_) : absl::OkStatus();
                 lk.lock();
-                if(cancelled_)
+                if(cancelled_.load())
                     continue;
+                confirmed_live_ = live.ok();
                 if(absl::IsFailedPrecondition(live))
                     return live;
             }
@@ -362,21 +403,27 @@ public:
                 return finish();
             if(idle_)
             {
-                cv_.wait_for(lk, options_.tail_poll, [&] { return cancelled_; });
+                cv_.wait_for(lk, options_.tail_poll, [&] { return cancelled_.load(); });
                 idle_ = false;
                 continue;
             }
             const Hlc from = frontier_;
             TailStarts starts;
-            for(const auto& [id, source]: sources_) starts[id] = std::max(source.covered, from);
+            for(const auto& [id, source]: sources_)
+            {
+                starts[id] = std::max(source.covered, from);
+                if(source.full)
+                    starts.retained[id] = source.retained;
+            }
             lk.unlock();
             auto fetched = source_->fetchTail(story_, from, starts);
+            const bool queued = fetched.ok() && !cancelled_.load() && absorb(*fetched);
             lk.lock();
-            if(cancelled_)
+            if(cancelled_.load())
                 continue;
             if(!fetched.ok())
                 return fetched.status();
-            idle_ = !absorb(*fetched);
+            idle_ = !queued;
         }
     }
 
@@ -384,7 +431,7 @@ public:
     {
         {
             std::lock_guard lk(mu_);
-            cancelled_ = true;
+            cancelled_.store(true);
         }
         cv_.notify_all();
     }
@@ -410,7 +457,7 @@ private:
     }
 
     // Folds one source's reply into its buffer and returns the frontier it contributes to the round.
-    KeeperFrontier takeReply(KeeperFetch& reply, Epoch route_epoch)
+    KeeperFrontier takeReply(KeeperFetch& reply, Epoch route_epoch, size_t byte_limit)
     {
         KeeperFrontier f = reply.frontier;
         f.truncated = false;
@@ -420,7 +467,7 @@ private:
         const SourceId id{f.process_id, f.predecessor ? f.expected_epoch : Epoch{}};
         auto [it, fresh_source] = sources_.try_emplace(id, Source{f.instance, frontier_, {}});
         Source& source = it->second;
-        if(!fresh_source && source.instance != f.instance)
+        if(!fresh_source && (source.instance != f.instance || payloadBytes(source.events) > byte_limit))
         {
             // A restarted instance never saw the bound its predecessor was asked from: start over from T.
             source = Source{f.instance, frontier_, {}};
@@ -447,9 +494,16 @@ private:
         std::stable_sort(fresh.begin(), fresh.end(), ReplayLess);
         // The buffer is bounded: what does not fit is asked for again once T has made room.
         const size_t room = options_.read_max_events - std::min(options_.read_max_events, source.events.size());
-        if(fresh.size() > room)
+        size_t bytes = payloadBytes(source.events), keep = 0;
+        while(keep < fresh.size() && keep < room && fresh[keep].envelope.payload.size() <= byte_limit - bytes)
         {
-            covered = std::max(from, std::min(covered, fresh[room].hlc));
+            bytes += fresh[keep].envelope.payload.size();
+            ++keep;
+        }
+        if(keep < fresh.size())
+        {
+            source.full = true;
+            covered = std::max(from, std::min(covered, fresh[keep].hlc));
             std::erase_if(fresh, [&](const Event& e) { return e.hlc >= covered; });
         }
         source.events.insert(source.events.end(),
@@ -457,6 +511,8 @@ private:
                              std::make_move_iterator(fresh.end()));
         source.covered = covered;
         f.sealed = covered;
+        source.full |= source.events.size() >= options_.read_max_events || payloadBytes(source.events) >= byte_limit;
+        source.retained = f;
         return f;
     }
 
@@ -465,31 +521,53 @@ private:
     {
         if(fetch.closed)
             closed_ = true;
-        suspect_ = std::any_of(fetch.keepers.begin(),
-                               fetch.keepers.end(),
-                               [](const KeeperFetch& k)
-                               { return k.frontier.status == absl::StatusCode::kFailedPrecondition; }) ||
-                   archiveRecordsTombstone();
+        std::set<std::pair<SourceId, std::string>> refusals;
+        for(const auto& k: fetch.keepers)
+            if(k.frontier.status == absl::StatusCode::kFailedPrecondition)
+            {
+                const SourceId id{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}};
+                auto instance = k.frontier.instance;
+                if(instance.empty())
+                    if(auto it = sources_.find(id); it != sources_.end())
+                        instance = it->second.instance;
+                refusals.emplace(id, std::move(instance));
+            }
+        suspect_ = (!refusals.empty() && (!confirmed_live_ || refusals != refusals_)) || archiveRecordsTombstone();
+        refusals_ = std::move(refusals);
         if(reachedAbandoned(fetch.abandoned))
         {
             fail(IncompleteReason::SourceFailed);
             return false;
         }
         std::vector<KeeperFrontier> frontiers;
-        std::set<SourceId> asked;
+        std::set<SourceId> asked, buffered;
+        for(const auto& [id, source]: sources_) buffered.insert(id);
+        for(const auto& k: fetch.keepers)
+            buffered.insert(
+                    SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
+        const size_t byte_limit =
+                options_.tail_max_bytes / std::max<size_t>(1, buffered.size() + (options_.archive ? 1 : 0));
         for(auto& k: fetch.keepers)
         {
             asked.insert(SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
-            frontiers.push_back(takeReply(k, fetch.route_epoch));
+            frontiers.push_back(takeReply(k, fetch.route_epoch, byte_limit));
         }
+        bool rebudgeted = false;
+        for(auto& [id, source]: sources_)
+            if(!asked.contains(id) && payloadBytes(source.events) > byte_limit)
+            {
+                source = Source{source.instance, frontier_, {}};
+                rebudgeted = true;
+            }
         // I6.13: every source has answered below `bound` and no abandoned range lies there; a Route with no Keeper
         // proves nothing.
         const Range range{Range::Axis::Hlc, frontier_, maxHlc()};
         Hlc bound = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
-        bound = bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
+        bound = rebudgeted || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
         std::vector<Event> cold;
-        if(!loadArchive(options_, story_, Range{Range::Axis::Hlc, frontier_, bound}, fetch, cold))
+        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, cold))
         {
+            suspect_ |= archiveRecordsTombstone();
             fail(IncompleteReason::SourceFailed);
             return false;
         }
@@ -503,6 +581,8 @@ private:
             auto split =
                     std::lower_bound(held.begin(), held.end(), bound, [](const Event& e, Hlc h) { return e.hlc < h; });
             inputs.emplace_back(std::make_move_iterator(held.begin()), std::make_move_iterator(split));
+            if(split != held.begin())
+                it->second.full = false;
             held.erase(held.begin(), split);
             it = held.empty() && !asked.contains(it->first) ? sources_.erase(it) : std::next(it);
         }
@@ -558,10 +638,12 @@ private:
     std::map<SourceId, Source> sources_;
     std::vector<Event> pending_;
     size_t pending_pos_{};
-    bool cancelled_{};
+    std::atomic<bool> cancelled_{false};
     bool closed_{};
     bool idle_{};
     bool suspect_{};
+    bool confirmed_live_{};
+    std::set<std::pair<SourceId, std::string>> refusals_;
     bool final_sent_{};
     IncompleteReason final_reason_{IncompleteReason::None};
 };

@@ -127,6 +127,7 @@ int main(int argc, char** argv)
     for(const auto& [id, address]: cfg.keeper_internal) source->warm(address);
     player::HotReplayOptions replay_options;
     replay_options.read_max_events = cfg.read_max_events;
+    replay_options.tail_max_bytes = cfg.tail_max_bytes;
     replay_options.batch_size = cfg.batch_size;
     replay_options.tail_poll = std::chrono::milliseconds(cfg.tail_poll_ms);
     replay_options.story_live = [catalog](StoryId story) { return catalog->ensureLive(story); };

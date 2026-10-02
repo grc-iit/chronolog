@@ -14,6 +14,7 @@ struct HotReplayOptions
 {
     size_t batch_size{1024};
     size_t read_max_events{262144};
+    size_t tail_max_bytes{64 * 1024 * 1024};
     std::chrono::milliseconds tail_poll{200};
     std::shared_ptr<const FileTierStore> archive;
     // The Catalog's answer for a story. A Tail asks it when a Keeper refused with FAILED_PRECONDITION or the archive

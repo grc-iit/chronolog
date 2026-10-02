@@ -50,7 +50,10 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
     out.frontier.expected_epoch = expected_epoch;
     out.frontier.predecessor = predecessor != nullptr;
     if(predecessor)
+    {
         out.frontier.own_cut = predecessor->own_cut;
+        out.frontier.instance = predecessor->instance;
+    }
 
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto scan = range.axis == Range::Axis::Physical ? physicalWindow(range, policy) : range;
@@ -165,9 +168,25 @@ KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const
                 return std::max(it->second, range.start);
         return range.start;
     };
+    auto useRetained = [&](const SourceId& id, Epoch epoch, const Predecessor* predecessor)
+    {
+        if(!tail)
+            return false;
+        const auto it = starts->retained.find(id);
+        if(it == starts->retained.end() || it->second.epoch != epoch ||
+           (predecessor && it->second.instance != predecessor->instance))
+            return false;
+        auto frontier = it->second;
+        if(predecessor)
+            frontier.own_cut = predecessor->own_cut;
+        out.keepers.push_back({std::move(frontier), {}});
+        return true;
+    };
     std::vector<std::future<KeeperFetch>> pending;
     for(const auto& keeper: state->route.keepers)
     {
+        if(useRetained({keeper.process_id, 0}, state->route.epoch, nullptr))
+            continue;
         Range own = range;
         own.start = startOf({keeper.process_id, 0});
         pending.push_back(std::async(std::launch::async,
@@ -186,6 +205,8 @@ KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const
     }
     for(const auto& p: state->predecessors)
     {
+        if(useRetained({p.keeper.process_id, p.epoch}, p.epoch, &p))
+            continue;
         Range own = range;
         if(range.axis == Range::Axis::Hlc)
         {

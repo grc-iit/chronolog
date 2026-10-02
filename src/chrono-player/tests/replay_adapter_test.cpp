@@ -85,10 +85,10 @@ public:
         std::lock_guard lk(mu_);
         refused_ = refused;
     }
-    void waitCalls(unsigned calls)
+    bool waitCalls(unsigned calls)
     {
         std::unique_lock lk(mu_);
-        called_.wait_for(lk, 10s, [&] { return seen_ >= calls; });
+        return called_.wait_for(lk, 10s, [&] { return seen_ >= calls; });
     }
 
     std::atomic<unsigned> unavailable{0};
@@ -671,11 +671,22 @@ TEST_F(replay_adapter, TailStallsWhileTheCatalogDoesNotConfirmAKeeperRefusal)
     ASSERT_EQ(seen, 3u);
     a_.refuse(true);
     b_.refuse(true);
-    a_.waitCalls(a_.calls.load() + 5);
+    ASSERT_TRUE(a_.waitCalls(a_.calls.load() + 5));
     auto more = std::async(std::launch::async, [&] { return reader->Read(&response); });
-    EXPECT_NE(more.wait_for(0s), std::future_status::ready);
     EXPECT_GE(catalog_->asked(), 2u);
+    a_.refuse(false);
+    b_.refuse(false);
+    a_.add(protoEvent(2, 4, 210));
+    a_.seal(300);
+    b_.seal(300);
+    ASSERT_EQ(more.wait_for(10s), std::future_status::ready);
+    ASSERT_TRUE(more.get());
+    ASSERT_EQ(response.batch().events_size(), 1);
+    EXPECT_EQ(response.batch().events(0).hlc().physical_ns(), 210);
     catalog_->tombstone(kStory);
+    a_.refuse(true);
+    b_.refuse(true);
+    more = std::async(std::launch::async, [&] { return reader->Read(&response); });
     ASSERT_EQ(more.wait_for(10s), std::future_status::ready);
     EXPECT_FALSE(more.get());
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
@@ -691,14 +702,79 @@ TEST_F(replay_adapter, TailKeepsStallingWhileAKeeperIsDown)
     ASSERT_EQ(seen, 3u);
     const unsigned asked = catalog_->asked();
     a_.unavailable = 1000000;
-    a_.waitCalls(a_.calls.load() + 5);
+    ASSERT_TRUE(a_.waitCalls(a_.calls.load() + 5));
     auto more = std::async(std::launch::async, [&] { return reader->Read(&response); });
-    EXPECT_NE(more.wait_for(0s), std::future_status::ready);
     // No Keeper refused the story, so there is nothing for the Catalog to confirm.
     EXPECT_EQ(catalog_->asked(), asked);
     ctx->TryCancel();
     EXPECT_FALSE(more.get());
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);
+}
+
+TEST_F(replay_adapter, TailStopsFetchingASourceWhoseBufferIsFull)
+{
+    b_.refuse(true);
+    HotReplayOptions options;
+    options.read_max_events = 2;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto calls = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    (*stream)->cancel();
+    next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, calls);
+}
+
+TEST_F(replay_adapter, TailBoundsBufferedPayloadAndResumesAfterDelivery)
+{
+    a_.hold("a1", {}, 300);
+    for(int64_t t: {110, 130, 150})
+    {
+        auto e = protoEvent(2, t, t);
+        e.mutable_envelope()->set_payload(std::string(12, 'x'));
+        a_.add(std::move(e));
+    }
+    b_.hold("b1", {}, 100);
+    HotReplayOptions options;
+    options.tail_max_bytes = 48;
+    options.batch_size = 10;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto before = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    b_.seal(300);
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto first = next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, before);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(*first);
+    ASSERT_EQ((**first).events.size(), 2u);
+    EXPECT_EQ((**first).events[0].hlc.physical_ns, 110);
+    EXPECT_EQ((**first).events[1].hlc.physical_ns, 130);
+    auto last = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    if(last.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto batch = last.get();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc.physical_ns, 150);
+    (*stream)->cancel();
 }
 
 TEST_F(replay_adapter, TailAcrossAKeeperRestartHasNoGapOrDuplicate)
