@@ -39,13 +39,9 @@ for metric in ['system.cpu.utilization','system.memory.usage','system.network.io
         except (urllib.error.URLError,OSError,http.client.HTTPException): pass
         time.sleep(.1)
     else: raise SystemExit('FAIL no Influx points for '+metric)
-for attempt in range(100):
-    try:
-        with urllib.request.urlopen('http://127.0.0.1:3000/api/health',timeout=2) as response:
-            if json.load(response).get('database')=='ok': break
-    except (urllib.error.URLError,OSError,http.client.HTTPException): pass
-    time.sleep(.1)
-else: raise SystemExit('FAIL Grafana health')
+with urllib.request.urlopen('http://127.0.0.1:3000/api/health',timeout=5) as response:
+    health=json.load(response)
+if health.get('database')!='ok': raise SystemExit('FAIL Grafana is compose-healthy but reports '+json.dumps(health))
 print('PASS Grafana health',flush=True)
 for attempt in range(100):
     try:

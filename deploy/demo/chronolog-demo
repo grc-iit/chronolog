@@ -179,7 +179,7 @@ cmd_up() {
     wait_for "Visor" 60 tcp_ok 50051
     wait_for "Player" 60 tcp_ok 50054
     if [ "$full" = 1 ]; then
-        wait_for "Grafana" 90 grafana_ready
+        grafana_ready || die "Grafana is compose-healthy but /api/health reports no usable database"
         wait_for "viz backend" 60 http_ok http://127.0.0.1:8087/health
     fi
     echo
