@@ -19,7 +19,7 @@ add_library(chronolog_visor_lib STATIC
     membership/StaticRouteMembership.cpp)
 target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chronolog_visor_lib
-    PUBLIC NuRaft::static_lib chronolog_contracts chronolog_internal_proto chronolog_proto
+    PUBLIC NuRaft::static_lib chronolog_contracts chronolog_common_rpc chronolog_internal_proto chronolog_proto
            unofficial::sqlite3::sqlite3 nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings)
 
@@ -74,7 +74,7 @@ add_test(NAME visor_raft_binary_acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULAT
 set_tests_properties(visor_raft_binary_acceptance PROPERTIES TIMEOUT 125 RESOURCE_LOCK visor_raft_ports)
 
 add_executable(chronolog_admin dynamic/admin.cpp)
-target_link_libraries(chronolog_admin PRIVATE chronolog_internal_proto chronolog_warnings)
+target_link_libraries(chronolog_admin PRIVATE chronolog_common_rpc chronolog_internal_proto chronolog_warnings)
 
 add_executable(chronolog_dynamic_membership_tests tests/dynamic_membership_test.cpp)
 target_include_directories(chronolog_dynamic_membership_tests PRIVATE tests "${PROJECT_SOURCE_DIR}/tests/contract")

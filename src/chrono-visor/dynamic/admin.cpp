@@ -1,5 +1,6 @@
 #include <grpcpp/grpcpp.h>
 #include "chronolog/internal/v1/internal.grpc.pb.h"
+#include "rpc/Channel.h"
 #include <chrono>
 #include <iostream>
 int main(int argc, char** argv)
@@ -10,10 +11,9 @@ int main(int argc, char** argv)
         return 2;
     }
     std::string action = argv[2];
-    auto stub =
-            chronolog::internal::v1::Cluster::NewStub(grpc::CreateChannel(argv[1], grpc::InsecureChannelCredentials()));
+    auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::peerChannel(argv[1]));
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    chronolog::rpc::withTimeout(context, std::chrono::seconds(5));
     chronolog::internal::v1::MembershipResponse response;
     grpc::Status status;
     if(action == "list" && argc == 3)

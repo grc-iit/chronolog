@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "adapter/Convert.h"
+#include "rpc/Channel.h"
 #include "adapter/WorkerPool.h"
 #include "raft/RaftMetadataStore.h"
 
@@ -253,9 +254,8 @@ grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext*
                 return;
             }
             grpc::ClientContext ctx;
-            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
-            auto stub =
-                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            rpc::forwardingContext(ctx, context->deadline());
+            auto stub = internal::v1::Cluster::NewStub(rpc::peerChannel(endpoint));
             reactor->Finish(stub->ReadClock(&ctx, *request, response));
         };
         if(!pool_ || !pool_->submit(std::move(task)))
@@ -582,9 +582,8 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 return;
             }
             grpc::ClientContext ctx;
-            ctx.set_deadline(std::min(context->deadline(), std::chrono::system_clock::now() + std::chrono::seconds(3)));
-            auto stub =
-                    internal::v1::Cluster::NewStub(grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials()));
+            rpc::forwardingContext(ctx, context->deadline());
+            auto stub = internal::v1::Cluster::NewStub(rpc::peerChannel(endpoint));
             grpc::Status result;
             if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
                 result = stub->Register(&ctx, *request, response);
