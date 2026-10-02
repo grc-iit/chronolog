@@ -471,10 +471,12 @@ TEST(FileTierStore, FailedOpenUnlinkRemainsPendingAcrossCompaction)
     ASSERT_TRUE((*store)->compact().ok());
     const auto log_bytes = Bytes(*directory / "manifest/primary.log");
     const auto snapshot_bytes = Bytes(*directory / "manifest/primary.snap");
+    EXPECT_FALSE((*store)->eraseFile(deleted->file).ok());
     EXPECT_FALSE((*store)->retryDeletedFiles().ok());
     EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
     fail = false;
     ASSERT_TRUE((*store)->retryDeletedFiles().ok());
+    ASSERT_TRUE((*store)->eraseFile(deleted->file).ok());
     EXPECT_FALSE((*store)->hasPendingUnlinks(1).value());
     ASSERT_TRUE((*store)->retryDeletedFiles().ok());
     EXPECT_FALSE(fs::exists(*directory / deleted->file));

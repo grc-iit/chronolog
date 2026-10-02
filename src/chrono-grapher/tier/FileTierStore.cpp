@@ -650,24 +650,34 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     const auto found = std::find_if((*index)->records.begin(),
                                     (*index)->records.end(),
                                     [&file](const auto& record)
-                                    { return record.file == file && record.state == ManifestState::Published; });
+                                    {
+                                        return record.file == file && (record.state == ManifestState::Published ||
+                                                                       record.state == ManifestState::Deleted);
+                                    });
     if(found == (*index)->records.end())
         return absl::NotFoundError("unknown archive file");
     auto record = *found;
-    auto status = log_->rememberWatermark(record.story_id, watermark(**index, record.story_id));
-    if(!status.ok())
-        return status;
-    record.state = ManifestState::Deleted;
-    status = log_->append(record);
-    if(!status.ok())
-        return status;
+    const bool deleted = std::any_of((*index)->records.begin(),
+                                     (*index)->records.end(),
+                                     [&file](const auto& entry)
+                                     { return entry.file == file && entry.state == ManifestState::Deleted; });
+    if(!deleted)
+    {
+        auto status = log_->rememberWatermark(record.story_id, watermark(**index, record.story_id));
+        if(!status.ok())
+            return status;
+        record.state = ManifestState::Deleted;
+        status = log_->append(record);
+        if(!status.ok())
+            return status;
+    }
     pending_unlinks_[file] = record.story_id;
     index = refresh();
     if(!index.ok())
         return index.status();
     collectDeletedFiles(**index);
     lock.unlock();
-    status = unlinkDeletedFile(file);
+    const auto status = unlinkDeletedFile(file);
     if(status.ok())
     {
         lock.lock();
