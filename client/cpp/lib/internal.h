@@ -86,6 +86,23 @@ inline bool retryable(const absl::Status& s)
 {
     return s.code() == absl::StatusCode::kUnavailable || s.code() == absl::StatusCode::kDeadlineExceeded;
 }
+// Same channel policy as src/chrono-common/rpc/Channel.h, kept as its own copy because the SDK cannot
+// include src/. A lookup that fails or a peer that returns on a new address is re-resolved within a second
+// instead of the 30 s gRPC default, reconnects are bounded, and keepalive notices a vanished peer.
+inline grpc::ChannelArguments channelPolicy()
+{
+    grpc::ChannelArguments args;
+    args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
+    args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
+    args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+    args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
+    args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+    return args;
+}
 struct State
 {
     explicit State(ClientOptions value)
@@ -110,7 +127,7 @@ struct State
         auto& result = channels[endpoint];
         if(!result)
         {
-            grpc::ChannelArguments args;
+            auto args = channelPolicy();
             for(const auto& [key, value]: options.channel_args)
             {
                 if(const auto* number = std::get_if<int>(&value))
@@ -119,6 +136,7 @@ struct State
                     args.SetString(key, std::get<std::string>(value));
             }
             result = grpc::CreateCustomChannel(endpoint, grpc::InsecureChannelCredentials(), args);
+            result->GetState(true);
         }
         return result;
     }
