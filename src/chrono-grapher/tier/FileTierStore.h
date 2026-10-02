@@ -1,6 +1,8 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
+#include <set>
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/ManifestLog.h"
 #include "chronolog/tier_store.h"
@@ -37,14 +39,30 @@ private:
                   std::map<StoryId, Hlc> anchors,
                   std::shared_ptr<const ChunkCodec> codec);
     absl::Status recover();
-    absl::StatusOr<ManifestIndex> refresh() const;
+    struct StoryView
+    {
+        bool built{};
+        uint64_t generation{};
+        size_t applied{};
+        std::vector<ManifestRecord> effective;
+        std::vector<size_t> by_start;
+        std::set<std::string> published;
+        std::optional<Hlc> first_start;
+        bool watermark_valid{};
+        Hlc watermark_input, watermark;
+    };
+    absl::StatusOr<const ManifestIndex*> refresh() const;
+    StoryView& viewOf(const ManifestIndex& index, StoryId story) const;
     std::vector<ManifestRecord> effective(const ManifestIndex& index, StoryId story) const;
     Hlc watermark(const ManifestIndex& index, StoryId story) const;
     bool known(const ManifestIndex& index, StoryId story) const;
 
     bool read_only_{};
     std::chrono::milliseconds manifest_poll_{1000};
-    mutable std::optional<ManifestIndex> cached_index_;
+    mutable bool polled_{};
+    mutable std::map<StoryId, StoryView> views_;
+    std::set<std::string> inflight_;
+    std::condition_variable inflight_changed_;
     mutable std::chrono::steady_clock::time_point refreshed_{};
     std::filesystem::path root_;
     std::string writer_;

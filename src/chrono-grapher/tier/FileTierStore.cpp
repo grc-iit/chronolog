@@ -208,17 +208,17 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::
     auto status = store->refreshNow();
     if(!status.ok())
         return status;
-    LOG(INFO) << "archive index loaded from manifest records=" << store->cached_index_->records.size();
+    LOG(INFO) << "archive index loaded from manifest records=" << store->log_->current()->records.size();
     return store;
 }
 
 absl::Status FileTierStore::refreshNow() const
 {
     std::lock_guard lock(mutex_);
-    auto index = log_->load();
+    auto index = log_->sync();
     if(!index.ok())
         return index.status();
-    cached_index_ = *std::move(index);
+    polled_ = true;
     refreshed_ = std::chrono::steady_clock::now();
     return absl::OkStatus();
 }
@@ -238,81 +238,101 @@ absl::Status FileTierStore::registerStory(StoryId story, std::optional<Hlc> anch
 
 bool FileTierStore::known(const ManifestIndex& index, StoryId story) const
 {
-    return anchors_.contains(story) || std::any_of(index.records.begin(),
-                                                   index.records.end(),
-                                                   [story](const auto& record) { return record.story_id == story; });
+    return anchors_.contains(story) || index.by_story.contains(story);
 }
 
-std::vector<ManifestRecord> FileTierStore::effective(const ManifestIndex& index, StoryId story) const
+FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, StoryId story) const
 {
+    auto& view = views_[story];
+    const auto found = index.by_story.find(story);
+    const size_t count = found == index.by_story.end() ? 0 : found->second.size();
+    if(view.built && view.generation == index.generation && view.applied == count)
+        return view;
+    view = StoryView{};
+    view.built = true;
+    view.generation = index.generation;
+    view.applied = count;
+    if(found == index.by_story.end())
+        return view;
     std::map<std::string, ManifestRecord> files;
-    for(const auto& record: index.records)
+    for(const auto position: found->second)
     {
-        if(record.story_id != story)
-            continue;
+        const auto& record = index.records[position];
         const auto key = record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
                                                        std::to_string(record.start.physical_ns) + ":" +
                                                        std::to_string(record.start.logical)
                                              : record.file;
-        const auto found = files.find(key);
-        if(found == files.end() || StateRank(record.state) >= StateRank(found->second.state))
+        const auto existing = files.find(key);
+        if(existing == files.end() || StateRank(record.state) >= StateRank(existing->second.state))
             files[key] = record;
+        if(!view.first_start || record.start < *view.first_start)
+            view.first_start = record.start;
+        if(record.state == ManifestState::Published)
+            view.published.insert(record.file);
     }
-    std::vector<ManifestRecord> result;
-    for(auto& [key, record]: files) result.push_back(std::move(record));
-    return result;
+    for(auto& [key, record]: files) view.effective.push_back(std::move(record));
+    view.by_start.resize(view.effective.size());
+    for(size_t i = 0; i < view.by_start.size(); ++i) view.by_start[i] = i;
+    std::sort(view.by_start.begin(),
+              view.by_start.end(),
+              [&](size_t a, size_t b) { return view.effective[a].start < view.effective[b].start; });
+    return view;
+}
+
+std::vector<ManifestRecord> FileTierStore::effective(const ManifestIndex& index, StoryId story) const
+{
+    return viewOf(index, story).effective;
 }
 
 Hlc FileTierStore::watermark(const ManifestIndex& index, StoryId story) const
 {
+    auto& view = viewOf(index, story);
     std::optional<Hlc> anchor;
     const auto configured = anchors_.find(story);
     if(configured != anchors_.end())
         anchor = configured->second;
     if(!anchor)
-    {
-        for(const auto& record: index.records)
-            if(record.story_id == story && (!anchor || record.start < *anchor))
-                anchor = record.start;
-    }
+        anchor = view.first_start;
     Hlc value = anchor.value_or(Hlc{});
     if(const auto floor = index.watermarks.find(story); floor != index.watermarks.end())
         value = std::max(value, floor->second);
     if(const auto floor = watermarks_.find(story); floor != watermarks_.end())
         value = std::max(value, floor->second);
-    auto records = effective(index, story);
-    std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
-    std::set<std::string> published;
-    for(const auto& record: index.records)
-        if(record.story_id == story && record.state == ManifestState::Published)
-            published.insert(record.file);
-    for(const auto& record: records)
+    if(view.watermark_valid && view.watermark_input == value)
+        return view.watermark;
+    const Hlc input = value;
+    for(const auto position: view.by_start)
     {
+        const auto& record = view.effective[position];
         if(record.exempt || (record.state != ManifestState::Published && record.state != ManifestState::Empty &&
-                             !(record.state == ManifestState::Deleted && published.contains(record.file))))
+                             !(record.state == ManifestState::Deleted && view.published.contains(record.file))))
             continue;
         if(record.start > value)
             break;
         value = std::max(value, record.end);
     }
     watermarks_[story] = value;
+    view.watermark_valid = true;
+    view.watermark_input = input;
+    view.watermark = value;
     return value;
 }
 
-absl::StatusOr<ManifestIndex> FileTierStore::refresh() const
+absl::StatusOr<const ManifestIndex*> FileTierStore::refresh() const
 {
     if(!read_only_)
-        return log_->load();
+        return log_->sync();
     auto now = std::chrono::steady_clock::now();
-    if(!cached_index_ || now - refreshed_ >= manifest_poll_)
+    if(!polled_ || now - refreshed_ >= manifest_poll_)
     {
-        auto index = log_->load();
+        auto index = log_->sync();
         if(!index.ok())
             return index.status();
-        cached_index_ = *std::move(index);
+        polled_ = true;
         refreshed_ = now;
+        return *index;
     }
-    return *cached_index_;
+    return log_->current();
 }
 
 absl::Status FileTierStore::recover()
@@ -322,15 +342,15 @@ absl::Status FileTierStore::recover()
         return index.status();
     std::set<StoryId> stories;
     std::set<std::string> recorded;
-    for(const auto& record: index->records)
+    for(const auto& record: (*index)->records)
     {
         stories.insert(record.story_id);
         recorded.insert(record.file);
     }
     for(const auto story: stories)
     {
-        const auto w = watermark(*index, story);
-        for(auto record: effective(*index, story))
+        const auto w = watermark(**index, story);
+        for(auto record: effective(**index, story))
         {
             if(record.state != ManifestState::Published)
                 continue;
@@ -389,12 +409,6 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     const auto valid = ValidChunk(chunk);
     if(!valid.ok())
         return valid;
-    std::lock_guard lock(mutex_);
-    auto index = refresh();
-    if(!index.ok())
-        return index.status();
-    if(!known(*index, chunk.story_id))
-        return absl::NotFoundError("unknown story");
     std::sort(chunk.events.begin(), chunk.events.end(), ReplayLess);
     const auto name = Filename(chunk, writer_, codec_->extension());
     if(name.size() > 255)
@@ -409,25 +423,55 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                           chunk.events.empty() ? ManifestState::Empty : ManifestState::Published,
                           chunk.exempt,
                           chunk.physical_policy};
-    for(const auto& existing: effective(*index, chunk.story_id))
     {
-        auto existing_name = std::filesystem::path(existing.file);
-        auto requested_name = std::filesystem::path(record.file);
-        if(existing_name.replace_extension() != requested_name.replace_extension())
-            continue;
-        if(existing.state == ManifestState::Empty && chunk.events.empty())
-            return existing;
-        if(existing.state == ManifestState::Published)
+        // The lock covers the manifest view and the claim on the file name, never the file write, so watermark
+        // reports and other stories are not held up by an HDF5 write or an fsync.
+        std::unique_lock lock(mutex_);
+        while(true)
         {
-            auto events = ReadChunkFile(root_ / existing.file);
-            if(!events.ok())
-                return events.status();
-            if(events->size() == chunk.events.size() &&
-               std::equal(events->begin(), events->end(), chunk.events.begin(), SameEvent))
-                return existing;
+            auto index = refresh();
+            if(!index.ok())
+                return index.status();
+            if(!known(**index, chunk.story_id))
+                return absl::NotFoundError("unknown story");
+            for(const auto& existing: viewOf(**index, chunk.story_id).effective)
+            {
+                auto existing_name = std::filesystem::path(existing.file);
+                auto requested_name = std::filesystem::path(record.file);
+                if(existing_name.replace_extension() != requested_name.replace_extension())
+                    continue;
+                if(existing.state == ManifestState::Empty && chunk.events.empty())
+                    return existing;
+                if(existing.state == ManifestState::Published)
+                {
+                    auto events = ReadChunkFile(root_ / existing.file);
+                    if(!events.ok())
+                        return events.status();
+                    if(events->size() == chunk.events.size() &&
+                       std::equal(events->begin(), events->end(), chunk.events.begin(), SameEvent))
+                        return existing;
+                }
+                return absl::UnavailableError("chunk rotation already published");
+            }
+            if(!inflight_.contains(record.file))
+                break;
+            inflight_changed_.wait(lock);
         }
-        return absl::UnavailableError("chunk rotation already published");
+        inflight_.insert(record.file);
     }
+    struct Claim
+    {
+        FileTierStore& store;
+        const std::string& file;
+        ~Claim()
+        {
+            {
+                std::lock_guard lock(store.mutex_);
+                store.inflight_.erase(file);
+            }
+            store.inflight_changed_.notify_all();
+        }
+    } claim{*this, record.file};
     const auto directory = root_ / std::to_string(chunk.story_id);
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -457,11 +501,12 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     synced = tier_detail::SyncDirectory(directory);
     if(!synced.ok())
         return synced;
+    std::lock_guard lock(mutex_);
     status = log_->append(record);
     if(!status.ok())
         return status;
-    index->records.push_back(record);
-    (void)watermark(*index, chunk.story_id);
+    if(auto index = refresh(); index.ok())
+        (void)watermark(**index, chunk.story_id);
     return record;
 }
 
@@ -474,10 +519,10 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    if(!known(*index, story))
+    if(!known(**index, story))
         return absl::NotFoundError("unknown story");
     std::vector<Event> result;
-    for(const auto& record: effective(*index, story))
+    for(const auto& record: effective(**index, story))
     {
         if(record.state != ManifestState::Published)
             continue;
@@ -542,9 +587,9 @@ absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId stor
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    if(!known(*index, story))
+    if(!known(**index, story))
         return absl::NotFoundError("unknown story");
-    return effective(*index, story);
+    return effective(**index, story);
 }
 
 absl::StatusOr<Hlc> FileTierStore::contiguousWatermark(StoryId story) const
@@ -553,9 +598,9 @@ absl::StatusOr<Hlc> FileTierStore::contiguousWatermark(StoryId story) const
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    if(!known(*index, story))
+    if(!known(**index, story))
         return absl::NotFoundError("unknown story");
-    return watermark(*index, story);
+    return watermark(**index, story);
 }
 
 absl::StatusOr<bool> FileTierStore::incomplete(StoryId story, Range range) const
@@ -567,9 +612,9 @@ absl::StatusOr<bool> FileTierStore::incomplete(StoryId story, Range range) const
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    if(!known(*index, story))
+    if(!known(**index, story))
         return absl::NotFoundError("unknown story");
-    for(const auto& record: effective(*index, story))
+    for(const auto& record: effective(**index, story))
         if(record.state == ManifestState::Lost &&
            (range.axis == Range::Axis::Physical || (record.start < range.end && record.end > range.start)))
             return true;
@@ -584,14 +629,14 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    const auto found = std::find_if(index->records.begin(),
-                                    index->records.end(),
+    const auto found = std::find_if((*index)->records.begin(),
+                                    (*index)->records.end(),
                                     [&file](const auto& record)
                                     { return record.file == file && record.state == ManifestState::Published; });
-    if(found == index->records.end())
+    if(found == (*index)->records.end())
         return absl::NotFoundError("unknown archive file");
     auto record = *found;
-    auto status = log_->rememberWatermark(record.story_id, watermark(*index, record.story_id));
+    auto status = log_->rememberWatermark(record.story_id, watermark(**index, record.story_id));
     if(!status.ok())
         return status;
     record.state = ManifestState::Deleted;
@@ -609,11 +654,7 @@ absl::StatusOr<std::vector<StoryId>> FileTierStore::storiesWithoutPhysicalPolicy
     auto index = refresh();
     if(!index.ok())
         return index.status();
-    std::set<StoryId> stories;
-    for(const auto& record: index->records)
-        if(!record.physical_policy)
-            stories.insert(record.story_id);
-    return std::vector<StoryId>(stories.begin(), stories.end());
+    return std::vector<StoryId>((*index)->without_physical_policy.begin(), (*index)->without_physical_policy.end());
 }
 
 absl::Status FileTierStore::compact()
