@@ -133,8 +133,7 @@ add_subdirectory(tools/stub_server)
 add_test(NAME build.no_legacy_transport
     COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NoLegacyTransportCheck.cmake)
 set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gate")
-# The legacy CMakeLists.txt files under src/chrono-common and src/chrono-keeper are not built; the new
-# components live in their own subdirectories.
+# The new components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-common/rpc)
 add_subdirectory(src/chrono-keeper/journal)
