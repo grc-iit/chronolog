@@ -429,10 +429,8 @@ public:
 
     void cancel() override
     {
-        {
-            std::lock_guard lk(mu_);
-            cancelled_.store(true);
-        }
+        cancelled_.store(true);
+        std::lock_guard lk(mu_);
         cv_.notify_all();
     }
 
@@ -467,7 +465,7 @@ private:
         const SourceId id{f.process_id, f.predecessor ? f.expected_epoch : Epoch{}};
         auto [it, fresh_source] = sources_.try_emplace(id, Source{f.instance, frontier_, {}});
         Source& source = it->second;
-        if(!fresh_source && (source.instance != f.instance || payloadBytes(source.events) > byte_limit))
+        if(!fresh_source && source.instance != f.instance)
         {
             // A restarted instance never saw the bound its predecessor was asked from: start over from T.
             source = Source{f.instance, frontier_, {}};
@@ -547,23 +545,26 @@ private:
                     SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
         const size_t byte_limit =
                 options_.tail_max_bytes / std::max<size_t>(1, buffered.size() + (options_.archive ? 1 : 0));
-        for(auto& k: fetch.keepers)
-        {
-            asked.insert(SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
-            frontiers.push_back(takeReply(k, fetch.route_epoch, byte_limit));
-        }
-        bool rebudgeted = false;
+        std::set<SourceId> reset;
         for(auto& [id, source]: sources_)
-            if(!asked.contains(id) && payloadBytes(source.events) > byte_limit)
+            if(payloadBytes(source.events) > byte_limit)
             {
                 source = Source{source.instance, frontier_, {}};
-                rebudgeted = true;
+                reset.insert(id);
             }
+        for(auto& k: fetch.keepers)
+        {
+            const SourceId id{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}};
+            asked.insert(id);
+            if(reset.contains(id))
+                k.frontier.answered = false;
+            frontiers.push_back(takeReply(k, fetch.route_epoch, byte_limit));
+        }
         // I6.13: every source has answered below `bound` and no abandoned range lies there; a Route with no Keeper
         // proves nothing.
         const Range range{Range::Axis::Hlc, frontier_, maxHlc()};
         Hlc bound = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
-        bound = rebudgeted || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
+        bound = !reset.empty() || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
         std::vector<Event> cold;
         if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, cold))
         {
