@@ -57,7 +57,7 @@ class _State:
         if self.writer is None:
             if self.identity is None:
                 params = ctx.session.client_params
-                name = params.clientInfo.name if params else "mcp"
+                name = params.client_info.name if params else "mcp"
                 self.identity = f"{name}-{self.suffix}"
             self.writer = self.client.acquire(story, self.identity, timeout=self.timeout)
         return self.writer
