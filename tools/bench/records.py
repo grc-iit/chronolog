@@ -116,6 +116,8 @@ BUCKETS = [
     ("locks_and_scheduling", r"mutex|[Ll]ock|futex|pthread_cond|spin|sched|schedule|__lll|Mutex|wake|resched|dequeue_|enqueue_|psi_group"),
     ("allocation_and_page_faults", r"malloc|free\b|cfree|operator new|operator delete|_int_|tcache|brk|mmap|page_fault|clear_page|alloc_pages|memcg|zap_pte|handle_mm_fault"),
     ("memcpy_and_memset", r"memcpy|memmove|memset|__copy|copy_user|rep_movs"),
+    ("sqlite_catalog", r"sqlite3|Vdbe|binCollFunc|\bwhere[A-Z]|\bselect[A-Z]"),
+    ("chronolog_code", r"chronolog::|chrono_"),
     ("syscall_entry_and_mitigations", r"entry_SYS|srso|__irqentry|do_syscall|ret_from_fork|syscall_exit|swapgs|retbleed|spec_"),
 ]
 
