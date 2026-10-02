@@ -107,6 +107,22 @@ TEST(KeeperConfig, WalRotationAndShutdownSettings)
     EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_WAL_SEGMENT_BYTES", "0"}})).ok());
 }
 
+TEST(KeeperConfig, LogLevelDefaultsToInfoAndRejectsUnknownLevels)
+{
+    auto defaults = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_EQ(defaults->log_level, "info");
+    auto overridden = KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_LOG_LEVEL", "warning"}}));
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->log_level, "warning");
+    auto path = WriteFile(R"({"log_level":"error"})");
+    auto file = KeeperConfig::load(path, Env({}));
+    std::filesystem::remove(path);
+    ASSERT_TRUE(file.ok());
+    EXPECT_EQ(file->log_level, "error");
+    EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_LOG_LEVEL", "debug"}})).ok());
+}
+
 TEST(ConfigMembership, SeedsAndReplacesRoutes)
 {
     ConfigMembership membership({StaticRoute{1, Route{3, {{"k", "k:1"}}, "g", "p"}}});

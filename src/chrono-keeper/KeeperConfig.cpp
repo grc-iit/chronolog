@@ -56,6 +56,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
     static const std::set<std::string> known = {"listen",
                                                 "internal_listen",
                                                 "process_id",
+                                                "log_level",
                                                 "self_endpoint",
                                                 "visor_internal",
                                                 "payload_max_bytes",
@@ -99,6 +100,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
         str("listen", cfg.listen);
         str("internal_listen", cfg.internal_listen);
         str("process_id", cfg.process_id);
+        str("log_level", cfg.log_level);
         str("self_endpoint", cfg.self_endpoint);
         str("visor_internal", cfg.visor_internal);
         if(json.contains("payload_max_bytes"))
@@ -208,6 +210,7 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
     for(auto [key, field]: {std::pair<const char*, std::string*>{"listen", &cfg.listen},
                             {"internal_listen", &cfg.internal_listen},
                             {"process_id", &cfg.process_id},
+                            {"log_level", &cfg.log_level},
                             {"self_endpoint", &cfg.self_endpoint},
                             {"visor_internal", &cfg.visor_internal},
                             {"wal_dir", &cfg.wal_dir}})
@@ -303,6 +306,8 @@ absl::Status KeeperConfig::validate() const
        chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
        frame_bytes > (4u << 20))
         return absl::InvalidArgumentError("invalid archive chunk, frame or timer configuration");
+    if(log_level != "info" && log_level != "warning" && log_level != "error")
+        return absl::InvalidArgumentError("log_level must be info, warning or error");
     for(const auto& writer: static_writers)
         if(writer.story_id == 0 || writer.writer_id == 0 || writer.incarnation == 0)
             return absl::InvalidArgumentError("static_writers entries need story_id, writer_id and incarnation");

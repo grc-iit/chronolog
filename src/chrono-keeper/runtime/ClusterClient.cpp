@@ -1,8 +1,8 @@
 #include "runtime/ClusterClient.h"
 
-#include <iostream>
 #include <set>
 
+#include <absl/log/log.h>
 #include "adapter/Convert.h"
 #include "wal/WalJournal.h"
 
@@ -260,14 +260,14 @@ void ClusterClient::loop(std::stop_token stop)
             }
             else
             {
-                std::cerr << "chrono_keeper: register failed: " << status << std::endl;
+                LOG(WARNING) << "register failed: " << status;
                 wait = backoff;
                 backoff = std::min<std::chrono::milliseconds>(backoff * 2, 5000ms);
             }
         }
         else if(auto status = heartbeatNow(); !status.ok())
         {
-            std::cerr << "chrono_keeper: heartbeat failed: " << status << std::endl;
+            LOG_EVERY_N_SEC(WARNING, 5) << "heartbeat failed: " << status;
             wait = 500ms;
         }
         if(registered_ && journal_.dynamic())

@@ -37,6 +37,8 @@ struct KeeperConfig
     // Archive service address. Loopback by default so a bare start never exposes it (S14.3).
     std::string internal_listen = "127.0.0.1:50062";
     std::string process_id = "keeper-1";
+    // Stderr threshold: info, warning or error.
+    std::string log_level = "info";
     // Must equal the endpoint the Visor lists for this Keeper.
     std::string self_endpoint = "chrono-keeper:50052";
     std::string visor_internal = "chrono-visor:50061";
