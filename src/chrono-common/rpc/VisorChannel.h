@@ -48,9 +48,15 @@ inline std::string visorTarget(const std::string& endpoints)
     return resolved ? target : list.front();
 }
 
-inline std::shared_ptr<grpc::Channel> visorChannel(const std::string& endpoints,
-                                                   const grpc::ChannelArguments& args = {})
+// A failed lookup, such as aardvark-dns answering late while a container joins the network, must not
+// keep the channel dark: gRPC otherwise waits dns_min_time_between_resolutions (30 s) before it resolves
+// again, far beyond every call deadline here.
+inline std::shared_ptr<grpc::Channel> visorChannel(const std::string& endpoints, grpc::ChannelArguments args = {})
 {
+    args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
+    args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
     return grpc::CreateCustomChannel(visorTarget(endpoints), grpc::InsecureChannelCredentials(), args);
 }
 

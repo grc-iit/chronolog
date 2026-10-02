@@ -32,6 +32,10 @@ public:
                     std::function<std::string(const KeeperRef&)> internal_address,
                     KeeperHotSourceOptions options = {});
 
+    // Connects to a Keeper listener now, while name resolution works, so a later resolver outage on the
+    // network does not reach reads that find the connection already up.
+    void warm(const std::string& address) const;
+
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
     absl::StatusOr<HotFetch> fetchPhysical(StoryId story, const Range& range, bool policy) const override;
 
