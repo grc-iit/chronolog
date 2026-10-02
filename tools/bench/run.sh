@@ -210,6 +210,7 @@ suite_custom() {
     start_stack 4096 200 || return 1
     start_perf custom
     run_load "${custom_args[@]}" || return 1
+    [ -z "${BENCH_SHOW_KEEPER:-}" ] || grep -E "$BENCH_SHOW_KEEPER" "$scratch/keeper.log" | tail -n "${BENCH_SHOW_LINES:-40}"
     stop_perf custom
     stop_stack
     finish custom
