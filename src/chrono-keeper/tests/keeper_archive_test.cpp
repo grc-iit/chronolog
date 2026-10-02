@@ -503,7 +503,8 @@ TEST(KeeperTransfer, RealGrapherNotFoundIsASendFailureNotADropSignal)
     auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
     ASSERT_TRUE(store.ok());
     grapher::ArchiveService service(**store, "grapher-instance");
-    service.dropStory(1);
+    service.tombstone(1);
+    ASSERT_TRUE(service.waitDestroyed(1, 5s));
     grpc::ServerBuilder builder;
     chronolog::rpc::applyServerPolicy(builder);
     int port = 0;
