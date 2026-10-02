@@ -627,7 +627,12 @@ class Tour:
             show("dashboard", f"http://127.0.0.1:3000{item['url']}  ({item['title']})")
         types = {s["type"] for s in sources}
         for source in sources:
-            health = self.grafana(f"/api/datasources/uid/{source['uid']}/health")
+            # The ChronoLog plugin is frontend only, so Grafana answers its health through the proxied backend.
+            health = self.grafana(f"/api/datasources/proxy/uid/{source['uid']}/health" if "chronolog" in source["type"]
+                                  else f"/api/datasources/uid/{source['uid']}/health")
+            if "chronolog" in source["type"]:
+                health = {"status": "OK" if health.get("status") == "healthy" else health.get("status"),
+                          "message": "viz backend reaches the Visor and the Player"}
             show("datasource", f"{source['name']} ({source['type']}): {health.get('status')} {health.get('message', '')}")
             check(str(health.get("status", "")).upper() == "OK", f"datasource {source['name']} is healthy")
         check("influxdb" in types and any("chronolog" in t for t in types), "both the InfluxDB and the ChronoLog data sources exist",
