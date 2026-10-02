@@ -85,7 +85,7 @@ public:
                 route->set_player(endpoint);
                 continue;
             }
-            if(stale && r.epoch() == 1)
+            if(stale && r.epoch() == 1 && item.envelope().payload() != "accepted-before-redirect")
             {
                 result->mutable_status()->set_code(9);
                 auto* route = result->mutable_current_route();
@@ -371,6 +371,42 @@ TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquir
     EXPECT_EQ(appended->event_id.incarnation, 2u);
     EXPECT_EQ(appended->event_id.sequence, 1u);
     ASSERT_EQ(replacement.seen.size(), 1u);
+}
+TEST(ClientContract, ClientBatchKeepsReceiptsAndMarksUnresolvedItemsAfterKeeperRemoval)
+{
+    Server server, replacement;
+    server.stale = true;
+    wire::Route route;
+    route.set_epoch(2);
+    route.set_player(server.endpoint);
+    auto* keeper = route.add_keepers();
+    keeper->set_process_id("replacement");
+    keeper->set_endpoint(replacement.endpoint);
+    server.redirect_route = route;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto writer = client->acquire(1, "writer");
+    ASSERT_TRUE(writer.ok()) << writer.status();
+    std::vector<sdk::AppendSpec> specs{{{"", "accepted-before-redirect", "", "", {}}},
+                                       {{"", "uncertain-one", "", "", {}}},
+                                       {{"", "uncertain-two", "", "", {}}},
+                                       {{"", "accepted-only", "", "", {}}, chronolog::Durability::Accepted}};
+    auto result = writer->appendBatch(specs);
+    ASSERT_TRUE(result.ok()) << result.status();
+    ASSERT_EQ(result->size(), 4u);
+    ASSERT_TRUE((*result)[0].ok()) << (*result)[0].status();
+    EXPECT_TRUE((*result)[0]->acked());
+    for(size_t i: {1u, 2u})
+    {
+        EXPECT_EQ((*result)[i].status().code(), absl::StatusCode::kUnknown);
+        EXPECT_NE((*result)[i].status().message().find("outcome unknown"), std::string::npos);
+    }
+    EXPECT_EQ((*result)[3].status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(replacement.seen.empty());
+    EXPECT_EQ(server.seen.size(), specs.size());
+    auto again = writer->appendBatch(specs);
+    EXPECT_EQ(again.status().code(), absl::StatusCode::kFailedPrecondition) << again.status();
+    EXPECT_EQ(server.seen.size(), specs.size());
 }
 TEST(ClientContract, ClientRetriesOnStaleEpochWithSameEventIds)
 {

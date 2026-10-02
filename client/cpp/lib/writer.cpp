@@ -71,6 +71,8 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
     std::unique_lock lock(mutex, std::defer_lock);
     if(!lock.try_lock_until(end))
         return absl::DeadlineExceededError("writer busy");
+    if(requires_reacquisition)
+        return absl::FailedPreconditionError("writer keeper removed; re-acquire before appending");
     if(specs.empty())
         return BatchResult{};
     if(specs.size() > state->options.max_batch_items || specs.size() > std::numeric_limits<uint64_t>::max() - sequence)
@@ -113,6 +115,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
         p.outcomes.resize(specs.size());
         pending = std::move(p);
     }
+    auto refusal = absl::FailedPreconditionError("stale epoch retry budget exhausted");
     for(size_t attempt = 0; attempt <= state->options.retry.max_retries; ++attempt)
     {
         if(std::chrono::system_clock::now() >= end)
@@ -157,8 +160,11 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                 {
                     auto route = detail::decode(result.has_current_route() ? result.current_route()
                                                                            : response.current_route());
-                    if(route.keepers.empty() || route.epoch <= request.wire.epoch())
+                    if(route.keepers.empty())
                         return absl::DataLossError("invalid epoch redirect");
+                    refusal = s;
+                    if(route.epoch <= request.wire.epoch())
+                        continue;
                     if(!redirect || route.epoch > redirect->epoch)
                         redirect = std::move(route);
                     continue;
@@ -273,8 +279,25 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
         {
             std::lock_guard acquisition_lock(acquisition_mutex);
             acquired.route = *redirect;
-            acquired.assigned_keeper = redirect->keepers[acquired.writer_id % redirect->keepers.size()];
             state->route(acquired.story_id, *redirect);
+            auto survivor = std::find_if(redirect->keepers.begin(),
+                                         redirect->keepers.end(),
+                                         [&](const auto& keeper)
+                                         { return keeper.process_id == acquired.assigned_keeper.process_id; });
+            if(survivor == redirect->keepers.end())
+            {
+                requires_reacquisition = true;
+                for(size_t i = 0; i < pending->outcomes.size(); ++i)
+                    if(!pending->outcomes[i])
+                        pending->outcomes[i] =
+                                specs[i].durability == Durability::Durable
+                                        ? absl::UnknownError(
+                                                  "DURABLE append outcome unknown; writer keeper removed; re-acquire")
+                                        : absl::FailedPreconditionError(
+                                                  "writer keeper removed; re-acquire before appending");
+                break;
+            }
+            acquired.assigned_keeper = *survivor;
         }
         const bool complete = std::all_of(pending->outcomes.begin(),
                                           pending->outcomes.end(),
@@ -284,7 +307,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
         if(!transport.ok() && !detail::retryable(transport))
             return transport;
         if(attempt == state->options.retry.max_retries)
-            return transport.ok() ? absl::FailedPreconditionError("stale epoch retry budget exhausted") : transport;
+            return transport.ok() ? refusal : transport;
         std::this_thread::sleep_until(std::min(end, std::chrono::system_clock::now() + state->options.retry.backoff));
     }
     BatchResult out;
