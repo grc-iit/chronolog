@@ -1,5 +1,4 @@
 # ChronoVisor: Catalog (chronolog.v1) and Cluster (chronolog.internal.v1).
-# Legacy files under src/ and include/ are reference only and are not listed here.
 
 find_package(NuRaft CONFIG REQUIRED)
 
@@ -21,10 +20,11 @@ target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DI
 target_link_libraries(chronolog_visor_lib
     PUBLIC NuRaft::static_lib chronolog_contracts chronolog_common_rpc chronolog_internal_proto chronolog_proto
            unofficial::sqlite3::sqlite3 nlohmann_json::nlohmann_json Threads::Threads
-    PRIVATE chronolog_warnings)
+    PRIVATE chronolog_warnings absl::log)
 
 add_executable(chrono_visor main.cpp)
-target_link_libraries(chrono_visor PRIVATE chronolog_visor_lib chronolog_warnings)
+target_link_libraries(chrono_visor PRIVATE chronolog_visor_lib chronolog_warnings
+    absl::log absl::log_initialize absl::log_globals)
 
 # Contract suites are included as source into the instantiating test files, so the
 # suite sources are reached through the contract directory.

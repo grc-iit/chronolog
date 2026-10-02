@@ -1,6 +1,7 @@
 #include "catalog/SqliteMetadataStore.h"
 #include "adapter/Convert.h"
 #include <set>
+#include <absl/log/log.h>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -330,6 +331,7 @@ try
         update.set_tombstoned(true);
         Query insert(db_, "INSERT OR REPLACE INTO membership_history(revision,story_id,value) VALUES(?1,?2,?3)");
         insert.number(1, at).number(2, id).blob(3, update.SerializeAsString()).next();
+        LOG(INFO) << "story_tombstoned story=" << id << " revision=" << at;
     }
     return absl::OkStatus();
 }

@@ -5,6 +5,7 @@
 #include "TestSupport.h"
 #include "adapter/ClusterService.h"
 #include "catalog/SqliteMetadataStore.h"
+#include "dynamic/MembershipState.h"
 #include "adapter/JournalService.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
@@ -91,14 +92,14 @@ struct AcquisitionRig
         openJournal();
         startServer();
     }
-    std::pair<grpc::Status, v1::AppendResponse> append(uint64_t sequence, uint64_t incarnation = 1)
+    std::pair<grpc::Status, v1::AppendResponse> append(uint64_t sequence, uint64_t incarnation = 1, uint64_t writer = 1)
     {
         v1::AppendRequest request;
         request.set_story_id(1);
         request.set_epoch(1);
         request.set_durability(v1::DURABILITY_DURABLE);
         auto* item = request.add_items();
-        item->set_writer_id(1);
+        item->set_writer_id(writer);
         item->set_incarnation(incarnation);
         item->set_sequence(sequence);
         item->mutable_envelope()->set_payload("event");
@@ -109,7 +110,119 @@ struct AcquisitionRig
         return {std::move(status), std::move(response)};
     }
 };
+// Dynamic membership commands applied straight to the store, as Raft apply would.
+struct MembershipDriver
+{
+    visor::SqliteMetadataStore& store;
+    void apply(const iv1::MembershipCommand& command)
+    {
+        auto applied = store.applyRaft(store.appliedIndex().value_or(0) + 1,
+                                       [&] { return visor::dynamic::apply(store, command); });
+        if(!applied.ok())
+            throw std::runtime_error(std::string(applied.status().message()));
+    }
+    void keeper(const std::string& id, const std::string& instance)
+    {
+        iv1::MembershipCommand registration;
+        auto* process = registration.mutable_register_()->mutable_process();
+        process->set_process_id(id);
+        process->set_instance(instance);
+        process->set_endpoint(id + ":1");
+        process->set_role(iv1::PROCESS_ROLE_KEEPER);
+        apply(registration);
+        iv1::MembershipCommand extension;
+        auto* extend = extension.mutable_extend();
+        extend->set_process_id(id);
+        extend->set_instance(instance);
+        extend->set_applied_route_revision(10000);
+        extend->set_realtime_ns(100);
+        extend->mutable_wanted_hlc()->set_physical_ns(100);
+        apply(extension);
+    }
+    void drain(const std::string& id)
+    {
+        iv1::MembershipCommand command;
+        command.mutable_drain()->set_process_id(id);
+        apply(command);
+    }
+};
 } // namespace
+
+TEST(AcquisitionWatcherTest, NewOwnerAdmittedOnlyAfterOldOwnerFenced)
+{
+    AcquisitionRig rig;
+    // The Catalog asks the Visor membership: an old owner that is alive must apply the release, a dead one cannot serve.
+    rig.store->setOwnerFence(
+            [&](const KeeperRef& keeper, uint64_t revision)
+            {
+                return !rig.visor_membership->alive(keeper.process_id) ||
+                       rig.visor_membership->waitApplied(keeper.process_id, revision, 50ms);
+            });
+    MembershipDriver membership{*rig.store};
+    membership.keeper("keeper-a", "a1");
+    membership.keeper("keeper-b", "b1");
+    ASSERT_TRUE(rig.visor_membership->registerProcess({"keeper-a", "a1", "keeper-a:1", ProcessRole::Keeper}).ok());
+    ASSERT_TRUE(rig.store->acquire(1, "pad").ok());
+    auto first = rig.store->acquire(1, "writer");
+    ASSERT_TRUE(first.ok());
+    ASSERT_EQ(first->assigned_keeper.process_id, "keeper-a");
+
+    // Draining the old owner releases its writers in the route-change revision and leaves keeper-b the only owner.
+    membership.drain("keeper-a");
+    const auto released = rig.store->membershipRevision().value();
+    rig.watcher->start(rig.channel);
+    ASSERT_TRUE(rig.watcher->waitApplied(released, 5s));
+
+    // The old owner is alive and has not applied the release: the new incarnation is not committed, so keeper-b
+    // never admits it.
+    auto held = rig.store->acquire(1, "writer");
+    ASSERT_FALSE(held.ok());
+    EXPECT_EQ(held.status().code(), absl::StatusCode::kUnavailable);
+    auto snapshot = rig.store->snapshotAcquisitions();
+    ASSERT_TRUE(snapshot.ok());
+    for(const auto& active: snapshot->active) EXPECT_NE(active.writer_id, first->writer_id);
+    auto unadmitted = rig.append(1, first->incarnation + 1, first->writer_id);
+    ASSERT_EQ(unadmitted.first.error_code(), grpc::StatusCode::OK);
+    ASSERT_EQ(unadmitted.second.results_size(), 1);
+    EXPECT_EQ(unadmitted.second.results(0).status().code(), static_cast<int>(absl::StatusCode::kFailedPrecondition));
+
+    // Once the old owner applies the release it is fenced, and the new incarnation is admitted on keeper-b.
+    ASSERT_TRUE(rig.visor_membership->heartbeat("keeper-a", "a1", released).ok());
+    auto next = rig.store->acquire(1, "writer");
+    ASSERT_TRUE(next.ok());
+    EXPECT_EQ(next->assigned_keeper.process_id, "keeper-b");
+    EXPECT_EQ(next->incarnation, first->incarnation + 1);
+    auto now = rig.store->snapshotAcquisitions();
+    ASSERT_TRUE(now.ok());
+    ASSERT_TRUE(rig.watcher->waitApplied(now->revision, 5s));
+    auto admitted = rig.append(1, next->incarnation, next->writer_id);
+    ASSERT_EQ(admitted.first.error_code(), grpc::StatusCode::OK);
+    ASSERT_EQ(admitted.second.results_size(), 1);
+    EXPECT_EQ(admitted.second.results(0).status().code(), 0);
+}
+
+TEST(AcquisitionWatcherTest, DeadOldOwnerDoesNotHoldTheNewOwner)
+{
+    AcquisitionRig rig;
+    rig.store->setOwnerFence(
+            [&](const KeeperRef& keeper, uint64_t revision)
+            {
+                return !rig.visor_membership->alive(keeper.process_id) ||
+                       rig.visor_membership->waitApplied(keeper.process_id, revision, 50ms);
+            });
+    MembershipDriver membership{*rig.store};
+    membership.keeper("keeper-a", "a1");
+    membership.keeper("keeper-b", "b1");
+    ASSERT_TRUE(rig.store->acquire(1, "pad").ok());
+    auto first = rig.store->acquire(1, "writer");
+    ASSERT_TRUE(first.ok());
+    ASSERT_EQ(first->assigned_keeper.process_id, "keeper-a");
+    // keeper-a never registered with the Visor membership, so it cannot serve and holds nothing back.
+    membership.drain("keeper-a");
+    auto next = rig.store->acquire(1, "writer");
+    ASSERT_TRUE(next.ok());
+    EXPECT_EQ(next->assigned_keeper.process_id, "keeper-b");
+}
 
 TEST(AcquisitionWatcherTest, RevisionGapsAreSkipped)
 {

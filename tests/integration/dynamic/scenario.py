@@ -64,6 +64,23 @@ class Scenario:
             raise RuntimeError(f'{op}: {result}')
         return result['response']
 
+    def call(self, op, request=None, endpoint=None, seconds=30):
+        # UNAVAILABLE is retryable: a Visor that lost its lease or has no leader yet refuses before it applies
+        # anything. Any other code is the answer.
+        last = None
+        def attempt():
+            nonlocal last
+            last = self.raw(op, request, endpoint)
+            code = last['transport'] or int(last.get('response', {}).get('status', {}).get('code', 0))
+            assert code in (0, 14), f'{op}: {last}'
+            if code:
+                print(f'RETRY {op} {last.get("error", last)}', flush=True)
+            return (last['response'],) if code == 0 else None
+        try:
+            return self.wait(attempt, seconds)[0]
+        except RuntimeError:
+            raise RuntimeError(f'{op} stayed UNAVAILABLE for {seconds}s: {last}')
+
     def wait(self, fn, seconds=30):
         deadline = time.monotonic() + seconds
         detail = None
@@ -172,6 +189,20 @@ class Scenario:
     def admin(self, op, keeper):
         return self.rpc(op, dict(process_id=keeper), self.internal)
 
+    def settled(self, acquired):
+        # A single append whose answer counts. The Keeper learns an acquisition from WatchAcquisitions, so until it
+        # has applied it the append is refused with FAILED_PRECONDITION (writer not registered) whatever the
+        # admission state. That answer says nothing about I4.8, so the same append is sent again.
+        deadline = time.monotonic() + 30
+        while True:
+            began = time.time_ns()
+            result = self.append(acquired, retry=False)
+            ended = time.time_ns()
+            if int(result.get('status', {}).get('code', 0)) != 9:
+                return began, result, ended
+            assert time.monotonic() < deadline, f'the writer never registered at its Keeper: {result}'
+            time.sleep(.05)
+
     def deferral(self, keeper, until, turn):
         # A Keeper new to the Route admits only once its clock is within acceptance_budget of the Route's
         # physical floor (I4.8), so before `until` an append to it must answer UNAVAILABLE. Both the floor
@@ -184,9 +215,7 @@ class Scenario:
                 break
         else:
             raise AssertionError('no writer was assigned to ' + keeper)
-        start = time.time_ns()
-        result = self.append(acquired, retry=False)
-        end = time.time_ns()
+        start, result, end = self.settled(acquired)
         code = int(result.get('status', {}).get('code', 0))
         print(f'deferral turn {turn} {keeper} window left {(until - start) / 1e9:.3f}s code {code}', flush=True)
         if end + tolerance < until:
@@ -196,23 +225,20 @@ class Scenario:
         return 0
 
     def run(self):
-        self.wait(lambda: self.rpc('CreateChronicle', dict(name='m8e')))
-        created = self.rpc('CreateStory', dict(chronicle='m8e', name='failover'))
+        self.call('CreateChronicle', dict(name='m8e'))
+        created = self.call('CreateStory', dict(chronicle='m8e', name='failover'))
         self.story = int(created['story']['story_id'])
         self.expected[self.story] = {}
-        registration = self.rpc('Register', dict(process=dict(process_id='integration-observer', instance='m8e',
-                                endpoint=self.player, role='PROCESS_ROLE_PLAYER')), self.internal)
+        registration = self.call('Register', dict(process=dict(process_id='integration-observer', instance='m8e',
+                                 endpoint=self.player, role='PROCESS_ROLE_PLAYER')), self.internal)
         self.policy = registration['policy']
-        self.wait(lambda: len([m for m in self.state()['members']
+        self.wait(lambda: len([m for m in self.call('ListMembers', endpoint=self.internal, seconds=5)['members']
                               if m['process']['process_id'].startswith('keeper-')
                               and any(i.get('granted') for i in m.get('instances', []))]) == 2)
         writers = {}
         for n in range(8):
             identity = 'writer-' + str(n)
-            try:
-                a = self.acquire(identity)
-            except RuntimeError as error:
-                raise RuntimeError(f'{error} state={json.dumps(self.state())}')
+            a = self.call('Acquire', dict(story_id=self.story, writer_identity=identity))
             writers.setdefault(a['assigned_keeper']['process_id'], (identity, a))
             if len(writers) == 2:
                 break
@@ -222,11 +248,11 @@ class Scenario:
                 self.append(a, sequence)
         self.complete()
         primary = self.story
-        secondary = self.rpc('CreateStory', dict(chronicle='m8e', name='other-grapher'))
+        secondary = self.call('CreateStory', dict(chronicle='m8e', name='other-grapher'))
         self.secondary = int(secondary['story']['story_id'])
         self.story = self.secondary
         self.expected[self.story] = {}
-        second_writer = self.acquire('secondary')
+        second_writer = self.call('Acquire', dict(story_id=self.story, writer_identity='secondary'))
         for sequence in range(1, 5):
             self.append(second_writer, sequence)
         self.complete()
@@ -332,9 +358,7 @@ class Scenario:
             self.wait(lambda: self.applied(other, int(route['revision'])))
             a = self.acquire(identity)
             assert a['assigned_keeper']['process_id'] == other
-            attempt_time = time.time_ns()
-            r = self.append(a, retry=False)
-            end = time.time_ns()
+            attempt_time, r, end = self.settled(a)
             code = int(r.get('status', {}).get('code', 0))
             if code == 0:
                 assert end + 100_000_000 >= until, 'I4.8 admitted before the physical floor was within budget'

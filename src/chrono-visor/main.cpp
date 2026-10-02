@@ -3,12 +3,14 @@
 // so S14.3 can restrict it to the cluster interface.
 
 #include <grpcpp/grpcpp.h>
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <ctime>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,6 +50,7 @@ startServer(const std::string& address, grpc::Service& service, int& bound_port,
 
 int main(int argc, char** argv)
 {
+    absl::InitializeLog();
     std::optional<std::string> config_path;
     bool allow_bind_all = false;
     for(int i = 1; i < argc; ++i)
@@ -63,8 +66,8 @@ int main(int argc, char** argv)
         }
         else
         {
-            std::cerr << "usage: chrono_visor [--config PATH] [--insecure-bind-all]\n"
-                      << "environment overrides: CHRONOLOG_VISOR_<KEY>, for example CHRONOLOG_VISOR_DB_PATH\n";
+            LOG(ERROR) << "usage: chrono_visor [--config PATH] [--insecure-bind-all]; environment overrides: "
+                          "CHRONOLOG_VISOR_<KEY>, for example CHRONOLOG_VISOR_DB_PATH";
             return 2;
         }
     }
@@ -75,9 +78,14 @@ int main(int argc, char** argv)
             allow_bind_all);
     if(!config.ok())
     {
-        std::cerr << "chrono_visor: " << config.status().message() << "\n";
+        LOG(ERROR) << "chrono_visor: " << config.status().message();
         return 2;
     }
+    const auto severity = config->log_level == "error"     ? absl::LogSeverityAtLeast::kError
+                          : config->log_level == "warning" ? absl::LogSeverityAtLeast::kWarning
+                                                           : absl::LogSeverityAtLeast::kInfo;
+    absl::SetStderrThreshold(severity);
+    absl::SetMinLogLevel(severity);
 
     // Block the termination signals before any thread exists so every thread
     // inherits the mask and only the watcher below consumes them.
@@ -108,7 +116,7 @@ int main(int argc, char** argv)
         auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path, topology, config->raft, fence_waiter);
         if(!opened.ok())
         {
-            std::cerr << opened.status() << "\n";
+            LOG(ERROR) << "chrono_visor: " << opened.status();
             return 1;
         }
         raft = opened->get();
@@ -120,7 +128,7 @@ int main(int argc, char** argv)
         auto opened = chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter);
         if(!opened.ok())
         {
-            std::cerr << opened.status() << "\n";
+            LOG(ERROR) << "chrono_visor: " << opened.status();
             return 1;
         }
         applied = opened->get();
@@ -128,6 +136,15 @@ int main(int argc, char** argv)
     }
     auto& catalog_store = *store;
     auto& ledger = *applied;
+    // A writer that moves to another Keeper is admitted there only once its old owner applied the release or can no
+    // longer serve (I6.11(d)); ordering against a dead owner is carried by the ceiling and the cut (I4.7, I4.9).
+    applied->setOwnerFence(
+            [&membership_ptr, fence_timeout](const chronolog::KeeperRef& keeper, uint64_t revision)
+            {
+                auto* membership = membership_ptr.load();
+                return !membership || !membership->alive(keeper.process_id) ||
+                       membership->waitApplied(keeper.process_id, revision, fence_timeout);
+            });
 
     chronolog::visor::StaticRouteMembership membership(
             topology,
@@ -158,19 +175,19 @@ int main(int argc, char** argv)
     auto public_server = startServer(config->listen, catalog, public_port);
     if(!public_server || public_port == 0)
     {
-        std::cerr << "chrono_visor: cannot listen on " << config->listen << "\n";
+        LOG(ERROR) << "chrono_visor: cannot listen on " << config->listen;
         return 1;
     }
     auto internal_server = startServer(config->internal_listen, cluster, internal_port, &catalog);
     if(!internal_server || internal_port == 0)
     {
-        std::cerr << "chrono_visor: cannot listen on " << config->internal_listen << "\n";
+        LOG(ERROR) << "chrono_visor: cannot listen on " << config->internal_listen;
         public_server->Shutdown();
         return 1;
     }
 
-    std::cout << "catalog ready db=" << config->db_path << " keepers=" << config->keepers.size()
-              << " listen=" << config->listen << " internal_listen=" << config->internal_listen << std::endl;
+    LOG(INFO) << "catalog ready db=" << config->db_path << " keepers=" << config->keepers.size()
+              << " listen=" << config->listen << " internal_listen=" << config->internal_listen;
 
     std::atomic<bool> finished{false};
     std::thread watcher(
@@ -182,7 +199,7 @@ int main(int argc, char** argv)
                     const int received = sigtimedwait(&signals, nullptr, &poll);
                     if(received > 0)
                     {
-                        std::cout << "chrono_visor shutting down on signal " << received << std::endl;
+                        LOG(INFO) << "chrono_visor shutting down on signal " << received;
                         cluster.shutdown();
                         const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
                         internal_server->Shutdown(deadline);

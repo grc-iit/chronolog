@@ -35,6 +35,11 @@ inline constexpr int kMaxBackoffMs = 1000;
 // container, dropped route) is noticed in about two seconds and re-resolved instead of failing the next call.
 inline constexpr int kKeepaliveTimeMs = 1000;
 inline constexpr int kKeepaliveTimeoutMs = 1000;
+// gRPC sends a bandwidth probe ping on its own and allows one ping in flight. If the path goes silent while that
+// probe is out, the keepalive ping queues behind it and the only limit left is the transport's ping timeout, one
+// minute by default, so the dead path would not be noticed for that long. The same bound as the keepalive timeout
+// closes the transport on any unanswered ping. The argument has no public macro.
+inline constexpr char kPingTimeoutArg[] = "grpc.http2.ping_timeout_ms";
 // Servers accept those pings; below the client interval so no ping is a strike, and permitted when idle.
 inline constexpr int kServerMinPingIntervalMs = 500;
 // A Visor follower forwarding to the leader never waits longer than this, whatever the inbound deadline.
@@ -88,6 +93,7 @@ inline grpc::ChannelArguments channelArguments()
     args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, kMaxBackoffMs);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, kKeepaliveTimeMs);
     args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, kKeepaliveTimeoutMs);
+    args.SetInt(kPingTimeoutArg, kKeepaliveTimeoutMs);
     args.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
     args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
     args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);

@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -65,6 +66,11 @@ public:
         drop_ = true;
     }
 
+    // Connections from index n on wait before sending their snapshot, until release().
+    void holdFrom(int n) { hold_from_ = n; }
+
+    void release() { hold_from_ = INT_MAX; }
+
     int connections() const { return connections_; }
 
     grpc::Status WatchAcquisitions(grpc::ServerContext* context,
@@ -74,6 +80,8 @@ public:
         if(request->keeper_id() != "self")
             return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unexpected keeper id");
         size_t n = static_cast<size_t>(connections_++);
+        for(int tick = 0; tick < 1000 && static_cast<int>(n) >= hold_from_ && !context->IsCancelled(); ++tick)
+            std::this_thread::sleep_for(20ms);
         iv1::WatchAcquisitionsResponse first;
         {
             std::lock_guard lock(mutex_);
@@ -122,6 +130,7 @@ private:
     std::deque<iv1::AcquisitionUpdate> outbox_;
     bool drop_{};
     std::atomic<int> connections_{0};
+    std::atomic<int> hold_from_{INT_MAX};
 };
 
 class AcquisitionWatcherTest: public ::testing::Test
@@ -210,6 +219,34 @@ TEST_F(AcquisitionWatcherTest, ReconnectSnapshotFencesWriterItNoLongerLists)
     EXPECT_EQ(cluster_.connections(), 2);
     EXPECT_EQ(append(2).status.code(), absl::StatusCode::kFailedPrecondition);
     EXPECT_GE(fences_.load(), 1);
+}
+
+TEST_F(AcquisitionWatcherTest, RegressedSnapshotEndsTheSessionAndAdmissionReopensAfterACurrentSnapshot)
+{
+    // The Keeper has applied revision 9. The first stream offers revision 7, which lists no writer.
+    cluster_.script({Snapshot(7, {}), Snapshot(11, {Update(11, iv1::ACQUISITION_STATE_ACQUIRED)})});
+    cluster_.holdFrom(1);
+    watcher_ = std::make_unique<keeper::AcquisitionWatcher>(journal_, "self", [this] { ++fences_; });
+    watcher_->applySnapshot(Snapshot(9, {Update(9, iv1::ACQUISITION_STATE_ACQUIRED)}));
+    watcher_->applySnapshot(Snapshot(7, {}));
+    ASSERT_EQ(watcher_->appliedRevision(), 9u);
+    EXPECT_TRUE(append(1).status.ok());
+    watcher_->start(channel_);
+
+    // Rejecting it ends the stream, so the Watcher subscribes again. Admission stays closed and the writer is
+    // not fenced while that second stream waits.
+    const auto until = std::chrono::steady_clock::now() + 10s;
+    while(cluster_.connections() < 2 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(10ms);
+    ASSERT_EQ(cluster_.connections(), 2);
+    EXPECT_EQ(journal_.append({1, 7, {Item(2)}}, Durability::Accepted).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(watcher_->appliedRevision(), 9u);
+    EXPECT_EQ(fences_.load(), 0);
+
+    cluster_.release();
+    ASSERT_TRUE(watcher_->waitApplied(11, 10s));
+    EXPECT_TRUE(append(2).status.ok());
+    EXPECT_EQ(cluster_.connections(), 2);
+    EXPECT_EQ(fences_.load(), 0);
 }
 
 TEST_F(AcquisitionWatcherTest, WriterAssignedElsewhereIsRejectedWithRoute)

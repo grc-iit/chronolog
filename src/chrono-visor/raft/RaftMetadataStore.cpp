@@ -95,7 +95,7 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
         {
             const auto& q = c.acquire();
             v1::AcquireResponse r;
-            auto value = store.acquire(q.story_id(), q.writer_identity());
+            auto value = store.acquireAfterFence(q.story_id(), q.writer_identity());
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
             if(value.ok())
@@ -371,6 +371,21 @@ absl::StatusOr<std::string> RaftMetadataStore::propose(const internal::v1::Catal
         return absl::UnavailableError("Raft proposal failed");
     return string(*result->get());
 }
+// A restarted replica holds only what it applied before it was killed until a leader of the new term commits.
+// A watch snapshot from that state can sit below revisions a Keeper already applied, and the Keeper rejects it and
+// keeps its admission gate closed for as long as the stream stays open. The state is current once it holds an entry
+// of the present term that the leader has declared committed, because every earlier entry precedes that one.
+bool RaftMetadataStore::appliedStateCurrent() const
+{
+    if(leaderLease())
+        return true;
+    const auto leader = server_->get_leader();
+    if(leader < 0 || leader == config_.server_id || !server_->is_leader_alive())
+        return false;
+    auto applied = store_->appliedIndex();
+    return applied.ok() && *applied >= server_->get_target_committed_log_idx() &&
+           durable_->term_at(*applied) == server_->get_term();
+}
 absl::StatusOr<AcquisitionSnapshot> RaftMetadataStore::snapshotAcquisitions() const
 {
     return store_->snapshotAcquisitions();
@@ -437,6 +452,9 @@ absl::Status RaftMetadataStore::destroyStory(StoryId id)
 }
 absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string identity)
 {
+    // Only the leader proposes, and apply must not wait, so the old owner's fence is awaited before the proposal.
+    if(auto fenced = store_->awaitOldOwnerFence(id, identity); !fenced.ok())
+        return fenced;
     internal::v1::CatalogCommand c;
     auto* q = c.mutable_acquire();
     q->set_story_id(id);
