@@ -236,7 +236,7 @@ Most ChronoLog deployments would have ChronoKeeper processes running on the majo
 
 ## On-Demand Tail Reading
 
-In ChronoLog 3.1, ChronoKeeper directly serves tail-read queries from client applications (`StoryHandle::playback`):
+In ChronoLog 3.1+, ChronoKeeper directly serves tail-read queries from client applications (`StoryHandle::playback`):
 
 1. **`tail_get_sequences(story_id, n)`**: Returns up to $n$ newest `EventSequence` keys for a story held in keeper memory.
 2. **`tail_get_events(story_id, seqs)`**: Returns the full `LogEvent` payloads for the specific sequences requested by the client after client-side global merging.
