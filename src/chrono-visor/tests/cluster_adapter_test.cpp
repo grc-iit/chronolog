@@ -371,5 +371,41 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversStoryAndChronicleDestroyAsTomb
     EXPECT_GT(revision, first_revision);
 }
 
+TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversEveryRouteChangeInStaticMode)
+{
+    ASSERT_TRUE(store_->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store_->registerStaticPolicy("keeper-b", 1).ok());
+    const auto first = store_->createStory("c", "first")->id;
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&ctx, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), first);
+    EXPECT_TRUE(update.physical_policy());
+    const auto snapshot_revision = update.revision();
+
+    const auto created = store_->createStory("c", "created")->id;
+    ASSERT_TRUE(store_->clearPhysicalPolicy({first}).ok());
+    ASSERT_TRUE(store_->registerStaticPolicy("keeper-a", 0).ok());
+    ASSERT_TRUE(store_->destroyStory(created).ok());
+    uint64_t revision = snapshot_revision;
+    for(int i = 0; i < 4; ++i)
+    {
+        ASSERT_TRUE(reader->Read(&update));
+        EXPECT_GT(update.revision(), revision);
+        revision = update.revision();
+        EXPECT_EQ(update.story_id(), i == 1 ? first : created);
+        EXPECT_EQ(update.tombstoned(), i == 3);
+        if(!update.tombstoned())
+        {
+            EXPECT_EQ(update.route().epoch(), 1u);
+            EXPECT_EQ(update.physical_policy(), i == 0);
+        }
+    }
+    ctx.TryCancel();
+    (void)reader->Finish();
+}
+
 } // namespace
 } // namespace chronolog::visor
