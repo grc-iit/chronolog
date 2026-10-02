@@ -113,10 +113,20 @@ TEST(WalJournal, AppendsQueuedBehindAnFsyncAreAcknowledgedByTheNextSingleFsync)
     auto first = std::async(std::launch::async, [&] { return rig.current->append(batch({1}), Durability::Durable); });
     (void)rig.control->waitPending();
     std::vector<std::future<absl::StatusOr<std::vector<AppendResult>>>> queued;
-    for(uint64_t sequence = 2; sequence <= 6; ++sequence)
+    for(uint64_t writer = 10; writer < 15; ++writer)
+    {
+        ASSERT_TRUE(rig.current->registerWriter(1, writer, 3).ok());
+        AppendBatch own{1, 7, {}};
+        AppendItem item;
+        item.writer_id = writer;
+        item.incarnation = 3;
+        item.sequence = 1;
+        item.envelope.payload = "writer " + std::to_string(writer);
+        own.items.push_back(std::move(item));
         queued.push_back(std::async(std::launch::async,
-                                    [&, sequence]
-                                    { return rig.current->append(batch({sequence}), Durability::Durable); }));
+                                    [&rig, own = std::move(own)]
+                                    { return rig.current->append(own, Durability::Durable); }));
+    }
     std::this_thread::sleep_for(300ms);
     size_t before;
     {
