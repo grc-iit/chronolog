@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <unistd.h>
 #include "chrono-player/replay/HotReplay.h"
 
@@ -57,10 +59,10 @@ protected:
         auto record = writer->publish({std::to_string(time), 1, {start, 0}, {end, 0}, {event(time)}, false});
         ASSERT_TRUE(record.ok()) << record.status();
     }
-    void read(Hlc start = {100, 0})
+    void read(Hlc start = {100, 0}, StoryId story = 1)
     {
         HotReplay replay(source, options);
-        auto stream = replay.read(1, {Range::Axis::Hlc, start, {300, 0}});
+        auto stream = replay.read(story, {Range::Axis::Hlc, start, {300, 0}});
         ASSERT_TRUE(stream.ok()) << stream.status();
         events.clear();
         completion.reset();
@@ -161,6 +163,64 @@ TEST_F(ColdReplay, KeeperFreesTheChunkOnceThePlayerCanReadTheFile)
     ASSERT_EQ(events.size(), 1);
     ASSERT_TRUE(completion);
     EXPECT_TRUE(completion->complete);
+}
+
+TEST_F(ColdReplay, AStoryTheArchiveNeverHeardOfReadsCompleteWhenNothingIsEvicted)
+{
+    for(auto& keeper: source->response.keepers) keeper.frontier.evicted_below = {};
+    source->response.keepers[0].events = {event(140)};
+    read({100, 0}, 2);
+    ASSERT_EQ(events.size(), 1);
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+}
+
+TEST_F(ColdReplay, NoKeepersReadsTheArchiveAloneAndIsSourceFailed)
+{
+    publish(140);
+    source->response.keepers.clear();
+    read();
+    ASSERT_EQ(events.size(), 1);
+    ASSERT_TRUE(completion);
+    EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
+}
+
+TEST_F(ColdReplay, ADeletionAppendedAfterTheViewOpenedRemovesTheFileButKeepsTheWatermark)
+{
+    publish(140);
+    ASSERT_TRUE(archive->refreshNow().ok());
+    ASSERT_EQ(archive->read(1, {Range::Axis::Hlc, {100, 0}, {200, 0}})->size(), 1);
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_TRUE(writer->eraseFile(records->front().file).ok());
+    ASSERT_TRUE(archive->refreshNow().ok());
+    auto archived = archive->read(1, {Range::Axis::Hlc, {100, 0}, {200, 0}});
+    ASSERT_TRUE(archived.ok());
+    EXPECT_TRUE(archived->empty());
+    auto watermark = archive->contiguousWatermark(1);
+    ASSERT_TRUE(watermark.ok());
+    EXPECT_EQ(*watermark, (Hlc{200, 0}));
+}
+
+TEST_F(ColdReplay, APartiallyWrittenManifestRecordIsNotVisibleUntilItIsComplete)
+{
+    publish(140);
+    auto other = FileTierStore::Open(root, "other", {{1, {100, 0}}});
+    ASSERT_TRUE(other.ok());
+    ASSERT_TRUE((*other)->publish({"second", 1, {100, 0}, {200, 0}, {event(150)}, false}).ok());
+    const auto log = root / "manifest" / "other.log";
+    std::ostringstream whole;
+    whole << std::ifstream(log).rdbuf();
+    const std::string complete = whole.str();
+    ASSERT_GT(complete.size(), 10u);
+    other->reset();
+    std::ofstream(log, std::ios::trunc) << complete.substr(0, complete.size() - 10);
+    ASSERT_TRUE(archive->refreshNow().ok());
+    EXPECT_EQ(archive->read(1, {Range::Axis::Hlc, {100, 0}, {200, 0}})->size(), 1) << "a torn record was consumed";
+    std::ofstream(log, std::ios::trunc) << complete;
+    ASSERT_TRUE(archive->refreshNow().ok());
+    EXPECT_EQ(archive->read(1, {Range::Axis::Hlc, {100, 0}, {200, 0}})->size(), 2)
+            << "the completed record was never picked up";
 }
 
 TEST_F(ColdReplay, MissingArchiveFileIsSourceFailed)

@@ -18,10 +18,11 @@ add_library(chrono_player_lib STATIC
     replay/WriterDirectory.cpp)
 target_link_libraries(chrono_player_lib
     PUBLIC chrono_player_replay chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json
-    PRIVATE chronolog_warnings)
+    PRIVATE chronolog_warnings absl::log)
 
 add_executable(chrono_player main.cpp)
-target_link_libraries(chrono_player PRIVATE chrono_player_lib chronolog_warnings)
+target_link_libraries(chrono_player PRIVATE chrono_player_lib chronolog_warnings
+    absl::log absl::log_initialize absl::log_globals)
 
 include(GoogleTest)
 
