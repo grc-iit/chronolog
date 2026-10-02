@@ -221,9 +221,41 @@ void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<Ap
                   }});
 }
 
+thread_local bool WalJournal::collecting_ = false;
+thread_local std::vector<WalJournal::Write> WalJournal::collected_;
+
 void WalJournal::persist(const Event& event, std::function<void(absl::Status)> done)
 {
-    enqueue(Write{wal::frame(wal::encode(event)), std::move(done)});
+    Write write{wal::frame(wal::encode(event)), std::move(done)};
+    if(collecting_)
+        collected_.push_back(std::move(write));
+    else
+        enqueue(std::move(write));
+}
+
+void WalJournal::beginPersistBatch() { collecting_ = true; }
+
+void WalJournal::endPersistBatch()
+{
+    collecting_ = false;
+    flushCollected(*this);
+}
+
+// One lock and one wake-up for every record of the batch.
+void WalJournal::flushCollected(WalJournal& journal)
+{
+    if(collected_.empty())
+        return;
+    {
+        std::lock_guard lock(journal.queue_mu_);
+        for(auto& write: collected_)
+        {
+            journal.queued_bytes_ += write.bytes.size();
+            journal.queue_.push_back(std::move(write));
+        }
+    }
+    collected_.clear();
+    journal.queue_cv_.notify_one();
 }
 
 Hlc WalJournal::reserveFrontier(Hlc frontier) const
@@ -231,6 +263,8 @@ Hlc WalJournal::reserveFrontier(Hlc frontier) const
     std::unique_lock lock(reserve_mu_);
     if(frontier < reservation_)
         return frontier;
+    // Records of the batch being assembled on this thread keep their place ahead of the reservation.
+    flushCollected(*const_cast<WalJournal*>(this));
     Hlc next = frontier;
     const auto ahead = static_cast<int64_t>(config_.reserve_ahead_ms) * 1'000'000;
     next.physical_ns = frontier.physical_ns > INT64_MAX - ahead ? INT64_MAX : frontier.physical_ns + ahead;
@@ -668,6 +702,7 @@ namespace chronolog
 absl::StatusOr<int64_t> WalJournal::reservePhysicalFrontier(StoryId story, int64_t frontier) const
 {
     frontier = std::min(frontier, reserveFrontier(Hlc{frontier, 0}).physical_ns);
+    flushCollected(*const_cast<WalJournal*>(this));
     std::lock_guard lock(reserve_mu_);
     auto status =
             const_cast<WalJournal*>(this)->persistRecord("F" + std::to_string(story) + " " + std::to_string(frontier));

@@ -49,6 +49,8 @@ protected:
     bool durableAvailable() const override { return !failed_.load(); }
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
     void persist(const Event& event, std::function<void(absl::Status)> done) override;
+    void beginPersistBatch() override;
+    void endPersistBatch() override;
     Hlc reserveFrontier(Hlc frontier) const override;
     absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId story, int64_t frontier) const override;
 
@@ -59,6 +61,9 @@ private:
         std::function<void(absl::Status)> done;
     };
     void enqueue(Write write);
+    static void flushCollected(WalJournal& journal);
+    static thread_local bool collecting_;
+    static thread_local std::vector<Write> collected_;
     absl::Status persistRecord(std::string payload);
     void commit();
     uint64_t recover();

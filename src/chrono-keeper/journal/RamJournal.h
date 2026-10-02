@@ -121,6 +121,10 @@ protected:
         done(std::move(results));
     }
     virtual void persist(const Event&, std::function<void(absl::Status)>);
+    // Bracket the items of one append batch on the calling thread, so a journal can hand their records to its
+    // commit loop together and a batch never straddles two groups.
+    virtual void beginPersistBatch() {}
+    virtual void endPersistBatch() {}
     virtual Hlc reserveFrontier(Hlc frontier) const { return frontier; }
     virtual absl::StatusOr<int64_t> reservePhysicalFrontier(StoryId, int64_t frontier) const { return frontier; }
     virtual void writerScanned(WriterKey) const {}

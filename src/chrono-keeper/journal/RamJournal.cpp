@@ -518,6 +518,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
     state->remaining = batch.items.size() + 1;
     state->done = std::move(done);
     std::set<std::pair<uint64_t, uint64_t>> poisoned;
+    beginPersistBatch();
     for(size_t i = 0; i < batch.items.size(); ++i)
     {
         const auto deadline =
@@ -574,11 +575,14 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             if(!result || result->status != Clock::wouldExceedCeiling())
                 break;
             gate_lock.unlock();
+            // The ceiling can depend on records already queued, so they go out before waiting.
+            endPersistBatch();
             std::unique_lock lock(dynamic_mu_);
             ++ceiling_waiters_;
             const bool changed =
                     ceiling_cv_.wait_until(lock, deadline, [&] { return generation != ceiling_generation_; });
             --ceiling_waiters_;
+            beginPersistBatch();
             if(!changed)
             {
                 result->status = absl::UnavailableError("ceiling wait timed out");
@@ -588,6 +592,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         if(result)
             state->finish(i, std::move(*result));
     }
+    endPersistBatch();
     state->finish(batch.items.size(), {});
 }
 
