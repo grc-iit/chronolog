@@ -23,6 +23,8 @@ namespace chronolog
 {
 
 class ChronoGrapherExtractionChain;
+class StoryWatermarkRegistry;
+class WatermarkReportPublisher;
 
 
 class GrapherDataStore
@@ -43,7 +45,8 @@ public:
                      uint32_t story_chunk_duration_secs = 60,
                      uint32_t acceptance_window_secs = 180,
                      uint32_t inactive_pipeline_delay_secs = 300,
-                     ChronoGrapherExtractionChain* extraction_chain = nullptr)
+                     ChronoGrapherExtractionChain* extraction_chain = nullptr,
+                     StoryWatermarkRegistry* watermark_registry = nullptr)
         : state(UNKNOWN)
         , theIngestionQueue(ingestion_queue)
         , theExtractionQueue(extraction_queue)
@@ -52,6 +55,7 @@ public:
         , acceptance_window_secs(acceptance_window_secs)
         , inactive_pipeline_delay_secs(inactive_pipeline_delay_secs)
         , theExtractionChain(extraction_chain)
+        , theWatermarkRegistry(watermark_registry)
         , destroyWorkerShouldExit(false)
     {}
 
@@ -113,6 +117,12 @@ public:
 
     void dataCollectionTask();
 
+    // The publisher pushes dirty watermarks to contributing keepers; the
+    // data-collection loop drives it (rate-limited inside the publisher).
+    // Attached after the publisher exists (it needs the admin engine, which
+    // is created after this store) and before startDataCollection.
+    void attachWatermarkPublisher(WatermarkReportPublisher* publisher) { theWatermarkPublisher = publisher; }
+
 private:
     GrapherDataStore(GrapherDataStore const&) = delete;
 
@@ -150,6 +160,8 @@ private:
     uint32_t acceptance_window_secs;
     uint32_t inactive_pipeline_delay_secs;
     ChronoGrapherExtractionChain* theExtractionChain;
+    StoryWatermarkRegistry* theWatermarkRegistry;
+    WatermarkReportPublisher* theWatermarkPublisher = nullptr;
 
     std::vector<thallium::managed<thallium::xstream>> dataStoreStreams;
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;

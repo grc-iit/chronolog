@@ -8,6 +8,7 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileChunkExtractor.h>
+#include <StoryWatermarkRegistry.h>
 
 namespace tl = thallium;
 
@@ -155,9 +156,10 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
                                                           size_t* deleted_count)
 {
     // Matches the filename layout produced by StoryChunkWriter::writeStoryChunk:
-    //   <chronicle>.<story>.<startSec>.vlen.h5 (and rotated <...>.<n>.vlen.h5).
+    //   <chronicle>.<story>.<startSec>.vlen.h5, and <...>.vlen.<n>.h5 for a
+    //   later write of the same window.
     std::string const pattern_str =
-            regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
+            regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "story " + chronicle_name + "/" + story_name;
     return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
@@ -166,8 +168,8 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
 int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count)
 {
     // Matches any story under the chronicle:
-    //   <chronicle>.<anyStory>.<startSec>(.<n>)?.vlen.h5
-    std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+(\\.[0-9]+)?\\.vlen\\.h5";
+    //   <chronicle>.<anyStory>.<startSec>.vlen(.<n>)?.h5
+    std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "chronicle " + chronicle_name;
     return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
@@ -184,6 +186,30 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
              story_chunk->getEndTime(),
              story_chunk->getEventCount());
 
+    if(story_chunk->empty())
+    {
+        // an idle-gap window: nothing to write, but the interval is vacuously
+        // durable and must extend the persisted watermark or the contiguous
+        // prefix would hold at the gap forever
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->advancePersisted(story_chunk->getStoryId(),
+                                                story_chunk->getStartTime(),
+                                                story_chunk->getEndTime());
+        }
+        // An empty window can still hold receipts: their events sorted into the
+        // neighbouring window, which holds them too. Let go here, or the
+        // receipt waits on a holder that will never be written.
+        if(watermarkRegistry != nullptr)
+        {
+            for(uint64_t receipt: story_chunk->carriedReceipts())
+            {
+                watermarkRegistry->releaseReceipt(story_chunk->getStoryId(), receipt);
+            }
+        }
+        return chl::CL_SUCCESS;
+    }
+
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
     hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
     if(size == 0)
@@ -195,6 +221,10 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                   story_chunk->getStartTime(),
                   story_chunk->getEndTime(),
                   story_chunk->getEventCount());
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->persistFailed(story_chunk->getStoryId());
+        }
         return chl::CL_ERR_UNKNOWN;
     }
     else
@@ -206,6 +236,24 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                  story_chunk->getStartTime(),
                  story_chunk->getEndTime(),
                  story_chunk->getEventCount());
+        // StoryChunkWriter flushes H5F_SCOPE_GLOBAL before returning, so the
+        // window counts as persisted here. Salvage chunks are exempt: they are
+        // one keeper's rescued events, not a merged timeline window.
+        if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+        {
+            watermarkRegistry->advancePersisted(story_chunk->getStoryId(),
+                                                story_chunk->getStartTime(),
+                                                story_chunk->getEndTime());
+        }
+        // one write fewer for every keeper chunk whose events this chunk
+        // holds, salvage chunks included: W cannot confirm those
+        if(watermarkRegistry != nullptr)
+        {
+            for(uint64_t receipt: story_chunk->carriedReceipts())
+            {
+                watermarkRegistry->releaseReceipt(story_chunk->getStoryId(), receipt);
+            }
+        }
         return chl::CL_SUCCESS;
     }
 }

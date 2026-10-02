@@ -244,7 +244,12 @@ int main(int argc, char** argv)
 
             std::vector<chronolog::Event> events;
             int ret = client.ReplayStory(args.chronicle, story, t_start, t_end, events);
-            if(ret != chronolog::CL_SUCCESS)
+            // A partial result holds real events but misses others (a keeper did not
+            // answer in time, or an archive file could not be read). Send what came
+            // back and read the same window again next poll: a point is keyed by its
+            // story and timestamp, so sending it twice overwrites rather than adds.
+            const bool partial = (ret == chronolog::CL_ERR_PARTIAL_RESULT);
+            if(ret != chronolog::CL_SUCCESS && !partial)
             {
                 log_replay_error(ret, args.chronicle, story, t_start, t_end);
             }
@@ -264,6 +269,12 @@ int main(int argc, char** argv)
                 }
             }
 
+            if(partial)
+            {
+                std::cerr << "[client_reader_stream] Replay of " << args.chronicle << "/" << story << " [" << t_start
+                          << ", " << t_end << ") came back partial; reading it again next poll\n";
+                continue;
+            }
             last_ts_ns[story] = t_end + 1;
         }
 

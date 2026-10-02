@@ -46,11 +46,21 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         std::list<chl::StoryChunk*> listOfChunks;
 
-        theReadingAgent.readArchivedStory(readingRequest->chronicleName,
-                                          readingRequest->storyName,
-                                          readingRequest->startTime,
-                                          readingRequest->endTime,
-                                          listOfChunks);
+        int const read_status = theReadingAgent.readArchivedStory(readingRequest->chronicleName,
+                                                                  readingRequest->storyName,
+                                                                  readingRequest->startTime,
+                                                                  readingRequest->endTime,
+                                                                  listOfChunks);
+        if(read_status != chl::CL_SUCCESS)
+        {
+            // the response still goes out; it is short by whatever those files held
+            LOG_WARNING("[ReadingAgent] archive read for query {} Chronicle={}, Story={} failed on at least one file "
+                        "({}); the replay is missing its events",
+                        readingRequest->queryId,
+                        readingRequest->chronicleName,
+                        readingRequest->storyName,
+                        read_status);
+        }
 
         LOG_DEBUG("[ReadingAgent] Read {} StoryChunks for query {} Chronicle={}, Story={}, TimeRange=[{}, {})",
                   listOfChunks.size(),
@@ -62,7 +72,9 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         // notify the queryResponseAgent that archive read is completed
         // even if no events within the query time range were found
-        readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId, listOfChunks);
+        readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId,
+                                                                             listOfChunks,
+                                                                             read_status);
 
         // in case queryResponseAgent didn't recognise the query and failed to drain listOfChunks
         // drain it here

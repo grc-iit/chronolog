@@ -181,7 +181,7 @@ struct LogEventHVLPOD
 {
     uint64_t storyId;
     uint64_t eventTime;
-    uint32_t clientId;
+    uint64_t clientId;
     uint32_t eventIndex;
     hvl_t logRecord;
 };
@@ -203,7 +203,7 @@ inline void read_events_from_chunk_file(std::filesystem::path const& path, std::
         H5::CompType type(sizeof(LogEventHVLPOD));
         type.insertMember("storyId", HOFFSET(LogEventHVLPOD, storyId), H5::PredType::NATIVE_UINT64);
         type.insertMember("eventTime", HOFFSET(LogEventHVLPOD, eventTime), H5::PredType::NATIVE_UINT64);
-        type.insertMember("clientId", HOFFSET(LogEventHVLPOD, clientId), H5::PredType::NATIVE_UINT32);
+        type.insertMember("clientId", HOFFSET(LogEventHVLPOD, clientId), H5::PredType::NATIVE_UINT64);
         type.insertMember("eventIndex", HOFFSET(LogEventHVLPOD, eventIndex), H5::PredType::NATIVE_UINT32);
         type.insertMember("logRecord", HOFFSET(LogEventHVLPOD, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
 

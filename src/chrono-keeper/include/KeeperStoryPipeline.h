@@ -14,7 +14,7 @@
 
 #include "ActiveTailSource.h"
 #include "StoryChunkExtractionQueue.h"
-#include "KeeperTailStore.h"
+#include "KeeperChunkRetentionStore.h"
 
 namespace chronolog
 {
@@ -22,7 +22,7 @@ namespace chronolog
 
 class StoryIngestionHandle;
 
-// Implements ActiveTailSource so the KeeperTailStore can serve the most-recent
+// Implements ActiveTailSource so the KeeperChunkRetentionStore can serve the most-recent
 // events straight from this pipeline's active (unsealed) timeline when
 // live_tail_read is enabled.
 class KeeperStoryPipeline: public ActiveTailSource
@@ -30,7 +30,7 @@ class KeeperStoryPipeline: public ActiveTailSource
 
 public:
     KeeperStoryPipeline(StoryChunkExtractionQueue&,
-                        KeeperTailStore&,
+                        KeeperChunkRetentionStore&,
                         std::string const& chronicle_name,
                         std::string const& story_name,
                         StoryId const& story_id,
@@ -80,7 +80,7 @@ public:
 
 private:
     StoryChunkExtractionQueue& theExtractionQueue;
-    KeeperTailStore& theTailStore;
+    KeeperChunkRetentionStore& theTailStore;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

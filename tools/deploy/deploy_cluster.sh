@@ -9,6 +9,7 @@ set -e
 ERR='\033[7;37m\033[41m'
 INFO='\033[7;49m\033[92m'
 DEBUG='\033[0;33m'
+WARN='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Basics
@@ -193,6 +194,51 @@ check_rpc_comm_conf() {
   [[ "${grapher_data_store_admin_protocol}" != "${player_data_store_admin_protocol}" ]] && echo -e "${ERR}mismatched protocol for DataStoreAdminService in Grapher and Player conf in ${CONF_FILE}, exiting ...${NC}" >&2 && exit 1
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}" || true
+}
+
+# A player finds new archive files by looking them up by name. NFS mounted with the
+# default lookupcache=all caches a failed lookup until the client revalidates the
+# directory, for up to acdirmax. A keeper frees a written chunk
+# archive_visibility_delay_secs after the grapher confirms it, so if a player can keep
+# "not found" longer than that, a replay can miss the chunk's events and still report
+# success. Prints why for one player host's `findmnt -n -o FSTYPE,OPTIONS` output, or
+# nothing when the mount is safe (see "Archive on a Shared File System" in the
+# multi-node deployment docs).
+archive_mount_warning() {
+  local host=$1 mount_info=$2 delay=$3
+  local fstype=${mount_info%% *}
+  local options=",${mount_info#* },"
+  [[ "${fstype}" == nfs* ]] || return 0
+  [[ "${options}" == *",noac,"* ]] && return 0
+  local lookupcache="all"
+  [[ "${options}" =~ ,lookupcache=([a-z]+), ]] && lookupcache=${BASH_REMATCH[1]}
+  [[ "${lookupcache}" == "pos"* || "${lookupcache}" == "none" ]] && return 0
+  local acdirmax=60
+  [[ "${options}" =~ ,actimeo=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
+  [[ "${options}" =~ ,acdirmax=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
+  if [[ ${delay} -le ${acdirmax} ]]; then
+    echo "${host} mounts ${OUTPUT_DIR} over NFS with lookupcache=${lookupcache} and acdirmax=${acdirmax}:" \
+      "a failed lookup can stay cached for up to ${acdirmax} s, longer than a keeper keeps a written chunk" \
+      "(archive_visibility_delay_secs=${delay}), so a replay can miss events and still report success." \
+      "Mount the archive with lookupcache=positive, or set archive_visibility_delay_secs above ${acdirmax}."
+  fi
+}
+
+check_archive_mount() {
+  echo -e "${INFO}Checking the archive mount on ChronoPlayer hosts ...${NC}"
+  local delay
+  delay=$(jq -r '.chrono_keeper.DataStoreInternals.archive_visibility_delay_secs // 10' "${CONF_FILE}")
+  local host mount_info warning
+  for host in $(sort -u "${PLAYER_HOSTS}"); do
+    mount_info=$(ssh -n "${host}" "findmnt -n -o FSTYPE,OPTIONS --target '${OUTPUT_DIR}'" 2>/dev/null || true)
+    if [[ -z "${mount_info}" ]]; then
+      [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Could not read the mount of ${OUTPUT_DIR} on ${host}; not checked${NC}" || true
+      continue
+    fi
+    warning=$(archive_mount_warning "${host}" "${mount_info}" "${delay}")
+    [[ -n "${warning}" ]] && echo -e "${WARN}WARNING: ${warning}${NC}" >&2 || true
+  done
+  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check archive mount done${NC}" || true
 }
 
 check_op_validity() {
@@ -388,8 +434,13 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_keeper.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.RecordingGroup = ${i}" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.grapher_receiving_endpoint.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
-    jq ".chrono_keeper.ExtractionModule.extractors.extractor_to_grapher.player_receiving_endpoint.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
+    # Selected by extractor TYPE, not by the template's extractor name, and
+    # covering both RDMA types: a conf that asks for dual_endpoint_rdma_extractor
+    # would otherwise keep the template's 127.0.0.1 endpoints and every keeper
+    # would drain into its own node.
+    jq "((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"single_endpoint_rdma_extractor\") | .receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .grapher_receiving_endpoint.service_ip) |= \"${grapher_ip}\") |
+        ((.chrono_keeper.ExtractionModule.extractors[] | select(.type == \"dual_endpoint_rdma_extractor\") | .player_receiving_endpoint.service_ip) |= \"${player_ip}\")" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.KeeperGrapherDrainService.rpc.service_ip = \"${grapher_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_grapher.ExtractionModule.extractors.hdf5_archive_extractor.hdf5_archive_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.PlayerStoreAdminService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
@@ -508,6 +559,8 @@ parallel_remote_launch_processes() {
 parallel_remote_stop_processes() {
   local hosts_file=$1
   local bin_path=$2
+  # seconds to wait for a graceful exit before SIGKILL
+  local grace_secs=${3:-300}
 
   local bin_name
   bin_name=$(basename "${bin_path}")
@@ -517,8 +570,8 @@ parallel_remote_stop_processes() {
     echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
     sleep 10
     timer=$((timer + 10))
-    if [[ ${timer} -gt 300 ]]; then
-      echo -e "${ERR}Killing ${bin_name} processes after 5 minutes ...${NC}" >&2
+    if [[ ${timer} -gt ${grace_secs} ]]; then
+      echo -e "${ERR}Killing ${bin_name} processes after ${grace_secs} seconds ...${NC}" >&2
       parallel_remote_kill_processes ${hosts_file} ${bin_path}
       echo -e "${ERR}${bin_name} processes are killed${NC}" >&2
     fi
@@ -569,6 +622,7 @@ start() {
   update_client_monitor_file_path
   generate_conf_for_each_recording_group
   check_rpc_comm_conf
+  check_archive_mount
 
   hostname_suffix=".\$(hostname)"
   if [[ "${verbose}" == "false" ]]; then
@@ -626,7 +680,9 @@ stop() {
   parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
 
   echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} &
+  # a keeper waits up to shutdown_confirm_timeout_secs (default 150) for the
+  # grapher, which is stopped only after the keepers, to confirm its chunks
+  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 240 &
 
   wait
 

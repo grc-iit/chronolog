@@ -311,7 +311,10 @@ static int test_replay_story(chronolog::Client& client,
                              std::vector<chronolog::Event>& replay_events)
 {
     int ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, replay_events);
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
+    // CL_ERR_PARTIAL_RESULT is an outcome to report, not an invariant: a keeper that
+    // misses its fetch deadline makes the player return what it has.
+    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
+           ret == chronolog::CL_ERR_PARTIAL_RESULT);
     return ret;
 }
 

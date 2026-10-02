@@ -42,6 +42,9 @@ public:
         }
     }
 
+    // Takes the oldest chunk. It counts as in process until the caller reports
+    // it done with chunkProcessed(); see the chrono-common copy of this queue,
+    // whose idle() the grapher's destroy waits on.
     StoryChunk* ejectStoryChunk()
     {
         std::lock_guard<std::mutex> lock(extractionQueueMutex);
@@ -52,8 +55,26 @@ public:
         }
         StoryChunk* story_chunk = extractionDeque.front();
         extractionDeque.pop_front();
+        ++chunksInProcess;
 
         return story_chunk;
+    }
+
+    // A chunk ejectStoryChunk() handed out is done with.
+    void chunkProcessed()
+    {
+        std::lock_guard<std::mutex> lock(extractionQueueMutex);
+        if(chunksInProcess > 0)
+        {
+            --chunksInProcess;
+        }
+    }
+
+    // No chunk waiting and none in process.
+    bool idle()
+    {
+        std::lock_guard<std::mutex> lock(extractionQueueMutex);
+        return extractionDeque.empty() && chunksInProcess == 0;
     }
 
 
@@ -97,6 +118,8 @@ private:
 
     std::mutex extractionQueueMutex;
     std::deque<StoryChunk*> extractionDeque;
+    // chunks ejected and not yet reported processed
+    std::size_t chunksInProcess = 0;
 };
 
 } // namespace chronolog

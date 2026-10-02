@@ -12,6 +12,14 @@
 namespace chronokvs
 {
 
+namespace
+{
+// Times a partial replay is asked again before retrieveEvents gives up. A value
+// or a history built from a partial result could silently be wrong, so it is not
+// returned; the usual cause, a keeper missing its fetch deadline, is transient.
+constexpr int kPartialResultRetries = 2;
+} // namespace
+
 ChronoKVSClientAdapter::ChronoKVSClientAdapter(LogLevel level)
     : logLevel_(level)
 {
@@ -173,7 +181,14 @@ ChronoKVSClientAdapter::retrieveEvents(const std::string& key, std::uint64_t sta
 
     // Retrieve events for the specified time range
     std::vector<chronolog::Event> events;
-    if(int ret = chronolog->ReplayStory(defaultChronicle, key, start_ts, end_ts, events); ret != chronolog::CL_SUCCESS)
+    int ret = chronolog->ReplayStory(defaultChronicle, key, start_ts, end_ts, events);
+    for(int retry = 0; ret == chronolog::CL_ERR_PARTIAL_RESULT && retry < kPartialResultRetries; ++retry)
+    {
+        CHRONOKVS_WARNING(logLevel_, "Replay for key='", key, "' came back partial; asking again");
+        events.clear();
+        ret = chronolog->ReplayStory(defaultChronicle, key, start_ts, end_ts, events);
+    }
+    if(ret != chronolog::CL_SUCCESS)
     {
         CHRONOKVS_ERROR(logLevel_, "Failed to replay events for key='", key, "' with error code: ", ret);
         throw std::runtime_error("Failed to replay events for key: " + key + ", error code: " + std::to_string(ret));

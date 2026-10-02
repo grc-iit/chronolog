@@ -1,114 +1,215 @@
-#include <algorithm>
+#include <atomic>
 #include <filesystem>
-#include <regex>
+#include <mutex>
 #include <stdexcept>
+#include <unistd.h>
 
+#include <HDF5FileAccess.h>
 #include <StoryChunkWriter.h>
 
 namespace fs = std::filesystem;
 
 namespace chronolog
 {
+namespace
+{
+std::string hostName()
+{
+    char name[256] = {};
+    if(::gethostname(name, sizeof(name) - 1) != 0 || name[0] == '\0')
+    {
+        return "unknown-host";
+    }
+    return name;
+}
+
+// A window is written under this name and moved into place only once it is
+// complete, so a player listing the archive directory never opens a partial
+// file, and a write that fails leaves nothing for a later replay to trip over.
+// The suffix keeps it out of the player's listing and out of the window names
+// publishFile tries. Host, pid and a counter keep two writers from sharing one
+// temporary: graphers on different nodes write into the same shared directory,
+// and each in its own container can have the same pid.
+std::string partialFileName(std::string const& base_path)
+{
+    static std::atomic<uint64_t> sequence{0};
+    static std::string const host = hostName();
+    return base_path + ".partial." + host + "." + std::to_string(::getpid()) + "." + std::to_string(sequence++);
+}
+
+void removePartialFile(std::string const& partial_name)
+{
+    std::error_code ec;
+    fs::remove(partial_name, ec);
+    if(ec)
+    {
+        LOG_ERROR("[StoryChunkWriter] Could not remove the partial file {}: {}", partial_name, ec.message());
+    }
+}
+
+// The name of a window's n-th file: the window's own name first, then
+// <chronicle>.<story>.<startSec>.vlen.<n>.h5.
+std::string windowFileName(fs::path const& root_dir, std::string const& base_file_name, uint64_t n)
+{
+    if(n == 0)
+    {
+        return (root_dir / base_file_name).string();
+    }
+    fs::path const base(base_file_name);
+    return (root_dir / (base.stem().string() + "." + std::to_string(n) + base.extension().string())).string();
+}
+
+// Far more files than one window ever gets; only a directory in a bad state
+// reaches it.
+constexpr uint64_t kMaxFilesPerWindow = 100000;
+
+// For a file system without hard links: the first name that does not exist,
+// taken by rename. Safe between the threads of this process only.
+std::mutex renameFallbackMutex;
+
+bool publishByRename(std::string const& partial_name,
+                     fs::path const& root_dir,
+                     std::string const& base_file_name,
+                     std::string& file_name)
+{
+    std::lock_guard<std::mutex> lock(renameFallbackMutex);
+    for(uint64_t n = 0; n < kMaxFilesPerWindow; ++n)
+    {
+        file_name = windowFileName(root_dir, base_file_name, n);
+        std::error_code ec;
+        bool const taken = fs::exists(file_name, ec);
+        if(!ec && taken)
+        {
+            continue;
+        }
+        if(!ec)
+        {
+            fs::rename(partial_name, file_name, ec);
+        }
+        if(ec)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}",
+                      partial_name,
+                      file_name,
+                      ec.message());
+            return false;
+        }
+        return true;
+    }
+    LOG_ERROR("[StoryChunkWriter] No free name left for {}", partial_name);
+    return false;
+}
+
+// Moves a complete window file into place under the first free name. Two
+// writes of one window can finish at once: this grapher's extraction streams,
+// or two graphers on different nodes when the story was acquired again and the
+// visor gave it another recording group. A name chosen by looking first is free
+// for both, and a rename onto it replaces the file the other write has already
+// reported written. A hard link fails with EEXIST instead, atomically on the
+// server for NFS, so each write takes a name of its own; the partial name is
+// removed once the link stands. Each name costs one lookup, with no listing of
+// the archive directory. Sets file_name to the name the window got.
+bool publishFile(std::string const& partial_name,
+                 fs::path const& root_dir,
+                 std::string const& base_file_name,
+                 std::string& file_name)
+{
+    for(uint64_t n = 0; n < kMaxFilesPerWindow; ++n)
+    {
+        file_name = windowFileName(root_dir, base_file_name, n);
+        std::error_code ec;
+        fs::create_hard_link(partial_name, file_name, ec);
+        if(!ec)
+        {
+            removePartialFile(partial_name);
+            return true;
+        }
+        if(ec == std::errc::file_exists)
+        {
+            // Over NFS a link whose reply was lost is sent again and answered
+            // EEXIST, although the first one made it; the partial file then has
+            // this second name.
+            std::error_code count_ec;
+            std::uintmax_t const links = fs::hard_link_count(partial_name, count_ec);
+            if(!count_ec && links > 1)
+            {
+                removePartialFile(partial_name);
+                return true;
+            }
+            continue;
+        }
+        if(ec == std::errc::operation_not_permitted || ec == std::errc::operation_not_supported ||
+           ec == std::errc::not_supported)
+        {
+            static std::once_flag warned;
+            std::call_once(warned,
+                           [&]()
+                           {
+                               LOG_WARNING("[StoryChunkWriter] The archive file system does not allow hard links "
+                                           "({}); window files are moved into place by rename, which keeps two "
+                                           "writers of one window apart only within this process",
+                                           ec.message());
+                           });
+            return publishByRename(partial_name, root_dir, base_file_name, file_name);
+        }
+        LOG_ERROR("[StoryChunkWriter] Could not move {} into place as {}: {}", partial_name, file_name, ec.message());
+        return false;
+    }
+    LOG_ERROR("[StoryChunkWriter] No free name left for {}", partial_name);
+    return false;
+}
+} // namespace
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
 {
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
     for(const auto& start: story_chunk) { data.push_back(start.second); }
-    std::string file_name = rootDirectory + story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
-                            std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-    hsize_t ret = 0;
+    std::string const base_file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
+                                       std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    std::string file_name = (fs::path(rootDirectory) / base_file_name).string();
+    std::string const partial_name = partialFileName(file_name);
     std::unique_ptr<H5::H5File> file;
     try
     {
-        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {} (as {})", file_name, partial_name);
+        file = std::make_unique<H5::H5File>(partial_name,
+                                            H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            file->close();
+            removePartialFile(partial_name);
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
+
+        // the window appears under its own name complete or not at all
+        if(!publishFile(partial_name, rootDirectory, base_file_name, file_name))
+        {
+            removePartialFile(partial_name);
+            return 0;
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
         return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
-}
-
-std::string StoryChunkWriter::getStoryChunkFileName(std::string const& root_dir, std::string const& base_file_name)
-{
-    const std::string base_file_name_no_ext = fs::path(base_file_name).stem().make_preferred().string();
-    const std::string escaped_base_file_name_no_ext =
-            std::regex_replace(base_file_name_no_ext, std::regex(R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
-    const std::string rotated_prefix = escaped_base_file_name_no_ext + "\\.";
-    const std::string ext = fs::path(base_file_name).extension().string();
-
-    const std::regex rotated_pattern("^" + rotated_prefix + "([0-9]+)" + ext + "$");
-
-    long long max_n = 0; // Means no numbered files have been found yet.
-    bool base_exists = false;
-
-    std::error_code ec;
-    for(const auto& entry: fs::directory_iterator(root_dir, ec))
-    {
-        if(!entry.is_regular_file(ec))
-        {
-            continue; // Skip directories, symlinks, etc.
-        }
-
-        const std::string filename = entry.path().filename().string();
-
-        // Check for the base file
-        if(filename == base_file_name)
-        {
-            base_exists = true;
-            continue;
-        }
-
-        // Check for rotated files
-        std::smatch match;
-        if(std::regex_match(filename, match, rotated_pattern))
-        {
-            // match[0] is the entire string, match[1] is the first capture group.
-            if(match.size() == 2)
-            {
-                try
-                {
-                    long long current_n = std::stoll(match[1].str());
-                    max_n = std::max(max_n, current_n);
-                }
-                catch(const std::out_of_range&)
-                {
-                    LOG_ERROR("[StoryChunkWriter] Number in file name '{}' is out of range.", match[1].str());
-                }
-            }
-        }
-    }
-
-    fs::path next_filename_no_ext;
-    if(!base_exists)
-    {
-        next_filename_no_ext = base_file_name_no_ext;
-    }
-    else
-    {
-        // We found numbered files, so the next is max_n + 1.
-        next_filename_no_ext = base_file_name_no_ext + "." + std::to_string(max_n + 1);
-    }
-
-    next_filename_no_ext += ext;
-    LOG_DEBUG("[StoryChunkWriter] Next unique file name: {}", next_filename_no_ext.string());
-    return (root_dir / next_filename_no_ext).make_preferred();
+    removePartialFile(partial_name);
+    return 0;
 }
 
 hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
@@ -126,39 +227,52 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
                           event.second.index(),
                           log_record);
     }
-    std::string file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
-                            std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
-    //    file_name = fs::path(rootDirectory) / fs::path(file_name);
-    hsize_t ret = 0;
+    std::string const base_file_name = story_chunk.getChronicleName() + "." + story_chunk.getStoryName() + "." +
+                                       std::to_string(story_chunk.getStartTime() / 1000000000) + ".vlen.h5";
+    std::string file_name = (fs::path(rootDirectory) / base_file_name).string();
+    std::string const partial_name = partialFileName(file_name);
     std::unique_ptr<H5::H5File> file;
     try
     {
-        LOG_DEBUG("[StoryChunkWriter] Making sure the StoryChunk file name is unique...");
-        file_name = getStoryChunkFileName(rootDirectory, file_name);
-
-        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {}", file_name);
-        file = std::make_unique<H5::H5File>(file_name, H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE);
+        LOG_DEBUG("[StoryChunkWriter] Creating StoryChunk file: {} (as {})", file_name, partial_name);
+        file = std::make_unique<H5::H5File>(partial_name,
+                                            H5F_ACC_TRUNC | H5F_ACC_SWMR_WRITE,
+                                            H5::FileCreatPropList::DEFAULT,
+                                            archiveFileAccess());
 
         LOG_DEBUG("[StoryChunkWriter] Writing StoryChunk to file...");
-        ret = writeEvents(file, data);
-        if(ret == 0)
+        if(writeEvents(file, data) == 0)
         {
             LOG_ERROR("[StoryChunkWriter] Error writing StoryChunk to file.");
-            return ret;
+            file->close();
+            removePartialFile(partial_name);
+            return 0;
         }
 
         file->flush(H5F_SCOPE_GLOBAL);
-        hsize_t file_size = file->getFileSize();
+        hsize_t const file_size = file->getFileSize();
+        // closed here so that a failed close counts as a failed write
+        file->close();
+
+        // the window appears under its own name complete or not at all
+        if(!publishFile(partial_name, rootDirectory, base_file_name, file_name))
+        {
+            removePartialFile(partial_name);
+            return 0;
+        }
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
-        ret = file_size;
+        return file_size;
     }
-    catch(H5::FileIException& error)
+    catch(H5::Exception const& error)
     {
-        LOG_ERROR("[StoryChunkWriter] FileIException: {}", error.getCDetailMsg());
-        H5::FileIException::printErrorStack();
+        // any step can fail on a full or failing disk, and flush throws a
+        // LocationException, not a FileIException
+        LOG_ERROR("[StoryChunkWriter] {} failed for {}: {}", error.getCFuncName(), file_name, error.getCDetailMsg());
+        H5::Exception::printErrorStack();
     }
-    return ret;
+    removePartialFile(partial_name);
+    return 0;
 }
 
 hsize_t StoryChunkWriter::writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data)

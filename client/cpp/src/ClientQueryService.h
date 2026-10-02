@@ -32,6 +32,10 @@ struct PlaybackQuery
     uint32_t queryId;
     uint64_t timeout_time;
     bool completed;
+    // what the player said about its own answer: false means it knows the
+    // series is short (a keeper that did not answer, a keeper's event cap, or
+    // an archive file it could not read)
+    bool complete = true;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;

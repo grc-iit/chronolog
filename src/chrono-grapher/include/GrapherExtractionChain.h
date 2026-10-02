@@ -9,6 +9,7 @@
 #include <ChunkLoggingExtractor.h>
 #include <ChunkExtractorCSV.h>
 #include <HDF5FileChunkExtractor.h>
+#include <StoryWatermarkRegistry.h>
 #include <ExtractionModuleConfiguration.h>
 
 namespace tl = thallium;
@@ -26,13 +27,27 @@ public:
 
     ~ChronoGrapherExtractionChain() { theExtractors.clear(); }
 
-    void process_chunk(StoryChunk* chunk)
+    // CL_SUCCESS only if every active extractor accepted the chunk; the first
+    // failure code otherwise.
+    int process_chunk(StoryChunk* chunk)
     {
+        int ret_value = CL_SUCCESS;
         for(auto& e: theExtractors)
         {
-            std::visit([chunk](auto& extractor) { extractor.process_chunk(chunk); }, e);
+            int rc = std::visit([chunk](auto& extractor) -> int { return extractor.process_chunk(chunk); }, e);
+            if(rc != CL_SUCCESS && ret_value == CL_SUCCESS)
+            {
+                ret_value = rc;
+            }
         }
+        return ret_value;
     }
+
+    // Disposal seam invoked by the extraction module after process_chunk. The
+    // grapher keeps today's ownership model — the drained chunk is freed
+    // regardless of outcome; durability feedback to the keepers flows through
+    // the StoryWatermarkRegistry instead.
+    void dispose_chunk(StoryChunk* chunk, int /*status*/) { delete chunk; }
 
     bool is_active_chain() const
     {
@@ -55,7 +70,9 @@ public:
         return true;
     }
 
-    int activate(ServiceId const& service_id, ExtractionModuleConfiguration const& extraction_conf)
+    int activate(ServiceId const& service_id,
+                 ExtractionModuleConfiguration const& extraction_conf,
+                 StoryWatermarkRegistry* watermark_registry = nullptr)
     {
         int ret_value = CL_SUCCESS;
 
@@ -80,6 +97,7 @@ public:
                 {
                     break;
                 }
+                hdf5_extractor.attachWatermarkRegistry(watermark_registry);
                 theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")

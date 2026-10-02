@@ -7,6 +7,14 @@
 namespace chronosql
 {
 
+namespace
+{
+// Times a partial replay is asked again before the query fails. Rows from a
+// partial result would silently be missing, so they are not returned; the usual
+// cause, a keeper missing its fetch deadline, is transient.
+constexpr int kPartialResultRetries = 2;
+} // namespace
+
 ChronoSQLClientAdapter::ChronoSQLClientAdapter(const std::string& chronicle_name, LogLevel level)
     : chronicle_(chronicle_name)
     , logLevel_(level)
@@ -138,7 +146,14 @@ std::vector<ChronoSQLClientAdapter::EventPayload> ChronoSQLClientAdapter::replay
     } guard{client_.get(), chronicle_, story};
 
     std::vector<chronolog::Event> events;
-    if(int ret = client_->ReplayStory(chronicle_, story, start_ts, end_ts, events); ret != chronolog::CL_SUCCESS)
+    int ret = client_->ReplayStory(chronicle_, story, start_ts, end_ts, events);
+    for(int retry = 0; ret == chronolog::CL_ERR_PARTIAL_RESULT && retry < kPartialResultRetries; ++retry)
+    {
+        CHRONOSQL_WARNING(logLevel_, "Replay for story='", story, "' came back partial; asking again");
+        events.clear();
+        ret = client_->ReplayStory(chronicle_, story, start_ts, end_ts, events);
+    }
+    if(ret != chronolog::CL_SUCCESS)
     {
         if(tolerate_timeout && ret == chronolog::CL_ERR_QUERY_TIMED_OUT)
         {
