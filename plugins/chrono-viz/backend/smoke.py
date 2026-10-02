@@ -25,16 +25,25 @@ with c.acquire(story, "smoke", timeout=5) as writer:
         time.sleep(.2)
     else:
         raise AssertionError("Grafana did not become ready")
-    settings = requests.get("http://127.0.0.1:3000/api/plugins/chronolog-viz-datasource/settings", auth=auth, timeout=5)
-    assert settings.status_code == 200, settings.text
-    for _ in range(100):
-        datasource = requests.get("http://127.0.0.1:3000/api/datasources/uid/chronolog-viz", auth=auth, timeout=3)
-        if datasource.status_code == 200:
-            assert datasource.json()["type"] == "chronolog-viz-datasource"
-            break
-        time.sleep(.1)
-    else:
-        raise AssertionError("ChronoLog datasource not provisioned: " + datasource.text)
+    # /api/health answers when Grafana listens, before it has provisioned the datasource, and the first
+    # authenticated requests can stall behind its own SQLite startup writes. Poll the provisioned
+    # datasource, the state the test depends on, with short per-request timeouts.
+    def wait_for(url, ready, seconds=60):
+        end, last = time.monotonic() + seconds, None
+        while time.monotonic() < end:
+            try:
+                response = requests.get(url, auth=auth, timeout=3)
+                if ready(response):
+                    return response
+                last = response.text
+            except requests.RequestException as error:
+                last = repr(error)
+            time.sleep(.2)
+        raise AssertionError(url + ": " + str(last))
+
+    datasource = wait_for("http://127.0.0.1:3000/api/datasources/uid/chronolog-viz", lambda r: r.status_code == 200)
+    assert datasource.json()["type"] == "chronolog-viz-datasource"
+    wait_for("http://127.0.0.1:3000/api/plugins/chronolog-viz-datasource/settings", lambda r: r.status_code == 200)
     for base in ("http://127.0.0.1:8087", "http://127.0.0.1:3000/api/datasources/proxy/uid/chronolog-viz"):
         health = requests.get(base + "/health", auth=auth, timeout=8)
         assert health.status_code == 200 and health.json()["status"] == "healthy", health.text
