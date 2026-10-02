@@ -45,7 +45,15 @@ public:
     absl::StatusOr<Story> getStory(StoryId id) const override;
     absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const override;
     absl::Status destroyStory(StoryId id) override;
+    // Waits for the previous owner's fence when the writer moves to another Keeper (I6.11(d)), then commits.
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
+    // The commit without the wait, for Raft apply, which must be deterministic and never blocks.
+    absl::StatusOr<Acquisition> acquireAfterFence(StoryId id, std::string writer_identity);
+    // OK when the writer's previous incarnation stays on a Keeper of the current route, has no prior release, or its
+    // old owner is fenced; UNAVAILABLE while a live old owner has not applied the release.
+    absl::Status awaitOldOwnerFence(StoryId id, const std::string& writer_identity) const;
+    // True once the Keeper applied `revision` or can no longer serve (not alive). Unset means no wait.
+    void setOwnerFence(FenceWaiter fence);
     absl::StatusOr<ReleaseResult> release(StoryId id, uint64_t writer_id, uint64_t incarnation) override;
     absl::StatusOr<Epoch> compareAndSetEpoch(StoryId id, Epoch expected, Epoch desired) override;
 
@@ -94,6 +102,7 @@ private:
     sqlite3* db_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;
+    FenceWaiter owner_fence_;
     // One mutex serializes every statement on the single connection. const readers
     // lock it too, so it is mutable.
     mutable std::recursive_mutex mutex_;

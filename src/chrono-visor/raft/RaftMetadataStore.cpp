@@ -91,7 +91,7 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
         {
             const auto& q = c.acquire();
             v1::AcquireResponse r;
-            auto value = store.acquire(q.story_id(), q.writer_identity());
+            auto value = store.acquireAfterFence(q.story_id(), q.writer_identity());
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
             if(value.ok())
@@ -406,6 +406,9 @@ absl::Status RaftMetadataStore::destroyStory(StoryId id)
 }
 absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string identity)
 {
+    // Only the leader proposes, and apply must not wait, so the old owner's fence is awaited before the proposal.
+    if(auto fenced = store_->awaitOldOwnerFence(id, identity); !fenced.ok())
+        return fenced;
     internal::v1::CatalogCommand c;
     auto* q = c.mutable_acquire();
     q->set_story_id(id);

@@ -136,6 +136,15 @@ int main(int argc, char** argv)
     }
     auto& catalog_store = *store;
     auto& ledger = *applied;
+    // A writer that moves to another Keeper is admitted there only once its old owner applied the release or can no
+    // longer serve (I6.11(d)); ordering against a dead owner is carried by the ceiling and the cut (I4.7, I4.9).
+    applied->setOwnerFence(
+            [&membership_ptr, fence_timeout](const chronolog::KeeperRef& keeper, uint64_t revision)
+            {
+                auto* membership = membership_ptr.load();
+                return !membership || !membership->alive(keeper.process_id) ||
+                       membership->waitApplied(keeper.process_id, revision, fence_timeout);
+            });
 
     chronolog::visor::StaticRouteMembership membership(
             topology,
