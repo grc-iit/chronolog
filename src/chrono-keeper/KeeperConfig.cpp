@@ -93,7 +93,6 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
     // quietly turn a mechanism off instead of failing the daemon at startup.
     static const std::map<std::string, uint64_t> unsigned_keys = {{"payload_max_bytes", UINT64_MAX},
                                                                   {"dedupe_window", UINT64_MAX},
-                                                                  {"group_commit_window_ms", UINT32_MAX},
                                                                   {"group_commit_max_bytes", UINT64_MAX},
                                                                   {"reserve_ahead_ms", UINT32_MAX},
                                                                   {"wal_max_bytes", UINT64_MAX},

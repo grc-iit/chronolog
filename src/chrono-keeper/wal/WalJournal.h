@@ -41,6 +41,8 @@ public:
     std::optional<Hlc> firstEvent(StoryId story) const;
     bool hasPhysicalPolicy() const override { return physical_policy_; }
     absl::Status flush();
+    // Records waiting for the commit loop; tests use it to know a group has formed behind a blocked fsync.
+    size_t queuedRecords() const;
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
 
@@ -100,7 +102,7 @@ private:
     bool warned_{};
     mutable std::mutex reserve_mu_;
     mutable Hlc reservation_;
-    std::mutex queue_mu_;
+    mutable std::mutex queue_mu_;
     std::condition_variable queue_cv_;
     std::deque<Write> queue_;
     size_t queued_bytes_{};

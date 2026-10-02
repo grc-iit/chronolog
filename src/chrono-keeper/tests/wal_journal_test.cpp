@@ -127,7 +127,10 @@ TEST(WalJournal, AppendsQueuedBehindAnFsyncAreAcknowledgedByTheNextSingleFsync)
                                     [&rig, own = std::move(own)]
                                     { return rig.current->append(own, Durability::Durable); }));
     }
-    std::this_thread::sleep_for(300ms);
+    const auto give_up = std::chrono::steady_clock::now() + 10s;
+    while(rig.current->queuedRecords() < queued.size() && std::chrono::steady_clock::now() < give_up)
+        std::this_thread::yield();
+    ASSERT_EQ(rig.current->queuedRecords(), queued.size());
     size_t before;
     {
         std::lock_guard lock(rig.control->mu);

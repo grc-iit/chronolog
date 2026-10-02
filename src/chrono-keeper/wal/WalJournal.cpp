@@ -369,6 +369,12 @@ void WalJournal::commit()
 
 namespace chronolog
 {
+size_t WalJournal::queuedRecords() const
+{
+    std::lock_guard lock(queue_mu_);
+    return queue_.size();
+}
+
 absl::Status WalJournal::flush()
 {
     std::promise<absl::Status> promise;
