@@ -73,6 +73,8 @@ class Scenario:
             last = self.raw(op, request, endpoint)
             code = last['transport'] or int(last.get('response', {}).get('status', {}).get('code', 0))
             assert code in (0, 14), f'{op}: {last}'
+            if code:
+                print(f'RETRY {op} {last.get("error", last)}', flush=True)
             return (last['response'],) if code == 0 else None
         try:
             return self.wait(attempt, seconds)[0]
