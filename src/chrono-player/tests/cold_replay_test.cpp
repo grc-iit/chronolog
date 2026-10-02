@@ -605,9 +605,13 @@ TEST_F(ColdReplay, TailDeliversAnEventLargerThanItsByteShare)
     auto tied = first;
     tied.id.writer_id = 3;
     tied.envelope.payload = std::string(100, 'b');
+    auto third = tied;
+    third.id.writer_id = 4;
+    auto fourth = tied;
+    fourth.id.writer_id = 5;
     auto later = event(130);
     later.envelope.payload = std::string(100, 'c');
-    ASSERT_TRUE(writer->publish({"oversized", 1, {100, 0}, {200, 0}, {first, tied, later}, false}).ok());
+    ASSERT_TRUE(writer->publish({"oversized", 1, {100, 0}, {200, 0}, {first, tied, third, fourth, later}, false}).ok());
     options.tail_max_bytes = 144;
     options.read_max_events = 2;
     options.batch_size = 10;
@@ -619,7 +623,9 @@ TEST_F(ColdReplay, TailDeliversAnEventLargerThanItsByteShare)
     auto batch = nextWithin(**stream);
     ASSERT_TRUE(batch.ok());
     ASSERT_TRUE(*batch);
-    ASSERT_EQ((**batch).events.size(), 2u);
+    ASSERT_EQ((**batch).events.size(), 4u);
+    EXPECT_EQ((**batch).events[2].id, third.id);
+    EXPECT_EQ((**batch).events[3].id, fourth.id);
     EXPECT_EQ((**batch).events[0].id, first.id);
     EXPECT_EQ((**batch).events[1].id, tied.id);
     EXPECT_EQ((**batch).events[0].envelope.payload, first.envelope.payload);

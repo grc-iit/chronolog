@@ -8,6 +8,7 @@
 #include <queue>
 #include <set>
 #include <tuple>
+#include "absl/log/log.h"
 #include "chrono-player/replay/CompletionPolicy.h"
 #include "chrono-player/replay/ReplayMerge.h"
 #include "chrono-player/replay/PhysicalRead.h"
@@ -134,6 +135,7 @@ bool loadArchive(const HotReplayOptions& options,
                  Hlc& bound,
                  const HotFetch& fetch,
                  size_t byte_limit,
+                 bool& warned,
                  std::vector<Event>& events)
 {
     Hlc end = archiveEnd(fetch, Range{Range::Axis::Hlc, from, bound});
@@ -156,16 +158,37 @@ bool loadArchive(const HotReplayOptions& options,
                 options.archive->readRecord(record, Range{Range::Axis::Hlc, from, end}, options.read_max_events + 1);
         if(!part.ok())
             return false;
+        if(part->size() == options.read_max_events + 1 && part->front().hlc == part->back().hlc &&
+           (events.empty() || part->front().hlc <= events.front().hlc))
+        {
+            // The count probe ended inside the first tie group; read that group's whole exclusive window.
+            Hlc group_end = part->front().hlc;
+            if(group_end.logical == UINT32_MAX)
+                group_end = {group_end.physical_ns + 1, 0};
+            else
+                ++group_end.logical;
+            part = options.archive->readRecord(record, Range{Range::Axis::Hlc, part->front().hlc, group_end});
+            if(!part.ok())
+                return false;
+            bound = std::min(bound, group_end);
+            end = std::min(end, bound);
+        }
         std::vector<std::vector<Event>> inputs;
         inputs.push_back(std::move(events));
         inputs.push_back(*std::move(part));
         events = mergeReplay(std::move(inputs));
         size_t bytes = 0, kept = 0;
-        while(kept < events.size() && kept < options.read_max_events &&
-              events[kept].envelope.payload.size() <= byte_limit - bytes)
+        while(kept < events.size() && (kept == 0 || events[kept].hlc == events[0].hlc ||
+                                       (kept < options.read_max_events && bytes <= byte_limit &&
+                                        events[kept].envelope.payload.size() <= byte_limit - bytes)))
         {
             bytes += events[kept].envelope.payload.size();
             ++kept;
+        }
+        if(bytes > byte_limit && !warned)
+        {
+            warned = true;
+            LOG(WARNING) << "Tail archive payload exceeds byte share for story " << story;
         }
         if(kept < events.size())
         {
@@ -353,6 +376,7 @@ class TailStream final: public ReplayStream
         std::vector<Event> events;
         KeeperFrontier retained{};
         bool full{};
+        size_t byte_limit{std::numeric_limits<size_t>::max()};
     };
 
 public:
@@ -409,8 +433,10 @@ public:
             }
             const Hlc from = frontier_;
             TailStarts starts;
-            for(const auto& [id, source]: sources_)
+            for(auto& [id, source]: sources_)
             {
+                if(source.events.empty())
+                    source.full = false;
                 starts[id] = std::max(source.covered, from);
                 if(source.full)
                     starts.retained[id] = source.retained;
@@ -493,7 +519,9 @@ private:
         // The buffer is bounded: what does not fit is asked for again once T has made room.
         const size_t room = options_.read_max_events - std::min(options_.read_max_events, source.events.size());
         size_t bytes = payloadBytes(source.events), keep = 0;
-        while(keep < fresh.size() && keep < room && fresh[keep].envelope.payload.size() <= byte_limit - bytes)
+        while(keep < fresh.size() && keep < room &&
+              ((source.events.empty() && keep == 0) ||
+               (bytes <= byte_limit && fresh[keep].envelope.payload.size() <= byte_limit - bytes)))
         {
             bytes += fresh[keep].envelope.payload.size();
             ++keep;
@@ -507,9 +535,15 @@ private:
         source.events.insert(source.events.end(),
                              std::make_move_iterator(fresh.begin()),
                              std::make_move_iterator(fresh.end()));
+        if(payloadBytes(source.events) > byte_limit && warned_sources_.insert(id).second)
+            LOG(WARNING) << "Tail Keeper payload exceeds byte share for story " << story_ << ", source "
+                         << f.process_id;
+        source.byte_limit = byte_limit;
         source.covered = covered;
         f.sealed = covered;
         source.full |= source.events.size() >= options_.read_max_events || payloadBytes(source.events) >= byte_limit;
+        if(source.events.empty())
+            source.full = false;
         source.retained = f;
         return f;
     }
@@ -547,7 +581,7 @@ private:
                 options_.tail_max_bytes / std::max<size_t>(1, buffered.size() + (options_.archive ? 1 : 0));
         std::set<SourceId> reset;
         for(auto& [id, source]: sources_)
-            if(payloadBytes(source.events) > byte_limit)
+            if(byte_limit < source.byte_limit && payloadBytes(source.events) > byte_limit)
             {
                 source = Source{source.instance, frontier_, {}};
                 reset.insert(id);
@@ -566,7 +600,7 @@ private:
         Hlc bound = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
         bound = !reset.empty() || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
         std::vector<Event> cold;
-        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, cold))
+        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, archive_warned_, cold))
         {
             suspect_ |= archiveRecordsTombstone();
             fail(IncompleteReason::SourceFailed);
@@ -585,6 +619,8 @@ private:
             if(split != held.begin())
                 it->second.full = false;
             held.erase(held.begin(), split);
+            if(held.empty())
+                it->second.full = false;
             it = held.empty() && !asked.contains(it->first) ? sources_.erase(it) : std::next(it);
         }
         auto events = mergeReplay(std::move(inputs));
@@ -645,6 +681,8 @@ private:
     bool suspect_{};
     bool confirmed_live_{};
     std::set<std::pair<SourceId, std::string>> refusals_;
+    std::set<SourceId> warned_sources_;
+    bool archive_warned_{};
     bool final_sent_{};
     IncompleteReason final_reason_{IncompleteReason::None};
 };
