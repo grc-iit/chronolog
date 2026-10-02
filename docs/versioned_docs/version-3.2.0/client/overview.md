@@ -37,7 +37,7 @@ See [CLI Tool](./cli/overview.md) for the full command reference and usage examp
 
 ## Event Consumption Modes
 
-ChronoLog 3.1 provides two distinct modes for reading events:
+ChronoLog 3.1+ provides two distinct modes for reading events:
 
 | Feature | On-Demand Tail Read (`playback`) | Historical Replay (`ReplayStory`) |
 |---|---|---|

@@ -1,6 +1,6 @@
 > [!IMPORTANT]
-> **ChronoLog v3.1.1 is now available.**
-> The latest stable release, adding on-demand tail reads served straight from ChronoKeeper memory and an LDMS store plugin.
+> **ChronoLog v3.2.0 is now available.**
+> The latest stable release, adding durable chunk retention: a ChronoKeeper keeps every chunk until ChronoGrapher confirms it archived, and replay reads the events not yet archived straight from the keepers.
 > [Releases on chronolog.dev](https://www.chronolog.dev/releases) · [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases on GitHub](https://github.com/grc-iit/ChronoLog/releases) · [Documentation](https://www.chronolog.dev/docs)
 
 <p align="center">
@@ -48,6 +48,7 @@ A pluggable serving layer lets custom services run directly on the log. Shipping
 
 - **No central sequencer**: physical-time partitioning enables high-throughput parallel writes.
 - **Tiered storage**: StoryChunks flow across fast and capacity tiers automatically.
+- **Durable hand-off between tiers**: a ChronoKeeper keeps each chunk until ChronoGrapher confirms it archived, and replay reads the events not yet archived from the keepers.
 - **Concurrent access at scale**: multi-writer, multi-reader over RDMA or TCP.
 - **Pluggable serving layer**: extend the log with custom query and streaming services.
 
@@ -82,13 +83,13 @@ Best for trying ChronoLog quickly on a Linux x86_64 host.
 Download the tarball:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v3.1.1/chronolog-3.1.1-linux-x86_64.tar.gz
+wget https://github.com/grc-iit/ChronoLog/releases/download/v3.2.0/chronolog-3.2.0-linux-x86_64.tar.gz
 ```
 
 Extract it:
 
 ```bash
-tar -xzf chronolog-3.1.1-linux-x86_64.tar.gz
+tar -xzf chronolog-3.2.0-linux-x86_64.tar.gz
 ```
 
 Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -101,7 +102,7 @@ Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/get
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
 ```bash
-sudo apt install ./chronolog-3.1.1-linux-x86_64.deb
+sudo apt install ./chronolog-3.2.0-linux-x86_64.deb
 ```
 
 Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -114,7 +115,7 @@ Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
 ```bash
-sudo dnf install ./chronolog-3.1.1-linux-x86_64.rpm
+sudo dnf install ./chronolog-3.2.0-linux-x86_64.rpm
 ```
 
 Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting-started/quick-start)
