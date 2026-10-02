@@ -207,4 +207,7 @@ endif()
 
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player)
     add_subdirectory(tests/integration/dynamic)
+    if(TARGET chronolog_client)
+        add_subdirectory(tests/integration/keeper_wal)
+    endif()
 endif()
