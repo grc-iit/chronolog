@@ -348,7 +348,7 @@ TEST(ArchiveService, ADeletedFileWhoseUnlinkFailedIsRetried)
     std::mutex mutex;
     std::condition_variable changed;
     int attempts = 0;
-    bool release = false, on_worker = false;
+    bool release = false, on_worker = false, retry_timed_out = false;
     Server server(std::make_shared<ProtoChunkCodec>(),
                   [&](const std::filesystem::path& path)
                   {
@@ -363,6 +363,7 @@ TEST(ArchiveService, ADeletedFileWhoseUnlinkFailedIsRetried)
                       changed.notify_all();
                       if(!changed.wait_for(lock, std::chrono::seconds(5), [&] { return release; }))
                       {
+                          retry_timed_out = true;
                           errno = EACCES;
                           return -1;
                       }
@@ -385,6 +386,7 @@ TEST(ArchiveService, ADeletedFileWhoseUnlinkFailedIsRetried)
     EXPECT_TRUE(Send(server, {Frame(3)}).first.ok());
     {
         std::lock_guard lock(mutex);
+        EXPECT_FALSE(retry_timed_out);
         release = true;
     }
     changed.notify_all();
