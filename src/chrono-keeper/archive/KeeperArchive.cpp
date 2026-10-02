@@ -349,12 +349,17 @@ void KeeperArchive::sweep()
             if(bytes <= cap)
                 break;
         }
-        if(bytes > cap && !cap_warned_)
+    }
+    if(config_.retention_cap_mb != 0 && bytes > cap)
+    {
+        if(!cap_warned_)
         {
             cap_warned_ = true;
             std::cerr << "chrono_keeper: retention cap exceeded by archive-protected chunks\n";
         }
     }
+    else
+        cap_warned_ = false;
     for(auto& [id, state]: chunks_)
         if(safe(state))
             state.tail = false;

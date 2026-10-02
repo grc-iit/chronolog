@@ -2,10 +2,12 @@
 #include <absl/crc/crc32c.h>
 
 #include <algorithm>
+#include <atomic>
 #include <csignal>
 #include <future>
 #include <poll.h>
 #include <sys/wait.h>
+#include <thread>
 
 #include "adapter/ArchiveService.h"
 #include "archive/KeeperArchive.h"
@@ -48,7 +50,7 @@ struct ArchiveRig
         item.envelope.payload.assign(payload_size, 'x');
         auto result = wal.current->append({1, 7, {item}}, durability);
         ASSERT_TRUE(result.ok());
-        ASSERT_TRUE(result->front().status.ok());
+        ASSERT_TRUE(result->front().status.ok()) << result->front().status;
     }
     Chunk sealFirst()
     {
@@ -774,4 +776,400 @@ TEST(ArchiveTransferTest, StreamCompletesAcrossEpochChange)
     EXPECT_EQ(rig.events(), 0u);
     server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(2));
 }
+} // namespace chronolog::test
+
+namespace chronolog::test
+{
+namespace
+{
+using namespace std::chrono_literals;
+using keeper::KeeperArchive;
+
+class CountingReceiver final: public internal::v1::Archive::Service
+{
+public:
+    std::atomic<uint64_t> calls{0};
+    grpc::Status TransferChunk(grpc::ServerContext*,
+                               grpc::ServerReader<internal::v1::TransferChunkRequest>* reader,
+                               internal::v1::TransferChunkResponse* response) override
+    {
+        internal::v1::TransferChunkRequest frame;
+        uint64_t bytes = 0;
+        while(reader->Read(&frame))
+        {
+            bytes += frame.data().size();
+            response->set_chunk_id(frame.identity().chunk_id());
+        }
+        response->set_bytes(bytes);
+        response->set_grapher_instance("counting");
+        response->set_receipt(++calls);
+        return grpc::Status::OK;
+    }
+};
+
+class FlakyArchive final: public internal::v1::Archive::Service
+{
+public:
+    explicit FlakyArchive(grapher::ArchiveService& inner)
+        : inner_(inner)
+    {}
+    std::atomic<int> attempts{0};
+    grpc::Status TransferChunk(grpc::ServerContext* context,
+                               grpc::ServerReader<internal::v1::TransferChunkRequest>* reader,
+                               internal::v1::TransferChunkResponse* response) override
+    {
+        if(attempts.fetch_add(1) == 0)
+            return {grpc::StatusCode::UNAVAILABLE, "injected first failure"};
+        return inner_.TransferChunk(context, reader, response);
+    }
+    grpc::Status WatchWatermarks(grpc::ServerContext* context,
+                                 const internal::v1::WatchWatermarksRequest* request,
+                                 grpc::ServerWriter<internal::v1::WatchWatermarksResponse>* writer) override
+    {
+        return inner_.WatchWatermarks(context, request, writer);
+    }
+
+private:
+    grapher::ArchiveService& inner_;
+};
+
+struct Served
+{
+    std::unique_ptr<grpc::Server> server;
+    std::string endpoint;
+    explicit Served(grpc::Service& service)
+    {
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(&service);
+        server = builder.BuildAndStart();
+        endpoint = "127.0.0.1:" + std::to_string(port);
+    }
+    ~Served()
+    {
+        if(server)
+            server->Shutdown(std::chrono::system_clock::now() + 2s);
+    }
+};
+
+struct TwoStoryRig
+{
+    std::shared_ptr<WalControl> control = std::make_shared<WalControl>();
+    std::shared_ptr<FakeClock> clock = std::make_shared<FakeClock>(100'000'000);
+    std::shared_ptr<keeper::ConfigMembership> membership = std::make_shared<keeper::ConfigMembership>(
+            std::vector<keeper::StaticRoute>{{1, {7, {{"self", "self:1"}}, "127.0.0.1:1", ""}},
+                                             {2, {7, {{"self", "self:1"}}, "127.0.0.1:1", ""}}});
+    WalJournalConfig wal_config;
+    std::unique_ptr<WalJournal> journal;
+    keeper::KeeperArchiveConfig config;
+    std::unique_ptr<KeeperArchive> archive;
+    TwoStoryRig()
+    {
+        wal_config.wal_dir = control->directory;
+        config.story_chunk_duration_secs = 1;
+        config.archive_visibility_delay_secs = 0;
+        journal = std::make_unique<WalJournal>(clock, membership, RamJournalConfig{}, wal_config);
+        archive = std::make_unique<KeeperArchive>(*journal, *membership, "keeper", config);
+        for(StoryId story: {1, 2}) EXPECT_TRUE(journal->registerWriter(story, 2, 3).ok());
+    }
+    void append(StoryId story, uint64_t sequence, int64_t physical)
+    {
+        clock->setPhysical(physical);
+        AppendItem item;
+        item.writer_id = 2;
+        item.incarnation = 3;
+        item.sequence = sequence;
+        item.envelope.payload = "story-" + std::to_string(story);
+        auto result = journal->append({story, 7, {item}}, Durability::Durable);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+    }
+    std::vector<Event> events(StoryId story)
+    {
+        auto result = journal->read(story, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+        EXPECT_TRUE(result.ok());
+        return result.ok() ? *result : std::vector<Event>{};
+    }
+};
+
+size_t occurrences(const std::string& text, const std::string& needle)
+{
+    size_t count = 0;
+    for(auto at = text.find(needle); at != std::string::npos; at = text.find(needle, at + needle.size())) ++count;
+    return count;
+}
+
+TEST(KeeperRetention, WatermarkBelowTheChunkEndFreesNothing)
+{
+    ArchiveRig rig;
+    auto chunk = rig.sealFirst();
+    rig.deliver(chunk);
+    rig.archive->releaseTail(1);
+    const Hlc below{chunk.end.physical_ns - 1, 0};
+    rig.report(below);
+    EXPECT_EQ(rig.events(), 1u);
+    EXPECT_EQ(rig.archive->knownWatermark(1), below);
+    rig.report(chunk.end);
+    EXPECT_EQ(rig.events(), 0u);
+}
+
+TEST(KeeperRetention, VisibilityDelayStartsWhenTheChunkIsSettled)
+{
+    ArchiveRig rig;
+    rig.config.archive_visibility_delay_secs = 10;
+    rig.reset();
+    auto chunk = rig.sealFirst();
+    rig.now += 20s;
+    rig.deliver(chunk);
+    rig.report(chunk.end);
+    rig.archive->releaseTail(1);
+    rig.archive->sweep();
+    EXPECT_EQ(rig.events(), 1u);
+    rig.now += 10s;
+    rig.archive->sweep();
+    EXPECT_EQ(rig.events(), 0u);
+}
+
+TEST(KeeperRetention, UnsettledDeliveryIsSentAgainOnlyAfterTheResendTimeout)
+{
+    CountingReceiver receiver;
+    Served served(receiver);
+    ASSERT_NE(served.server, nullptr);
+    ArchiveRig rig;
+    rig.config.watermark_resend_timeout_secs = 60;
+    rig.reset();
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, served.endpoint, ""});
+    auto chunk = rig.sealFirst();
+    rig.deliver(chunk, "g1", 5);
+    rig.report(chunk.end, "g1", 5, {5});
+    EXPECT_FALSE(rig.archive->shipOne());
+    rig.now += 59s;
+    EXPECT_FALSE(rig.archive->shipOne());
+    EXPECT_EQ(receiver.calls.load(), 0u);
+    rig.now += 1s;
+    EXPECT_TRUE(rig.archive->shipOne());
+    EXPECT_EQ(receiver.calls.load(), 1u);
+}
+
+TEST(KeeperRetention, SettledChunkAboveAStuckWatermarkIsNotSentAgain)
+{
+    ArchiveRig rig;
+    auto chunk = rig.sealFirst();
+    rig.deliver(chunk, "g1", 5);
+    rig.report({100, 0}, "g1", 5);
+    rig.now += 3600s;
+    EXPECT_FALSE(rig.archive->shipOne());
+    EXPECT_EQ(rig.events(), 1u);
+    rig.report(chunk.end);
+    rig.archive->sweep();
+    EXPECT_EQ(rig.events(), 0u);
+}
+
+TEST(KeeperRetention, ShutdownSendsAgainAChunkWhoseSendFails)
+{
+    auto directory = std::make_shared<WalControl>();
+    auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
+    ASSERT_TRUE(store.ok());
+    grapher::ArchiveService inner(**store, "flaky-grapher");
+    FlakyArchive flaky(inner);
+    Served served(flaky);
+    ASSERT_NE(served.server, nullptr);
+    ArchiveRig rig;
+    rig.config.shutdown_confirm_timeout_secs = 5;
+    rig.archive = std::make_unique<KeeperArchive>(*rig.wal.current, rig.membership, "keeper", rig.config);
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, served.endpoint, ""});
+    rig.append(1, 100'000'000);
+    EXPECT_TRUE(rig.archive->shutdown());
+    EXPECT_GE(flaky.attempts.load(), 2);
+    auto events = (*store)->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
+    ASSERT_EQ(rig.wal.current->sealedChunks().size(), 1u);
+    EXPECT_TRUE(rig.wal.current->sealedChunks().front().settled);
+    inner.shutdown();
+}
+
+TEST(KeeperRetention, StoriesAreIsolated)
+{
+    TwoStoryRig rig;
+    rig.append(1, 1, 100'000'000);
+    rig.append(2, 1, 100'000'000);
+    const auto first = rig.events(1);
+    const auto second = rig.events(2);
+    ASSERT_EQ(first.size(), 1u);
+    ASSERT_EQ(second.size(), 1u);
+    EXPECT_EQ(first.front().id.story_id, 1u);
+    EXPECT_EQ(second.front().id.story_id, 2u);
+    EXPECT_EQ(second.front().envelope.payload, "story-2");
+}
+
+TEST(KeeperRetention, DropReportLeavesOtherStoriesAlone)
+{
+    TwoStoryRig rig;
+    rig.append(1, 1, 100'000'000);
+    rig.append(2, 1, 100'000'000);
+    rig.clock->setPhysical(1'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_EQ(rig.archive->chunks().size(), 2u);
+    rig.archive->applyReport({1, {}, "g1", 0, {}, true});
+    const auto chunks = rig.archive->chunks();
+    ASSERT_EQ(chunks.size(), 1u);
+    EXPECT_EQ(chunks.front().story_id, 2u);
+    EXPECT_TRUE(rig.events(1).empty());
+    EXPECT_EQ(rig.events(2).size(), 1u);
+}
+
+TEST(KeeperRetention, ChunkSealedAfterADropIsNotRetained)
+{
+    TwoStoryRig rig;
+    rig.append(1, 1, 100'000'000);
+    rig.archive->applyReport({1, {}, "g1", 0, {}, true});
+    rig.append(1, 2, 1'100'000'000);
+    rig.append(2, 1, 1'100'000'000);
+    rig.clock->setPhysical(2'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    const auto chunks = rig.archive->chunks();
+    ASSERT_EQ(chunks.size(), 1u);
+    EXPECT_EQ(chunks.front().story_id, 2u);
+}
+
+TEST(KeeperRetention, CapWarningRepeatsForEachCrossing)
+{
+    ArchiveRig rig;
+    rig.config.retention_cap_mb = 1;
+    rig.reset();
+    auto crossing = [&](uint64_t first_sequence, int64_t second_ns)
+    {
+        rig.append(first_sequence, second_ns, 600u << 10);
+        rig.wal.clock->setPhysical(second_ns + 900'000'000);
+        EXPECT_TRUE(rig.archive->seal().ok());
+        rig.append(first_sequence + 1, second_ns + 1'000'000'000, 600u << 10);
+        rig.wal.clock->setPhysical(second_ns + 1'900'000'000);
+        EXPECT_TRUE(rig.archive->seal().ok());
+        rig.archive->sweep();
+        rig.archive->sweep();
+    };
+    testing::internal::CaptureStderr();
+    crossing(1, 100'000'000);
+    EXPECT_EQ(occurrences(testing::internal::GetCapturedStderr(), "retention cap exceeded"), 1u);
+    uint64_t receipt = 0;
+    Hlc end{};
+    for(const auto& chunk: rig.archive->chunks())
+    {
+        rig.deliver(chunk, "g1", ++receipt);
+        end = std::max(end, chunk.end);
+    }
+    rig.report(end, "g1", receipt);
+    rig.archive->releaseTail(1);
+    rig.archive->sweep();
+    ASSERT_TRUE(rig.archive->chunks().empty());
+    testing::internal::CaptureStderr();
+    crossing(3, 2'100'000'000);
+    EXPECT_EQ(occurrences(testing::internal::GetCapturedStderr(), "retention cap exceeded"), 1u);
+    EXPECT_EQ(rig.archive->chunks().size(), 2u);
+}
+
+TEST(KeeperRetention, EventsOfAReleasedWriterStillSealIntoAChunk)
+{
+    ArchiveRig rig;
+    rig.append(1, 100'000'000);
+    rig.wal.current->releaseWriter(1, 2, 3);
+    rig.wal.clock->setPhysical(1'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    ASSERT_EQ(rig.archive->chunks().size(), 1u);
+    EXPECT_EQ(rig.events(), 1u);
+}
+
+TEST(KeeperRetention, ChunkSealedAfterTheTailIsReleasedIsFreedOnceDurable)
+{
+    ArchiveRig rig;
+    auto first = rig.sealFirst();
+    rig.archive->releaseTail(1);
+    rig.append(2, 1'100'000'000);
+    rig.wal.clock->setPhysical(2'000'000'000);
+    ASSERT_TRUE(rig.archive->seal().ok());
+    auto chunks = rig.archive->chunks();
+    ASSERT_EQ(chunks.size(), 2u);
+    uint64_t receipt = 0;
+    for(const auto& chunk: chunks) rig.deliver(chunk, "g1", ++receipt);
+    rig.report(chunks.back().end, "g1", receipt);
+    rig.archive->sweep();
+    EXPECT_TRUE(rig.archive->chunks().empty());
+    EXPECT_EQ(rig.events(), 0u);
+}
+
+TEST(KeeperRetention, ConcurrentSealShipReportAndReads)
+{
+    // The fake physical clock must stay inside the 15 s acceptance window, which bounds the chunk count.
+    constexpr int kChunks = 12;
+    CountingReceiver receiver;
+    Served served(receiver);
+    ASSERT_NE(served.server, nullptr);
+    ArchiveRig rig;
+    rig.membership.setRoute(1, {7, {{"self", "self:1"}}, served.endpoint, ""});
+    std::atomic<bool> stop{false};
+    std::atomic<int> read_errors{0};
+    std::thread shipper(
+            [&]
+            {
+                while(!stop)
+                    if(!rig.archive->shipOne())
+                        std::this_thread::sleep_for(1ms);
+            });
+    std::thread reporter(
+            [&]
+            {
+                Hlc watermark{};
+                for(uint64_t round = 1; !stop; ++round)
+                {
+                    const auto chunks = rig.archive->chunks();
+                    if(!chunks.empty())
+                        watermark = std::max(watermark, chunks.back().end);
+                    // every seventh report lags and must not move W backward
+                    rig.report(round % 7 == 0 ? Hlc{watermark.physical_ns / 2, 0} : watermark,
+                               "counting",
+                               receiver.calls.load());
+                    rig.archive->sweep();
+                    std::this_thread::sleep_for(1ms);
+                }
+            });
+    std::thread reader(
+            [&]
+            {
+                while(!stop)
+                {
+                    auto events = rig.wal.current->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+                    if(!events.ok())
+                        ++read_errors;
+                    else
+                        for(size_t i = 1; i < events->size(); ++i)
+                            if((*events)[i - 1].hlc >= (*events)[i].hlc)
+                                ++read_errors;
+                    std::this_thread::sleep_for(1ms);
+                }
+            });
+    for(int chunk = 1; chunk <= kChunks; ++chunk)
+    {
+        rig.append(chunk, chunk * 1'000'000'000LL + 100'000'000);
+        rig.wal.clock->setPhysical((chunk + 1) * 1'000'000'000LL);
+        EXPECT_TRUE(rig.archive->seal().ok());
+    }
+    bool drained = false;
+    for(int poll = 0; poll < 2000 && !drained; ++poll)
+    {
+        drained = rig.archive->chunks().empty();
+        if(!drained)
+            std::this_thread::sleep_for(10ms);
+    }
+    stop = true;
+    shipper.join();
+    reporter.join();
+    reader.join();
+    EXPECT_TRUE(drained);
+    EXPECT_EQ(read_errors.load(), 0);
+    EXPECT_GE(receiver.calls.load(), static_cast<uint64_t>(kChunks));
+    EXPECT_EQ(rig.events(), 0u);
+}
+} // namespace
 } // namespace chronolog::test
