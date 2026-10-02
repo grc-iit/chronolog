@@ -104,6 +104,19 @@ class Tour:
             raise TourError(f"compose {' '.join(args)} failed: {result.stderr.strip()[-300:]}")
         return result.stdout if capture else ""
 
+    def wait_container(self, service, running, wait=30.0):
+        """Waits until the engine reports the service container running (or not running)."""
+        deadline = time.monotonic() + wait
+        while time.monotonic() < deadline:
+            ids = self.compose("ps", "-a", "-q", service, timeout=10, capture=True).split()
+            if ids:
+                state = json.loads(subprocess.run([self.engine, "inspect", ids[0]], timeout=10, text=True,
+                                                  capture_output=True, check=True).stdout)[0]["State"]
+                if bool(state.get("Running")) == running:
+                    return
+            time.sleep(0.1)
+        raise TourError(f"{service} was not reported {'running' if running else 'stopped'} within {wait:.0f} s")
+
     def read_complete(self, client, story, start, end, wait=30.0):
         """Reads [start, end) until Replay reports complete=true, or fails after `wait` seconds."""
         deadline = time.monotonic() + wait
@@ -313,7 +326,7 @@ class Tour:
         show("before the crash", f"{len(before)} events readable, complete=true")
         call("compose kill -s SIGKILL chrono-keeper")
         self.compose("kill", "-s", "SIGKILL", "chrono-keeper", timeout=30)
-        time.sleep(1.0)
+        self.wait_container("chrono-keeper", False, wait=15)
         call("client.read(agent-b/notes) during the outage")
         try:
             with self.client_a.read(story, start, end, timeout=4) as stream:
@@ -330,6 +343,7 @@ class Tour:
         check(honest, "the outage read reports SOURCE_FAILED, LAGGING_WRITERS or an error, never complete=true")
         call("compose start chrono-keeper")
         self.compose("start", "chrono-keeper", timeout=60)
+        self.wait_container("chrono-keeper", True, wait=15)
         events, completion = self.read_complete(self.client_a, story, start, end, wait=90)
         by_id = {e.id: e for e in events}
         for r in everything[: len(self.acked["agent-b/notes"]) + len(durable)]:
