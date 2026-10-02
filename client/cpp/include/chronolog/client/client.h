@@ -18,6 +18,7 @@ struct RetryPolicy
 };
 struct ClientOptions
 {
+    // One host:port or a comma-separated list of IPv4 literals or host names; explicit gRPC targets also work.
     std::string catalog_endpoint;
     std::string player_endpoint;
     std::chrono::milliseconds rpc_timeout{10000};
