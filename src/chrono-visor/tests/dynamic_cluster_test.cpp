@@ -5,6 +5,7 @@
 #include "raft/RaftMetadataStore.h"
 #include "clock/FakeClock.h"
 #include "membership/ConfigMembership.h"
+#include "rpc/Channel.h"
 #include "runtime/ClusterClient.h"
 #include <gtest/gtest.h>
 #include <array>
@@ -143,6 +144,7 @@ protected:
                                                            pools[i].get(),
                                                            1500ms);
             grpc::ServerBuilder builder;
+            chronolog::rpc::applyServerPolicy(builder);
             builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
             builder.AddListeningPort(peers[i].internal_endpoint, grpc::InsecureServerCredentials());
             builder.RegisterService(services[i].get());
@@ -267,6 +269,19 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     EXPECT_EQ(state.routes(0).predecessors(0).instance(), "a1");
     EXPECT_EQ(state.routes(0).revision(), revision);
 }
+TEST_F(DynamicClusterTest, ForwardingToTheLeaderReusesOneChannelPerPeer)
+{
+    auto old = leader();
+    ASSERT_LT(old, 3u);
+    KeeperDriver a{*stubs[(old + 1) % 3], "keeper-a", "a1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    const auto after_first = rpc::ChannelPool::peers().created();
+    EXPECT_GE(after_first, 1u);
+    for(int call = 0; call < 20; ++call) ASSERT_EQ(a.Heartbeat().status().code(), 0);
+    EXPECT_EQ(rpc::ChannelPool::peers().created(), after_first);
+    EXPECT_LE(after_first, 3u);
+}
+
 TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloorUpdates)
 {
     auto selected = leader();

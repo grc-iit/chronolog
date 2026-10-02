@@ -1,3 +1,4 @@
+#include "rpc/Channel.h"
 #include "chrono-player/replay/KeeperHotSource.h"
 #include <future>
 #include <algorithm>
@@ -30,18 +31,7 @@ std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std:
     auto& stub = stubs_[address];
     if(!stub)
     {
-        grpc::ChannelArguments args;
-        args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
-        args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
-        args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 1000);
-        args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 1000);
-        args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 1);
-        args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
-        args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 5000);
-        args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
-        auto channel = grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args);
-        channel->GetState(true);
-        stub = internal::v1::Archive::NewStub(std::move(channel));
+        stub = internal::v1::Archive::NewStub(rpc::peerChannel(address));
     }
     return stub;
 }
@@ -81,8 +71,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
     const auto address = internal_address_(keeper);
     do {
         grpc::ClientContext context;
-        context.set_deadline(deadline);
-        context.set_wait_for_ready(true);
+        rpc::withDeadline(context, deadline);
         auto stub = stubFor(address);
         auto reader = stub->FetchHot(&context, request);
         internal::v1::FetchHotResponse response;

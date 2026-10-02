@@ -1,3 +1,4 @@
+#include "rpc/Channel.h"
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
 #include <absl/crc/crc32c.h>
@@ -34,6 +35,7 @@ struct Server
         store = *std::move(opened);
         service = std::make_unique<ArchiveService>(*store, "test-instance", TransferLimits{4096, 2048, 2});
         grpc::ServerBuilder builder;
+        chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
         builder.RegisterService(service.get());

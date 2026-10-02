@@ -1,3 +1,4 @@
+#include "rpc/Channel.h"
 #include "chrono-player/adapter/StoryCatalog.h"
 
 namespace chronolog::player
@@ -17,8 +18,7 @@ absl::Status CatalogClient::ensureLive(StoryId story) const
     v1::GetStoryRequest request;
     request.set_story_id(story);
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + deadline_);
-    context.set_wait_for_ready(true);
+    rpc::withDeadline(context, std::chrono::system_clock::now() + deadline_);
     v1::GetStoryResponse response;
     grpc::Status rpc = stub_->GetStory(&context, request, &response);
     if(!rpc.ok())

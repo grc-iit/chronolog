@@ -1,6 +1,6 @@
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
-#include "rpc/VisorChannel.h"
+#include "rpc/Channel.h"
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
 #include <absl/log/log.h>
@@ -68,6 +68,7 @@ int main(int argc, char** argv)
     chronolog::grapher::ArchiveService archive(**store, instance, config->limits);
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+    chronolog::rpc::applyServerPolicy(builder);
     builder.SetMaxReceiveMessageSize(static_cast<int>(config->limits.frame_bytes + 4096));
     int port = 0;
     builder.AddListeningPort(config->internal_listen, grpc::InsecureServerCredentials(), &port);
@@ -78,7 +79,7 @@ int main(int argc, char** argv)
         LOG(ERROR) << "cannot listen on " << config->internal_listen;
         return 1;
     }
-    auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::visorChannel(config->visor_internal));
+    auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::peerChannel(config->visor_internal));
     std::jthread cluster(
             [&](std::stop_token stop)
             {
@@ -89,8 +90,7 @@ int main(int argc, char** argv)
                 while(!stop.stop_requested())
                 {
                     grpc::ClientContext context;
-                    context.set_deadline(std::chrono::system_clock::now() +
-                                         std::chrono::milliseconds(config->rpc_timeout_ms));
+                    chronolog::rpc::withTimeout(context, std::chrono::milliseconds(config->rpc_timeout_ms));
                     std::stop_callback cancelled(stop, [&] { context.TryCancel(); });
                     if(!registered)
                     {

@@ -14,6 +14,7 @@
 #include <string>
 #include <thread>
 
+#include "rpc/Channel.h"
 #include "VisorConfig.h"
 #include "adapter/CatalogService.h"
 #include "adapter/ClusterService.h"
@@ -35,6 +36,7 @@ startServer(const std::string& address, grpc::Service& service, int& bound_port,
     grpc::ServerBuilder builder;
     // SO_REUSEPORT would let two Visors share one port silently.
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+    chronolog::rpc::applyServerPolicy(builder);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
     builder.RegisterService(&service);
     if(extra)
