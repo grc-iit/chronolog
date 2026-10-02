@@ -1,6 +1,6 @@
 services:
   chrono-viz:
-    image: chronolog-viz:4.0.0
+    image: ${CHRONOLOG_VIZ_IMAGE:-chronolog-viz:4.0.0}
     build:
       context: ../../build/smoke/wheels
       dockerfile: ../../../deploy/containers/viz.Containerfile

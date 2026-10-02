@@ -7,7 +7,8 @@
 #   chronolog-demo bundle DIR                source tree only: portable directory with images, wheels, CLIs
 #   chronolog-demo load                      bundle only: load images and create .venv
 # Every subcommand takes --engine docker|podman (default: podman when present, else docker)
-# and --project NAME (default chronolog-demo).
+# and --project NAME (default chronolog-demo). CHRONOLOG_IMAGE_TAG replaces the 4.0.0 image tag for
+# builds on a shared host; bundles always carry the 4.0.0 names.
 set -euo pipefail
 
 self=$(readlink -f "${BASH_SOURCE[0]}")
@@ -15,9 +16,10 @@ here=$(dirname "$self")
 root=$(cd "$here/../.." && pwd)
 orig_args=("$@")
 
-runtime_image=chronolog-demo-runtime:4.0.0
-viz_image=chronolog-viz:4.0.0
-mcp_image=chronolog-mcp:4.0.0
+image_tag=${CHRONOLOG_IMAGE_TAG:-4.0.0}
+runtime_image=chronolog-demo-runtime:$image_tag
+viz_image=chronolog-viz:$image_tag
+mcp_image=chronolog-mcp:$image_tag
 
 if [ -f "$root/SHA256SUMS" ] && [ -d "$root/images" ]; then
     mode=bundle
@@ -87,6 +89,8 @@ compose=("${compose_cmd[@]}" -p "$project" -f "$cdir/compose.yaml" -f "$cdir/smo
          -f "$cdir/demo.override.yaml" -f "$cdir/stream.override.yaml" -f "$cdir/viz.override.yaml"
          -f "$cdir/demo-full.override.yaml")
 export CHRONOLOG_IMAGE=${CHRONOLOG_IMAGE:-$runtime_image}
+export CHRONOLOG_VIZ_IMAGE=${CHRONOLOG_VIZ_IMAGE:-$viz_image}
+export CHRONOLOG_MCP_IMAGE=${CHRONOLOG_MCP_IMAGE:-$mcp_image}
 export CHRONOLOG_DEMO_GRAFANA_DIR=$root/deploy/grafana/demo
 export CHRONOLOG_DEMO_PLUGIN_DIR=$plugin_dir
 
@@ -232,8 +236,21 @@ cmd_down() {
     rm -f "$state/engine" "$state/project" "$state/full"
 }
 
+# Saves IMAGE under its 4.0.0 name. A build tag from CHRONOLOG_IMAGE_TAG is retagged for the save and untagged after.
+save_release_image() {
+    local image=$1 tar=$2 release=${1%:*}:4.0.0
+    if [ "$image" = "$release" ]; then "$engine" save -o "$tar" "$image"; return; fi
+    ! "$engine" image inspect "$release" > /dev/null 2>&1 || die "$release already exists; remove it before bundling a tagged build"
+    "$engine" tag "$image" "$release"
+    local rc=0
+    "$engine" save -o "$tar" "$release" || rc=$?
+    "$engine" rmi "$release" > /dev/null
+    return "$rc"
+}
+
 cmd_bundle() {
     [ "$mode" = source ] || die "bundle needs a source tree"
+    stack_lock
     [ ${#positional[@]} -eq 1 ] || die "usage: chronolog-demo bundle DIR"
     local out=${positional[0]}
     mkdir -p "$out"
@@ -246,9 +263,9 @@ cmd_bundle() {
     done
     [ -x "$bin/chronolog_kvs" ] || die "$bin has no CLIs; run 'chronolog-demo build'"
     mkdir -p "$out"/{images,wheels/deps,bin,lib,viz-plugin,skills,deploy/compose,deploy/grafana,deploy/demo}
-    "$engine" save -o "$out/images/runtime.tar" "$runtime_image"
-    "$engine" save -o "$out/images/viz.tar" "$viz_image"
-    "$engine" save -o "$out/images/mcp.tar" "$mcp_image"
+    save_release_image "$runtime_image" "$out/images/runtime.tar" || die "saving $runtime_image failed"
+    save_release_image "$viz_image" "$out/images/viz.tar" || die "saving $viz_image failed"
+    save_release_image "$mcp_image" "$out/images/mcp.tar" || die "saving $mcp_image failed"
     cp "$wheels"/chronolog-4.0.0-*.whl "$wheels"/chronolog_mcp-4.0.0-*.whl "$wheels"/chronolog_viz-4.0.0-*.whl "$out/wheels/"
     "$venv/bin/python" -m pip download --quiet --dest "$out/wheels/deps" "$out"/wheels/chronolog-4.0.0-*.whl \
         "$out"/wheels/chronolog_mcp-4.0.0-*.whl 'opentelemetry-sdk>=1.39,<2' 'mcp>=1.30,<2'

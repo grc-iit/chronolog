@@ -5,6 +5,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -109,6 +110,32 @@ class Smoke:
             time.sleep(min(0.2, max(0, deadline - time.monotonic())))
         raise RuntimeError(f"{service} did not become healthy within 30 seconds")
 
+    def settled_chunks(self, story):
+        """(start, end) HLC pairs of the chunks the Keeper has settled with the Grapher for one story."""
+        logs = subprocess.run([*self.compose, "logs", "--no-color", "chrono-keeper"], capture_output=True, text=True,
+                              timeout=30).stdout
+        pattern = rf"archive_settled chunk=\S+ story={story} start=(\d+):(\d+) end=(\d+):(\d+)"
+        return sorted(((int(m[1]), int(m[2])), (int(m[3]), int(m[4]))) for m in re.finditer(pattern, logs))
+
+    def wait_archived(self, story, first, last, bound=60):
+        """Waits until settled chunks cover [first, last] without a gap; returns the seconds waited."""
+        begin = time.monotonic()
+        reach = None
+        while True:
+            reach = None
+            for start, end in self.settled_chunks(story):
+                if reach is None:
+                    if start <= first:
+                        reach = end
+                elif start <= reach:
+                    reach = max(reach, end)
+            if reach is not None and reach > last:
+                return time.monotonic() - begin
+            if time.monotonic() - begin > bound:
+                raise RuntimeError(f"archive timeliness: no settled chunks covered the ACCEPTED events through "
+                                   f"{last[0]}:{last[1]} within {bound} s (covered up to {reach})")
+            time.sleep(0.5)
+
     def read_complete(self, request, expected):
         deadline = time.monotonic() + 30
         detail = "no response"
@@ -166,7 +193,10 @@ class Smoke:
 
         self.read_complete(request(), expected)
         self.check("Read 220 complete before Keeper crash", True)
-        time.sleep(10)
+        accepted_events = expected[:200]
+        waited = self.wait_archived(story, (accepted_events[0][4], accepted_events[0][5]),
+                                    (accepted_events[-1][4], accepted_events[-1][5]))
+        self.check("Grapher archive settled chunks covering all 200 ACCEPTED events", True, f"after {waited:.1f} s")
         pre_crash = self.read_complete(request(), expected)
         pre_crash_frontier = hlc_key(pre_crash.frontier)
         pre_crash_max = max((e[4], e[5]) for e in expected)

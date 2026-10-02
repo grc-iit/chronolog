@@ -1,6 +1,6 @@
 services:
   chrono-mcp:
-    image: chronolog-mcp:4.0.0
+    image: ${CHRONOLOG_MCP_IMAGE:-chronolog-mcp:4.0.0}
     build:
       context: ../../build/smoke/wheels
       dockerfile: ../../../deploy/containers/mcp.Containerfile
