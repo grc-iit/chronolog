@@ -82,7 +82,7 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
         request.set_story_id(story);
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
-        stream = replay->Read(newContext(std::min(end, state->deadline(overall))).get(), request);
+        stream = replay->Read(newContext().get(), request);
     }
     detail::PullDeadline watchdog(context, end);
     v1::ReadResponse response;
@@ -259,7 +259,7 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
             auto p = position.value_or(Position{{}, {story, 0, 0, 0}});
             detail::encode(p.hlc, request.mutable_from()->mutable_hlc());
             detail::encode(p.id, request.mutable_from()->mutable_id());
-            stream = replay->Tail(newContext(std::min(end, state->deadline({}))).get(), request);
+            stream = replay->Tail(newContext().get(), request);
         }
         detail::PullDeadline watchdog(context, end);
         v1::TailResponse response;
@@ -281,10 +281,7 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
                 done = true;
                 return status;
             }
-            // The RPC is already finished; cancellation still interrupts retry backoff.
-            auto until = std::min(end, std::chrono::system_clock::now() + state->options.retry.backoff);
-            while(!cancelled && std::chrono::system_clock::now() < until)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            backoff(std::min(end, std::chrono::system_clock::now() + state->options.retry.backoff));
             continue;
         }
         auto item = client::decode(response, *state);
@@ -321,6 +318,7 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
             continue;
         const auto& last = item->events.back();
         position = Position{last.hlc, last.id};
+        retries = 0;
         return std::optional<StreamItem>(std::move(*item));
     }
 }
