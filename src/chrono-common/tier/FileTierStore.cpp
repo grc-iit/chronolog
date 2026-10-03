@@ -1168,6 +1168,7 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
                                     [&file](const auto& record)
                                     {
                                         return record.file == file && (record.state == ManifestState::Published ||
+                                                                       record.state == ManifestState::Empty ||
                                                                        record.state == ManifestState::Deleted);
                                     });
     if(found == (*index)->records.end())

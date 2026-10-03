@@ -66,9 +66,11 @@ constexpr std::chrono::seconds kDestroyRetryDelay{1};
 bool HasPublishedFiles(const FileTierStore& store, StoryId story)
 {
     const auto records = store.manifest(story);
-    return records.ok() && std::any_of(records->begin(),
-                                       records->end(),
-                                       [](const auto& record) { return record.state == ManifestState::Published; });
+    return records.ok() &&
+           std::any_of(records->begin(),
+                       records->end(),
+                       [](const auto& record)
+                       { return record.state == ManifestState::Published || record.state == ManifestState::Empty; });
 }
 } // namespace
 
@@ -409,7 +411,7 @@ void ArchiveService::destroyLoop()
     }
 }
 
-// A story is finished only after its Published files and any pending Deleted files have been unlinked.
+// A story is finished only after its Published and Empty files and any pending Deleted files have been unlinked.
 bool ArchiveService::eraseFiles(StoryId story)
 {
     CHRONOLOG_ASSERT_WORKER_THREAD();
@@ -426,7 +428,8 @@ bool ArchiveService::eraseFiles(StoryId story)
         bool any = false, failed = false;
         for(const auto& record: *records)
         {
-            if(record.state != ManifestState::Published)
+            // An Empty window has a file too (I13.3), so it is erased the same way.
+            if(record.state != ManifestState::Published && record.state != ManifestState::Empty)
                 continue;
             any = true;
             const auto erased = store_.eraseFile(record.file);
