@@ -20,6 +20,11 @@ gtest_discover_tests(chronolog_grapher_tier_tests DISCOVERY_TIMEOUT 60
 
 add_executable(chronolog_hdf5_interop_writer ../tests/hdf5_interop_writer.cpp)
 target_link_libraries(chronolog_hdf5_interop_writer PRIVATE chronolog_grapher_tier chronolog_warnings)
+if(CHRONOLOG_BUILD_BENCH)
+    add_executable(chronolog_archive_physical_bench ../tests/physical_read_bench.cpp)
+    target_link_libraries(chronolog_archive_physical_bench PRIVATE
+        chronolog_grapher_tier chronolog_warnings nlohmann_json::nlohmann_json)
+endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_test(NAME grapher.HDF5Interop
