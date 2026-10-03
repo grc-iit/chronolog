@@ -1333,6 +1333,23 @@ SqliteMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tupl
     }
     return results;
 }
+absl::StatusOr<size_t> SqliteMetadataStore::acceptKeeperEvidence(const std::string& keeper,
+                                                                 const std::vector<RenewAcquisition>& tuples)
+{
+    if(replica_)
+        return absl::FailedPreconditionError("replica stores hold no lease authority");
+    CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
+    const size_t batch = leases_.config().acquisition_evidence_batch;
+    size_t renewed = 0;
+    for(size_t begin = 0; begin < tuples.size(); begin += batch)
+    {
+        auto rows = acquisitionRows({tuples.begin() + begin, tuples.begin() + std::min(tuples.size(), begin + batch)});
+        if(!rows.ok())
+            return rows.status();
+        renewed += leases_.acceptEvidence(keeper, *rows);
+    }
+    return renewed;
+}
 
 absl::StatusOr<KeeperRef> SqliteMetadataStore::releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const
 {
