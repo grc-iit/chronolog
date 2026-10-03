@@ -116,7 +116,8 @@ absl::StatusOr<std::string> encodeIdentity(const AgentIdentity& identity)
 {
     if(identity.agent_id.empty() || identity.slot.empty() || !utf8(identity.agent_id) || !utf8(identity.slot))
         return absl::InvalidArgumentError("identity components must be nonempty UTF-8");
-    return "agent-context/v2:" + Json::array({identity.agent_id, identity.slot}).dump();
+    return (identity.control ? "agent-context-control/v2:" : "agent-context/v2:") +
+           Json::array({identity.agent_id, identity.slot}).dump();
 }
 size_t rawBytes(const Envelope& e)
 {
@@ -272,7 +273,7 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
     {
         const auto& checkpoint = *options.resume;
         if(checkpoint.context.story_id != context.story_id || checkpoint.identity.agent_id != identity.agent_id ||
-           checkpoint.identity.slot != identity.slot)
+           checkpoint.identity.slot != identity.slot || checkpoint.identity.control != identity.control)
             return absl::InvalidArgumentError("checkpoint identity or generation mismatch");
         if(checkpoint.causal_floor.physical_ns < 0 ||
            (checkpoint.processed_after && !detail::validPosition(*checkpoint.processed_after, context.story_id)))

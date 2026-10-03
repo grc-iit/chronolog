@@ -5,14 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "chronolog-mcp"
 version = "4.0.0"
-description = "Conversation logging and Replay through the ChronoLog MCP server"
+description = "ChronoLog Context tools for agents over MCP"
 requires-python = ">=3.12"
 license = "BSD-3-Clause"
 dependencies = ["chronolog>=4.0.0,<5", "mcp>=2.2,<3"]
 
 [project.scripts]
 chronolog-mcp = "chronomcp.server:main"
-chronolog-read = "chronomcp.reader:main"
 
 [project.urls]
 Repository = "https://github.com/grc-iit/ChronoLog"

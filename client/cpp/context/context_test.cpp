@@ -1176,6 +1176,16 @@ TEST(ContextApi, LatestAggregateLookupDoesNotDrainOldHistory)
     EXPECT_FALSE(result->selection_complete);
     EXPECT_EQ(result->page.limited, ctx::DeliveryLimit::ReadCalls);
     EXPECT_TRUE(result->page.events.empty());
+    // The public session entry point runs the same lookup on the session's own story.
+    auto client = ctx::ContextClient::Connect(config);
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    result = session->latestAggregate(aggregate);
+    ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_TRUE(result->selection_complete);
+    ASSERT_EQ(result->page.events.size(), 1u);
+    EXPECT_EQ(result->page.events[0].hlc.physical_ns, 304 * StoryPeer::s);
+    EXPECT_FALSE(session->latestAggregate(aggregate, bounded)->selection_complete);
 }
 
 } // namespace
@@ -1779,4 +1789,39 @@ TEST(ContextApi, CheckpointEncodingRoundTripsAndIsBounded)
     options.resume->context = ref();
     options.resume->processed_after.reset();
     EXPECT_EQ(client->open(ref(), decoded->identity, options).status().code(), absl::StatusCode::kResourceExhausted);
+}
+TEST(ContextApi, ControlIdentityUsesTheReservedPrefixNoLabelCanProduce)
+{
+    Peer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    const ctx::AgentIdentity control{"project/planner", "checkpoints", true};
+    auto store = client->open(ref(), control, writable());
+    ASSERT_TRUE(store.ok()) << store.status();
+    // The same components and a label crafted to spell the control prefix both stay user identities.
+    auto user = client->open(ref(), {"project/planner", "checkpoints"}, writable());
+    ASSERT_TRUE(user.ok()) << user.status();
+    EXPECT_NE(*store, *user);
+    auto crafted = client->open(ref(), {"agent-context-control/v2:[\"project/planner\"", "checkpoints\"]"}, writable());
+    ASSERT_TRUE(crafted.ok()) << crafted.status();
+    ASSERT_EQ(peer.acquisitions.size(), 3u);
+    EXPECT_EQ(peer.acquisitions[0].writer_identity(), "agent-context-control/v2:[\"project/planner\",\"checkpoints\"]");
+    EXPECT_EQ(peer.acquisitions[1].writer_identity(), "agent-context/v2:[\"project/planner\",\"checkpoints\"]");
+    EXPECT_TRUE(peer.acquisitions[2].writer_identity().starts_with("agent-context/v2:"));
+    EXPECT_TRUE((*store)->identity().control);
+    auto saved = (*store)->checkpoint();
+    auto encoded = ctx::encodeCheckpoint(saved);
+    ASSERT_TRUE(encoded.ok()) << encoded.status();
+    auto decoded = ctx::decodeCheckpoint(*encoded);
+    ASSERT_TRUE(decoded.ok()) << decoded.status();
+    EXPECT_TRUE(decoded->identity.control);
+    EXPECT_FALSE(ctx::decodeCheckpoint(ctx::encodeCheckpoint((*user)->checkpoint()).value())->identity.control);
+    auto unknown_kind = *encoded;
+    unknown_kind.replace(unknown_kind.find("\"control\"]"), 9, "\"other\"");
+    EXPECT_EQ(ctx::decodeCheckpoint(unknown_kind).status().code(), absl::StatusCode::kInvalidArgument);
+    // A control checkpoint never resumes a user identity of the same components.
+    auto options = writable();
+    options.resume = *decoded;
+    EXPECT_EQ(client->open(ref(), {"project/planner", "checkpoints"}, options).status().code(),
+              absl::StatusCode::kInvalidArgument);
 }

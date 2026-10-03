@@ -1,5 +1,6 @@
 #pragma once
 #include "chronolog/client/client.h"
+#include <functional>
 
 namespace chronolog::context
 {
@@ -10,6 +11,9 @@ struct AgentIdentity
 {
     std::string agent_id;
     std::string slot;
+    // The reserved checkpoint-store control writer kind: encoded under agent-context-control/v2:, which no user
+    // identity encoding (always agent-context/v2:) can produce.
+    bool control{false};
 };
 struct ContextRef
 {
@@ -313,6 +317,11 @@ public:
     absl::StatusOr<MemoryResult> remember(const Memory&, RememberOptions options = {}, Deadline deadline = {});
     absl::StatusOr<Page> recall(RecallOptions options = {}, Deadline deadline = {});
     absl::StatusOr<LatestResult> latest(size_t n, LatestOptions options = {}, Deadline deadline = {});
+    // The newest event of this story that is_aggregate accepts, at a verified cut: the checkpoint store's n=1 lookup
+    // on its control story. Advisory before an Acquire (RFC-FG C2).
+    absl::StatusOr<LatestResult> latestAggregate(const std::function<bool(const Event&)>& is_aggregate,
+                                                 LatestOptions options = {},
+                                                 Deadline deadline = {});
     absl::StatusOr<ReconcileResult> reconcile(ReconcileOptions options = {}, Deadline deadline = {});
     absl::Status acknowledgeProcessed(const Position&);
     Checkpoint checkpoint() const;

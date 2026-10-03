@@ -202,3 +202,29 @@ def test_dropping_a_live_context_client_with_an_open_follow_exits_cleanly():
         # In "exit" a daemon thread inside the native follow still holds the session when the interpreter exits.
         assert ("collected drain session" in run.stdout) == (mode == "drain"), mode
         assert run.stderr == "", mode
+
+
+def test_control_identity_and_latest_aggregate_lookup():
+    contexts = cl.connect_context(options())
+    ref = contexts.ensure_context(unique("control"), "_checkpoints")
+    control = cl.AgentIdentity("py-launcher", "checkpoints", control=True)
+    store = contexts.open(ref, control)
+    assert store.identity == control
+    aggregate = "application/vnd.test.aggregate+json"
+    for op, word, content_type in [("a1", '"one"', aggregate), ("a2", '"two"', aggregate), ("n1", "note", "text/plain")]:
+        result = store.remember(cl.Memory(op, cl.Envelope(word.encode(), content_type=content_type)))
+        assert result.current.outcome is cl.MemoryOutcome.DURABLE
+    found = until(lambda: store.latest_aggregate(aggregate), lambda r: r.selection_complete)
+    assert words(found.page) == ['"two"']
+    assert store.latest_aggregate("application/absent").page.events == ()
+    saved = cl.decode_checkpoint(cl.encode_checkpoint(store.checkpoint()))
+    assert saved.identity.control
+    # The control writer is the reserved prefix: a raw takeover of exactly that identity fences it.
+    raw = cl.connect(os.environ["CHRONOLOG_TEST_VISOR"], timeout=8)
+    slot = json.dumps([control.agent_id, control.slot], separators=(",", ":"))
+    raw.acquire(ref.story_id, f"agent-context-control/v2:{slot}", options=cl.AcquireOptions(takeover=True))
+    fenced = store.remember(cl.Memory("a3", cl.Envelope(b'"three"', content_type=aggregate)))
+    assert fenced.state is cl.SessionState.FENCED
+    # The user identity with the same components is a different writer, untouched by that takeover.
+    user = contexts.open(ref, cl.AgentIdentity(control.agent_id, control.slot))
+    assert user.remember(cl.Memory("u1", text("user"))).current.outcome is cl.MemoryOutcome.DURABLE

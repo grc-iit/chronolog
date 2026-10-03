@@ -1,224 +1,53 @@
-# Chronolog MCP Server
+# ChronoLog MCP server
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://img.shields.io/pypi/v/chronolog-mcp.svg)](https://pypi.org/project/chronolog-mcp/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+`chronolog-mcp` gives agents ChronoLog contexts as durable, time-ordered memory through ten tools over the ChronoLog
+Context API. A context is one story in the launcher's chronicle. Results are bounded JSON that lead with a one-line
+`verdict`, then `answer_complete`, `has_more` and `next_cursor`; ids and nanoseconds are decimal strings, and cursors,
+`at` bounds, follow tokens, ref tokens and checkpoint ids are opaque strings.
 
-**Part of [CLIO Kit](https://docs.iowarp.ai/) - Gnosis Research Center**
-
-ChronoLog MCP is a comprehensive Model Context Protocol (MCP) server that integrates with ChronoLog, a scalable, high-performance distributed shared log store. This server enables Language Learning Models (LLMs) to capture, manage, and retrieve conversational interactions in a structured format w...
-
-## Quick Start
-
-```bash
-uvx clio-kit mcp-server chronolog
-```
-
-## Documentation
-
-- **Full Documentation**: [CLIO Kit Website](https://docs.iowarp.ai/)
-- **Installation Guide**: See the [Quick Start](#quick-start) above and the [CLIO Kit Website](https://docs.iowarp.ai/)
-- **Contributing**: See [Contribution Guide](https://github.com/iowarp/clio-kit/wiki/Contribution)
-
----
-
-## Description
-
-ChronoLog MCP is a comprehensive Model Context Protocol (MCP) server that integrates with ChronoLog, a scalable, high-performance distributed shared log store. This server enables Language Learning Models (LLMs) to capture, manage, and retrieve conversational interactions in a structured format with enterprise-grade logging capabilities and real-time event processing.
-
-**Key Features:**
-- **Real-time Event Logging**: Capture conversational interactions between LLMs and users with structured event formatting
-- **Distributed Architecture**: Scalable, high-performance distributed shared log store with multi-client support
-- **Session Management**: Chronicle creation, story handling, and automated session summaries
-- **Cross-Client Communication**: Multiple LLM instances can connect simultaneously and share context
-- **Flexible Retrieval**: Historical interaction playback with timestamp filtering and search capabilities
-- **MCP Integration**: Full Model Context Protocol compliance for seamless LLM integration
-
-
-## 🛠️ Installation
-
-### Requirements
-
-- Python 3.11 or higher
-- [py_chronolog_client](https://github.com/grc-iit/ChronoLog) Python package
-- [uv](https://docs.astral.sh/uv/) package manager (recommended)
-- ChronoLog deployment (see [setup guide](https://github.com/iowarp/clio-kit/blob/main/Chronolog/docs/Chronolog_setup.md))
-
-<details>
-<summary><b>Install in Cursor</b></summary>
-
-Go to: `Settings` -> `Cursor Settings` -> `MCP` -> `Add new global MCP server`
-
-Pasting the following configuration into your Cursor `~/.cursor/mcp.json` file is the recommended approach. You may also install in a specific project by creating `.cursor/mcp.json` in your project folder. See [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol) for more info.
-
-```json
-{
-  "mcpServers": {
-    "chronolog-mcp": {
-      "command": "uvx",
-      "args": ["clio-kit", "mcp-server", "chronolog"]
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><b>Install in VS Code</b></summary>
-
-Add this to your VS Code MCP config file. See [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers) for more info.
-
-```json
-"mcp": {
-  "servers": {
-    "chronolog-mcp": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["clio-kit", "mcp-server", "chronolog"]
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><b>Install in Claude Code</b></summary>
-
-Run this command. See [Claude Code MCP docs](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/tutorials#set-up-model-context-protocol-mcp) for more info.
+## Run
 
 ```sh
-claude mcp add chronolog-mcp -- uvx clio-kit mcp-server chronolog
+pip install chronolog chronolog-mcp
+chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle team --identity team/planner
+claude mcp add chronolog -- chronolog-mcp --catalog 127.0.0.1:50051 --identity team/planner
 ```
 
-</details>
+`--identity` is the stable launcher base slot, reused across runs; writable tools need it. Each agent label on the
+connection (default `self`) is its own writer slot inside that base. `--session-id` names the launcher's run and is
+fresh by default. The server holds a host-local lock per slot under `--lock-dir`; a second launcher of the same slot
+on the same host serves reads only. `--host-id` (default: the hostname) and the lock identify the owner in every
+acquisition record. `--transport http` serves streamable HTTP on `--host`/`--port`.
 
-<details>
-<summary><b>Install in Claude Desktop</b></summary>
+## Tools
 
-Add this to your Claude Desktop `claude_desktop_config.json` file. See [Claude Desktop MCP docs](https://modelcontextprotocol.io/quickstart/user) for more info.
+| Tool | Purpose |
+| --- | --- |
+| `context_open` | Open a context by name (`create=true` creates it) or `ref_token`, for an agent label, read_write or read_only. A writable open checks the latest acquisition and close record and returns `NEEDS_RECONCILE` or `FENCED` with `takeover_required` instead of acquiring over an unclosed record. `resume`/`checkpoint_id` restore the processed follow position. |
+| `context_remember` | Store one memory. **Reuse operation_id when retrying after an error or timeout.** `stored` is `durable`, `ram_only_may_vanish`, `rejected` or `unknown`. |
+| `context_recall` | Certified pages of a context in Replay order; `start`/`end` are `at` tokens from returned events, omitted end is a verified cut, `next_cursor` continues. |
+| `context_latest` | The last n events before an optional `at`, with the disclosed `as_of` and `selection_complete`. |
+| `context_follow` | Wait on several contexts under one deadline from `now`, `beginning` or a follow token; tokens survive restarts. |
+| `context_reconcile` | Recover uncertain writes: LANDED, ABSENT or UNKNOWN per operation id. **Pass every operation_id for which you have not seen an outcome; omitted ids may duplicate.** `takeover=true` is a deliberate decision; without `session_handle` it recovers the checkpoint store. |
+| `context_checkpoint` | Acknowledge processed follow tokens and persist session state durably; returns a `checkpoint_id`. |
+| `context_close` | Release the writer and durably record the close of that exact incarnation. |
+| `context_list` | Contexts of a chronicle with ref tokens; metadata only. |
+| `context_status` | Session states, writer stamps, unresolved and permanently UNKNOWN ids, the checkpoint store. |
 
-```json
-{
-  "mcpServers": {
-    "chronolog-mcp": {
-      "command": "uvx",
-      "args": ["clio-kit", "mcp-server", "chronolog"]
-    }
-  }
-}
-```
+`compact` view (default) returns id, HLC, `at`, content type and the full payload (UTF-8 or base64) and names the
+omitted fields; `full` adds attributes, trace ids, physical time, durability and a per-event follow token. Budgets
+default to 50 events and 24 KiB of JSON; a single event larger than the budget is still delivered whole and
+disclosed.
 
-</details>
+## Checkpoints and recovery
 
-<details>
-<summary><b>Manual Setup</b></summary>
+All labels of one base slot share one `_checkpoints:<identity>` story in `--state-chronicle`, written by the reserved
+control writer `agent-context-control/v2:[identity,"checkpoints"]`. Aggregates are bounded by
+`--max-checkpoint-payload-bytes`, at most `--keeper-payload-max-bytes`; operations whose tracking state could not fit
+are refused before dispatch. Every start recovers the control writer and finds the newest aggregate by a bounded
+backward search; when that search is incomplete every context is treated as unclosed with unknown prior state. A
+foreign or unknown owner needs `context_reconcile` with `takeover=true`. If another server fences the control writer,
+writable tools fail closed with `checkpoint_store_fenced` and reads continue. Idle writable sessions close after
+`--idle-close-s` (default 1800, 0 disables) and every session closes when the server stops.
 
-**Linux/macOS:**
-```bash
-CLONE_DIR=$(pwd)
-git clone https://github.com/iowarp/clio-kit.git
-uv --directory=$CLONE_DIR/clio-kit/clio-kit-mcp-servers/chronolog run chronolog-mcp --help
-```
-
-**Windows CMD:**
-```cmd
-set CLONE_DIR=%cd%
-git clone https://github.com/iowarp/clio-kit.git
-uv --directory=%CLONE_DIR%\clio-kit\clio-kit-mcp-servers\chronolog run chronolog-mcp --help
-```
-
-**Windows PowerShell:**
-```powershell
-$env:CLONE_DIR=$PWD
-git clone https://github.com/iowarp/clio-kit.git
-uv --directory=$env:CLONE_DIR\clio-kit\clio-kit-mcp-servers\chronolog run chronolog-mcp --help
-```
-
-</details>
-
-## Capabilities
-
-### `start_chronolog`
-**Description**: Connects to ChronoLog, creates a chronicle, and acquires a story handle for logging interactions.
-
-**Parameters**:
-- `chronicle_name` (str, optional): Name of the chronicle to create or connect to. Defaults to config.DEFAULT_CHRONICLE.
-- `story_name` (str, optional): Name of the story to acquire. Defaults to config.DEFAULT_STORY.
-
-**Returns**: str: Confirmation message with chronicle and story identifiers.
-
-### `record_interaction`
-**Description**: Logs user messages and LLM responses to the active story with structured event formatting.
-
-**Parameters**:
-- `user_message` (str): The user message content to record.
-- `assistant_message` (str): The assistant (LLM) response to record.
-
-**Returns**: str: Confirmation of successful event logging with timestamp information.
-
-### `stop_chronolog`
-**Description**: Releases the story handle and cleanly disconnects from ChronoLog system.
-
-**Returns**: str: Confirmation of clean shutdown and resource cleanup.
-
-### `retrieve_interaction`
-**Description**: Extracts logged records from specified chronicle and story, generates timestamped output files with filtering options.
-
-**Parameters**:
-- `chronicle_name` (str, optional): Name of the chronicle to retrieve from. Defaults to config.DEFAULT_CHRONICLE.
-- `story_name` (str, optional): Name of the story to retrieve from. Defaults to config.DEFAULT_STORY.
-- `start_time` (str, optional): Start time for filtering records (YYYY-MM-DD HH:MM:SS or similar).
-- `end_time` (str, optional): End time for filtering records (YYYY-MM-DD HH:MM:SS or similar).
-
-**Returns**: str: Generated text file with interaction history or error message if no records found.
-## Examples
-
-### 1. Session Logging and Analysis
-```
-Start logging our conversation, then after we discuss machine learning concepts, retrieve the interaction history for analysis.
-```
-
-**Tools called:**
-- `start_chronolog` - Initialize logging session
-- `record_interaction` - Log conversation events  
-- `retrieve_interaction` - Generate interaction history
-
-This prompt will:
-- Use `start_chronolog` to create a new chronicle and story
-- Automatically log interactions using `record_interaction`
-- Extract conversation history using `retrieve_interaction`
-- Provide structured session analysis
-
-### 2. Multi-Session Context Sharing
-```
-Connect to the research chronicle and retrieve yesterday's discussion about neural networks to continue our conversation.
-```
-
-**Tools called:**
-- `start_chronolog` - Connect to existing chronicle
-- `retrieve_interaction` - Fetch historical interactions
-
-This prompt will:
-- Connect to existing research chronicle using `start_chronolog`
-- Retrieve previous session data using `retrieve_interaction`
-- Enable context continuation across sessions
-- Support multi-client collaborative workflows
-
-### 3. Structured Event Documentation
-```
-Begin recording our software design discussion, ensuring all architectural decisions and code examples are captured for future reference.
-```
-
-**Tools called:**
-- `start_chronolog` - Begin structured logging
-- `record_interaction` - Capture design decisions
-- `stop_chronolog` - Complete session
-
-This prompt will:
-- Initialize structured event logging using `start_chronolog`
-- Capture all conversation elements using `record_interaction`
-- Maintain detailed architectural documentation
-- Provide clean session termination using `stop_chronolog`
-
+Deployment start and stop remain in the operational skills; closing a context never stops the stack.
