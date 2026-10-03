@@ -55,3 +55,5 @@ if(NOT CHRONOLOG_SANITIZERS)
         "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     set_tests_properties(sdk.install PROPERTIES TIMEOUT 180)
 endif()
+
+add_subdirectory(context)
