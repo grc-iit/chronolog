@@ -3,6 +3,8 @@
 #include <grpcpp/grpcpp.h>
 
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
@@ -127,6 +129,57 @@ TEST(ClusterClientTest, DrainReportCarriesTheSealedFrontierAtItsOwnCut)
         }
     EXPECT_EQ(drains, 1);
     server->Shutdown(std::chrono::system_clock::now());
+}
+
+class ReplicatedCluster final: public iv1::Cluster::Service
+{
+public:
+    grpc::Status Register(grpc::ServerContext*, const iv1::RegisterRequest*, iv1::RegisterResponse* response) override
+    {
+        for(int n = 0; n < 3; ++n) response->add_visor_replicas(self);
+        return grpc::Status::OK;
+    }
+    grpc::Status Heartbeat(grpc::ServerContext* context, const iv1::HeartbeatRequest*, iv1::HeartbeatResponse*) override
+    {
+        std::lock_guard lock(mutex);
+        budgets.push_back(context->deadline() - std::chrono::system_clock::now());
+        return budgets.size() == 1 ? grpc::Status(grpc::StatusCode::UNAVAILABLE, "no leader lease") : grpc::Status::OK;
+    }
+    std::string self;
+    std::mutex mutex;
+    std::vector<std::chrono::system_clock::duration> budgets;
+};
+
+// The attached follower forwards to the leader, which may answer late under load: with three replicas known, the
+// attempt that does the work still gets the call's whole remaining deadline instead of a quarter of it, and an
+// UNAVAILABLE answer still moves on to the next replica within the same deadline.
+TEST(ClusterClientTest, AnAttemptGetsTheWholeRemainingDeadline)
+{
+    ReplicatedCluster cluster;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&cluster);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    cluster.self = "127.0.0.1:" + std::to_string(port);
+    test::RamRig rig;
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    const auto deadline = std::chrono::milliseconds(4000);
+    keeper::ClusterClient client(grpc::CreateChannel(cluster.self, grpc::InsecureChannelCredentials()),
+                                 {"self", "instance", "self:1", std::chrono::milliseconds(5000), "", deadline},
+                                 *rig.journal,
+                                 membership,
+                                 watcher);
+    ASSERT_TRUE(client.registerNow().ok());
+    ASSERT_TRUE(client.heartbeatNow().ok());
+    server->Shutdown(std::chrono::system_clock::now());
+    std::lock_guard lock(cluster.mutex);
+    ASSERT_EQ(cluster.budgets.size(), 2u);
+    EXPECT_GT(cluster.budgets[0], deadline / 2);
+    EXPECT_GT(cluster.budgets[1], deadline / 2);
+    EXPECT_LE(cluster.budgets[1], cluster.budgets[0]);
 }
 } // namespace
 } // namespace chronolog
