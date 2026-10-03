@@ -567,6 +567,9 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
         message.ParseFromString(update.SerializeAsString());
         snapshot.push_back(std::move(message));
     }
+    auto& end = snapshot.emplace_back();
+    end.set_snapshot_end(true);
+    end.set_revision(cursor);
     std::function<std::optional<internal::v1::WatchRoutesResponse>()> pull;
     std::function<bool()> failed;
     if(history)

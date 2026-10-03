@@ -238,6 +238,22 @@ TEST(VisorConfigTimeouts, ZeroKeeperTimeoutsFailAtConfigLoad)
     EXPECT_GT(loaded->release_fence_timeout_ms, 0u);
 }
 
+TEST_F(cluster_adapter, WatchRoutesEmptySnapshotHasOnlyTheMarker)
+{
+    ASSERT_TRUE(store_->destroyStory(story_).ok());
+    auto ctx = context();
+    auto reader = stub_->WatchRoutes(ctx.get(), iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), 0u);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
+    service_->shutdown();
+    EXPECT_FALSE(reader->Read(&update));
+    EXPECT_TRUE(reader->Finish().ok());
+}
+
 TEST_F(cluster_adapter, WatchRoutesSendsOneFullSnapshotThenHolds)
 {
     auto ctx = context();
@@ -247,6 +263,12 @@ TEST_F(cluster_adapter, WatchRoutesSendsOneFullSnapshotThenHolds)
     EXPECT_EQ(update.story_id(), story_);
     EXPECT_EQ(update.route().epoch(), 1u);
     EXPECT_EQ(update.route().keepers_size(), 2);
+    const auto snapshot_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     // Server shutdown ends the held stream with OK.
     std::thread closer(
             [&]
@@ -431,6 +453,30 @@ protected:
     std::unique_ptr<iv1::Cluster::Stub> stub_;
 };
 
+TEST_F(cluster_adapter_sqlite, WatchRoutesEmptySnapshotEndsBeforeFirstDelta)
+{
+    ASSERT_TRUE(store_->destroyChronicle("c").ok());
+    const auto snapshot_revision = store_->membershipRevision().value_or(0);
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&context, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
+    ASSERT_TRUE(store_->createChronicle("new").ok());
+    const auto created = store_->createStory("new", "first");
+    ASSERT_TRUE(created.ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_FALSE(update.snapshot_end());
+    EXPECT_EQ(update.story_id(), created->id);
+    EXPECT_GT(update.revision(), snapshot_revision);
+    context.TryCancel();
+    (void)reader->Finish();
+}
+
 TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversStoryAndChronicleDestroyAsTombstones)
 {
     const auto kept = store_->createStory("c", "kept")->id;
@@ -444,6 +490,12 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversStoryAndChronicleDestroyAsTomb
         ASSERT_TRUE(reader->Read(&update));
         EXPECT_FALSE(update.tombstoned());
     }
+    const auto snapshot_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     ASSERT_TRUE(store_->destroyStory(gone).ok());
     ASSERT_TRUE(reader->Read(&update));
     EXPECT_EQ(update.story_id(), gone);
@@ -487,6 +539,11 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesDeliversEveryRouteChangeInStaticMode)
     ASSERT_TRUE(store_->clearPhysicalPolicy({first}).ok());
     ASSERT_TRUE(store_->registerStaticPolicy("keeper-a", 0).ok());
     ASSERT_TRUE(store_->destroyStory(created).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     uint64_t revision = snapshot_revision;
     for(int i = 0; i < 4; ++i)
     {
@@ -514,6 +571,12 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectsWithoutDestroyedStoriesAfter
     auto reader = stub_->WatchRoutes(&context, iv1::WatchRoutesRequest());
     iv1::WatchRoutesResponse update;
     for(int i = 0; i < 2; ++i) ASSERT_TRUE(reader->Read(&update));
+    const auto snapshot_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
 
     absl::Status mutation;
     auto applied = store_->applyRaft(1,
@@ -548,6 +611,11 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectsWithoutDestroyedStoriesAfter
     ASSERT_TRUE(state.ok());
     ASSERT_EQ(state->routes_size(), 1);
     EXPECT_EQ(state->routes(0).story_id(), kept);
+    ASSERT_TRUE(reconnect->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), store_->membershipRevision().value_or(0));
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     resumed.TryCancel();
     (void)reconnect->Finish();
 }
@@ -564,6 +632,12 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectOmitsStoryAndChronicleTombsto
     auto reader = stub_->WatchRoutes(&initial, iv1::WatchRoutesRequest());
     iv1::WatchRoutesResponse update;
     for(int i = 0; i < 4; ++i) ASSERT_TRUE(reader->Read(&update));
+    const auto snapshot_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     initial.TryCancel();
     (void)reader->Finish();
     ASSERT_TRUE(store_->destroyStory(gone).ok());
@@ -576,6 +650,11 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectOmitsStoryAndChronicleTombsto
     EXPECT_EQ(update.story_id(), kept);
     EXPECT_FALSE(update.tombstoned());
     EXPECT_EQ(update.revision(), store_->membershipRevision().value_or(0));
+    ASSERT_TRUE(reconnect->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), store_->membershipRevision().value_or(0));
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     resumed.TryCancel();
     (void)reconnect->Finish();
 }
@@ -606,6 +685,11 @@ TEST_F(cluster_route_wake, RoutesArriveWithoutPeriodicTick)
     ASSERT_TRUE(reader->Read(&update));
     ASSERT_EQ(update.story_id(), barrier->id);
     auto revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     auto created = store_->createStory("c", "created");
     ASSERT_TRUE(created.ok());
     ASSERT_TRUE(reader->Read(&update));

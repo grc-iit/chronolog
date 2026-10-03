@@ -450,6 +450,12 @@ TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloor
     wire::WatchRoutesResponse first;
     ASSERT_TRUE(reader->Read(&first));
     EXPECT_EQ(first.route().epoch(), 1u);
+    wire::WatchRoutesResponse end;
+    ASSERT_TRUE(reader->Read(&end));
+    ASSERT_TRUE(end.snapshot_end());
+    EXPECT_EQ(end.revision(), first.revision());
+    EXPECT_EQ(end.story_id(), 0u);
+    EXPECT_FALSE(end.has_route());
     wire::DrainKeeperRequest drain;
     drain.set_process_id("keeper-a");
     wire::DrainKeeperResponse drained;
@@ -510,6 +516,12 @@ TEST_F(DynamicClusterTest, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
     auto reader = stubs[selected]->WatchRoutes(&initial, wire::WatchRoutesRequest());
     wire::WatchRoutesResponse update;
     for(int i = 0; i < 4; ++i) ASSERT_TRUE(reader->Read(&update));
+    const auto snapshot_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     initial.TryCancel();
     (void)reader->Finish();
     ASSERT_TRUE(stores[selected]->destroyStory(1).ok());
@@ -522,6 +534,11 @@ TEST_F(DynamicClusterTest, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
     EXPECT_EQ(update.story_id(), kept->id);
     EXPECT_FALSE(update.tombstoned());
     EXPECT_EQ(update.revision(), stores[selected]->appliedStore().membershipRevision().value_or(0));
+    ASSERT_TRUE(reconnect->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), stores[selected]->appliedStore().membershipRevision().value_or(0));
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     resumed.TryCancel();
     (void)reconnect->Finish();
 }
@@ -605,6 +622,31 @@ public:
     DynamicClusterBeforeFirstStoryTest() { seed_story_ = false; }
 };
 
+TEST_F(DynamicClusterBeforeFirstStoryTest, WatchRoutesEmptySnapshotEndsBeforeFirstDelta)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    const auto snapshot_revision = stores[selected]->appliedStore().membershipRevision().value_or(0);
+    grpc::ClientContext context;
+    rpc::withTimeout(context, 10s);
+    auto reader = stubs[selected]->WatchRoutes(&context, wire::WatchRoutesRequest());
+    wire::WatchRoutesResponse update;
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
+    ASSERT_TRUE(stores[selected]->createChronicle("new").ok());
+    const auto created = stores[selected]->createStory("new", "first");
+    ASSERT_TRUE(created.ok()) << created.status();
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_FALSE(update.snapshot_end());
+    EXPECT_EQ(update.story_id(), created->id);
+    EXPECT_GT(update.revision(), snapshot_revision);
+    context.TryCancel();
+    (void)reader->Finish();
+}
+
 TEST_F(DynamicClusterBeforeFirstStoryTest, WatchRoutesDeliversPolicyDowngradeAtSameEpoch)
 {
     const auto selected = leader();
@@ -650,6 +692,11 @@ TEST_F(DynamicClusterBeforeFirstStoryTest, WatchRoutesDeliversPolicyDowngradeAtS
     ASSERT_TRUE(stubs[selected]->Heartbeat(&context, heartbeat, &response).ok());
     ASSERT_EQ(response.status().code(), 0);
     ASSERT_TRUE(stores[selected]->destroyStory(barrier->id).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_TRUE(update.snapshot_end());
+    EXPECT_EQ(update.revision(), snapshot_revision);
+    EXPECT_EQ(update.story_id(), 0u);
+    EXPECT_FALSE(update.has_route());
     ASSERT_TRUE(reader->Read(&update));
     EXPECT_EQ(update.story_id(), story->id);
     EXPECT_EQ(update.route().epoch(), 1u);
@@ -743,6 +790,11 @@ TEST_F(DynamicRouteWakeTest, EveryReplicaReceivesRoutesWithoutPeriodicTick)
         ASSERT_TRUE(readers[i]->Read(&update));
         ASSERT_EQ(update.story_id(), barrier->id);
         revisions[i] = update.revision();
+        ASSERT_TRUE(readers[i]->Read(&update));
+        ASSERT_TRUE(update.snapshot_end());
+        EXPECT_EQ(update.revision(), revisions[i]);
+        EXPECT_EQ(update.story_id(), 0u);
+        EXPECT_FALSE(update.has_route());
     }
     auto created = stores[selected]->createStory("wake", "created");
     ASSERT_TRUE(created.ok());
