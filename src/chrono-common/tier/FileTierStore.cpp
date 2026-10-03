@@ -1386,6 +1386,9 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     if(!index.ok())
         return index.status();
     collectDeletedFiles(**index);
+    // The durable deletion takes effect now; its physical cleanup waits for the existing job's claim.
+    if(auto active = claims_.find(file); active != claims_.end() && !active->second.expired())
+        return absl::OkStatus();
     lock.unlock();
     const auto status = unlinkDeletedFile(file);
     if(status.ok())
