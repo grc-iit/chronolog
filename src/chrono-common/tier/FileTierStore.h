@@ -107,7 +107,8 @@ private:
                   size_t read_threads,
                   DecodeFile decode_file);
     absl::StatusOr<std::set<std::string>> recover();
-    absl::StatusOr<std::vector<Event>> validate(const ManifestRecord& record) const;
+    absl::StatusOr<std::vector<Event>> validate(const ManifestRecord& record,
+                                                std::optional<FileChecksum> checksum = std::nullopt) const;
     bool retired(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::StatusOr<std::vector<Event>>
     afterVanished(const ManifestRecord& record, absl::Status failure, Range range, size_t max_events) const;

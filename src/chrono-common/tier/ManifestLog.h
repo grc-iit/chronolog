@@ -14,6 +14,11 @@
 
 namespace chronolog
 {
+struct FileChecksum
+{
+    uint64_t bytes{};
+    uint32_t crc32c{};
+};
 struct PhysicalBounds
 {
     int64_t min_lo{}, max_hi{};
@@ -35,6 +40,7 @@ struct CompactionSwitch
     ManifestRecord output;
     std::optional<PhysicalBounds> bounds;
     Hlc w_floor;
+    std::optional<FileChecksum> checksum;
 };
 // Compaction outputs carry a reserved name that ordinary orphan adoption cannot parse; the name encodes the
 // writer and the output window so recovery can judge an unreferenced output without its switch line.
@@ -49,6 +55,7 @@ std::string CompactionTemporaryPrefix(const std::string& writer);
 struct ManifestIndex
 {
     std::vector<ManifestRecord> records;
+    std::map<std::string, FileChecksum> checksums;
     std::map<std::string, FilePhysicalBounds> physical_bounds;
     std::map<StoryId, Hlc> watermarks;
     std::set<StoryId> tombstoned;
@@ -76,7 +83,10 @@ public:
     Open(std::filesystem::path root, std::string writer, PathStat path_stat = {});
     static std::unique_ptr<ManifestLog> OpenReadOnly(std::filesystem::path root, PathStat path_stat = {});
     ~ManifestLog();
-    absl::Status append(ManifestRecord record, std::optional<PhysicalBounds> bounds = std::nullopt);
+    absl::Status append(ManifestRecord record,
+                        std::optional<PhysicalBounds> bounds = std::nullopt,
+                        std::optional<FileChecksum> checksum = std::nullopt);
+    std::optional<FileChecksum> checksum(const std::string& file) const;
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).
     absl::Status appendTombstone(StoryId story);

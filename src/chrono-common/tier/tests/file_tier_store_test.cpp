@@ -1,5 +1,6 @@
 #include "../../../tests/contract/tier_store_contract_test.cpp"
 #include "tier/FileTierStore.h"
+#include <absl/crc/crc32c.h>
 #include <atomic>
 #include <cerrno>
 #include <filesystem>
@@ -2078,6 +2079,116 @@ FileTierStore::Hooks CrashAt(std::string step)
     return hooks;
 }
 } // namespace
+
+TEST(FileTierStore, PayloadBitFlipFailsReadAndRecoveryMarksLost)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    auto chunk = Rich(0);
+    auto record = (*store)->publish(chunk);
+    ASSERT_TRUE(record.ok());
+    auto bytes = Bytes(*directory / record->file);
+    const auto at = bytes.find(chunk.events.front().envelope.payload);
+    ASSERT_NE(at, std::string::npos);
+    bytes[at] ^= 1;
+    std::ofstream(*directory / record->file, std::ios::binary) << bytes;
+    ASSERT_TRUE(ReadChunkFile(*directory / record->file).ok());
+    EXPECT_EQ((*store)->read(1, kAll).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ((*store)->readRecord(*record, kAll).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ((*store)->publish(chunk).status().code(), absl::StatusCode::kUnavailable);
+    store->reset();
+    store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = Effective(**store);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records.front().state, ManifestState::Lost);
+    EXPECT_TRUE((*store)->incomplete(1, kAll).value());
+}
+
+TEST(FileTierStore, ReadOnlyCorruptFileIsUnavailableAndNeverLost)
+{
+    auto directory = TestDirectory();
+    auto owner = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(owner.ok());
+    auto record = (*owner)->publish(Rich(0));
+    ASSERT_TRUE(record.ok());
+    owner->reset();
+    const auto manifest_before = Bytes(*directory / "manifest/primary.log");
+    auto bytes = Bytes(*directory / record->file);
+    bytes.push_back('x');
+    std::ofstream(*directory / record->file, std::ios::binary) << bytes;
+    auto player = FileTierStore::OpenReadOnly(*directory);
+    ASSERT_TRUE(player.ok());
+    EXPECT_EQ((*player)->read(1, kAll).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ((*player)->readRecord(*record, kAll).status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(Effective(**player).front().state, ManifestState::Published);
+    player->reset();
+    auto foreign = FileTierStore::Open(*directory, "peer", {{1, {100, 0}}});
+    ASSERT_TRUE(foreign.ok());
+    EXPECT_EQ(Effective(**foreign).front().state, ManifestState::Published);
+    EXPECT_EQ(Bytes(*directory / "manifest/primary.log"), manifest_before);
+}
+
+TEST(ManifestLog, ChecksumKeysAreIgnoredByDecode)
+{
+    auto directory = TestDirectory();
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok());
+    auto record = Record(100, 150);
+    ASSERT_TRUE((*log)->append(record).ok());
+    auto old = nlohmann::json::parse(Bytes((*log)->logPath()));
+    auto added = old;
+    added["bytes"] = uint64_t{100};
+    added["crc32c"] = uint32_t{123};
+    added["future_key"] = "ignored";
+    std::ofstream((*log)->logPath()) << old.dump() << '\n' << added.dump() << '\n';
+    auto reader = ManifestLog::OpenReadOnly(*directory);
+    auto index = reader->load();
+    ASSERT_TRUE(index.ok()) << index.status();
+    ASSERT_EQ(index->records.size(), 2u);
+    EXPECT_EQ(index->records[0].file, index->records[1].file);
+    EXPECT_EQ(index->records[0].event_count, index->records[1].event_count);
+    EXPECT_EQ(index->checksums.at(record.file).bytes, 100u);
+    EXPECT_EQ(index->checksums.at(record.file).crc32c, 123u);
+}
+
+TEST(FileTierStore, CompactionOutputCarriesItsChecksum)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory, {}, codec);
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 3);
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->inputs, 3u);
+        auto reader = ManifestLog::OpenReadOnly(*directory);
+        auto index = reader->load();
+        ASSERT_TRUE(index.ok());
+        ASSERT_TRUE(index->checksums.contains(result->output));
+        const auto expected = index->checksums.at(result->output);
+        const auto bytes = Bytes(*directory / result->output);
+        EXPECT_EQ(expected.bytes, bytes.size());
+        EXPECT_EQ(expected.crc32c, static_cast<uint32_t>(absl::ComputeCrc32c(bytes)));
+        ASSERT_TRUE((*store)->compact().ok());
+        store->reset();
+        store = OpenStore(*directory, {}, codec);
+        ASSERT_TRUE(store.ok());
+        EXPECT_TRUE((*store)->read(1, kAll).ok());
+        auto corrupted = bytes;
+        corrupted.back() ^= 1;
+        std::ofstream(*directory / result->output, std::ios::binary) << corrupted;
+        EXPECT_EQ((*store)->readRecord(inputs.front(), kAll).status().code(), absl::StatusCode::kUnavailable);
+        EXPECT_EQ((*store)->read(1, kAll).status().code(), absl::StatusCode::kUnavailable);
+        store->reset();
+        store = OpenStore(*directory, {}, codec);
+        ASSERT_TRUE(store.ok());
+        EXPECT_EQ(Effective(**store).front().state, ManifestState::Lost);
+    }
+}
 
 TEST(FileTierStore, CompactionCoverageAndEveryEventFieldArePreserved)
 {
