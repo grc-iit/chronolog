@@ -1,4 +1,5 @@
 import ctypes
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -6,7 +7,7 @@ import signal
 import subprocess
 import time
 
-from .registry import ROLES, atomic, binary, boot_id, free_ports, leases, load, lock, probe
+from .registry import ROLES, atomic, binary, boot_id, clock_status, free_ports, leases, load, lock, probe
 
 READY = {'visor': 'catalog ready', 'keeper': 'journal ready',
          'grapher': 'grapher registered', 'player': 'player ready'}
@@ -26,18 +27,15 @@ def configs(record):
                         process_id='grapher-1', manifest_writer='grapher-1', archive_root=record['tiers'][0]['root']),
         'player': dict(common, listen=e['player'], advertise=e['player'], visor=e['catalog'],
                        keeper_internal={'keeper-1': e['keeper_internal']}, archive_root=record['tiers'][0]['root'])}
+    defaults = {role: dict(config) for role, config in result.items()}
     for role, config in result.items():
         config.update(record['overrides'].get(role, {}))
-    for role, config in result.items():
         for key in ('listen', 'internal_listen', 'advertise', 'self_endpoint'):
             if key in config and config[key].split(':')[0] != '127.0.0.1' and not record.get('insecure_bind_all'):
                 raise ValueError(f'{role}.{key} requires --insecure-bind-all')
-    # Persisted routes and process identities must never be changed through overrides.
-    for role in ('keeper', 'grapher'):
-        if result[role]['process_id'] != role + '-1':
-            raise ValueError(f'{role} process_id is fixed')
-    if result['grapher']['manifest_writer'] != 'grapher-1':
-        raise ValueError('manifest_writer is fixed')
+        for key, value in defaults[role].items():
+            if config[key] != value:
+                raise ValueError(f'{role}.{key} is fixed by instance.json')
     return result
 
 
@@ -70,6 +68,16 @@ class Supervisor:
         holders = leases(self.folder)
         self.state['attach'] = {'count': len(holders), 'holders': holders}
         self.state['updated_ns'] = time.time_ns()
+        self.state['clock'] = clock_status()
+        for role in self.children:
+            path = self.folder / 'logs' / (role + '.log')
+            if path.stat().st_size > LOG_LIMIT:
+                with path.open('rb') as source, path.with_suffix('.log.1').open('wb') as target:
+                    source.seek(-LOG_LIMIT, os.SEEK_END)
+                    target.write(source.read(LOG_LIMIT))
+                with path.open('r+b') as log:
+                    log.truncate(0)
+                self.offsets[role] = 0
         self.state['tiers'] = []
         for tier in self.record['tiers']:
             root = Path(tier['root'])
@@ -122,6 +130,8 @@ class Supervisor:
         child = self.children[role]
         if child.poll() is not None:
             return False
+        if self.state['services'][role]['state'] == 'ready':
+            return True
         with (self.folder / 'logs' / (role + '.log')).open('rb') as log:
             log.seek(self.offsets[role])
             found = READY[role].encode() in log.read()
@@ -211,7 +221,15 @@ class Supervisor:
                     self.idle_since = now
                 if self.record['policy']['on_last_detach'] == 'stop' and not holders and (
                         now - self.idle_since >= self.record['policy']['idle_grace_s']):
-                    self.stopping = True
+                    fd = os.open(self.folder / 'run/control.lock', os.O_RDWR | os.O_CREAT, 0o600)
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX)
+                        if not leases(self.folder):
+                            self.state['state'] = 'stopping'
+                            self.publish()
+                            self.stopping = True
+                    finally:
+                        os.close(fd)
                 time.sleep(0.2)
         except Exception as error:
             self.state.update(state='degraded', error=str(error))
@@ -233,6 +251,13 @@ def detach(folder):
     for fd in (0, 1, 2):
         os.dup2(devnull, fd)
     os.close(devnull)
+    # The daemon must not retain the caller's control lock or output pipes.
+    for inherited in list(Path('/proc/self/fd').iterdir()):
+        if int(inherited.name) > 2:
+            try:
+                os.close(int(inherited.name))
+            except OSError:
+                pass
     fd = lock(folder / 'run/supervisor.lock')
     if fd is None:
         os._exit(0)

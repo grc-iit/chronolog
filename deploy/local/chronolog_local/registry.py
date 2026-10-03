@@ -101,18 +101,26 @@ def probe(record):
     except ImportError:
         for key in ('catalog', 'player'):
             if key in endpoints:
-                host, port = endpoints[key].rsplit(':', 1)
-                with socket.create_connection((host, int(port)), timeout=1):
-                    pass
+                last = None
+                for endpoint in endpoints[key].split(','):
+                    host, port = endpoint.removeprefix('dns:///').rsplit(':', 1)
+                    try:
+                        with socket.create_connection((host, int(port)), timeout=1):
+                            pass
+                        last = None
+                        break
+                    except OSError as error:
+                        last = error
+                if last:
+                    raise last
         return 'tcp'
     client = chronolog.connect(endpoints['catalog'], player=endpoints.get('player'), timeout=1, max_retries=0)
     try:
         client.list_chronicles(timeout=1)
         try:
             list(client.read(2**64 - 1, timeout=1))
-        except Exception as error:
-            if not any(word in str(error).upper() for word in ('NOT_FOUND', 'FAILED_PRECONDITION')):
-                raise
+        except (chronolog.NotFound, chronolog.FailedPrecondition):
+            pass
     finally:
         del client
     return 'rpc'
@@ -157,6 +165,37 @@ def find(name):
     raise ValueError(f'no instance {name}; start one with: chronolog up {name} --bin-dir <directory>')
 
 
+def port_holder(port):
+    inodes = set()
+    for table in ('tcp', 'tcp6'):
+        for line in Path('/proc/net/' + table).read_text().splitlines()[1:]:
+            fields = line.split()
+            if int(fields[1].rsplit(':', 1)[1], 16) == port:
+                inodes.add(fields[9])
+    for process in Path('/proc').iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            for descriptor in (process / 'fd').iterdir():
+                if os.readlink(descriptor) in {'socket:[' + inode + ']' for inode in inodes}:
+                    return 'pid=' + process.name + ' name=' + (process / 'comm').read_text().strip()
+        except (PermissionError, FileNotFoundError, ProcessLookupError):
+            pass
+    return 'holder unavailable (kernel socket or another uid)'
+
+
+def clock_status():
+    class TimexPrefix(ctypes.Structure):
+        _fields_ = [('modes', ctypes.c_uint), ('offset', ctypes.c_long), ('freq', ctypes.c_long),
+                    ('maxerror', ctypes.c_long), ('esterror', ctypes.c_long), ('status', ctypes.c_int)]
+    value = ctypes.create_string_buffer(256)
+    result = ctypes.CDLL(None, use_errno=True).ntp_adjtime(value)
+    fields = TimexPrefix.from_buffer(value)
+    synced = result >= 0 and not fields.status & 0x40 and 0 <= fields.maxerror <= 1_000_000
+    return {'status': 'Synced' if synced else ('Unsynced' if result >= 0 else 'Unavailable'),
+            'uncertainty_ns': fields.maxerror * 1000 if synced else None}
+
+
 def free_ports(endpoints):
     sockets = []
     try:
@@ -164,10 +203,11 @@ def free_ports(endpoints):
             host, port = address.rsplit(':', 1)
             sock = socket.socket()
             sockets.append(sock)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind((host, int(port)))
             except OSError as error:
-                raise ValueError(f'cannot bind fixed endpoint {address}: {error}; inspect holder with ss -ltnp') from error
+                raise ValueError(f'cannot bind fixed endpoint {address}: {error}; {port_holder(int(port))}') from error
     finally:
         for sock in sockets:
             sock.close()
@@ -176,7 +216,7 @@ def free_ports(endpoints):
 def binary(bin_dir, role):
     root = Path(bin_dir)
     candidates = (root / ('chrono_' + role), root / 'src' / ('chrono-' + role) /
-                  ('server' if role in ('keeper', 'grapher') else '') / ('chrono_' + role))
+                  ('server' if role == 'grapher' else '') / ('chrono_' + role))
     for path in candidates:
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())

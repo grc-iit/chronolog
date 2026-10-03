@@ -63,7 +63,8 @@ int main(int argc, char** argv)
             spec.envelope.payload = std::string(mode == "wal100" ? 524288 : 100, static_cast<char>('a' + i % 26));
             spec.durability = mode == "mixed" && i % 2 == 0 ? Durability::Accepted : Durability::Durable;
             auto result = writer->append(spec);
-            REQUIRE(result.ok() && result->acked());
+            REQUIRE(result.ok());
+            REQUIRE(result->acked() == (spec.durability == Durability::Durable));
             REQUIRE(result->achieved == spec.durability);
             auto id = result->event_id;
             out << id.story_id << ' ' << id.writer_id << ' ' << id.incarnation << ' ' << id.sequence << ' '

@@ -67,7 +67,7 @@ def main():
             require(result.returncode == 0, result.stdout + result.stderr)
 
         overrides = json.dumps({'keeper': {'worker_threads': 4, 'heartbeat_interval_ms': 100,
-                               'story_chunk_duration_secs': 3600, 'chunk_max_bytes': 268435456}})
+                               'story_chunk_duration_secs': 3600, 'chunk_max_bytes': 67108864}})
         create_args = ['create', 'test', '--port-base', str(base), '--overrides', overrides]
         folder = root / 'registry/instances/test'
         processes = []
@@ -99,6 +99,19 @@ def main():
             require(ready['state'] == 'ready', 'ready')
             helper('probe', ready)
             if gate == 'readiness':
+                exported = subprocess.run([sys.executable, cli, 'env', 'test'], env=env,
+                                          capture_output=True, text=True, timeout=5)
+                require(exported.returncode == 0 and record['id'] in exported.stdout, 'env exports instance id')
+                inherited = subprocess.run([sys.executable, cli, 'run', 'test', '--up', '--', sys.executable,
+                    '-c', 'import json, os; print(json.dumps({k:v for k,v in os.environ.items() if k.startswith("CHRONOLOG_")}))'],
+                    env=env, capture_output=True, text=True, timeout=5)
+                require(inherited.returncode == 0, inherited.stderr)
+                exported_env = json.loads(inherited.stdout)
+                require(exported_env['CHRONOLOG_INSTANCE'] == record['id'] and
+                        exported_env['CHRONOLOG_CATALOG'] == record['endpoints']['catalog'], 'run resolves and exports')
+                call('register', 'external', '--catalog', record['endpoints']['catalog'],
+                     '--player', record['endpoints']['player'])
+                require(call('status', 'external')['state'] == 'ready', 'external discovery')
                 s = ready['services']
                 require(s['visor']['ready_ns'] <= min(s[r]['ready_ns'] for r in ('keeper', 'grapher')), 'Visor first')
                 require(max(s[r]['ready_ns'] for r in ('keeper', 'grapher')) <= s['player']['ready_ns'] <= ready['ready_ns'], 'Player then probe')

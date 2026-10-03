@@ -145,7 +145,7 @@ def down(args):
 
 
 def resolve(args):
-    if not args.name and os.environ.get('CHRONOLOG_CATALOG'):
+    if os.environ.get('CHRONOLOG_CATALOG'):
         return None, {'id': 'environment', 'name': 'environment', 'endpoints': {
             'catalog': os.environ['CHRONOLOG_CATALOG'], 'player': os.environ.get('CHRONOLOG_PLAYER', '')}}
     args.name = args.name or os.environ.get('CHRONOLOG_INSTANCE') or 'default'
