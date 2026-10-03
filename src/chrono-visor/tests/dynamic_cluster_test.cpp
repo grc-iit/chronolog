@@ -8,6 +8,7 @@
 #include "rpc/Channel.h"
 #include "runtime/ClusterClient.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -103,6 +104,16 @@ struct KeeperDriver
     }
 };
 constexpr int64_t kEpochNs = 1'700'000'000'000'000'000;
+// The Keeper timeouts every fixture Visor issues in RegisterResponse.policy (A9).
+constexpr auto kFailureTimeout = 1500ms;
+constexpr auto kFenceTimeout = 700ms;
+// A Keeper adopts them only when its heartbeat deadline, min(failure - interval, fence) / kLivenessDeadlineDivisor,
+// is at least kMinLivenessDeadline. Beating every failure - fence leaves next_beat equal to the fence timer, so
+// the deadline is kFenceTimeout / 2 = 350 ms.
+constexpr auto kKeeperInterval = kFailureTimeout - kFenceTimeout;
+static_assert(std::min(kFailureTimeout - kKeeperInterval, std::chrono::milliseconds(kFenceTimeout)) /
+                      rpc::kLivenessDeadlineDivisor >=
+              rpc::kMinLivenessDeadline);
 class DynamicClusterTest: public ::testing::Test
 {
 protected:
@@ -140,22 +151,24 @@ protected:
                     testing::twoKeeperTopology(),
                     1,
                     [this, i](StoryId id) { return stores[i]->appliedStore().getStory(id).ok(); },
-                    1500ms);
+                    kFailureTimeout);
             feeds[i] = std::make_unique<AcquisitionFeed>();
             pools[i] = std::make_unique<WorkerPool>(2, 64);
             clocks[i] = std::make_unique<FakeClock>(kEpochNs + int64_t(i + 1) * 1'000'000'000, i + 1);
             clocks[i]->setStatus(ClockStatus::Synced);
             endpoints[i] = peers[i].internal_endpoint;
-            services[i] = std::make_unique<ClusterService>(
-                    *memberships[i],
-                    stores[i]->appliedStore(),
-                    stores[i]->appliedStore(),
-                    *feeds[i],
-                    stores[i].get(),
-                    pools[i].get(),
-                    1500ms,
-                    route_poll_period_,
-                    ClusterServiceOptions{clocks[i].get(), endpoints[i], "replica-" + std::to_string(i), 700ms});
+            services[i] = std::make_unique<ClusterService>(*memberships[i],
+                                                           stores[i]->appliedStore(),
+                                                           stores[i]->appliedStore(),
+                                                           *feeds[i],
+                                                           stores[i].get(),
+                                                           pools[i].get(),
+                                                           kFailureTimeout,
+                                                           route_poll_period_,
+                                                           ClusterServiceOptions{clocks[i].get(),
+                                                                                 endpoints[i],
+                                                                                 "replica-" + std::to_string(i),
+                                                                                 kFenceTimeout});
             grpc::ServerBuilder builder;
             chronolog::rpc::applyServerPolicy(builder);
             builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
@@ -242,7 +255,7 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     RamJournal journal(clock, membership, config);
     keeper::AcquisitionWatcher acquisitions(journal, "keeper-b", nullptr, false);
     keeper::ClusterClient b(channels[follower],
-                            {"keeper-b", "b1", "keeper-b:50052"},
+                            {"keeper-b", "b1", "keeper-b:50052", kKeeperInterval},
                             journal,
                             *membership,
                             acquisitions);
@@ -295,7 +308,7 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     auto next = leader();
     ASSERT_LT(next, 3u);
     keeper::ClusterClient resumed(channels[next],
-                                  {"keeper-b", "b1", "keeper-b:50052"},
+                                  {"keeper-b", "b1", "keeper-b:50052", kKeeperInterval},
                                   journal,
                                   *membership,
                                   acquisitions);
@@ -364,14 +377,44 @@ TEST_F(DynamicClusterTest, ForwardedRegisterAndHeartbeatCarryTheLeadersClock)
     EXPECT_EQ(registered.physical().status(), v1::CLOCK_STATUS_SYNCED);
     EXPECT_EQ(registered.physical().physical_ns(), kEpochNs + int64_t(lead + 1) * 1'000'000'000);
     EXPECT_EQ(registered.physical().uncertainty_ns(), lead + 1);
-    EXPECT_EQ(registered.policy().keeper_failure_timeout_ms(), 1500u);
-    EXPECT_EQ(registered.policy().release_fence_timeout_ms(), 700u);
+    EXPECT_EQ(registered.policy().keeper_failure_timeout_ms(), uint32_t(kFailureTimeout.count()));
+    EXPECT_EQ(registered.policy().release_fence_timeout_ms(), uint32_t(kFenceTimeout.count()));
     auto beat = a.Heartbeat();
     ASSERT_EQ(beat.status().code(), 0);
     EXPECT_EQ(beat.clock_responder().replica_id(), endpoints[lead]);
     EXPECT_EQ(beat.clock_responder().instance(), "replica-" + std::to_string(lead));
     EXPECT_EQ(beat.physical().physical_ns(), kEpochNs + int64_t(lead + 1) * 1'000'000'000);
     EXPECT_EQ(beat.physical().uncertainty_ns(), lead + 1);
+}
+
+// A9: a Keeper beating every kFailureTimeout leaves no time for its next heartbeat inside the failure timeout the
+// Visor issues, so it refuses the policy at Register instead of running with timers that cannot hold.
+TEST_F(DynamicClusterTest, KeeperWhoseIntervalCannotMeetTheIssuedFailureTimeoutIsRefusedAtRegister)
+{
+    auto lead = leader();
+    ASSERT_LT(lead, 3u);
+    auto clock = std::make_shared<FakeClock>(100, 0);
+    clock->setStatus(ClockStatus::Synced);
+    auto membership = std::make_shared<keeper::ConfigMembership>();
+    RamJournalConfig config;
+    config.process_id = "keeper-b";
+    config.instance = "b1";
+    RamJournal journal(clock, membership, config);
+    keeper::AcquisitionWatcher acquisitions(journal, "keeper-b", nullptr, false);
+    keeper::ClusterClient slow(channels[lead],
+                               {"keeper-b", "b1", "keeper-b:50052", kFailureTimeout},
+                               journal,
+                               *membership,
+                               acquisitions);
+    EXPECT_EQ(slow.registerNow().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(slow.registered());
+    keeper::ClusterClient admitted(channels[lead],
+                                   {"keeper-b", "b1", "keeper-b:50052", kKeeperInterval},
+                                   journal,
+                                   *membership,
+                                   acquisitions);
+    EXPECT_EQ(admitted.registerNow().code(), absl::StatusCode::kOk);
+    EXPECT_EQ(admitted.heartbeatDeadline(), kFenceTimeout / rpc::kLivenessDeadlineDivisor);
 }
 
 TEST_F(DynamicClusterTest, ForwardingToTheLeaderReusesOneChannelPerPeer)
