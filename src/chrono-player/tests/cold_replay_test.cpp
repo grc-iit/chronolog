@@ -119,13 +119,16 @@ TEST_F(ColdReplay, HungArchiveReadEndsSourceFailedWhileAnotherStoryReadsKeeperOn
     const auto slack = std::chrono::seconds(2);
     auto release = std::make_shared<std::promise<void>>();
     auto gate = release->get_future().share();
+    auto entered = std::make_shared<std::promise<void>>();
+    auto started = entered->get_future();
     auto exited = std::make_shared<std::promise<void>>();
     auto done = exited->get_future();
     auto opened = FileTierStore::OpenReadOnly(
             root,
             std::chrono::hours(1),
-            [gate, exited](const std::filesystem::path&) -> absl::StatusOr<ChunkBytes>
+            [gate, entered, exited](const std::filesystem::path&) -> absl::StatusOr<ChunkBytes>
             {
+                entered->set_value();
                 gate.wait();
                 exited->set_value();
                 return absl::UnavailableError("released hung load");
@@ -137,6 +140,7 @@ TEST_F(ColdReplay, HungArchiveReadEndsSourceFailedWhileAnotherStoryReadsKeeperOn
     archive = std::shared_ptr<FileTierStore>(*std::move(opened));
     options.archive = archive;
     auto blocked = std::async(std::launch::async, [&] { read(); });
+    EXPECT_EQ(started.wait_for(timeout + slack), std::future_status::ready);
     auto keeper_source = std::make_shared<FakeHotSource>();
     keeper_source->response = source->response;
     keeper_source->response.archived_below = {};
