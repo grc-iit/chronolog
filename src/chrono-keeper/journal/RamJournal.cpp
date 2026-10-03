@@ -648,7 +648,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
                     rejection = AppendRejection::StoryTombstoned;
                 }
                 else if(status.ok() && dynamic_ &&
-                        (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
+                        (!route || gate->state.route.epoch != route->epoch || !scheduleSteps(*gate) ||
+                         ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
                     status = absl::UnavailableError("route clock steps or ceiling deferred");
             }
             if(!status.ok())

@@ -163,6 +163,27 @@ TEST_F(RouteReadTest, ReadOlderThanWatchRevisionIsIgnored)
     EXPECT_EQ(membership->route(1).status().code(), absl::StatusCode::kNotFound);
 }
 
+TEST_F(RouteReadTest, DynamicReadWaitsForMatchingWatchMetadata)
+{
+    journal->enableDynamic("instance");
+    journal->extendCeiling({1000, 0}, 1000);
+    RouteState old;
+    old.route = Route{6, {{"self", "old"}}, "g", "p"};
+    // Model an older watch state whose cache installation has not reached the missing entry.
+    journal->applyRoute(1, old, false, 5, [] {});
+    auto refused = journal->append(batch(), Durability::Accepted);
+    ASSERT_TRUE(refused.ok());
+    EXPECT_EQ(refused->front().status.code(), absl::StatusCode::kUnavailable);
+    RouteState current;
+    current.route = Route{7, {{"self", "new"}}, "g", "p"};
+    journal->applyRoute(1, current, false, 6, [&] { membership->setRouteState(1, current, 6); });
+    auto accepted = journal->append(batch(), Durability::Accepted);
+    ASSERT_TRUE(accepted.ok());
+    EXPECT_TRUE(accepted->front().status.ok()) << accepted->front().status;
+    EXPECT_EQ(peer.reads, 1u);
+    EXPECT_EQ(peer.registrations, 0u);
+}
+
 TEST_F(RouteReadTest, GetStoryTombstoneDropsOnceAndIgnoresLaterRoutes)
 {
     peer.destroyed = true;
