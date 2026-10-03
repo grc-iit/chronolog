@@ -106,7 +106,7 @@ Invariants:
 - I5.8 AppendStream cancellation MUST NOT roll back accepted items. Gate: `JournalAdapterTest.CancelledStreamKeepsAcceptedItems`.
 - I5.9 A batch MUST be processed in item order per writer; an item's result position equals its request position. Gate: `JournalContract.PerItemFailureDoesNotEraseSuccessfulBatchItems`.
 
-- I5.10 The WAL group-commit window is a fixed timer exposed as a config knob, initial value 1 ms, set in M5. No latency claim is made until measured (section 18).
+- I5.10 The WAL commits groups adaptively: as soon as the previous fsync returns, the committer writes and fsyncs every record queued at that moment, up to group_commit_max_bytes. The knob group_commit_window_us (default 0, at most 10000) holds a group open until the window has passed since its first record or the byte bound is reached; 0 is adaptive commit. I5.6 holds in both modes. Measured with tools/bench/run.sh custom at 6bbe4575 on dragon (two NVMe disks, dev build): a nonzero window cost 10 to 46% of throughput for one writer at batch 1 and gained at most 2.6% at 64 writers with batch 64, so the default stays 0. Gates: `JournalContract.FsyncFailureFailsTheGroup` instantiated for window 0 and 1000 us, `WalJournal.WindowedGroupReportsDurableOnlyAfterSyncReturns`. Amended 2026-10-03 with the PI's QA sign-off; the text it replaces described a fixed 1 ms timer the code never had.
 
 ## 6. Completeness semantics
 
@@ -325,7 +325,8 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | Knob | Owner | Default | Source |
 | --- | --- | --- | --- |
 | payload max bytes | Keeper | 1 MiB | section 3 |
-| group-commit window | Keeper WAL | 1 ms initial, TBD after measurement | section 5 OPEN |
+| group_commit_window_us | Keeper WAL | 0 (adaptive group commit), at most 10000 | I5.10, `src/chrono-keeper/KeeperConfig.h` |
+| group_commit_max_bytes | Keeper WAL | 4194304 | I5.10, `src/chrono-keeper/KeeperConfig.h` |
 | causal_floor skew limit | Keeper | 60000000000 ns, config key causal_floor_skew_limit_ns | I8.6, `src/chrono-keeper/KeeperConfig.h` |
 | heartbeat timeout | Visor Cluster | 15000 ms, config key keeper_failure_timeout_ms | MembershipContract.RegisterHeartbeatAndRestartFencing, `src/chrono-visor/VisorConfig.h` |
 | acquisition_lease_default_ns | Visor | 300000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
