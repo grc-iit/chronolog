@@ -651,11 +651,11 @@ TEST(ArchiveTransferTest, DestroyWaitsForCompactionCleanup)
     std::filesystem::remove_all(root);
 }
 
-TEST(GrapherConfigTest, CompactionIsDisabledByDefaultAndItsKnobsAreValidated)
+TEST(GrapherConfigTest, CompactionIsEnabledByDefaultAndItsKnobsAreValidated)
 {
     auto loaded = GrapherConfig::load(std::nullopt);
     ASSERT_TRUE(loaded.ok());
-    EXPECT_FALSE(loaded->compaction.enabled);
+    EXPECT_TRUE(loaded->compaction.enabled);
     EXPECT_EQ(loaded->compaction.policy.min_files, 32u);
     EXPECT_EQ(loaded->compaction.policy.max_files, 128u);
     EXPECT_EQ(loaded->compaction.policy.min_age, std::chrono::seconds(300));
@@ -664,10 +664,10 @@ TEST(GrapherConfigTest, CompactionIsDisabledByDefaultAndItsKnobsAreValidated)
     EXPECT_FALSE(loaded->validate().ok());
     const auto path =
             std::filesystem::temp_directory_path() / ("chronolog_grapher_config_" + std::to_string(::getpid()));
-    std::ofstream(path) << R"({"compact_enabled": true, "compact_min_age_secs": 0, "compact_max_files": 64})";
+    std::ofstream(path) << R"({"compact_enabled": false, "compact_min_age_secs": 0, "compact_max_files": 64})";
     loaded = GrapherConfig::load(path.string());
     ASSERT_TRUE(loaded.ok()) << loaded.status();
-    EXPECT_TRUE(loaded->compaction.enabled);
+    EXPECT_FALSE(loaded->compaction.enabled);
     EXPECT_EQ(loaded->compaction.policy.min_age, std::chrono::seconds(0));
     EXPECT_EQ(loaded->compaction.policy.max_files, 64u);
     std::ofstream(path, std::ios::trunc) << R"({"compact_min_files": 0})";
