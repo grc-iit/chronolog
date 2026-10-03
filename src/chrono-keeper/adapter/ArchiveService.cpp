@@ -1,5 +1,6 @@
 #include "adapter/ArchiveService.h"
 
+#include <algorithm>
 #include <deque>
 
 #include "adapter/Convert.h"
