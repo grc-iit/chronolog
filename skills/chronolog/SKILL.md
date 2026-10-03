@@ -103,10 +103,10 @@ Rules that keep an agent correct:
 Agents with MCP: register the bundled server with Claude Code against a running stack:
 
 ```bash
-claude mcp add chronolog -- <venv>/bin/chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle agent-memory
+claude mcp add chronolog -- <venv>/bin/chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle agent-memory --identity agent-memory/main
 ```
 
-Tools: `list_stories`, `create_story`, `append`, `read` (returns the Completion), `tail`, `start_chronolog`, `record_interaction`, `retrieve_interaction`, `stop_chronolog`; resource `chronolog://status`. Any MCP client takes the same command and arguments. OpenTelemetry users can export GenAI spans straight into ChronoLog with `chronolog[otel]` (references/api.md).
+Tools: `context_open`, `context_remember`, `context_recall`, `context_latest`, `context_follow`, `context_reconcile`, `context_checkpoint`, `context_close`, `context_list`, `context_status`. A context is one story in the launcher's chronicle; `--identity` is the stable slot writable tools need, and each `agent` label is its own writer inside it. Reuse an operation_id when retrying after an error or timeout; pass every operation_id without a seen outcome to `context_reconcile`, since omitted ids may duplicate. Read `verdict` and `answer_complete` before concluding anything from absence. Any MCP client takes the same command and arguments. OpenTelemetry users can export GenAI spans straight into ChronoLog with `chronolog[otel]` (references/api.md).
 
 Command-line tools (in `build/dev/...` or the bundle's `bin/`): `chronolog_kvs` (versioned key-value), `chronolog_sql` (append-only tables with SELECT), `chronolog_admin` (cluster membership), `chronolog_stream_collect` and `chronolog_stream_export` (telemetry to InfluxDB). Usage strings are in references/api.md.
 
