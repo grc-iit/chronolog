@@ -69,8 +69,11 @@ class ContextRef:
 
 @dataclass(frozen=True)
 class AgentIdentity:
+    """control selects the reserved checkpoint-store writer kind, encoded under agent-context-control/v2:, which
+    no user identity can produce."""
     agent_id: str
     slot: str
+    control: bool = False
 
 
 @dataclass(frozen=True)
@@ -340,6 +343,11 @@ class ContextSession:
 
     def latest(self, n, *, options=LatestOptions(), timeout=None):
         return self._handle.latest(n, options, timeout)
+
+    def latest_aggregate(self, content_type, *, options=LatestOptions(), timeout=None):
+        """The newest event of this story with exactly this content type, at a verified cut: the checkpoint store's
+        n=1 lookup. selection_complete is false when the bounded search could not prove it."""
+        return self._handle.latest_aggregate(content_type, options, timeout)
 
     def reconcile(self, *, options=ReconcileOptions(), timeout=None):
         return self._handle.reconcile(options, timeout)

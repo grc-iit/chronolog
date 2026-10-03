@@ -30,9 +30,12 @@ nb::object pack(const ctx::ContextRef& r)
 ctx::ContextRef ref(nb::handle h) { return {u64(h.attr("story_id")), text(h.attr("chronicle")), text(h.attr("name"))}; }
 nb::object pack(const ctx::AgentIdentity& i)
 {
-    return value("AgentIdentity", fields("agent_id"_a = i.agent_id, "slot"_a = i.slot));
+    return value("AgentIdentity", fields("agent_id"_a = i.agent_id, "slot"_a = i.slot, "control"_a = i.control));
 }
-ctx::AgentIdentity identity(nb::handle h) { return {text(h.attr("agent_id")), text(h.attr("slot"))}; }
+ctx::AgentIdentity identity(nb::handle h)
+{
+    return {text(h.attr("agent_id")), text(h.attr("slot")), nb::cast<bool>(h.attr("control"))};
+}
 nb::object pack(const ctx::WriterStamp& s)
 {
     return value("WriterStamp", fields("writer_id"_a = s.writer_id, "incarnation"_a = s.incarnation));
@@ -363,6 +366,23 @@ void initContext(nb::module_& m)
                         return pack(unwrap(call([&] { return native->latest(count, o, d); })));
                     },
                     "n"_a,
+                    "options"_a,
+                    "timeout"_a = nb::none())
+            .def(
+                    "latest_aggregate",
+                    [](Session& s, const std::string& content_type, nb::handle options, std::optional<double> t)
+                    {
+                        ctx::LatestOptions o;
+                        o.before = optional<Hlc>(options.attr("before"), hlc);
+                        o.limits = limits(options);
+                        readCalls(options, o.max_read_calls);
+                        auto d = deadline(t);
+                        auto native = s.shared();
+                        auto is_aggregate = [content_type](const Event& e)
+                        { return e.envelope.content_type == content_type; };
+                        return pack(unwrap(call([&] { return native->latestAggregate(is_aggregate, o, d); })));
+                    },
+                    "content_type"_a,
                     "options"_a,
                     "timeout"_a = nb::none())
             .def(
