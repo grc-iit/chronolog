@@ -41,7 +41,7 @@ Each Keeper keeps a sealed frontier F: every event with hlc < F is visible, and 
 
 | reason | meaning |
 |---|---|
-| LAGGING_WRITERS | some Keeper has not sealed up to `end` yet; usually resolves in under a second |
+| LAGGING_WRITERS | some Keeper has not sealed up to `end` yet; inspect the reported frontier and laggards |
 | SOURCE_FAILED | a Keeper or the archive did not answer, or a range was abandoned after a failure |
 | TRUNCATED | the read hit a size limit; the returned prefix is still complete up to the reported frontier |
 | PHYSICAL_AXIS_UNBOUNDED | a wall-clock read selected an event whose writer clock had no bound |

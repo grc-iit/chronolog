@@ -34,7 +34,7 @@ Advertised endpoints matter: a Keeper advertises one address, and clients connec
 
 ## Several machines
 
-`deploy/cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `deploy/cluster/run_dragon.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts. Measured on a three-node homelab over NFS: median 85.7 ms and maximum 201.5 ms from publish to visible.
+`deploy/cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `deploy/cluster/run_dragon.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts.
 
 ## Dynamic membership
 

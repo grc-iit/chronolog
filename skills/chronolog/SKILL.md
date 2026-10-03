@@ -138,7 +138,7 @@ with client.read(notes, None, end) as reader:
 ```
 
 Rules that keep an agent correct:
-- Check `reader.completion.complete` before concluding anything from absence. A fresh write becomes readable as complete once the Keeper seals past it (sub-second with the demo settings); if `complete` is false, read again after a short wait or report the `reason` (`LAGGING_WRITERS`, `SOURCE_FAILED`, `TRUNCATED`, `PHYSICAL_AXIS_UNBOUNDED`).
+- Check `reader.completion.complete` before concluding anything from absence. A fresh write becomes readable as complete once the Keeper seals past it; if `complete` is false, read again after a short wait or report the `reason` (`LAGGING_WRITERS`, `SOURCE_FAILED`, `TRUNCATED`, `PHYSICAL_AXIS_UNBOUNDED`).
 - Appends default to DURABLE (fsynced in the Keeper WAL before the ack). `Durability.ACCEPTED` is faster and lives only in Keeper RAM until archived; a Keeper crash can lose it.
 - Use `client.tail(story, after=event)` to follow a story live; never poll `read` in a loop. Tail never claims completeness.
 - Retries are safe: the SDK retries with the same EventId and the Keeper deduplicates.
