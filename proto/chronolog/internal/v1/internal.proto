@@ -482,6 +482,9 @@ message WatchRoutesResponse
     chronolog.v1.Route route = 2;
     // Story destroyed at this revision; no route follows (W10.17).
     bool tombstoned = 11;
+    // Exactly one message with snapshot_end=true follows the snapshot entries and
+    // precedes every delta; it carries revision = R, story_id 0 and no route.
+    bool snapshot_end = 12;
 }
 
 message ExpireAcquisitions
