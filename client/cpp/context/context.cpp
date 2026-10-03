@@ -281,8 +281,13 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
         if(checkpoint.processed_after)
             record->processed = checkpoint.processed_after;
         if(options.access == Access::ReadWrite)
+        {
+            // Restored ids keep this run's attribution, which an explicit resume reuses.
+            if(!record->writer)
+                record->session_id = options.session_id;
             if(auto restored = detail::restore(*impl_, *record, checkpoint); !restored.ok())
                 return restored;
+        }
     }
     if(record->state != SessionState::Closed)
         if(auto alias = record->handle.lock())
