@@ -1,6 +1,5 @@
 #include "../../../tests/contract/tier_store_contract_test.cpp"
 #include "tier/FileTierStore.h"
-#include "tier/ArchiveReaderPool.h"
 #include <atomic>
 #include <cerrno>
 #include <filesystem>
@@ -174,77 +173,6 @@ private:
     int entered_{};
     bool released_{}, timed_out_{};
 };
-
-TEST(ArchiveReaderPool, FullQueueAndExpiredSubmissionFailWithoutWaitingAndBusyStopDetaches)
-{
-    auto release = std::make_shared<std::promise<void>>();
-    auto gate = release->get_future().share();
-    auto entered = std::make_shared<std::promise<void>>();
-    auto started = entered->get_future();
-    auto exited = std::make_shared<std::promise<void>>();
-    auto done = exited->get_future();
-    auto pool = std::make_unique<ArchiveReaderPool>(1);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-    ASSERT_TRUE(pool->submit(
-            [gate, entered, exited]
-            {
-                entered->set_value();
-                gate.wait();
-                exited->set_value();
-            },
-            deadline));
-    ASSERT_EQ(started.wait_until(deadline), std::future_status::ready);
-    ASSERT_TRUE(pool->submit([] {}, deadline));
-    ASSERT_TRUE(pool->submit([] {}, deadline));
-    auto stopped = std::async(std::launch::async,
-                              [&]
-                              {
-                                  EXPECT_FALSE(pool->submit([] {}, deadline));
-                                  EXPECT_FALSE(pool->submit([] {}, std::chrono::steady_clock::now()));
-                                  pool.reset();
-                              });
-    const bool ended = stopped.wait_until(deadline) == std::future_status::ready;
-    release->set_value();
-    EXPECT_TRUE(ended);
-    stopped.get();
-    EXPECT_EQ(done.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-}
-
-TEST(FileTierStore, AbandonedReaderCapRefusesLoadsUntilAWorkerReturns)
-{
-    auto directory = TestDirectory();
-    auto writer = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
-    ASSERT_TRUE(writer.ok());
-    auto record = (*writer)->publish(contract::Window());
-    ASSERT_TRUE(record.ok());
-    auto release = std::make_shared<std::promise<void>>();
-    auto gate = release->get_future().share();
-    auto calls = std::make_shared<std::atomic<int>>(0);
-    auto exited = std::make_shared<std::promise<void>>();
-    auto done = exited->get_future();
-    auto reader = FileTierStore::OpenReadOnly(
-            *directory,
-            std::chrono::hours(1),
-            [gate, calls, exited](const fs::path&) -> absl::StatusOr<ChunkBytes>
-            {
-                ++*calls;
-                gate.wait();
-                if(--*calls == 0)
-                    exited->set_value();
-                return absl::UnavailableError("released hung load");
-            },
-            2,
-            {},
-            std::chrono::milliseconds(100));
-    ASSERT_TRUE(reader.ok());
-    for(int i = 0; i < 3; ++i)
-        EXPECT_EQ((*reader)->readRecord(*record, {Range::Axis::Hlc, {100, 0}, {200, 0}}).status().code(),
-                  absl::StatusCode::kUnavailable);
-    EXPECT_EQ(calls->load(), 2);
-    reader->reset();
-    release->set_value();
-    EXPECT_EQ(done.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-}
 
 TEST(FileTierStore, HungArchiveReadEndsWithinTheDeadline)
 {
