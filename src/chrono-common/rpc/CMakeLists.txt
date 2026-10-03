@@ -1,6 +1,6 @@
 add_library(chronolog_common_rpc INTERFACE)
 target_include_directories(chronolog_common_rpc INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>")
-target_link_libraries(chronolog_common_rpc INTERFACE gRPC::grpc++)
+target_link_libraries(chronolog_common_rpc INTERFACE gRPC::grpc++ chronolog_contracts)
 
 include(GoogleTest)
 add_executable(chronolog_common_rpc_tests channel_pool_test.cpp)
