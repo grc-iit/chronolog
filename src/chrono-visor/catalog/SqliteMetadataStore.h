@@ -81,7 +81,7 @@ public:
     absl::StatusOr<internal::v1::MembershipState> membershipRouteChanges(uint64_t revision) const;
     absl::StatusOr<uint64_t> membershipRevision() const;
     bool membershipWouldEmpty(const std::string& id) const;
-    absl::StatusOr<std::vector<AcquisitionChange>> storyAcquisitions(StoryId id) const;
+    absl::StatusOr<std::vector<AcquisitionChange>> storyAcquisitions(StoryId id, bool include_released = false) const;
     absl::StatusOr<Route> membershipRoute(StoryId id) const;
     absl::Status
     fenceRemovedWriters(StoryId id, const Route& route, uint64_t revision, const std::string& replacement = "");
