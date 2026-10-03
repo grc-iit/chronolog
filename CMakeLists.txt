@@ -217,6 +217,7 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TA
     if(TARGET chronolog_client)
         add_subdirectory(tests/integration/keeper_wal)
         add_subdirectory(tests/integration/visor)
+        add_subdirectory(tests/integration/lease)
     endif()
     add_test(NAME bind_guard_integration
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/bind_guard_test.sh
