@@ -328,7 +328,7 @@ class Scenario(Smoke):
         assert samples, 'no NFS latency samples'
         result = dict(samples=len(samples), median_ms=statistics.median(samples), max_ms=max(samples),
                       build='dev Debug', commit=os.environ.get('CHRONOLOG_CLUSTER_COMMIT', 'unknown'),
-                      publisher='mini grapher-b', reader='dragon Player FileTierStore merged manifest probe',
+                      publisher='blade grapher-b', reader='blade Player FileTierStore merged manifest probe',
                       poll_ms=200, archive=str(ARCHIVE))
         (OUT/'latency.json').write_text(json.dumps(result, indent=2)+'\n')
         print('PASS latency ' + json.dumps(result), flush=True)

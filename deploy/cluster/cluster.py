@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import concurrent.futures
 import io
 import json
 import os
@@ -8,7 +7,6 @@ import shlex
 import signal
 import select
 import socket
-import statistics
 import subprocess
 import sys
 import tarfile
@@ -46,8 +44,11 @@ class Cluster:
         return ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', node, shlex.join(scoped)]
 
     def run(self, node, command, seconds=30, data=None):
-        return subprocess.run(self.command(node, command, seconds), input=data, capture_output=True,
-                              timeout=seconds + 15, check=True).stdout
+        result = subprocess.run(self.command(node, command, seconds), input=data, capture_output=True,
+                                timeout=seconds + 15)
+        if result.returncode:
+            raise RuntimeError(f'{node} command exited {result.returncode}: {result.stderr.decode(errors="replace")}')
+        return result.stdout
 
     def launch(self, name, node, command, seconds=900):
         with self.lock:
@@ -85,11 +86,13 @@ class Cluster:
         raise RuntimeError(f'health timeout {endpoint}')
 
     def preflight(self):
-        for node in NODES:
+        for row in TABLE:
+            node = row['node']
             try:
-                self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs', 10)
+                self.run(node, 'test -d /data/chronolog-sprint' if node == 'mini' else
+                         'test -d /mnt/nfs && mountpoint -q /mnt/nfs', 10)
             except Exception as error:
-                raise RuntimeError(f'shared archive mount /mnt/nfs unavailable on {node}') from error
+                raise RuntimeError(f'shared archive parent unavailable on {node}') from error
         server = 'import socket,time; ports=PORTS; sockets=[]\nfor p in ports:\n s=socket.socket(); s.bind(("IP",p)); s.listen(); sockets.append(s)\ntime.sleep(90)'
         try:
             for node, ports in PORTS.items():
@@ -130,7 +133,7 @@ class Cluster:
         for node in NODES:
             buffer = io.BytesIO()
             with tarfile.open(fileobj=buffer, mode='w') as tar:
-                if node == 'dragon':
+                if node == 'blade':
                     tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
                 tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
                 tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
@@ -157,11 +160,19 @@ class Cluster:
             self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && python3 -m venv venv && '
                      'venv/bin/pip install -r requirements.txt >pip.log 2>&1', 120)
             (OUT / f'{node}-hardware.log').write_bytes(self.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
-        for node in NODES:
+        for row in TABLE:
+            if not row['grapher']:
+                continue
+            node = row['node']
             self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs && '
                      'mkdir -p /mnt/nfs/chronolog-sprint/archive && '
                      'test -z "$(ls -A /mnt/nfs/chronolog-sprint/archive)"')
         self.archive_owned = True
+        marker = f'{ARCHIVE}/{self.tag}.probe'
+        self.run('dragon', f'printf %s {self.tag} >{marker}', 10)
+        for row in TABLE:
+            self.run(row['node'], f'test "$(cat {row["archive"]}/{self.tag}.probe)" = {self.tag}', 10)
+        self.run('dragon', f'rm {marker}', 10)
         (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services, 'topology': TABLE}, indent=2))
 
     def start(self, role):
@@ -190,12 +201,12 @@ class Cluster:
             self.collect()
             return ''.join((OUT / (keeper + '.log')).read_text() for keeper in (r['keeper'] for r in TABLE))
         if op == 'probe':
-            node, folder, _ = self.services['player-1']
+            node, folder, _ = self.services['player-2']
             self.launch('manifest-probe', node, f'cd ~/{folder} && exec ~/chronolog-sprint/bin/cluster_manifest_probe {ARCHIVE} {service} >>manifest-probe.log 2>&1', 600)
             return ''
         if op == 'snapshot':
             self.collect()
-            node, folder, _ = self.services['player-1']
+            node, folder, _ = self.services['player-2']
             (OUT / 'manifest-probe.log').write_bytes(self.run(node, f'cat ~/{folder}/manifest-probe.log', 10))
             return ''
         selected = roles.get(service, [service])
@@ -205,10 +216,6 @@ class Cluster:
         elif op == 'start':
             for role in selected:
                 self.start(role)
-        elif op == 'ps':
-            return service
-        elif op == 'inspect':
-            return json.dumps([{'State': {'Running': True, 'Health': {'Status': 'healthy'}}}])
         else:
             raise RuntimeError(f'unsupported control {op}')
         return ''

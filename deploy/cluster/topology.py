@@ -1,7 +1,8 @@
 NODES = {'dragon': '100.101.232.95', 'blade': '100.124.181.9', 'mini': '100.74.131.112'}
 TABLE = [dict(node=node, ip=ip, replica=index + 1, keeper=f'keeper-{index + 1}',
               visor=f'visor-{index + 1}', player=f'player-{index + 1}',
-              grapher={'dragon': 'grapher-a', 'mini': 'grapher-b'}.get(node))
+              archive=('/data' if node == 'mini' else '/mnt/nfs') + '/chronolog-sprint/archive',
+              grapher={'dragon': 'grapher-a', 'blade': 'grapher-b'}.get(node))
          for index, (node, ip) in enumerate(NODES.items())]
 PORTS = {row['node']: [50051, 50061, 50071, 50052, 50062, 50054]
          + ([50053] if row['grapher'] else []) for row in TABLE}
@@ -29,7 +30,7 @@ def configs(home, tag):
             seal_interval_ms=200, archive_visibility_delay_secs=1, watermark_resend_timeout_secs=2,
             shutdown_confirm_timeout_secs=5, worker_threads=4, heartbeat_interval_ms=200))
         result[r['player']] = (node, dict(listen=ip + ':50054', advertise=ip + ':50054',
-            visor=catalog, visor_internal=internal, archive_root=ARCHIVE, manifest_poll_ms=200,
+            visor=catalog, visor_internal=internal, archive_root=r['archive'], manifest_poll_ms=200,
             keeper_internal={k['keeper']: k['ip'] + ':50062' for k in TABLE}))
         if r['grapher']:
             result[r['grapher']] = (node, dict(process_id=r['grapher'], manifest_writer=r['grapher'],
