@@ -1,7 +1,9 @@
 #include "chrono-grapher/server/ArchiveService.h"
+#include "chrono-grapher/server/ClusterWorker.h"
 #include "chrono-grapher/server/GrapherConfig.h"
 #include "chrono-grapher/server/TombstoneWatcher.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
+#include "clock/KernelClock.h"
 #include "rpc/Channel.h"
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
@@ -87,68 +89,18 @@ int main(int argc, char** argv)
     }
     const auto visor = chronolog::rpc::peerChannel(config->visor_internal);
     auto stub = chronolog::internal::v1::Cluster::NewStub(visor);
-    std::jthread cluster(
-            [&](std::stop_token stop)
-            {
-                bool registered = false;
-                size_t policy_cursor = 0;
-                std::mutex mutex;
-                std::condition_variable_any pause;
-                while(!stop.stop_requested())
-                {
-                    grpc::ClientContext context;
-                    chronolog::rpc::withTimeout(context, std::chrono::milliseconds(config->rpc_timeout_ms));
-                    std::stop_callback cancelled(stop, [&] { context.TryCancel(); });
-                    if(!registered)
-                    {
-                        chronolog::internal::v1::RegisterRequest request;
-                        auto* process = request.mutable_process();
-                        process->set_process_id(config->process_id);
-                        process->set_instance(instance);
-                        process->set_endpoint(config->self_endpoint);
-                        process->set_role(chronolog::internal::v1::PROCESS_ROLE_GRAPHER);
-                        chronolog::internal::v1::RegisterResponse response;
-                        const auto status = stub->Register(&context, request, &response);
-                        registered = status.ok() && response.status().code() == 0;
-                        if(registered)
-                        {
-                            LOG(INFO) << "grapher registered "
-                                      << std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                 std::chrono::steady_clock::now() - process_start)
-                                                 .count()
-                                      << " ms after start";
-                            std::cout << "grapher registered instance=" << instance << std::endl;
-                        }
-                        if(!registered && !stop.stop_requested())
-                            LOG(WARNING) << "grapher registration failed";
-                    }
-                    else
-                    {
-                        chronolog::internal::v1::HeartbeatRequest request;
-                        request.set_process_id(config->process_id);
-                        request.set_instance(instance);
-                        auto legacy = (*store)->storiesWithoutPhysicalPolicy();
-                        if(legacy.ok() && !legacy->empty())
-                        {
-                            policy_cursor %= legacy->size();
-                            const auto count = std::min<size_t>(65536, legacy->size() - policy_cursor);
-                            for(size_t n = 0; n < count; ++n)
-                                request.add_stories_without_physical_policy((*legacy)[policy_cursor + n]);
-                            policy_cursor += count;
-                        }
-                        chronolog::internal::v1::HeartbeatResponse response;
-                        const auto status = stub->Heartbeat(&context, request, &response);
-                        registered = status.ok() && response.status().code() == 0;
-                        if(!registered && !stop.stop_requested())
-                            LOG_EVERY_N_SEC(WARNING, 5) << "grapher heartbeat failed";
-                    }
-                    std::unique_lock lock(mutex);
-                    pause.wait_for(lock,
-                                   stop,
-                                   std::chrono::milliseconds(config->heartbeat_interval_ms),
-                                   [] { return false; });
-                }
-            });
+    chronolog::grapher::VisorClockAudit clock_audit(config->process_id + "/" + instance,
+                                                    std::make_shared<chronolog::KernelClock>());
+    chronolog::grapher::ClusterWorkerOptions cluster_options;
+    cluster_options.process_id = config->process_id;
+    cluster_options.instance = instance;
+    cluster_options.endpoint = config->self_endpoint;
+    cluster_options.rpc_timeout = std::chrono::milliseconds(config->rpc_timeout_ms);
+    cluster_options.heartbeat_interval = std::chrono::milliseconds(config->heartbeat_interval_ms);
+    cluster_options.process_start = process_start;
+    cluster_options.stories_without_physical_policy = [&] { return (*store)->storiesWithoutPhysicalPolicy(); };
+    std::jthread cluster([&](std::stop_token stop)
+                         { chronolog::grapher::runClusterWorker(stop, *stub, clock_audit, cluster_options); });
     // The Catalog answers on the Visor internal port in both modes. A story the snapshot did not list is confirmed
     // here, never inferred from absence (W10.17).
     auto catalog = std::shared_ptr<chronolog::v1::Catalog::Stub>(chronolog::v1::Catalog::NewStub(visor));
