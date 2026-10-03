@@ -16,6 +16,10 @@ chronolog env default
 
 Evaluating those exports sets the Catalog override in that shell. Unset it before selecting another managed instance; otherwise `run` treats the endpoints as an external environment override and does not hold a managed lease. Prefer `chronolog run` when an agent's lifetime should count as an attachment.
 
+MCP offers the same discovery and lifecycle decisions: `instance_list(probe=true)` returns registry records and `bound_instance_id`; `probe=false` leaves external records `unprobed`. `instance_control(action="attach", name="default")` binds a ready record. `action="up"` boots and binds, with `create=true` required for a new record. Set `on_last_detach="keep"` or `"stop"` and `idle_grace_s` at creation; existing records keep their saved policy. Use the CLI when choosing non-default ports or storage paths.
+
+Close writable contexts before rebinding; a refused rebind returns `changed=false`. `action="detach"` closes all of this server's sessions and drops its MCP lease. `action="down"` does the same for its bound target before requesting ordered stop; another holder, including a live launcher wrapper, prevents shutdown. Avoid `force=true` for ordinary agent cleanup. `context_status` reports the bound instance, live holders, tiers and clock. The MCP server holds its own lease as well as any surrounding `chronolog run` wrapper; leave both processes before expecting the last-detach policy.
+
 ## Registry and states
 
 The registry is `$CHRONOLOG_HOME`, default `${XDG_STATE_HOME:-$HOME/.local/state}/chronolog`. Set the same local filesystem path in every harness. It contains `instances/<name>/`, `external/<name>.json` and shared `locks/`; directories are 0700 and files 0600. NFS is refused for the registry because liveness and leases require local flock semantics. Names match `[a-z0-9][a-z0-9-]{0,31}`.
@@ -79,7 +83,7 @@ The marketplace entry chooses `chronolog run --up default -- chronolog-mcp` when
 
 ## Recall by time, latest and follow
 
-Keep the existing ten-tool interface in [api.md](api.md). LOCAL-2's new instance tools and calendar-time conveniences are not assumed here.
+The twelve-tool interface is in [api.md](api.md). `context_recall(since=..., until=...)` accepts integer nanoseconds or RFC 3339 for a half-open Keeper acceptance-time interval; `context_latest(until=...)` selects events before an exclusive acceptance-time bound. Do not combine these conveniences with opaque bounds or recall cursors. HLC may lead Keeper CLOCK_REALTIME by D (61 seconds by default); this is not a writer physical-axis or payload-history query.
 
 Use `context_recall` with `start` and `end` tokens from returned events' `at` fields for an HLC interval: start is inclusive and end is exclusive. Preserve `next_cursor` when paging the same range and inspect `answer_complete` and the underlying Completion before concluding that no other events occurred. HLC physical time is acceptance time at the Keeper, not an arbitrary scientific dataset's historical timestamp.
 

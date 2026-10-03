@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -81,8 +82,9 @@ async def main():
                 tools = (await asyncio.wait_for(session.list_tools(), 10)).tools
                 require({tool.name for tool in tools} == {'context_open', 'context_remember', 'context_recall',
                     'context_latest', 'context_follow', 'context_reconcile', 'context_checkpoint',
-                    'context_close', 'context_list', 'context_status'}, 'existing ten MCP tools')
-                await attachments(1 if leased else 0)
+                    'context_close', 'context_list', 'context_status', 'instance_list',
+                    'instance_control'}, 'twelve MCP tools')
+                await attachments(2 if leased else 1)
                 if leased:
                     refusal = command(['chronolog', 'down', 'default'], ok=False)
                     require('foreign attach leases' in refusal, 'down refuses a live MCP lease')
@@ -91,6 +93,16 @@ async def main():
                     result = await asyncio.wait_for(session.call_tool(name, arguments), 15)
                     require(not result.is_error, 'MCP ' + name + ': ' + str(result))
                     return json.loads(result.content[0].text)
+
+                listed = await tool('instance_list', probe=True)
+                require(listed['bound_instance_id'] == ready['id'] and
+                        any(row['bound'] and row['state'] == 'ready' for row in listed['instances']),
+                        'MCP discovery and ready binding')
+                bound = await tool('instance_control', action='attach', name='default')
+                require(bound['instance']['id'] == ready['id'], 'MCP attach ready instance')
+                booted = await tool('instance_control', action='up', name='default', create=True,
+                                    on_last_detach='keep')
+                require(booted['instance']['state'] == 'ready', 'MCP up binds existing default')
 
                 opened = await tool('context_open', name='local3-notes', create=write,
                                     access='read_write' if write else 'read_only')
@@ -110,6 +122,19 @@ async def main():
                 require(recalled['answer_complete'] and [event['content']['data'] for event in recalled['events']]
                         == ['first memory', 'second memory'], 'complete memory recall')
                 events = recalled['events']
+                lower = int(events[0]['hlc'][0])
+                upper = int(events[1]['hlc'][0])
+                require(lower < upper, 'distinct acceptance-time bounds')
+                seconds, ns = divmod(lower, 1000000000)
+                rfc = datetime.fromtimestamp(seconds, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + f'.{ns:09d}Z'
+                for since in (lower, rfc):
+                    timed = await tool('context_recall', session_handle=handle, since=since, until=upper)
+                    require(timed['answer_complete'] and len(timed['events']) == 1 and
+                            timed['events'][0]['content']['data'] == 'first memory',
+                            'since/until acceptance-time range, integer and RFC 3339')
+                timed_latest = await tool('context_latest', session_handle=handle, n=1, until=upper)
+                require(timed_latest['selection_complete'] and
+                        timed_latest['events'][0]['content']['data'] == 'first memory', 'latest until bound')
                 ranged = await tool('context_recall', session_handle=handle, start=events[0]['at'], end=events[1]['at'])
                 require(ranged['answer_complete'] and len(ranged['events']) == 1, 'half-open time range')
                 latest = await tool('context_latest', session_handle=handle, n=1)
@@ -122,6 +147,15 @@ async def main():
                 closed = await tool('context_close', session_handle=handle)
                 if write:
                     require(closed['release_committed'], 'writer clean close')
+                status = await tool('context_status')
+                require(status['instance']['id'] == ready['id'] and status['instance']['attach']['count'] >= 1,
+                        'MCP bound instance status')
+                detached = await tool('instance_control', action='detach')
+                require(detached['instance'] is None, 'MCP detach drops binding')
+                require((await tool('context_list'))['store_state'] == 'unbound', 'unbound context guidance')
+                await attachments(1 if leased else 0)
+                rebound = await tool('instance_control', action='attach', name='default')
+                require(rebound['instance']['state'] == 'ready', 'MCP reattach after detach')
             await attachments(0)
             print('PASS MCP lease, complete recall, time range, latest and follow')
 
@@ -179,6 +213,26 @@ async def main():
             while cli('status', 'scratch')['state'] != 'stopped':
                 require(time.monotonic() < deadline, 'ephemeral idle stop')
                 await asyncio.sleep(0.1)
+            control_env = dict(env, CHRONOLOG_INSTANCE='scratch')
+            parameters = StdioServerParameters(command='chronolog-mcp',
+                args=['--identity', 'local3-control/main', '--chronicle', 'agent-memory'], env=control_env)
+            async with stdio_client(parameters) as (read, send), ClientSession(read, send) as session:
+                await asyncio.wait_for(session.initialize(), 30)
+
+                async def control(name, /, **arguments):
+                    result = await asyncio.wait_for(session.call_tool(name, arguments), 30)
+                    require(not result.is_error, 'MCP lifecycle ' + name + ': ' + str(result))
+                    return json.loads(result.content[0].text)
+
+                require((await control('context_list'))['store_state'] == 'unbound', 'stopped selection stays unbound')
+                booted = await control('instance_control', action='up', name='scratch', create=True,
+                                       on_last_detach='stop', idle_grace_s=1)
+                require(booted['instance']['state'] == 'ready', 'MCP up stopped ephemeral on saved non-default ports')
+                stopped = await control('instance_control', action='down', name='scratch')
+                require(stopped['instance'] is None and cli('status', 'scratch')['state'] == 'stopped',
+                        'MCP ordered down releases own lease')
+                require((await control('instance_list', probe=True))['instances'][0]['state'] == 'stopped',
+                        'MCP stopped discovery')
             require(cli('down', 'scratch', '--purge', timeout=210)['state'] == 'stopped', 'ephemeral purge')
             require(cli('ls') == [], 'walkthrough registry cleanup')
             print('PASS LOCAL-3 walkthrough: all documented local commands, persistent memory, ephemeral cleanup, both marketplace paths')
