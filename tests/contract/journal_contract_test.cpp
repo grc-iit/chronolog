@@ -20,6 +20,9 @@ struct JournalHarness
     std::function<void()> supersedeIncarnation;
     std::function<void()> unassignWriter;
     bool supports_durable{};
+    bool rejection_reasons{};
+    // Pause after slot validation, before acquiring the writer lock.
+    std::function<void(std::function<void()>)> onSlotValidated;
     std::function<void()> crashRestart;
     std::function<void(int64_t)> setPhysical;
     // Apply and confirm the Keeper release fence before returning.
@@ -110,6 +113,33 @@ protected:
         ASSERT_NE(h->sut, nullptr);
     }
 };
+
+TEST_P(JournalContract, AppendRejectionDefaultsToUnspecified)
+{
+    EXPECT_EQ(AppendResult{}.rejection, AppendRejection::Unspecified);
+    auto items = std::vector<AppendItem>{Item(), Item(2)};
+    for(auto durability: {Durability::Accepted, Durability::Durable})
+    {
+        if(durability == Durability::Durable && !h->supports_durable)
+            continue;
+        auto result = h->sut->append(Batch(items), durability);
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->size(), items.size());
+        for(const auto& item: *result)
+        {
+            ASSERT_TRUE(item.status.ok()) << item.status;
+            EXPECT_EQ(item.rejection, AppendRejection::Unspecified);
+        }
+    }
+    auto retry = h->sut->append(Batch(items), Durability::Accepted);
+    ASSERT_TRUE(retry.ok()) << retry.status();
+    ASSERT_EQ(retry->size(), items.size());
+    for(const auto& item: *retry)
+    {
+        ASSERT_TRUE(item.status.ok()) << item.status;
+        EXPECT_EQ(item.rejection, AppendRejection::Unspecified);
+    }
+}
 
 TEST_P(JournalContract, IdempotentRetryReturnsOriginalResult)
 {

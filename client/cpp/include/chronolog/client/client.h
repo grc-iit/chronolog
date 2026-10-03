@@ -128,6 +128,10 @@ public:
     Client& operator=(Client&&) noexcept;
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
+    // Raises this Client's shared causal floor without lowering it (I7.3).
+    void observeFloor(Hlc floor);
+    // Returns this Client's current shared causal floor (I7.3).
+    Hlc causalFloor() const;
     absl::StatusOr<Chronicle> createChronicle(const std::string&, Deadline deadline = {});
     absl::StatusOr<Chronicle> getChronicle(const std::string&, Deadline deadline = {});
     absl::StatusOr<std::vector<Chronicle>> listChronicles(Deadline deadline = {});

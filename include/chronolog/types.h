@@ -148,6 +148,22 @@ struct KeeperFrontier
     // False denotes a Keeper which did not answer; frontier is then not evidence.
     bool answered{true};
 };
+enum class AppendRejection : uint32_t
+{
+    Unspecified = 0,
+    FencedReleased = 1,
+    FencedSuperseded = 2,
+    SequenceGap = 3,
+    DedupeWindow = 4,
+    EarlierItemFailed = 5,
+    NotRegistered = 6,
+    StaleEpoch = 7,
+    UnassignedKeeper = 8,
+    KeeperNotInRoute = 9,
+    StoryTombstoned = 10,
+    FencedExpired = 11,
+    FencedOwnerRemoved = 12
+};
 struct AppendResult
 {
     absl::Status status;
@@ -157,6 +173,7 @@ struct AppendResult
     EventId id;
     // Present on stale-epoch failure; absent when no redirect is required.
     std::optional<Route> current_route;
+    AppendRejection rejection{AppendRejection::Unspecified};
 };
 struct Range
 {
