@@ -326,8 +326,8 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | --- | --- | --- | --- |
 | payload max bytes | Keeper | 1 MiB | section 3 |
 | group-commit window | Keeper WAL | 1 ms initial, TBD after measurement | section 5 OPEN |
-| causal_floor skew limit | Keeper | TBD | I8.6 |
-| heartbeat timeout | Visor Cluster | TBD | MembershipContract.RegisterHeartbeatAndRestartFencing |
+| causal_floor skew limit | Keeper | 60000000000 ns, config key causal_floor_skew_limit_ns | I8.6, `src/chrono-keeper/KeeperConfig.h` |
+| heartbeat timeout | Visor Cluster | 15000 ms, config key keeper_failure_timeout_ms | MembershipContract.RegisterHeartbeatAndRestartFencing, `src/chrono-visor/VisorConfig.h` |
 | acquisition_lease_default_ns | Visor | 300000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
 | acquisition_lease_min_ns | Visor | 30000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
 | acquisition_lease_max_ns | Visor | 3600000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
