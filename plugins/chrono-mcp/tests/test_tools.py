@@ -9,7 +9,8 @@ from _mcp import Mcp, launcher, operation_ids, unique, until
 pytestmark = pytest.mark.skipif(not os.getenv("CHRONOLOG_TEST_VISOR"), reason="real stack required")
 
 TOOLS = {"context_open", "context_remember", "context_recall", "context_latest", "context_follow",
-         "context_reconcile", "context_checkpoint", "context_close", "context_list", "context_status"}
+         "context_reconcile", "context_checkpoint", "context_close", "context_list", "context_status",
+         "instance_list", "instance_control"}
 
 
 def contents(result):
