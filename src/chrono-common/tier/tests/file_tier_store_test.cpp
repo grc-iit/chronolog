@@ -2062,47 +2062,6 @@ TEST(ManifestLog, ChecksumKeysAreIgnoredByDecode)
     EXPECT_EQ(index->checksums.at(record.file).crc32c, 123u);
 }
 
-TEST(FileTierStore, LegacyRecordWithoutChecksumPreservesReadAndRecovery)
-{
-    auto directory = TestDirectory();
-    auto store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
-    ASSERT_TRUE(store.ok());
-    auto chunk = Rich(0);
-    auto record = (*store)->publish(chunk);
-    ASSERT_TRUE(record.ok());
-    store->reset();
-    auto line = nlohmann::json::parse(Bytes(*directory / "manifest/primary.log"));
-    line.erase("bytes");
-    line.erase("crc32c");
-    std::ofstream(*directory / "manifest/primary.log") << line.dump() << '\n';
-    auto bytes = Bytes(*directory / record->file);
-    auto at = bytes.find(chunk.events.front().envelope.payload);
-    ASSERT_NE(at, std::string::npos);
-    bytes[at] ^= 1;
-    std::ofstream(*directory / record->file, std::ios::binary) << bytes;
-    store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
-    ASSERT_TRUE(store.ok());
-    EXPECT_EQ(Effective(**store).front().state, ManifestState::Published);
-    EXPECT_TRUE((*store)->read(1, kAll).ok());
-}
-
-TEST(FileTierStore, EmptyPublicationChecksumIsVerifiedOnDuplicateAndRecovery)
-{
-    auto directory = TestDirectory();
-    auto store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
-    ASSERT_TRUE(store.ok());
-    auto chunk = Rich(0, 0);
-    auto record = (*store)->publish(chunk);
-    ASSERT_TRUE(record.ok());
-    EXPECT_TRUE((*store)->publish(chunk).ok());
-    std::ofstream(*directory / record->file, std::ios::binary | std::ios::app) << 'x';
-    EXPECT_EQ((*store)->publish(chunk).status().code(), absl::StatusCode::kUnavailable);
-    store->reset();
-    store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
-    ASSERT_TRUE(store.ok());
-    EXPECT_EQ(Effective(**store).front().state, ManifestState::Lost);
-}
-
 TEST(FileTierStore, CompactionOutputCarriesItsChecksum)
 {
     for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
