@@ -21,6 +21,7 @@ struct WriterStamp
 {
     uint64_t writer_id;
     uint64_t incarnation;
+    auto operator<=>(const WriterStamp&) const = default;
 };
 enum class Access
 {
@@ -166,6 +167,16 @@ struct OperationDisposition
     WriterStamp prior_writer;
     std::optional<std::string> normalized_digest;
 };
+struct UnknownOperation
+{
+    std::string operation_id;
+    // Incarnations that may hold it and the proof window [l, m) whose later complete Read releases it (C5).
+    std::vector<WriterStamp> incarnations;
+    std::optional<client::HlcRange> window;
+    // False for an id supplied without a known dispatch bound: such an id can only be found LANDED.
+    bool absence_provable{false};
+    std::optional<std::string> normalized_digest;
+};
 struct Checkpoint
 {
     AgentIdentity identity;
@@ -177,7 +188,7 @@ struct Checkpoint
     std::optional<Hlc> last_own_receipt_hlc;
     std::optional<ReconcileCheckpoint> recovery;
     std::vector<std::string> unresolved_operations;
-    std::vector<std::string> permanently_unknown_operations;
+    std::vector<UnknownOperation> permanently_unknown_operations;
     std::vector<OperationDisposition> dispositions;
     std::optional<Hlc> prior_state_unknown_below;
     bool acquisition_closed{false};
@@ -239,6 +250,9 @@ struct ContextOptions
     size_t max_checkpoint_payload_bytes{1u << 20};
     std::chrono::nanoseconds cut_probe_width{std::chrono::seconds(1)};
 };
+// Versioned self-contained encoding of a Checkpoint; RESOURCE_EXHAUSTED above max_bytes.
+absl::StatusOr<std::string> encodeCheckpoint(const Checkpoint&, size_t max_bytes = 1u << 20);
+absl::StatusOr<Checkpoint> decodeCheckpoint(std::string_view);
 class ContextSession;
 struct FollowInput
 {
