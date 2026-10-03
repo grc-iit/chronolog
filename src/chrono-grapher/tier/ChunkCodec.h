@@ -3,6 +3,7 @@
 #include "chronolog/types.h"
 #include <filesystem>
 #include <span>
+#include <string_view>
 #include <memory>
 
 namespace chronolog
@@ -13,6 +14,10 @@ struct ChunkBytes
     size_t size{};
     std::span<unsigned char> view() const { return {data.get(), size}; }
 };
+// ENOENT and ESTALE at open, fstat or read mean the file vanished (an unlink, possibly by another NFS client). The
+// status stays UNAVAILABLE and carries a payload that ArchiveFileVanished recognises; every other errno does not.
+absl::Status ArchiveFileError(std::string_view operation, int error);
+bool ArchiveFileVanished(const absl::Status& status);
 absl::StatusOr<ChunkBytes> LoadChunkFile(const std::filesystem::path& file);
 absl::StatusOr<std::vector<Event>> DecodeChunkFile(const std::filesystem::path& file, ChunkBytes& bytes);
 

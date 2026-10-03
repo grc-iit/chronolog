@@ -2,6 +2,8 @@
 
 #include "chronolog/types.h"
 #include <filesystem>
+#include <functional>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <map>
 #include <mutex>
@@ -38,8 +40,12 @@ struct ManifestIndex
 class ManifestLog
 {
 public:
-    static absl::StatusOr<std::unique_ptr<ManifestLog>> Open(std::filesystem::path root, std::string writer);
-    static std::unique_ptr<ManifestLog> OpenReadOnly(std::filesystem::path root);
+    // Metadata of a path as the attribute cache reports it, which on NFS can lag an append by acregmax. Change
+    // detection never relies on it; it is injectable so a test can make it lie.
+    using PathStat = std::function<int(const std::filesystem::path&, struct stat&)>;
+    static absl::StatusOr<std::unique_ptr<ManifestLog>>
+    Open(std::filesystem::path root, std::string writer, PathStat path_stat = {});
+    static std::unique_ptr<ManifestLog> OpenReadOnly(std::filesystem::path root, PathStat path_stat = {});
     ~ManifestLog();
     absl::Status append(ManifestRecord record, std::optional<PhysicalBounds> bounds = std::nullopt);
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
@@ -55,7 +61,7 @@ public:
     std::filesystem::path snapshotPath() const;
 
 private:
-    ManifestLog(std::filesystem::path directory, std::string writer, int fd);
+    ManifestLog(std::filesystem::path directory, std::string writer, int fd, PathStat path_stat);
     absl::Status appendLine(std::string line);
     struct Cursor
     {
@@ -63,17 +69,19 @@ private:
         ino_t inode{};
         off_t offset{};
         bool present{};
+        std::string fingerprint;
     };
     struct WriterCursors
     {
         Cursor log, snapshot;
     };
     absl::Status rebuild() const;
-    absl::Status advance(bool& changed) const;
+    absl::Status advance() const;
     absl::Status applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const;
     std::filesystem::path directory_;
     std::string writer_;
     int fd_;
+    PathStat path_stat_;
     mutable std::mutex mutex_;
     mutable ManifestIndex cache_;
     mutable std::map<std::string, WriterCursors> cursors_;

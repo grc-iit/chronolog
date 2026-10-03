@@ -10,6 +10,7 @@
 #include <thread>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace chronolog
@@ -243,6 +244,8 @@ TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
     gate.filename = fs::path(erased->file).filename();
     auto reading = std::async(std::launch::async, [&] { return (*store)->read(1, contract::WholeArchive()); });
     ASSERT_TRUE(gate.waitEntered(1));
+    // A destroy erases through Deleted records after the tombstone; an admitted read reaching it fails (I6.7).
+    ASSERT_TRUE((*store)->tombstone(1).ok());
     auto erasing = std::async(std::launch::async, [&] { return (*store)->eraseFile(erased->file); });
     const auto ready = erasing.wait_for(std::chrono::seconds(5));
     EXPECT_TRUE(gate.release());
@@ -251,6 +254,148 @@ TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
     EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
     EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
     EXPECT_TRUE(absl::IsUnavailable((*store)->readRecord(*erased, contract::WholeArchive()).status()));
+}
+
+TEST(ChunkCodec, OnlyEnoentAndEstaleMeanTheFileVanished)
+{
+    EXPECT_TRUE(ArchiveFileVanished(ArchiveFileError("open archived chunk", ENOENT)));
+    EXPECT_TRUE(ArchiveFileVanished(ArchiveFileError("read archived chunk", ESTALE)));
+    EXPECT_FALSE(ArchiveFileVanished(ArchiveFileError("read archived chunk", EIO)));
+    EXPECT_TRUE(absl::IsUnavailable(ArchiveFileError("stat archived chunk", ESTALE)));
+    auto directory = TestDirectory();
+    auto missing = LoadChunkFile(*directory / "1/missing.pb");
+    EXPECT_TRUE(absl::IsUnavailable(missing.status()));
+    EXPECT_TRUE(ArchiveFileVanished(missing.status()));
+}
+
+TEST(FileTierStore, VanishedFileAfterDeleteIsSkippedNotSourceFailed)
+{
+    for(const bool stale_after_open: {false, true})
+        for(const int api: {0, 1, 2})
+        {
+            SCOPED_TRACE(std::to_string(stale_after_open) + "/" + std::to_string(api));
+            auto directory = TestDirectory();
+            auto writer = Open(*directory);
+            ASSERT_TRUE(writer.ok());
+            auto erased = (*writer)->publish(contract::Window());
+            auto kept = (*writer)->publish(contract::Window(200, 300));
+            ASSERT_TRUE(erased.ok());
+            ASSERT_TRUE(kept.ok());
+            std::atomic<int> erasures{0};
+            auto load = [&](const fs::path& path) -> absl::StatusOr<ChunkBytes>
+            {
+                if(path.filename() != fs::path(erased->file).filename() || erasures++ != 0)
+                    return LoadChunkFile(path);
+                auto bytes = stale_after_open ? LoadChunkFile(path) : absl::StatusOr<ChunkBytes>();
+                EXPECT_TRUE((*writer)->eraseFile(erased->file).ok());
+                if(!stale_after_open)
+                    return LoadChunkFile(path);
+                EXPECT_TRUE(bytes.ok()) << bytes.status();
+                return ArchiveFileError("read archived chunk", ESTALE);
+            };
+            auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), load, 2);
+            ASSERT_TRUE(reader.ok());
+            if(api == 0)
+            {
+                auto events = (*reader)->readRecord(*erased, contract::WholeArchive());
+                ASSERT_TRUE(events.ok()) << events.status();
+                EXPECT_TRUE(events->empty());
+            }
+            else if(api == 1)
+            {
+                const std::vector<ManifestRecord> records{*erased, *kept};
+                auto batch = (*reader)->readRecords(records, contract::WholeArchive());
+                ASSERT_EQ(batch.size(), 2u);
+                ASSERT_TRUE(batch[0].ok()) << batch[0].status();
+                EXPECT_TRUE(batch[0]->empty());
+                ASSERT_TRUE(batch[1].ok()) << batch[1].status();
+                ASSERT_EQ(batch[1]->size(), 1u);
+                EXPECT_EQ(batch[1]->front().id.sequence, 200u);
+            }
+            else
+            {
+                auto events = (*reader)->read(1, contract::WholeArchive());
+                ASSERT_TRUE(events.ok()) << events.status();
+                ASSERT_EQ(events->size(), 1u);
+                EXPECT_EQ(events->front().id.sequence, 200u);
+            }
+            EXPECT_EQ(erasures.load(), 1);
+            EXPECT_FALSE((*reader)->incomplete(1, contract::WholeArchive()).value());
+        }
+}
+
+TEST(FileTierStore, VanishedEffectiveFileIsStillAFailure)
+{
+    for(const int cause: {0, 1, 2})
+    {
+        SCOPED_TRACE(cause);
+        auto directory = TestDirectory();
+        auto writer = Open(*directory);
+        ASSERT_TRUE(writer.ok());
+        auto record = (*writer)->publish(contract::Window());
+        ASSERT_TRUE(record.ok());
+        auto load = [&](const fs::path& path) -> absl::StatusOr<ChunkBytes>
+        {
+            if(cause == 1)
+                return ArchiveFileError("stat archived chunk", ESTALE);
+            return LoadChunkFile(path);
+        };
+        auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), load, 2);
+        ASSERT_TRUE(reader.ok());
+        if(cause == 0)
+        {
+            ASSERT_TRUE(fs::remove(*directory / record->file));
+        }
+        if(cause == 2)
+        {
+            ASSERT_TRUE((*writer)->tombstone(1).ok());
+            ASSERT_TRUE((*writer)->eraseFile(record->file).ok());
+        }
+        auto single = (*reader)->readRecord(*record, contract::WholeArchive());
+        EXPECT_TRUE(absl::IsUnavailable(single.status())) << single.status();
+        EXPECT_TRUE(ArchiveFileVanished(single.status()));
+        auto batch = (*reader)->readRecords(std::span<const ManifestRecord>(&*record, 1), contract::WholeArchive());
+        ASSERT_EQ(batch.size(), 1u);
+        EXPECT_TRUE(absl::IsUnavailable(batch[0].status())) << batch[0].status();
+        if(cause != 2)
+        {
+            EXPECT_TRUE(absl::IsUnavailable((*reader)->read(1, contract::WholeArchive()).status()));
+        }
+    }
+}
+
+TEST(FileTierStore, RecoveryDoesNotMarkADeletedFileLost)
+{
+    auto directory = TestDirectory();
+    auto peer = Open(*directory, "peer");
+    ASSERT_TRUE(peer.ok());
+    auto erased = (*peer)->publish(contract::Window());
+    ASSERT_TRUE(erased.ok());
+    ASSERT_TRUE((*peer)->publish(contract::Window(200, 300)).ok());
+    int erasures = 0;
+    auto load = [&](const fs::path& path)
+    {
+        if(path.filename() == fs::path(erased->file).filename() && erasures++ == 0)
+        {
+            EXPECT_TRUE((*peer)->eraseFile(erased->file).ok());
+        }
+        return LoadChunkFile(path);
+    };
+    auto store =
+            FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<HDF5ChunkCodec>(), {}, load);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(erasures, 1);
+    auto records = (*store)->manifest(1);
+    ASSERT_TRUE(records.ok());
+    for(const auto& record: *records)
+    {
+        EXPECT_NE(record.state, ManifestState::Lost) << record.file;
+        if(record.file == erased->file)
+        {
+            EXPECT_EQ(record.state, ManifestState::Deleted);
+        }
+    }
+    EXPECT_FALSE((*store)->incomplete(1, contract::WholeArchive()).value());
 }
 
 TEST(FileTierStore, RecordsFromOneSnapshotAreReadInParallel)
@@ -467,6 +612,7 @@ TEST(FileTierStore, ReadRecordErasedBeforeOpenIsUnavailable)
     auto reading =
             std::async(std::launch::async, [&] { return (*reader)->readRecord(*record, contract::WholeArchive()); });
     ASSERT_TRUE(gate.waitEntered(1));
+    ASSERT_TRUE((*writer)->tombstone(1).ok());
     ASSERT_TRUE((*writer)->eraseFile(record->file).ok());
     EXPECT_TRUE(gate.release());
     EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
@@ -585,6 +731,7 @@ TEST(FileTierStore, PhysicalPruningNeverDropsAnIntersectingEvent)
         store->reset();
         store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
         ASSERT_TRUE(store.ok()) << store.status();
+        reads.clear();
         const Range range{Range::Axis::Physical, {100, 0}, {101, 0}};
         auto events = (*store)->read(1, range);
         ASSERT_TRUE(events.ok()) << events.status();
@@ -1259,6 +1406,111 @@ TEST(ManifestLog, SyncSeesAnotherWritersAppendsAndSurvivesItsCompaction)
     ASSERT_TRUE((*mine)->compact().ok());
     EXPECT_EQ(count(), 4u);
     EXPECT_EQ((*mine)->sync().value()->by_story.at(1).size(), 4u);
+}
+
+TEST(ManifestLog, PollDetectsAppendWithoutPathStat)
+{
+    auto directory = TestDirectory();
+    auto writer = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(writer.ok());
+    ASSERT_TRUE((*writer)->append(Record(100, 200)).ok());
+    std::mutex mutex;
+    std::map<std::string, struct stat> cached;
+    auto lagging = [&](const fs::path& path, struct stat& info)
+    {
+        std::lock_guard lock(mutex);
+        auto [it, inserted] = cached.try_emplace(path.string());
+        if(inserted && ::stat(path.c_str(), &it->second) != 0)
+        {
+            const int error = errno;
+            cached.erase(it);
+            errno = error;
+            return -1;
+        }
+        info = it->second;
+        return 0;
+    };
+    auto reader = ManifestLog::OpenReadOnly(*directory, lagging);
+    auto index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    EXPECT_EQ((*index)->records.size(), 1u);
+    for(const int64_t start: {200, 300})
+    {
+        ASSERT_TRUE((*writer)->append(Record(start, start + 100)).ok());
+        index = reader->sync();
+        ASSERT_TRUE(index.ok()) << index.status();
+        ASSERT_FALSE((*index)->records.empty());
+        EXPECT_EQ((*index)->records.back().start, (Hlc{start, 0}));
+    }
+    EXPECT_EQ(reader->sync().value()->records.size(), 3u);
+}
+
+TEST(ManifestLog, TruncatedAndRegrownLogIsReadFromTheStart)
+{
+    auto directory = TestDirectory();
+    auto writer = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(writer.ok());
+    for(const int64_t start: {100, 200, 300}) ASSERT_TRUE((*writer)->append(Record(start, start + 100)).ok());
+    auto reader = ManifestLog::OpenReadOnly(*directory);
+    auto index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    ASSERT_EQ((*index)->records.size(), 3u);
+    const auto log = *directory / "manifest/primary.log";
+    const auto consumed = fs::file_size(log);
+    struct stat before
+    {
+    };
+    ASSERT_EQ(::stat(log.c_str(), &before), 0);
+    fs::resize_file(log, 0);
+    for(const int64_t start: {10000000, 20000000, 30000000})
+        ASSERT_TRUE((*writer)->append(Record(start, start + 100)).ok());
+    ASSERT_GT(fs::file_size(log), consumed);
+    struct stat after
+    {
+    };
+    ASSERT_EQ(::stat(log.c_str(), &after), 0);
+    ASSERT_EQ(after.st_ino, before.st_ino);
+    index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    std::vector<int64_t> starts;
+    for(const auto& record: (*index)->records) starts.push_back(record.start.physical_ns);
+    EXPECT_EQ(starts, (std::vector<int64_t>{10000000, 20000000, 30000000}));
+    ASSERT_TRUE((*writer)->append(Record(40000000, 40000100)).ok());
+    EXPECT_EQ(reader->sync().value()->records.size(), 4u);
+}
+
+TEST(ManifestLog, FailedRefreshKeepsThePreviousIndex)
+{
+    auto directory = TestDirectory();
+    auto writer = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(writer.ok());
+    ASSERT_TRUE((*writer)->append(Record(100, 200)).ok());
+    auto reader = ManifestLog::OpenReadOnly(*directory);
+    auto store = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1));
+    ASSERT_TRUE(store.ok());
+    auto index = reader->sync();
+    ASSERT_TRUE(index.ok());
+    const auto generation = (*index)->generation;
+    const auto log = *directory / "manifest/primary.log";
+    const auto good = Bytes(log);
+    std::ofstream(log, std::ios::app) << "{\"chunk\":1}\n";
+    for(int attempt = 0; attempt < 2; ++attempt)
+    {
+        EXPECT_FALSE(reader->sync().ok());
+        EXPECT_EQ(reader->current()->records.size(), 1u);
+        EXPECT_EQ(reader->current()->generation, generation);
+        EXPECT_FALSE((*store)->refreshNow().ok());
+        auto records = (*store)->manifest(1);
+        ASSERT_TRUE(records.ok()) << records.status();
+        EXPECT_EQ(records->size(), 1u);
+    }
+    std::ofstream(log, std::ios::trunc) << good;
+    ASSERT_TRUE((*writer)->append(Record(200, 300)).ok());
+    index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    EXPECT_EQ((*index)->records.size(), 2u);
+    ASSERT_TRUE((*store)->refreshNow().ok());
+    EXPECT_EQ((*store)->manifest(1)->size(), 2u);
 }
 
 TEST(ManifestLog, ConcurrentAppendsAllSurvive)

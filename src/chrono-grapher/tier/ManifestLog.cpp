@@ -1,5 +1,6 @@
 #include "chrono-grapher/tier/ManifestLog.h"
 #include "chrono-grapher/tier/FileIO.h"
+#include <absl/log/check.h>
 #include <algorithm>
 #include <fstream>
 #include <limits>
@@ -144,15 +145,18 @@ absl::Status RepairTail(int fd)
 }
 } // namespace
 
-ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd)
+ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd, PathStat path_stat)
     : directory_(std::move(directory))
     , writer_(std::move(writer))
     , fd_(fd)
+    , path_stat_(path_stat ? std::move(path_stat)
+                           : PathStat([](const std::filesystem::path& path, struct stat& info)
+                                      { return ::stat(path.c_str(), &info); }))
 {}
 
-std::unique_ptr<ManifestLog> ManifestLog::OpenReadOnly(std::filesystem::path root)
+std::unique_ptr<ManifestLog> ManifestLog::OpenReadOnly(std::filesystem::path root, PathStat path_stat)
 {
-    return std::unique_ptr<ManifestLog>(new ManifestLog(root / "manifest", "", -1));
+    return std::unique_ptr<ManifestLog>(new ManifestLog(root / "manifest", "", -1, std::move(path_stat)));
 }
 
 ManifestLog::~ManifestLog()
@@ -161,7 +165,8 @@ ManifestLog::~ManifestLog()
         ::close(fd_);
 }
 
-absl::StatusOr<std::unique_ptr<ManifestLog>> ManifestLog::Open(std::filesystem::path root, std::string writer)
+absl::StatusOr<std::unique_ptr<ManifestLog>>
+ManifestLog::Open(std::filesystem::path root, std::string writer, PathStat path_stat)
 {
     if(!SafeWriter(writer))
         return absl::InvalidArgumentError("invalid manifest writer");
@@ -173,7 +178,7 @@ absl::StatusOr<std::unique_ptr<ManifestLog>> ManifestLog::Open(std::filesystem::
     const int fd = ::open((directory / (writer + ".log")).c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC, 0644);
     if(fd < 0)
         return tier_detail::IoError("open writer log");
-    auto result = std::unique_ptr<ManifestLog>(new ManifestLog(directory, std::move(writer), fd));
+    auto result = std::unique_ptr<ManifestLog>(new ManifestLog(directory, std::move(writer), fd, std::move(path_stat)));
     if(::flock(fd, LOCK_EX | LOCK_NB) != 0)
         return absl::UnavailableError("manifest writer already active");
     const auto status = RepairTail(fd);
@@ -282,51 +287,66 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
 
 namespace
 {
-struct Tail
-{
-    std::string data;
-    off_t consumed{};
-    off_t size{};
-    dev_t device{};
-    ino_t inode{};
-};
+// Bytes kept from just before a cursor. A log truncated and grown back past the cursor (same inode, size at least the
+// cursor) no longer holds them there, so the reader starts over instead of reading from the middle of a line.
+constexpr size_t kFingerprint = 4096;
 
-// Reads from `offset` to the end of the file and keeps only complete lines. NotFound when the file is absent.
-absl::StatusOr<Tail> ReadTail(const std::filesystem::path& path, off_t offset)
+absl::StatusOr<std::string> ReadRange(int fd, off_t begin, off_t end)
 {
-    tier_detail::Fd fd(::open(path.c_str(), O_RDONLY | O_CLOEXEC));
-    if(fd.get() < 0)
-    {
-        if(errno == ENOENT)
-            return absl::NotFoundError("manifest file does not exist");
-        return tier_detail::IoError("open manifest " + path.string());
-    }
-    struct stat info;
-    if(::fstat(fd.get(), &info) != 0)
-        return tier_detail::IoError("stat manifest");
-    Tail tail;
-    tail.size = info.st_size;
-    tail.device = info.st_dev;
-    tail.inode = info.st_ino;
-    tail.consumed = offset;
-    if(offset > info.st_size)
-        return tail;
-    tail.data.resize(static_cast<size_t>(info.st_size - offset));
+    std::string data(static_cast<size_t>(end - begin), '\0');
     size_t read = 0;
-    while(read < tail.data.size())
+    while(read < data.size())
     {
-        const auto n = ::pread(fd.get(), tail.data.data() + read, tail.data.size() - read, offset + read);
+        const auto n = ::pread(fd, data.data() + read, data.size() - read, begin + static_cast<off_t>(read));
         if(n < 0 && errno == EINTR)
             continue;
-        if(n <= 0)
+        if(n < 0)
             return tier_detail::IoError("read manifest");
+        if(n == 0)
+            return absl::UnavailableError("manifest shrank while it was read");
         read += static_cast<size_t>(n);
     }
-    tail.data.resize(read);
-    const auto end = tail.data.rfind('\n');
-    tail.data.resize(end == std::string::npos ? 0 : end + 1);
-    tail.consumed = offset + static_cast<off_t>(tail.data.size());
-    return tail;
+    return data;
+}
+
+std::string Fingerprint(std::string previous, std::string_view appended)
+{
+    previous += appended;
+    if(previous.size() > kFingerprint)
+        previous.erase(0, previous.size() - kFingerprint);
+    return previous;
+}
+
+// Opens before it decides anything: on NFS open revalidates the attribute cache (close-to-open) and fstat on the
+// descriptor is then current, while a path stat can lag an append by acregmax. -1 with errno ENOENT when absent.
+absl::StatusOr<int> OpenManifest(const std::filesystem::path& path, struct stat& info)
+{
+    const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if(fd < 0)
+    {
+        if(errno == ENOENT)
+            return -1;
+        return tier_detail::IoError("open manifest " + path.string());
+    }
+    if(::fstat(fd, &info) != 0)
+    {
+        auto status = tier_detail::IoError("stat manifest");
+        ::close(fd);
+        return status;
+    }
+    return fd;
+}
+
+// Reads from `offset` to `size` and keeps only complete lines; returns the offset just past the last of them.
+absl::StatusOr<std::pair<std::string, off_t>> ReadTail(int fd, off_t offset, off_t size)
+{
+    auto data = ReadRange(fd, offset, size);
+    if(!data.ok())
+        return data.status();
+    const auto end = data->rfind('\n');
+    data->resize(end == std::string::npos ? 0 : end + 1);
+    const auto consumed = offset + static_cast<off_t>(data->size());
+    return std::pair{*std::move(data), consumed};
 }
 
 template <class Fn>
@@ -343,99 +363,144 @@ absl::Status ForEachLine(const std::string& data, Fn&& fn)
     }
     return absl::OkStatus();
 }
-} // namespace
 
-absl::Status ManifestLog::rebuild() const
+absl::StatusOr<std::set<std::string>> Writers(const std::filesystem::path& directory)
 {
-    cache_ = ManifestIndex{};
-    cursors_.clear();
-    cache_.generation = ++generations_;
     std::error_code error;
     std::set<std::string> writers;
-    for(std::filesystem::directory_iterator it(directory_, error), end; !error && it != end; it.increment(error))
+    for(std::filesystem::directory_iterator it(directory, error), end; !error && it != end; it.increment(error))
         if(it->path().extension() == ".log" || it->path().extension() == ".snap")
             writers.insert(it->path().stem().string());
     if(error == std::errc::no_such_file_or_directory)
-        return absl::OkStatus();
+        return std::set<std::string>{};
     if(error)
         return absl::UnavailableError(error.message());
-    for(const auto& writer: writers)
+    return writers;
+}
+} // namespace
+
+// Builds a whole index privately and installs it only when every file parsed, so a failed refresh leaves the
+// previous index in place for concurrent readers.
+absl::Status ManifestLog::rebuild() const
+{
+    auto writers = Writers(directory_);
+    if(!writers.ok())
+        return writers.status();
+    ManifestIndex index;
+    std::map<std::string, WriterCursors> cursors;
+    for(const auto& writer: *writers)
     {
         std::set<std::string> seen;
-        auto& cursors = cursors_[writer];
+        auto& writer_cursors = cursors[writer];
         for(const auto* extension: {".log", ".snap"})
         {
-            auto tail = ReadTail(directory_ / (writer + extension), 0);
+            struct stat info;
+            auto opened = OpenManifest(directory_ / (writer + extension), info);
+            if(!opened.ok())
+                return opened.status();
+            if(*opened < 0)
+                continue;
+            tier_detail::Fd fd(*opened);
+            auto tail = ReadTail(fd.get(), 0, info.st_size);
             if(!tail.ok())
-            {
-                if(absl::IsNotFound(tail.status()))
-                    continue;
                 return tail.status();
-            }
-            auto& cursor = std::string(extension) == ".log" ? cursors.log : cursors.snapshot;
-            cursor = {tail->device, tail->inode, tail->consumed, true};
-            auto status = ForEachLine(tail->data,
+            auto& cursor = std::string(extension) == ".log" ? writer_cursors.log : writer_cursors.snapshot;
+            cursor = {info.st_dev, info.st_ino, tail->second, true, Fingerprint({}, tail->first)};
+            auto status = ForEachLine(tail->first,
                                       [&](std::string line)
                                       {
                                           if(!seen.insert(line).second)
                                               return absl::OkStatus();
-                                          return applyLine(writer, line, cache_);
+                                          return applyLine(writer, line, index);
                                       });
             if(!status.ok())
                 return status;
         }
     }
+    index.generation = ++generations_;
+    cache_ = std::move(index);
+    cursors_ = std::move(cursors);
     return absl::OkStatus();
 }
 
-absl::Status ManifestLog::advance(bool& changed) const
+absl::Status ManifestLog::advance() const
 {
-    std::error_code error;
-    std::set<std::string> writers;
-    for(std::filesystem::directory_iterator it(directory_, error), end; !error && it != end; it.increment(error))
-        if(it->path().extension() == ".log" || it->path().extension() == ".snap")
-            writers.insert(it->path().stem().string());
-    if(error == std::errc::no_such_file_or_directory)
-        writers.clear();
-    else if(error)
-        return absl::UnavailableError(error.message());
-    if(writers.size() != cursors_.size())
+    auto writers = Writers(directory_);
+    if(!writers.ok())
+        return writers.status();
+    if(writers->size() != cursors_.size())
         return rebuild();
-    for(const auto& writer: writers)
+    for(const auto& writer: *writers)
         if(!cursors_.contains(writer))
             return rebuild();
+    struct Pending
+    {
+        const std::string* writer;
+        Cursor* cursor;
+        Cursor next;
+        std::string data;
+    };
+    std::vector<Pending> pending;
     for(auto& [writer, cursors]: cursors_)
     {
-        struct stat info;
         for(const auto* extension: {".snap", ".log"})
         {
             auto& cursor = std::string(extension) == ".log" ? cursors.log : cursors.snapshot;
-            const auto path = directory_ / (writer + extension);
-            if(::stat(path.c_str(), &info) != 0)
+            struct stat info;
+            auto opened = OpenManifest(directory_ / (writer + extension), info);
+            if(!opened.ok())
+                return opened.status();
+            if(*opened < 0)
             {
-                if(errno != ENOENT)
-                    return tier_detail::IoError("stat manifest");
                 if(cursor.present)
                     return rebuild();
                 continue;
             }
+            tier_detail::Fd fd(*opened);
             if(!cursor.present || cursor.device != info.st_dev || cursor.inode != info.st_ino ||
                info.st_size < cursor.offset)
                 return rebuild();
             if(std::string(extension) == ".snap" && info.st_size != cursor.offset)
                 return rebuild();
+            if(!cursor.fingerprint.empty())
+            {
+                auto prior = ReadRange(fd.get(),
+                                       cursor.offset - static_cast<off_t>(cursor.fingerprint.size()),
+                                       cursor.offset);
+                if(!prior.ok())
+                    return prior.status();
+                if(*prior != cursor.fingerprint)
+                    return rebuild();
+            }
             if(info.st_size == cursor.offset)
                 continue;
-            auto tail = ReadTail(path, cursor.offset);
+            auto tail = ReadTail(fd.get(), cursor.offset, info.st_size);
             if(!tail.ok())
                 return tail.status();
-            auto status = ForEachLine(tail->data, [&](std::string line) { return applyLine(writer, line, cache_); });
-            if(!status.ok())
-                return status;
-            if(tail->consumed != cursor.offset)
-                changed = true;
-            cursor.offset = tail->consumed;
+            if(tail->first.empty())
+                continue;
+            // Every failure applyLine can report depends on the line alone, so a line that applies to a scratch index
+            // applies to the cache too and the cache is never left half advanced.
+            auto valid = ForEachLine(tail->first,
+                                     [&](std::string line)
+                                     {
+                                         ManifestIndex scratch;
+                                         return applyLine(writer, line, scratch);
+                                     });
+            if(!valid.ok())
+                return valid;
+            Cursor next = cursor;
+            next.offset = tail->second;
+            next.fingerprint = Fingerprint(cursor.fingerprint, tail->first);
+            pending.push_back({&writer, &cursor, std::move(next), std::move(tail->first)});
         }
+    }
+    for(auto& update: pending)
+    {
+        auto status =
+                ForEachLine(update.data, [&](std::string line) { return applyLine(*update.writer, line, cache_); });
+        CHECK(status.ok()) << "manifest line failed after it validated: " << status;
+        *update.cursor = std::move(update.next);
     }
     return absl::OkStatus();
 }
@@ -443,19 +508,9 @@ absl::Status ManifestLog::advance(bool& changed) const
 absl::StatusOr<const ManifestIndex*> ManifestLog::sync() const
 {
     std::lock_guard lock(mutex_);
-    absl::Status status = absl::OkStatus();
-    bool changed = false;
-    if(!synced_)
-        status = rebuild();
-    else
-        status = advance(changed);
+    auto status = synced_ ? advance() : rebuild();
     if(!status.ok())
-    {
-        cache_ = ManifestIndex{};
-        cursors_.clear();
-        synced_ = false;
         return status;
-    }
     synced_ = true;
     return &cache_;
 }
@@ -476,11 +531,12 @@ absl::Status ManifestLog::compact()
     std::set<std::string> seen;
     for(const auto& path: {snapshotPath(), logPath()})
     {
-        if(::access(path.c_str(), F_OK) != 0)
+        struct stat info;
+        if(path_stat_(path, info) != 0)
         {
             if(errno == ENOENT)
                 continue;
-            return tier_detail::IoError("access own manifest");
+            return tier_detail::IoError("stat own manifest");
         }
         auto lines = ReadLines(path);
         if(!lines.ok())
