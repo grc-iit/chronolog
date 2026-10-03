@@ -664,6 +664,26 @@ RaftMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples
         return absl::UnavailableError("authority lost during renewal");
     return results;
 }
+absl::StatusOr<size_t> RaftMetadataStore::acceptKeeperEvidence(const std::string& keeper,
+                                                               const std::vector<RenewAcquisition>& tuples)
+{
+    auto status = reconcileLeases();
+    if(!status.ok())
+        return status;
+    const size_t batch = leases_.config().acquisition_evidence_batch;
+    size_t renewed = 0;
+    for(size_t begin = 0; begin < tuples.size(); begin += batch)
+    {
+        auto rows = store_->acquisitionRows(
+                {tuples.begin() + begin, tuples.begin() + std::min(tuples.size(), begin + batch)});
+        if(!rows.ok())
+            return rows.status();
+        if(!leaderLease())
+            return absl::UnavailableError("no leader lease");
+        renewed += leases_.acceptEvidence(keeper, *rows);
+    }
+    return renewed;
+}
 absl::StatusOr<ReleaseResult> RaftMetadataStore::release(StoryId id, uint64_t writer, uint64_t incarnation)
 {
     internal::v1::CatalogCommand c;
