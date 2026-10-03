@@ -159,7 +159,8 @@ async def main():
             again = cli('up', 'default')
             require(again['id'] == ready['id'] and again['endpoints'] == ready['endpoints'], 'restart identity and endpoints')
             manifest = json.loads((root / '.claude-plugin/marketplace.json').read_text())['plugins'][0]['mcpServers']['chronolog']
-            marketplace_env = dict(env, CHRONOLOG_MCP_IDENTITY='agent-memory/main', CHRONOLOG_CHRONICLE='agent-memory')
+            marketplace_env = dict(env, CHRONOLOG_MCP_IDENTITY='agent-memory/main', CHRONOLOG_CHRONICLE='agent-memory',
+                                   CHRONOLOG_MCP_LOCK_DIR=str(Path(env['CHRONOLOG_HOME']) / 'locks'))
             await mcp_session(manifest['command'], manifest['args'], marketplace_env)
             uvx = shutil.which('uvx')
             require(uvx is not None, 'real uvx for marketplace fallback')

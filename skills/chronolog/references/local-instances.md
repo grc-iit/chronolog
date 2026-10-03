@@ -4,7 +4,7 @@ Use this page for discovery, MCP configuration, persistent storage and recovery.
 
 ## Discover and attach
 
-`chronolog ls` returns JSON records. Select a `ready` record and pass its name to `chronolog run <name> -- chronolog-mcp --identity <slot> --chronicle <project>`. `run` holds an attachment lease for managed instances and exports `CHRONOLOG_CATALOG`, `CHRONOLOG_PLAYER`, `CHRONOLOG_INSTANCE`, `CHRONOLOG_HOME` and `CHRONOLOG_MCP_LOCK_DIR` to its child. An external record has no managed supervisor or lease. The demo kit registers its compose project automatically; use `chronolog-demo down` to stop that stack and remove its record, rather than the managed-instance `chronolog down`.
+`chronolog ls` returns JSON records. Select a `ready` record and pass its name to `chronolog run --up <name> -- chronolog-mcp --identity <slot> --chronicle <project>`. `run` holds an attachment lease for managed instances and exports `CHRONOLOG_CATALOG`, `CHRONOLOG_PLAYER`, `CHRONOLOG_INSTANCE`, `CHRONOLOG_HOME` and `CHRONOLOG_MCP_LOCK_DIR` to its child. An external record has no managed supervisor or lease. The demo kit registers its compose project automatically; use `chronolog-demo down` to stop that stack and remove its record, rather than the managed-instance `chronolog down`.
 
 `CHRONOLOG_CATALOG` and optional `CHRONOLOG_PLAYER` take precedence for `run` and `env`, including when an instance name is passed. Otherwise `CHRONOLOG_INSTANCE` selects a name or id when no name is supplied, and `default` is the fallback. `--up` permits booting a stopped managed instance. Set explicit remote endpoints only when you intend to bypass local selection.
 
