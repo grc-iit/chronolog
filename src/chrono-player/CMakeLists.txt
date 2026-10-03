@@ -63,4 +63,6 @@ target_link_libraries(chrono_player_route_tail_probe PRIVATE chronolog_common_rp
 if(CHRONOLOG_BUILD_BENCH)
     add_executable(chrono_player_archive_pool_bench tests/archive_pool_bench.cpp)
     target_link_libraries(chrono_player_archive_pool_bench PRIVATE chrono_player_replay chronolog_warnings)
+    add_executable(chrono_player_compacted_read_bench tests/compacted_read_bench.cpp)
+    target_link_libraries(chrono_player_compacted_read_bench PRIVATE chrono_player_replay chronolog_warnings)
 endif()
