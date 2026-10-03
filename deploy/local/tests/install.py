@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 
 from sdk_wheel import prepare_sdk
 
@@ -34,8 +35,26 @@ def main():
             return result.stdout
 
         call([sys.executable, '-m', 'venv', prefix])
+        servers = {'visor': 'src/chrono-visor', 'keeper': 'src/chrono-keeper',
+                   'grapher': 'src/chrono-grapher/server', 'player': 'src/chrono-player'}
+        before = {role: (build_dir / folder / ('chrono_' + role)).stat().st_size
+                  for role, folder in servers.items()}
+        started = time.monotonic()
         for component in ('server', 'client'):
-            call([cmake, '--install', build_dir, '--prefix', prefix, '--component', component])
+            command = [cmake, '--install', build_dir, '--prefix', prefix, '--component', component]
+            if component == 'server':
+                command.append('--strip')
+            call(command)
+            if component == 'server':
+                elapsed = time.monotonic() - started
+                after = {role: (prefix / bindir / ('chrono_' + role)).stat().st_size
+                         for role in servers}
+                for role in servers:
+                    print(f'Installed chrono_{role} bytes: before={before[role]} after={after[role]}',
+                          flush=True)
+                print(f'Installed servers total bytes: before={sum(before.values())} '
+                      f'after={sum(after.values())}; cmake --install --strip seconds={elapsed:.3f}',
+                      flush=True)
         python = prefix / 'bin/python'
         wheels = [next(wheel_dir.glob('chronolog_local-*.whl')), sdk]
         call([python, '-m', 'pip', 'install', '--no-index', '--no-deps', *wheels])
