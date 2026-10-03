@@ -284,7 +284,12 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
         {
             auto next = routes_->routeStateAfter(story, state->route.epoch, deadline);
             if(!next.ok())
+            {
+                // The Read already captured its sources; a reconnect tombstone cannot erase their failure evidence.
+                if(absl::IsFailedPrecondition(next.status()))
+                    return out;
                 return next.status();
+            }
             if(next->route.epoch > state->route.epoch)
             {
                 state = std::move(next);
