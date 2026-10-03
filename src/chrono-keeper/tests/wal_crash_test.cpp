@@ -6,6 +6,8 @@
 #include <fstream>
 #include <thread>
 #include <random>
+#include <poll.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
@@ -18,8 +20,40 @@ namespace
 {
 using namespace std::chrono_literals;
 
+class StaticPolicyCluster final: public internal::v1::Cluster::Service
+{
+public:
+    ~StaticPolicyCluster()
+    {
+        if(server)
+            server->Shutdown(std::chrono::system_clock::now());
+    }
+    grpc::Status Register(grpc::ServerContext*,
+                          const internal::v1::RegisterRequest*,
+                          internal::v1::RegisterResponse* response) override
+    {
+        const PhysicalPolicy expected;
+        auto* policy = response->mutable_policy();
+        policy->set_version(expected.version);
+        policy->set_acceptance_window_ns(expected.acceptance_window_ns);
+        policy->set_skew_limit_ns(expected.skew_limit_ns);
+        policy->set_hlc_lead_ns(expected.hlc_lead_ns);
+        policy->set_uncertainty_cap_ns(expected.uncertainty_cap_ns);
+        return grpc::Status::OK;
+    }
+    std::unique_ptr<grpc::Server> server;
+};
+
 TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
 {
+    StaticPolicyCluster cluster;
+    grpc::ServerBuilder builder;
+    int visor_port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &visor_port);
+    builder.RegisterService(&cluster);
+    cluster.server = builder.BuildAndStart();
+    ASSERT_NE(cluster.server, nullptr);
+    const auto visor_endpoint = "127.0.0.1:" + std::to_string(visor_port);
     auto control = std::make_shared<WalControl>();
     std::string endpoint, archive_endpoint;
     const auto config_path = control->directory + "/keeper.json";
@@ -31,7 +65,7 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
         archive_endpoint = "127.0.0.1:" + std::to_string(port + 1);
         std::ofstream(config_path)
                 << "{\"listen\":\"" << endpoint << "\",\"internal_listen\":\"" << archive_endpoint
-                << "\",\"visor_internal\":\"127.0.0.1:1\",\"wal_dir\":\"" << control->directory
+                << "\",\"visor_internal\":\"" << visor_endpoint << "\",\"wal_dir\":\"" << control->directory
                 << "\",\"worker_threads\":2,\"static_routes\":[{\"story_id\":1,\"epoch\":7,\"keepers\":["
                    "{\"process_id\":\"keeper-1\",\"endpoint\":\""
                 << endpoint << "\"}]}],\"static_writers\":[{\"story_id\":1,\"writer_id\":2,\"incarnation\":3}]}";
@@ -56,12 +90,24 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
         for(int attempt = 0; attempt < 8 && std::chrono::system_clock::now() < deadline; ++attempt)
         {
             addresses();
+            int ready_pipe[2];
+            if(::pipe2(ready_pipe, O_CLOEXEC) != 0)
+                return false;
             child.pid = ::fork();
             if(child.pid == 0)
             {
+                ::dup2(ready_pipe[1], STDOUT_FILENO);
+                ::close(ready_pipe[0]);
+                ::close(ready_pipe[1]);
                 ::execl(CHRONOLOG_KEEPER_BINARY, CHRONOLOG_KEEPER_BINARY, "--config", config_path.c_str(), nullptr);
                 ::_exit(127);
             }
+            ::close(ready_pipe[1]);
+            struct ReadPipe
+            {
+                int fd;
+                ~ReadPipe() { ::close(fd); }
+            } ready{ready_pipe[0]};
             if(child.pid < 0)
                 return false;
             auto channel = grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
@@ -70,7 +116,26 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
             {
                 if(channel->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 100ms)) &&
                    internal->WaitForConnected(std::min(deadline, std::chrono::system_clock::now() + 100ms)))
-                    return true;
+                {
+                    std::string output;
+                    while(std::chrono::system_clock::now() < deadline)
+                    {
+                        pollfd fd{ready.fd, POLLIN, 0};
+                        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                       deadline - std::chrono::system_clock::now())
+                                                       .count();
+                        if(::poll(&fd, 1, static_cast<int>(std::max<int64_t>(remaining, 0))) <= 0)
+                            break;
+                        char buffer[256];
+                        const auto count = ::read(ready.fd, buffer, sizeof(buffer));
+                        if(count <= 0)
+                            break;
+                        output.append(buffer, static_cast<size_t>(count));
+                        if(output.find("journal ready durability=") != std::string::npos)
+                            return true;
+                    }
+                    break;
+                }
                 if(::waitpid(child.pid, nullptr, WNOHANG) == child.pid)
                 {
                     child.pid = -1;
