@@ -138,31 +138,46 @@ class Cluster:
         for role, (node, config) in configs(homes, self.tag).items():
             self.services[role] = (node, f'chronolog-sprint/run/{self.tag}', json.dumps(config))
         for node in NODES:
-            buffer = io.BytesIO()
-            with tarfile.open(fileobj=buffer, mode='w') as tar:
-                if node == 'blade':
-                    tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
-                tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
-                tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
-                tar.add(ROOT / 'tests/smoke/python/requirements.txt', arcname=f'run/{self.tag}/requirements.txt')
-                added = set()
-                for role, (host, folder, config) in self.services.items():
-                    if host != node:
-                        continue
-                    binary = 'chrono_' + role.split('-')[0]
-                    candidates = list((ROOT / 'build/dev/src').rglob(binary))
-                    candidates = [p for p in candidates if p.is_file() and os.access(p, os.X_OK)]
-                    if len(candidates) != 1:
-                        raise RuntimeError(f'cannot locate unique binary {binary}: {candidates}')
-                    if binary not in added:
-                        tar.add(candidates[0], arcname='bin/' + binary)
-                        added.add(binary)
-                    info = tarfile.TarInfo(f'run/{self.tag}/{role}.json')
-                    encoded = config.encode()
-                    info.size = len(encoded)
-                    tar.addfile(info, io.BytesIO(encoded))
-            self.run(node, 'mkdir -p ~/chronolog-sprint/bin && cd ~/chronolog-sprint && tar xf -', 60,
-                     buffer.getvalue())
+            name = 'stage-' + node
+            unit = f'{self.tag}-{name}.scope'
+            log = open(OUT / f'{name}.transport.log', 'ab')
+            receiver = subprocess.Popen(self.command(node,
+                'mkdir -p ~/chronolog-sprint/bin && cd ~/chronolog-sprint && tar xf -', 60, unit),
+                stdin=subprocess.PIPE, stdout=log, stderr=log)
+            self.processes[name] = (node, unit, receiver, log)
+            try:
+                with tarfile.open(fileobj=receiver.stdin, mode='w|') as tar:
+                    if node == 'blade':
+                        tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
+                    tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
+                    tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
+                    tar.add(ROOT / 'tests/smoke/python/requirements.txt', arcname=f'run/{self.tag}/requirements.txt')
+                    added = set()
+                    for role, (host, folder, config) in self.services.items():
+                        if host != node:
+                            continue
+                        binary = 'chrono_' + role.split('-')[0]
+                        candidates = list((ROOT / 'build/dev/src').rglob(binary))
+                        candidates = [p for p in candidates if p.is_file() and os.access(p, os.X_OK)]
+                        if len(candidates) != 1:
+                            raise RuntimeError(f'cannot locate unique binary {binary}: {candidates}')
+                        if binary not in added:
+                            tar.add(candidates[0], arcname='bin/' + binary)
+                            added.add(binary)
+                        info = tarfile.TarInfo(f'run/{self.tag}/{role}.json')
+                        encoded = config.encode()
+                        info.size = len(encoded)
+                        tar.addfile(info, io.BytesIO(encoded))
+                receiver.stdin.close()
+                if receiver.wait(timeout=75):
+                    raise RuntimeError(f'staging failed on {node}: see {OUT / (name + ".transport.log")}')
+            finally:
+                if not receiver.stdin.closed:
+                    try:
+                        receiver.stdin.close()
+                    except BrokenPipeError:
+                        pass
+                self.stop(name)
         for node in NODES:
             self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
                      f'python3 -m venv ~/chronolog-sprint/build/cluster/{self.tag}/venv && '
