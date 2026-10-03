@@ -9,6 +9,8 @@ import time
 
 from .registry import CONTROL_LOCKS, ROLES, atomic, binary, boot_id, clock_status, control, free_ports, leases, load, lock, probe
 
+from .tiers import TierProbe, probe_tier
+
 READY = {'visor': 'catalog ready', 'keeper': 'journal ready',
          'grapher': 'grapher registered', 'player': 'player ready'}
 LOG_LIMIT = 8 << 20
@@ -40,8 +42,11 @@ def configs(record):
 
 
 class Supervisor:
-    def __init__(self, folder, record):
+    def __init__(self, folder, record, tier_probe_operation=probe_tier):
         self.folder, self.record = folder, record
+        self.tier_probe_operation = tier_probe_operation
+        self.tier_probes = {}
+        self.remounts = set()
         self.children = {}
         self.offsets = {}
         self.exits = {role: [] for role in ROLES}
@@ -78,17 +83,27 @@ class Supervisor:
                 with path.open('r+b') as log:
                     log.truncate(0)
                 self.offsets[role] = 0
+        latest = load(self.folder / 'instance.json')
+        self.record['tiers'] = latest['tiers']
+        if 'deployment_id' in latest:
+            self.record['deployment_id'] = latest['deployment_id']
         self.state['tiers'] = []
         for tier in self.record['tiers']:
-            root = Path(tier['root'])
-            available = root.is_dir() and os.access(root, os.W_OK)
-            # statvfs reports filesystem usage without scanning the archive on every heartbeat.
-            used = None
-            if available:
-                fs = os.statvfs(root)
-                used = (fs.f_blocks - fs.f_bfree) * fs.f_frsize
-            self.state['tiers'].append(dict(tier, available=available, used_bytes=used,
-                                            usage_scope='filesystem', budget_bytes=tier.get('budget_bytes', 0)))
+            key = (tier['name'], tier.get('tier_uuid'))
+            if key not in self.tier_probes:
+                self.tier_probes[key] = TierProbe(tier, self.record.get('deployment_id'),
+                    self.record.get('tier_io_timeout_ms', 1000),
+                    self.record.get('tier_probe_interval_ms', 5000), self.tier_probe_operation)
+            result = self.tier_probes[key].poll()
+            remount = (tier['name'], result.get('st_dev'), tuple(result.get('f_fsid', [])))
+            if result.get('available') and tier.get('tier_uuid') and (
+                    result['st_dev'] != tier['st_dev'] or result['f_fsid'] != tier['f_fsid']
+                    ) and remount not in self.remounts:
+                self.log('tier remount ' + json.dumps(dict(name=tier['name'],
+                         st_dev=result['st_dev'], f_fsid=result['f_fsid'])))
+                self.remounts.add(remount)
+            self.state['tiers'].append(dict(tier, **result,
+                usage_scope='filesystem', budget_bytes=tier.get('budget_bytes', 0)))
         atomic(self.folder / 'run/status.json', self.state)
         return holders
 
@@ -200,8 +215,10 @@ class Supervisor:
             for role in ROLES:
                 if self.children[role].poll() is not None:
                     raise RuntimeError(f'{role} exited during readiness probe')
-            self.record['booted'] = True
-            atomic(self.folder / 'instance.json', self.record)
+            with control(self.folder / 'run/control.lock'):
+                self.record = load(self.folder / 'instance.json')
+                self.record['booted'] = True
+                atomic(self.folder / 'instance.json', self.record)
             self.state.update(state='ready', ready_ns=time.time_ns())
             self.publish()
             while not self.stopping:

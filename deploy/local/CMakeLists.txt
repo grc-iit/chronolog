@@ -10,6 +10,14 @@ foreach(gate readiness restart_keeps_endpoints single_supervisor ordered_stop su
     set_tests_properties(local.${gate} PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 240 LABELS "integration;local")
 endforeach()
 
+foreach(gate tier_add_refuses_a_root_of_another_file_system_type status_survives_a_hung_tier)
+    add_test(NAME local.${gate}
+        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/tiers.py" ${gate}
+        "${CMAKE_CURRENT_SOURCE_DIR}/chronolog" "${PROJECT_BINARY_DIR}")
+    set_tests_properties(local.${gate} PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 120 LABELS "integration;local")
+endforeach()
+
 if(NOT CHRONOLOG_BUILD_PYTHON AND NOT CHRONOLOG_SANITIZERS)
     set(local_wheel_dir "${CMAKE_CURRENT_BINARY_DIR}/wheels")
     add_custom_target(chronolog_local_wheels ALL
