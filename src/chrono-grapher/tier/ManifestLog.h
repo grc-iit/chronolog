@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
 
 namespace chronolog

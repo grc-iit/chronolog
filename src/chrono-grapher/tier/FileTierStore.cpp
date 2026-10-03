@@ -520,6 +520,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(!valid.ok())
         return valid;
     std::sort(chunk.events.begin(), chunk.events.end(), ReplayLess);
+    const auto physical_bounds = BoundsOf(chunk.events);
     const auto name = Filename(chunk, writer_, codec_->extension());
     if(name.size() > 255)
         return absl::InvalidArgumentError("chunk filename too long");
@@ -614,7 +615,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(!synced.ok())
         return synced;
     std::lock_guard lock(mutex_);
-    status = log_->append(record, BoundsOf(chunk.events));
+    status = log_->append(record, physical_bounds);
     if(!status.ok())
         return status;
     if(auto index = refresh(); index.ok())

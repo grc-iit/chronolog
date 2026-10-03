@@ -478,6 +478,63 @@ TEST(FileTierStore, PhysicalPruningHandlesSaturatedIntervals)
     }
 }
 
+TEST(FileTierStore, PhysicalBoundsCoverEveryEventInAFile)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        CountingRead reads;
+        auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
+        ASSERT_TRUE(store.ok());
+        auto chunk = PhysicalChunk(100, {500, 0, ClockStatus::Synced});
+        for(const auto reading: std::vector<TimeReading>{{99, 1, ClockStatus::Synced},
+                                                         {101, 1, ClockStatus::Synced},
+                                                         {600, 0, ClockStatus::Synced}})
+        {
+            auto event = chunk.events.front();
+            event.hlc.physical_ns += static_cast<int64_t>(chunk.events.size());
+            event.id.sequence += chunk.events.size();
+            event.physical = reading;
+            chunk.events.push_back(std::move(event));
+        }
+        ASSERT_TRUE((*store)->publish(std::move(chunk)).ok());
+        auto events = (*store)->read(1, {Range::Axis::Physical, {100, 0}, {101, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 2u);
+        EXPECT_EQ(events->at(0).id.sequence, 101u);
+        EXPECT_EQ(events->at(1).id.sequence, 102u);
+        reads.clear();
+        events = (*store)->read(1, {Range::Axis::Physical, {1000, 0}, {1001, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        EXPECT_TRUE(events->empty());
+        EXPECT_TRUE(reads.files().empty());
+    }
+}
+
+TEST(ManifestLog, MalformedPhysicalBoundsFailTheWholeLoad)
+{
+    for(const char* bounds: {R"({"min_lo":2,"max_hi":1,"unbounded":false})",
+                             R"({"min_lo":18446744073709551615,"max_hi":18446744073709551615,"unbounded":false})",
+                             R"({"min_lo":0.5,"max_hi":1,"unbounded":false})",
+                             R"({"min_lo":0,"max_hi":1})"})
+    {
+        auto directory = TestDirectory();
+        auto log = ManifestLog::Open(*directory, "primary");
+        ASSERT_TRUE(log.ok());
+        ASSERT_TRUE((*log)->append(Record(100, 200)).ok());
+        log->reset();
+        auto line = Bytes(*directory / "manifest/primary.log");
+        line.erase(line.rfind('}'));
+        {
+            std::ofstream output(*directory / "manifest/primary.log");
+            output << line << ",\"physical_bounds\":" << bounds << "}\n";
+        }
+        auto reader = FileTierStore::OpenReadOnly(*directory);
+        EXPECT_TRUE(absl::IsUnavailable(reader.status())) << bounds;
+    }
+}
+
 TEST(FileTierStore, WatermarkStopsAtTheFirstGap)
 {
     auto directory = TestDirectory();
