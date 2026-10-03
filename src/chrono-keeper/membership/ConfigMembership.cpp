@@ -14,18 +14,22 @@ ConfigMembership::ConfigMembership(const std::vector<StaticRoute>& seed, RouteLo
 void ConfigMembership::setRoute(StoryId id, Route route)
 {
     std::unique_lock lock(mutex_);
-    if(routes_.contains(id) && route.epoch < routes_[id].epoch)
+    if(tombstoned_.contains(id) || (routes_.contains(id) && route.epoch < routes_[id].epoch))
         return;
     routes_[id] = std::move(route);
+    ++generation_;
 }
 
-void ConfigMembership::setRouteState(StoryId id, RouteState state)
+void ConfigMembership::setRouteState(StoryId id, RouteState state, uint64_t revision)
 {
     std::unique_lock lock(mutex_);
-    if(routes_.contains(id) && state.route.epoch < routes_[id].epoch)
+    if(tombstoned_.contains(id) || revision < applied_revision_ ||
+       (routes_.contains(id) && state.route.epoch < routes_[id].epoch))
         return;
     routes_[id] = state.route;
     states_[id] = std::move(state);
+    applied_revision_ = std::max(applied_revision_, revision);
+    ++generation_;
 }
 absl::StatusOr<RouteState> ConfigMembership::routeState(StoryId id) const
 {
@@ -40,21 +44,73 @@ absl::StatusOr<RouteState> ConfigMembership::routeState(StoryId id) const
     s.route = *r;
     return s;
 }
-absl::StatusOr<Route> ConfigMembership::route(StoryId id) const
+void ConfigMembership::acknowledgeRoutes(uint64_t revision)
 {
+    std::unique_lock lock(mutex_);
+    if(revision > applied_revision_)
+    {
+        applied_revision_ = revision;
+        ++generation_;
+    }
+}
+
+void ConfigMembership::tombstone(StoryId id)
+{
+    std::unique_lock lock(mutex_);
+    tombstoned_.insert(id);
+    routes_.erase(id);
+    states_.erase(id);
+    ++generation_;
+}
+
+absl::Status ConfigMembership::resolve(StoryId id, std::function<void()> drop)
+{
+    uint64_t generation;
     {
         std::shared_lock lock(mutex_);
-        auto it = routes_.find(id);
-        if(it != routes_.end())
-            return it->second;
+        if(tombstoned_.contains(id) || routes_.contains(id))
+            return absl::OkStatus();
+        generation = generation_;
     }
     if(!lookup_)
         return absl::NotFoundError("unknown story");
     auto learned = lookup_(id);
     if(!learned.ok())
         return learned.status();
-    std::unique_lock lock(mutex_);
-    return routes_.try_emplace(id, std::move(*learned)).first->second;
+    bool first_tombstone = false;
+    {
+        std::unique_lock lock(mutex_);
+        // GetStory has no revision. It may fill only a missing entry in an unchanged table.
+        // Tombstones precede both guards and never lower the applied revision (W10.17).
+        if(learned->tombstoned)
+        {
+            first_tombstone = tombstoned_.insert(id).second;
+            routes_.erase(id);
+            states_.erase(id);
+            ++generation_;
+        }
+        else if(!tombstoned_.contains(id) && !routes_.contains(id))
+        {
+            if(generation != generation_)
+                return absl::UnavailableError("route read superseded by watch");
+            routes_.emplace(id, std::move(learned->route));
+            ++generation_;
+        }
+    }
+    if(first_tombstone && drop)
+        drop();
+    return absl::OkStatus();
+}
+
+absl::StatusOr<Route> ConfigMembership::route(StoryId id) const
+{
+    std::shared_lock lock(mutex_);
+    if(tombstoned_.contains(id))
+        return absl::FailedPreconditionError("story was destroyed");
+    auto it = routes_.find(id);
+    if(it == routes_.end())
+        return absl::NotFoundError("unknown story");
+    return it->second;
 }
 
 absl::Status ConfigMembership::validateEpoch(StoryId id, Epoch epoch) const
