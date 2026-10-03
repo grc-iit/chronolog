@@ -85,6 +85,11 @@ class Cluster:
         raise RuntimeError(f'health timeout {endpoint}')
 
     def preflight(self):
+        for node in NODES:
+            try:
+                self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs', 10)
+            except Exception as error:
+                raise RuntimeError(f'shared archive mount /mnt/nfs unavailable on {node}') from error
         server = 'import socket,time; ports=PORTS; sockets=[]\nfor p in ports:\n s=socket.socket(); s.bind(("IP",p)); s.listen(); sockets.append(s)\ntime.sleep(90)'
         try:
             for node, ports in PORTS.items():
