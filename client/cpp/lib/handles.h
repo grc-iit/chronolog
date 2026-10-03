@@ -67,6 +67,7 @@ struct ReplayState
     std::shared_ptr<grpc::ClientContext> newContext(std::optional<TimePoint> end = {})
     {
         auto result = std::make_shared<grpc::ClientContext>();
+        result->set_wait_for_ready(true);
         if(overall)
             end = end ? std::min(*overall, *end) : *overall;
         if(end)
