@@ -24,7 +24,9 @@ TEST(KernelClockNtp, MapsReadOnlyQueriesWithoutOverflow)
         EXPECT_EQ(state.bound, test.bound_ns);
         EXPECT_EQ(state.status == ClockStatus::Synced, state.bound.has_value());
         if(state.bound)
+        {
             EXPECT_LE(*state.bound, static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+        }
     }
 }
 } // namespace chronolog

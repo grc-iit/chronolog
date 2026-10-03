@@ -59,7 +59,9 @@ TEST(ClientClockNtp, MatchesKernelMappingWithoutOverflow)
         EXPECT_EQ(reading->uncertainty_ns, test.bound_ns);
         EXPECT_EQ(reading->status == ClockStatus::Synced, reading->uncertainty_ns.has_value());
         if(reading->uncertainty_ns)
+        {
             EXPECT_LE(*reading->uncertainty_ns, static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+        }
         const auto kernel = KernelClock::ntpState(query);
         EXPECT_EQ(calls, 2);
         EXPECT_EQ(reading->status, kernel.status);
