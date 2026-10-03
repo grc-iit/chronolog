@@ -303,12 +303,16 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     return store;
 }
 
-absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::filesystem::path root,
-                                                                           std::chrono::milliseconds manifest_poll,
-                                                                           LoadFile load_file,
-                                                                           size_t read_threads,
-                                                                           DecodeFile decode_file)
+absl::StatusOr<std::unique_ptr<FileTierStore>>
+FileTierStore::OpenReadOnly(std::filesystem::path root,
+                            std::chrono::milliseconds manifest_poll,
+                            LoadFile load_file,
+                            size_t read_threads,
+                            DecodeFile decode_file,
+                            std::chrono::milliseconds archive_read_timeout)
 {
+    if(archive_read_timeout.count() <= 0)
+        return absl::InvalidArgumentError("archive read timeout must be positive");
     if(manifest_poll.count() <= 0)
         return absl::InvalidArgumentError("manifest poll must be positive");
     const auto threads = ReaderThreads(read_threads);
@@ -330,6 +334,7 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::
                                                                   std::move(decode_file)));
     store->read_only_ = true;
     store->manifest_poll_ = manifest_poll;
+    store->archive_read_timeout_ = archive_read_timeout;
     auto status = store->refreshNow();
     if(!status.ok())
         return status;
@@ -553,7 +558,7 @@ FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure,
             if(next->state != ManifestState::Published)
                 return failure;
         }
-        auto bytes = load_file_(root_ / next->file);
+        auto bytes = loadForRead(root_ / next->file);
         if(!bytes.ok())
         {
             failure = bytes.status();
@@ -1005,7 +1010,13 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         readers = readers_.get();
     }
     using Loaded = absl::StatusOr<ChunkBytes>;
-    std::deque<std::pair<size_t, std::future<Loaded>>> pending;
+    struct Pending
+    {
+        size_t index;
+        std::future<Loaded> ready;
+        ArchiveReaderPool::Deadline deadline;
+    };
+    std::deque<Pending> pending;
     size_t next = 0;
     auto fill = [&]
     {
@@ -1019,21 +1030,31 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
                 results[index] = std::vector<Event>{};
             else
             {
-                auto task = std::make_shared<std::packaged_task<Loaded()>>([this, file = root_ / records[index].file]
-                                                                           { return load_file_(file); });
-                pending.emplace_back(index, task->get_future());
-                if(!readers->submit([task] { (*task)(); }))
-                    results[index] = absl::UnavailableError("archive readers stopping");
+                const auto deadline = std::chrono::steady_clock::now() + archive_read_timeout_;
+                auto task = std::make_shared<std::packaged_task<Loaded()>>(
+                        [load = load_file_, file = root_ / records[index].file] { return load(file); });
+                auto ready = task->get_future();
+                if(readers->submit([task] { (*task)(); }, deadline))
+                    pending.push_back({index, std::move(ready), deadline});
+                else
+                    results[index] = absl::UnavailableError("archive readers unavailable");
             }
         }
     };
     fill();
     while(!pending.empty())
     {
-        auto [index, ready] = std::move(pending.front());
+        auto [index, ready, deadline] = std::move(pending.front());
         pending.pop_front();
         try
         {
+            if(ready.wait_until(deadline) != std::future_status::ready)
+            {
+                readers->expire();
+                results[index] = absl::UnavailableError("archive read deadline exceeded");
+                fill();
+                continue;
+            }
             auto bytes = ready.get();
             results[index] = bytes.ok() ? decodeRecord(records[index], range, max_events, *std::move(bytes))
                                         : afterVanished(records[index], bytes.status(), range, max_events);
@@ -1045,6 +1066,29 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         fill();
     }
     return results;
+}
+
+absl::StatusOr<ChunkBytes> FileTierStore::loadForRead(const std::filesystem::path& file) const
+{
+    ArchiveReaderPool* readers;
+    {
+        std::lock_guard lock(mutex_);
+        if(!readers_)
+            readers_ = std::make_unique<ArchiveReaderPool>(read_threads_);
+        readers = readers_.get();
+    }
+    const auto deadline = std::chrono::steady_clock::now() + archive_read_timeout_;
+    auto task = std::make_shared<std::packaged_task<absl::StatusOr<ChunkBytes>()>>([load = load_file_, file]
+                                                                                   { return load(file); });
+    auto ready = task->get_future();
+    if(!readers->submit([task] { (*task)(); }, deadline))
+        return absl::UnavailableError("archive readers unavailable");
+    if(ready.wait_until(deadline) != std::future_status::ready)
+    {
+        readers->expire();
+        return absl::UnavailableError("archive read deadline exceeded");
+    }
+    return ready.get();
 }
 
 absl::StatusOr<bool> FileTierStore::canReadRecord(const ManifestRecord& record, Range range) const
@@ -1068,15 +1112,7 @@ absl::StatusOr<bool> FileTierStore::canReadRecord(const ManifestRecord& record, 
 absl::StatusOr<std::vector<Event>>
 FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_events) const
 {
-    auto readable = canReadRecord(record, range);
-    if(!readable.ok())
-        return readable.status();
-    if(!*readable)
-        return std::vector<Event>{};
-    auto bytes = load_file_(root_ / record.file);
-    if(!bytes.ok())
-        return afterVanished(record, bytes.status(), range, max_events);
-    return decodeRecord(record, range, max_events, *std::move(bytes));
+    return readRecords(std::span(&record, 1), range, max_events).front();
 }
 
 absl::StatusOr<std::vector<Event>>

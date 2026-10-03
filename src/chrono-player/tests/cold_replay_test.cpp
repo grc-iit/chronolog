@@ -111,6 +111,65 @@ protected:
     std::optional<Completion> completion;
 };
 
+TEST_F(ColdReplay, HungArchiveReadEndsSourceFailedWhileAnotherStoryReadsKeeperOnly)
+{
+    publish(120);
+    source->response.archived_below = {200, 0};
+    const auto timeout = std::chrono::milliseconds(100);
+    const auto slack = std::chrono::seconds(2);
+    auto release = std::make_shared<std::promise<void>>();
+    auto gate = release->get_future().share();
+    auto exited = std::make_shared<std::promise<void>>();
+    auto done = exited->get_future();
+    auto opened = FileTierStore::OpenReadOnly(
+            root,
+            std::chrono::hours(1),
+            [gate, exited](const std::filesystem::path&) -> absl::StatusOr<ChunkBytes>
+            {
+                gate.wait();
+                exited->set_value();
+                return absl::UnavailableError("released hung load");
+            },
+            2,
+            {},
+            timeout);
+    ASSERT_TRUE(opened.ok());
+    archive = std::shared_ptr<FileTierStore>(*std::move(opened));
+    options.archive = archive;
+    auto blocked = std::async(std::launch::async, [&] { read(); });
+    auto keeper_source = std::make_shared<FakeHotSource>();
+    keeper_source->response = source->response;
+    keeper_source->response.archived_below = {};
+    auto keeper_event = event(220);
+    keeper_event.id.story_id = 2;
+    keeper_source->response.keepers.front().events = {keeper_event};
+    HotReplay keeper_replay(keeper_source, options);
+    auto keeper = keeper_replay.read(2, {Range::Axis::Hlc, {200, 0}, {300, 0}});
+    ASSERT_TRUE(keeper.ok());
+    size_t count = 0;
+    bool complete = false;
+    for(int i = 0; i < 4; ++i)
+    {
+        auto batch = (*keeper)->next();
+        ASSERT_TRUE(batch.ok());
+        if(!*batch)
+            break;
+        count += (**batch).events.size();
+        if((**batch).completion)
+            complete = (**batch).completion->complete;
+    }
+    EXPECT_EQ(count, 1u);
+    EXPECT_TRUE(complete);
+    const bool ended = blocked.wait_for(timeout + slack) == std::future_status::ready;
+    release->set_value();
+    EXPECT_TRUE(ended);
+    blocked.get();
+    ASSERT_TRUE(completion);
+    EXPECT_FALSE(completion->complete);
+    EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
+    EXPECT_EQ(done.wait_for(timeout + slack), std::future_status::ready);
+}
+
 TEST_F(ColdReplay, BatchReadMatchesSequentialArchive)
 {
     std::vector<ManifestRecord> records;
