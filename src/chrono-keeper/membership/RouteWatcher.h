@@ -20,9 +20,11 @@ namespace chronolog::keeper
 {
 
 // Holds Cluster.WatchRoutes open and replaces each story's route in the membership as the
-// Visor sends it. The Visor sends one full snapshot on every connect. A tombstoned update drops the
-// story in the journal (W10.17). After each connect a background reconciler asks the Catalog about every story
-// the journal holds that the snapshot did not list, and treats a tombstoned answer as a received tombstone.
+// Visor sends it. The Visor sends one full snapshot at revision R on every connect, then a snapshot_end marker.
+// A tombstoned update drops the story in the journal (W10.17). At the marker, a story the journal holds that this
+// watcher learned from a route at a revision at or below R and the snapshot did not list was destroyed, and is
+// dropped as a received tombstone. A background reconciler asks the Catalog about every other unlisted story.
+// A stream that ends before its marker reconciles nothing.
 class RouteWatcher
 {
 public:
@@ -34,28 +36,30 @@ public:
                  std::string process_id,
                  std::string instance,
                  RamJournal* journal = nullptr,
-                 TombstoneLookup lookup = nullptr,
-                 std::chrono::milliseconds settle = std::chrono::milliseconds(500));
+                 TombstoneLookup lookup = nullptr);
     ~RouteWatcher();
 
 private:
     bool session(std::stop_token stop);
+    void conclude(uint64_t revision, uint64_t floor);
     void reconcile(std::stop_token stop);
 
     RamJournal* journal_;
     uint64_t applied_revision_{};
     std::map<StoryId, std::pair<uint64_t, Epoch>> applied_;
     std::set<StoryId> tombstoned_;
+    // Lowest route revision this watcher applied for each story.
+    std::map<StoryId, uint64_t> learned_;
     ConfigMembership& membership_;
     std::unique_ptr<internal::v1::Cluster::Stub> stub_;
     const std::string process_id_;
     const std::string instance_;
     const TombstoneLookup lookup_;
-    const std::chrono::milliseconds settle_;
     std::mutex mu_;
     std::condition_variable_any cv_;
     std::set<StoryId> seen_;
-    uint64_t connection_{}, reconciled_{};
+    std::set<StoryId> pending_;
+    uint64_t connection_{}, marked_{}, reconciled_{};
     std::unique_ptr<Watcher> watcher_;
     std::jthread reconciler_;
 };

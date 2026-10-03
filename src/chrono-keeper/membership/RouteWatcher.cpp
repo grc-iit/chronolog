@@ -19,15 +19,13 @@ RouteWatcher::RouteWatcher(ConfigMembership& membership,
                            std::string process_id,
                            std::string instance,
                            RamJournal* journal,
-                           TombstoneLookup lookup,
-                           std::chrono::milliseconds settle)
+                           TombstoneLookup lookup)
     : journal_(journal)
     , membership_(membership)
     , stub_(iv1::Cluster::NewStub(std::move(channel)))
     , process_id_(std::move(process_id))
     , instance_(std::move(instance))
     , lookup_(std::move(lookup))
-    , settle_(settle)
 {
     if(journal_ && lookup_)
         reconciler_ = std::jthread([this](std::stop_token stop) { reconcile(stop); });
@@ -52,13 +50,22 @@ bool RouteWatcher::session(std::stop_token stop)
     {
         std::lock_guard lock(mu_);
         seen_.clear();
+        pending_.clear();
         ++connection_;
     }
     cv_.notify_all();
+    const uint64_t floor = applied_revision_;
     iv1::WatchRoutesResponse message;
-    bool progressed = false;
+    bool marked = false;
     while(reader->Read(&message))
     {
+        if(message.snapshot_end())
+        {
+            if(!marked && journal_)
+                conclude(message.revision(), floor);
+            marked = true;
+            continue;
+        }
         // A tombstone is applied before the epoch and revision guards, whatever its revision, and never moves the
         // applied revision. Every later update for the story is ignored (I3.5).
         if(message.tombstoned())
@@ -66,7 +73,6 @@ bool RouteWatcher::session(std::stop_token stop)
             tombstoned_.insert(message.story_id());
             if(journal_)
                 (void)journal_->dropStory(message.story_id(), true);
-            progressed = true;
             continue;
         }
         if(tombstoned_.contains(message.story_id()))
@@ -84,7 +90,7 @@ bool RouteWatcher::session(std::stop_token stop)
             continue;
         applied_revision_ = message.revision();
         prior = {message.revision(), message.route().epoch()};
-        progressed = true;
+        learned_.try_emplace(message.story_id(), message.revision());
         auto state = convert::routeState(message);
         auto install = [&] { membership_.setRouteState(message.story_id(), state); };
         if(journal_)
@@ -99,7 +105,43 @@ bool RouteWatcher::session(std::stop_token stop)
             install();
     }
     reader->Finish();
-    return progressed;
+    // A stream that ended before its marker is a failed connect, retried with the backoff.
+    return marked;
+}
+
+void RouteWatcher::conclude(uint64_t revision, uint64_t floor)
+{
+    // The snapshot lists every live story at R and story ids are never reused (W10.17, I3.5), so an unlisted story
+    // this watcher saw live at or below R is destroyed. A snapshot below the revision already applied concludes
+    // nothing.
+    std::set<StoryId> absent;
+    {
+        std::lock_guard lock(mu_);
+        for(auto story: journal_->storyIds())
+            if(!seen_.contains(story) && !journal_->dropped(story))
+                absent.insert(story);
+        for(auto story: journal_->droppedUnconfirmed())
+            if(!seen_.contains(story))
+                absent.insert(story);
+    }
+    std::set<StoryId> pending;
+    for(auto story: absent)
+    {
+        auto learned = learned_.find(story);
+        if(revision < floor || learned == learned_.end() || learned->second > revision)
+        {
+            pending.insert(story);
+            continue;
+        }
+        tombstoned_.insert(story);
+        (void)journal_->dropStory(story, true);
+    }
+    {
+        std::lock_guard lock(mu_);
+        pending_ = std::move(pending);
+        marked_ = connection_;
+    }
+    cv_.notify_all();
 }
 
 void RouteWatcher::reconcile(std::stop_token stop)
@@ -107,22 +149,15 @@ void RouteWatcher::reconcile(std::stop_token stop)
     while(!stop.stop_requested())
     {
         uint64_t connection;
-        {
-            std::unique_lock lock(mu_);
-            if(!cv_.wait(lock, stop, [this] { return connection_ != reconciled_; }))
-                return;
-            connection = reconciled_ = connection_;
-            // The snapshot is a burst at the start of the stream; the settle delay lets it land.
-            cv_.wait_for(lock, stop, settle_, [] { return false; });
-        }
         std::set<StoryId> pending;
         {
-            std::lock_guard lock(mu_);
-            for(auto story: journal_->storyIds())
-                if(!seen_.contains(story) && !journal_->dropped(story))
-                    pending.insert(story);
+            std::unique_lock lock(mu_);
+            if(!cv_.wait(lock, stop, [this] { return marked_ != reconciled_; }))
+                return;
+            connection = reconciled_ = marked_;
+            pending = std::move(pending_);
+            pending_.clear();
         }
-        for(auto story: journal_->droppedUnconfirmed()) pending.insert(story);
         for(auto story: pending)
         {
             auto backoff = kReconcileBackoff;

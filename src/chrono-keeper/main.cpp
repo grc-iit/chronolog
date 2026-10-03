@@ -221,8 +221,8 @@ int main(int argc, char** argv)
     }
     cluster_ptr = &cluster;
     acquisitions.start(visor);
-    // The Catalog answers on the Visor internal port in both modes. A story the snapshot did not list is confirmed
-    // here, never inferred from absence (W10.17).
+    // The Catalog answers on the Visor internal port in both modes. An unlisted story the snapshot marker does not
+    // conclude destroyed is confirmed here (W10.17).
     auto catalog = std::shared_ptr<v1::Catalog::Stub>(v1::Catalog::NewStub(visor));
     keeper::RouteWatcher routes(*membership,
                                 visor,
