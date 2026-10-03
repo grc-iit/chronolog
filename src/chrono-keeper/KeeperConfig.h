@@ -49,6 +49,9 @@ struct KeeperConfig
     size_t dedupe_window = 65536;
     std::string wal_dir = "wal";
     size_t group_commit_max_bytes = 4u << 20;
+    // I5.10 group-commit window in microseconds, at most 10000. Zero commits each group as soon as the
+    // WAL committer is free; nonzero holds a group open that long after its first record.
+    uint32_t group_commit_window_us = 0;
     uint32_t reserve_ahead_ms = 1000;
     uint64_t wal_max_bytes = 1ull << 30;
     uint64_t wal_segment_bytes = 64ull << 20;

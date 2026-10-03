@@ -255,6 +255,50 @@ TEST(WalJournal, AppendsQueuedBehindAnFsyncAreAcknowledgedByTheNextSingleFsync)
     EXPECT_LE(rig.control->syncs - before, 1u);
 }
 
+TEST(WalJournal, WindowedGroupReportsDurableOnlyAfterSyncReturns)
+{
+    WalRig rig(64ull << 20, 65536, 2000);
+    const auto before = rig.current->commitStats();
+    size_t syncs_before;
+    {
+        std::lock_guard lock(rig.control->mu);
+        syncs_before = rig.control->syncs;
+    }
+    rig.control->block();
+    auto append =
+            std::async(std::launch::async, [&] { return rig.current->append(batch({1, 2}), Durability::Durable); });
+    (void)rig.control->waitPending();
+    {
+        std::unique_lock lock(rig.control->mu);
+        ASSERT_TRUE(rig.control->cv.wait_for(lock, 5s, [&] { return rig.control->syncs > syncs_before; }));
+    }
+    // The group has left the window and sits in a blocked sync: nothing may be acknowledged yet.
+    EXPECT_EQ(append.wait_for(50ms), std::future_status::timeout);
+    EXPECT_EQ(rig.current->commitStats().syncs, before.syncs);
+    rig.control->release();
+    ASSERT_EQ(append.wait_for(5s), std::future_status::ready);
+    auto results = append.get();
+    ASSERT_TRUE(results.ok());
+    ASSERT_EQ(results->size(), 2u);
+    for(const auto& result: *results)
+    {
+        EXPECT_TRUE(result.status.ok());
+        EXPECT_EQ(result.achieved, Durability::Durable);
+    }
+    const auto after = rig.current->commitStats();
+    EXPECT_EQ(after.syncs, before.syncs + 1);
+    EXPECT_EQ(after.records, before.records + 2);
+}
+
+TEST(WalJournal, GroupCommitWindowAboveTheBoundIsRefused)
+{
+    WalRig rig;
+    auto config = rig.config;
+    config.wal_dir = rig.control->directory + "/oversized";
+    config.group_commit_window_us = kMaxGroupCommitWindowUs + 1;
+    EXPECT_THROW(WalJournal(rig.clock, rig.membership, rig.ram_config, config), std::invalid_argument);
+}
+
 TEST(WalJournal, CheckpointCacheMatchesTheWindowAcrossBlocksTrimsAndUpgrades)
 {
     WalRig rig(256 * 1024);

@@ -66,6 +66,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "dedupe_window",
                                                 "wal_dir",
                                                 "group_commit_max_bytes",
+                                                "group_commit_window_us",
                                                 "reserve_ahead_ms",
                                                 "wal_max_bytes",
                                                 "wal_segment_bytes",
@@ -97,6 +98,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
     static const std::map<std::string, uint64_t> unsigned_keys = {{"payload_max_bytes", UINT64_MAX},
                                                                   {"dedupe_window", UINT64_MAX},
                                                                   {"group_commit_max_bytes", UINT64_MAX},
+                                                                  {"group_commit_window_us", UINT32_MAX},
                                                                   {"reserve_ahead_ms", UINT32_MAX},
                                                                   {"wal_max_bytes", UINT64_MAX},
                                                                   {"wal_segment_bytes", UINT64_MAX},
@@ -137,6 +139,8 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
             cfg.dedupe_window = json.at("dedupe_window").get<size_t>();
         if(json.contains("group_commit_max_bytes"))
             cfg.group_commit_max_bytes = json.at("group_commit_max_bytes").get<size_t>();
+        if(json.contains("group_commit_window_us"))
+            cfg.group_commit_window_us = json.at("group_commit_window_us").get<uint32_t>();
         if(json.contains("reserve_ahead_ms"))
             cfg.reserve_ahead_ms = json.at("reserve_ahead_ms").get<uint32_t>();
         if(json.contains("wal_segment_bytes"))
@@ -287,6 +291,7 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
                             {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
                             {"append_ceiling_wait_ms", &cfg.append_ceiling_wait_ms},
                             {"reserve_ahead_ms", &cfg.reserve_ahead_ms},
+                            {"group_commit_window_us", &cfg.group_commit_window_us},
                             {"story_chunk_duration_secs", &cfg.story_chunk_duration_secs},
                             {"seal_interval_ms", &cfg.seal_interval_ms},
                             {"chunk_max_events", &cfg.chunk_max_events},
@@ -348,6 +353,8 @@ absl::Status KeeperConfig::validate() const
        wal_segment_bytes == 0)
         return absl::InvalidArgumentError(
                 "wal_dir, group_commit_max_bytes, reserve_ahead_ms, wal_max_bytes and wal_segment_bytes must be set");
+    if(group_commit_window_us > 10'000)
+        return absl::InvalidArgumentError("group_commit_window_us must be at most 10000");
     // Zero would send every unconfirmed chunk again on each pass and replace its receipt each time.
     if(watermark_resend_timeout_secs == 0)
         return absl::InvalidArgumentError("watermark_resend_timeout_secs must be positive");

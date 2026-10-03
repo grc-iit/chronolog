@@ -9,9 +9,9 @@ namespace chronolog::contract
 namespace
 {
 
-std::unique_ptr<JournalHarness> MakeWal()
+std::unique_ptr<JournalHarness> MakeWal(uint32_t window_us)
 {
-    auto rig = std::make_shared<test::WalRig>(4096, 16);
+    auto rig = std::make_shared<test::WalRig>(4096, 16, window_us);
     auto h = std::make_unique<JournalHarness>();
     h->payload_limit = rig->ram_config.payload_max_bytes;
     h->supports_durable = true;
@@ -135,6 +135,8 @@ std::unique_ptr<JournalHarness> MakeWal()
 
 } // namespace
 
-INSTANTIATE_TEST_SUITE_P(Wal, JournalContract, ::testing::Values(JournalFactory(MakeWal)));
+INSTANTIATE_TEST_SUITE_P(Wal, JournalContract, ::testing::Values(JournalFactory([] { return MakeWal(0); })));
+// I5.6 and every other Journal contract hold with a group-commit window too.
+INSTANTIATE_TEST_SUITE_P(WalWindow, JournalContract, ::testing::Values(JournalFactory([] { return MakeWal(1000); })));
 
 } // namespace chronolog::contract

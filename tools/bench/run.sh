@@ -213,6 +213,8 @@ suite_custom() {
     [ -z "${BENCH_SHOW_KEEPER:-}" ] || grep -E "$BENCH_SHOW_KEEPER" "$scratch/${BENCH_SHOW_ROLE:-keeper}.log" | tail -n "${BENCH_SHOW_LINES:-40}"
     stop_perf custom
     stop_stack
+    # The Keeper logs its WAL sync and record totals when it receives the stop signal.
+    grep -h "WAL group commit totals" "$scratch/keeper.log" | tail -n 1
     finish custom
 }
 
