@@ -157,8 +157,10 @@ class Cluster:
             self.run(node, 'mkdir -p ~/chronolog-sprint/bin && cd ~/chronolog-sprint && tar xf -', 60,
                      buffer.getvalue())
         for node in NODES:
-            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && python3 -m venv venv && '
-                     'venv/bin/pip install -r requirements.txt >pip.log 2>&1', 120)
+            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
+                     f'python3 -m venv ~/chronolog-sprint/build/cluster/{self.tag}/venv && '
+                     f'~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/pip install '
+                     '-r requirements.txt >pip.log 2>&1', 120)
             (OUT / f'{node}-hardware.log').write_bytes(self.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
         for row in TABLE:
             if not row['grapher']:
@@ -191,7 +193,7 @@ class Cluster:
             node = service['node']
             data = json.dumps(service).encode()
             return self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
-                            'exec venv/bin/python agent.py', 90, data).decode()
+                            f'exec ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python agent.py', 90, data).decode()
         if op in ('pause', 'resume'):
             node, unit, _, _ = self.processes[service]
             sig = 'SIGSTOP' if op == 'pause' else 'SIGCONT'
