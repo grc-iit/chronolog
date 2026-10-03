@@ -49,7 +49,8 @@ private:
                          const Predecessor* predecessor,
                          std::atomic<size_t>& retained,
                          bool policy,
-                         bool tail) const;
+                         bool tail,
+                         std::chrono::system_clock::time_point deadline) const;
     std::shared_ptr<internal::v1::Archive::Stub> stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;
