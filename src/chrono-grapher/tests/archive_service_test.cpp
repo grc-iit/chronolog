@@ -344,6 +344,28 @@ TEST(ArchiveTransferTest, AnEmptyWindowGetsAReceiptAndAdvancesTheWatermark)
     EXPECT_TRUE(server.store->read(1, {Range::Axis::Hlc, {0, 0}, {1000, 0}})->empty());
 }
 
+// A drained Keeper ships an Empty chunk for the eventless part of its own cut (I4.14); its file is freed with the story.
+TEST(ArchiveTransferTest, DestroyErasesTheFileOfAnEmptyWindow)
+{
+    Server server;
+    ASSERT_TRUE(Send(server, {Frame()}).first.ok());
+    auto empty = Frame();
+    empty.mutable_identity()->set_chunk_id("chunk-2");
+    empty.mutable_identity()->mutable_start()->set_physical_ns(200);
+    empty.mutable_identity()->mutable_end()->set_physical_ns(300);
+    empty.set_data(wire::ChunkPayload().SerializeAsString());
+    empty.set_total_bytes(0);
+    empty.set_checksum(Crc(""));
+    ASSERT_TRUE(Send(server, {empty}).first.ok());
+    const auto records = server.store->manifest(1);
+    ASSERT_TRUE(records.ok());
+    ASSERT_EQ(records->size(), 2u);
+    EXPECT_EQ(records->back().state, ManifestState::Empty);
+    server.service->tombstone(1);
+    ASSERT_TRUE(server.service->waitDestroyed(1, std::chrono::seconds(5)));
+    for(const auto& record: *records) EXPECT_FALSE(std::filesystem::exists(server.root / record.file)) << record.file;
+}
+
 TEST(ArchiveService, ADeletedFileWhoseUnlinkFailedIsRetried)
 {
     std::mutex mutex;
