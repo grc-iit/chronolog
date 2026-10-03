@@ -2,10 +2,12 @@
 #include <grpcpp/grpcpp.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <algorithm>
 #include <mutex>
 #include <condition_variable>
 #include "chronolog/context/context.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
+#include "internal.h"
 
 namespace
 {
@@ -24,7 +26,7 @@ std::string deterministic(const wire::AppendItem& item)
     return bytes;
 }
 
-class Peer final
+class Peer
     : public wire::Catalog::Service
     , public wire::Journal::Service
     , public wire::Replay::Service
@@ -750,6 +752,403 @@ TEST(ContextApi, FollowIdleRetainsItsBoundary)
     EXPECT_EQ(result->pages[0].resume->id, input.after->id);
     EXPECT_FALSE(result->pages[0].page.answer_complete);
     EXPECT_TRUE(result->pages[0].page.events.empty());
+}
+
+// A Replay over a fixed story: archived records of record_ns are admitted whole, hot events by HLC group, and
+// a Read past the seal or over a failed source answers like the Player (I6.12 TRUNCATED, LAGGING_WRITERS, SOURCE_FAILED).
+class StoryPeer: public Peer
+{
+public:
+    struct Row
+    {
+        int64_t physical;
+        uint32_t logical;
+        uint64_t writer;
+        std::string type;
+    };
+    static constexpr int64_t s = 1'000'000'000;
+    StoryPeer()
+    {
+        uint64_t writer = 1;
+        auto add = [&](int64_t physical, std::string type = "memory")
+        { rows.push_back({physical, 0, writer++, std::move(type)}); };
+        for(int64_t p = 3 * s; p < 900 * s; p += 7 * s) add(p, p == 304 * s ? "aggregate" : "memory");
+        for(int i = 0; i < 3; ++i) add(450 * s);
+        for(int i = 0; i < 25; ++i) add(500 * s + i * (s / 3) + 1);
+        for(int64_t p = 900 * s; p < 1000 * s; p += s) add(p);
+        for(int i = 0; i < 12; ++i) add(995 * s + s / 2);
+        for(int i = 0; i < 30; ++i) add(999 * s + s / 2 + i * (s / 100));
+        std::sort(rows.begin(),
+                  rows.end(),
+                  [](const Row& a, const Row& b)
+                  { return std::tie(a.physical, a.logical, a.writer) < std::tie(b.physical, b.logical, b.writer); });
+    }
+    grpc::Status Read(grpc::ServerContext*,
+                      const wire::ReadRequest* request,
+                      grpc::ServerWriter<wire::ReadResponse>* stream) override
+    {
+        std::lock_guard lock(mutex);
+        reads.push_back(*request);
+        const chronolog::Hlc start{request->hlc().start().physical_ns(), request->hlc().start().logical()};
+        const chronolog::Hlc end{request->hlc().end().physical_ns(), request->hlc().end().logical()};
+        const size_t target = request->max_events() ? request->max_events() : 1000;
+        const bool lagging = end > chronolog::Hlc{seal, 0};
+        const bool failed = start.physical_ns < fail_end && end.physical_ns > fail_start;
+        wire::ReadResponse response;
+        std::optional<chronolog::Hlc> cut;
+        std::optional<chronolog::Hlc> previous;
+        size_t admitted = 0;
+        for(const auto& row: rows)
+        {
+            const chronolog::Hlc hlc{row.physical, row.logical};
+            if(hlc < start || hlc >= end || (lagging && hlc >= chronolog::Hlc{seal, 0}) ||
+               (failed && row.physical >= fail_start && row.physical < fail_end))
+                continue;
+            const bool archived = row.physical < archive_end;
+            if(!lagging && !failed && admitted >= target && previous && hlc != *previous &&
+               (!archived || row.physical / record_ns != previous->physical_ns / record_ns))
+            {
+                cut = archived ? std::max(start, chronolog::Hlc{row.physical / record_ns * record_ns, 0}) : hlc;
+                break;
+            }
+            auto* event = response.mutable_batch()->add_events();
+            event->mutable_id()->set_story_id(request->story_id());
+            event->mutable_id()->set_writer_id(row.writer);
+            event->mutable_id()->set_incarnation(1);
+            event->mutable_id()->set_sequence(1);
+            event->mutable_hlc()->set_physical_ns(row.physical);
+            event->mutable_hlc()->set_logical(row.logical);
+            event->mutable_envelope()->set_content_type(row.type);
+            event->mutable_envelope()->set_payload("payload");
+            previous = hlc;
+            ++admitted;
+        }
+        if(admitted)
+            stream->Write(response);
+        response.Clear();
+        auto* completion = response.mutable_completion();
+        auto reason = chronolog::IncompleteReason::None;
+        chronolog::Hlc frontier = end;
+        if(failed)
+            reason = chronolog::IncompleteReason::SourceFailed, frontier = start;
+        else if(lagging)
+            reason = chronolog::IncompleteReason::LaggingWriters, frontier = {seal, 0};
+        else if(cut)
+            reason = chronolog::IncompleteReason::Truncated, frontier = *cut;
+        completion->set_complete(reason == chronolog::IncompleteReason::None);
+        completion->set_reason(static_cast<wire::IncompleteReason>(reason));
+        completion->mutable_frontier()->set_physical_ns(frontier.physical_ns);
+        completion->mutable_frontier()->set_logical(frontier.logical);
+        stream->Write(response);
+        return grpc::Status::OK;
+    }
+    std::vector<uint64_t> suffix(size_t n, chronolog::Hlc before = {1000 * s, 0}) const
+    {
+        std::vector<uint64_t> ids;
+        for(const auto& row: rows)
+            if(chronolog::Hlc{row.physical, row.logical} < before)
+                ids.push_back(row.writer);
+        ids.erase(ids.begin(), ids.end() - static_cast<ptrdiff_t>(std::min(n, ids.size())));
+        return ids;
+    }
+    std::vector<Row> rows;
+    int64_t seal{1000 * s};
+    int64_t archive_end{900 * s};
+    int64_t record_ns{10 * s};
+    int64_t fail_start{-1};
+    int64_t fail_end{-1};
+};
+std::vector<uint64_t> writers(const ctx::Page& page)
+{
+    std::vector<uint64_t> ids;
+    for(const auto& event: page.events) ids.push_back(event.id.writer_id);
+    return ids;
+}
+std::shared_ptr<ctx::ContextSession> reader(ctx::ContextClient& client)
+{
+    ctx::OpenOptions ro;
+    ro.access = ctx::Access::ReadOnly;
+    return *client.open(ref(), {"agent", "slot"}, ro);
+}
+std::vector<uint64_t> fullRead(ctx::ContextSession& session, chronolog::Hlc end)
+{
+    ctx::RecallOptions options;
+    options.end = end;
+    options.limits.max_events = 16;
+    std::vector<uint64_t> ids;
+    for(int call = 0; call < 200; ++call)
+    {
+        auto page = session.recall(options);
+        EXPECT_TRUE(page.ok());
+        for(auto id: writers(*page)) ids.push_back(id);
+        if(page->answer_complete || !page->next_cursor)
+        {
+            EXPECT_TRUE(page->answer_complete);
+            return ids;
+        }
+        options.cursor = page->next_cursor;
+    }
+    ADD_FAILURE() << "full read did not finish";
+    return ids;
+}
+
+TEST(ContextApi, LatestAtVerifiedCut)
+{
+    StoryPeer peer;
+    auto options = peer.options();
+    options.cut_probe_width = 0s;
+    EXPECT_EQ(ctx::ContextClient::Connect(options).status().code(), absl::StatusCode::kInvalidArgument);
+    auto sdk = chronolog::client::Client::Connect(options.sdk);
+    ASSERT_TRUE(sdk.ok());
+    EXPECT_EQ(ctx::detail::latestAggregate(*sdk, options, 1, {}).status().code(), absl::StatusCode::kInvalidArgument);
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    ctx::LatestOptions latest;
+    latest.limits.max_events = 4;
+    EXPECT_EQ(session->latest(5, latest).status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(session->latest(0, latest).status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_TRUE(peer.reads.empty());
+    // The realtime cut is past the seal: the lagging probe is re-verified below the seal, then as_of is the seal.
+    auto result = session->latest(3);
+    ASSERT_TRUE(result.ok()) << result.status();
+    ASSERT_TRUE(result->as_of);
+    EXPECT_EQ(*result->as_of, (chronolog::Hlc{peer.seal, 0}));
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_TRUE(result->page.answer_complete);
+    EXPECT_EQ(writers(result->page), peer.suffix(3));
+    EXPECT_EQ(result->page.range->end, *result->as_of);
+    EXPECT_EQ(result->page.range->start, chronolog::Hlc{});
+    ASSERT_GE(peer.reads.size(), 2u);
+    EXPECT_GT(peer.reads[0].hlc().end().physical_ns(), peer.seal);
+    EXPECT_LE(peer.reads[0].hlc().end().physical_ns() - peer.reads[0].hlc().start().physical_ns(), StoryPeer::s);
+    EXPECT_EQ(peer.reads[1].hlc().end().physical_ns(), peer.seal);
+    // An explicit before fixes as_of with no probe.
+    peer.reads.clear();
+    latest.before = chronolog::Hlc{950 * StoryPeer::s, 0};
+    latest.limits.max_events = 1000;
+    result = session->latest(2, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->as_of, latest.before);
+    EXPECT_EQ(writers(result->page), peer.suffix(2, *latest.before));
+    EXPECT_EQ(peer.reads[0].hlc().end().physical_ns(), 950 * StoryPeer::s);
+    EXPECT_EQ(result->page.completion_range->end.physical_ns, peer.reads.back().hlc().end().physical_ns());
+    EXPECT_LT(result->page.completion_range->end, *latest.before);
+    latest.before = chronolog::Hlc{};
+    result = session->latest(2, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_TRUE(result->page.events.empty());
+}
+
+TEST(ContextApi, LatestMatchesTheSuffixOfAFullReadOverHotAndArchivedHistory)
+{
+    StoryPeer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    const chronolog::Hlc seal{peer.seal, 0};
+    for(chronolog::Hlc before: {seal,
+                                chronolog::Hlc{995 * StoryPeer::s + StoryPeer::s / 2 + 1, 0},
+                                chronolog::Hlc{505 * StoryPeer::s, 0},
+                                chronolog::Hlc{451 * StoryPeer::s, 0}})
+    {
+        const auto full = fullRead(*session, before);
+        ASSERT_EQ(full, peer.suffix(peer.rows.size(), before));
+        for(size_t target: {8u, 1000u})
+            for(size_t n: {1u, 2u, 5u, 8u, 13u, 40u, 120u, 400u})
+            {
+                if(n > target)
+                    continue;
+                ctx::LatestOptions latest;
+                latest.before = before;
+                latest.limits.max_events = target;
+                auto result = session->latest(n, latest);
+                ASSERT_TRUE(result.ok());
+                ASSERT_TRUE(result->selection_complete) << n << " " << target << " " << before.physical_ns;
+                const std::vector<uint64_t> expected(full.end() - static_cast<ptrdiff_t>(std::min(n, full.size())),
+                                                     full.end());
+                EXPECT_EQ(writers(result->page), expected) << n << " " << target << " " << before.physical_ns;
+            }
+    }
+    // Fewer than n is proven only by a complete range reaching 0.
+    peer.reads.clear();
+    ctx::LatestOptions latest;
+    latest.limits.max_events = 1000;
+    auto result = session->latest(peer.rows.size() + 2, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_EQ(result->page.events.size(), peer.rows.size());
+    EXPECT_EQ(result->page.completion_range->start, chronolog::Hlc{});
+    EXPECT_LE(peer.reads.size(), 32u);
+    // Search Reads walk backward: every window ends where the previous complete one began.
+    for(size_t i = 3; i < peer.reads.size(); ++i)
+        EXPECT_EQ(peer.reads[i].hlc().end().physical_ns(), peer.reads[i - 1].hlc().start().physical_ns());
+}
+
+TEST(ContextApi, LatestNarrowsTruncatedSuffixesAndKeepsEqualHlcGroupsWhole)
+{
+    StoryPeer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    ctx::LatestOptions latest;
+    latest.before = chronolog::Hlc{peer.seal, 0};
+    latest.limits.max_events = 4;
+    auto result = session->latest(4, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_EQ(writers(result->page), peer.suffix(4));
+    // The first suffix is TRUNCATED; the next Read raises m to the midpoint to max(c, midpoint).
+    ASSERT_GE(peer.reads.size(), 2u);
+    EXPECT_EQ(peer.reads[1].hlc().end().physical_ns(), peer.seal);
+    EXPECT_GE(peer.reads[1].hlc().start().physical_ns(), 999 * StoryPeer::s + StoryPeer::s / 2);
+    EXPECT_GT(peer.reads[1].hlc().start().physical_ns(), peer.reads[0].hlc().start().physical_ns());
+    EXPECT_LE(peer.reads.size(), 12u);
+    for(const auto& request: peer.reads) EXPECT_GE(request.hlc().start().physical_ns(), 999 * StoryPeer::s);
+    // A 12-event group at one HLC exceeds the target of 4; it is read whole and its last members are selected.
+    const chronolog::Hlc group{995 * StoryPeer::s + StoryPeer::s / 2, 0};
+    peer.reads.clear();
+    latest.before = chronolog::Hlc{group.physical_ns + 1, 0};
+    result = session->latest(4, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_EQ(writers(result->page), peer.suffix(4, *latest.before));
+    for(const auto& event: result->page.events) EXPECT_EQ(event.hlc, group);
+    // Group members straddling the proven suffix are neither duplicated nor dropped.
+    latest.limits.max_events = 16;
+    for(size_t n: {13u, 14u, 16u})
+    {
+        latest.before = chronolog::Hlc{996 * StoryPeer::s + 1, 0};
+        result = session->latest(n, latest);
+        ASSERT_TRUE(result.ok());
+        EXPECT_TRUE(result->selection_complete);
+        EXPECT_EQ(writers(result->page), peer.suffix(n, *latest.before));
+    }
+}
+
+TEST(ContextApi, LatestIncompleteSuffixIsProvisional)
+{
+    StoryPeer peer;
+    peer.fail_start = 100 * StoryPeer::s;
+    peer.fail_end = 200 * StoryPeer::s;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    ctx::LatestOptions latest;
+    latest.limits.max_events = 1000;
+    auto result = session->latest(5, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_EQ(writers(result->page), peer.suffix(5));
+    result = session->latest(peer.rows.size(), latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_FALSE(result->page.answer_complete);
+    EXPECT_TRUE(result->page.has_more);
+    ASSERT_TRUE(result->page.completion);
+    EXPECT_EQ(result->page.completion->reason, chronolog::IncompleteReason::SourceFailed);
+    EXPECT_FALSE(result->page.completion_range->start == chronolog::Hlc{} &&
+                 result->page.completion_range->end == *result->as_of);
+    EXPECT_GT(result->page.events.size(), 100u);
+    EXPECT_LT(result->page.events.size(), peer.rows.size());
+    EXPECT_FALSE(result->page.after);
+    EXPECT_FALSE(result->page.next_cursor);
+    for(const auto& event: result->page.events)
+        EXPECT_FALSE(event.hlc.physical_ns >= peer.fail_start && event.hlc.physical_ns < peer.fail_end);
+    // A suffix past the seal is LAGGING_WRITERS: candidates are returned, the selection is not claimed.
+    latest.before = chronolog::Hlc{peer.seal + 1, 0};
+    result = session->latest(10, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_EQ(result->page.completion->reason, chronolog::IncompleteReason::LaggingWriters);
+    EXPECT_EQ(writers(result->page), peer.suffix(10));
+    // A failed verified-cut probe yields no as_of and no candidates.
+    latest.before.reset();
+    peer.fail_start = 0;
+    peer.fail_end = 2000 * StoryPeer::s;
+    result = session->latest(10, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->as_of);
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_TRUE(result->page.events.empty());
+    EXPECT_EQ(result->page.completion->reason, chronolog::IncompleteReason::SourceFailed);
+}
+
+TEST(ContextApi, LatestReportsReadCallAndByteExhaustion)
+{
+    StoryPeer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = reader(*client);
+    ctx::LatestOptions latest;
+    latest.limits.max_events = 1000;
+    latest.max_read_calls = 4;
+    auto result = session->latest(200, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(peer.reads.size(), 4u);
+    EXPECT_EQ(result->page.limited, ctx::DeliveryLimit::ReadCalls);
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_FALSE(result->page.answer_complete);
+    EXPECT_FALSE(result->page.events.empty());
+    EXPECT_EQ(writers(result->page), peer.suffix(result->page.events.size()));
+    latest.max_read_calls = 32;
+    latest.limits.max_raw_bytes = 40;
+    result = session->latest(10, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->page.limited, ctx::DeliveryLimit::Bytes);
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_FALSE(result->page.events.empty());
+    EXPECT_LT(result->page.events.size(), 10u);
+    EXPECT_LE(result->page.raw_bytes, latest.limits.max_raw_bytes);
+    EXPECT_EQ(writers(result->page), peer.suffix(result->page.events.size()));
+    latest.limits.max_raw_bytes = 1;
+    result = session->latest(1, latest);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->page.limited, ctx::DeliveryLimit::OversizedEvent);
+    EXPECT_TRUE(result->selection_complete);
+    EXPECT_EQ(writers(result->page), peer.suffix(1));
+}
+
+TEST(ContextApi, LatestAggregateLookupDoesNotDrainOldHistory)
+{
+    StoryPeer peer;
+    auto sdk = chronolog::client::Client::Connect(peer.options().sdk);
+    ASSERT_TRUE(sdk.ok());
+    const auto config = peer.options();
+    auto aggregate = [](const chronolog::Event& event) { return event.envelope.content_type == "aggregate"; };
+    auto result = ctx::detail::latestAggregate(*sdk, config, 1, aggregate);
+    ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_TRUE(result->selection_complete);
+    ASSERT_EQ(result->page.events.size(), 1u);
+    EXPECT_EQ(result->page.events[0].hlc.physical_ns, 304 * StoryPeer::s);
+    EXPECT_LE(peer.reads.size(), 14u);
+    for(const auto& request: peer.reads) EXPECT_GT(request.hlc().end().physical_ns(), 304 * StoryPeer::s);
+    {
+        std::lock_guard lock(peer.mutex);
+        peer.rows.insert(std::find_if(peer.rows.begin(),
+                                      peer.rows.end(),
+                                      [](const auto& row) { return row.physical > 998 * StoryPeer::s; }),
+                         {998 * StoryPeer::s, 0, 9999, "aggregate"});
+        peer.reads.clear();
+    }
+    result = ctx::detail::latestAggregate(*sdk, config, 1, aggregate);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result->selection_complete);
+    ASSERT_EQ(result->page.events.size(), 1u);
+    EXPECT_EQ(result->page.events[0].id.writer_id, 9999u);
+    for(const auto& request: peer.reads) EXPECT_GE(request.hlc().start().physical_ns(), 990 * StoryPeer::s);
+    ctx::LatestOptions bounded;
+    bounded.max_read_calls = 3;
+    {
+        std::lock_guard lock(peer.mutex);
+        std::erase_if(peer.rows, [](const auto& row) { return row.writer == 9999; });
+    }
+    result = ctx::detail::latestAggregate(*sdk, config, 1, aggregate, bounded);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->selection_complete);
+    EXPECT_EQ(result->page.limited, ctx::DeliveryLimit::ReadCalls);
+    EXPECT_TRUE(result->page.events.empty());
 }
 
 } // namespace

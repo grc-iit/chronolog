@@ -1,5 +1,5 @@
 find_package(OpenSSL REQUIRED)
-add_library(chronolog_context SHARED context.cpp recall.cpp follow.cpp)
+add_library(chronolog_context SHARED context.cpp recall.cpp follow.cpp latest.cpp)
 add_library(chronolog::context ALIAS chronolog_context)
 target_compile_features(chronolog_context PUBLIC cxx_std_20)
 target_include_directories(chronolog_context PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

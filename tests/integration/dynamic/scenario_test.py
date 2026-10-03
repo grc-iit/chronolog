@@ -1,6 +1,9 @@
+import os
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
+import run
 from scenario import Scenario
 
 
@@ -102,6 +105,49 @@ class CatalogReadTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'ListMembers stayed UNAVAILABLE for 30s'):
             self.scenario.state()
         self.scenario.raw.assert_called_once()
+
+
+class LocalStopTest(unittest.TestCase):
+    def setUp(self):
+        self.stack = object.__new__(run.Local)
+        self.stack.processes = {}
+        self.stack.groups = {}
+        self.stack.services = {}
+
+    def test_stop_returns_only_after_every_group_member_exits(self):
+        # The wrapper's child keeps running after the wrapper is reaped, like the Keeper behind timeout.
+        process = subprocess.Popen(['sh', '-c', 'sleep 30 & sleep 30 & wait'], start_new_session=True)
+        self.stack.processes['keeper-1'] = (process, open(os.devnull, 'wb'))
+        self.stack.stop('keeper-1')
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(process.pid, 0)
+        self.assertEqual(self.stack.groups, {})
+
+    @patch('run.time.sleep')
+    @patch('run.os.killpg')
+    def test_stop_polls_the_group_after_the_wrapper_is_reaped(self, killpg, sleep):
+        process = Mock(pid=4321)
+        killpg.side_effect = [None, None, None, ProcessLookupError()]
+        self.stack.processes['keeper-1'] = (process, Mock())
+        self.stack.stop('keeper-1')
+        process.wait.assert_called_once()
+        self.assertEqual(killpg.call_args_list[1:], [((4321, 0),)] * 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(self.stack.groups, {})
+
+    @patch('run.time.sleep')
+    @patch('run.time.monotonic', side_effect=[0, 0, run.STOP_SECONDS])
+    @patch('run.os.killpg')
+    def test_start_refuses_a_role_whose_group_outlived_the_stop_bound(self, killpg, monotonic, sleep):
+        self.stack.processes['keeper-1'] = (Mock(pid=4321), Mock())
+        self.stack.stop('keeper-1')
+        self.assertEqual(self.stack.groups, {'keeper-1': 4321})
+        with self.assertRaisesRegex(RuntimeError, 'keeper-1 previous process group 4321 is still alive'):
+            self.stack.start('keeper-1')
+        killpg.side_effect = ProcessLookupError()
+        with self.assertRaises(KeyError):  # past the group check, at the unconfigured service
+            self.stack.start('keeper-1')
+        self.assertEqual(self.stack.groups, {})
 
 
 if __name__ == '__main__':

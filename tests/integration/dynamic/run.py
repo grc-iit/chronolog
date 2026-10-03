@@ -18,6 +18,7 @@ import uuid
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 STARTUP_ATTEMPTS = 4
+STOP_SECONDS = 15
 
 
 class StartupError(RuntimeError):
@@ -49,6 +50,7 @@ class Local:
         self.folder.mkdir(parents=True)
         self.archive = str(self.folder / 'archive')
         self.processes = {}
+        self.groups = {}
         self.services = {}
         self.nodes = {'dragon': '127.0.0.1'}
 
@@ -58,6 +60,11 @@ class Local:
         self.services[role] = (node, path, config)
 
     def start(self, role):
+        if role in self.groups:
+            if self.group_alive(self.groups[role]):
+                raise RuntimeError(f'{role} previous process group {self.groups[role]} is still alive '
+                                   f'{STOP_SECONDS}s after SIGKILL; refusing to start over its ports')
+            del self.groups[role]
         node, path, config = self.services[role]
         kind = role.split('-')[0]
         if kind == 'proxy':
@@ -86,7 +93,18 @@ class Local:
             return 'no log'
         return ' | '.join(lines[-3:]) or 'empty log'
 
+    @staticmethod
+    def group_alive(pgid):
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
     def stop(self, role):
+        # The service runs under the timeout wrapper in its own process group. The wrapper exits
+        # at once on SIGKILL while the service may still be exiting and holding its ports, so wait
+        # for the whole group; start() refuses a role whose group outlived the bound.
         entry = self.processes.pop(role, None)
         if entry:
             process, log = entry
@@ -96,6 +114,12 @@ class Local:
                 pass
             process.wait(timeout=5)
             log.close()
+            deadline = time.monotonic() + STOP_SECONDS
+            while self.group_alive(process.pid):
+                if time.monotonic() >= deadline:
+                    self.groups[role] = process.pid
+                    return
+                time.sleep(.05)
 
     def ready(self, role, listening, process=None):
         deadline = time.monotonic() + 30
@@ -189,7 +213,7 @@ class Homelab(Local):
             self.cluster.run(node, 'mkdir -p ~/chronolog-sprint && cd ~/chronolog-sprint && tar xf -',
                              60, buffer.getvalue())
 
-    def start(self, role):
+    def launch(self, role):
         node, path, config = self.services[role]
         kind = role.split('-')[0]
         if kind == 'proxy':
@@ -203,7 +227,22 @@ class Homelab(Local):
         self.ready(role, endpoints(config))
 
     def stop(self, role):
+        # Cluster.stop returns once the launching ssh exits, which only tracks the scope's timeout
+        # wrapper, so also wait until systemd reports the scope's cgroup empty.
+        unit = f'{self.cluster.tag}-{role}.scope'
         self.cluster.stop(role)
+        state = self.cluster.run(self.services[role][0], (
+            f'for i in $(seq {STOP_SECONDS * 20}); do s=$(systemctl --user show -p ActiveState --value '
+            f'{shlex.quote(unit)}); case "$s" in active|deactivating|reloading|activating) sleep .05;; '
+            f'*) echo "$s"; exit 0;; esac; done; echo "$s"'), STOP_SECONDS + 10).decode().strip()
+        if state in ('active', 'deactivating', 'reloading', 'activating'):
+            self.groups[role] = unit
+
+    def start(self, role):
+        if role in self.groups:
+            raise RuntimeError(f'{role} scope {self.groups[role]} still {STOP_SECONDS}s after SIGKILL; '
+                               'refusing to start over its ports')
+        self.launch(role)
 
     def alive(self):
         pass
