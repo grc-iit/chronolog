@@ -67,6 +67,8 @@ RamJournal::RamJournal(std::shared_ptr<Clock> clock,
 
 absl::Status RamJournal::requireStory(StoryId id) const
 {
+    if(auto resolved = resolveRoute(id); !resolved.ok())
+        return resolved;
     auto route = membership_->route(id);
     return route.status();
 }
@@ -589,7 +591,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         return done(absl::InvalidArgumentError("unknown durability"));
 
     // Resolve on the calling worker before admission. Validation under the gate reads only the cache.
-    auto resolved = resolve_route_ ? resolve_route_(batch.story_id) : absl::OkStatus();
+    auto resolved = resolveRoute(batch.story_id);
     std::vector<AppendResult> results;
     results.reserve(batch.items.size());
     struct BatchState

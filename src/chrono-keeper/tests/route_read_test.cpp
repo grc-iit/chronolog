@@ -3,7 +3,10 @@
 #include <atomic>
 #include <future>
 
+#include "adapter/ArchiveService.h"
 #include "adapter/RouteRead.h"
+#include "archive/KeeperArchive.h"
+#include "wal_harness.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "ram_harness.h"
 #include "rpc/Channel.h"
@@ -17,15 +20,35 @@ using namespace std::chrono_literals;
 class ReadPeer final
     : public v1::Catalog::Service
     , public internal::v1::Cluster::Service
+    , public internal::v1::Archive::Service
 {
 public:
     std::atomic<unsigned> reads{}, registrations{};
     std::function<void()> reading;
     bool destroyed{};
+    std::string endpoint;
+    grpc::Status failure;
+    std::atomic<unsigned> transfers{};
+    grpc::Status TransferChunk(grpc::ServerContext*,
+                               grpc::ServerReader<internal::v1::TransferChunkRequest>* stream,
+                               internal::v1::TransferChunkResponse* response) override
+    {
+        internal::v1::TransferChunkRequest frame;
+        while(stream->Read(&frame))
+        {
+            response->set_chunk_id(frame.identity().chunk_id());
+            response->set_bytes(frame.total_bytes());
+        }
+        response->set_grapher_instance("grapher");
+        response->set_receipt(++transfers);
+        return grpc::Status::OK;
+    }
     grpc::Status
     GetStory(grpc::ServerContext*, const v1::GetStoryRequest* request, v1::GetStoryResponse* response) override
     {
         ++reads;
+        if(!failure.ok())
+            return failure;
         if(reading)
             reading();
         auto* story = response->mutable_story();
@@ -35,6 +58,7 @@ public:
         {
             story->set_epoch(7);
             story->mutable_route()->set_epoch(7);
+            story->mutable_route()->set_grapher(endpoint);
             story->mutable_route()->add_keepers()->set_process_id("self");
         }
         return grpc::Status::OK;
@@ -57,8 +81,10 @@ protected:
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
         builder.RegisterService(static_cast<v1::Catalog::Service*>(&peer));
         builder.RegisterService(static_cast<internal::v1::Cluster::Service*>(&peer));
+        builder.RegisterService(static_cast<internal::v1::Archive::Service*>(&peer));
         server = builder.BuildAndStart();
         ASSERT_TRUE(server);
+        peer.endpoint = "127.0.0.1:" + std::to_string(port);
         catalog = v1::Catalog::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
         membership = std::make_shared<ConfigMembership>(std::vector<StaticRoute>{},
                                                         [this](StoryId id) { return readStoryRoute(*catalog, id); });
@@ -85,12 +111,113 @@ protected:
         batch.items.push_back(item);
         return batch;
     }
+    grpc::Status fetch(internal::v1::FetchHotTrailer* trailer = nullptr)
+    {
+        WorkerPool pool(1, 8);
+        ArchiveService service(*journal, *membership, pool);
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(&service);
+        auto serving = builder.BuildAndStart();
+        auto stub = internal::v1::Archive::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
+        grpc::ClientContext context;
+        rpc::withTimeout(context, 5s);
+        internal::v1::FetchHotRequest request;
+        request.set_story_id(1);
+        request.set_expect_epoch(7);
+        request.mutable_hlc()->mutable_end()->set_physical_ns(INT64_MAX);
+        auto stream = stub->FetchHot(&context, request);
+        internal::v1::FetchHotResponse message;
+        while(stream->Read(&message))
+            if(trailer && message.has_trailer())
+                *trailer = message.trailer();
+        auto status = stream->Finish();
+        serving->Shutdown();
+        return status;
+    }
     ReadPeer peer;
     std::unique_ptr<grpc::Server> server;
     std::unique_ptr<v1::Catalog::Stub> catalog;
     std::shared_ptr<ConfigMembership> membership;
     std::unique_ptr<RamJournal> journal;
 };
+
+TEST_F(RouteReadTest, FetchHotResolvesMissingRouteAtCatalogEpoch)
+{
+    EXPECT_EQ(membership->route(1).status().code(), absl::StatusCode::kNotFound);
+    internal::v1::FetchHotTrailer trailer;
+    EXPECT_TRUE(fetch(&trailer).ok());
+    EXPECT_EQ(trailer.epoch(), 7u);
+    EXPECT_EQ(peer.reads, 1u);
+    EXPECT_EQ(peer.registrations, 0u);
+}
+
+TEST_F(RouteReadTest, FetchHotTombstoneDropsStory)
+{
+    peer.destroyed = true;
+    EXPECT_EQ(fetch().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+    EXPECT_TRUE(journal->dropped(1));
+    EXPECT_EQ(fetch().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+    EXPECT_EQ(peer.reads, 1u);
+}
+
+TEST_F(RouteReadTest, FetchHotFailedLookupIsRetryable)
+{
+    peer.failure = grpc::Status(grpc::StatusCode::NOT_FOUND, "lookup failed");
+    EXPECT_EQ(fetch().error_code(), grpc::StatusCode::UNAVAILABLE);
+    EXPECT_FALSE(journal->dropped(1));
+}
+
+TEST_F(RouteReadTest, FetchHotSupersededLookupIsRetryable)
+{
+    peer.reading = [&] { membership->acknowledgeRoutes(30); };
+    EXPECT_EQ(fetch().error_code(), grpc::StatusCode::UNAVAILABLE);
+    EXPECT_EQ(membership->route(1).status().code(), absl::StatusCode::kNotFound);
+    EXPECT_FALSE(journal->dropped(1));
+}
+
+TEST_F(RouteReadTest, JournalReadResolvesBeforeTakingStoryLocks)
+{
+    auto events = journal->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok()) << events.status();
+    EXPECT_TRUE(events->empty());
+    EXPECT_EQ(peer.reads, 1u);
+}
+
+TEST_F(RouteReadTest, RecoveredWalSealsAndTransfersBeforeRouteSnapshot)
+{
+    test::WalRig wal;
+    auto appended = wal.journal->append(batch(), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok());
+    ASSERT_TRUE(wal.journal->flush().ok());
+    wal.journal.reset();
+    auto clock = std::make_shared<test::AssignmentClock>(2'000'000'000);
+    WalJournal recovered(clock, membership, wal.ram_config, wal.config);
+    recovered.setRouteResolver([&](StoryId id)
+                               { return membership->resolve(id, [&] { (void)recovered.dropStory(id, true); }); });
+    ASSERT_EQ(membership->route(1).status().code(), absl::StatusCode::kNotFound);
+    KeeperArchiveConfig config;
+    config.story_chunk_duration_secs = 1;
+    {
+        KeeperArchive archive(recovered, *membership, "self", config);
+        ASSERT_TRUE(archive.seal(true).ok());
+        ASSERT_EQ(archive.chunks().size(), 1u);
+    }
+    // Recover the recorded seal with a fresh cache, exercising transfer without seal().
+    auto fresh = std::make_shared<ConfigMembership>(std::vector<StaticRoute>{},
+                                                    [this](StoryId id) { return readStoryRoute(*catalog, id); });
+    recovered.setRouteResolver(nullptr);
+    KeeperArchive archive(recovered, *fresh, "self", config);
+    recovered.setRouteResolver([&](StoryId id)
+                               { return fresh->resolve(id, [&] { (void)recovered.dropStory(id, true); }); });
+    ASSERT_EQ(fresh->route(1).status().code(), absl::StatusCode::kNotFound);
+    ASSERT_TRUE(archive.shipOne());
+    EXPECT_EQ(peer.transfers, 1u);
+    EXPECT_EQ(peer.reads, 2u);
+    EXPECT_EQ(peer.registrations, 0u);
+}
 
 TEST_F(RouteReadTest, CacheMissReadsWithoutRegister)
 {

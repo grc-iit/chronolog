@@ -47,6 +47,7 @@ public:
     void appendAsync(const AppendBatch& batch, Durability durability, AppendCallback done);
     // Configure before serving; the resolver runs before taking any story gate.
     void setRouteResolver(std::function<absl::Status(StoryId)> resolve) { resolve_route_ = std::move(resolve); }
+    absl::Status resolveRoute(StoryId story) const { return resolve_route_ ? resolve_route_(story) : absl::OkStatus(); }
     void enableDynamic(std::string instance,
                        Hlc restart_floor = {},
                        int64_t physical_floor = 0,

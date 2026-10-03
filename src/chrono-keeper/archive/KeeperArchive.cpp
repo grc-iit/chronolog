@@ -120,6 +120,8 @@ absl::Status KeeperArchive::seal(bool through_frontier)
     {
         if(journal_.dropped(story_id))
             continue;
+        if(!journal_.resolveRoute(story_id).ok())
+            continue;
         auto route = membership_.route(story_id);
         if(!route.ok() || route->grapher.empty())
             continue;
@@ -389,8 +391,20 @@ Hlc KeeperArchive::knownWatermark(StoryId story) const
     return it == stories_.end() ? Hlc{} : it->second.watermark;
 }
 
+void KeeperArchive::resolvePendingRoutes()
+{
+    std::set<StoryId> stories;
+    {
+        std::lock_guard lock(mu_);
+        for(const auto& [id, state]: chunks_) stories.insert(state.chunk.story_id);
+    }
+    // Resolution may drop a story and call freeDropped, so it must run outside mu_.
+    for(auto story: stories) (void)journal_.resolveRoute(story);
+}
+
 bool KeeperArchive::shipOne(std::stop_token stop)
 {
+    resolvePendingRoutes();
     Chunk chunk;
     {
         std::lock_guard lock(mu_);
@@ -484,6 +498,7 @@ bool KeeperArchive::shipOne(std::stop_token stop)
 
 void KeeperArchive::refreshSubscriptions()
 {
+    resolvePendingRoutes();
     std::map<std::string, std::set<StoryId>> desired;
     {
         std::lock_guard lock(mu_);
