@@ -8,11 +8,13 @@ namespace chronolog::player
 ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> visor_internal,
                              Process self,
                              std::chrono::milliseconds deadline,
-                             TombstoneLookup lookup)
+                             TombstoneLookup lookup,
+                             std::shared_ptr<VisorClockAudit> clock_audit)
     : stub_(internal::v1::Cluster::NewStub(std::move(visor_internal)))
     , self_(std::move(self))
     , deadline_(deadline)
     , lookup_(std::move(lookup))
+    , clock_audit_(std::move(clock_audit))
 {}
 ClusterClient::~ClusterClient()
 {
@@ -46,7 +48,16 @@ absl::Status ClusterClient::refresh(std::stop_token stop) const
     rpc::withTimeout(context, deadline_);
     std::stop_callback cancel(stop, [&] { context.TryCancel(); });
     internal::v1::RegisterResponse response;
+    VisorClockAudit::Bracket bracket;
+    if(clock_audit_)
+        bracket = clock_audit_->begin();
     auto status = stub_->Register(&context, request, &response);
+    if(clock_audit_)
+    {
+        clock_audit_->finish(bracket, status, response);
+        if(status.ok() && !response.status().code())
+            clock_audit_->retain(response.visor_replicas());
+    }
     if(!status.ok())
         return absl::UnavailableError("visor register failed: " + status.error_message());
     if(response.status().code())
@@ -188,6 +199,8 @@ void ClusterClient::monitor(std::stop_token stop) const
         }
         if(stop.stop_requested())
             return;
+        if(clock_audit_)
+            clock_audit_->report();
         if(std::chrono::steady_clock::now() < heartbeat)
             continue;
         heartbeat = std::chrono::steady_clock::now() + std::chrono::milliseconds(rpc::kKeepaliveTimeMs);
@@ -198,7 +211,12 @@ void ClusterClient::monitor(std::stop_token stop) const
         request.set_process_id(self_.id);
         request.set_instance(self_.instance);
         internal::v1::HeartbeatResponse response;
+        VisorClockAudit::Bracket bracket;
+        if(clock_audit_)
+            bracket = clock_audit_->begin();
         auto status = stub_->Heartbeat(&context, request, &response);
+        if(clock_audit_)
+            clock_audit_->finish(bracket, status, response);
         bool unknown = status.error_code() == grpc::StatusCode::NOT_FOUND ||
                        (status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kNotFound));
         if(status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kFailedPrecondition))

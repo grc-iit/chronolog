@@ -17,6 +17,7 @@
 #include "rpc/Channel.h"
 #include "chrono-player/PlayerConfig.h"
 #include "chrono-player/adapter/ClusterClient.h"
+#include "clock/KernelClock.h"
 #include "chrono-player/adapter/ReplayService.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
@@ -92,10 +93,13 @@ int main(int argc, char** argv)
                              std::to_string(std::chrono::system_clock::now().time_since_epoch().count()),
                      config->advertise.empty() ? config->listen : config->advertise,
                      ProcessRole::Player};
-        auto cluster = std::make_shared<player::ClusterClient>(visor,
-                                                               self,
-                                                               std::chrono::milliseconds(config->keeper_deadline_ms),
-                                                               lookup);
+        auto cluster = std::make_shared<player::ClusterClient>(
+                visor,
+                self,
+                std::chrono::milliseconds(config->keeper_deadline_ms),
+                lookup,
+                std::make_shared<player::VisorClockAudit>(self.id + "/" + self.instance,
+                                                          std::make_shared<KernelClock>()));
         cluster->onRoute(
                 [writers](const Route& route)
                 {
