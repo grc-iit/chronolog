@@ -1,5 +1,5 @@
 // Closed loop load generator over the client SDK. One JSON line per measured cell on stdout and in --out.
-// Scenarios: append, replay, tail, archive. run.sh starts the stack and adds the metadata record.
+// Scenarios: append, replay, tail, archive, recv. run.sh starts the stack and adds the metadata record.
 // The loops are closed: a worker issues the next request when the previous one returns. An open loop mode
 // would replace issueNext() pacing in appendWorker() and tailWriter() with a schedule, nothing else.
 #include "chronolog/client/client.h"
@@ -643,6 +643,94 @@ int tailScenario(const Args& args)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// recv: one story of large events read back by one Read and one Tail; reports each status verbatim
+// ---------------------------------------------------------------------------------------------------------------
+int recvScenario(const Args& args)
+{
+    const auto events = static_cast<size_t>(args.num("events", 8));
+    const auto payload = static_cast<size_t>(args.num("payload", 1 << 20));
+    const auto attr = static_cast<size_t>(args.num("attr-bytes", 0));
+    const auto max_receive = args.num("max-receive", 0);
+    const std::string name = "bench-recv-" + std::to_string(::getpid());
+    auto admin = connect(args);
+    if(auto created = admin->createChronicle(name); !created.ok())
+        die("createChronicle: " + created.status().ToString());
+    auto opened = openStory(args, *admin, name, "s", "bench");
+    std::vector<Hlc> hlcs;
+    for(size_t i = 0; i < events; ++i)
+    {
+        sdk::AppendSpec spec;
+        spec.envelope.payload.assign(payload, 'x');
+        if(attr)
+            spec.envelope.attributes["pad"].assign(attr, 'a');
+        auto result = opened.writer->append(spec);
+        if(!result.ok())
+            die("append: " + result.status().ToString());
+        hlcs.push_back(result->hlc);
+    }
+    (void)opened.writer->release();
+
+    sdk::ClientOptions options;
+    options.catalog_endpoint = args.get("catalog");
+    options.player_endpoint = args.get("player");
+    options.rpc_timeout = std::chrono::seconds(30);
+    if(max_receive)
+        options.channel_args["grpc.max_receive_message_length"] = static_cast<int>(max_receive);
+    auto reader = sdk::Client::Connect(options);
+    if(!reader.ok())
+        die("connect: " + reader.status().ToString());
+    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(20);
+
+    Json read = {{"events", 0}, {"complete", false}, {"error", ""}};
+    Hlc end = hlcs.back();
+    ++end.logical;
+    if(auto stream = reader->read(opened.story, {hlcs.front(), end}); !stream.ok())
+        read["error"] = stream.status().ToString();
+    else
+        for(;;)
+        {
+            auto item = stream->next(deadline);
+            if(!item.ok())
+            {
+                read["error"] = item.status().ToString();
+                break;
+            }
+            if(!*item)
+                break;
+            read["events"] = read["events"].get<size_t>() + (**item).events.size();
+            if((**item).completion)
+            {
+                read["complete"] = (**item).completion->complete;
+                read["reason"] = static_cast<int>((**item).completion->reason);
+                break;
+            }
+        }
+
+    Json tail = {{"received", 0}, {"error", ""}};
+    deadline = std::chrono::system_clock::now() + std::chrono::seconds(20);
+    if(auto stream = reader->tail(opened.story); !stream.ok())
+        tail["error"] = stream.status().ToString();
+    else
+        while(tail["received"].get<size_t>() < events)
+        {
+            auto item = stream->next(deadline);
+            if(!item.ok())
+            {
+                tail["error"] = item.status().ToString();
+                break;
+            }
+            if(!*item)
+            {
+                tail["error"] = "end of stream";
+                break;
+            }
+            tail["received"] = tail["received"].get<size_t>() + (**item).events.size();
+        }
+    emit("recv", args.asJson(), {{"events_written", events}, {"read", read}, {"tail", tail}});
+    return 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // archive: how long after the last acknowledged append the Keeper settles every chunk with the Grapher
 // ---------------------------------------------------------------------------------------------------------------
 uint64_t directoryBytes(const std::string& root)
@@ -689,7 +777,7 @@ int archiveScenario(const Args& args)
 int main(int argc, char** argv)
 {
     if(argc < 2)
-        die("usage: chronolog_bench_load append|replay|tail|archive --catalog HOST:PORT --player HOST:PORT [--key "
+        die("usage: chronolog_bench_load append|replay|tail|archive|recv --catalog HOST:PORT --player HOST:PORT [--key "
             "value ...]");
     const std::string scenario = argv[1];
     const Args args(argc, argv);
@@ -703,5 +791,7 @@ int main(int argc, char** argv)
         return tailScenario(args);
     if(scenario == "archive")
         return archiveScenario(args);
+    if(scenario == "recv")
+        return recvScenario(args);
     die("unknown scenario " + scenario);
 }
