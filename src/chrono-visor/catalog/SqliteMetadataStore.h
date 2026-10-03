@@ -102,6 +102,7 @@ public:
     absl::Status clearPhysicalPolicy(const std::vector<StoryId>& stories);
     absl::Status registerStaticPolicy(const std::string& process, uint64_t version);
     absl::StatusOr<internal::v1::MembershipState> membershipState() const;
+    uint64_t allocateMembershipRevision();
     absl::Status saveMembership(const internal::v1::MembershipState& state);
     absl::StatusOr<internal::v1::MembershipState>
     membershipCommandState(const internal::v1::MembershipCommand& command) const;

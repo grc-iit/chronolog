@@ -329,6 +329,12 @@ try
 }
 MEMBERSHIP_CATCH
 
+uint64_t SqliteMetadataStore::allocateMembershipRevision()
+{
+    std::lock_guard lock(mutex_);
+    return routeMutationRevision();
+}
+
 uint64_t SqliteMetadataStore::routeMutationRevision()
 {
     if(apply_revision_)

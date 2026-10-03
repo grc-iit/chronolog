@@ -170,6 +170,7 @@ RouteState routeState(const wire::RouteUpdate& u)
 }
 std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
 {
+    store.allocateMembershipRevision();
     auto loaded = store.membershipCommandState(q);
     require(loaded.status());
     auto state = *loaded;
