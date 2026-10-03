@@ -126,6 +126,28 @@ TEST(KeeperConfig, WalRotationAndShutdownSettings)
     EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_WAL_SEGMENT_BYTES", "0"}})).ok());
 }
 
+TEST(KeeperConfig, GroupCommitWindowDefaultsToAdaptiveAndIsBounded)
+{
+    auto defaults = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_EQ(defaults->group_commit_window_us, 0u);
+    auto path = WriteFile(R"({"group_commit_window_us":10000})");
+    auto file = KeeperConfig::load(path, Env({}));
+    ASSERT_TRUE(file.ok());
+    EXPECT_EQ(file->group_commit_window_us, 10000u);
+    auto overridden = KeeperConfig::load(path, Env({{"CHRONOLOG_KEEPER_GROUP_COMMIT_WINDOW_US", "250"}}));
+    std::filesystem::remove(path);
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->group_commit_window_us, 250u);
+    for(const auto* invalid: {"10001", "-1"})
+        EXPECT_FALSE(
+                KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_GROUP_COMMIT_WINDOW_US", invalid}})).ok());
+    path = WriteFile(R"({"group_commit_window_us":10001})");
+    auto oversized = KeeperConfig::load(path, Env({}));
+    std::filesystem::remove(path);
+    EXPECT_FALSE(oversized.ok());
+}
+
 TEST(KeeperConfig, LogLevelDefaultsToInfoAndRejectsUnknownLevels)
 {
     auto defaults = KeeperConfig::load(std::nullopt, Env({}));

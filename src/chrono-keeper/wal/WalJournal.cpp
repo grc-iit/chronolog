@@ -45,7 +45,8 @@ WalJournal::WalJournal(std::shared_ptr<Clock> clock,
     , sink_factory_(std::move(sink_factory))
 {
     if(config_.wal_dir.empty() || config_.group_commit_max_bytes == 0 || config_.reserve_ahead_ms == 0 ||
-       config_.wal_max_bytes == 0 || config_.wal_segment_bytes == 0)
+       config_.wal_max_bytes == 0 || config_.wal_segment_bytes == 0 ||
+       config_.group_commit_window_us > kMaxGroupCommitWindowUs)
         throw std::invalid_argument("invalid WAL configuration");
     fs::create_directories(config_.wal_dir);
     lock_fd_ = ::open((fs::path(config_.wal_dir) / "lock").c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
@@ -201,6 +202,8 @@ uint64_t WalJournal::recover()
 
 void WalJournal::enqueue(Write write)
 {
+    if(config_.group_commit_window_us != 0)
+        write.queued_at = std::chrono::steady_clock::now();
     {
         std::lock_guard lock(queue_mu_);
         queued_bytes_ += write.bytes.size();
@@ -252,6 +255,11 @@ void WalJournal::flushCollected(WalJournal& journal)
 {
     if(collected_.empty())
         return;
+    if(journal.config_.group_commit_window_us != 0)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        for(auto& write: collected_) write.queued_at = now;
+    }
     {
         std::lock_guard lock(journal.queue_mu_);
         for(auto& write: collected_)
@@ -294,6 +302,11 @@ void WalJournal::commit()
             queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
             if(queue_.empty() && stopping_)
                 return;
+            if(config_.group_commit_window_us != 0)
+                queue_cv_.wait_until(lock,
+                                     queue_.front().queued_at +
+                                             std::chrono::microseconds(config_.group_commit_window_us),
+                                     [this] { return stopping_ || queued_bytes_ >= config_.group_commit_max_bytes; });
             size_t bytes = 0;
             while(!queue_.empty() &&
                   (group.empty() || bytes + queue_.front().bytes.size() <= config_.group_commit_max_bytes))
@@ -335,6 +348,14 @@ void WalJournal::commit()
                 }
                 if(status.ok())
                     status = sink_->sync();
+                if(status.ok())
+                {
+                    synced_groups_.fetch_add(1, std::memory_order_relaxed);
+                    synced_records_.fetch_add(std::count_if(group.begin(),
+                                                            group.end(),
+                                                            [](const Write& write) { return !write.bytes.empty(); }),
+                                              std::memory_order_relaxed);
+                }
                 const bool settled = std::any_of(group.begin(),
                                                  group.end(),
                                                  [](const Write& write) {
@@ -381,6 +402,11 @@ size_t WalJournal::queuedRecords() const
 {
     std::lock_guard lock(queue_mu_);
     return queue_.size();
+}
+
+WalJournal::CommitStats WalJournal::commitStats() const
+{
+    return {synced_groups_.load(std::memory_order_relaxed), synced_records_.load(std::memory_order_relaxed)};
 }
 
 absl::Status WalJournal::flush()

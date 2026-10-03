@@ -153,7 +153,8 @@ int main(int argc, char** argv)
                                 config->group_commit_max_bytes,
                                 config->reserve_ahead_ms,
                                 config->wal_max_bytes,
-                                config->wal_segment_bytes};
+                                config->wal_segment_bytes,
+                                config->group_commit_window_us};
     std::unique_ptr<WalJournal> owned_journal;
     try
     {
@@ -276,6 +277,8 @@ int main(int argc, char** argv)
                     if(received > 0)
                     {
                         LOG(INFO) << "chrono_keeper shutting down on signal " << received;
+                        const auto stats = journal.commitStats();
+                        LOG(INFO) << "WAL group commit totals: syncs=" << stats.syncs << " records=" << stats.records;
                         const auto deadline = std::chrono::system_clock::now() + kShutdownDeadline;
                         internal_server->Shutdown(deadline);
                         public_server->Shutdown(deadline);

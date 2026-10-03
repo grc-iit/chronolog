@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <set>
@@ -12,6 +13,8 @@
 namespace chronolog
 {
 
+inline constexpr uint32_t kMaxGroupCommitWindowUs = 10'000;
+
 struct WalJournalConfig
 {
     std::string wal_dir{"wal"};
@@ -19,6 +22,9 @@ struct WalJournalConfig
     uint32_t reserve_ahead_ms{1000};
     uint64_t wal_max_bytes{1ull << 30};
     uint64_t wal_segment_bytes{64ull << 20};
+    // Zero commits whatever is queued as soon as the committer is free; nonzero holds a group open
+    // until this long after its first record or until group_commit_max_bytes is queued (I5.10).
+    uint32_t group_commit_window_us{0};
 };
 
 class WalJournal: public RamJournal
@@ -44,6 +50,13 @@ public:
     absl::Status flush();
     // Records waiting for the commit loop; tests use it to know a group has formed behind a blocked fsync.
     size_t queuedRecords() const;
+    struct CommitStats
+    {
+        uint64_t syncs{};
+        uint64_t records{};
+    };
+    // Group commits that reached a successful sync, and the records they carried.
+    CommitStats commitStats() const;
     absl::Status recordSeal(const Chunk& chunk);
     absl::Status recordSettled(const std::string& chunk_id);
     // Stories whose D record is journaled.
@@ -65,6 +78,7 @@ private:
     {
         std::string bytes;
         std::function<void(absl::Status)> done;
+        std::chrono::steady_clock::time_point queued_at{};
     };
     void enqueue(Write write);
     static void flushCollected(WalJournal& journal);
@@ -114,6 +128,8 @@ private:
     bool stopping_{};
     absl::Status failure_;
     std::atomic<bool> failed_{false};
+    std::atomic<uint64_t> synced_groups_{0};
+    std::atomic<uint64_t> synced_records_{0};
     std::thread committer_;
 };
 
