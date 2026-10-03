@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <future>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <sys/file.h>
@@ -169,7 +170,48 @@ int StateRank(ManifestState state)
     return 0;
 }
 
-absl::Status ValidateFile(const std::filesystem::path& root, const ManifestRecord& record)
+bool Bounded(TimeReading reading)
+{
+    return reading.status == ClockStatus::Synced && reading.uncertainty_ns &&
+           *reading.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
+}
+
+std::optional<PhysicalBounds> BoundsOf(std::span<const Event> events)
+{
+    if(events.empty())
+        return std::nullopt;
+    PhysicalBounds bounds{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::min(), false};
+    auto saturate = [](__int128_t value)
+    {
+        return static_cast<int64_t>(std::clamp<__int128_t>(value,
+                                                           std::numeric_limits<int64_t>::min(),
+                                                           std::numeric_limits<int64_t>::max()));
+    };
+    for(const auto& event: events)
+    {
+        const bool bounded = Bounded(event.physical);
+        bounds.unbounded |= !bounded;
+        const __int128_t p = event.physical.physical_ns;
+        const __int128_t u = bounded ? *event.physical.uncertainty_ns : 0;
+        bounds.min_lo = std::min(bounds.min_lo, saturate(p - u));
+        bounds.max_hi = std::max(bounds.max_hi, saturate(p + u));
+    }
+    return bounds;
+}
+
+bool MayIntersect(const ManifestIndex& index, const ManifestRecord& record, Range range)
+{
+    const auto found = index.physical_bounds.find(record.file);
+    if(found == index.physical_bounds.end())
+        return true;
+    const auto& file = found->second;
+    if(file.story_id != record.story_id || file.start != record.start || file.end != record.end ||
+       file.event_count != record.event_count || file.bounds.unbounded)
+        return true;
+    return file.bounds.min_lo < range.end.physical_ns && file.bounds.max_hi >= range.start.physical_ns;
+}
+
+absl::StatusOr<std::vector<Event>> ValidateFile(const std::filesystem::path& root, const ManifestRecord& record)
 {
     auto events = ReadChunkFile(root / record.file);
     if(!events.ok())
@@ -178,7 +220,9 @@ absl::Status ValidateFile(const std::filesystem::path& root, const ManifestRecor
         return absl::UnavailableError("chunk event count mismatch");
     Chunk chunk{record.chunk_id, record.story_id, record.start, record.end, *std::move(events), record.exempt};
     const auto valid = ValidChunk(chunk);
-    return valid.ok() ? absl::OkStatus() : absl::UnavailableError(valid.message());
+    if(!valid.ok())
+        return absl::UnavailableError(valid.message());
+    return std::move(chunk.events);
 }
 } // namespace
 
@@ -451,13 +495,14 @@ absl::Status FileTierStore::recover()
                                                    O_RDWR | O_CLOEXEC));
             if(owner.get() >= 0 && ::flock(owner.get(), LOCK_EX | LOCK_NB) != 0)
                 continue;
-            if(!ValidateFile(root_, *record).ok())
+            auto events = ValidateFile(root_, *record);
+            if(!events.ok())
                 continue;
             auto synced = tier_detail::SyncDirectory(it->path());
             if(!synced.ok())
                 return synced;
             record->manifest_writer = writer_;
-            const auto status = log_->append(*record);
+            const auto status = log_->append(*record, BoundsOf(*events));
             if(!status.ok())
                 return status;
         }
@@ -569,7 +614,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(!synced.ok())
         return synced;
     std::lock_guard lock(mutex_);
-    status = log_->append(record);
+    status = log_->append(record, BoundsOf(chunk.events));
     if(!status.ok())
         return status;
     if(auto index = refresh(); index.ok())
@@ -594,7 +639,8 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
         for(const auto& record: effective(**index, story))
         {
             if(record.state == ManifestState::Published &&
-               (range.axis == Range::Axis::Physical || (record.end > range.start && record.start < range.end)))
+               (range.axis == Range::Axis::Physical ? MayIntersect(**index, record, range)
+                                                    : (record.end > range.start && record.start < range.end)))
                 selected.push_back(record);
         }
         if(selected.empty())
@@ -618,7 +664,7 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
     for(auto& record: selected)
     {
         auto task = std::make_shared<std::packaged_task<Result()>>([this, record = std::move(record), range]
-                                                                   { return readRecord(record, range); });
+                                                                   { return readFileRecord(record, range); });
         pending.push_back(task->get_future());
         if(!readers->submit([task] { (*task)(); }))
             return absl::UnavailableError("archive readers stopping");
@@ -659,6 +705,26 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         return valid;
     if(record.state != ManifestState::Published)
         return absl::InvalidArgumentError("record is not published");
+    if(range.axis == Range::Axis::Physical)
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        if(!MayIntersect(**index, record, range))
+            return std::vector<Event>{};
+    }
+    return readFileRecord(record, range, max_events);
+}
+
+absl::StatusOr<std::vector<Event>>
+FileTierStore::readFileRecord(const ManifestRecord& record, Range range, size_t max_events) const
+{
+    const auto valid = ValidRange(range);
+    if(!valid.ok())
+        return valid;
+    if(record.state != ManifestState::Published)
+        return absl::InvalidArgumentError("record is not published");
     auto events = read_file_(root_ / record.file);
     if(!events.ok())
         return events.status();
@@ -676,8 +742,7 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
             matches = event.hlc >= range.start && event.hlc < range.end;
         else
         {
-            const bool bounded = event.physical.status == ClockStatus::Synced && event.physical.uncertainty_ns &&
-                                 *event.physical.uncertainty_ns <= PhysicalPolicy{}.uncertainty_cap_ns;
+            const bool bounded = Bounded(event.physical);
             const __int128_t p = event.physical.physical_ns;
             const __int128_t u = bounded ? *event.physical.uncertainty_ns : 0;
             matches = bounded ? p - u < range.end.physical_ns && p + u >= range.start.physical_ns

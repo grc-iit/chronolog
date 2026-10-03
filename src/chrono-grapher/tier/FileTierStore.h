@@ -62,6 +62,8 @@ private:
                   ReadFile read_file,
                   size_t read_threads);
     absl::Status recover();
+    absl::StatusOr<std::vector<Event>>
+    readFileRecord(const ManifestRecord& record, Range range, size_t max_events = SIZE_MAX) const;
     void collectDeletedFiles(const ManifestIndex& index);
     absl::Status unlinkDeletedFile(const std::string& file);
     struct StoryView
