@@ -377,6 +377,7 @@ TEST_F(replay_adapter_recv, ReadDeliversEightMaximalPayloads)
     for(uint64_t sequence = 1; sequence <= 8; ++sequence)
     {
         auto event = protoEvent(2, sequence, 100 + sequence);
+        event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
         event.mutable_envelope()->set_payload(std::string(1 << 20, 'x'));
         events.push_back(std::move(event));
     }
@@ -414,6 +415,7 @@ TEST_F(replay_adapter_recv, TailDeliversEightMaximalPayloads)
     for(uint64_t sequence = 1; sequence <= 8; ++sequence)
     {
         auto event = protoEvent(2, sequence, 100 + sequence);
+        event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
         event.mutable_envelope()->set_payload(std::string(1 << 20, 'x'));
         events.push_back(std::move(event));
     }
@@ -443,6 +445,7 @@ TEST_F(replay_adapter_recv, TailDeliversEightMaximalPayloads)
 TEST_F(replay_adapter_recv, HotReadDeliversFiveMiBAttributes)
 {
     auto event = protoEvent(2, 1, 110);
+    event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
     (*event.mutable_envelope()->mutable_attributes())["padding"] = std::string(5 << 20, 'a');
     a_.hold("a", {event}, 200);
     b_.hold("b", {}, 200);
