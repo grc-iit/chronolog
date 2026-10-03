@@ -329,7 +329,7 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | payload max bytes | Keeper | 1 MiB | section 3 |
 | group_commit_window_us | Keeper WAL | 0 (adaptive group commit), at most 10000 | I5.10, `src/chrono-keeper/KeeperConfig.h` |
 | group_commit_max_bytes | Keeper WAL | 4194304 | I5.10, `src/chrono-keeper/KeeperConfig.h` |
-| causal_floor skew limit | Keeper | 60000000000 ns, config key causal_floor_skew_limit_ns | I8.6, `src/chrono-keeper/KeeperConfig.h` |
+| causal_floor skew limit | Catalog policy (S) | the policy's skew_limit_ns, 60000000000 ns by default; the Keeper keys causal_floor_skew_limit_ns and reserve_ahead_ms only assert the expected policy, and a mismatch refuses Register (9f9ec71a) | I8.6, section 8, `src/chrono-keeper/KeeperConfig.h` |
 | heartbeat timeout | Visor Cluster | 15000 ms, config key keeper_failure_timeout_ms | MembershipContract.RegisterHeartbeatAndRestartFencing, `src/chrono-visor/VisorConfig.h` |
 | acquisition_lease_default_ns | Visor | 300000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
 | acquisition_lease_min_ns | Visor | 30000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
