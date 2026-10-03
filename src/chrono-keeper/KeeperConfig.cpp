@@ -317,13 +317,21 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
     return cfg;
 }
 
-std::chrono::milliseconds KeeperConfig::heartbeatDeadline() const
+std::chrono::milliseconds heartbeatDeadline(std::chrono::milliseconds interval,
+                                            uint32_t keeper_failure_timeout_ms,
+                                            uint32_t release_fence_timeout_ms)
 {
     using std::chrono::milliseconds;
-    const auto next_beat = keeper_failure_timeout_ms > heartbeat_interval_ms
-                                   ? milliseconds(keeper_failure_timeout_ms - heartbeat_interval_ms)
-                                   : milliseconds(0);
+    const auto failure = milliseconds(keeper_failure_timeout_ms);
+    const auto next_beat = failure > interval ? failure - interval : milliseconds(0);
     return rpc::livenessDeadline({next_beat, milliseconds(release_fence_timeout_ms)});
+}
+
+std::chrono::milliseconds KeeperConfig::heartbeatDeadline() const
+{
+    return keeper::heartbeatDeadline(std::chrono::milliseconds(heartbeat_interval_ms),
+                                     keeper_failure_timeout_ms,
+                                     release_fence_timeout_ms);
 }
 
 absl::Status KeeperConfig::validate() const

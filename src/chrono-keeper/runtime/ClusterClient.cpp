@@ -3,6 +3,8 @@
 #include <set>
 
 #include <absl/log/log.h>
+#include <absl/strings/str_cat.h>
+#include "KeeperConfig.h"
 #include "adapter/Convert.h"
 #include "wal/WalJournal.h"
 
@@ -24,6 +26,45 @@ absl::Status toStatus(const v1::ItemStatus& status)
     return absl::Status(static_cast<absl::StatusCode>(status.code()), status.message());
 }
 
+const char* reasonName(ClockAuditReason reason)
+{
+    switch(reason)
+    {
+        case ClockAuditReason::None:
+            return "none";
+        case ClockAuditReason::TransportFailure:
+            return "transport failure";
+        case ClockAuditReason::MissingIdentity:
+            return "missing responder identity";
+        case ClockAuditReason::MissingPhysical:
+            return "missing physical reading";
+        case ClockAuditReason::Unavailable:
+            return "clock unavailable";
+        case ClockAuditReason::Unsynced:
+            return "clock unsynced";
+        case ClockAuditReason::MissingBound:
+            return "synced reading without a bound";
+        case ClockAuditReason::MalformedReading:
+            return "bound on an unsynced reading";
+        case ClockAuditReason::NegativeElapsed:
+            return "negative elapsed time";
+        case ClockAuditReason::Discontinuity:
+            return "physical clock step";
+        case ClockAuditReason::Overflow:
+            return "arithmetic overflow";
+        case ClockAuditReason::Stale:
+            return "stale observation";
+        case ClockAuditReason::Capacity:
+            return "too many replicas";
+    }
+    return "unknown";
+}
+
+// CLOCK_REALTIME may slew by at most 500 ppm against the monotonic clock; the fixed part covers the gap
+// between reading the two clocks.
+constexpr uint64_t kSlewPartsPerMillion = 500;
+constexpr uint64_t kStepSlackNs = 100'000;
+
 } // namespace
 
 ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> channel,
@@ -36,8 +77,15 @@ ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> channel,
     , journal_(journal)
     , membership_(membership)
     , acquisitions_(acquisitions)
+    , failure_timeout_ms_(options_.keeper_failure_timeout_ms)
+    , fence_timeout_ms_(options_.release_fence_timeout_ms)
+    , audit_({.freshness_ns = std::chrono::nanoseconds(4 * options_.interval).count(), .max_replicas = 16})
 {
-    extend_deadline_ms_ = options_.deadline.count();
+    deadline_ms_ = keeper::heartbeatDeadline(std::chrono::milliseconds(options_.interval),
+                                             options_.keeper_failure_timeout_ms,
+                                             options_.release_fence_timeout_ms)
+                           .count();
+    extend_deadline_ms_ = deadline_ms_.load();
 }
 
 ClusterClient::~ClusterClient()
@@ -61,9 +109,12 @@ absl::Status ClusterClient::registerNow()
                [&](auto& stub, auto& context)
                {
                    response.Clear();
-                   return stub.Register(&context, request, &response);
+                   const auto start = mark();
+                   auto status = stub.Register(&context, request, &response);
+                   audit(start, status, response);
+                   return status;
                },
-               options_.deadline);
+               heartbeatDeadline());
        !rpc.ok())
         return toStatus(rpc);
     if(auto status = toStatus(response.status()); !status.ok())
@@ -74,6 +125,18 @@ absl::Status ClusterClient::registerNow()
         replicas_.clear();
         for(const auto& endpoint: response.visor_replicas())
             replicas_.push_back(iv1::Cluster::NewStub(rpc::peerChannel(endpoint)));
+        std::vector<std::string> endpoints(response.visor_replicas().begin(), response.visor_replicas().end());
+        std::sort(endpoints.begin(), endpoints.end());
+        // Replies name replicas by id, not endpoint: after a membership change only the replica that just
+        // answered is known to remain, and the others return as they generate readings.
+        if(!visor_endpoints_.empty() && endpoints != visor_endpoints_)
+        {
+            std::vector<std::string> keep;
+            if(!response.clock_responder().replica_id().empty())
+                keep.push_back(response.clock_responder().replica_id());
+            audit_.retainReplicas(keep);
+        }
+        visor_endpoints_ = std::move(endpoints);
     }
     if(response.has_policy())
     {
@@ -84,6 +147,8 @@ absl::Status ClusterClient::registerNow()
            policy.uncertainty_cap_ns() < 0 ||
            static_cast<uint64_t>(policy.uncertainty_cap_ns()) != expected.uncertainty_cap_ns)
             return absl::FailedPreconditionError("physical policy constants differ");
+        if(auto status = adoptTimeouts(policy); !status.ok())
+            return status;
     }
     if(auto* wal = dynamic_cast<WalJournal*>(&journal_))
         if(auto status = wal->recordInstance(options_.instance); !status.ok())
@@ -92,7 +157,7 @@ absl::Status ClusterClient::registerNow()
     {
         const auto ahead = std::chrono::nanoseconds(response.policy().ceiling_ahead_ns());
         const auto deadline =
-                std::min(options_.deadline,
+                std::min(heartbeatDeadline(),
                          rpc::livenessDeadline({std::chrono::duration_cast<std::chrono::milliseconds>(ahead)}));
         if(deadline < rpc::kMinLivenessDeadline)
             return absl::FailedPreconditionError("ceiling_ahead is too short to renew within a deadline");
@@ -189,9 +254,12 @@ absl::Status ClusterClient::heartbeatNow()
                        evidence->set_incarnation(key.incarnation);
                    }
                    response.Clear();
-                   return stub.Heartbeat(&context, request, &response);
+                   const auto start = mark();
+                   auto status = stub.Heartbeat(&context, request, &response);
+                   audit(start, status, response);
+                   return status;
                },
-               options_.deadline);
+               heartbeatDeadline());
        !rpc.ok())
         return toStatus(rpc);
     applyRoutes(response.routes());
@@ -257,6 +325,125 @@ absl::Status ClusterClient::extendNow()
     }
     return absl::UnavailableError("ceiling fence kept changing");
 }
+absl::Status ClusterClient::adoptTimeouts(const iv1::MembershipPolicy& policy)
+{
+    // Zero is an omitted field: a Visor without A9 leaves the timers in force.
+    const uint32_t failure =
+            policy.keeper_failure_timeout_ms() ? policy.keeper_failure_timeout_ms() : failure_timeout_ms_.load();
+    const uint32_t fence =
+            policy.release_fence_timeout_ms() ? policy.release_fence_timeout_ms() : fence_timeout_ms_.load();
+    if(failure == failure_timeout_ms_ && fence == fence_timeout_ms_)
+        return absl::OkStatus();
+    const auto deadline = keeper::heartbeatDeadline(options_.interval, failure, fence);
+    if(deadline < rpc::kMinLivenessDeadline)
+        return absl::FailedPreconditionError(absl::StrCat("Visor keeper_failure_timeout_ms ",
+                                                          failure,
+                                                          " and release_fence_timeout_ms ",
+                                                          fence,
+                                                          " leave no heartbeat deadline of ",
+                                                          rpc::kMinLivenessDeadline.count(),
+                                                          " ms at heartbeat_interval_ms ",
+                                                          options_.interval.count()));
+    LOG(INFO) << "adopting the Visor's keeper_failure_timeout_ms " << failure << " (was " << failure_timeout_ms_.load()
+              << ") and release_fence_timeout_ms " << fence << " (was " << fence_timeout_ms_.load()
+              << "); heartbeat deadline " << deadline.count() << " ms";
+    failure_timeout_ms_ = failure;
+    fence_timeout_ms_ = fence;
+    deadline_ms_ = deadline.count();
+    return absl::OkStatus();
+}
+
+int64_t ClusterClient::monotonicNow() const
+{
+    if(options_.monotonic)
+        return options_.monotonic();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+}
+
+ClusterClient::ClockMark ClusterClient::mark() const
+{
+    if(!options_.clock)
+        return {};
+    ClockMark out;
+    if(auto reading = options_.clock->now(); reading.ok())
+        out.physical = *reading;
+    out.monotonic_ns = monotonicNow();
+    return out;
+}
+
+TimeReading ClusterClient::physicalReading(const v1::TimeReading& reading)
+{
+    // Kept as sent, so a malformed reading is reported as such instead of being normalized.
+    TimeReading out;
+    out.physical_ns = reading.physical_ns();
+    if(reading.has_uncertainty_ns())
+        out.uncertainty_ns = reading.uncertainty_ns();
+    out.status = reading.status() == v1::CLOCK_STATUS_SYNCED     ? ClockStatus::Synced
+                 : reading.status() == v1::CLOCK_STATUS_UNSYNCED ? ClockStatus::Unsynced
+                                                                 : ClockStatus::Unavailable;
+    return out;
+}
+
+void ClusterClient::audited(const ClockAuditSample& sample)
+{
+    auto checked = sample;
+    const uint64_t elapsed =
+            sample.m1_ns > sample.m0_ns ? static_cast<uint64_t>(sample.m1_ns) - static_cast<uint64_t>(sample.m0_ns) : 0;
+    checked.discontinuity = physicalStepDetected(sample.t0,
+                                                 sample.t1,
+                                                 sample.m0_ns,
+                                                 sample.m1_ns,
+                                                 elapsed / 1'000'000 * kSlewPartsPerMillion + kStepSlackNs);
+    auto result = audit_.record(checked);
+    if(result.transition)
+    {
+        logTransition(*result.transition);
+    }
+    else if(result.decision.state == ClockAuditState::Alarm)
+    {
+        LOG_EVERY_N_SEC(WARNING, 60) << "clock audit alarm persists: keeper=" << options_.process_id << "/"
+                                     << options_.instance << " visor=" << checked.responder.replica_id << "/"
+                                     << checked.responder.instance
+                                     << " offset_ns=" << result.decision.observation->offset_ns
+                                     << " threshold_ns=" << result.decision.observation->threshold_ns;
+    }
+    else if(result.decision.reason == ClockAuditReason::MissingIdentity ||
+            result.decision.reason == ClockAuditReason::Capacity)
+    {
+        LOG_EVERY_N_SEC(WARNING, 300) << "clock audit inconclusive: keeper=" << options_.process_id << "/"
+                                      << options_.instance << " reason=" << reasonName(result.decision.reason);
+    }
+}
+
+void ClusterClient::logTransition(const ClockAuditTransition& transition) const
+{
+    const auto& o = transition.decision.observation;
+    switch(transition.kind)
+    {
+        case ClockAuditTransition::Kind::ToAlarm:
+            LOG(WARNING) << "clock audit alarm: keeper=" << options_.process_id << "/" << options_.instance
+                         << " visor=" << transition.key.replica_id << "/" << transition.key.instance
+                         << " offset_ns=" << o->offset_ns << " threshold_ns=" << o->threshold_ns
+                         << " local_bound_ns=" << o->local_bound_ns << " visor_bound_ns=" << o->visor_bound_ns
+                         << " rtt_ns=" << o->rtt_ns;
+            break;
+        case ClockAuditTransition::Kind::ToOk:
+            LOG(INFO) << "clock audit ok: keeper=" << options_.process_id << "/" << options_.instance
+                      << " visor=" << transition.key.replica_id << "/" << transition.key.instance
+                      << " offset_ns=" << o->offset_ns << " threshold_ns=" << o->threshold_ns
+                      << " rtt_ns=" << o->rtt_ns;
+            break;
+        case ClockAuditTransition::Kind::CoverageLost:
+            LOG(WARNING) << "clock audit coverage lost: keeper=" << options_.process_id << "/" << options_.instance
+                         << " visor=" << transition.key.replica_id << "/" << transition.key.instance
+                         << " reason=" << reasonName(transition.decision.reason);
+            break;
+    }
+}
+
+std::vector<ClockAuditEntry> ClusterClient::clockAudit() const { return audit_.entries(monotonicNow()); }
+
 void ClusterClient::start()
 {
     thread_ = std::jthread([this](std::stop_token stop) { loop(stop); });
@@ -302,6 +489,8 @@ void ClusterClient::loop(std::stop_token stop)
             (void)extendNow();
             wait = std::min(wait, 500ms);
         }
+        if(options_.clock)
+            for(const auto& transition: audit_.expire(monotonicNow())) logTransition(transition);
         std::unique_lock lock(mutex_);
         cv_.wait_for(lock, stop, wait, [this] { return kicked_; });
         kicked_ = false;

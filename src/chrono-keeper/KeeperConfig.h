@@ -44,7 +44,7 @@ struct KeeperConfig
     std::string self_endpoint = "chrono-keeper:50052";
     std::string visor_internal = "chrono-visor:50061";
     size_t payload_max_bytes = 1048576;
-    // TBD in section 13 of ARCHITECTURE.md; this PR proposes 60 s.
+    // Section 13 of ARCHITECTURE.md records 60 s (I8.6).
     int64_t causal_floor_skew_limit_ns = 60'000'000'000;
     size_t dedupe_window = 65536;
     std::string wal_dir = "wal";
@@ -64,8 +64,9 @@ struct KeeperConfig
     // Zero selects std::thread::hardware_concurrency().
     uint32_t worker_threads = 0;
     uint32_t heartbeat_interval_ms = 5000;
-    // Must equal the Visor's keeper_failure_timeout_ms and release_fence_timeout_ms: the deadline of every
-    // call that feeds those timers is derived from them (M11.3).
+    // Bootstrap values of the Visor's keeper_failure_timeout_ms and release_fence_timeout_ms: the Keeper adopts
+    // the Visor's own from every Register reply that carries them (A9). The deadline of every call that feeds
+    // those timers derives from the values in force (M11.3).
     uint32_t keeper_failure_timeout_ms = 15000;
     uint32_t release_fence_timeout_ms = 2000;
     uint32_t append_ceiling_wait_ms = 1000;
@@ -88,5 +89,10 @@ struct KeeperConfig
     // times out.
     std::chrono::milliseconds heartbeatDeadline() const;
 };
+
+// Register and Heartbeat deadline for a heartbeat interval and the Visor's failure and fence timers.
+std::chrono::milliseconds heartbeatDeadline(std::chrono::milliseconds interval,
+                                            uint32_t keeper_failure_timeout_ms,
+                                            uint32_t release_fence_timeout_ms);
 
 } // namespace chronolog::keeper

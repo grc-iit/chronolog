@@ -166,12 +166,14 @@ TEST(ClusterClientTest, AnAttemptGetsTheWholeRemainingDeadline)
     test::RamRig rig;
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    // min(13000 - 5000, 8000) / 2: a 4 s deadline.
     const auto deadline = std::chrono::milliseconds(4000);
     keeper::ClusterClient client(grpc::CreateChannel(cluster.self, grpc::InsecureChannelCredentials()),
-                                 {"self", "instance", "self:1", std::chrono::milliseconds(5000), "", deadline},
+                                 {"self", "instance", "self:1", std::chrono::milliseconds(5000), "", 13000, 8000},
                                  *rig.journal,
                                  membership,
                                  watcher);
+    ASSERT_EQ(client.heartbeatDeadline(), deadline);
     ASSERT_TRUE(client.registerNow().ok());
     ASSERT_TRUE(client.heartbeatNow().ok());
     server->Shutdown(std::chrono::system_clock::now());

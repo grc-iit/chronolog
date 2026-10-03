@@ -208,7 +208,9 @@ int main(int argc, char** argv)
                                    config->self_endpoint,
                                    std::chrono::milliseconds(config->heartbeat_interval_ms),
                                    recovered_instance,
-                                   config->heartbeatDeadline()},
+                                   config->keeper_failure_timeout_ms,
+                                   config->release_fence_timeout_ms,
+                                   clock},
                                   journal,
                                   *membership,
                                   acquisitions);
