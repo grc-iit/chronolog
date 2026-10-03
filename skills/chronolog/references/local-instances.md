@@ -79,7 +79,7 @@ servers:
     actionClass: execute
 ```
 
-The marketplace entry chooses `chronolog run --up default -- chronolog-mcp` when the launcher is on PATH and otherwise uses `uvx chronolog-mcp==4.0.0`. It retains the existing environment allowlist. Use explicit configuration above to forward a custom `CHRONOLOG_HOME`; supply `CHRONOLOG_MCP_IDENTITY` for writable tools when using the marketplace.
+The marketplace entry chooses `chronolog run --up default -- chronolog-mcp` when the launcher is on PATH and otherwise uses `uvx chronolog-mcp==4.0.0`. The base uvx fallback connects to configured external endpoints; its instance tools require installing the optional `chronolog-mcp[local]` dependency or `chronolog-local` alongside it. It retains the existing environment allowlist. Use explicit configuration above to forward a custom `CHRONOLOG_HOME`; supply `CHRONOLOG_MCP_IDENTITY` for writable tools when using the marketplace.
 
 ## Recall by time, latest and follow
 

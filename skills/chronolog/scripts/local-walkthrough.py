@@ -75,7 +75,7 @@ async def main():
                 require(time.monotonic() < deadline, 'published MCP attachment count')
                 await asyncio.sleep(0.1)
 
-        async def mcp_session(server_command, server_args, environment, *, write=False, leased=True):
+        async def mcp_session(server_command, server_args, environment, *, write=False, leased=True, local_tools=True):
             parameters = StdioServerParameters(command=server_command, args=server_args, env=environment)
             async with stdio_client(parameters) as (read, send), ClientSession(read, send) as session:
                 await asyncio.wait_for(session.initialize(), 30)
@@ -84,7 +84,7 @@ async def main():
                     'context_latest', 'context_follow', 'context_reconcile', 'context_checkpoint',
                     'context_close', 'context_list', 'context_status', 'instance_list',
                     'instance_control'}, 'twelve MCP tools')
-                await attachments(2 if leased else 1)
+                await attachments((2 if leased else 1) if local_tools else 0)
                 if leased:
                     refusal = command(['chronolog', 'down', 'default'], ok=False)
                     require('foreign attach leases' in refusal, 'down refuses a live MCP lease')
@@ -94,16 +94,16 @@ async def main():
                     require(not result.is_error, 'MCP ' + name + ': ' + str(result))
                     return json.loads(result.content[0].text)
 
-                listed = await tool('instance_list', probe=True)
-                require(listed['bound_instance_id'] == ready['id'] and
-                        any(row['bound'] and row['state'] == 'ready' for row in listed['instances']),
-                        'MCP discovery and ready binding')
-                bound = await tool('instance_control', action='attach', name='default')
-                require(bound['instance']['id'] == ready['id'], 'MCP attach ready instance')
-                booted = await tool('instance_control', action='up', name='default', create=True,
-                                    on_last_detach='keep')
-                require(booted['instance']['state'] == 'ready', 'MCP up binds existing default')
-
+                if local_tools:
+                    listed = await tool('instance_list', probe=True)
+                    require(listed['bound_instance_id'] == ready['id'] and
+                            any(row['bound'] and row['state'] == 'ready' for row in listed['instances']),
+                            'MCP discovery and ready binding')
+                    bound = await tool('instance_control', action='attach', name='default')
+                    require(bound['instance']['id'] == ready['id'], 'MCP attach ready instance')
+                    booted = await tool('instance_control', action='up', name='default', create=True,
+                                        on_last_detach='keep')
+                    require(booted['instance']['state'] == 'ready', 'MCP up binds existing default')
                 opened = await tool('context_open', name='local3-notes', create=write,
                                     access='read_write' if write else 'read_only')
                 require(opened['state'] == 'READY', 'context opened')
@@ -148,14 +148,15 @@ async def main():
                 if write:
                     require(closed['release_committed'], 'writer clean close')
                 status = await tool('context_status')
-                require(status['instance']['id'] == ready['id'] and status['instance']['attach']['count'] >= 1,
+                require(status['instance']['endpoints']['catalog'] == ready['endpoints']['catalog'],
                         'MCP bound instance status')
-                detached = await tool('instance_control', action='detach')
-                require(detached['instance'] is None, 'MCP detach drops binding')
-                require((await tool('context_list'))['store_state'] == 'unbound', 'unbound context guidance')
-                await attachments(1 if leased else 0)
-                rebound = await tool('instance_control', action='attach', name='default')
-                require(rebound['instance']['state'] == 'ready', 'MCP reattach after detach')
+                if local_tools:
+                    detached = await tool('instance_control', action='detach')
+                    require(detached['instance'] is None, 'MCP detach drops binding')
+                    require((await tool('context_list'))['store_state'] == 'unbound', 'unbound context guidance')
+                    await attachments(1 if leased else 0)
+                    rebound = await tool('instance_control', action='attach', name='default')
+                    require(rebound['instance']['state'] == 'ready', 'MCP reattach after detach')
             await attachments(0)
             print('PASS MCP lease, complete recall, time range, latest and follow')
 
@@ -203,8 +204,9 @@ async def main():
             (fallback / 'uvx').symlink_to(uvx)
             fallback_env = dict(marketplace_env, PATH=str(fallback) + ':/usr/bin:/bin',
                                 CHRONOLOG_CATALOG=ready['endpoints']['catalog'], CHRONOLOG_PLAYER=ready['endpoints']['player'],
-                                UV_FIND_LINKS=str(root / 'build/smoke/wheels'))
-            await mcp_session(manifest['command'], manifest['args'], fallback_env, leased=False)
+                                UV_FIND_LINKS=str(root / 'build/smoke/wheels'),
+                                UV_CACHE_DIR=str(Path(scratch) / 'uv-cache'), UV_NO_INDEX='1')
+            await mcp_session(manifest['command'], manifest['args'], fallback_env, leased=False, local_tools=False)
             require(cli('down', 'default', '--purge', timeout=210)['state'] == 'stopped', 'throwaway default purge')
             ready = None
             scratch_ready = cli('up', 'scratch', '--ephemeral', '--port-base', str(base), '--idle-grace-s', '1')
