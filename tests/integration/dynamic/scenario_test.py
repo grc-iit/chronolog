@@ -107,6 +107,43 @@ class CatalogReadTest(unittest.TestCase):
         self.scenario.raw.assert_called_once()
 
 
+class AcquireTest(unittest.TestCase):
+    def setUp(self):
+        self.scenario = object.__new__(Scenario)
+        self.scenario.story = 7
+        self.granted = dict(writer_id=3, incarnation=2)
+        self.leaseless = dict(transport=14, error='no Raft leader', leader=3)
+
+    @patch('scenario.time.sleep')
+    def test_refusal_before_apply_retries_the_same_request(self, sleep):
+        self.scenario.raw = Mock(side_effect=[self.leaseless, dict(transport=14, error='catalog is overloaded'),
+                                             dict(transport=0, response=self.granted)])
+        self.assertEqual(self.scenario.acquire('main-writer'), self.granted)
+        self.assertEqual(self.scenario.raw.call_args_list,
+                         [(('Acquire', dict(story_id=7, writer_identity='main-writer')),)] * 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_other_unavailable_is_not_retried(self):
+        self.scenario.raw = Mock(return_value=dict(transport=14, error='Socket closed'))
+        with self.assertRaisesRegex(RuntimeError, 'Socket closed'):
+            self.scenario.acquire('main-writer')
+        self.scenario.raw.assert_called_once()
+
+    def test_domain_refusal_is_the_answer(self):
+        self.scenario.raw = Mock(return_value=dict(transport=0, response=dict(status=dict(code=14))))
+        with self.assertRaisesRegex(RuntimeError, 'Acquire'):
+            self.scenario.acquire('main-writer')
+        self.scenario.raw.assert_called_once()
+
+    @patch('scenario.time.sleep')
+    @patch('scenario.time.monotonic', side_effect=[0, 30])
+    def test_retry_keeps_the_existing_wait_bound(self, monotonic, sleep):
+        self.scenario.raw = Mock(return_value=self.leaseless)
+        with self.assertRaisesRegex(RuntimeError, 'no Raft leader'):
+            self.scenario.acquire('main-writer')
+        self.scenario.raw.assert_called_once()
+
+
 class LocalStopTest(unittest.TestCase):
     def setUp(self):
         self.stack = object.__new__(run.Local)
