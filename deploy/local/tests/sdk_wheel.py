@@ -7,10 +7,9 @@ import sys
 
 def prepare_sdk(output, lock_dir):
     builder = os.environ.get('CHRONOLOG_SDK_BUILD_PYTHON', sys.executable)
-    check = ('import importlib.util, pathlib, sys, sysconfig; '
+    check = ('import build, nanobind, pathlib, scikit_build_core, sys, sysconfig; '
              'assert sys.version_info >= (3, 12); '
-             'assert all(importlib.util.find_spec(name) is not None for name in '
-             '("build", "scikit_build_core", "nanobind")); '
+             'assert callable(build.ProjectBuilder); '
              'assert (pathlib.Path(sysconfig.get_path("include")) / "Python.h").is_file()')
     try:
         available = subprocess.run([builder, '-c', check], capture_output=True, text=True, timeout=10)
