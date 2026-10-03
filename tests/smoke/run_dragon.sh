@@ -8,7 +8,8 @@
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
 # SKIP_NATIVE_BUILD=1 reuses build/dev; SKIP_BINDING_BUILD=1 requires build_artifacts.sh outputs.
 # CHRONOLOG_IMAGE_TAG (rbuild sets wt-<worktree>) tags the runtime, viz and MCP images so two trees on one
-# host never replace each other's image.
+# host never replace each other's image. On exit the run removes the images of those tags it superseded
+# (tests/smoke/image_cleanup.sh).
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -30,6 +31,9 @@ image=chronolog-runtime-local:${CHRONOLOG_IMAGE_TAG:-dev}
 export CHRONOLOG_IMAGE=$image
 export CHRONOLOG_VIZ_IMAGE=chronolog-viz:${CHRONOLOG_IMAGE_TAG:-4.0.0}
 export CHRONOLOG_MCP_IMAGE=chronolog-mcp:${CHRONOLOG_IMAGE_TAG:-4.0.0}
+run_images=("$image" "$CHRONOLOG_VIZ_IMAGE" "$CHRONOLOG_MCP_IMAGE")
+used_engines=()
+source tests/smoke/image_cleanup.sh
 
 if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     echo "-- native dev build: ${targets[*]}"
@@ -83,6 +87,8 @@ run_engine() {
         *) echo "smoke: unknown engine $engine"; return 2 ;;
     esac
     echo "== $engine: $("${build_cmd[0]}" --version)"
+    smoke_images_snapshot "$engine" "${run_images[@]}"
+    used_engines+=("$engine")
 
     step() {
         local name=$1 limit=$2
@@ -212,6 +218,16 @@ if [ "${RBUILD_HELD:-}" != stack ]; then
     flock 8
     export RBUILD_HELD=stack
 fi
+
+# Each engine's superseded images go when the run ends, pass or fail.
+cleanup_images() {
+    local engine
+    for engine in "${used_engines[@]}"; do
+        smoke_images_cleanup "$engine" "${run_images[@]}"
+    done
+}
+trap cleanup_images EXIT
+bash tests/smoke/image_cleanup_test.sh || { echo "FAILED image cleanup test"; exit 1; }
 
 for engine in $engines; do
     if run_engine "$engine"; then
