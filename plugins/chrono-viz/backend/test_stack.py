@@ -97,6 +97,15 @@ def test_real_stack_query_tail_and_failed_keeper():
                 fourth = writer.append(b'{"temperature":26}', content_type="application/json", timeout=5)
                 _, event = pending.result(timeout=6)
                 assert event["event_id"]["sequence"] == str(fourth.event_id.sequence)
+        player_pid = int(os.environ["CHRONOLOG_TEST_PLAYER_PID"])
+        os.kill(player_pid, signal.SIGSTOP)
+        try:
+            slow = requests.get(base + "/health", timeout=8)
+            assert slow.status_code == 504, slow.text
+        finally:
+            os.kill(player_pid, signal.SIGCONT)
+        restored = requests.get(base + "/health", timeout=8)
+        assert restored.status_code == 200, restored.text
         os.kill(int(os.environ["CHRONOLOG_TEST_KEEPER_PID"]), signal.SIGKILL)
         failed = requests.post(base + "/query", json=body, timeout=8)
         assert failed.status_code == 200, failed.text

@@ -4,6 +4,7 @@ from dataclasses import asdict
 from functools import lru_cache
 import json
 import os
+import socket
 import time
 from types import SimpleNamespace
 
@@ -35,14 +36,42 @@ def resolve(c, chronicle, story, timeout=DEADLINE):
     raise HTTPException(404, "story not found")
 
 
+def player_transport():
+    target = os.getenv("CHRONOLOG_PLAYER", "127.0.0.1:50054")
+    try:
+        if target.startswith("unix:"):
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(2)
+                connection.connect(target[5:])
+        else:
+            for prefix in ("dns:", "ipv4:", "ipv6:"):
+                if target.startswith(prefix):
+                    target = target[len(prefix):].removeprefix("///")
+                    break
+            host, port = target.rsplit(":", 1)
+            with socket.create_connection((host.strip("[]"), int(port)), timeout=2):
+                pass
+    except TimeoutError as error:
+        raise HTTPException(504, f"Player connection timed out: {error}") from error
+    except (OSError, ValueError) as error:
+        raise HTTPException(503, f"Player connection failed: {error}") from error
+
+
 @app.get("/health")
 def health():
+    # SDK Replay waits for ready; check transport separately so refusal is not a pull timeout.
+    player_transport()
     c = client()
     c.list_chronicles(timeout=2)
     # A missing story still exercises Replay on the configured Player.
     try:
         with c.read(2**63 - 1, cl.Hlc(), cl.Hlc(1), timeout=2) as stream:
             list(stream)
+    except (cl.DeadlineExceeded, cl.Unavailable) as error:
+        player_transport()
+        if isinstance(error, cl.Unavailable) and "ping timeout" in error.status.message.lower():
+            raise HTTPException(504, str(error)) from error
+        raise
     except cl.NotFound:
         pass
     except cl.FailedPrecondition as error:
