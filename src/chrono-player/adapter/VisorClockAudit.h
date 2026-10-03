@@ -70,6 +70,7 @@ private:
     ClockAudit audit_;
     std::mutex mutex_;
     std::vector<ClockAuditTransition> pending_;
+    ClockAuditReason unattributed_{ClockAuditReason::None};
     struct Limit
     {
         int64_t logged_ns{};

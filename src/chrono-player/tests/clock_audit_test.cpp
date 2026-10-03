@@ -305,6 +305,8 @@ TEST(PlayerClockAudit, AnonymousOrUnsyncedReplyIsInconclusive)
     auto decision = audit.finish(audit.begin(), grpc::Status::OK, anonymous);
     EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
     EXPECT_EQ(decision.reason, ClockAuditReason::MissingIdentity);
+    // A repeated anonymous reply is the same coverage loss, not a new line.
+    audit.finish(audit.begin(), grpc::Status::OK, anonymous);
 
     wire::HeartbeatResponse unsynced;
     stamp(unsynced, kNow, "visor-a", v1::CLOCK_STATUS_UNSYNCED);
