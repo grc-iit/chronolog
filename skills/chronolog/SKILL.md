@@ -13,13 +13,58 @@ Mental model in one line: chronicles hold stories, stories hold events, events a
 
 | You want to | Go to |
 |---|---|
-| Bring up a stack and see it work in five minutes | Quickstart below |
+| Find an instance or start one for an agent | Local instances below, then references/local-instances.md |
+| Run the compose demo | Compose quickstart below |
 | Use ChronoLog from your own code or as an agent | "Use it yourself" below, then references/api.md |
 | Explain or present ChronoLog | "Demo it" below, then references/demo.md |
 | Understand the guarantees and the moving parts | references/concepts.md |
 | Deploy across machines, run dynamic membership, debug | references/operations.md |
 
-## Quickstart
+## Local instances
+
+Use the installed `chronolog` launcher for agent memory. It needs Python 3.12; the `chronolog-local` wheel supplies the launcher, the `chronolog` wheel supplies RPC probes, and the `server` install component supplies the four executables. `chronolog doctor` names the executables it will run. In a source tree, `CHRONOLOG_BIN_DIR` can point to `build/dev`; installed servers can sit beside the launcher or on PATH.
+
+Discover before starting anything:
+
+```bash
+chronolog doctor
+chronolog ls
+```
+
+An explicit `CHRONOLOG_CATALOG`, with optional `CHRONOLOG_PLAYER`, overrides registry selection for `run` and `env`. Otherwise choose a `ready` instance by name; a compose demo started with `chronolog-demo up` appears as an external instance with engine and project metadata. For an existing ready instance, substitute its name for `default` in the commands below. A `degraded` instance needs diagnosis before use. If no suitable instance is ready, start the default:
+
+```bash
+chronolog up default
+chronolog status default --probe
+```
+
+`up` waits for readiness. `status --probe` reports the RPC probe when the SDK wheel is installed, otherwise a TCP probe. Start the MCP process through the launcher so it holds a lease and receives the selected endpoints and shared lock directory:
+
+```bash
+chronolog run --up default -- chronolog-mcp --identity agent-memory/main --chronicle agent-memory
+```
+
+For Claude Code, use this command as the MCP server command with `claude mcp add chronolog -- chronolog run --up default -- chronolog-mcp --identity agent-memory/main --chronicle agent-memory`. Codex and clio-coder use the same command and arguments; see [local-instances.md](references/local-instances.md) for configuration, storage placement and recovery. Keep identities stable for one writer slot and give independently writing agents distinct identities.
+
+The default policy keeps the instance running after the MCP process exits and drops its lease. Leave it up at session end. Stop it only when the user requests that, or when it is a throwaway ephemeral instance:
+
+```bash
+chronolog down default
+```
+
+`down` refuses a foreign live lease. Close its holder rather than forcing another agent off. Stopping preserves data and endpoints. For a throwaway run, `chronolog up scratch --ephemeral` sets the stop-on-last-detach policy; after its idle grace the supervisor stops it. Purge only disposable data with `chronolog down scratch --purge`.
+
+When boot or an RPC fails, inspect the executable paths and logs:
+
+```bash
+chronolog doctor
+chronolog logs default --service supervisor --lines 40
+chronolog logs default --service visor --lines 40
+```
+
+The marketplace uses the launcher when installed and otherwise keeps the `uvx chronolog-mcp==4.0.0` path for an already running deployment. Explicit harness configuration is the way to share a custom `CHRONOLOG_HOME`; the marketplace's existing environment allowlist is unchanged. The executable walkthrough is [scripts/local-walkthrough.py](scripts/local-walkthrough.py); run it from a built source tree with its smoke venv, launcher wheel and server component installed.
+
+## Compose quickstart
 
 The demo kit lives in `deploy/demo/`. One script drives everything; every subcommand takes `--engine podman|docker` (default: podman when installed, else docker).
 
@@ -100,7 +145,7 @@ Rules that keep an agent correct:
 - Causality is automatic: whatever a client has read or tailed is ordered before its next append, across stories and machines. Share one Client per agent process so it carries what that agent has seen.
 - Wall-clock questions ("what happened between 14:00 and 14:05") use the physical-time read; it is complete only when the writers' clocks were disciplined. See references/concepts.md.
 
-Agents with MCP: register the bundled server with Claude Code against a running stack:
+For a local instance, register MCP through the launcher as above. To address a remote or manually configured stack directly, register the bundled server with Claude Code:
 
 ```bash
 claude mcp add chronolog -- <venv>/bin/chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle agent-memory --identity agent-memory/main
