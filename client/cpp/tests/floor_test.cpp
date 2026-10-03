@@ -309,7 +309,9 @@ TEST(ClientFloor, ConcurrentObserveAndAppendIsRaceFree)
                                 {
                                     EXPECT_TRUE(result->front().ok()) << result->front().status();
                                     if(result->front().ok())
+                                    {
                                         EXPECT_GE(client->causalFloor(), result->front()->hlc);
+                                    }
                                 }
                             }
                         }
@@ -318,7 +320,9 @@ TEST(ClientFloor, ConcurrentObserveAndAppendIsRaceFree)
                             auto result = writer.append(spec);
                             EXPECT_TRUE(result.ok()) << result.status();
                             if(result.ok())
+                            {
                                 EXPECT_GE(client->causalFloor(), result->hlc);
+                            }
                         }
                         start.arrive_and_wait();
                     }
