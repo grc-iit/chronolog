@@ -11,7 +11,7 @@ install(TARGETS chronolog_context EXPORT chronologClientTargets LIBRARY DESTINAT
 install(DIRECTORY include/chronolog/context DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
 
 add_executable(chronolog_context_tests context_test.cpp)
-target_link_libraries(chronolog_context_tests PRIVATE chronolog::context chronolog_proto chronolog_warnings
+target_link_libraries(chronolog_context_tests PRIVATE chronolog::context chronolog::client chronolog_proto chronolog_warnings
     GTest::gtest_main Threads::Threads)
 gtest_discover_tests(chronolog_context_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST
     TEST_PREFIX "context." PROPERTIES TIMEOUT 30)
