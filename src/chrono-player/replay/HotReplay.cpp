@@ -412,6 +412,9 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
         completion.complete = false;
         completion.reason = IncompleteReason::Truncated;
     }
+    if(completion.reason == IncompleteReason::Truncated && completion.frontier <= range.start &&
+       range.start < range.end)
+        completion.reason = IncompleteReason::SourceFailed;
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options.batch_size));
 }
@@ -750,6 +753,12 @@ HotReplay::HotReplay(std::shared_ptr<const HotSource> source, HotReplayOptions o
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range range) const
 {
+    return read(id, range, 0);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range range, size_t max_events) const
+{
+    const size_t limit = std::max<size_t>(1, max_events ? max_events : options_.read_max_events);
     if(range.end < range.start)
         return absl::InvalidArgumentError("range end precedes start");
     bool archive_policy = true;
@@ -763,15 +772,16 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         }
     }
     auto fetched = range.axis == Range::Axis::Physical ? source_->fetchPhysical(id, range, archive_policy)
-                                                       : source_->fetch(id, range);
+                                                       : source_->fetchRead(id, range, limit);
     if(!fetched.ok())
         return fetched.status();
     if(range.axis == Range::Axis::Physical)
     {
         fetched->physical_policy &= archive_policy;
-        return physicalRead(id, range, *fetched, options_, *source_);
+        auto physical_options = options_;
+        physical_options.read_max_events = limit;
+        return physicalRead(id, range, *fetched, physical_options, *source_);
     }
-    const size_t limit = std::max<size_t>(1, options_.read_max_events);
     Range covered = range;
     bool limited = false;
     std::vector<KeeperFrontier> frontiers;
@@ -787,9 +797,13 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     }
     if(hot_times.size() > limit)
     {
-        std::nth_element(hot_times.begin(), hot_times.begin() + limit, hot_times.end());
-        covered.end = hot_times[limit];
-        limited = true;
+        std::sort(hot_times.begin(), hot_times.end());
+        auto next = std::upper_bound(hot_times.begin(), hot_times.end(), hot_times[limit - 1]);
+        if(next != hot_times.end())
+        {
+            covered.end = *next;
+            limited = true;
+        }
     }
     auto hotCount = [&](Hlc end)
     { return static_cast<size_t>(std::count_if(hot_times.begin(), hot_times.end(), [&](Hlc t) { return t < end; })); };
@@ -828,8 +842,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         {
             if(record.state != ManifestState::Published)
                 continue;
-            if(range.axis == Range::Axis::Hlc &&
-               (record.end <= range.start || record.start >= boundary || record.start >= covered.end))
+            if(range.axis == Range::Axis::Hlc && (record.end <= range.start || record.start >= range.end))
                 continue;
             published.push_back(record);
         }
@@ -837,17 +850,67 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         Hlc accepted_cut = range.start;
         for(size_t i = 0; i < published.size();)
         {
+            if(published[i].start >= covered.end || published[i].start >= boundary)
+                break;
             size_t j = i;
             size_t group_count = 0;
-            while(j < published.size() && published[j].start == published[i].start)
+            Hlc group_end = published[i].end;
+            do {
+                group_end = std::max(group_end, published[j].end);
                 group_count += published[j++].event_count;
+            } while(j < published.size() && published[j].start < group_end);
+            group_end = std::min(range.end, group_end);
+            if(!selected.empty() && covered.end < group_end)
+            {
+                covered.end = std::max(range.start, published[i].start);
+                limited = true;
+                break;
+            }
+            // I6.12: the first overlap component must fit whole, including a continuation inside it.
+            if(selected.empty() && covered.end < group_end)
+            {
+                covered.end = group_end;
+                limited = group_end < range.end;
+                prefix_cap = range.end;
+                if(prefixCut(range, group_end, fetched->route_epoch, frontiers, fetched->abandoned) < group_end &&
+                   source_truncated)
+                {
+                    // The archive's mandatory prefix may exceed the target at the hot sources too.
+                    auto prefix = source_->fetchRead(id, Range{Range::Axis::Hlc, range.start, group_end}, SIZE_MAX);
+                    if(!prefix.ok())
+                        return prefix.status();
+                    if(prefix->route_epoch != fetched->route_epoch || prefix->keepers.size() != fetched->keepers.size())
+                        return absl::UnavailableError("route changed while admitting archive prefix");
+                    for(size_t k = 0; k < prefix->keepers.size(); ++k)
+                        if(prefix->keepers[k].frontier.instance != fetched->keepers[k].frontier.instance ||
+                           prefix->keepers[k].frontier.process_id != fetched->keepers[k].frontier.process_id ||
+                           prefix->keepers[k].frontier.evicted_below > fetched->keepers[k].frontier.evicted_below)
+                            return absl::UnavailableError("source changed while admitting archive prefix");
+                    fetched = std::move(prefix);
+                    frontiers.clear();
+                    hot_times.clear();
+                    source_truncated = false;
+                    for(auto& k: fetched->keepers)
+                    {
+                        if(k.frontier.truncated && !k.frontier.truncated_at)
+                            k.frontier.truncated_at = k.events.empty() ? range.start : k.events.back().hlc;
+                        frontiers.push_back(k.frontier);
+                        source_truncated |= k.frontier.truncated;
+                        for(const auto& e: k.events)
+                            if(inRange(range, e))
+                                hot_times.push_back(e.hlc);
+                    }
+                    prefix_cap = range.end;
+                    limited = group_end < range.end;
+                }
+            }
             Hlc candidate_cut = j < published.size() ? std::min(covered.end, published[j].start) : covered.end;
             candidate_cut = std::max(range.start, candidate_cut);
             size_t hot_count = hotCount(candidate_cut);
             bool fits = archived_count <= limit && group_count <= limit - archived_count &&
                         hot_count <= limit - archived_count - group_count;
-            bool oversized_file = selected.empty() && j == i + 1 && group_count > limit;
-            if(!fits && !oversized_file)
+            bool first_component = selected.empty();
+            if(!fits && !first_component)
             {
                 covered.end = accepted_cut;
                 limited = true;
@@ -875,7 +938,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                 changed = false;
                 for(const auto& record: records)
                     if(record.state == ManifestState::Published && record.start < covered.end &&
-                       record.end > covered.end)
+                       record.end > covered.end && covered.end < range.end)
                     {
                         prefix_cap = std::min(prefix_cap, record.start);
                         Hlc cut = std::max(range.start, record.start);

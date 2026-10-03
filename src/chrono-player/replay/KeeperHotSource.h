@@ -37,11 +37,13 @@ public:
     void warm(const std::string& address) const;
 
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
+    absl::StatusOr<HotFetch> fetchRead(StoryId story, const Range& range, size_t target) const override;
     absl::StatusOr<HotFetch> fetchPhysical(StoryId story, const Range& range, bool policy) const override;
     absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const TailStarts& starts) const override;
 
 private:
-    absl::StatusOr<HotFetch> fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts) const;
+    absl::StatusOr<HotFetch>
+    fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts, size_t read_budget = 0) const;
     KeeperFetch fetchOne(const KeeperRef& keeper,
                          StoryId story,
                          const Range& range,
@@ -50,6 +52,7 @@ private:
                          std::atomic<size_t>& retained,
                          bool policy,
                          bool tail,
+                         size_t read_budget,
                          std::chrono::system_clock::time_point deadline) const;
     std::shared_ptr<internal::v1::Archive::Stub> stubFor(const std::string& address) const;
 

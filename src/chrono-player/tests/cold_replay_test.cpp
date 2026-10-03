@@ -30,6 +30,11 @@ class FakeHotSource final: public HotSource
 public:
     HotFetch response;
     std::function<HotFetch(Hlc)> tail;
+    std::function<HotFetch(const Range&, size_t)> bounded;
+    absl::StatusOr<HotFetch> fetchRead(StoryId, const Range& range, size_t target) const override
+    {
+        return bounded ? bounded(range, target) : response;
+    }
     absl::StatusOr<HotFetch> fetchTail(StoryId, Hlc from, const TailStarts&) const override
     {
         return tail ? tail(from) : response;
@@ -70,10 +75,10 @@ protected:
         auto record = writer->publish({std::to_string(time), 1, {start, 0}, {end, 0}, {event(time)}, false});
         ASSERT_TRUE(record.ok()) << record.status();
     }
-    void read(Hlc start = {100, 0}, StoryId story = 1)
+    void read(Hlc start = {100, 0}, StoryId story = 1, size_t max_events = 0)
     {
         HotReplay replay(source, options);
-        auto stream = replay.read(story, {Range::Axis::Hlc, start, {300, 0}});
+        auto stream = replay.read(story, {Range::Axis::Hlc, start, {300, 0}}, max_events);
         ASSERT_TRUE(stream.ok()) << stream.status();
         events.clear();
         completion.reset();
@@ -878,6 +883,140 @@ TEST_F(ColdReplay, AFileLargerThanTheLimitIsReturnedWhole)
     ASSERT_EQ(events.size(), 2);
     ASSERT_TRUE(completion);
     EXPECT_TRUE(completion->complete);
+}
+
+TEST_F(ColdReplay, StraddlingArchiveRecordsAlwaysProgress)
+{
+    options.read_max_events = 1;
+    ASSERT_TRUE(writer->publish({"k1", 1, {100, 0}, {200, 0}, {event(110), event(190)}, false}).ok());
+    ASSERT_TRUE(writer->publish({"k2a", 1, {100, 0}, {123, 0}, {event(120)}, false}).ok());
+    ASSERT_TRUE(writer->publish({"k2b", 1, {123, 0}, {200, 0}, {event(150)}, false}).ok());
+    publish(220, 200, 250);
+    source->response.archived_below = {250, 0};
+    for(Hlc start: {Hlc{100, 0}, Hlc{125, 0}})
+    {
+        read(start);
+        ASSERT_TRUE(completion);
+        EXPECT_GT(completion->frontier, start);
+        EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+        EXPECT_EQ(completion->frontier, (Hlc{200, 0}));
+        EXPECT_EQ(events.size(), start.physical_ns == 100 ? 4u : 2u);
+        read(completion->frontier);
+        ASSERT_TRUE(completion);
+        EXPECT_TRUE(completion->complete);
+        ASSERT_EQ(events.size(), 1u);
+        EXPECT_EQ(events.front().id, event(220).id);
+    }
+}
+
+TEST_F(ColdReplay, PerRequestMaxEventsPagesToTheEnd)
+{
+    options.read_max_events = 1000;
+    options.batch_size = 10;
+    ASSERT_TRUE(writer->publish({"k1", 1, {100, 0}, {160, 0}, {event(110), event(150)}, false}).ok());
+    ASSERT_TRUE(writer->publish({"k2a", 1, {100, 0}, {130, 0}, {event(120)}, false}).ok());
+    ASSERT_TRUE(writer->publish({"k2b", 1, {130, 0}, {160, 0}, {event(140)}, false}).ok());
+    publish(170, 160, 180);
+    publish(190, 180, 200);
+    source->response.keepers[0].events = {event(190), event(210), event(230), event(250)};
+    source->response.keepers[1].events = {event(220), event(240), event(260)};
+    read();
+    ASSERT_TRUE(completion && completion->complete);
+    const auto all = events;
+    for(size_t target: {1u, 2u, 3u, 5u})
+    {
+        Hlc start{100, 0};
+        std::vector<Event> pages;
+        bool done = false;
+        for(size_t page = 0; page < all.size() + 1; ++page)
+        {
+            read(start, 1, target);
+            ASSERT_TRUE(completion);
+            const Hlc end = completion->complete ? Hlc{300, 0} : completion->frontier;
+            ASSERT_GT(end, start);
+            std::vector<Event> expected;
+            for(const auto& e: all)
+                if(e.hlc >= start && e.hlc < end)
+                    expected.push_back(e);
+            ASSERT_EQ(events.size(), expected.size());
+            for(size_t i = 0; i < events.size(); ++i) EXPECT_EQ(events[i].id, expected[i].id);
+            pages.insert(pages.end(), events.begin(), events.end());
+            if(completion->complete)
+            {
+                done = true;
+                break;
+            }
+            EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+            start = end;
+        }
+        EXPECT_TRUE(done);
+        ASSERT_EQ(pages.size(), all.size());
+        for(size_t i = 0; i < all.size(); ++i) EXPECT_EQ(pages[i].id, all[i].id);
+        EXPECT_LT(events.size(), all.size());
+    }
+}
+
+TEST_F(ColdReplay, ArchiveAdmissionExtendsTheHotPrefixPastTheTarget)
+{
+    options.batch_size = 10;
+    ASSERT_TRUE(writer->publish({"k1", 1, {100, 0}, {200, 0}, {event(110), event(190)}, false}).ok());
+    ASSERT_TRUE(writer->publish({"k2", 1, {120, 0}, {200, 0}, {event(130)}, false}).ok());
+    source->response.keepers[0].events = {event(120), event(140), event(160), event(180), event(220)};
+    size_t requests = 0;
+    source->bounded = [&](const Range& range, size_t target)
+    {
+        ++requests;
+        auto response = source->response;
+        for(auto& keeper: response.keepers)
+        {
+            std::erase_if(keeper.events, [&](const Event& e) { return e.hlc < range.start || e.hlc >= range.end; });
+            if(target < keeper.events.size() && keeper.events.size() - target > 1)
+            {
+                keeper.events.resize(target + 1);
+                keeper.frontier.truncated = true;
+            }
+        }
+        return response;
+    };
+    read({100, 0}, 1, 1);
+    EXPECT_EQ(requests, 2u);
+    ASSERT_TRUE(completion);
+    EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion->frontier, (Hlc{200, 0}));
+    ASSERT_EQ(events.size(), 7u);
+    const std::vector<int64_t> expected{110, 120, 130, 140, 160, 180, 190};
+    for(size_t i = 0; i < expected.size(); ++i) EXPECT_EQ(events[i].hlc.physical_ns, expected[i]);
+    read(completion->frontier, 1, 1);
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events.front().id, event(220).id);
+}
+
+TEST_F(ColdReplay, EqualHlcGroupIsNeverSplit)
+{
+    options.read_max_events = 1;
+    options.batch_size = 10;
+    source->response.keepers.clear();
+    for(int process = 0; process < 4; ++process)
+    {
+        auto first = event(100);
+        first.hlc = {100, 0};
+        first.id.writer_id = process + 1;
+        auto second = event(200);
+        second.id.writer_id = process + 1;
+        source->response.keepers.push_back({{std::to_string(process), 7, {300, 0}}, {first, second}});
+    }
+    read();
+    ASSERT_TRUE(completion);
+    EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+    EXPECT_EQ(completion->frontier, (Hlc{200, 1}));
+    ASSERT_EQ(events.size(), 4u);
+    for(const auto& e: events) EXPECT_EQ(e.hlc, (Hlc{100, 0}));
+    read(completion->frontier);
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+    ASSERT_EQ(events.size(), 4u);
 }
 
 TEST_F(ColdReplay, TailEndsSourceFailedOnALostWindow)

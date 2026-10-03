@@ -529,6 +529,69 @@ TEST_F(replay_adapter, HotFetchSharesOneRetentionBudgetAcrossKeepers)
     EXPECT_TRUE(truncated);
 }
 
+TEST_F(replay_adapter, MaxEventsZeroKeepsTheConfiguredLimit)
+{
+    HotReplayOptions options;
+    options.read_max_events = 2;
+    auto replay = std::make_shared<HotReplay>(source_, options);
+    ReplayService service(replay, catalog_);
+    for(size_t target: {0u, 1u, 4u})
+    {
+        auto stream = service.read(kStory, {Range::Axis::Hlc, {100, 0}, {200, 0}}, target);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        std::vector<Event> events;
+        std::optional<Completion> completion;
+        for(int i = 0; i < 10; ++i)
+        {
+            auto batch = (*stream)->next();
+            ASSERT_TRUE(batch.ok()) << batch.status();
+            if(!*batch)
+                break;
+            events.insert(events.end(), (**batch).events.begin(), (**batch).events.end());
+            if((**batch).completion)
+                completion = (**batch).completion;
+        }
+        ASSERT_TRUE(completion);
+        EXPECT_EQ(events.size(), target ? target : 2u);
+        EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
+        EXPECT_EQ(completion->frontier, (Hlc{110 + static_cast<int64_t>(events.size()) * 10, 0}));
+    }
+}
+
+TEST_F(replay_adapter, ReadLookaheadCompletesEqualHlcGroupsAcrossProcesses)
+{
+    a_.hold("a", {protoEvent(2, 1, 100), protoEvent(2, 2, 120), protoEvent(2, 3, 140)}, 200);
+    b_.hold("b", {protoEvent(4, 1, 100), protoEvent(4, 2, 120), protoEvent(4, 3, 140)}, 200);
+    HotReplay replay(source_);
+    Hlc start{100, 0};
+    for(int page = 0; page < 3; ++page)
+    {
+        auto stream = replay.read(kStory, {Range::Axis::Hlc, start, {200, 0}}, 1);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        size_t count = 0;
+        std::optional<Completion> completion;
+        for(int batch_index = 0; batch_index < 10; ++batch_index)
+        {
+            auto batch = (*stream)->next();
+            ASSERT_TRUE(batch.ok());
+            if(!*batch)
+                break;
+            for(const auto& event: (**batch).events)
+            {
+                EXPECT_EQ(event.hlc, start);
+                ++count;
+            }
+            if((**batch).completion)
+                completion = (**batch).completion;
+        }
+        EXPECT_EQ(count, 2u);
+        ASSERT_TRUE(completion);
+        EXPECT_GT(completion->frontier, start);
+        EXPECT_EQ(completion->complete, page == 2);
+        start = completion->frontier;
+    }
+}
+
 TEST_F(replay_adapter, PhysicalReadAboveTheLimitIsTruncatedWithoutClaim)
 {
     HotReplayOptions options;

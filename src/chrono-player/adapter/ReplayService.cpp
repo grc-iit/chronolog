@@ -2,6 +2,7 @@
 #include <condition_variable>
 #include <thread>
 #include "chrono-player/adapter/Convert.h"
+#include "chrono-player/replay/HotReplay.h"
 
 namespace chronolog::player
 {
@@ -236,6 +237,15 @@ grpc::ServerWriteReactor<Resp>* ReplayService::open(StoryId story,
     return reactor;
 }
 
+absl::StatusOr<std::unique_ptr<ReplayStream>> ReplayService::read(StoryId story, Range range, size_t max_events) const
+{
+    if(const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get()))
+        return bounded->read(story, range, max_events);
+    if(max_events)
+        return absl::UnimplementedError("replay does not support per-request event targets");
+    return replay_->read(story, range);
+}
+
 grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackServerContext*,
                                                                 const v1::ReadRequest* request)
 {
@@ -243,8 +253,7 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
     if(!range.ok())
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(range.status()));
     const StoryId story = request->story_id();
-    return open<v1::ReadResponse>(story,
-                                  [replay = replay_, story, range = *range] { return replay->read(story, range); });
+    return open<v1::ReadResponse>(story, [this, story, range = *range] { return read(story, range, 0); });
 }
 
 grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackServerContext*,
