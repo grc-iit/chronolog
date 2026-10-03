@@ -459,7 +459,8 @@ std::string WalJournal::writersRecord() const { return "W" + checkpointText(); }
 void WalJournal::restoreWriters(std::string_view payload)
 {
     std::istringstream in{std::string(payload)};
-    const bool version2 = payload.starts_with("v2 ");
+    const bool version3 = payload.starts_with("v3 ");
+    const bool version2 = payload.starts_with("v2 ") || version3;
     if(version2)
         in.ignore(3);
     size_t count{};
@@ -492,6 +493,15 @@ void WalJournal::restoreWriters(std::string_view payload)
                     result.status = absl::OutOfRangeError("physical reading outside acceptance window");
                     result.achieved = Durability::Unspecified;
                 }
+            }
+            if(version3)
+            {
+                uint32_t rejection{};
+                if(!(in >> rejection) || rejection > static_cast<uint32_t>(AppendRejection::FencedOwnerRemoved))
+                    throw std::runtime_error("invalid WAL append rejection");
+                result.rejection = static_cast<AppendRejection>(rejection);
+                if(!absl::IsFailedPrecondition(result.status) && result.rejection != AppendRejection::Unspecified)
+                    throw std::runtime_error("WAL append rejection disagrees with status");
             }
             writer.window.push_back(result);
         }

@@ -27,6 +27,18 @@ Range All() { return {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}}; }
 
 } // namespace
 
+TEST(RamJournal, AppendRejectionReasonsBeforeAnyWriterRegistration)
+{
+    auto clock = std::make_shared<test::AssignmentClock>(100);
+    auto membership = std::make_shared<test::FakeMembership>();
+    RamJournal journal(clock, membership);
+    auto rejected = journal.append(Batch({Item(1)}), Durability::Accepted);
+    ASSERT_TRUE(rejected.ok());
+    EXPECT_EQ(rejected->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(rejected->front().rejection, AppendRejection::NotRegistered);
+    EXPECT_TRUE(rejected->front().current_route);
+}
+
 TEST(RamJournal, DurableAndUnspecifiedAreUnimplementedAndStoreNothing)
 {
     test::RamRig rig;

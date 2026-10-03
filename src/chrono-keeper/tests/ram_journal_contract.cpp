@@ -1,3 +1,4 @@
+#include "membership/AcquisitionWatcher.h"
 #include "../../../tests/contract/journal_contract_test.cpp"
 #include "ram_harness.h"
 
@@ -11,6 +12,7 @@ constexpr int64_t kSkewLimitNs = 1000;
 std::unique_ptr<JournalHarness> MakeRam()
 {
     RamJournalConfig config;
+    config.dedupe_window = 16;
     config.causal_floor_skew_limit_ns = kSkewLimitNs;
     auto rig = std::make_shared<test::RamRig>(config);
 
@@ -33,6 +35,36 @@ std::unique_ptr<JournalHarness> MakeRam()
         rig->journal = fresh->journal;
         hp->sut = fresh->release();
     };
+    h->applySupersession = [rig](bool snapshot)
+    {
+        keeper::AcquisitionWatcher watcher(*rig->journal, "self", [] {}, false);
+        internal::v1::AcquisitionUpdate update;
+        update.set_story_id(1);
+        update.set_writer_id(2);
+        update.set_incarnation(4);
+        update.set_revision(2);
+        update.set_state(internal::v1::ACQUISITION_STATE_ACQUIRED);
+        update.mutable_assigned_keeper()->set_process_id("self");
+        if(snapshot)
+        {
+            internal::v1::AcquisitionSnapshot state;
+            state.set_revision(2);
+            *state.add_acquisitions() = update;
+            EXPECT_TRUE(watcher.applySnapshot(state));
+        }
+        else
+        {
+            auto release = update;
+            release.set_incarnation(3);
+            release.set_revision(1);
+            release.set_state(internal::v1::ACQUISITION_STATE_RELEASED);
+            watcher.applyUpdate(release);
+            watcher.applyUpdate(update);
+        }
+    };
+    h->rejection_reasons = true;
+    h->dedupe_window = config.dedupe_window;
+    h->onSlotValidated = [rig](std::function<void()> hook) { rig->journal->onSlotValidated(std::move(hook)); };
     h->onAssignment = [rig](std::function<void(Hlc)> hook) { rig->journal->onAssignment(std::move(hook)); };
     h->snapshot = [rig]() -> absl::StatusOr<std::pair<Hlc, std::vector<Event>>>
     {

@@ -29,6 +29,8 @@ void formatWindowLine(std::string& out, const AppendResult& result)
                     result.hlc.logical,
                     " ",
                     static_cast<int>(result.status.code()),
+                    " ",
+                    static_cast<uint32_t>(result.rejection),
                     "\n");
 }
 
@@ -127,9 +129,11 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
 {
     AppendResult result;
     result.id = EventId{story, item.writer_id, item.incarnation, item.sequence};
-    auto fail = [&](absl::Status status, bool with_route = false)
+    auto fail =
+            [&](absl::Status status, bool with_route = false, AppendRejection rejection = AppendRejection::Unspecified)
     {
         result.status = std::move(status);
+        result.rejection = rejection;
         result.achieved = Durability::Unspecified;
         if(with_route)
             result.current_route = route;
@@ -147,26 +151,39 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         std::shared_lock lock(sh.mu);
         auto it = sh.stories.find(story);
         if(it == sh.stories.end())
-            return fail(absl::FailedPreconditionError("writer not registered at this keeper"), true);
+            return fail(absl::FailedPreconditionError("writer not registered at this keeper"),
+                        true,
+                        AppendRejection::NotRegistered);
         auto slot = it->second.slots.find(item.writer_id);
         if(slot == it->second.slots.end())
-            return fail(absl::FailedPreconditionError("writer not registered at this keeper"), true);
+            return fail(absl::FailedPreconditionError("writer not registered at this keeper"),
+                        true,
+                        AppendRejection::NotRegistered);
         if(!slot->second.assigned)
-            return fail(absl::FailedPreconditionError("writer is not assigned to this keeper"), true);
+            return fail(absl::FailedPreconditionError("writer is not assigned to this keeper"),
+                        true,
+                        AppendRejection::UnassignedKeeper);
         if(item.incarnation < slot->second.incarnation)
-            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"));
+            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"),
+                        false,
+                        AppendRejection::FencedSuperseded);
         if(item.incarnation > slot->second.incarnation)
-            return fail(absl::FailedPreconditionError("incarnation not yet registered at this keeper"), true);
+            return fail(absl::FailedPreconditionError("incarnation not yet registered at this keeper"),
+                        true,
+                        AppendRejection::NotRegistered);
         writer = slot->second.current;
     }
 
+    slotValidated();
     std::lock_guard lock(writer->mu);
     if(writer->released)
-        return fail(absl::FailedPreconditionError("incarnation is released"));
+        return fail(absl::FailedPreconditionError("incarnation is released"), false, AppendRejection::FencedReleased);
     const std::pair<uint64_t, uint64_t> key{item.writer_id, item.incarnation};
     if(poisoned.count(key))
         return fail(absl::FailedPreconditionError("an earlier item of this writer in the batch was rejected; " +
-                                                  ExpectedSequence(writer->next_sequence)));
+                                                  ExpectedSequence(writer->next_sequence)),
+                    false,
+                    AppendRejection::EarlierItemFailed);
     if(item.sequence < writer->next_sequence)
     {
         auto pending = writer->pending.find(item.sequence);
@@ -178,7 +195,9 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         auto original = writer->window.find(item.sequence);
         if(original == writer->window.end())
             return fail(absl::FailedPreconditionError("sequence is outside the dedupe window; " +
-                                                      ExpectedSequence(writer->next_sequence)));
+                                                      ExpectedSequence(writer->next_sequence)),
+                        false,
+                        AppendRejection::DedupeWindow);
         result = original->second;
         if(durability != Durability::Accepted && result.achieved == Durability::Accepted)
         {
@@ -203,7 +222,9 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
     if(item.sequence > writer->next_sequence)
     {
         poisoned.insert(key);
-        return fail(absl::FailedPreconditionError(ExpectedSequence(writer->next_sequence)));
+        return fail(absl::FailedPreconditionError(ExpectedSequence(writer->next_sequence)),
+                    false,
+                    AppendRejection::SequenceGap);
     }
 
     if(durability != Durability::Accepted && !durableAvailable())
@@ -404,7 +425,7 @@ std::string RamJournal::checkpointText() const
                 ++writers;
             }
     }
-    return absl::StrCat("v2 ", writers, "\n", body);
+    return absl::StrCat("v3 ", writers, "\n", body);
 }
 
 void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
@@ -529,18 +550,26 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
             auto gate = admission(batch.story_id);
             std::shared_lock gate_lock(gate->gate);
             auto status = membership_->validateEpoch(batch.story_id, batch.epoch);
+            auto rejection =
+                    absl::IsFailedPrecondition(status) ? AppendRejection::StaleEpoch : AppendRejection::Unspecified;
             auto route = currentRoute(batch.story_id);
             if(status.ok() && !config_.process_id.empty() && route &&
                std::none_of(route->keepers.begin(),
                             route->keepers.end(),
                             [&](const auto& k) { return k.process_id == config_.process_id; }))
+            {
                 status = absl::FailedPreconditionError("keeper is not listed in the route");
+                rejection = AppendRejection::KeeperNotInRoute;
+            }
             uint64_t generation;
             {
                 std::lock_guard lock(dynamic_mu_);
                 generation = ceiling_generation_;
                 if(dropped_.contains(batch.story_id))
+                {
                     status = absl::FailedPreconditionError("story was destroyed");
+                    rejection = AppendRejection::StoryTombstoned;
+                }
                 else if(status.ok() && dynamic_ &&
                         (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
                     status = absl::UnavailableError("route clock steps or ceiling deferred");
@@ -553,6 +582,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
                               batch.items[i].incarnation,
                               batch.items[i].sequence};
                 result->status = status;
+                result->rejection = rejection;
                 result->current_route = route;
                 break;
             }

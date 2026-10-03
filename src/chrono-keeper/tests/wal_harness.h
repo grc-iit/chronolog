@@ -97,6 +97,11 @@ public:
     using WalJournal::WalJournal;
     std::function<void()> scanned;
     std::string checkpoint() const { return checkpointText(); }
+    void onSlotValidated(std::function<void()> hook)
+    {
+        std::lock_guard lock(assignment_mu_);
+        slot_validated_ = std::move(hook);
+    }
     void onAssignment(std::function<void(Hlc)> hook)
     {
         std::lock_guard lock(assignment_mu_);
@@ -104,6 +109,16 @@ public:
     }
 
 protected:
+    void slotValidated() override
+    {
+        std::function<void()> hook;
+        {
+            std::lock_guard lock(assignment_mu_);
+            hook = slot_validated_;
+        }
+        if(hook)
+            hook();
+    }
     void assignmentObserved(Hlc hlc) override
     {
         std::function<void(Hlc)> hook;
@@ -123,6 +138,7 @@ protected:
 private:
     std::mutex assignment_mu_;
     std::function<void(Hlc)> assigned_;
+    std::function<void()> slot_validated_;
 };
 
 struct WalRig
@@ -135,9 +151,10 @@ struct WalRig
     ScannedWalJournal* current{};
     std::unique_ptr<WalJournal> journal;
 
-    explicit WalRig(uint64_t segment_bytes = 64ull << 20)
+    explicit WalRig(uint64_t segment_bytes = 64ull << 20, size_t dedupe_window = 65536)
     {
         config.wal_segment_bytes = segment_bytes;
+        ram_config.dedupe_window = dedupe_window;
         ram_config.process_id = "self";
         ram_config.instance = "instance";
         ram_config.append_ceiling_wait_ms = 100;
