@@ -12,6 +12,7 @@
 
 namespace chronolog::player
 {
+std::unique_ptr<Replay> sequentialArchive(std::shared_ptr<const HotSource> source, HotReplayOptions options);
 namespace
 {
 Event event(int64_t time)
@@ -104,6 +105,113 @@ protected:
     std::vector<Event> events;
     std::optional<Completion> completion;
 };
+
+TEST_F(ColdReplay, BatchReadMatchesSequentialArchive)
+{
+    std::vector<ManifestRecord> records;
+    for(int file = 0; file < 24; ++file)
+    {
+        const int64_t start = 100 + (file / 2) * 10;
+        Chunk chunk{std::to_string(file), 1, {start, 0}, {start + 10, 0}, {}};
+        for(int i = 0; i < 7; ++i)
+        {
+            auto e = event(start + (i < 5 ? 1 : i));
+            e.id.sequence = file * 7 + i + 1;
+            e.physical = {e.hlc.physical_ns, 0, ClockStatus::Synced};
+            e.envelope.payload = std::string(64, static_cast<char>('a' + file));
+            chunk.events.push_back(e);
+        }
+        auto published = writer->publish(std::move(chunk));
+        ASSERT_TRUE(published.ok()) << published.status();
+        records.push_back(*published);
+    }
+    source->response.archived_below = {300, 0};
+    source->tail = [&](Hlc from)
+    {
+        auto response = source->response;
+        response.closed = from >= Hlc{300, 0};
+        return response;
+    };
+    options.batch_size = 13;
+    for(int damage = 0; damage < 3; ++damage)
+    {
+        if(damage == 1)
+            std::filesystem::remove(root / records[3].file);
+        if(damage == 2)
+        {
+            writer.reset();
+            auto recovered = FileTierStore::Open(root, "writer", {{1, {100, 0}}});
+            ASSERT_TRUE(recovered.ok());
+            writer = *std::move(recovered);
+            std::filesystem::remove(root / records[6].file);
+            auto manifest = writer->manifest(1);
+            ASSERT_TRUE(manifest.ok());
+            ASSERT_TRUE(std::any_of(manifest->begin(),
+                                    manifest->end(),
+                                    [](const auto& r) { return r.state == ManifestState::Lost; }));
+        }
+        for(size_t limit: {1u, 3u, 9u, 30u, 1000u})
+            for(int path = 0; path < 3; ++path)
+            {
+                SCOPED_TRACE(::testing::Message() << "damage=" << damage << " limit=" << limit << " path=" << path);
+                options.read_max_events = limit;
+                auto sequential = sequentialArchive(source, options);
+                HotReplay pooled(source, options);
+                const Range range{path == 1 ? Range::Axis::Physical : Range::Axis::Hlc, {100, 0}, {300, 0}};
+                auto a = path == 2 ? sequential->tail(1, event(100)) : sequential->read(1, range);
+                auto b = path == 2 ? pooled.tail(1, event(100)) : pooled.read(1, range);
+                ASSERT_TRUE(a.ok()) << a.status();
+                ASSERT_TRUE(b.ok()) << b.status();
+                bool finished = false;
+                for(size_t round = 0; round < 100; ++round)
+                {
+                    auto x = nextWithin(**a), y = nextWithin(**b);
+                    ASSERT_EQ(x.status(), y.status());
+                    ASSERT_TRUE(x.ok());
+                    ASSERT_EQ(x->has_value(), y->has_value());
+                    if(!*x)
+                    {
+                        finished = true;
+                        break;
+                    }
+                    ASSERT_EQ((**x).events.size(), (**y).events.size());
+                    for(size_t i = 0; i < (**x).events.size(); ++i)
+                    {
+                        const auto& left = (**x).events[i];
+                        const auto& right = (**y).events[i];
+                        EXPECT_EQ(left.id, right.id);
+                        EXPECT_EQ(left.hlc, right.hlc);
+                        EXPECT_EQ(left.physical.physical_ns, right.physical.physical_ns);
+                        EXPECT_EQ(left.physical.uncertainty_ns, right.physical.uncertainty_ns);
+                        EXPECT_EQ(left.physical.status, right.physical.status);
+                        EXPECT_EQ(left.envelope.payload, right.envelope.payload);
+                        EXPECT_EQ(left.envelope.content_type, right.envelope.content_type);
+                        EXPECT_EQ(left.envelope.trace_id, right.envelope.trace_id);
+                        EXPECT_EQ(left.envelope.span_id, right.envelope.span_id);
+                        EXPECT_EQ(left.envelope.attributes, right.envelope.attributes);
+                        EXPECT_EQ(left.durability, right.durability);
+                    }
+                    ASSERT_EQ((**x).completion.has_value(), (**y).completion.has_value());
+                    if((**x).completion)
+                    {
+                        const auto& left = *(**x).completion;
+                        const auto& right = *(**y).completion;
+                        EXPECT_EQ(left.complete, right.complete);
+                        EXPECT_EQ(left.reason, right.reason);
+                        EXPECT_EQ(left.frontier, right.frontier);
+                        ASSERT_EQ(left.laggards.size(), right.laggards.size());
+                        for(size_t i = 0; i < left.laggards.size(); ++i)
+                        {
+                            EXPECT_EQ(left.laggards[i].writer_id, right.laggards[i].writer_id);
+                            EXPECT_EQ(left.laggards[i].incarnation, right.laggards[i].incarnation);
+                            EXPECT_EQ(left.laggards[i].frontier, right.laggards[i].frontier);
+                        }
+                    }
+                }
+                EXPECT_TRUE(finished);
+            }
+    }
+}
 
 TEST_F(ColdReplay, UnacknowledgedEventsBelowTheBoundaryAreKept)
 {

@@ -129,6 +129,47 @@ size_t payloadBytes(const std::vector<Event>& events)
     return bytes;
 }
 
+// Consume prefetched records in manifest order; callers retain their sequential range and cap decisions.
+class ArchiveBatch
+{
+public:
+    ArchiveBatch(const FileTierStore& archive, std::span<const ManifestRecord> records)
+        : archive_(archive)
+        , records_(records)
+    {}
+
+    absl::StatusOr<std::vector<Event>> read(size_t index, Range range, size_t cap = SIZE_MAX)
+    {
+#ifdef CHRONOLOG_SEQUENTIAL_ARCHIVE_READS
+        return archive_.readRecord(records_[index], range, cap);
+#else
+        if(index >= first_ + results_.size())
+        {
+            first_ = index;
+            const size_t count = std::min(archive_.readConcurrency(), records_.size() - index);
+            results_ = archive_.readRecords(records_.subspan(index, count), range, cap);
+        }
+        auto result = std::move(results_[index - first_]);
+        if(result.ok())
+        {
+            // A sorted wider prefix contains the same prefix of every subsequently narrowed end bound.
+            std::erase_if(*result, [&](const Event& event) { return !inRange(range, event); });
+            if(result->size() > cap)
+                result->resize(cap);
+        }
+        return result;
+#endif
+    }
+
+private:
+    const FileTierStore& archive_;
+    std::span<const ManifestRecord> records_;
+#ifndef CHRONOLOG_SEQUENTIAL_ARCHIVE_READS
+    size_t first_{};
+    std::vector<absl::StatusOr<std::vector<Event>>> results_;
+#endif
+};
+
 bool loadArchive(const HotReplayOptions& options,
                  StoryId story,
                  Hlc from,
@@ -150,12 +191,16 @@ bool loadArchive(const HotReplayOptions& options,
                      manifest->end(),
                      [](const auto& a, const auto& b)
                      { return std::tie(a.start, a.file) < std::tie(b.start, b.file); });
-    for(const auto& record: *manifest)
+    std::erase_if(*manifest,
+                  [&](const ManifestRecord& record)
+                  { return record.state != ManifestState::Published || record.end <= from || record.start >= end; });
+    ArchiveBatch batch(*options.archive, *manifest);
+    for(size_t i = 0; i < manifest->size(); ++i)
     {
-        if(record.state != ManifestState::Published || record.end <= from || record.start >= end)
+        const auto& record = (*manifest)[i];
+        if(record.start >= end)
             continue;
-        auto part =
-                options.archive->readRecord(record, Range{Range::Axis::Hlc, from, end}, options.read_max_events + 1);
+        auto part = batch.read(i, Range{Range::Axis::Hlc, from, end}, options.read_max_events + 1);
         if(!part.ok())
             return false;
         if(part->size() == options.read_max_events + 1 && part->front().hlc == part->back().hlc &&
@@ -167,7 +212,8 @@ bool loadArchive(const HotReplayOptions& options,
                 group_end = {group_end.physical_ns + 1, 0};
             else
                 ++group_end.logical;
-            part = options.archive->readRecord(record, Range{Range::Axis::Hlc, part->front().hlc, group_end});
+            ArchiveBatch tie(*options.archive, std::span<const ManifestRecord>(&record, 1));
+            part = tie.read(0, Range{Range::Axis::Hlc, part->front().hlc, group_end});
             if(!part.ok())
                 return false;
             bound = std::min(bound, group_end);
@@ -330,19 +376,27 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
         take(std::move(keeper.events));
     }
     const auto scan = physicalWindow(range, policy);
+    std::vector<ManifestRecord> selected;
     for(const auto& record: records)
     {
         if(record.end <= scan.start || record.start >= scan.end)
             continue;
         if(record.state == ManifestState::Lost)
             archive_failed = true;
-        if(record.state != ManifestState::Published)
-            continue;
-        auto events = options.archive->readRecord(record, range, limit - retained + 1);
-        if(!events.ok())
-            archive_failed = true;
-        else
-            take(*std::move(events));
+        if(record.state == ManifestState::Published)
+            selected.push_back(record);
+    }
+    if(!selected.empty())
+    {
+        ArchiveBatch batch(*options.archive, selected);
+        for(size_t i = 0; i < selected.size(); ++i)
+        {
+            auto events = batch.read(i, range, limit - retained + 1);
+            if(!events.ok())
+                archive_failed = true;
+            else
+                take(*std::move(events));
+        }
     }
     if(!records.empty() && archiveTombstoned(options, story))
         archive_failed = true;
@@ -844,16 +898,13 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     if(cold.start < cold.end && archive_ok && options_.archive)
     {
         for(const auto& record: records)
-            if(record.state == ManifestState::Lost &&
-               (range.axis == Range::Axis::Physical || (record.start < cold.end && record.end > cold.start)))
+            if(record.state == ManifestState::Lost && record.start < cold.end && record.end > cold.start)
                 archive_ok = false;
-        for(const auto& record: selected)
+        std::erase_if(selected, [&](const ManifestRecord& record) { return record.start >= cold.end; });
+        ArchiveBatch batch(*options_.archive, selected);
+        for(size_t i = 0; i < selected.size(); ++i)
         {
-            if(range.axis == Range::Axis::Hlc && record.start >= cold.end)
-                continue;
-            auto events = options_.archive->readRecord(
-                    record,
-                    range.axis == Range::Axis::Physical ? Range{Range::Axis::Hlc, record.start, record.end} : cold);
+            auto events = batch.read(i, cold);
             if(!events.ok())
                 archive_ok = false;
             else
