@@ -24,8 +24,8 @@ bool utf8(const std::string& value)
 absl::StatusOr<client::AppendSpec>
 normalize(const Memory& memory, const AgentIdentity& identity, const std::string& conversation)
 {
-    if(memory.operation_id.empty() || memory.operation_id.size() > 128 || !utf8(memory.operation_id))
-        return absl::InvalidArgumentError("operation_id must be nonempty UTF-8 of at most 128 bytes");
+    if(!detail::validOperationId(memory.operation_id))
+        return absl::InvalidArgumentError("operation_id must be nonempty UTF-8 of at most 128 bytes, not reserved");
     client::AppendSpec spec{memory.envelope, memory.durability, memory.physical};
     if(spec.durability == Durability::Unspecified)
         spec.durability = Durability::Durable;
@@ -94,6 +94,24 @@ MemoryResult refused(const std::string& id, absl::Status status, const detail::R
 } // namespace
 namespace detail
 {
+bool validOperationId(const std::string& id)
+{
+    return !id.empty() && id.size() <= 128 && utf8(id) && !id.starts_with(marker_prefix);
+}
+std::string randomHex(size_t size)
+{
+    std::vector<unsigned char> bytes(size);
+    if(RAND_bytes(bytes.data(), static_cast<int>(size)) != 1)
+        return {};
+    constexpr char hex[] = "0123456789abcdef";
+    std::string result;
+    for(const auto byte: bytes)
+    {
+        result += hex[byte >> 4];
+        result += hex[byte & 15];
+    }
+    return result;
+}
 absl::StatusOr<std::string> encodeIdentity(const AgentIdentity& identity)
 {
     if(identity.agent_id.empty() || identity.slot.empty() || !utf8(identity.agent_id) || !utf8(identity.slot))
@@ -159,15 +177,9 @@ absl::StatusOr<ContextClient> ContextClient::Connect(ContextOptions options, Dea
     if(!sdk.ok())
         return sdk.status();
     auto core = std::make_shared<Impl>(std::move(*sdk), std::move(options));
-    unsigned char bytes[16];
-    if(RAND_bytes(bytes, sizeof(bytes)) != 1)
+    core->session_id = detail::randomHex(16);
+    if(core->session_id.empty())
         return absl::InternalError("session identity generation failed");
-    constexpr char hex[] = "0123456789abcdef";
-    for(const auto byte: bytes)
-    {
-        core->session_id += hex[byte >> 4];
-        core->session_id += hex[byte & 15];
-    }
     return ContextClient(std::move(core));
 }
 absl::StatusOr<ContextRef>
@@ -268,6 +280,14 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
         impl_->sdk.observeFloor(checkpoint.causal_floor);
         if(checkpoint.processed_after)
             record->processed = checkpoint.processed_after;
+        if(options.access == Access::ReadWrite)
+        {
+            // Restored ids keep this run's attribution, which an explicit resume reuses.
+            if(!record->writer)
+                record->session_id = options.session_id;
+            if(auto restored = detail::restore(*impl_, *record, checkpoint); !restored.ok())
+                return restored;
+        }
     }
     if(record->state != SessionState::Closed)
         if(auto alias = record->handle.lock())
@@ -278,44 +298,71 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
         if(impl_->writable >= impl_->options.max_writable_sessions)
             return absl::ResourceExhaustedError("writable session capacity");
     }
+    if(options.access == Access::ReadWrite && record->writer && record->state == SessionState::Closed)
+    {
+        // A lost Release response is retried on the same acquisition before the next conditional Acquire (W10.12).
+        auto released = record->writer->release(deadline);
+        if(!released.ok())
+            return released.status();
+        record->release_committed = true;
+        record->release_fenced = *released;
+        record->writer.reset();
+    }
+    const auto acquire = [&](AcquireOptions acquire_options) -> absl::Status
+    {
+        auto writer = impl_->sdk.acquire(context.story_id, *encoded, std::move(acquire_options), deadline);
+        if(!writer.ok())
+            return writer.status();
+        record->writer = std::move(*writer);
+        auto grant = record->writer->acquisition();
+        record->stamp = WriterStamp{grant.writer_id, grant.incarnation};
+        // Every append of this incarnation carries a causal floor at or above this one (I7.3).
+        record->acquisition_receipt = impl_->sdk.causalFloor();
+        record->last_own_receipt.reset();
+        record->state = SessionState::Ready;
+        record->release_committed = false;
+        record->release_fenced = false;
+        return absl::OkStatus();
+    };
     if(options.access == Access::ReadWrite && !record->writer)
     {
         record->session_id = options.session_id;
-        if(options.resume &&
-           ((options.resume->writer && !options.resume->acquisition_closed) ||
-            options.resume->prior_state_unknown_below || !options.resume->unresolved_operations.empty() ||
-            !options.resume->permanently_unknown_operations.empty()))
+        if(options.ownership)
+            record->ownership = options.ownership;
+        const auto& resume = options.resume;
+        if(resume && ((resume->writer && !resume->acquisition_closed) || resume->prior_state_unknown_below ||
+                      resume->recovery || !resume->unresolved_operations.empty()))
         {
-            record->stamp = options.resume->writer;
-            record->takeover_required =
-                    options.resume->takeover_required || !options.resume->writer || !options.ownership ||
-                    !options.resume->acquisition || options.ownership->host_id.empty() ||
-                    options.ownership->launcher_lock_id.empty() ||
-                    options.ownership->host_id != options.resume->acquisition->host_id ||
-                    options.ownership->launcher_lock_id != options.resume->acquisition->launcher_lock_id;
+            record->takeover_required = resume->takeover_required || !record->stamp || !options.ownership ||
+                                        !resume->acquisition || options.ownership->host_id.empty() ||
+                                        options.ownership->launcher_lock_id.empty() ||
+                                        options.ownership->host_id != resume->acquisition->host_id ||
+                                        options.ownership->launcher_lock_id != resume->acquisition->launcher_lock_id;
+            // A dead holder proven by this launcher's held stable-slot lock recovers by own-prior CAS.
+            record->own_prior = !record->takeover_required;
             record->state = record->takeover_required ? SessionState::Fenced : SessionState::NeedsReconcile;
             record->recovery_required = true;
         }
         else if(record->recovery_required)
             record->state = record->takeover_required ? SessionState::Fenced : SessionState::NeedsReconcile;
-        else if(record->stamp || (options.resume && options.resume->writer) ||
+        else if(record->stamp || (resume && resume->writer) ||
                 (options.ownership && options.ownership->expected_prior_incarnation))
-            return absl::UnimplementedError("conditional Acquire after a recorded close requires RFC-G G5");
-        else
         {
-            auto writer = impl_->sdk.acquire(context.story_id, *encoded, deadline);
-            if(!writer.ok())
-                return writer.status();
-            record->writer = std::move(*writer);
-            auto grant = record->writer->acquisition();
-            record->stamp = WriterStamp{grant.writer_id, grant.incarnation};
-            record->state = SessionState::Ready;
+            // C2: an ordinary open after a recorded close of N is conditional on N; PRIOR_MISMATCH or HELD keep
+            // their typed details and change nothing.
+            AcquireOptions conditional;
+            conditional.expected_prior_incarnation = record->stamp ? record->stamp->incarnation
+                                                     : resume && resume->writer
+                                                             ? resume->writer->incarnation
+                                                             : *options.ownership->expected_prior_incarnation;
+            if(auto acquired = acquire(std::move(conditional)); !acquired.ok())
+                return acquired;
         }
+        else if(auto acquired = acquire({}); !acquired.ok())
+            return acquired;
     }
     else if(options.access == Access::ReadOnly)
         record->state = SessionState::Ready;
-    else if(record->state == SessionState::Closed)
-        return absl::UnimplementedError("retry close before conditional Acquire; recovery requires RFC-G G5");
     if(options.access == Access::ReadWrite && !record->counted)
     {
         std::lock_guard guard(impl_->mutex);
@@ -333,7 +380,118 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
 }
 const ContextRef& ContextSession::context() const { return impl_->record->context; }
 const AgentIdentity& ContextSession::identity() const { return impl_->record->identity; }
-absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, RememberOptions, Deadline deadline)
+namespace detail
+{
+void settle(Core& core, const std::shared_ptr<Operation>& op)
+{
+    std::lock_guard guard(core.mutex);
+    core.pending_bytes -= op->bytes;
+    op->pending.reset();
+    op->bytes = 0;
+    if(op->unresolved)
+    {
+        op->unresolved = false;
+        --core.unresolved;
+    }
+}
+void drive(Core& core,
+           Record& record,
+           const OperationKey& op_key,
+           const std::shared_ptr<Operation>& op,
+           Deadline deadline)
+{
+    const bool previously_uncertain = !op->result.status.ok();
+    if(!op->dispatched_by)
+        op->dispatched_by = record.stamp;
+    auto batch = record.writer->appendBatch(std::span(&*op->pending, 1), deadline);
+    auto answer = batch.ok() ? std::move(batch->front()) : absl::StatusOr<client::AppendResult>(batch.status());
+    op->result.status = answer.status();
+    bool completed = false;
+    if(answer.ok())
+    {
+        op->result.receipt = *answer;
+        op->result.observed_durability = answer->achieved;
+        op->result.outcome =
+                answer->achieved == Durability::Durable ? MemoryOutcome::Durable : MemoryOutcome::RamOnlyMayVanish;
+        // One pending operation per session puts every later append of this incarnation above it (I5.5, I7.2).
+        record.last_own_receipt = std::max(record.last_own_receipt.value_or(Hlc{}), answer->hlc);
+        record.state = SessionState::Ready;
+        completed = true;
+    }
+    else
+    {
+        const auto reason = client::rejectionOf(answer.status());
+        op->result.outcome = MemoryOutcome::Unknown;
+        record.state = SessionState::TransportPending;
+        if(reason == AppendRejection::FencedExpired || reason == AppendRejection::FencedOwnerRemoved ||
+           (batch.ok() && answer.status().code() == absl::StatusCode::kUnknown))
+        {
+            record.state = SessionState::NeedsReconcile;
+            record.recovery_required = true;
+            // A removed Keeper leaves this live Writer's own grant to recover by CAS; a confirmed terminal cause
+            // recovers by plain conditional Acquire.
+            record.own_prior =
+                    reason != AppendRejection::FencedExpired && reason != AppendRejection::FencedOwnerRemoved;
+        }
+        else if(reason == AppendRejection::FencedReleased || reason == AppendRejection::FencedSuperseded ||
+                (batch.ok() && answer.status().code() == absl::StatusCode::kFailedPrecondition &&
+                 reason == AppendRejection::Unspecified))
+        {
+            record.state = SessionState::Fenced;
+            record.takeover_required = true;
+            record.recovery_required = true;
+        }
+        else if(reason == AppendRejection::StoryTombstoned)
+        {
+            record.state = SessionState::Closed;
+            record.recovery_required = true;
+        }
+        else if(batch.ok() && (answer.status().code() == absl::StatusCode::kInvalidArgument ||
+                               answer.status().code() == absl::StatusCode::kOutOfRange ||
+                               reason == AppendRejection::SequenceGap || reason == AppendRejection::EarlierItemFailed))
+        {
+            if(previously_uncertain)
+            {
+                // A refusal cannot erase earlier uncertainty; this live Writer recovers by its own CAS.
+                record.state = SessionState::NeedsReconcile;
+                record.recovery_required = true;
+                record.own_prior = true;
+            }
+            else
+            {
+                op->result.outcome = MemoryOutcome::Rejected;
+                record.state = SessionState::Ready;
+                completed = true;
+            }
+        }
+    }
+    if(completed || (batch.ok() && record.state != SessionState::TransportPending))
+    {
+        std::lock_guard guard(core.mutex);
+        core.pending_bytes -= op->bytes;
+        op->pending.reset();
+        op->bytes = 0;
+        if(completed)
+        {
+            op->unresolved = false;
+            --core.unresolved;
+            core.completed.push_back(op_key);
+            while(core.completed.size() > core.options.max_completed_operations)
+            {
+                auto evicted = core.operations.find(core.completed.front());
+                if(evicted != core.operations.end() && evicted->second->disposition == Disposition::None &&
+                   !evicted->second->unresolved)
+                    core.operations.erase(evicted);
+                core.completed.pop_front();
+            }
+            record.blocking.reset();
+        }
+    }
+    if(!completed)
+        record.blocking = op->result.operation_id;
+}
+} // namespace detail
+absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, RememberOptions options, Deadline deadline)
 {
     auto& core = *impl_->core;
     auto& record = *impl_->record;
@@ -357,13 +515,38 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
     auto hash = digest(*normalized);
     if(hash.empty())
         return absl::InternalError("memory digest failed");
-    if(operation && operation->digest != hash)
+    // A disposition restored without a digest returns its presence or absence without revalidating content.
+    if(operation && !operation->digest.empty() && operation->digest != hash)
         return absl::FailedPreconditionError("operation_id content changed");
+    const bool writable = record.access == Access::ReadWrite && record.state != SessionState::Closed &&
+                          record.state != SessionState::Fenced && record.state != SessionState::NeedsReconcile &&
+                          !record.transition;
+    if(operation && operation->disposition == detail::Disposition::Absent && options.resend_after_absent && writable &&
+       (!record.blocking || *record.blocking == memory.operation_id))
+    {
+        // A proven ABSENT id is resent deliberately with its original specification and a new EventId.
+        const size_t bytes = detail::rawBytes(normalized->envelope);
+        std::lock_guard guard(core.mutex);
+        if(core.unresolved >= core.options.max_unresolved_operations ||
+           bytes > core.options.max_pending_operation_bytes - core.pending_bytes)
+            return absl::ResourceExhaustedError("pending operation capacity");
+        std::erase(record.dispositions, memory.operation_id);
+        operation->disposition = detail::Disposition::None;
+        operation->digest = hash;
+        operation->result =
+                {memory.operation_id, absl::OkStatus(), MemoryOutcome::Unknown, {}, {}, Durability::Unspecified};
+        operation->dispatched_by.reset();
+        operation->pending = std::move(*normalized);
+        operation->bytes = bytes;
+        operation->unresolved = true;
+        core.pending_bytes += bytes;
+        ++core.unresolved;
+    }
     if(operation && (!operation->pending || record.state == SessionState::Closed))
         return MemoryResult{operation->result, {}, record.blocking, record.state};
     if(record.access != Access::ReadWrite || record.state == SessionState::Closed)
         return refused(memory.operation_id, absl::FailedPreconditionError("session is not writable"), record);
-    if(record.state == SessionState::Fenced || record.state == SessionState::NeedsReconcile)
+    if(!writable)
     {
         if(operation)
             return MemoryResult{operation->result, {}, record.blocking, record.state};
@@ -372,86 +555,6 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
                        record);
     }
     MemoryResult result;
-    const auto drive = [&](const detail::OperationKey& op_key, const std::shared_ptr<detail::Operation>& op)
-    {
-        const bool previously_uncertain = !op->result.status.ok();
-        auto batch = record.writer->appendBatch(std::span(&*op->pending, 1), deadline);
-        auto answer = batch.ok() ? std::move(batch->front()) : absl::StatusOr<client::AppendResult>(batch.status());
-        op->result.status = answer.status();
-        bool completed = false;
-        if(answer.ok())
-        {
-            op->result.receipt = *answer;
-            op->result.observed_durability = answer->achieved;
-            op->result.outcome =
-                    answer->achieved == Durability::Durable ? MemoryOutcome::Durable : MemoryOutcome::RamOnlyMayVanish;
-            record.state = SessionState::Ready;
-            completed = true;
-        }
-        else
-        {
-            const auto reason = client::rejectionOf(answer.status());
-            op->result.outcome = MemoryOutcome::Unknown;
-            record.state = SessionState::TransportPending;
-            if(reason == AppendRejection::FencedExpired || reason == AppendRejection::FencedOwnerRemoved ||
-               (batch.ok() && answer.status().code() == absl::StatusCode::kUnknown))
-            {
-                record.state = SessionState::NeedsReconcile;
-                record.recovery_required = true;
-            }
-            else if(reason == AppendRejection::FencedReleased || reason == AppendRejection::FencedSuperseded ||
-                    (batch.ok() && answer.status().code() == absl::StatusCode::kFailedPrecondition &&
-                     reason == AppendRejection::Unspecified))
-            {
-                record.state = SessionState::Fenced;
-                record.takeover_required = true;
-                record.recovery_required = true;
-            }
-            else if(reason == AppendRejection::StoryTombstoned)
-            {
-                record.state = SessionState::Closed;
-                record.recovery_required = true;
-            }
-            else if(batch.ok() &&
-                    (answer.status().code() == absl::StatusCode::kInvalidArgument ||
-                     answer.status().code() == absl::StatusCode::kOutOfRange ||
-                     reason == AppendRejection::SequenceGap || reason == AppendRejection::EarlierItemFailed))
-            {
-                if(previously_uncertain)
-                {
-                    record.state = SessionState::NeedsReconcile;
-                    record.recovery_required = true;
-                }
-                else
-                {
-                    op->result.outcome = MemoryOutcome::Rejected;
-                    record.state = SessionState::Ready;
-                    completed = true;
-                }
-            }
-        }
-        if(completed || (batch.ok() && record.state != SessionState::TransportPending))
-        {
-            std::lock_guard guard(core.mutex);
-            core.pending_bytes -= op->bytes;
-            op->pending.reset();
-            op->bytes = 0;
-            if(completed)
-            {
-                op->unresolved = false;
-                --core.unresolved;
-                core.completed.push_back(op_key);
-                while(core.completed.size() > core.options.max_completed_operations)
-                {
-                    core.operations.erase(core.completed.front());
-                    core.completed.pop_front();
-                }
-                record.blocking.reset();
-            }
-        }
-        if(!completed)
-            record.blocking = op->result.operation_id;
-    };
     if(record.blocking && *record.blocking != memory.operation_id)
     {
         const detail::OperationKey prior_key{record.key, *record.blocking};
@@ -460,7 +563,7 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
             std::lock_guard guard(core.mutex);
             prior = core.operations.at(prior_key);
         }
-        drive(prior_key, prior);
+        detail::drive(core, record, prior_key, prior, deadline);
         if(record.blocking)
             return refused(memory.operation_id,
                            absl::FailedPreconditionError("pending operation blocks dispatch"),
@@ -485,7 +588,7 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
         ++core.unresolved;
         core.operations[key] = operation;
     }
-    drive(key, operation);
+    detail::drive(core, record, key, operation, deadline);
     result.current = operation->result;
     result.state = record.state;
     result.blocking_operation_id = record.blocking;
@@ -502,27 +605,14 @@ SessionStatus ContextSession::status() const
                          record.blocking,
                          {},
                          {},
-                         false,
+                         record.reconcile_attempted,
                          impl_->core->sdk.causalFloor()};
     std::lock_guard guard(impl_->core->mutex);
     for(const auto& [key, op]: impl_->core->operations)
-        if(key.first == record.key && op->unresolved)
-            result.unresolved_operations.push_back(key.second);
-    return result;
-}
-Checkpoint ContextSession::checkpoint() const
-{
-    auto state = status();
-    Checkpoint result;
-    result.context = state.context;
-    result.identity = state.identity;
-    result.causal_floor = state.causal_floor;
-    result.writer = state.writer;
-    result.unresolved_operations = state.unresolved_operations;
-    std::lock_guard lock(impl_->record->mutex);
-    result.processed_after = impl_->record->processed;
-    result.takeover_required = impl_->record->takeover_required;
-    result.acquisition_closed = impl_->record->release_committed && !impl_->record->recovery_required;
+        if(key.first == record.key && op->unresolved && !op->marker)
+            (op->disposition == detail::Disposition::PermanentUnknown ? result.permanently_unknown_operations
+                                                                      : result.unresolved_operations)
+                    .push_back(key.second);
     return result;
 }
 absl::Status ContextSession::acknowledgeProcessed(const Position& position)
@@ -540,10 +630,6 @@ absl::Status ContextSession::acknowledgeProcessed(const Position& position)
         return absl::FailedPreconditionError("processed Position regressed");
     record.processed = position;
     return absl::OkStatus();
-}
-absl::StatusOr<ReconcileResult> ContextSession::reconcile(ReconcileOptions, Deadline)
-{
-    return absl::UnimplementedError("reconcile and conditional/CAS Acquire require F7 and RFC-G G5");
 }
 absl::StatusOr<CloseResult> ContextSession::close(Deadline deadline)
 {

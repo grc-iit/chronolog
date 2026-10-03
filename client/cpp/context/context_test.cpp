@@ -3,6 +3,7 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <algorithm>
+#include <set>
 #include <mutex>
 #include <condition_variable>
 #include "chronolog/context/context.h"
@@ -315,9 +316,11 @@ TEST(ContextApi, SessionIdentityAndFloor)
     EXPECT_TRUE(closed->release_committed);
     EXPECT_FALSE(closed->fenced);
     EXPECT_EQ((*alias)->status().state, ctx::SessionState::Closed);
-    EXPECT_EQ(client->open(ref(), {"agent\"\\\n", "slot"}, writable()).status().code(),
-              absl::StatusCode::kUnimplemented);
-    EXPECT_EQ(peer.acquisitions.size(), 2u);
+    auto reopened = client->open(ref(), {"agent\"\\\n", "slot"}, writable());
+    ASSERT_TRUE(reopened.ok()) << reopened.status();
+    ASSERT_EQ(peer.acquisitions.size(), 3u);
+    EXPECT_FALSE(peer.acquisitions[2].takeover());
+    EXPECT_EQ(peer.acquisitions[2].expected_prior_incarnation(), 1u);
 }
 
 TEST(ContextApi, OnePendingOperationAndRedrive)
@@ -396,7 +399,23 @@ TEST(ContextApi, RememberOutcomes)
             ASSERT_TRUE(b.ok());
             EXPECT_EQ(b->current.outcome, ctx::MemoryOutcome::Fenced);
             EXPECT_EQ(peer.appends.size(), 1u);
-            EXPECT_EQ((*session)->reconcile().status().code(), absl::StatusCode::kUnimplemented);
+            auto reconciled = (*session)->reconcile();
+            if(a->state == ctx::SessionState::Fenced)
+            {
+                EXPECT_EQ(reconciled.status().code(), absl::StatusCode::kFailedPrecondition);
+                EXPECT_EQ(peer.acquisitions.size(), 1u);
+            }
+            else
+            {
+                // The conditional successor's marker meets the same fence and stays UNKNOWN.
+                ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+                ASSERT_EQ(peer.acquisitions.size(), 2u);
+                EXPECT_FALSE(peer.acquisitions[1].takeover());
+                EXPECT_EQ(peer.acquisitions[1].expected_prior_incarnation(), 1u);
+                EXPECT_FALSE(reconciled->attempted);
+                EXPECT_EQ(chronolog::client::rejectionOf(reconciled->status), reason);
+                EXPECT_EQ((*session)->status().state, ctx::SessionState::NeedsReconcile);
+            }
         }
         EXPECT_EQ(chronolog::client::rejectionOf(a->current.status), reason);
     }
@@ -587,7 +606,13 @@ TEST(ContextApi, RecoveryNeverAdoptsARecordedWriter)
     EXPECT_EQ(result->current.outcome, ctx::MemoryOutcome::Fenced);
     EXPECT_TRUE(peer.acquisitions.empty());
     EXPECT_TRUE(peer.appends.empty());
-    EXPECT_EQ((*session)->reconcile().status().code(), absl::StatusCode::kUnimplemented);
+    auto reconciled = (*session)->reconcile();
+    ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+    ASSERT_EQ(peer.acquisitions.size(), 1u);
+    EXPECT_TRUE(peer.acquisitions[0].takeover());
+    EXPECT_EQ(peer.acquisitions[0].expected_prior_incarnation(), 9u);
+    for(const auto& append: peer.appends)
+        for(const auto& item: append.items()) EXPECT_NE(item.incarnation(), 9u);
     options.resume->context = ref(2);
     EXPECT_EQ(client->open(ref(2), {"agent", "slot"}, options).status().code(), absl::StatusCode::kResourceExhausted);
     ASSERT_TRUE((*session)->close().ok());
@@ -599,8 +624,10 @@ TEST(ContextApi, RecoveryNeverAdoptsARecordedWriter)
     ASSERT_TRUE((*foreign)->close().ok());
     options.resume->context = ref(3);
     options.resume->acquisition_closed = true;
-    EXPECT_EQ(client->open(ref(3), {"agent", "slot"}, options).status().code(), absl::StatusCode::kUnimplemented);
-    EXPECT_TRUE(peer.acquisitions.empty());
+    ASSERT_TRUE(client->open(ref(3), {"agent", "slot"}, options).ok());
+    ASSERT_EQ(peer.acquisitions.size(), 2u);
+    EXPECT_FALSE(peer.acquisitions[1].takeover());
+    EXPECT_EQ(peer.acquisitions[1].expected_prior_incarnation(), 9u);
 }
 
 TEST(ContextApi, RecallVerifiesTheCutAndPreservesFailures)
@@ -1152,3 +1179,604 @@ TEST(ContextApi, LatestAggregateLookupDoesNotDrainOldHistory)
 }
 
 } // namespace
+
+// A Catalog and Keeper over one story log: Acquire checks expected_prior_incarnation, fenced incarnations answer
+// their typed cause before dedupe (I3.7), a response can be lost after its event lands, and a Read over a failed
+// source answers SOURCE_FAILED.
+class LogPeer: public Peer
+{
+public:
+    static constexpr uint64_t writer = 7;
+    grpc::Status Acquire(grpc::ServerContext*, const wire::AcquireRequest* request, wire::AcquireResponse* p) override
+    {
+        std::lock_guard lock(mutex);
+        acquisitions.push_back(*request);
+        if(request->has_expected_prior_incarnation() && request->expected_prior_incarnation() != incarnation)
+        {
+            p->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kFailedPrecondition));
+            p->set_refusal_reason(wire::ACQUIRE_REFUSAL_REASON_PRIOR_MISMATCH);
+            p->set_current_incarnation(incarnation);
+            return grpc::Status::OK;
+        }
+        p->set_story_id(request->story_id());
+        p->set_writer_id(writer);
+        p->set_incarnation(++incarnation);
+        *p->mutable_route() = route();
+        *p->mutable_assigned_keeper() = p->route().keepers(0);
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    AppendStream(grpc::ServerContext*,
+                 grpc::ServerReaderWriter<wire::AppendStreamResponse, wire::AppendStreamRequest>* stream) override
+    {
+        wire::AppendStreamRequest request;
+        while(stream->Read(&request))
+        {
+            std::lock_guard lock(mutex);
+            appends.push_back(request);
+            wire::AppendStreamResponse response;
+            response.set_batch_id(request.batch_id());
+            for(const auto& item: request.items())
+            {
+                auto* result = response.add_results();
+                if(auto cause = fenced.find(item.incarnation()); cause != fenced.end())
+                {
+                    result->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kFailedPrecondition));
+                    result->set_rejection(static_cast<wire::AppendRejection>(cause->second));
+                    continue;
+                }
+                auto stored = std::find_if(log.begin(),
+                                           log.end(),
+                                           [&](const wire::Event& e) {
+                                               return e.id().incarnation() == item.incarnation() &&
+                                                      e.id().sequence() == item.sequence();
+                                           });
+                if(stored == log.end())
+                {
+                    clock = std::max(clock, item.causal_floor().physical_ns()) + 1;
+                    wire::Event event;
+                    event.mutable_id()->set_story_id(request.story_id());
+                    event.mutable_id()->set_writer_id(item.writer_id());
+                    event.mutable_id()->set_incarnation(item.incarnation());
+                    event.mutable_id()->set_sequence(item.sequence());
+                    event.mutable_hlc()->set_physical_ns(clock);
+                    *event.mutable_envelope() = item.envelope();
+                    event.set_durability(request.durability());
+                    log.push_back(event);
+                    stored = log.end() - 1;
+                }
+                if(lose_next)
+                {
+                    lose_next = false;
+                    result->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kUnavailable));
+                    continue;
+                }
+                *result->mutable_id() = stored->id();
+                *result->mutable_assigned_hlc() = stored->hlc();
+                result->set_achieved_durability(stored->durability());
+            }
+            if(!stream->Write(response))
+                break;
+        }
+        return grpc::Status::OK;
+    }
+    grpc::Status Read(grpc::ServerContext*,
+                      const wire::ReadRequest* request,
+                      grpc::ServerWriter<wire::ReadResponse>* stream) override
+    {
+        std::lock_guard lock(mutex);
+        reads.push_back(*request);
+        wire::ReadResponse response;
+        auto sorted = log;
+        std::sort(sorted.begin(),
+                  sorted.end(),
+                  [](const wire::Event& a, const wire::Event& b)
+                  {
+                      return std::make_tuple(a.hlc().physical_ns(), a.id().incarnation(), a.id().sequence()) <
+                             std::make_tuple(b.hlc().physical_ns(), b.id().incarnation(), b.id().sequence());
+                  });
+        if(!failed_source)
+            for(const auto& event: sorted)
+                if(event.id().story_id() == request->story_id() &&
+                   event.hlc().physical_ns() >= request->hlc().start().physical_ns() &&
+                   event.hlc().physical_ns() < request->hlc().end().physical_ns())
+                    *response.mutable_batch()->add_events() = event;
+        if(response.batch().events_size())
+            stream->Write(response);
+        response.Clear();
+        auto* completion = response.mutable_completion();
+        completion->set_complete(!failed_source);
+        completion->set_reason(failed_source ? wire::INCOMPLETE_REASON_SOURCE_FAILED
+                                             : wire::INCOMPLETE_REASON_UNSPECIFIED);
+        *completion->mutable_frontier() = failed_source ? request->hlc().start() : request->hlc().end();
+        stream->Write(response);
+        return grpc::Status::OK;
+    }
+    // Another holder of the slot superseded incarnation old; the Catalog now names a newer one.
+    void supersede(uint64_t old)
+    {
+        std::lock_guard lock(mutex);
+        fenced[old] = chronolog::AppendRejection::FencedSuperseded;
+        ++incarnation;
+    }
+    void fence(uint64_t old, chronolog::AppendRejection cause)
+    {
+        std::lock_guard lock(mutex);
+        fenced[old] = cause;
+    }
+    void inject(uint64_t inc, int64_t hlc, const std::string& operation)
+    {
+        std::lock_guard lock(mutex);
+        wire::Event event;
+        event.mutable_id()->set_story_id(1);
+        event.mutable_id()->set_writer_id(writer);
+        event.mutable_id()->set_incarnation(inc);
+        event.mutable_id()->set_sequence(1000 + log.size());
+        event.mutable_hlc()->set_physical_ns(hlc);
+        (*event.mutable_envelope()->mutable_attributes())["chronolog.operation.id"] = operation;
+        event.set_durability(wire::DURABILITY_DURABLE);
+        log.push_back(event);
+        clock = std::max(clock, hlc);
+    }
+    size_t stored(const std::string& operation)
+    {
+        std::lock_guard lock(mutex);
+        return std::count_if(log.begin(),
+                             log.end(),
+                             [&](const wire::Event& e)
+                             {
+                                 auto found = e.envelope().attributes().find("chronolog.operation.id");
+                                 return found != e.envelope().attributes().end() && found->second == operation;
+                             });
+    }
+    std::vector<uint64_t> incarnations()
+    {
+        std::lock_guard lock(mutex);
+        std::vector<uint64_t> result;
+        for(const auto& append: appends)
+            for(const auto& item: append.items()) result.push_back(item.incarnation());
+        return result;
+    }
+    std::vector<wire::Event> log;
+    std::map<uint64_t, chronolog::AppendRejection> fenced;
+    uint64_t incarnation{};
+    int64_t clock{1000};
+    bool lose_next{false};
+    bool failed_source{false};
+};
+const ctx::ReconciledOperation* outcome(const ctx::ReconcileResult& result, const std::string& id)
+{
+    for(const auto& op: result.operations)
+        if(op.operation_id == id)
+            return &op;
+    return nullptr;
+}
+ctx::ReconcileOptions takeover()
+{
+    ctx::ReconcileOptions options;
+    options.takeover = true;
+    return options;
+}
+ctx::RememberOptions resend()
+{
+    ctx::RememberOptions options;
+    options.resend_after_absent = true;
+    return options;
+}
+
+TEST(ContextApi, RememberAndReconcile)
+{
+    // An fsync'd append whose response was lost is retried after supersession, answers FENCED and stays UNKNOWN;
+    // takeover proof finds it LANDED and repeating its id never appends again.
+    {
+        LogPeer peer;
+        auto client = ctx::ContextClient::Connect(peer.options());
+        ASSERT_TRUE(client.ok());
+        auto session = client->open(ref(), {"agent", "slot"}, writable());
+        ASSERT_TRUE(session.ok()) << session.status();
+        auto before = (*session)->remember(memory("before"));
+        ASSERT_TRUE(before.ok() && before->current.receipt);
+        peer.lose_next = true;
+        auto a = (*session)->remember(memory("A"));
+        ASSERT_TRUE(a.ok());
+        EXPECT_EQ(a->current.outcome, ctx::MemoryOutcome::Unknown);
+        EXPECT_EQ(a->state, ctx::SessionState::TransportPending);
+        peer.supersede(1);
+        auto b = (*session)->remember(memory("B"));
+        ASSERT_TRUE(b.ok());
+        EXPECT_EQ(b->blocking_operation_id, "A");
+        EXPECT_EQ(b->state, ctx::SessionState::Fenced);
+        EXPECT_EQ((*session)->remember(memory("A")).value().current.outcome, ctx::MemoryOutcome::Unknown);
+        EXPECT_EQ((*session)->reconcile().status().code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ(peer.acquisitions.size(), 1u);
+        // CAS on the known prior meets the newer holder: PRIOR_MISMATCH names it and nothing changes.
+        auto mismatch = (*session)->reconcile(takeover());
+        ASSERT_TRUE(mismatch.ok()) << mismatch.status();
+        EXPECT_FALSE(mismatch->attempted);
+        auto refusal = chronolog::client::acquireRefusalOf(mismatch->status);
+        ASSERT_TRUE(refusal);
+        EXPECT_EQ(refusal->current_incarnation, 2u);
+        EXPECT_EQ((*session)->status().state, ctx::SessionState::Fenced);
+        auto reconciled = (*session)->reconcile(takeover());
+        ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+        ASSERT_EQ(peer.acquisitions.size(), 3u);
+        EXPECT_TRUE(peer.acquisitions[1].takeover());
+        EXPECT_EQ(peer.acquisitions[1].expected_prior_incarnation(), 1u);
+        EXPECT_TRUE(peer.acquisitions[2].takeover());
+        EXPECT_EQ(peer.acquisitions[2].expected_prior_incarnation(), 2u);
+        EXPECT_NE(peer.acquisitions[1].acquire_request_id(), peer.acquisitions[2].acquire_request_id());
+        EXPECT_TRUE(reconciled->attempted);
+        EXPECT_TRUE(reconciled->proof_complete);
+        EXPECT_TRUE(reconciled->supply_all_unseen_operation_ids);
+        EXPECT_TRUE(reconciled->omitted_operation_ids_may_duplicate);
+        ASSERT_TRUE(reconciled->writer);
+        EXPECT_EQ(reconciled->writer->incarnation, 3u);
+        ASSERT_TRUE(reconciled->range);
+        EXPECT_EQ(reconciled->range->start, before->current.receipt->hlc);
+        const auto* landed = outcome(*reconciled, "A");
+        ASSERT_TRUE(landed);
+        EXPECT_EQ(landed->outcome, ctx::ReconcileOutcome::Landed);
+        ASSERT_TRUE(landed->landed);
+        EXPECT_EQ(landed->landed->id.incarnation, 1u);
+        EXPECT_EQ(landed->observed_durability, chronolog::Durability::Durable);
+        EXPECT_FALSE(outcome(*reconciled, "B"));
+        auto repeated = (*session)->remember(memory("A"));
+        ASSERT_TRUE(repeated.ok());
+        EXPECT_EQ(repeated->current.outcome, ctx::MemoryOutcome::Landed);
+        EXPECT_FALSE(repeated->current.receipt);
+        EXPECT_EQ(peer.stored("A"), 1u);
+        auto c = (*session)->remember(memory("C"));
+        ASSERT_TRUE(c.ok() && c->current.receipt);
+        EXPECT_EQ(c->current.receipt->event_id.incarnation, 3u);
+        EXPECT_TRUE((*session)->status().reconcile_attempted);
+        // A second restart reloads the LANDED disposition: the id is answered without another append.
+        auto saved = ctx::encodeCheckpoint((*session)->checkpoint());
+        ASSERT_TRUE(saved.ok()) << saved.status();
+        ASSERT_TRUE((*session)->close().ok());
+        auto restored = ctx::decodeCheckpoint(*saved);
+        ASSERT_TRUE(restored.ok()) << restored.status();
+        auto restart = ctx::ContextClient::Connect(peer.options());
+        ASSERT_TRUE(restart.ok());
+        auto options = writable();
+        options.resume = *restored;
+        options.resume->acquisition_closed = true;
+        auto reopened = restart->open(ref(), {"agent", "slot"}, options);
+        ASSERT_TRUE(reopened.ok()) << reopened.status();
+        EXPECT_EQ(peer.acquisitions.back().expected_prior_incarnation(), 3u);
+        EXPECT_EQ((*reopened)->remember(memory("A", "changed")).status().code(), absl::StatusCode::kFailedPrecondition);
+        repeated = (*reopened)->remember(memory("A"));
+        ASSERT_TRUE(repeated.ok());
+        EXPECT_EQ(repeated->current.outcome, ctx::MemoryOutcome::Landed);
+        EXPECT_EQ(peer.stored("A"), 1u);
+    }
+    // EXPIRED recovers by a plain conditional Acquire; a fenced marker extends the transition through an
+    // intermediate incarnation, the lower bound stays the earliest, and a proven ABSENT id is resent explicitly.
+    {
+        LogPeer peer;
+        auto client = ctx::ContextClient::Connect(peer.options());
+        ASSERT_TRUE(client.ok());
+        auto session = client->open(ref(), {"agent", "slot"}, writable());
+        ASSERT_TRUE(session.ok());
+        auto x = (*session)->remember(memory("x"));
+        ASSERT_TRUE(x.ok() && x->current.receipt);
+        peer.fence(1, chronolog::AppendRejection::FencedExpired);
+        auto a = (*session)->remember(memory("A"));
+        ASSERT_TRUE(a.ok());
+        EXPECT_EQ(a->current.outcome, ctx::MemoryOutcome::Unknown);
+        EXPECT_EQ(a->state, ctx::SessionState::NeedsReconcile);
+        peer.fence(2, chronolog::AppendRejection::FencedOwnerRemoved);
+        auto first = (*session)->reconcile();
+        ASSERT_TRUE(first.ok()) << first.status();
+        EXPECT_FALSE(first->attempted);
+        EXPECT_EQ(chronolog::client::rejectionOf(first->status), chronolog::AppendRejection::FencedOwnerRemoved);
+        EXPECT_EQ((*session)->status().state, ctx::SessionState::NeedsReconcile);
+        EXPECT_EQ((*session)->remember(memory("new")).value().current.outcome, ctx::MemoryOutcome::Fenced);
+        auto second = (*session)->reconcile();
+        ASSERT_TRUE(second.ok()) << second.status();
+        ASSERT_EQ(peer.acquisitions.size(), 3u);
+        EXPECT_FALSE(peer.acquisitions[1].takeover());
+        EXPECT_EQ(peer.acquisitions[1].expected_prior_incarnation(), 1u);
+        EXPECT_FALSE(peer.acquisitions[2].takeover());
+        EXPECT_EQ(peer.acquisitions[2].expected_prior_incarnation(), 2u);
+        EXPECT_TRUE(second->proof_complete);
+        ASSERT_TRUE(second->range && second->marker_hlc);
+        EXPECT_EQ(second->range->start, x->current.receipt->hlc);
+        EXPECT_EQ(second->range->end, *second->marker_hlc);
+        ASSERT_TRUE(outcome(*second, "A"));
+        EXPECT_EQ(outcome(*second, "A")->outcome, ctx::ReconcileOutcome::Absent);
+        for(const auto& op: second->operations) EXPECT_FALSE(op.operation_id.starts_with("chronolog.reconcile/"));
+        EXPECT_EQ((*session)->status().state, ctx::SessionState::Ready);
+        auto refused = (*session)->remember(memory("A"));
+        ASSERT_TRUE(refused.ok());
+        EXPECT_EQ(refused->current.outcome, ctx::MemoryOutcome::Rejected);
+        EXPECT_EQ(peer.stored("A"), 0u);
+        auto resent = (*session)->remember(memory("A"), resend());
+        ASSERT_TRUE(resent.ok() && resent->current.receipt);
+        EXPECT_EQ(resent->current.receipt->event_id.incarnation, 3u);
+        EXPECT_EQ(peer.stored("A"), 1u);
+    }
+    // Permanent SOURCE_FAILED leaves the old id permanently UNKNOWN and refused, and still admits new memories.
+    {
+        LogPeer peer;
+        auto client = ctx::ContextClient::Connect(peer.options());
+        ASSERT_TRUE(client.ok());
+        auto session = client->open(ref(), {"agent", "slot"}, writable());
+        ASSERT_TRUE(session.ok());
+        peer.fence(1, chronolog::AppendRejection::FencedExpired);
+        ASSERT_TRUE((*session)->remember(memory("A")).ok());
+        peer.failed_source = true;
+        ctx::ReconcileOptions options;
+        options.operation_ids = {"A", "unseen"};
+        auto reconciled = (*session)->reconcile(options);
+        ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+        EXPECT_TRUE(reconciled->attempted);
+        EXPECT_FALSE(reconciled->proof_complete);
+        ASSERT_TRUE(reconciled->completion);
+        EXPECT_EQ(reconciled->completion->reason, chronolog::IncompleteReason::SourceFailed);
+        EXPECT_EQ(reconciled->permanently_unknown_operations, (std::vector<std::string>{"A", "unseen"}));
+        EXPECT_EQ(outcome(*reconciled, "A")->outcome, ctx::ReconcileOutcome::Unknown);
+        EXPECT_EQ((*session)->status().state, ctx::SessionState::Ready);
+        auto fresh = (*session)->remember(memory("B"));
+        ASSERT_TRUE(fresh.ok() && fresh->current.receipt);
+        EXPECT_EQ(fresh->current.receipt->event_id.incarnation, 2u);
+        for(const auto& again: {(*session)->remember(memory("A")), (*session)->remember(memory("A"), resend())})
+        {
+            ASSERT_TRUE(again.ok());
+            EXPECT_EQ(again->current.outcome, ctx::MemoryOutcome::Unknown);
+            EXPECT_EQ(again->current.status.code(), absl::StatusCode::kFailedPrecondition);
+        }
+        EXPECT_EQ(peer.stored("A"), 0u);
+        EXPECT_EQ((*session)->status().permanently_unknown_operations, (std::vector<std::string>{"A", "unseen"}));
+        auto checkpoint = (*session)->checkpoint();
+        ASSERT_EQ(checkpoint.permanently_unknown_operations.size(), 2u);
+        EXPECT_TRUE(checkpoint.permanently_unknown_operations[0].absence_provable);
+        EXPECT_FALSE(checkpoint.permanently_unknown_operations[1].absence_provable);
+        EXPECT_EQ(checkpoint.permanently_unknown_operations[0].window->end, *reconciled->marker_hlc);
+        EXPECT_TRUE(checkpoint.reconcile_attempted);
+    }
+}
+
+TEST(ContextApi, ReconcileProofWindowIsStrictlySeparated)
+{
+    // Before any own receipt the bound is the floor observed when the incarnation was acquired (I7.3); the proof
+    // reads exactly [l, m) and the successor's own events never count as the old incarnation's.
+    LogPeer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto options = writable();
+    options.resume = ctx::Checkpoint{};
+    options.resume->context = ref();
+    options.resume->identity = {"agent", "slot"};
+    options.resume->causal_floor = {5000, 3};
+    auto session = client->open(ref(), {"agent", "slot"}, options);
+    ASSERT_TRUE(session.ok()) << session.status();
+    peer.fence(1, chronolog::AppendRejection::FencedExpired);
+    ASSERT_TRUE((*session)->remember(memory("A")).ok());
+    peer.inject(2, 5001, "A");
+    peer.inject(1, 4999, "A");
+    auto reconciled = (*session)->reconcile();
+    ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+    ASSERT_TRUE(reconciled->range && reconciled->marker_hlc);
+    EXPECT_EQ(reconciled->range->start, (chronolog::Hlc{5000, 3}));
+    EXPECT_EQ(reconciled->range->end, *reconciled->marker_hlc);
+    ASSERT_FALSE(peer.reads.empty());
+    EXPECT_EQ(peer.reads.back().hlc().start().physical_ns(), 5000);
+    EXPECT_EQ(peer.reads.back().hlc().start().logical(), 3u);
+    EXPECT_EQ(peer.reads.back().hlc().end().physical_ns(), reconciled->marker_hlc->physical_ns);
+    EXPECT_EQ(outcome(*reconciled, "A")->outcome, ctx::ReconcileOutcome::Absent);
+    // After an own receipt the bound rises to it; an unknown prior state reads from 0.
+    ASSERT_TRUE((*session)->remember(memory("own")).ok());
+    const auto own = (*session)->checkpoint().last_own_receipt_hlc;
+    ASSERT_TRUE(own);
+    peer.fence(2, chronolog::AppendRejection::FencedExpired);
+    ASSERT_TRUE((*session)->remember(memory("B")).ok());
+    reconciled = (*session)->reconcile();
+    ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+    EXPECT_EQ(reconciled->range->start, *own);
+    EXPECT_GT(reconciled->range->end, *own);
+    EXPECT_EQ(outcome(*reconciled, "B")->outcome, ctx::ReconcileOutcome::Absent);
+    auto unknown = writable();
+    unknown.resume = (*session)->checkpoint();
+    unknown.resume->context = ref(2);
+    unknown.resume->writer = ctx::WriterStamp{LogPeer::writer, peer.incarnation};
+    unknown.resume->acquisition_closed = false;
+    unknown.resume->prior_state_unknown_below = chronolog::Hlc{9000, 0};
+    unknown.resume->dispositions.clear();
+    unknown.resume->unresolved_operations = {"C"};
+    auto other = client->open(ref(2), {"agent", "slot"}, unknown);
+    ASSERT_TRUE(other.ok()) << other.status();
+    EXPECT_EQ((*other)->status().state, ctx::SessionState::Fenced);
+    reconciled = (*other)->reconcile(takeover());
+    ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+    EXPECT_EQ(reconciled->range->start, chronolog::Hlc{});
+    EXPECT_EQ(outcome(*reconciled, "C")->outcome, ctx::ReconcileOutcome::Absent);
+}
+
+TEST(ContextApi, RestoredCheckpointNeverReusesAnIdOrWritesARecordedIncarnation)
+{
+    LogPeer peer;
+    peer.incarnation = 4;
+    peer.inject(2, 1060, "A");
+    peer.inject(5, 1070, "foreign");
+    ctx::Checkpoint saved;
+    saved.context = ref();
+    saved.identity = {"agent", "slot"};
+    saved.causal_floor = {1100, 0};
+    saved.writer = ctx::WriterStamp{LogPeer::writer, 4};
+    saved.acquisition = ctx::AcquisitionProvenance{"host", "lock", std::nullopt, chronolog::Hlc{1080, 0}};
+    saved.recovery =
+            ctx::ReconcileCheckpoint{"t1", {1050, 0}, {{{LogPeer::writer, 2}, {}}, {{LogPeer::writer, 3}, {}}}, {}, {}};
+    saved.unresolved_operations = {"A"};
+    auto encoded = ctx::encodeCheckpoint(saved);
+    ASSERT_TRUE(encoded.ok()) << encoded.status();
+    std::vector<std::string> ids;
+    for(int restart = 0; restart < 2; ++restart)
+    {
+        auto client = ctx::ContextClient::Connect(peer.options());
+        ASSERT_TRUE(client.ok());
+        auto options = writable();
+        options.resume = ctx::decodeCheckpoint(*encoded).value();
+        options.ownership = options.resume->acquisition;
+        auto session = client->open(ref(), {"agent", "slot"}, options);
+        ASSERT_TRUE(session.ok()) << session.status();
+        EXPECT_EQ((*session)->status().state, ctx::SessionState::NeedsReconcile);
+        EXPECT_EQ((*session)->remember(memory("new")).value().current.outcome, ctx::MemoryOutcome::Fenced);
+        const size_t before = peer.acquisitions.size();
+        auto reconciled = (*session)->reconcile();
+        ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+        ASSERT_EQ(peer.acquisitions.size(), before + 1);
+        const auto& acquire = peer.acquisitions.back();
+        EXPECT_TRUE(acquire.takeover());
+        EXPECT_EQ(acquire.expected_prior_incarnation(), 4u);
+        ids.push_back(acquire.acquire_request_id());
+        EXPECT_FALSE(acquire.acquire_request_id().empty());
+        EXPECT_EQ(encoded->find(acquire.acquire_request_id()), std::string::npos);
+        if(restart == 0)
+        {
+            EXPECT_EQ(reconciled->writer->incarnation, 5u);
+            EXPECT_EQ(reconciled->range->start, (chronolog::Hlc{1050, 0}));
+            EXPECT_EQ(outcome(*reconciled, "A")->outcome, ctx::ReconcileOutcome::Landed);
+            EXPECT_FALSE(outcome(*reconciled, "foreign"));
+        }
+        else
+        {
+            // The newer incarnation 5 is unknown to this checkpoint: no mutation, explicit takeover joins it.
+            ASSERT_TRUE(chronolog::client::acquireRefusalOf(reconciled->status));
+            EXPECT_EQ((*session)->status().state, ctx::SessionState::Fenced);
+            reconciled = (*session)->reconcile(takeover());
+            ASSERT_TRUE(reconciled.ok()) << reconciled.status();
+            EXPECT_EQ(peer.acquisitions.back().expected_prior_incarnation(), 5u);
+            ids.push_back(peer.acquisitions.back().acquire_request_id());
+            EXPECT_EQ(reconciled->writer->incarnation, 6u);
+            EXPECT_EQ(outcome(*reconciled, "A")->outcome, ctx::ReconcileOutcome::Landed);
+            EXPECT_EQ(outcome(*reconciled, "foreign")->outcome, ctx::ReconcileOutcome::Landed);
+        }
+    }
+    EXPECT_EQ(std::set<std::string>(ids.begin(), ids.end()).size(), ids.size());
+    for(const auto inc: peer.incarnations()) EXPECT_GE(inc, 5u);
+    EXPECT_EQ(peer.stored("A"), 1u);
+}
+
+TEST(ContextApi, LaterCompleteReadReleasesPermanentUnknown)
+{
+    LogPeer peer;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto options = writable();
+    options.ownership = ctx::AcquisitionProvenance{"host", "lock", {}, {}};
+    auto session = client->open(ref(), {"agent", "slot"}, options);
+    ASSERT_TRUE(session.ok());
+    peer.fence(1, chronolog::AppendRejection::FencedExpired);
+    ASSERT_TRUE((*session)->remember(memory("A")).ok());
+    peer.failed_source = true;
+    auto reconciled = (*session)->reconcile();
+    ASSERT_TRUE(reconciled.ok());
+    EXPECT_EQ(reconciled->permanently_unknown_operations, (std::vector<std::string>{"A"}));
+    ASSERT_TRUE((*session)->remember(memory("B")).ok());
+    // The old incarnation is fenced, so a complete Read of the recorded window releases the id (C5).
+    peer.failed_source = false;
+    const size_t acquisitions = peer.acquisitions.size();
+    auto released = (*session)->reconcile();
+    ASSERT_TRUE(released.ok()) << released.status();
+    EXPECT_EQ(peer.acquisitions.size(), acquisitions);
+    EXPECT_FALSE(released->attempted);
+    EXPECT_TRUE(released->permanently_unknown_operations.empty());
+    ASSERT_TRUE(outcome(*released, "A"));
+    EXPECT_EQ(outcome(*released, "A")->outcome, ctx::ReconcileOutcome::Absent);
+    ASSERT_TRUE((*session)->remember(memory("A"), resend()).value().current.receipt);
+    // A permanent id restored from a checkpoint is released the same way, here as LANDED.
+    peer.lose_next = true;
+    ASSERT_TRUE((*session)->remember(memory("L")).ok());
+    peer.fence(2, chronolog::AppendRejection::FencedExpired);
+    ASSERT_TRUE((*session)->remember(memory("next")).ok());
+    peer.failed_source = true;
+    ASSERT_TRUE((*session)->reconcile().ok());
+    auto saved = ctx::encodeCheckpoint((*session)->checkpoint());
+    ASSERT_TRUE(saved.ok());
+    peer.failed_source = false;
+    auto restart = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(restart.ok());
+    options.resume = ctx::decodeCheckpoint(*saved).value();
+    auto restored = restart->open(ref(), {"agent", "slot"}, options);
+    ASSERT_TRUE(restored.ok()) << restored.status();
+    EXPECT_EQ((*restored)->status().permanently_unknown_operations, (std::vector<std::string>{"L"}));
+    EXPECT_EQ((*restored)->remember(memory("L")).value().current.outcome, ctx::MemoryOutcome::Unknown);
+    released = (*restored)->reconcile();
+    ASSERT_TRUE(released.ok()) << released.status();
+    ASSERT_TRUE(outcome(*released, "L"));
+    EXPECT_EQ(outcome(*released, "L")->outcome, ctx::ReconcileOutcome::Landed);
+    EXPECT_TRUE((*restored)->status().permanently_unknown_operations.empty());
+    EXPECT_EQ(peer.stored("L"), 1u);
+}
+
+TEST(ContextApi, CheckpointEncodingRoundTripsAndIsBounded)
+{
+    ctx::Checkpoint value;
+    value.identity = {"agent\"\\\n\xc3\xa9", "slot"};
+    value.context = {UINT64_MAX, "team", "notes"};
+    value.causal_floor = {INT64_MAX, UINT32_MAX};
+    value.processed_after = ctx::Position{{10, 1}, {UINT64_MAX, 7, 2, 3}};
+    value.writer = ctx::WriterStamp{7, 2};
+    value.acquisition = ctx::AcquisitionProvenance{"host", "lock", 1, chronolog::Hlc{5, 0}};
+    value.last_own_receipt_hlc = chronolog::Hlc{9, 0};
+    value.recovery =
+            ctx::ReconcileCheckpoint{"t", {5, 0}, {{{7, 1}, "chronolog.reconcile/t/1"}}, "m", chronolog::Hlc{11, 0}};
+    const std::string long_id(128, 'x');
+    value.unresolved_operations = {long_id};
+    value.permanently_unknown_operations = {
+            {"\"quoted\"", {{7, 1}}, chronolog::client::HlcRange{{5, 0}, {11, 0}}, true, std::string("\x00\xff", 2)}};
+    value.dispositions = {{{"landed",
+                            ctx::ReconcileOutcome::Landed,
+                            ctx::Position{{6, 0}, {1, 7, 1, 4}},
+                            chronolog::Durability::Durable},
+                           {7, 1},
+                           std::nullopt},
+                          {{"absent", ctx::ReconcileOutcome::Absent, std::nullopt, chronolog::Durability::Unspecified},
+                           {7, 1},
+                           std::string(32, 'd')}};
+    value.prior_state_unknown_below = chronolog::Hlc{3, 0};
+    value.reconcile_attempted = true;
+    value.takeover_required = true;
+    auto encoded = ctx::encodeCheckpoint(value);
+    ASSERT_TRUE(encoded.ok()) << encoded.status();
+    auto decoded = ctx::decodeCheckpoint(*encoded);
+    ASSERT_TRUE(decoded.ok()) << decoded.status();
+    EXPECT_EQ(decoded->identity.agent_id, value.identity.agent_id);
+    EXPECT_EQ(decoded->context.story_id, UINT64_MAX);
+    EXPECT_EQ(decoded->causal_floor, value.causal_floor);
+    EXPECT_EQ(decoded->processed_after->id, value.processed_after->id);
+    EXPECT_EQ(decoded->writer, value.writer);
+    EXPECT_EQ(decoded->acquisition->expected_prior_incarnation, 1u);
+    EXPECT_EQ(decoded->acquisition->acquisition_record_receipt_hlc, value.acquisition->acquisition_record_receipt_hlc);
+    EXPECT_EQ(decoded->recovery->recovered_incarnations[0].marker_operation_id, "chronolog.reconcile/t/1");
+    EXPECT_EQ(decoded->recovery->marker_hlc, value.recovery->marker_hlc);
+    EXPECT_EQ(decoded->unresolved_operations, value.unresolved_operations);
+    ASSERT_EQ(decoded->permanently_unknown_operations.size(), 1u);
+    EXPECT_EQ(decoded->permanently_unknown_operations[0].normalized_digest, std::string("\x00\xff", 2));
+    EXPECT_EQ(decoded->permanently_unknown_operations[0].window->end, (chronolog::Hlc{11, 0}));
+    ASSERT_EQ(decoded->dispositions.size(), 2u);
+    EXPECT_EQ(decoded->dispositions[0].result.landed->id.sequence, 4u);
+    EXPECT_EQ(decoded->dispositions[1].result.outcome, ctx::ReconcileOutcome::Absent);
+    EXPECT_EQ(decoded->dispositions[1].normalized_digest, std::string(32, 'd'));
+    EXPECT_TRUE(decoded->reconcile_attempted && decoded->takeover_required && !decoded->acquisition_closed);
+    EXPECT_EQ(ctx::encodeCheckpoint(*decoded).value(), *encoded);
+    EXPECT_EQ(ctx::encodeCheckpoint(value, encoded->size() - 1).status().code(), absl::StatusCode::kResourceExhausted);
+    value.dispositions[0].result.outcome = ctx::ReconcileOutcome::Unknown;
+    EXPECT_EQ(ctx::encodeCheckpoint(value).status().code(), absl::StatusCode::kInvalidArgument);
+    for(const auto& bad: std::vector<std::string>{"{}", "[]", "not json", encoded->substr(0, encoded->size() / 2)})
+        EXPECT_EQ(ctx::decodeCheckpoint(bad).status().code(), absl::StatusCode::kInvalidArgument);
+    auto negative = *encoded;
+    negative.replace(negative.find("\"causal_floor\":["), 16, "\"causal_floor\":[-");
+    EXPECT_EQ(ctx::decodeCheckpoint(negative).status().code(), absl::StatusCode::kInvalidArgument);
+    // A bounded disposition list is what a session persists: restoring more than the bound is refused.
+    Peer peer;
+    auto config = peer.options();
+    config.max_persisted_dispositions = 1;
+    auto client = ctx::ContextClient::Connect(config);
+    ASSERT_TRUE(client.ok());
+    auto options = writable();
+    options.resume = *decoded;
+    options.resume->context = ref();
+    options.resume->processed_after.reset();
+    EXPECT_EQ(client->open(ref(), decoded->identity, options).status().code(), absl::StatusCode::kResourceExhausted);
+}
