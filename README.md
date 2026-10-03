@@ -128,11 +128,11 @@ before drawing conclusions during recovery. An immediate recall can be incomplet
 when the archive covers the requested range. The rehearsal prints the actual answer and checks that recovery
 returns identical EventIds and HLCs.
 
-Codex was not installed on the rehearsal host. Its marketplace uses the same local checkout and the `chronolog`
-plugin; alternatively configure an MCP server with command `chronolog` and arguments
+Codex was not installed on the rehearsal host. Add the local checkout to its plugin marketplace and install
+`chronolog@chronolog` through its plugin interface; alternatively configure an MCP server with command `chronolog` and arguments
 `["run", "--up", "default", "--", "chronolog-mcp"]` in the installed Codex's MCP configuration.
-For clio-coder, import the local `skills` plugin through its Library for the skill; that import omits MCP metadata.
-Declare the server separately in user `<config>/mcp.yaml` (or project `.clio-coder/mcp.yaml`):
+For clio-coder, its Library can adopt skill resources from the locally installed Claude plugin; that import omits
+MCP metadata. Declare the server separately in user `<config>/mcp.yaml` (or project `.clio-coder/mcp.yaml`):
 
 ```yaml
 version: 1
