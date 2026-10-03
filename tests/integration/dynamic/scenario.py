@@ -98,7 +98,7 @@ class Scenario:
         raise RuntimeError(f'bounded wait failed: {detail}')
 
     def state(self):
-        return self.rpc('ListMembers', endpoint=self.internal)
+        return self.call('ListMembers', endpoint=self.internal)
 
     def route(self):
         return next(r for r in self.state().get('routes', []) if int(r['story_id']) == self.story)
