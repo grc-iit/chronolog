@@ -8,6 +8,7 @@
   "files": [
     "dist",
     "build/dev/chronolog_node.node",
+    "build/sdk/lib/libchronolog_*.so*",
     "native",
     "CMakeLists.txt",
     "CMakePresets.json",
