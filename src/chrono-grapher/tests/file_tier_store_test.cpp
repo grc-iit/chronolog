@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <set>
 #include <thread>
 #include <fcntl.h>
@@ -289,6 +290,249 @@ TEST(FileTierStore, ReadRecordErasedBeforeOpenIsUnavailable)
     ASSERT_TRUE((*writer)->eraseFile(record->file).ok());
     EXPECT_TRUE(gate.release());
     EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
+}
+
+Chunk PhysicalChunk(int64_t hlc, TimeReading physical)
+{
+    auto chunk = contract::Window(hlc, hlc + 100);
+    chunk.events.front().physical = physical;
+    return chunk;
+}
+
+class CountingRead
+{
+public:
+    absl::StatusOr<std::vector<Event>> operator()(const fs::path& path)
+    {
+        {
+            std::lock_guard lock(mutex_);
+            files_.insert(path.filename().string());
+        }
+        return ReadChunkFile(path);
+    }
+    std::set<std::string> files()
+    {
+        std::lock_guard lock(mutex_);
+        return files_;
+    }
+    void clear()
+    {
+        std::lock_guard lock(mutex_);
+        files_.clear();
+    }
+
+private:
+    std::mutex mutex_;
+    std::set<std::string> files_;
+};
+
+TEST(FileTierStore, PhysicalReadSkipsFilesOutsideTheRange)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        CountingRead reads;
+        auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
+        ASSERT_TRUE(store.ok());
+        auto outside = (*store)->publish(PhysicalChunk(100, {10, 0, ClockStatus::Synced}));
+        auto inside = (*store)->publish(PhysicalChunk(200, {105, 5, ClockStatus::Synced}));
+        ASSERT_TRUE(outside.ok());
+        ASSERT_TRUE(inside.ok());
+        ASSERT_TRUE((*store)->publish(PhysicalChunk(300, {200, 0, ClockStatus::Synced})).ok());
+        const Range range{Range::Axis::Physical, {100, 0}, {101, 0}};
+        auto events = (*store)->read(1, range);
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 1u);
+        EXPECT_EQ(events->front().id.sequence, 200u);
+        EXPECT_EQ(reads.files(), (std::set<std::string>{fs::path(inside->file).filename().string()}));
+        reads.clear();
+        events = (*store)->readRecord(*outside, range);
+        ASSERT_TRUE(events.ok()) << events.status();
+        EXPECT_TRUE(events->empty());
+        EXPECT_TRUE(reads.files().empty());
+    }
+}
+
+TEST(FileTierStore, PhysicalPruningNeverDropsAnIntersectingEvent)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        CountingRead reads;
+        auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
+        ASSERT_TRUE(store.ok());
+        std::vector<ManifestRecord> records;
+        int64_t hlc = 100;
+        for(const auto reading:
+            std::vector<TimeReading>{{99, 0, ClockStatus::Synced},
+                                     {99, 1, ClockStatus::Synced},
+                                     {101, 1, ClockStatus::Synced},
+                                     {102, 1, ClockStatus::Synced},
+                                     {101, std::nullopt, ClockStatus::Synced},
+                                     {100, 0, ClockStatus::Unsynced},
+                                     {500, 0, ClockStatus::Unavailable},
+                                     {100, PhysicalPolicy{}.uncertainty_cap_ns + 1, ClockStatus::Synced}})
+        {
+            auto record = (*store)->publish(PhysicalChunk(hlc, reading));
+            ASSERT_TRUE(record.ok());
+            records.push_back(*record);
+            hlc += 100;
+        }
+        {
+            auto legacy = ManifestLog::Open(*directory, "legacy");
+            ASSERT_TRUE(legacy.ok());
+            auto record = Record(900, 1000);
+            record.file = "1/legacy" + codec->extension();
+            std::ofstream(*directory / record.file).close();
+            ASSERT_TRUE(codec->writeChunk(*directory / record.file, PhysicalChunk(900, {500, 0, ClockStatus::Synced}))
+                                .ok());
+            ASSERT_TRUE((*legacy)->append(record).ok());
+            records.push_back(record);
+        }
+        {
+            auto orphan = FileTierStore::Open(*directory, "orphan", {{1, {100, 0}}}, codec);
+            ASSERT_TRUE(orphan.ok());
+            for(const auto at: {1000, 1100})
+            {
+                auto record = (*orphan)->publish(PhysicalChunk(at, {at == 1000 ? 100 : 1000, 0, ClockStatus::Synced}));
+                ASSERT_TRUE(record.ok());
+                records.push_back(*record);
+            }
+        }
+        fs::resize_file(*directory / "manifest/orphan.log", 0);
+        store->reset();
+        store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
+        ASSERT_TRUE(store.ok()) << store.status();
+        const Range range{Range::Axis::Physical, {100, 0}, {101, 0}};
+        auto events = (*store)->read(1, range);
+        ASSERT_TRUE(events.ok()) << events.status();
+        std::set<uint64_t> sequences;
+        for(const auto& event: *events) sequences.insert(event.id.sequence);
+        EXPECT_EQ(sequences, (std::set<uint64_t>{200, 300, 600, 800, 1000}));
+        std::set<std::string> expected;
+        for(const size_t i: {1u, 2u, 4u, 5u, 6u, 7u, 8u, 9u})
+            expected.insert(fs::path(records[i].file).filename().string());
+        EXPECT_EQ(reads.files(), expected);
+        reads.clear();
+        for(const auto& record: records) ASSERT_TRUE((*store)->readRecord(record, range).ok());
+        EXPECT_EQ(reads.files(), expected);
+    }
+}
+
+TEST(FileTierStore, PhysicalPruningSurvivesRestartAndCompaction)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    auto inside = (*store)->publish(PhysicalChunk(100, {100, 0, ClockStatus::Synced}));
+    ASSERT_TRUE(inside.ok());
+    ASSERT_TRUE((*store)->publish(PhysicalChunk(200, {200, 0, ClockStatus::Synced})).ok());
+    ASSERT_TRUE((*store)->publish(PhysicalChunk(300, {300, 0, ClockStatus::Synced})).ok());
+    for(const bool compact: {false, true})
+    {
+        if(compact)
+        {
+            ASSERT_TRUE((*store)->compact().ok());
+        }
+        store->reset();
+        CountingRead reads;
+        auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), std::ref(reads));
+        ASSERT_TRUE(reader.ok());
+        auto events = (*reader)->read(1, {Range::Axis::Physical, {100, 0}, {101, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 1u);
+        EXPECT_EQ(reads.files(), (std::set<std::string>{fs::path(inside->file).filename().string()}));
+        reader->reset();
+        store = Open(*directory);
+        ASSERT_TRUE(store.ok());
+    }
+}
+
+TEST(FileTierStore, PhysicalPruningHandlesSaturatedIntervals)
+{
+    auto directory = TestDirectory();
+    CountingRead reads;
+    auto store = FileTierStore::Open(*directory,
+                                     "primary",
+                                     {{1, {100, 0}}},
+                                     std::make_shared<HDF5ChunkCodec>(),
+                                     {},
+                                     std::ref(reads));
+    ASSERT_TRUE(store.ok());
+    const auto low = std::numeric_limits<int64_t>::min(), high = std::numeric_limits<int64_t>::max();
+    auto first = (*store)->publish(PhysicalChunk(100, {low, 1, ClockStatus::Synced}));
+    auto last = (*store)->publish(PhysicalChunk(200, {high, 1, ClockStatus::Synced}));
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(last.ok());
+    for(const auto range:
+        {Range{Range::Axis::Physical, {low, 0}, {low + 1, 0}}, Range{Range::Axis::Physical, {high - 1, 0}, {high, 0}}})
+    {
+        reads.clear();
+        auto events = (*store)->read(1, range);
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 1u);
+        EXPECT_EQ(events->front().id.sequence, range.start.physical_ns == low ? 100u : 200u);
+        EXPECT_EQ(reads.files().size(), 1u);
+    }
+}
+
+TEST(FileTierStore, PhysicalBoundsCoverEveryEventInAFile)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        CountingRead reads;
+        auto store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
+        ASSERT_TRUE(store.ok());
+        auto chunk = PhysicalChunk(100, {500, 0, ClockStatus::Synced});
+        for(const auto reading: std::vector<TimeReading>{{99, 1, ClockStatus::Synced},
+                                                         {101, 1, ClockStatus::Synced},
+                                                         {600, 0, ClockStatus::Synced}})
+        {
+            auto event = chunk.events.front();
+            event.hlc.physical_ns += static_cast<int64_t>(chunk.events.size());
+            event.id.sequence += chunk.events.size();
+            event.physical = reading;
+            chunk.events.push_back(std::move(event));
+        }
+        ASSERT_TRUE((*store)->publish(std::move(chunk)).ok());
+        auto events = (*store)->read(1, {Range::Axis::Physical, {100, 0}, {101, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        ASSERT_EQ(events->size(), 2u);
+        EXPECT_EQ(events->at(0).id.sequence, 101u);
+        EXPECT_EQ(events->at(1).id.sequence, 102u);
+        reads.clear();
+        events = (*store)->read(1, {Range::Axis::Physical, {1000, 0}, {1001, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        EXPECT_TRUE(events->empty());
+        EXPECT_TRUE(reads.files().empty());
+    }
+}
+
+TEST(ManifestLog, MalformedPhysicalBoundsFailTheWholeLoad)
+{
+    for(const char* bounds: {R"({"min_lo":2,"max_hi":1,"unbounded":false})",
+                             R"({"min_lo":18446744073709551615,"max_hi":18446744073709551615,"unbounded":false})",
+                             R"({"min_lo":0.5,"max_hi":1,"unbounded":false})",
+                             R"({"min_lo":0,"max_hi":1})"})
+    {
+        auto directory = TestDirectory();
+        auto log = ManifestLog::Open(*directory, "primary");
+        ASSERT_TRUE(log.ok());
+        ASSERT_TRUE((*log)->append(Record(100, 200)).ok());
+        log->reset();
+        auto line = Bytes(*directory / "manifest/primary.log");
+        line.erase(line.rfind('}'));
+        {
+            std::ofstream output(*directory / "manifest/primary.log");
+            output << line << ",\"physical_bounds\":" << bounds << "}\n";
+        }
+        auto reader = FileTierStore::OpenReadOnly(*directory);
+        EXPECT_TRUE(absl::IsUnavailable(reader.status())) << bounds;
+    }
 }
 
 TEST(FileTierStore, WatermarkStopsAtTheFirstGap)

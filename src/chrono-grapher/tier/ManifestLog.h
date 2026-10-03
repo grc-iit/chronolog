@@ -5,13 +5,27 @@
 #include <sys/types.h>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
 
 namespace chronolog
 {
+struct PhysicalBounds
+{
+    int64_t min_lo{}, max_hi{};
+    bool unbounded{};
+};
+struct FilePhysicalBounds
+{
+    PhysicalBounds bounds;
+    StoryId story_id{};
+    Hlc start, end;
+    uint64_t event_count{};
+};
 struct ManifestIndex
 {
     std::vector<ManifestRecord> records;
+    std::map<std::string, FilePhysicalBounds> physical_bounds;
     std::map<StoryId, Hlc> watermarks;
     std::set<StoryId> tombstoned;
     // Positions in records per story, so a story's view is rebuilt only when it changed and never by scanning the
@@ -27,7 +41,7 @@ public:
     static absl::StatusOr<std::unique_ptr<ManifestLog>> Open(std::filesystem::path root, std::string writer);
     static std::unique_ptr<ManifestLog> OpenReadOnly(std::filesystem::path root);
     ~ManifestLog();
-    absl::Status append(ManifestRecord record);
+    absl::Status append(ManifestRecord record, std::optional<PhysicalBounds> bounds = std::nullopt);
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).
     absl::Status appendTombstone(StoryId story);

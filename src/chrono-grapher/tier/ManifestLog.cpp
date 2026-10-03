@@ -2,6 +2,7 @@
 #include "chrono-grapher/tier/FileIO.h"
 #include <algorithm>
 #include <fstream>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <set>
 #include <sys/file.h>
@@ -24,18 +25,43 @@ bool SafeWriter(const std::string& writer)
                        });
 }
 
-Json Encode(const ManifestRecord& record)
+Json Encode(const ManifestRecord& record, std::optional<PhysicalBounds> bounds)
 {
-    return {{"chunk", record.chunk_id},
-            {"writer", record.manifest_writer},
-            {"file", record.file},
-            {"story", record.story_id},
-            {"start", {record.start.physical_ns, record.start.logical}},
-            {"end", {record.end.physical_ns, record.end.logical}},
-            {"count", record.event_count},
-            {"state", static_cast<int>(record.state)},
-            {"exempt", record.exempt},
-            {"physical_policy", record.physical_policy}};
+    Json json = {{"chunk", record.chunk_id},
+                 {"writer", record.manifest_writer},
+                 {"file", record.file},
+                 {"story", record.story_id},
+                 {"start", {record.start.physical_ns, record.start.logical}},
+                 {"end", {record.end.physical_ns, record.end.logical}},
+                 {"count", record.event_count},
+                 {"state", static_cast<int>(record.state)},
+                 {"exempt", record.exempt},
+                 {"physical_policy", record.physical_policy}};
+    if(bounds)
+        json["physical_bounds"] = {{"min_lo", bounds->min_lo},
+                                   {"max_hi", bounds->max_hi},
+                                   {"unbounded", bounds->unbounded}};
+    return json;
+}
+
+std::optional<PhysicalBounds> DecodeBounds(const Json& json, ManifestState state)
+{
+    if(!json.contains("physical_bounds"))
+        return std::nullopt;
+    const auto& bounds = json.at("physical_bounds");
+    auto integer = [&](const char* key)
+    {
+        const auto& value = bounds.at(key);
+        if(!value.is_number_integer() ||
+           (value.is_number_unsigned() &&
+            value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())))
+            throw std::runtime_error("invalid physical bound integer");
+        return value.get<int64_t>();
+    };
+    PhysicalBounds result{integer("min_lo"), integer("max_hi"), bounds.at("unbounded").get<bool>()};
+    if(state != ManifestState::Published || result.min_lo > result.max_hi)
+        throw std::runtime_error("invalid archive physical bounds");
+    return result;
 }
 
 ManifestRecord Decode(const Json& json)
@@ -179,14 +205,15 @@ absl::Status ManifestLog::appendLine(std::string line)
     return absl::OkStatus();
 }
 
-absl::Status ManifestLog::append(ManifestRecord record)
+absl::Status ManifestLog::append(ManifestRecord record, std::optional<PhysicalBounds> bounds)
 {
     std::lock_guard lock(mutex_);
     record.manifest_writer = writer_;
     try
     {
-        const auto json = Encode(record);
+        const auto json = Encode(record, bounds);
         (void)Decode(json);
+        (void)DecodeBounds(json, record.state);
         return appendLine(json.dump());
     }
     catch(const std::exception& error)
@@ -232,6 +259,15 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
         auto record = Decode(json);
         if(record.manifest_writer != writer)
             return absl::UnavailableError("foreign writer in manifest");
+        const auto bounds = DecodeBounds(json, record.state);
+        if(bounds)
+            index.physical_bounds[record.file] = {*bounds,
+                                                  record.story_id,
+                                                  record.start,
+                                                  record.end,
+                                                  record.event_count};
+        else
+            index.physical_bounds.erase(record.file);
         index.by_story[record.story_id].push_back(index.records.size());
         if(!record.physical_policy)
             index.without_physical_policy.insert(record.story_id);
