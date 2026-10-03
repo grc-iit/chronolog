@@ -123,6 +123,12 @@ class PingPongDrainTest(unittest.TestCase):
         self.scenario.admin.assert_called_once_with('DrainKeeper', 'keeper-2')
         self.scenario.route.assert_called_once()
 
+    def test_drain_already_observed_by_the_join_wait_is_complete(self):
+        self.scenario.route = Mock(side_effect=AssertionError('already observed the drain'))
+        self.assertEqual(self.scenario.drain_after_join(self.drained, 'keeper-2'), self.drained)
+        self.scenario.admin.assert_called_once_with('DrainKeeper', 'keeper-2')
+        self.scenario.route.assert_not_called()
+
     @patch('scenario.time.sleep')
     def test_wait_still_requires_owner_removal_and_epoch_advancement(self, sleep):
         newer_but_present = dict(revision=166, route=dict(epoch=8, keepers=self.joined['route']['keepers']))

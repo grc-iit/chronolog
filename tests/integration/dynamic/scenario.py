@@ -247,6 +247,8 @@ class Scenario:
         before = int(joined['route']['epoch'])
         print(f'ping-pong drain {owner} after joined epoch {before}', flush=True)
         self.admin('DrainKeeper', owner)
+        if not any(k['process_id'] == owner for k in joined['route']['keepers']):
+            return joined
         return self.wait(lambda: self.changed(before, owner, False),
                          context=f'drain {owner} after joined epoch {before}')
 
