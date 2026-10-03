@@ -1,5 +1,6 @@
 #pragma once
 #include "chronolog/client/client.h"
+#include "chronolog/message_limits.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include <grpcpp/grpcpp.h>
 #include <algorithm>
@@ -95,9 +96,11 @@ inline bool retryable(const absl::Status& s)
 // Same channel policy as src/chrono-common/rpc/Channel.h, kept as its own copy because the SDK cannot
 // include src/. A lookup that fails or a peer that returns on a new address is re-resolved within a second
 // instead of the 30 s gRPC default, reconnects are bounded, and keepalive notices a vanished peer.
-inline grpc::ChannelArguments channelPolicy()
+inline grpc::ChannelArguments channelPolicy(const ClientOptions& options)
 {
     grpc::ChannelArguments args;
+    if(!options.channel_args.contains(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH))
+        args.SetMaxReceiveMessageSize(kEventStreamReceiveBytes);
     args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
     args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
@@ -145,7 +148,7 @@ struct State
         auto& result = channels[endpoint];
         if(!result)
         {
-            auto args = channelPolicy();
+            auto args = channelPolicy(options);
             for(const auto& [key, value]: options.channel_args)
             {
                 if(const auto* number = std::get_if<int>(&value))

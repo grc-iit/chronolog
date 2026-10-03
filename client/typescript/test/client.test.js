@@ -7,7 +7,7 @@ const {
 
 const catalog = process.env.CHRONOLOG_TYPESCRIPT_CATALOG || '127.0.0.1:50051';
 const player = process.env.CHRONOLOG_TYPESCRIPT_PLAYER || '127.0.0.1:50054';
-const options = { catalog, player, rpcTimeoutMs: 8000, batchSize: 64, maxInFlight: 4, channelArgs: { "grpc.max_receive_message_length": -1 } };
+const options = { catalog, player, rpcTimeoutMs: 8000, batchSize: 64, maxInFlight: 4 };
 const payload = sequence => Buffer.from(`ts-event-${sequence}`);
 
 async function create(client, name) {
@@ -100,6 +100,42 @@ test('catalog, 1000 ordered DURABLE appends, exact binary replay, exclusive tail
   await second.release();
   await client.destroyStory(story.id);
   await client.destroyChronicle(chronicle);
+});
+
+test('default Read and Tail deliver eight 1 MiB events', { timeout: 25000 }, async () => {
+  const client = await connect(options);
+  const { chronicle, story } = await create(client, 'receive-limit');
+  const writer = await client.acquire(story.id, 'receive-limit-writer');
+  try {
+    const payloads = Array.from({ length: 8 }, (_, i) => Buffer.alloc(1024 * 1024, i));
+    const results = await writer.appendBatch(payloads.map(payload => ({ payload })));
+    assert.equal(results.length, 8);
+    for (const result of results) assert.ok(!(result instanceof Error) && result.acked);
+    const { events, completion } = await complete(client, story.id, results);
+    assert.equal(completion.complete, true);
+    assert.equal(events.length, 8);
+    for (const [i, event] of events.entries()) {
+      assert.deepEqual(event.id, results[i].eventId);
+      assert.deepEqual(Buffer.from(event.envelope.payload), payloads[i]);
+    }
+    const tail = client.tail(story.id, null, { timeoutMs: 8000 });
+    let delivered = 0;
+    try {
+      for await (const event of tail) {
+        assert.deepEqual(event.id, results[delivered].eventId);
+        assert.deepEqual(Buffer.from(event.envelope.payload), payloads[delivered]);
+        if (++delivered === 8) break;
+      }
+      assert.equal(delivered, 8);
+    } finally {
+      tail.cancel();
+      await tail.completion.catch(() => {});
+    }
+  } finally {
+    await writer.release();
+    await client.destroyStory(story.id);
+    await client.destroyChronicle(chronicle);
+  }
 });
 
 test('four pending tails do not starve appends or timers on the same event loop', { timeout: 25000 }, async () => {
