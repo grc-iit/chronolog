@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import signal
+import select
 import socket
 import statistics
 import subprocess
@@ -15,20 +16,22 @@ import threading
 import time
 import uuid
 
-NODES = {'dragon': '100.101.232.95', 'blade': '100.124.181.9', 'mini': '100.74.131.112'}
-PORTS = {'dragon': [50053], 'blade': [50051, 50061, 50053, 50054], 'mini': [50052, 50062, 50055, 50065]}
+from topology import NODES, TABLE, PORTS, ARCHIVE, configs
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'build/cluster'
-ARCHIVE = '/mnt/nfs/chronolog-sprint/archive'
 
 
 class Cluster:
     def __init__(self):
-        self.tag = 'cl-d2-' + uuid.uuid4().hex[:10]
+        self.tag = 'cl-a7-' + uuid.uuid4().hex[:10]
+        global OUT
+        OUT = OUT / self.tag
+        os.environ['CHRONOLOG_CLUSTER_OUT'] = str(OUT)
         self.processes = {}
         self.services = {}
         self.lock = threading.RLock()
         self.archive_owned = False
+        self.build_locks = []
         OUT.mkdir(parents=True, exist_ok=True)
         self.socket_path = str(OUT / 'control.sock')
 
@@ -103,20 +106,31 @@ class Cluster:
             for node in NODES:
                 self.stop('probe-' + node)
 
+    def acquire_locks(self):
+        if os.environ.get('RBUILD_HELD') != 'build':
+            raise RuntimeError('run through rbuild with the dragon build lock')
+        for node in ('mini', 'blade'):
+            process = subprocess.Popen(['ssh', '-o', 'BatchMode=yes', node,
+                'exec 9>~/chronolog-sprint/build.lock; flock 9; echo LOCKED; cat >/dev/null'],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+            self.build_locks.append(process)
+            if not select.select([process.stdout], [], [], 60)[0] or process.stdout.readline().strip() != 'LOCKED':
+                raise RuntimeError(f'build lock unavailable on {node}')
+        print('PASS build locks held on dragon mini blade', flush=True)
+
     def stage(self):
-        roles = {'visor': 'blade', 'player': 'blade', 'grapher-b': 'blade',
-                 'grapher-a': 'dragon', 'keeper-1': 'mini', 'keeper-2': 'mini'}
-        for role, node in roles.items():
-            template = json.loads((ROOT / f'deploy/cluster/{role}.json').read_text())
-            home = self.run(node, 'printf %s "$HOME"').decode()
-            config = json.dumps(template).replace('@HOME@', home).replace('@RUN@', self.tag)
-            folder = f'chronolog-sprint/run/{self.tag}'
-            self.services[role] = (node, folder, config)
+        homes = {node: self.run(node, 'printf %s "$HOME"').decode() for node in NODES}
+        for role, (node, config) in configs(homes, self.tag).items():
+            self.services[role] = (node, f'chronolog-sprint/run/{self.tag}', json.dumps(config))
         for node in NODES:
             buffer = io.BytesIO()
             with tarfile.open(fileobj=buffer, mode='w') as tar:
-                if node == 'blade':
+                if node == 'dragon':
                     tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
+                tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
+                tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
+                tar.add(ROOT / 'tests/smoke/python/requirements.txt', arcname=f'run/{self.tag}/requirements.txt')
+                added = set()
                 for role, (host, folder, config) in self.services.items():
                     if host != node:
                         continue
@@ -125,7 +139,9 @@ class Cluster:
                     candidates = [p for p in candidates if p.is_file() and os.access(p, os.X_OK)]
                     if len(candidates) != 1:
                         raise RuntimeError(f'cannot locate unique binary {binary}: {candidates}')
-                    tar.add(candidates[0], arcname='bin/' + binary)
+                    if binary not in added:
+                        tar.add(candidates[0], arcname='bin/' + binary)
+                        added.add(binary)
                     info = tarfile.TarInfo(f'run/{self.tag}/{role}.json')
                     encoded = config.encode()
                     info.size = len(encoded)
@@ -133,13 +149,15 @@ class Cluster:
             self.run(node, 'mkdir -p ~/chronolog-sprint/bin && cd ~/chronolog-sprint && tar xf -', 60,
                      buffer.getvalue())
         for node in NODES:
+            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && python3 -m venv venv && '
+                     'venv/bin/pip install -r requirements.txt >pip.log 2>&1', 120)
             (OUT / f'{node}-hardware.log').write_bytes(self.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
-        for node in ('dragon', 'blade'):
+        for node in NODES:
             self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs && '
                      'mkdir -p /mnt/nfs/chronolog-sprint/archive && '
                      'test -z "$(ls -A /mnt/nfs/chronolog-sprint/archive)"')
         self.archive_owned = True
-        (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services}, indent=2))
+        (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services, 'topology': TABLE}, indent=2))
 
     def start(self, role):
         node, folder, _ = self.services[role]
@@ -151,8 +169,13 @@ class Cluster:
         self.ready(cfg.get('listen', cfg.get('internal_listen')))
 
     def control(self, request):
-        roles = {'chrono-keeper': ['keeper-1', 'keeper-2'], 'chrono-grapher': ['grapher-a', 'grapher-b']}
+        roles = {'chrono-keeper': [r['keeper'] for r in TABLE], 'chrono-grapher': ['grapher-a', 'grapher-b']}
         op, service = request
+        if op == 'agent':
+            node = service['node']
+            data = json.dumps(service).encode()
+            return self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
+                            'exec venv/bin/python agent.py', 90, data).decode()
         if op in ('pause', 'resume'):
             node, unit, _, _ = self.processes[service]
             sig = 'SIGSTOP' if op == 'pause' else 'SIGCONT'
@@ -160,14 +183,14 @@ class Cluster:
             return ''
         if op == 'transfer-log':
             self.collect()
-            return ''.join((OUT / (keeper + '.log')).read_text() for keeper in ('keeper-1', 'keeper-2'))
+            return ''.join((OUT / (keeper + '.log')).read_text() for keeper in (r['keeper'] for r in TABLE))
         if op == 'probe':
-            node, folder, _ = self.services['player']
+            node, folder, _ = self.services['player-1']
             self.launch('manifest-probe', node, f'cd ~/{folder} && exec ~/chronolog-sprint/bin/cluster_manifest_probe {ARCHIVE} {service} >>manifest-probe.log 2>&1', 600)
             return ''
         if op == 'snapshot':
             self.collect()
-            node, folder, _ = self.services['player']
+            node, folder, _ = self.services['player-1']
             (OUT / 'manifest-probe.log').write_bytes(self.run(node, f'cat ~/{folder}/manifest-probe.log', 10))
             return ''
         selected = roles.get(service, [service])
@@ -200,9 +223,9 @@ class Cluster:
                 except socket.timeout:
                     continue
                 with connection:
-                    connection.settimeout(60)
+                    connection.settimeout(105)
                     try:
-                        request = json.loads(connection.recv(8192))
+                        request = json.loads(connection.makefile().readline())
                         reply = {'output': self.control(request)}
                     except Exception as error:
                         reply = {'error': str(error)}
@@ -210,21 +233,13 @@ class Cluster:
         self.thread = threading.Thread(target=loop)
         self.thread.start()
 
-    def smoke(self, python):
-        shim = OUT / 'shim'
-        shim.mkdir(exist_ok=True)
-        path = shim / 'docker'
-        path.write_text(f'#!/bin/sh\nexec {shlex.quote(str(python))} {shlex.quote(str(Path(__file__).resolve()))} shim "$@"\n')
-        path.chmod(0o755)
-        env = {**os.environ, 'PATH': str(shim) + ':' + os.environ['PATH'],
-               'CHRONOLOG_CLUSTER_SOCKET': self.socket_path, 'TMPDIR': str(OUT)}
-        with open(OUT / 'smoke.log', 'w') as log:
-            subprocess.run([str(python), str(ROOT / 'tests/smoke/python/smoke.py'), '--visor',
-                            NODES['blade'] + ':50051'], env=env, stdout=log, stderr=log,
-                           timeout=180, check=True)
-        print('PASS a unchanged smoke.py against blade Visor', flush=True)
-
     def collect(self):
+        for row in TABLE:
+            try:
+                data = self.run(row['node'], f'cat ~/chronolog-sprint/run/{self.tag}/agent-results.jsonl', 10)
+                (OUT / (row['node'] + '-agent.jsonl')).write_bytes(data)
+            except Exception:
+                pass
         for role, (node, folder, _) in self.services.items():
             try:
                 data = self.run(node, f'cat ~/{folder}/{role}.log', 10)
@@ -235,38 +250,30 @@ class Cluster:
     def close(self):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
-        if hasattr(self, 'shutdown'):
-            self.shutdown.set()
-            self.thread.join(timeout=65)
-            self.listener.close()
-            Path(self.socket_path).unlink(missing_ok=True)
-        self.collect()
-        for name in list(self.processes):
-            self.stop(name)
-        self.collect()
-        if self.archive_owned:
-            try:
-                self.run('dragon', f'mv {ARCHIVE} /mnt/nfs/chronolog-sprint/archive-{self.tag}', 15)
-                print(f'Archive retained at /mnt/nfs/chronolog-sprint/archive-{self.tag}', flush=True)
-            except Exception as error:
-                print(f'FAIL preserve archive {error}', flush=True)
-
-
-def shim():
-    args = sys.argv[2:]
-    if args[0] == 'inspect':
-        request = ['inspect', args[1]]
-    else:
-        index = next(i for i, arg in enumerate(args) if arg in ('kill', 'start', 'ps'))
-        request = [args[index], args[-1]]
-    with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(65)
-        client.connect(os.environ['CHRONOLOG_CLUSTER_SOCKET'])
-        client.sendall(json.dumps(request).encode())
-        reply = json.loads(client.recv(8192))
-    if 'error' in reply:
-        raise RuntimeError(reply['error'])
-    print(reply['output'])
+        try:
+            if hasattr(self, 'shutdown'):
+                self.shutdown.set()
+                self.thread.join(timeout=65)
+                self.listener.close()
+                Path(self.socket_path).unlink(missing_ok=True)
+            self.collect()
+            for name in list(self.processes):
+                self.stop(name)
+            self.collect()
+            if self.archive_owned:
+                try:
+                    self.run('dragon', f'mv {ARCHIVE} /mnt/nfs/chronolog-sprint/archive-{self.tag}', 15)
+                    print(f'Archive retained at /mnt/nfs/chronolog-sprint/archive-{self.tag}', flush=True)
+                except Exception as error:
+                    print(f'FAIL preserve archive {error}', flush=True)
+        finally:
+            for process in reversed(self.build_locks):
+                process.stdin.close()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
 
 def main():
@@ -278,29 +285,39 @@ def main():
     os.environ['TMPDIR'] = str(OUT)
     os.environ['PIP_CACHE_DIR'] = str(OUT / 'pip-cache')
     try:
+        (OUT / 'stubs').mkdir(exist_ok=True)
+        cluster.acquire_locks()
         cluster.preflight()
         if '--preflight-only' in sys.argv:
             return 0
-        cluster.stage()
-        for role in ('visor', 'grapher-a', 'grapher-b', 'keeper-1', 'keeper-2', 'player'):
-            cluster.start(role)
-        cluster.serve()
         python = ROOT / 'build/smoke-venv/bin/python'
         if not python.exists():
             subprocess.run(['python3', '-m', 'venv', str(python.parents[1])], timeout=30, check=True)
         subprocess.run([str(python), '-m', 'pip', 'install', '-r',
                         str(ROOT / 'tests/smoke/python/requirements.txt')], timeout=120, check=True,
                        stdout=open(OUT / 'pip.log', 'w'))
-        cluster.smoke(python)
+        subprocess.run([str(python), '-m', 'grpc_tools.protoc', '-I' + str(ROOT / 'proto'),
+                        '--python_out=' + str(OUT / 'stubs'), '--grpc_python_out=' + str(OUT / 'stubs'),
+                        'chronolog/v1/chronolog.proto', 'chronolog/internal/v1/internal.proto'],
+                       timeout=30, check=True)
+        cluster.stage()
+        for role in cluster.services:
+            if role.startswith('visor'):
+                cluster.start(role)
+        for role in cluster.services:
+            if not role.startswith('visor'):
+                cluster.start(role)
+        cluster.serve()
+        print(f'Logs {OUT}', flush=True)
         subprocess.run([str(python), str(ROOT / 'deploy/cluster/scenario.py')], timeout=400, check=True,
                        env={**os.environ, 'CHRONOLOG_CLUSTER_SOCKET': cluster.socket_path})
         return 0
     except Exception as error:
-        print(f'FAIL D2 {error}', flush=True)
+        print(f'FAIL A7 {error}', flush=True)
         return 1
     finally:
         cluster.close()
 
 
 if __name__ == '__main__':
-    sys.exit(shim() if len(sys.argv) > 1 and sys.argv[1] == 'shim' else main())
+    sys.exit(main())
