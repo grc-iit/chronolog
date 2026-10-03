@@ -25,6 +25,7 @@ x-service-healthcheck: &service-healthcheck
   interval: 1s
   timeout: 1s
   start_period: 10s
+  start_interval: 1s
   retries: 50
 
 services:
@@ -49,6 +50,7 @@ services:
       interval: 1s
       timeout: 1s
       start_period: 10s
+      start_interval: 1s
       retries: 50
 
   chrono-keeper:
