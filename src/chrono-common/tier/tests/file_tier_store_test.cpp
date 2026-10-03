@@ -325,7 +325,9 @@ TEST(FileTierStore, HungArchiveReadDoesNotBlockOtherReadsOrDestruction)
                                 auto success = (*reader)->readRecord(*healthy, {Range::Axis::Hlc, {100, 0}, {200, 0}});
                                 EXPECT_TRUE(success.ok()) << success.status();
                                 if(success.ok())
+                                {
                                     EXPECT_EQ(success->size(), 1u);
+                                }
                                 reader->reset();
                             });
     const bool ended = reads.wait_for(2 * timeout + slack) == std::future_status::ready;
