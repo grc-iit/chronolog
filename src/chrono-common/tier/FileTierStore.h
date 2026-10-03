@@ -202,6 +202,7 @@ private:
     std::map<std::string, std::shared_ptr<PosixTier>> tiers_;
     mutable std::mutex tier_table_mutex_;
     std::map<std::string, std::future<absl::Status>> tier_unlinks_;
+    std::map<std::string, std::chrono::steady_clock::time_point> tier_unlink_deadlines_;
     std::map<std::string, std::shared_ptr<std::vector<std::future<absl::Status>>>> unlink_results_;
     std::string deployment_;
     bool migration_stopped_{};

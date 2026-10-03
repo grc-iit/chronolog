@@ -303,7 +303,10 @@ FileTierStore::FileTierStore(std::filesystem::path root,
     for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
 }
 
-FileTierStore::~FileTierStore() = default;
+FileTierStore::~FileTierStore()
+{
+    for(const auto& [name, tier]: tiers_) tier->stop();
+}
 
 absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesystem::path root,
                                                                    std::string writer,
@@ -1442,10 +1445,15 @@ absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
                            unlink_results_.at(file)->end(),
                            [](auto& future)
                            { return future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready; }))
+            {
+                if(std::chrono::steady_clock::now() >= tier_unlink_deadlines_.at(file))
+                    for(const auto& tier: targets) tier->expire();
                 return absl::UnavailableError("tier unlink pending");
+            }
             auto status = work->second.get();
             tier_unlinks_.erase(work);
             unlink_results_.erase(file);
+            tier_unlink_deadlines_.erase(file);
             if(!status.ok())
                 return status;
             targets.clear();
@@ -1489,11 +1497,24 @@ absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
                                              [futures]() mutable
                                              {
                                                  absl::Status status;
-                                                 for(auto& future: *futures) status.Update(future.get());
+                                                 for(auto& future: *futures)
+                                                 {
+                                                     try
+                                                     {
+                                                         status.Update(future.get());
+                                                     }
+                                                     catch(const std::exception& error)
+                                                     {
+                                                         status.Update(absl::UnavailableError(error.what()));
+                                                     }
+                                                 }
                                                  return status;
                                              });
             // Deferred collection does not execute I/O and is drained only once every task is ready.
             unlink_results_[file] = futures;
+            auto timeout = targets.front()->timeout();
+            for(const auto& tier: targets) timeout = std::min(timeout, tier->timeout());
+            tier_unlink_deadlines_[file] = std::chrono::steady_clock::now() + timeout;
             return absl::UnavailableError("tier unlink queued");
         }
     }
@@ -2572,20 +2593,104 @@ absl::Status FileTierStore::cleanupMigrations()
         auto directory = target->directory();
         if(!directory || target->config.tier_uuid != migration.tier_uuid)
             continue;
-        auto verified = target->run(
-                [target, directory, held, migration]
+        const auto verify = [target, directory, held, migration]
+        {
+            auto status = target->verify(*directory);
+            if(!status.ok())
+                return status;
+            auto bytes = PosixTier::read(directory->fd.get(), migration.file, true);
+            if(!bytes.ok())
+                return bytes.status();
+            if(bytes->size() != migration.checksum.bytes ||
+               static_cast<uint32_t>(absl::ComputeCrc32c(*bytes)) != migration.checksum.crc32c)
+                return absl::UnavailableError("migration cleanup destination checksum mismatch");
+            return target->verify(*directory);
+        };
+        auto verified = target->run(verify);
+        if(!verified.ok() && target->current(directory))
+            verified = target->run(verify);
+        if(!verified.ok() && target->current(directory))
+        {
+            // An intact faster copy repairs the destination without changing the effective location.
+            absl::StatusOr<std::string> source = absl::UnavailableError("no stale migration source");
+            tier_detail::Fd local(::open(root_.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+            if(local.get() >= 0)
+                source = PosixTier::read(local.get(), migration.file);
+            const auto intact = [&](const absl::StatusOr<std::string>& bytes)
+            {
+                return bytes.ok() && bytes->size() == migration.checksum.bytes &&
+                       static_cast<uint32_t>(absl::ComputeCrc32c(*bytes)) == migration.checksum.crc32c;
+            };
+            if(!intact(source))
+                for(const auto& tier: faster)
                 {
-                    auto status = target->verify(*directory);
-                    if(!status.ok())
-                        return status;
-                    auto bytes = PosixTier::read(directory->fd.get(), migration.file, true);
-                    if(!bytes.ok())
-                        return bytes.status();
-                    if(bytes->size() != migration.checksum.bytes ||
-                       static_cast<uint32_t>(absl::ComputeCrc32c(*bytes)) != migration.checksum.crc32c)
-                        return absl::UnavailableError("migration cleanup destination checksum mismatch");
-                    return target->verify(*directory);
-                });
+                    auto root = tier->directory();
+                    if(!root)
+                        continue;
+                    source = tier->run(
+                            [tier, root, held, migration]() -> absl::StatusOr<std::string>
+                            {
+                                auto status = tier->verify(*root);
+                                if(!status.ok())
+                                    return status;
+                                return PosixTier::read(root->fd.get(), migration.file);
+                            });
+                    if(intact(source))
+                        break;
+                }
+            if(intact(source))
+                verified = target->run(
+                        [target, directory, held, migration, bytes = *std::move(source), writer = writer_]
+                        {
+                            auto status = target->verify(*directory);
+                            if(!status.ok())
+                                return status;
+                            const auto story = std::to_string(migration.story_id);
+                            if(::mkdirat(directory->fd.get(), story.c_str(), 0755) != 0 && errno != EEXIST)
+                                return tier_detail::IoError("create migration repair story");
+                            const auto temporary = story + "/.migrate-" + Hex(writer) + "." + held->token;
+                            tier_detail::Fd fd(::openat(directory->fd.get(),
+                                                        temporary.c_str(),
+                                                        O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC | O_NOFOLLOW,
+                                                        0644));
+                            if(fd.get() < 0)
+                                return tier_detail::IoError("create migration repair temporary");
+                            status = tier_detail::WriteAll(fd.get(), bytes);
+                            if(status.ok() && ::fsync(fd.get()) != 0)
+                                status = tier_detail::IoError("sync migration repair");
+                            if(status.ok() && !target->current(directory))
+                                status = absl::UnavailableError("migration repair abandoned");
+                            if(status.ok())
+                                status = PosixTier::erase(directory->fd.get(), migration.file);
+                            bool created = false;
+                            if(status.ok())
+                            {
+                                if(::linkat(directory->fd.get(),
+                                            temporary.c_str(),
+                                            directory->fd.get(),
+                                            migration.file.c_str(),
+                                            0) != 0)
+                                    status = tier_detail::IoError("install migration repair");
+                                else
+                                    created = true;
+                            }
+                            status.Update(PosixTier::erase(directory->fd.get(), temporary));
+                            if(status.ok())
+                            {
+                                auto read = PosixTier::read(directory->fd.get(), migration.file, true);
+                                if(!read.ok() || *read != bytes)
+                                    status = absl::UnavailableError("migration repair verification failed");
+                            }
+                            if(status.ok())
+                                status = target->verify(*directory);
+                            if(!target->current(directory) && created)
+                            {
+                                (void)PosixTier::erase(directory->fd.get(), migration.file);
+                                return absl::UnavailableError("migration repair abandoned");
+                            }
+                            return status;
+                        });
+        }
         if(!verified.ok())
         {
             result.Update(verified);

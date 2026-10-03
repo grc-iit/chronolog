@@ -38,6 +38,7 @@ class PosixTier: public std::enable_shared_from_this<PosixTier>
 public:
     PosixTier(TierConfig config, std::string deployment, size_t threads, std::chrono::milliseconds timeout);
     absl::Status probe();
+    void stop() { executor_.reset(); }
     std::shared_ptr<TierDirectory> directory() const;
     bool current(const std::shared_ptr<TierDirectory>& directory) const;
     void unavailable();
