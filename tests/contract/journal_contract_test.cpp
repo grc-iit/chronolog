@@ -234,11 +234,35 @@ TEST_P(JournalContract, SupersessionReleaseOrdersOldAdmissionBeforeNewMarker)
         EXPECT_EQ(eventCount(), 1u);
 
         h = GetParam()();
-        auto admitted = h->sut->append(Batch({Item()}), Durability::Accepted);
+        ASSERT_TRUE(h->onAssignment);
+        std::promise<void> assigned, finish_assignment;
+        auto assigning = assigned.get_future();
+        auto finishing = finish_assignment.get_future().share();
+        h->onAssignment(
+                [&](Hlc)
+                {
+                    assigned.set_value();
+                    EXPECT_EQ(finishing.wait_for(5s), std::future_status::ready);
+                });
+        auto admitted_call =
+                std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+        if(assigning.wait_for(5s) != std::future_status::ready)
+        {
+            finish_assignment.set_value();
+            FAIL() << "old append did not reach assignment";
+        }
+        h->onAssignment({});
+        auto takeover = std::async(std::launch::async,
+                                   [&]
+                                   {
+                                       h->applySupersession(snapshot);
+                                       return h->sut->append(Batch({marker}), Durability::Accepted);
+                                   });
+        finish_assignment.set_value();
+        auto admitted = admitted_call.get();
+        marked = takeover.get();
         ASSERT_TRUE(admitted.ok());
         ASSERT_TRUE(admitted->front().status.ok());
-        h->applySupersession(snapshot);
-        marked = h->sut->append(Batch({marker}), Durability::Accepted);
         ASSERT_TRUE(marked.ok());
         ASSERT_TRUE(marked->front().status.ok());
         EXPECT_LT(admitted->front().hlc, marked->front().hlc);
