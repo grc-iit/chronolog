@@ -442,7 +442,7 @@ TEST_F(ClusterAdapterTest, ExpiredQueuedCallsDoNoWorkAndAFreshCallIsAnswered)
     ASSERT_EQ(expired.load(), kQueued);
     release.set_value();
     wire::ListMembersRequest q;
-    wire::MembershipResponse r;
+    wire::ListMembersResponse r;
     auto c = context();
     c->set_deadline(std::chrono::system_clock::now() + 5s);
     const auto status = stub_->ListMembers(c.get(), q, &r);

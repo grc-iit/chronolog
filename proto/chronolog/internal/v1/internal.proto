@@ -23,10 +23,10 @@ service Archive
 service Cluster
 {
     rpc ExtendCeiling(ExtendCeilingRequest) returns (ExtendCeilingResponse);
-    rpc DrainKeeper(KeeperRequest) returns (MembershipResponse);
-    rpc JoinKeeper(KeeperRequest) returns (MembershipResponse);
-    rpc AbandonKeeper(KeeperRequest) returns (MembershipResponse);
-    rpc ListMembers(ListMembersRequest) returns (MembershipResponse);
+    rpc DrainKeeper(DrainKeeperRequest) returns (DrainKeeperResponse);
+    rpc JoinKeeper(JoinKeeperRequest) returns (JoinKeeperResponse);
+    rpc AbandonKeeper(AbandonKeeperRequest) returns (AbandonKeeperResponse);
+    rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
     // Visor distributes writer registration and release fences to assigned Keeper.
     // INVALID_ARGUMENT for empty keeper id, UNAVAILABLE for service failure,
     // UNIMPLEMENTED before port. Stream cancellation uses CANCELLED.
@@ -572,9 +572,38 @@ message ExtendCeilingResponse
     repeated RouteUpdate routes = 4;
     uint64 fence_revision = 5;
 }
+// KeeperRequest and MembershipResponse are the replicated MembershipCommand operand and apply result;
+// each Cluster RPC has its own messages with the same field numbers.
 message KeeperRequest { string process_id = 1; }
-message ListMembersRequest {}
 message MembershipResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    repeated MemberState members = 2;
+    repeated RouteUpdate routes = 3;
+}
+message DrainKeeperRequest { string process_id = 1; }
+message DrainKeeperResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    repeated MemberState members = 2;
+    repeated RouteUpdate routes = 3;
+}
+message JoinKeeperRequest { string process_id = 1; }
+message JoinKeeperResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    repeated MemberState members = 2;
+    repeated RouteUpdate routes = 3;
+}
+message AbandonKeeperRequest { string process_id = 1; }
+message AbandonKeeperResponse
+{
+    chronolog.v1.ItemStatus status = 1;
+    repeated MemberState members = 2;
+    repeated RouteUpdate routes = 3;
+}
+message ListMembersRequest {}
+message ListMembersResponse
 {
     chronolog.v1.ItemStatus status = 1;
     repeated MemberState members = 2;

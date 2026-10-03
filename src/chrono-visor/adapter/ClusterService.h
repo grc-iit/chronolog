@@ -53,17 +53,17 @@ public:
                                             const internal::v1::ExtendCeilingRequest*,
                                             internal::v1::ExtendCeilingResponse*) override;
     grpc::ServerUnaryReactor* DrainKeeper(grpc::CallbackServerContext*,
-                                          const internal::v1::KeeperRequest*,
-                                          internal::v1::MembershipResponse*) override;
+                                          const internal::v1::DrainKeeperRequest*,
+                                          internal::v1::DrainKeeperResponse*) override;
     grpc::ServerUnaryReactor* JoinKeeper(grpc::CallbackServerContext*,
-                                         const internal::v1::KeeperRequest*,
-                                         internal::v1::MembershipResponse*) override;
+                                         const internal::v1::JoinKeeperRequest*,
+                                         internal::v1::JoinKeeperResponse*) override;
     grpc::ServerUnaryReactor* AbandonKeeper(grpc::CallbackServerContext*,
-                                            const internal::v1::KeeperRequest*,
-                                            internal::v1::MembershipResponse*) override;
+                                            const internal::v1::AbandonKeeperRequest*,
+                                            internal::v1::AbandonKeeperResponse*) override;
     grpc::ServerUnaryReactor* ListMembers(grpc::CallbackServerContext*,
                                           const internal::v1::ListMembersRequest*,
-                                          internal::v1::MembershipResponse*) override;
+                                          internal::v1::ListMembersResponse*) override;
     grpc::ServerUnaryReactor* ReadClock(grpc::CallbackServerContext* context,
                                         const internal::v1::ReadClockRequest* request,
                                         internal::v1::ReadClockResponse* response) override;
@@ -85,7 +85,7 @@ public:
 
 private:
     template <class Request, class Response>
-    grpc::ServerUnaryReactor* dynamicCall(grpc::CallbackServerContext*, const Request*, Response*, int operation);
+    grpc::ServerUnaryReactor* dynamicCall(grpc::CallbackServerContext*, const Request*, Response*);
     template <class Msg>
     grpc::ServerWriteReactor<Msg>* startStream(std::deque<Msg> initial,
                                                std::function<std::optional<Msg>()> pull,

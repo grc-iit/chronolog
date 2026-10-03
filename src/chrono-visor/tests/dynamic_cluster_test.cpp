@@ -255,9 +255,9 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
         }
     }
     ASSERT_FALSE(remapped_identity.empty());
-    wire::KeeperRequest request;
+    wire::DrainKeeperRequest request;
     request.set_process_id("keeper-a");
-    wire::MembershipResponse response;
+    wire::DrainKeeperResponse response;
     ASSERT_TRUE(stubs[follower]->DrainKeeper(a.context().get(), request, &response).ok());
     ASSERT_EQ(response.status().code(), 0);
     ASSERT_EQ(response.routes_size(), 1);
@@ -330,13 +330,16 @@ TEST_F(DynamicClusterTest, WatchAndRefusedExtensionsKeepIntermediateObserveFloor
     wire::WatchRoutesResponse first;
     ASSERT_TRUE(reader->Read(&first));
     EXPECT_EQ(first.route().epoch(), 1u);
-    wire::KeeperRequest request;
-    request.set_process_id("keeper-a");
-    wire::MembershipResponse response;
-    ASSERT_TRUE(stubs[selected]->DrainKeeper(a.context().get(), request, &response).ok());
-    ASSERT_EQ(response.status().code(), 0);
-    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), request, &response).ok());
-    ASSERT_EQ(response.status().code(), 0);
+    wire::DrainKeeperRequest drain;
+    drain.set_process_id("keeper-a");
+    wire::DrainKeeperResponse drained;
+    ASSERT_TRUE(stubs[selected]->DrainKeeper(a.context().get(), drain, &drained).ok());
+    ASSERT_EQ(drained.status().code(), 0);
+    wire::JoinKeeperRequest join;
+    join.set_process_id("keeper-a");
+    wire::JoinKeeperResponse joined;
+    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), join, &joined).ok());
+    ASSERT_EQ(joined.status().code(), 0);
     auto refused = b.ExtendCeiling();
     ASSERT_NE(refused.status().code(), 0);
     ASSERT_EQ(refused.routes_size(), 2);
@@ -421,17 +424,20 @@ TEST_F(DynamicClusterTest, FailureDetectionKeepsLastKeeperAndRetriesLater)
     ASSERT_EQ(b.Register().status().code(), 0);
     ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
     ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
-    wire::KeeperRequest q;
+    wire::DrainKeeperRequest q;
     q.set_process_id("keeper-a");
-    wire::MembershipResponse r;
+    wire::DrainKeeperResponse r;
     ASSERT_TRUE(stubs[selected]->DrainKeeper(a.context().get(), q, &r).ok());
     ASSERT_EQ(r.status().code(), 0);
     for(int n = 0; n < 40; ++n) std::this_thread::sleep_for(50ms);
     auto state = dynamic::snapshot(stores[selected]->appliedStore());
     ASSERT_EQ(state.routes(0).route().keepers_size(), 1);
     EXPECT_EQ(state.routes(0).route().keepers(0).process_id(), "keeper-b");
-    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), q, &r).ok());
-    ASSERT_EQ(r.status().code(), 0);
+    wire::JoinKeeperRequest join;
+    join.set_process_id("keeper-a");
+    wire::JoinKeeperResponse joined;
+    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), join, &joined).ok());
+    ASSERT_EQ(joined.status().code(), 0);
     bool retried = false;
     for(int n = 0; n < 200; ++n)
     {
