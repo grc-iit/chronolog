@@ -11,6 +11,7 @@
 #include "TestSupport.h"
 #include "raft/RaftMetadataStore.h"
 #include "adapter/Convert.h"
+#include "chronolog/acquire_refusal.h"
 #include "metadata_store_contract_test.cpp"
 namespace chronolog::contract
 {
@@ -477,7 +478,7 @@ TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
     auto grant = store->acquire(story, "missing", options);
     ASSERT_TRUE(grant.ok());
     const RenewAcquisition tuple{story, grant->writer_id, grant->incarnation};
-    for(int path = 0; path < 4; ++path)
+    for(int path = 0; path < 5; ++path)
     {
         store->leaseAuthority().eraseForTest(tuple);
         EXPECT_EQ(store->leaseAuthority().size(), 0u);
@@ -500,6 +501,18 @@ TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
             auto renewed = store->acceptKeeperEvidence(grant->assigned_keeper.process_id, {tuple});
             ASSERT_TRUE(renewed.ok());
             EXPECT_EQ(*renewed, 1u);
+        }
+        if(path == 4)
+        {
+            // A HELD sample of a different logical Acquire initializes the missing deadline too.
+            AcquireOptions other;
+            other.acquire_request_id = "missing-map-held-request-0000001";
+            auto held = store->acquire(story, "missing", other);
+            ASSERT_TRUE(absl::IsFailedPrecondition(held.status())) << held.status();
+            auto refusal = getAcquireRefusal(held.status());
+            ASSERT_TRUE(refusal);
+            EXPECT_EQ(refusal->refusal_reason, AcquireRefusalReason::Held);
+            EXPECT_GT(refusal->remaining_ns, grant->lease.duration_ns * 9 / 10);
         }
         EXPECT_EQ(store->leaseAuthority().size(), 1u);
     }
@@ -637,7 +650,150 @@ TEST(RaftStorageTest, LateCommittedGrantWithoutRetryStillExpires)
         ASSERT_EQ(selected_due->size(), 1u);
         EXPECT_EQ(selected_due->front().incarnation, grant->incarnation);
         EXPECT_EQ(store->snapshotAcquisitions()->active.size(), 1u);
+        // The sweep commits EXPIRED for the never-retried grant through the normal proposal path.
+        ASSERT_TRUE(store->sweepExpiry().ok());
+        EXPECT_TRUE(store->snapshotAcquisitions()->active.empty());
+        auto cause = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+        ASSERT_TRUE(cause.ok());
+        EXPECT_EQ(cause->front().termination_cause, AcquisitionTerminationCause::Expired);
+        EXPECT_EQ(store->leaseAuthority().size(), 0u);
     }
+    // Neither late grant pins destroy any longer.
+    EXPECT_TRUE(store->destroyStory(story).ok());
+}
+
+TEST(RaftStorageTest, ConcurrentPlainAcquiresNeverSupersedeALiveHolder)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    // Both proposals are prepared before either applies, so both carry the same absent predecessor.
+    internal::v1::CatalogCommand commands[2];
+    for(int i = 0; i < 2; ++i)
+    {
+        v1::AcquireRequest request;
+        request.set_story_id(story);
+        request.set_writer_identity("contended");
+        request.set_acquire_request_id("contended-request-0000000000000" + std::to_string(i));
+        auto selected = store->appliedStore().prepareAcquire(request, 300000000000);
+        ASSERT_TRUE(selected.ok());
+        EXPECT_FALSE(selected->has_prior_incarnation());
+        *commands[i].mutable_acquire_with_lease() = *selected;
+    }
+    auto first = store->propose(commands[0]);
+    ASSERT_TRUE(first.ok());
+    v1::AcquireResponse granted;
+    ASSERT_TRUE(granted.ParseFromString(*first));
+    ASSERT_EQ(granted.status().code(), 0);
+    EXPECT_EQ(granted.incarnation(), 1u);
+    const auto revision = store->snapshotAcquisitions()->revision;
+    auto second = store->propose(commands[1]);
+    ASSERT_TRUE(second.ok());
+    v1::AcquireResponse refused;
+    ASSERT_TRUE(refused.ParseFromString(*second));
+    EXPECT_EQ(refused.status().code(), static_cast<int>(absl::StatusCode::kFailedPrecondition));
+    EXPECT_EQ(refused.refusal_reason(), v1::ACQUIRE_REFUSAL_REASON_HELD);
+    EXPECT_EQ(store->snapshotAcquisitions()->revision, revision);
+    auto snapshot = store->snapshotAcquisitions();
+    ASSERT_EQ(snapshot->active.size(), 1u);
+    EXPECT_EQ(snapshot->active.front().incarnation, 1u);
+    // Through the store, the leader supplies the HELD remainder after apply.
+    AcquireOptions third;
+    third.acquire_request_id = "contended-request-00000000000002";
+    auto held = store->acquire(story, "contended", third);
+    ASSERT_TRUE(absl::IsFailedPrecondition(held.status()));
+    auto refusal = getAcquireRefusal(held.status());
+    ASSERT_TRUE(refusal);
+    EXPECT_EQ(refusal->refusal_reason, AcquireRefusalReason::Held);
+    EXPECT_GT(refusal->remaining_ns, 0);
+    EXPECT_EQ(store->snapshotAcquisitions()->revision, revision);
+}
+
+TEST(RaftStorageTest, NoExpiryProposalWithoutQualifiedLeader)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "unqualified");
+    ASSERT_TRUE(grant.ok());
+    store->leaseAuthority().advanceClock(grant->lease.duration_ns + 1, true);
+    const auto proposals = control->proposal_count.load();
+    control->qualification_enabled = false;
+    EXPECT_TRUE(absl::IsUnavailable(store->sweepExpiry()));
+    EXPECT_TRUE(absl::IsUnavailable(store->serviceTick()));
+    EXPECT_TRUE(absl::IsUnavailable(store->destroyStory(story)));
+    EXPECT_EQ(control->proposal_count.load(), proposals);
+    EXPECT_EQ(store->snapshotAcquisitions()->active.size(), 1u);
+    control->qualification_enabled = true;
+    ASSERT_TRUE(store->serviceTick().ok());
+    EXPECT_EQ(control->proposal_count.load(), proposals + 1);
+    EXPECT_TRUE(store->snapshotAcquisitions()->active.empty());
+}
+
+TEST(RaftStorageTest, RenewDoesNoReconciliationScan)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "renewing");
+    ASSERT_TRUE(grant.ok());
+    const RenewAcquisition tuple{story, grant->writer_id, grant->incarnation};
+    ASSERT_TRUE(store->serviceTick().ok());
+    const auto scans = store->leaseAuthority().reconciliations();
+    for(int call = 0; call < 5; ++call)
+    {
+        auto renewed = store->renewAcquisitions({tuple});
+        ASSERT_TRUE(renewed.ok());
+        EXPECT_TRUE(renewed->front().status.ok());
+    }
+    EXPECT_EQ(store->leaseAuthority().reconciliations(), scans);
+    store->leaseAuthority().eraseForTest(tuple);
+    auto installed = store->renewAcquisitions({tuple});
+    ASSERT_TRUE(installed.ok());
+    EXPECT_TRUE(installed->front().status.ok());
+    EXPECT_EQ(store->leaseAuthority().size(), 1u);
+    EXPECT_EQ(store->leaseAuthority().reconciliations(), scans);
+    ASSERT_TRUE(store->serviceTick().ok());
+    EXPECT_GT(store->leaseAuthority().reconciliations(), scans);
+}
+
+TEST(RaftStorageTest, CommittedNoOpExpiryResolvesItsSelection)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "no-op");
+    ASSERT_TRUE(grant.ok());
+    store->leaseAuthority().advanceClock(grant->lease.duration_ns + 1, true);
+    auto selected = store->leaseAuthority().dueTuples(8);
+    ASSERT_TRUE(selected.ok());
+    ASSERT_EQ(selected->size(), 1u);
+    // A first ExpireAcquisitions commits; a duplicate of the same tuple commits as a typed no-op outcome.
+    for(int round = 0; round < 2; ++round)
+    {
+        internal::v1::CatalogCommand command;
+        auto* tuple = command.mutable_expire_acquisitions()->add_acquisitions();
+        tuple->set_story_id(story);
+        tuple->set_writer_id(grant->writer_id);
+        tuple->set_incarnation(grant->incarnation);
+        auto result = store->propose(command);
+        ASSERT_TRUE(result.ok());
+        v1::RenewAcquisitionsResponse outcomes;
+        ASSERT_TRUE(outcomes.ParseFromString(*result));
+        ASSERT_EQ(outcomes.results_size(), 1);
+        EXPECT_EQ(outcomes.results(0).status().code(),
+                  round ? static_cast<int>(absl::StatusCode::kFailedPrecondition) : 0);
+        EXPECT_EQ(outcomes.results(0).termination_cause(), v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED);
+    }
+    EXPECT_FALSE(store->leaseAuthority().pending(selected->front()));
+    EXPECT_EQ(store->leaseAuthority().size(), 0u);
+    auto empty = store->leaseAuthority().dueTuples(8);
+    ASSERT_TRUE(empty.ok());
+    EXPECT_TRUE(empty->empty());
 }
 
 TEST(RaftStorageTest, NewLeaderRebuildBuffersTransitionsAfterCapturedAppliedIndex)
@@ -768,6 +924,80 @@ TEST(RaftStorageTest, LeaseCommandReplayIsDeterministic)
         EXPECT_EQ(store->leaseAuthority().size(), 0u);
     }
     EXPECT_EQ(responses[0], responses[1]);
+}
+
+TEST(RaftStorageTest, ExpiryReplayUsesNoReplicaClock)
+{
+    testing::TempDir first_dir, second_dir;
+    auto first = SqliteMetadataStore::open((first_dir.path() / "catalog").string(),
+                                           testing::twoKeeperTopology(),
+                                           nullptr,
+                                           {},
+                                           true);
+    auto second = SqliteMetadataStore::open((second_dir.path() / "catalog").string(),
+                                            testing::twoKeeperTopology(),
+                                            nullptr,
+                                            {},
+                                            true);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(second.ok());
+    std::string results[2][3];
+    int replica = 0;
+    for(auto* store: {first->get(), second->get()})
+    {
+        // Replicas sit at different clock origins; apply never samples them.
+        store->leaseAuthority().advanceClock(replica ? 900000000000 : 0, false);
+        ASSERT_TRUE(store->applyRaft(1, [&] { return store->createChronicle("replay").status().ToString(); }).ok());
+        ASSERT_TRUE(store->applyRaft(2, [&] { return store->createStory("replay", "a").status().ToString(); }).ok());
+        ASSERT_TRUE(store->applyRaft(3, [&] { return store->createStory("replay", "b").status().ToString(); }).ok());
+        auto grant = [&](StoryId story, const std::string& identity)
+        {
+            AcquireOptions options;
+            options.acquire_request_id = "replay-" + identity + "-000000000000000001";
+            auto granted = store->acquireAfterFence(story, identity, options, 300000000000);
+            return granted.ok() ? std::to_string(granted->incarnation) : granted.status().ToString();
+        };
+        ASSERT_EQ(*store->applyRaft(4, [&] { return grant(1, "x"); }), "1");
+        ASSERT_EQ(*store->applyRaft(5, [&] { return grant(2, "y"); }), "1");
+        ASSERT_EQ(*store->applyRaft(6, [&] { return grant(2, "z"); }), "1");
+        auto expire = [&](const std::vector<RenewAcquisition>& tuples)
+        {
+            v1::RenewAcquisitionsResponse response;
+            auto outcomes = store->expireAcquisitions(tuples);
+            for(const auto& outcome: *outcomes)
+            {
+                auto* item = response.add_results();
+                *item->mutable_status() = convert::toProto(outcome.status);
+                if(outcome.termination_cause)
+                    item->set_termination_cause(
+                            static_cast<v1::AcquisitionTerminationCause>(*outcome.termination_cause));
+            }
+            return response.SerializeAsString();
+        };
+        results[replica][0] = *store->applyRaft(7, [&] { return expire({{1, 1, 1}, {1, 1, 1}, {9, 9, 9}}); });
+        results[replica][1] =
+                *store->applyRaft(8, [&] { return store->destroyStoryWithDue(2, {{2, 2, 1}}).ToString(); });
+        results[replica][2] =
+                *store->applyRaft(9, [&] { return store->destroyChronicleWithDue("replay", {{2, 3, 1}}).ToString(); });
+        bool reapplied = false;
+        EXPECT_EQ(*store->applyRaft(7,
+                                    [&]
+                                    {
+                                        reapplied = true;
+                                        return std::string();
+                                    }),
+                  results[replica][2]);
+        EXPECT_FALSE(reapplied);
+        EXPECT_EQ(store->leaseAuthority().size(), 0u);
+        EXPECT_TRUE(store->snapshotAcquisitions()->active.empty());
+        EXPECT_TRUE(store->getStory(1)->tombstoned);
+        ++replica;
+    }
+    for(int i = 0; i < 3; ++i) EXPECT_EQ(results[0][i], results[1][i]);
+    // The batch expired x once (duplicate is a no-op, unknown NOT_FOUND); destroy of b refused on z, then the
+    // chronicle wrapper materialized z and tombstoned everything.
+    EXPECT_EQ(results[0][1].substr(0, 19), "FAILED_PRECONDITION");
+    EXPECT_EQ(results[0][2], "OK");
 }
 } // namespace chronolog::visor
 

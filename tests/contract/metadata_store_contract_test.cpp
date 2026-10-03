@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <optional>
 // Reusable suite: include this .cpp in the implementation instantiation TU,
 // provide the documented fresh harness factory, then INSTANTIATE_TEST_SUITE_P.
 // Do not also compile that suite separately into the same test executable.
@@ -111,6 +112,16 @@ TEST_P(MetadataStoreContract, RetriedAcquireAfterLostReplyReturnsTheSameGrant)
     EXPECT_EQ(retry->assigned_keeper, first->assigned_keeper);
     EXPECT_EQ(retry->lease.duration_ns, first->lease.duration_ns);
     EXPECT_LT(retry->lease.remaining_ns, first->lease.remaining_ns);
+    // A different logical Acquire of the live identity is HELD, and a same-id retry never renews.
+    AcquireOptions other;
+    other.acquire_request_id = "lost-reply-other-request-00000001";
+    auto held = h->acquireWithOptions(h->story, "retry", other);
+    ASSERT_TRUE(absl::IsFailedPrecondition(held.status())) << held.status();
+    EXPECT_EQ(getAcquireRefusal(held.status())->refusal_reason, AcquireRefusalReason::Held);
+    auto again = h->acquireWithOptions(h->story, "retry", options);
+    ASSERT_TRUE(again.ok()) << again.status();
+    EXPECT_EQ(again->incarnation, first->incarnation);
+    EXPECT_LE(again->lease.remaining_ns, retry->lease.remaining_ns);
 }
 
 TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnation)
@@ -453,6 +464,301 @@ TEST_P(MetadataStoreContract, RevisionSurvivesLeaderChange)
     auto retry = h->sut->release(h->story, a->writer_id, a->incarnation);
     ASSERT_TRUE(retry.ok());
     EXPECT_EQ(retry->revision, first->revision);
+}
+namespace
+{
+AcquireOptions withId(std::string id, std::optional<uint64_t> expected = {}, bool takeover = false)
+{
+    AcquireOptions options;
+    options.acquire_request_id = std::move(id);
+    options.expected_prior_incarnation = expected;
+    options.takeover = takeover;
+    return options;
+}
+std::optional<AcquisitionTerminationCause> causeOf(MetadataStoreHarness& h, const Acquisition& a)
+{
+    auto results = h.sut->renewAcquisitions({{a.story_id, a.writer_id, a.incarnation}});
+    if(!results.ok() || results->size() != 1)
+        return std::nullopt;
+    return results->front().termination_cause;
+}
+} // namespace
+
+TEST_P(MetadataStoreContract, UnexpiredLeaseRefusesSupersessionWithoutTakeover)
+{
+    auto first = h->sut->acquire(h->story, "held");
+    ASSERT_TRUE(first.ok()) << first.status();
+    auto refused = h->sut->acquire(h->story, "held", withId("held-plain-request-0000000000001"));
+    ASSERT_TRUE(absl::IsFailedPrecondition(refused.status())) << refused.status();
+    auto refusal = getAcquireRefusal(refused.status());
+    ASSERT_TRUE(refusal);
+    EXPECT_EQ(refusal->refusal_reason, AcquireRefusalReason::Held);
+    EXPECT_GT(refusal->remaining_ns, 0);
+    EXPECT_LE(refusal->remaining_ns, first->lease.duration_ns);
+    EXPECT_FALSE(refusal->termination_cause);
+    // No mutation: the holder stays current and live, and no incarnation was consumed.
+    auto live = h->sut->renewAcquisitions({{h->story, first->writer_id, first->incarnation}});
+    ASSERT_TRUE(live.ok());
+    EXPECT_TRUE(live->front().status.ok()) << live->front().status;
+    ASSERT_TRUE(h->sut->release(h->story, first->writer_id, first->incarnation).ok());
+    EXPECT_EQ(causeOf(*h, *first), AcquisitionTerminationCause::Released);
+    auto next = h->sut->acquire(h->story, "held");
+    ASSERT_TRUE(next.ok());
+    EXPECT_EQ(next->incarnation, first->incarnation + 1);
+}
+
+TEST_P(MetadataStoreContract, ConditionalAcquireRequiresCurrentTerminalIncarnation)
+{
+    auto first = h->sut->acquire(h->story, "conditional");
+    ASSERT_TRUE(first.ok());
+    auto live = h->sut->acquire(h->story, "conditional", withId("conditional-live-00000000000001", first->incarnation));
+    ASSERT_TRUE(absl::IsFailedPrecondition(live.status()));
+    EXPECT_EQ(getAcquireRefusal(live.status())->refusal_reason, AcquireRefusalReason::Held);
+    ASSERT_TRUE(h->sut->release(h->story, first->writer_id, first->incarnation).ok());
+    auto next =
+            h->sut->acquire(h->story, "conditional", withId("conditional-terminal-000000000001", first->incarnation));
+    ASSERT_TRUE(next.ok()) << next.status();
+    EXPECT_EQ(next->incarnation, first->incarnation + 1);
+    EXPECT_EQ(next->writer_id, first->writer_id);
+}
+
+TEST_P(MetadataStoreContract, ConditionalRecoveryCannotTakeOverANewerHolder)
+{
+    auto first = h->sut->acquire(h->story, "recovery");
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(h->sut->release(h->story, first->writer_id, first->incarnation).ok());
+    auto newer = h->sut->acquire(h->story, "recovery");
+    ASSERT_TRUE(newer.ok());
+    for(bool takeover: {false, true})
+    {
+        auto stale = h->sut->acquire(
+                h->story,
+                "recovery",
+                withId(takeover ? "recovery-cas-000000000000000001" : "recovery-plain-00000000000000001",
+                       first->incarnation,
+                       takeover));
+        ASSERT_TRUE(absl::IsFailedPrecondition(stale.status())) << stale.status();
+        auto refusal = getAcquireRefusal(stale.status());
+        ASSERT_TRUE(refusal);
+        EXPECT_EQ(refusal->refusal_reason, AcquireRefusalReason::PriorMismatch);
+        EXPECT_EQ(refusal->current_incarnation, newer->incarnation);
+    }
+    auto live = h->sut->renewAcquisitions({{h->story, newer->writer_id, newer->incarnation}});
+    ASSERT_TRUE(live.ok());
+    EXPECT_TRUE(live->front().status.ok());
+    EXPECT_EQ(causeOf(*h, *first), AcquisitionTerminationCause::Released);
+}
+
+TEST_P(MetadataStoreContract, ExpiryCommitChecksCurrentIncarnationAndUnreleased)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    auto released = h->sut->acquire(h->story, "released-first");
+    auto dead = h->sut->acquire(h->story, "dead-holder");
+    ASSERT_TRUE(released.ok());
+    ASSERT_TRUE(dead.ok());
+    ASSERT_TRUE(h->sut->release(h->story, released->writer_id, released->incarnation).ok());
+    h->advanceAuthorityClock(dead->lease.duration_ns + 1, AuthorityClockMode::Ticking);
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    EXPECT_EQ(causeOf(*h, *dead), AcquisitionTerminationCause::Expired);
+    EXPECT_EQ(causeOf(*h, *released), AcquisitionTerminationCause::Released);
+    // Expiry keeps the writer identity and affinity: the next incarnation is an ordinary conditional Acquire.
+    auto next = h->sut->acquire(h->story, "dead-holder", withId("expired-next-000000000000000001", dead->incarnation));
+    ASSERT_TRUE(next.ok()) << next.status();
+    EXPECT_EQ(next->writer_id, dead->writer_id);
+    EXPECT_EQ(next->incarnation, dead->incarnation + 1);
+    EXPECT_EQ(next->assigned_keeper, dead->assigned_keeper);
+}
+
+TEST_P(MetadataStoreContract, RenewalBeforeExpirySelectionPreventsExpiry)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    auto grant = h->sut->acquire(h->story, "renewed");
+    ASSERT_TRUE(grant.ok());
+    const auto T = grant->lease.duration_ns;
+    h->advanceAuthorityClock(T * 3 / 4, AuthorityClockMode::Ticking);
+    auto renewed = h->sut->renewAcquisitions({{h->story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(renewed.ok());
+    ASSERT_TRUE(renewed->front().status.ok()) << renewed->front().status;
+    h->advanceAuthorityClock(T / 2, AuthorityClockMode::Ticking);
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    auto live = h->sut->renewAcquisitions({{h->story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(live.ok());
+    EXPECT_TRUE(live->front().status.ok()) << live->front().status;
+}
+
+TEST_P(MetadataStoreContract, RenewalAtDeadlineSelectsExpiry)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    auto grant = h->sut->acquire(h->story, "late-renewal");
+    ASSERT_TRUE(grant.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns, AuthorityClockMode::Ticking);
+    auto late = h->sut->renewAcquisitions({{h->story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(late.ok());
+    EXPECT_TRUE(absl::IsUnavailable(late->front().status)) << late->front().status;
+    EXPECT_FALSE(late->front().lease);
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+}
+
+TEST_P(MetadataStoreContract, SelectedExpiryCannotAcknowledgeRenewal)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    auto grant = h->sut->acquire(h->story, "selected");
+    ASSERT_TRUE(grant.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns + 1, AuthorityClockMode::Ticking);
+    for(int attempt = 0; attempt < 2; ++attempt)
+    {
+        auto refused = h->sut->renewAcquisitions({{h->story, grant->writer_id, grant->incarnation}});
+        ASSERT_TRUE(refused.ok());
+        EXPECT_TRUE(absl::IsUnavailable(refused->front().status)) << refused->front().status;
+    }
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+    auto release = h->sut->release(h->story, grant->writer_id, grant->incarnation);
+    ASSERT_TRUE(release.ok());
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+}
+
+TEST_P(MetadataStoreContract, ExpiredReleaseRetryReturnsOriginalRevision)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    auto grant = h->sut->acquire(h->story, "expired-release");
+    ASSERT_TRUE(grant.ok());
+    auto earlier = h->sut->acquire(h->story, "earlier-release");
+    ASSERT_TRUE(earlier.ok());
+    auto before = h->sut->release(h->story, earlier->writer_id, earlier->incarnation);
+    ASSERT_TRUE(before.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns + 1, AuthorityClockMode::Ticking);
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    ASSERT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+    // A later Release polls the original expiry revision; it never relabels or allocates another.
+    auto first = h->sut->release(h->story, grant->writer_id, grant->incarnation);
+    ASSERT_TRUE(first.ok()) << first.status();
+    EXPECT_GT(first->revision, before->revision);
+    auto retry = h->sut->release(h->story, grant->writer_id, grant->incarnation);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->revision, first->revision);
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+    auto after = h->sut->acquire(h->story, "later-release");
+    ASSERT_TRUE(after.ok());
+    auto later = h->sut->release(h->story, after->writer_id, after->incarnation);
+    ASSERT_TRUE(later.ok());
+    EXPECT_GT(later->revision, first->revision);
+}
+
+TEST_P(MetadataStoreContract, DestroyMaterializesLeaderDueSet)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    auto grant = h->sut->acquire(h->story, "due-at-destroy");
+    ASSERT_TRUE(grant.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns + 1, AuthorityClockMode::Ticking);
+    // No sweep ran: destroy itself materializes the due holder before I3.6's active check.
+    EXPECT_TRUE(h->sut->destroyStory(h->story).ok());
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+    auto story = h->sut->getStory(h->story);
+    ASSERT_TRUE(story.ok());
+    EXPECT_TRUE(story->tombstoned);
+}
+
+TEST_P(MetadataStoreContract, DestroyStillRefusesALiveSiblingLease)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    auto sibling_story = h->sut->createStory("c", "sibling");
+    ASSERT_TRUE(sibling_story.ok());
+    auto dead = h->sut->acquire(h->story, "dead-sibling");
+    ASSERT_TRUE(dead.ok());
+    const auto T = dead->lease.duration_ns;
+    h->advanceAuthorityClock(T / 2, AuthorityClockMode::Ticking);
+    auto live = h->sut->acquire(sibling_story->id, "live-sibling");
+    ASSERT_TRUE(live.ok());
+    h->advanceAuthorityClock(T / 2 + 1, AuthorityClockMode::Ticking);
+    EXPECT_EQ(h->sut->destroyChronicle("c").code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(causeOf(*h, *dead), AcquisitionTerminationCause::Expired);
+    EXPECT_FALSE(h->sut->getStory(h->story)->tombstoned);
+    EXPECT_FALSE(h->sut->getStory(sibling_story->id)->tombstoned);
+    auto renewed = h->sut->renewAcquisitions({{live->story_id, live->writer_id, live->incarnation}});
+    ASSERT_TRUE(renewed.ok());
+    EXPECT_TRUE(renewed->front().status.ok()) << renewed->front().status;
+    EXPECT_TRUE(h->sut->destroyStory(h->story).ok());
+    ASSERT_TRUE(h->sut->release(live->story_id, live->writer_id, live->incarnation).ok());
+    EXPECT_TRUE(h->sut->destroyChronicle("c").ok());
+}
+
+TEST_P(MetadataStoreContract, DestroyRefusalCommitsMaterializedExpiry)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    auto dead = h->sut->acquire(h->story, "dead");
+    ASSERT_TRUE(dead.ok());
+    const auto T = dead->lease.duration_ns;
+    h->advanceAuthorityClock(T / 2, AuthorityClockMode::Ticking);
+    auto live = h->sut->acquire(h->story, "live");
+    ASSERT_TRUE(live.ok());
+    h->advanceAuthorityClock(T / 2 + 1, AuthorityClockMode::Ticking);
+    EXPECT_EQ(h->sut->destroyStory(h->story).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(h->sut->getStory(h->story)->tombstoned);
+    EXPECT_EQ(causeOf(*h, *dead), AcquisitionTerminationCause::Expired);
+    auto renewed = h->sut->renewAcquisitions({{h->story, live->writer_id, live->incarnation}});
+    ASSERT_TRUE(renewed.ok());
+    EXPECT_TRUE(renewed->front().status.ok()) << renewed->front().status;
+    // The refused destroy's expiry stays committed across Release polls and a later successful destroy.
+    auto release = h->sut->release(h->story, dead->writer_id, dead->incarnation);
+    ASSERT_TRUE(release.ok());
+    EXPECT_EQ(causeOf(*h, *dead), AcquisitionTerminationCause::Expired);
+    ASSERT_TRUE(h->sut->release(h->story, live->writer_id, live->incarnation).ok());
+    EXPECT_TRUE(h->sut->destroyStory(h->story).ok());
+    EXPECT_EQ(causeOf(*h, *dead), AcquisitionTerminationCause::Expired);
+}
+
+TEST_P(MetadataStoreContract, StaticDestroyRequiresConfirmedExpiryFence)
+{
+    ASSERT_TRUE(h->advanceAuthorityClock);
+    ASSERT_TRUE(h->stepExpirySweep);
+    ASSERT_TRUE(h->confirmReleaseFence);
+    auto grant = h->sut->acquire(h->story, "expired-owner");
+    ASSERT_TRUE(grant.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns + 1, AuthorityClockMode::Ticking);
+    ASSERT_TRUE(h->stepExpirySweep().ok());
+    ASSERT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+    h->confirmReleaseFence(false);
+    if(h->static_fence_proof)
+    {
+        EXPECT_EQ(h->sut->destroyStory(h->story).code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ(h->sut->destroyChronicle("c").code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_FALSE(h->sut->getStory(h->story)->tombstoned);
+        h->confirmReleaseFence(true);
+    }
+    EXPECT_TRUE(h->sut->destroyChronicle("c").ok());
+    EXPECT_TRUE(h->sut->getStory(h->story)->tombstoned);
+    EXPECT_EQ(causeOf(*h, *grant), AcquisitionTerminationCause::Expired);
+}
+
+TEST_P(MetadataStoreContract, StaticDestroyRequiresConfirmedSupersessionFence)
+{
+    ASSERT_TRUE(h->confirmReleaseFence);
+    auto first = h->sut->acquire(h->story, "superseded-owner");
+    ASSERT_TRUE(first.ok());
+    auto second = h->sut->acquire(h->story,
+                                  "superseded-owner",
+                                  withId("supersede-fence-cas-0000000000001", first->incarnation, true));
+    ASSERT_TRUE(second.ok()) << second.status();
+    ASSERT_TRUE(h->sut->release(h->story, second->writer_id, second->incarnation).ok());
+    h->confirmReleaseFence(false);
+    if(h->static_fence_proof)
+    {
+        EXPECT_EQ(h->sut->destroyStory(h->story).code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ(h->sut->destroyChronicle("c").code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_FALSE(h->sut->getStory(h->story)->tombstoned);
+        h->confirmReleaseFence(true);
+    }
+    EXPECT_TRUE(h->sut->destroyStory(h->story).ok());
+    EXPECT_TRUE(h->sut->getStory(h->story)->tombstoned);
+    EXPECT_EQ(causeOf(*h, *first), AcquisitionTerminationCause::Superseded);
+    EXPECT_EQ(causeOf(*h, *second), AcquisitionTerminationCause::Released);
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MetadataStoreContract);
 } // namespace chronolog::contract
