@@ -272,14 +272,25 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
     if(record->state != SessionState::Closed)
         if(auto alias = record->handle.lock())
             return alias;
+    if(options.access == Access::ReadWrite && !record->counted)
+    {
+        std::lock_guard guard(impl_->mutex);
+        if(impl_->writable >= impl_->options.max_writable_sessions)
+            return absl::ResourceExhaustedError("writable session capacity");
+    }
     if(options.access == Access::ReadWrite && !record->writer)
     {
         record->session_id = options.session_id;
-        if(options.resume && options.resume->writer && !options.resume->acquisition_closed)
+        if(options.resume &&
+           ((options.resume->writer && !options.resume->acquisition_closed) ||
+            options.resume->prior_state_unknown_below || !options.resume->unresolved_operations.empty() ||
+            !options.resume->permanently_unknown_operations.empty()))
         {
             record->stamp = options.resume->writer;
             record->takeover_required =
-                    options.resume->takeover_required || !options.ownership || !options.resume->acquisition ||
+                    options.resume->takeover_required || !options.resume->writer || !options.ownership ||
+                    !options.resume->acquisition || options.ownership->host_id.empty() ||
+                    options.ownership->launcher_lock_id.empty() ||
                     options.ownership->host_id != options.resume->acquisition->host_id ||
                     options.ownership->launcher_lock_id != options.resume->acquisition->launcher_lock_id;
             record->state = record->takeover_required ? SessionState::Fenced : SessionState::NeedsReconcile;
@@ -292,11 +303,6 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
             return absl::UnimplementedError("conditional Acquire after a recorded close requires RFC-G G5");
         else
         {
-            {
-                std::lock_guard lock(impl_->mutex);
-                if(impl_->writable >= impl_->options.max_writable_sessions)
-                    return absl::ResourceExhaustedError("writable session capacity");
-            }
             auto writer = impl_->sdk.acquire(context.story_id, *encoded, deadline);
             if(!writer.ok())
                 return writer.status();
@@ -304,15 +310,18 @@ ContextClient::open(ContextRef context, AgentIdentity identity, OpenOptions opti
             auto grant = record->writer->acquisition();
             record->stamp = WriterStamp{grant.writer_id, grant.incarnation};
             record->state = SessionState::Ready;
-            record->counted = true;
-            std::lock_guard lock(impl_->mutex);
-            ++impl_->writable;
         }
     }
     else if(options.access == Access::ReadOnly)
         record->state = SessionState::Ready;
     else if(record->state == SessionState::Closed)
         return absl::UnimplementedError("retry close before conditional Acquire; recovery requires RFC-G G5");
+    if(options.access == Access::ReadWrite && !record->counted)
+    {
+        std::lock_guard guard(impl_->mutex);
+        ++impl_->writable;
+        record->counted = true;
+    }
     auto handle = std::shared_ptr<ContextSession>(
             new ContextSession(std::make_shared<ContextSession::Impl>(ContextSession::Impl{impl_, record})));
     record->handle = handle;
@@ -350,7 +359,7 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
         return absl::InternalError("memory digest failed");
     if(operation && operation->digest != hash)
         return absl::FailedPreconditionError("operation_id content changed");
-    if(operation && !operation->pending)
+    if(operation && (!operation->pending || record.state == SessionState::Closed))
         return MemoryResult{operation->result, {}, record.blocking, record.state};
     if(record.access != Access::ReadWrite || record.state == SessionState::Closed)
         return refused(memory.operation_id, absl::FailedPreconditionError("session is not writable"), record);
@@ -385,7 +394,7 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
             op->result.outcome = MemoryOutcome::Unknown;
             record.state = SessionState::TransportPending;
             if(reason == AppendRejection::FencedExpired || reason == AppendRejection::FencedOwnerRemoved ||
-               answer.status().code() == absl::StatusCode::kUnknown)
+               (batch.ok() && answer.status().code() == absl::StatusCode::kUnknown))
             {
                 record.state = SessionState::NeedsReconcile;
                 record.recovery_required = true;
@@ -421,7 +430,7 @@ absl::StatusOr<MemoryResult> ContextSession::remember(const Memory& memory, Reme
                 }
             }
         }
-        if(completed || record.state != SessionState::TransportPending)
+        if(completed || (batch.ok() && record.state != SessionState::TransportPending))
         {
             std::lock_guard guard(core.mutex);
             core.pending_bytes -= op->bytes;
@@ -573,12 +582,12 @@ absl::StatusOr<CloseResult> ContextSession::close(Deadline deadline)
                 found->second->pending.reset();
             }
         }
-        if(record.counted)
-        {
-            std::lock_guard guard(impl_->core->mutex);
-            --impl_->core->writable;
-            record.counted = false;
-        }
+    }
+    if(record.counted)
+    {
+        std::lock_guard guard(impl_->core->mutex);
+        --impl_->core->writable;
+        record.counted = false;
     }
     return CloseResult{record.release_committed, record.release_fenced};
 }

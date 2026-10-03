@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
-#include <google/protobuf/util/message_differencer.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <mutex>
 #include <condition_variable>
 #include "chronolog/context/context.h"
@@ -11,6 +12,17 @@ namespace
 namespace ctx = chronolog::context;
 namespace wire = chronolog::v1;
 using namespace std::chrono_literals;
+std::string deterministic(const wire::AppendItem& item)
+{
+    std::string bytes;
+    {
+        google::protobuf::io::StringOutputStream buffer(&bytes);
+        google::protobuf::io::CodedOutputStream output(&buffer);
+        output.SetSerializationDeterministic(true);
+        item.SerializeToCodedStream(&output);
+    }
+    return bytes;
+}
 
 class Peer final
     : public wire::Catalog::Service
@@ -55,6 +67,40 @@ public:
             keeper->set_endpoint(endpoint);
         }
         return r;
+    }
+    grpc::Status CreateChronicle(grpc::ServerContext*,
+                                 const wire::CreateChronicleRequest*,
+                                 wire::CreateChronicleResponse* p) override
+    {
+        p->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kAlreadyExists));
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    GetChronicle(grpc::ServerContext*, const wire::GetChronicleRequest* request, wire::GetChronicleResponse* p) override
+    {
+        p->mutable_chronicle()->set_name(request->name());
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    ListStories(grpc::ServerContext*, const wire::ListStoriesRequest* request, wire::ListStoriesResponse* p) override
+    {
+        for(uint64_t id = 1; id <= 2; ++id)
+        {
+            auto* story = p->add_stories();
+            story->set_story_id(id);
+            story->set_chronicle(request->chronicle());
+            story->set_name(id == 1 ? "notes" : "old");
+            story->set_tombstoned(id == 2);
+        }
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    CreateStory(grpc::ServerContext*, const wire::CreateStoryRequest* request, wire::CreateStoryResponse* p) override
+    {
+        p->mutable_story()->set_story_id(3);
+        p->mutable_story()->set_chronicle(request->chronicle());
+        p->mutable_story()->set_name(request->name());
+        return grpc::Status::OK;
     }
     grpc::Status
     GetStory(grpc::ServerContext*, const wire::GetStoryRequest* request, wire::GetStoryResponse* p) override
@@ -146,9 +192,11 @@ public:
             response.Clear();
         }
         auto* completion = response.mutable_completion();
-        completion->set_complete(read_reason == chronolog::IncompleteReason::None ||
+        const auto verdict =
+                request->story_id() == failed_story ? chronolog::IncompleteReason::SourceFailed : read_reason;
+        completion->set_complete(verdict == chronolog::IncompleteReason::None ||
                                  (verify_below_seal && request->hlc().end().physical_ns() <= seal));
-        completion->set_reason(static_cast<wire::IncompleteReason>(read_reason));
+        completion->set_reason(static_cast<wire::IncompleteReason>(verdict));
         completion->mutable_frontier()->set_physical_ns(seal ? seal : request->hlc().end().physical_ns());
         if(read_reason == chronolog::IncompleteReason::LaggingWriters)
         {
@@ -206,6 +254,7 @@ public:
     chronolog::AppendRejection reason{chronolog::AppendRejection::Unspecified};
     chronolog::IncompleteReason read_reason{chronolog::IncompleteReason::None};
     int64_t seal{};
+    chronolog::StoryId failed_story{};
     bool route_available{true};
     bool verify_below_seal{false};
     bool read_error{false};
@@ -286,7 +335,7 @@ TEST(ContextApi, OnePendingOperationAndRedrive)
     EXPECT_EQ(b->current.outcome, ctx::MemoryOutcome::Rejected);
     EXPECT_EQ(b->blocking_operation_id, "A");
     ASSERT_EQ(peer.appends.size(), 2u);
-    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(peer.appends[0].items(0), peer.appends[1].items(0)));
+    EXPECT_TRUE(deterministic(peer.appends[0].items(0)) == deterministic(peer.appends[1].items(0)));
     peer.append_code = absl::StatusCode::kOk;
     b = (*session)->remember(memory("B"));
     ASSERT_TRUE(b.ok());
@@ -295,7 +344,7 @@ TEST(ContextApi, OnePendingOperationAndRedrive)
     EXPECT_EQ(b->resolved_prior[0].outcome, ctx::MemoryOutcome::Durable);
     ASSERT_TRUE(b->current.receipt);
     EXPECT_EQ(b->current.receipt->event_id.sequence, 2u);
-    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(peer.appends[2].items(0), peer.appends[0].items(0)));
+    EXPECT_TRUE(deterministic(peer.appends[2].items(0)) == deterministic(peer.appends[0].items(0)));
     EXPECT_EQ(peer.appends[3].items(0).envelope().payload(), "memory");
     EXPECT_EQ((*session)->remember(memory("A", "changed")).status().code(), absl::StatusCode::kFailedPrecondition);
     a = (*session)->remember(memory("A"));
@@ -492,11 +541,32 @@ TEST(ContextApi, FollowRefusesUncertifiedRoute)
         }
         EXPECT_TRUE(peer.tails.empty());
     }
+    Peer peer;
+    peer.failed_story = 2;
+    peer.seal = 200;
+    peer.read_reason = chronolog::IncompleteReason::LaggingWriters;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    ctx::OpenOptions ro;
+    ro.access = ctx::Access::ReadOnly;
+    auto good = client->open(ref(), {"agent", "slot"}, ro);
+    auto bad = client->open(ref(2), {"agent", "slot"}, ro);
+    ASSERT_TRUE(good.ok());
+    ASSERT_TRUE(bad.ok());
+    const std::vector<ctx::FollowInput> inputs{{*good}, {*bad}};
+    auto result = client->follow(inputs);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result->status.ok());
+    EXPECT_EQ(result->pages[0].page.events.size(), 1u);
+    EXPECT_FALSE(result->pages[1].resume);
+    EXPECT_EQ(peer.tails.size(), 1u);
 }
 TEST(ContextApi, RecoveryNeverAdoptsARecordedWriter)
 {
     Peer peer;
-    auto client = ctx::ContextClient::Connect(peer.options());
+    auto config = peer.options();
+    config.max_writable_sessions = 1;
+    auto client = ctx::ContextClient::Connect(config);
     ASSERT_TRUE(client.ok());
     auto options = writable();
     options.resume = ctx::Checkpoint{};
@@ -517,11 +587,14 @@ TEST(ContextApi, RecoveryNeverAdoptsARecordedWriter)
     EXPECT_TRUE(peer.appends.empty());
     EXPECT_EQ((*session)->reconcile().status().code(), absl::StatusCode::kUnimplemented);
     options.resume->context = ref(2);
+    EXPECT_EQ(client->open(ref(2), {"agent", "slot"}, options).status().code(), absl::StatusCode::kResourceExhausted);
+    ASSERT_TRUE((*session)->close().ok());
     options.ownership->host_id = "foreign";
     auto foreign = client->open(ref(2), {"agent", "slot"}, options);
     ASSERT_TRUE(foreign.ok());
     EXPECT_EQ((*foreign)->status().state, ctx::SessionState::Fenced);
     EXPECT_TRUE((*foreign)->checkpoint().takeover_required);
+    ASSERT_TRUE((*foreign)->close().ok());
     options.resume->context = ref(3);
     options.resume->acquisition_closed = true;
     EXPECT_EQ(client->open(ref(3), {"agent", "slot"}, options).status().code(), absl::StatusCode::kUnimplemented);
@@ -626,7 +699,7 @@ TEST(ContextApi, EnsureResolvesLiveGenerationsAndRejectsBadIdentity)
     auto client = ctx::ContextClient::Connect(peer.options());
     ASSERT_TRUE(client.ok());
     auto existing = client->ensureContext("team", "notes");
-    ASSERT_TRUE(existing.ok());
+    ASSERT_TRUE(existing.ok()) << existing.status();
     EXPECT_EQ(existing->story_id, 1u);
     auto created = client->ensureContext("team", "old");
     ASSERT_TRUE(created.ok());

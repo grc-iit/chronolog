@@ -106,7 +106,7 @@ ContextClient::follow(std::span<const FollowInput> inputs, FollowOptions options
     }
     std::mutex mutex;
     std::condition_variable ready;
-    bool finished = !result.status.ok();
+    bool finished = std::none_of(streams.begin(), streams.end(), [](const auto& stream) { return stream.has_value(); });
     bool stopping = false;
     std::vector<std::thread> workers;
     for(size_t i = 0; i < streams.size(); ++i)
