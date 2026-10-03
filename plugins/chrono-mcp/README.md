@@ -62,7 +62,8 @@ Local discovery uses the explicit Catalog first, then `CHRONOLOG_INSTANCE`, then
 The final fallback probes the legacy loopback demo. If nothing resolves, the server starts unbound and context
 tools return a verdict directing the agent to `instance_control` with `action="up", create=true`.
 Local creation requires installed service binaries on PATH or `CHRONOLOG_BIN_DIR`; install `chronolog-local`
-alongside this server. Its wheel can be built with `python -m build --wheel deploy/local`.
+alongside this server, or install `chronolog-mcp[local]` to include the launcher dependency. Its wheel can be
+built with `python -m build --wheel deploy/local`. Explicit Catalog deployments use the base MCP package.
 
 `instance_list(probe=false)` reads registered instance metadata and marks this server's binding.
 `instance_control(action, name="default", create=false, on_last_detach, idle_grace_s, force=false)` boots,
