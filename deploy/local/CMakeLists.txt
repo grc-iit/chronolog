@@ -24,4 +24,9 @@ if(NOT CHRONOLOG_BUILD_PYTHON AND NOT CHRONOLOG_SANITIZERS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.py" "${PROJECT_BINARY_DIR}"
             "${local_wheel_dir}" "${CMAKE_INSTALL_BINDIR}")
     set_tests_properties(server.install PROPERTIES TIMEOUT 300 LABELS "integration;install")
+    add_test(NAME local.external_liveness
+        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/external.py" "${local_wheel_dir}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/chronolog" $<TARGET_FILE:chrono_visor>)
+    set_tests_properties(local.external_liveness PROPERTIES TIMEOUT 120 LABELS "integration;local")
 endif()

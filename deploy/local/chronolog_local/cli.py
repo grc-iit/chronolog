@@ -331,6 +331,21 @@ def main():
 
 
 def external_status(record):
+    for key in ('catalog', 'player'):
+        if key not in record['endpoints']:
+            continue
+        last = None
+        for endpoint in record['endpoints'][key].split(','):
+            host, port = endpoint.removeprefix('dns:///').rsplit(':', 1)
+            try:
+                with socket.create_connection((host, int(port)), timeout=1):
+                    pass
+                last = None
+                break
+            except OSError as error:
+                last = error
+        if last is not None:
+            return dict(record, state='stopped', probe_error=str(last))
     try:
         method = probe(record)
         return dict(record, state='ready', probe=method)

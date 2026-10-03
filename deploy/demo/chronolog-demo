@@ -146,6 +146,12 @@ ensure_venv() {
         'opentelemetry-sdk>=1.39,<2' 'mcp>=2.2,<3'
 }
 
+registry() {
+    local python=python3
+    if [ -x "$venv/bin/python" ]; then python=$venv/bin/python; fi
+    "$python" "$here/registry.py" "$1" "$engine" "$project"
+}
+
 endpoints() {
     printf '%-12s %s\n' Visor 127.0.0.1:50051 Keeper 127.0.0.1:50052 Player 127.0.0.1:50054
     if [ "$(cat "$state/full" 2> /dev/null || echo "$full")" = 1 ]; then
@@ -169,6 +175,7 @@ cmd_build() {
 cmd_up() {
     stack_lock
     need_images
+    registry check > /dev/null
     local services=(chrono-visor chrono-keeper chrono-grapher chrono-player)
     if [ "$full" = 1 ]; then services=(); fi
     "${compose[@]}" up -d --no-build --wait --wait-timeout 180 ${services[@]+"${services[@]}"}
@@ -182,6 +189,7 @@ cmd_up() {
         grafana_ready || die "Grafana is compose-healthy but /api/health reports no usable database"
         wait_for "viz backend" 60 http_ok http://127.0.0.1:8087/health
     fi
+    registry up > /dev/null
     echo
     endpoints
     echo
@@ -230,9 +238,11 @@ cmd_logs() {
 
 cmd_down() {
     stack_lock
+    registry check > /dev/null
     local args=(--remove-orphans --timeout 20)
     if [ "$volumes" = 1 ]; then args+=(-v); fi
     "${compose[@]}" down "${args[@]}"
+    registry down > /dev/null
     rm -f "$state/engine" "$state/project" "$state/full"
 }
 
@@ -278,6 +288,10 @@ cmd_bundle() {
     done
     cp -r "$root/deploy/grafana/." "$out/deploy/grafana/"
     cp "$here/chronolog-demo" "$out/deploy/demo/"
+    cp "$here/registry.py" "$out/deploy/demo/"
+    mkdir -p "$out/deploy/local/chronolog_local"
+    cp "$root/deploy/local/chronolog" "$out/deploy/local/"
+    cp "$root/deploy/local/chronolog_local/"*.py "$out/deploy/local/chronolog_local/"
     if [ -f "$here/tour.py" ]; then cp "$here/tour.py" "$out/deploy/demo/"; fi
     if [ -d "$root/skills/chronolog" ]; then cp -r "$root/skills/chronolog" "$out/skills/"; fi
     chmod +x "$out/deploy/demo/chronolog-demo"
