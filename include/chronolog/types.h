@@ -247,6 +247,66 @@ struct Story
     Epoch epoch{};
     bool tombstoned{};
 };
+enum class AcquireRefusalReason : uint32_t
+{
+    Unspecified = 0,
+    Held = 1,
+    PriorMismatch = 2
+};
+enum class AcquisitionTerminationCause : uint32_t
+{
+    Unspecified = 0,
+    Expired = 1,
+    Released = 2,
+    Superseded = 3,
+    OwnerRemoved = 4
+};
+enum class KeeperPreferenceResult : uint32_t
+{
+    Unspecified = 0,
+    Honored = 1,
+    NotInRoute = 2,
+    Retained = 3
+};
+struct AcquireOptions
+{
+    std::optional<int64_t> lease_duration_ns;
+    std::optional<std::string> preferred_keeper_process_id;
+    bool takeover{};
+    std::optional<uint64_t> expected_prior_incarnation;
+    // Process-local logical call id; never persisted in client checkpoints.
+    std::string acquire_request_id;
+};
+struct AcquisitionLease
+{
+    int64_t duration_ns{};
+    // Authority-local advice, never an exported absolute expiry.
+    int64_t remaining_ns{};
+    auto operator<=>(const AcquisitionLease&) const = default;
+};
+struct AcquireRefusal
+{
+    AcquireRefusalReason refusal_reason{AcquireRefusalReason::Unspecified};
+    std::optional<uint64_t> current_incarnation;
+    std::optional<uint64_t> matched_incarnation;
+    int64_t remaining_ns{};
+    std::optional<AcquisitionTerminationCause> termination_cause;
+    auto operator<=>(const AcquireRefusal&) const = default;
+};
+struct RenewAcquisition
+{
+    StoryId story_id{};
+    uint64_t writer_id{};
+    uint64_t incarnation{};
+    auto operator<=>(const RenewAcquisition&) const = default;
+};
+struct RenewAcquisitionResult
+{
+    RenewAcquisition acquisition;
+    absl::Status status;
+    std::optional<AcquisitionLease> lease;
+    std::optional<AcquisitionTerminationCause> termination_cause;
+};
 struct Acquisition
 {
     StoryId story_id{};
@@ -257,6 +317,8 @@ struct Acquisition
     Route route;
     // Single Keeper endpoint; stable per (writer_id, route.epoch).
     KeeperRef assigned_keeper;
+    AcquisitionLease lease{};
+    std::optional<KeeperPreferenceResult> keeper_preference{};
 };
 enum class ProcessRole
 {
