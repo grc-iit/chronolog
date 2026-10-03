@@ -1,10 +1,13 @@
 #include "chrono-grapher/tier/ChunkCodec.h"
+#include "chrono-grapher/tier/FileIO.h"
 #include <hdf5.h>
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <sys/stat.h>
 
 namespace chronolog
 {
@@ -14,6 +17,62 @@ std::mutex hdf5_mutex;
 constexpr std::size_t MaxBytes = 256 * 1024 * 1024;
 constexpr std::size_t MaxEvents = 65536;
 constexpr std::size_t MaxAttributes = 1024 * 1024;
+
+struct FileImage
+{
+    std::unique_ptr<unsigned char[]> data;
+    std::size_t size;
+};
+
+absl::StatusOr<FileImage> ReadImage(const std::filesystem::path& path)
+{
+    tier_detail::Fd fd(::open(path.c_str(), O_RDONLY | O_CLOEXEC));
+    if(fd.get() < 0)
+        return tier_detail::IoError("open HDF5 chunk");
+    struct stat info
+    {
+    };
+    if(::fstat(fd.get(), &info) != 0)
+        return tier_detail::IoError("stat HDF5 chunk");
+    // Leave room for dataset and heap metadata beyond the decoded byte budget.
+    if(info.st_size <= 0 || static_cast<uint64_t>(info.st_size) > 2 * MaxBytes)
+        return absl::UnavailableError("invalid HDF5 chunk file size");
+    const auto size = static_cast<std::size_t>(info.st_size);
+    FileImage image{std::make_unique_for_overwrite<unsigned char[]>(size), size};
+    std::size_t offset = 0;
+    while(offset < image.size)
+    {
+        const auto count = ::read(fd.get(), image.data.get() + offset, image.size - offset);
+        if(count < 0 && errno == EINTR)
+            continue;
+        if(count < 0)
+            return tier_detail::IoError("read HDF5 chunk");
+        if(count == 0)
+            return absl::UnavailableError("truncated HDF5 chunk file");
+        offset += static_cast<std::size_t>(count);
+    }
+    return image;
+}
+
+struct ReadOnlyImage
+{
+    unsigned char* data;
+    std::size_t size;
+    static void* Allocate(std::size_t size, H5FD_file_image_op_t, void* context)
+    {
+        auto& image = *static_cast<ReadOnlyImage*>(context);
+        return size == image.size ? image.data : nullptr;
+    }
+    static void* Copy(void* dest, const void* source, std::size_t size, H5FD_file_image_op_t, void* context)
+    {
+        auto& image = *static_cast<ReadOnlyImage*>(context);
+        return dest == image.data && source == image.data && size <= image.size ? dest : nullptr;
+    }
+    static void* Resize(void*, std::size_t, H5FD_file_image_op_t, void*) { return nullptr; }
+    static herr_t Free(void*, H5FD_file_image_op_t, void*) { return 0; }
+    static void* CopyContext(void* context) { return context; }
+    static herr_t FreeContext(void*) { return 0; }
+};
 
 void Check(herr_t result)
 {
@@ -301,12 +360,27 @@ absl::Status HDF5ChunkCodec::writeChunk(const std::filesystem::path& file, const
 }
 absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::path& file) const
 {
-    std::lock_guard lock(hdf5_mutex);
     try
     {
+        auto image = ReadImage(file);
+        if(!image.ok())
+            return image.status();
+        // The non-thread-safe HDF5 API only sees memory; disk reads can overlap.
+        std::lock_guard lock(hdf5_mutex);
+        ReadOnlyImage borrowed{image->data.get(), image->size};
         Handle access(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
-        Check(H5Pset_file_locking(access, false, true));
-        Handle input(H5Fopen(file.c_str(), H5F_ACC_RDONLY, access), H5Fclose);
+        Check(H5Pset_fapl_core(access, 64 * 1024, false));
+        // Every HDF5 handle closes before the borrowed read-only image is released.
+        H5FD_file_image_callbacks_t callbacks{ReadOnlyImage::Allocate,
+                                              ReadOnlyImage::Copy,
+                                              ReadOnlyImage::Resize,
+                                              ReadOnlyImage::Free,
+                                              ReadOnlyImage::CopyContext,
+                                              ReadOnlyImage::FreeContext,
+                                              &borrowed};
+        Check(H5Pset_file_image_callbacks(access, &callbacks));
+        Check(H5Pset_file_image(access, image->data.get(), image->size));
+        Handle input(H5Fopen("chronolog-archive-file-image", H5F_ACC_RDONLY, access), H5Fclose);
         Handle group(H5Gopen2(input, "chunk", H5P_DEFAULT), H5Gclose);
         Handle type(EventType(), H5Tclose);
         Handle attr_type(AttributeType(), H5Tclose);

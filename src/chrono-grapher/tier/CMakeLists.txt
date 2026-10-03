@@ -1,6 +1,7 @@
 find_package(hdf5 CONFIG REQUIRED)
 
 add_library(chronolog_grapher_tier STATIC
+    ArchiveReaderPool.cpp
     HDF5ChunkCodec.cpp
     ProtoChunkCodec.cpp
     ManifestLog.cpp
