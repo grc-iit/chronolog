@@ -144,6 +144,27 @@ TEST(RamJournal, OlderReleaseDoesNotFenceNewerIncarnation)
     EXPECT_TRUE((*r)[0].status.ok());
 }
 
+TEST(RamJournal, RecordedTerminationCauseOutranksUnassignedKeeper)
+{
+    for(auto cause: {AcquisitionTerminationCause::Expired,
+                     AcquisitionTerminationCause::OwnerRemoved,
+                     AcquisitionTerminationCause::Released,
+                     AcquisitionTerminationCause::Unspecified})
+    {
+        test::RamRig rig;
+        ASSERT_TRUE((*rig.journal->append(Batch({Item(1)}), Durability::Accepted))[0].status.ok());
+        rig.journal->releaseWriter(1, 2, 3, cause);
+        rig.journal->unassignWriter(1, 2);
+        auto r = rig.journal->append(Batch({Item(2)}), Durability::Accepted);
+        ASSERT_TRUE(r.ok());
+        EXPECT_EQ((*r)[0].status.code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ((*r)[0].rejection,
+                  cause == AcquisitionTerminationCause::Expired        ? AppendRejection::FencedExpired
+                  : cause == AcquisitionTerminationCause::OwnerRemoved ? AppendRejection::FencedOwnerRemoved
+                                                                       : AppendRejection::UnassignedKeeper);
+    }
+}
+
 TEST(RamJournal, DedupeWindowEvictsOldResults)
 {
     RamJournalConfig config;

@@ -65,6 +65,8 @@ TEST(WalJournal, TerminationCausesSurviveCheckpointAndReplay)
         rig.current->releaseWriter(1, 2, 3, cause);
         const Hlc end{first->front().hlc.physical_ns + 1, 0};
         ASSERT_TRUE(rig.current->recordSeal({"cause", 1, first->front().hlc, end, {}, false}).ok());
+        // Settling the whole active segment rotates it, which writes the writers checkpoint.
+        ASSERT_TRUE(rig.current->recordSettled("cause").ok());
         rig.reopen();
         EXPECT_TRUE(rig.current->drainAdmissionEvidence().empty());
         auto check = [&]
@@ -86,7 +88,8 @@ TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
 {
     for(const auto* checkpoint: {"W1\n1 2 3 2 100 1 0 1 1\n1 100 1\n",
                                  "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 100 1 0\n",
-                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 0 0 11\n"})
+                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 0 0 11\n",
+                                 "Wv3 1\n1 2 3 2 100 1 0 1 1\n1 100 1 0 0\n"})
     {
         WalRig rig;
         rig.journal.reset();
@@ -112,6 +115,20 @@ TEST(WalJournal, AppendRejectionReasonsRejectMalformedCheckpoint)
         rig.journal.reset();
         const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
         const auto bytes = wal::frame(std::string("Wv3 1\n1 2 3 2 100 1 0 1 1\n") + result);
+        std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+        EXPECT_THROW(rig.reopen(), std::runtime_error);
+    }
+}
+
+TEST(WalJournal, TerminationCausesRejectMalformedCheckpoint)
+{
+    // Out of range, on an unreleased writer, and missing.
+    for(const auto* writer: {"1 2 3 2 100 1 1 1 0 5\n", "1 2 3 2 100 1 0 1 0 1\n", "1 2 3 2 100 1 1 1 0\n"})
+    {
+        WalRig rig;
+        rig.journal.reset();
+        const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+        const auto bytes = wal::frame(std::string("Wv4 1\n") + writer);
         std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
         EXPECT_THROW(rig.reopen(), std::runtime_error);
     }

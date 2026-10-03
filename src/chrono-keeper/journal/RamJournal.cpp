@@ -36,6 +36,23 @@ void formatWindowLine(std::string& out, const AppendResult& result)
 
 constexpr size_t kCacheBlockEntries = 1024;
 
+// The rejection for a fenced incarnation: the cause the Catalog recorded, else the reason inferred without one.
+AppendRejection FenceReason(AcquisitionTerminationCause cause, AppendRejection inferred)
+{
+    switch(cause)
+    {
+        case AcquisitionTerminationCause::Expired:
+            return AppendRejection::FencedExpired;
+        case AcquisitionTerminationCause::Released:
+            return AppendRejection::FencedReleased;
+        case AcquisitionTerminationCause::Superseded:
+            return AppendRejection::FencedSuperseded;
+        case AcquisitionTerminationCause::OwnerRemoved:
+            return AppendRejection::FencedOwnerRemoved;
+        default:
+            return inferred;
+    }
+}
 } // namespace
 
 RamJournal::RamJournal(std::shared_ptr<Clock> clock,
@@ -164,43 +181,39 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
             return fail(absl::FailedPreconditionError("writer not registered at this keeper"),
                         true,
                         AppendRejection::NotRegistered);
+        auto historical = it->second.writers.find({item.writer_id, item.incarnation});
+        if(historical != it->second.writers.end())
+            writer = historical->second;
         if(!slot->second.assigned)
+        {
+            // A cause the Catalog recorded for this very tuple is terminal and outranks the route redirect (W10.6).
+            if(writer)
+            {
+                std::lock_guard writer_lock(writer->mu);
+                if(writer->released && (writer->termination_cause == AcquisitionTerminationCause::Expired ||
+                                        writer->termination_cause == AcquisitionTerminationCause::OwnerRemoved))
+                    return fail(absl::FailedPreconditionError("incarnation is released"),
+                                false,
+                                FenceReason(writer->termination_cause, AppendRejection::FencedReleased));
+            }
             return fail(absl::FailedPreconditionError("writer is not assigned to this keeper"),
                         true,
                         AppendRejection::UnassignedKeeper);
+        }
         if(item.incarnation > slot->second.incarnation)
             return fail(absl::FailedPreconditionError("incarnation not yet registered at this keeper"),
                         true,
                         AppendRejection::NotRegistered);
-        auto historical = it->second.writers.find({item.writer_id, item.incarnation});
-        if(historical != it->second.writers.end())
-            writer = historical->second;
         if(item.incarnation < slot->second.incarnation)
         {
+            // An older incarnation known only through a newer one is superseded; a held original cause is kept.
+            auto reason = AppendRejection::FencedSuperseded;
             if(writer)
             {
                 std::lock_guard writer_lock(writer->mu);
-                switch(writer->termination_cause)
-                {
-                    case AcquisitionTerminationCause::Expired:
-                        return fail(absl::FailedPreconditionError("incarnation expired"),
-                                    false,
-                                    AppendRejection::FencedExpired);
-                    case AcquisitionTerminationCause::OwnerRemoved:
-                        return fail(absl::FailedPreconditionError("owner removed"),
-                                    false,
-                                    AppendRejection::FencedOwnerRemoved);
-                    case AcquisitionTerminationCause::Released:
-                        return fail(absl::FailedPreconditionError("incarnation released"),
-                                    false,
-                                    AppendRejection::FencedReleased);
-                    default:
-                        break;
-                }
+                reason = FenceReason(writer->termination_cause, reason);
             }
-            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"),
-                        false,
-                        AppendRejection::FencedSuperseded);
+            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"), false, reason);
         }
         writer = slot->second.current;
     }
@@ -208,24 +221,9 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
     slotValidated();
     std::lock_guard lock(writer->mu);
     if(writer->released)
-    {
-        auto reason = AppendRejection::FencedReleased;
-        switch(writer->termination_cause)
-        {
-            case AcquisitionTerminationCause::Expired:
-                reason = AppendRejection::FencedExpired;
-                break;
-            case AcquisitionTerminationCause::OwnerRemoved:
-                reason = AppendRejection::FencedOwnerRemoved;
-                break;
-            case AcquisitionTerminationCause::Superseded:
-                reason = AppendRejection::FencedSuperseded;
-                break;
-            default:
-                break;
-        }
-        return fail(absl::FailedPreconditionError("incarnation is released"), false, reason);
-    }
+        return fail(absl::FailedPreconditionError("incarnation is released"),
+                    false,
+                    FenceReason(writer->termination_cause, AppendRejection::FencedReleased));
     const std::pair<uint64_t, uint64_t> key{item.writer_id, item.incarnation};
     if(poisoned.count(key))
         return fail(absl::FailedPreconditionError("an earlier item of this writer in the batch was rejected; " +
