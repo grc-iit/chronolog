@@ -1,8 +1,11 @@
 #include <absl/log/log.h>
 #include "chrono-grapher/tier/FileTierStore.h"
+#include "chrono-grapher/tier/ArchiveReaderPool.h"
 #include "chrono-grapher/tier/FileIO.h"
 #include <algorithm>
 #include <charconv>
+#include <cstdlib>
+#include <future>
 #include <set>
 #include <sstream>
 #include <sys/file.h>
@@ -12,6 +15,24 @@ namespace chronolog
 {
 namespace
 {
+absl::StatusOr<size_t> ReaderThreads(size_t configured)
+{
+    constexpr size_t cap = 8;
+    if(!configured)
+    {
+        if(const char* value = std::getenv("CHRONOLOG_ARCHIVE_READ_THREADS"))
+        {
+            const auto end = value + std::char_traits<char>::length(value);
+            const auto parsed = std::from_chars(value, end, configured);
+            if(parsed.ec != std::errc{} || parsed.ptr != end || !configured)
+                return absl::InvalidArgumentError("CHRONOLOG_ARCHIVE_READ_THREADS must be a positive integer");
+        }
+        else
+            configured = std::max(1u, std::thread::hardware_concurrency());
+    }
+    return std::min(configured, cap);
+}
+
 std::string Hex(const std::string& input)
 {
     constexpr char digits[] = "0123456789abcdef";
@@ -166,26 +187,39 @@ FileTierStore::FileTierStore(std::filesystem::path root,
                              std::unique_ptr<ManifestLog> log,
                              std::map<StoryId, Hlc> anchors,
                              std::shared_ptr<const ChunkCodec> codec,
-                             Unlink unlink)
+                             Unlink unlink,
+                             ReadFile read_file,
+                             size_t read_threads)
     : root_(std::move(root))
     , writer_(std::move(writer))
     , log_(std::move(log))
     , codec_(std::move(codec))
     , unlink_(std::move(unlink))
+    , read_file_(std::move(read_file))
+    , read_threads_(read_threads)
 {
     for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
 }
+
+FileTierStore::~FileTierStore() = default;
 
 absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesystem::path root,
                                                                    std::string writer,
                                                                    std::map<StoryId, Hlc> anchors,
                                                                    std::shared_ptr<const ChunkCodec> codec,
-                                                                   Unlink unlink)
+                                                                   Unlink unlink,
+                                                                   ReadFile read_file,
+                                                                   size_t read_threads)
 {
     if(!codec || anchors.contains(0))
         return absl::InvalidArgumentError("invalid tier configuration");
+    const auto threads = ReaderThreads(read_threads);
+    if(!threads.ok())
+        return threads.status();
     if(!unlink)
         unlink = [](const std::filesystem::path& path) { return ::unlink(path.c_str()); };
+    if(!read_file)
+        read_file = ReadChunkFile;
     auto log = ManifestLog::Open(root, writer);
     if(!log.ok())
         return log.status();
@@ -194,7 +228,9 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   *std::move(log),
                                                                   std::move(anchors),
                                                                   std::move(codec),
-                                                                  std::move(unlink)));
+                                                                  std::move(unlink),
+                                                                  std::move(read_file),
+                                                                  *threads));
     const auto started = std::chrono::steady_clock::now();
     const auto status = store->recover();
     if(!status.ok())
@@ -212,13 +248,26 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
 }
 
 absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::filesystem::path root,
-                                                                           std::chrono::milliseconds manifest_poll)
+                                                                           std::chrono::milliseconds manifest_poll,
+                                                                           ReadFile read_file,
+                                                                           size_t read_threads)
 {
     if(manifest_poll.count() <= 0)
         return absl::InvalidArgumentError("manifest poll must be positive");
+    const auto threads = ReaderThreads(read_threads);
+    if(!threads.ok())
+        return threads.status();
+    if(!read_file)
+        read_file = ReadChunkFile;
     auto log = ManifestLog::OpenReadOnly(root);
-    auto store = std::unique_ptr<FileTierStore>(
-            new FileTierStore(std::move(root), "", std::move(log), {}, std::make_shared<ProtoChunkCodec>()));
+    auto store = std::unique_ptr<FileTierStore>(new FileTierStore(std::move(root),
+                                                                  "",
+                                                                  std::move(log),
+                                                                  {},
+                                                                  std::make_shared<ProtoChunkCodec>(),
+                                                                  {},
+                                                                  std::move(read_file),
+                                                                  *threads));
     store->read_only_ = true;
     store->manifest_poll_ = manifest_poll;
     auto status = store->refreshNow();
@@ -533,24 +582,69 @@ absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range rang
     const auto valid = ValidRange(range);
     if(!valid.ok())
         return valid;
-    std::lock_guard lock(mutex_);
-    auto index = refresh();
-    if(!index.ok())
-        return index.status();
-    if(!known(**index, story))
-        return absl::NotFoundError("unknown story");
-    std::vector<Event> result;
-    for(const auto& record: effective(**index, story))
+    std::vector<ManifestRecord> selected;
+    ArchiveReaderPool* readers = nullptr;
     {
-        if(record.state != ManifestState::Published)
-            continue;
-        if(range.axis == Range::Axis::Hlc && (record.end <= range.start || record.start >= range.end))
-            continue;
-        auto events = readRecord(record, range);
-        if(!events.ok())
-            return events.status();
-        result.insert(result.end(), std::make_move_iterator(events->begin()), std::make_move_iterator(events->end()));
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        if(!known(**index, story))
+            return absl::NotFoundError("unknown story");
+        for(const auto& record: effective(**index, story))
+        {
+            if(record.state == ManifestState::Published &&
+               (range.axis == Range::Axis::Physical || (record.end > range.start && record.start < range.end)))
+                selected.push_back(record);
+        }
+        if(selected.empty())
+            return std::vector<Event>{};
+        if(!readers_)
+        {
+            try
+            {
+                readers_ = std::make_unique<ArchiveReaderPool>(read_threads_);
+            }
+            catch(const std::exception& error)
+            {
+                return absl::ResourceExhaustedError(error.what());
+            }
+        }
+        readers = readers_.get();
     }
+    using Result = absl::StatusOr<std::vector<Event>>;
+    std::vector<std::future<Result>> pending;
+    pending.reserve(selected.size());
+    for(auto& record: selected)
+    {
+        auto task = std::make_shared<std::packaged_task<Result()>>([this, record = std::move(record), range]
+                                                                   { return readRecord(record, range); });
+        pending.push_back(task->get_future());
+        if(!readers->submit([task] { (*task)(); }))
+            return absl::UnavailableError("archive readers stopping");
+    }
+    std::vector<Event> result;
+    absl::Status failure;
+    for(auto& ready: pending)
+    {
+        Result events;
+        try
+        {
+            events = ready.get();
+        }
+        catch(const std::exception& error)
+        {
+            events = absl::UnavailableError(error.what());
+        }
+        if(!events.ok())
+            failure.Update(events.status());
+        else if(failure.ok())
+            result.insert(result.end(),
+                          std::make_move_iterator(events->begin()),
+                          std::make_move_iterator(events->end()));
+    }
+    if(!failure.ok())
+        return failure;
     std::stable_sort(result.begin(), result.end(), ReplayLess);
     std::set<EventId> seen;
     std::erase_if(result, [&seen](const auto& event) { return !seen.insert(event.id).second; });
@@ -565,7 +659,7 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         return valid;
     if(record.state != ManifestState::Published)
         return absl::InvalidArgumentError("record is not published");
-    auto events = ReadChunkFile(root_ / record.file);
+    auto events = read_file_(root_ / record.file);
     if(!events.ok())
         return events.status();
     if(events->size() != record.event_count)

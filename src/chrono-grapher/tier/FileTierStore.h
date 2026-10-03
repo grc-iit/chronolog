@@ -10,18 +10,26 @@
 
 namespace chronolog
 {
+class ArchiveReaderPool;
 class FileTierStore final: public TierStore
 {
 public:
     using Unlink = std::function<int(const std::filesystem::path&)>;
+    using ReadFile = std::function<absl::StatusOr<std::vector<Event>>(const std::filesystem::path&)>;
+    ~FileTierStore() override;
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     Open(std::filesystem::path root,
          std::string manifest_writer,
          std::map<StoryId, Hlc> anchors = {},
          std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
-         Unlink unlink = {});
+         Unlink unlink = {},
+         ReadFile read_file = {},
+         size_t read_threads = 0);
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
-    OpenReadOnly(std::filesystem::path root, std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000));
+    OpenReadOnly(std::filesystem::path root,
+                 std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000),
+                 ReadFile read_file = {},
+                 size_t read_threads = 0);
     absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
@@ -50,7 +58,9 @@ private:
                   std::unique_ptr<ManifestLog> log,
                   std::map<StoryId, Hlc> anchors,
                   std::shared_ptr<const ChunkCodec> codec,
-                  Unlink unlink = {});
+                  Unlink unlink,
+                  ReadFile read_file,
+                  size_t read_threads);
     absl::Status recover();
     void collectDeletedFiles(const ManifestIndex& index);
     absl::Status unlinkDeletedFile(const std::string& file);
@@ -84,11 +94,14 @@ private:
     std::unique_ptr<ManifestLog> log_;
     std::shared_ptr<const ChunkCodec> codec_;
     Unlink unlink_;
+    ReadFile read_file_;
+    const size_t read_threads_;
     std::map<std::string, StoryId> pending_unlinks_;
     uint64_t deletion_generation_{};
     size_t deletion_applied_{};
     mutable std::mutex mutex_;
     std::map<StoryId, std::optional<Hlc>> anchors_;
     mutable std::map<StoryId, Hlc> watermarks_;
+    mutable std::unique_ptr<ArchiveReaderPool> readers_;
 };
 } // namespace chronolog
