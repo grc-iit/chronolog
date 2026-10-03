@@ -29,7 +29,9 @@ bool SafeWriter(const std::string& writer)
                        });
 }
 
-Json Encode(const ManifestRecord& record, std::optional<PhysicalBounds> bounds)
+Json Encode(const ManifestRecord& record,
+            std::optional<PhysicalBounds> bounds,
+            std::optional<FileChecksum> checksum = std::nullopt)
 {
     Json json = {{"chunk", record.chunk_id},
                  {"writer", record.manifest_writer},
@@ -45,6 +47,11 @@ Json Encode(const ManifestRecord& record, std::optional<PhysicalBounds> bounds)
         json["physical_bounds"] = {{"min_lo", bounds->min_lo},
                                    {"max_hi", bounds->max_hi},
                                    {"unbounded", bounds->unbounded}};
+    if(checksum)
+    {
+        json["bytes"] = checksum->bytes;
+        json["crc32c"] = checksum->crc32c;
+    }
     return json;
 }
 
@@ -66,6 +73,18 @@ std::optional<PhysicalBounds> DecodeBounds(const Json& json, ManifestState state
     if(state != ManifestState::Published || result.min_lo > result.max_hi)
         throw std::runtime_error("invalid archive physical bounds");
     return result;
+}
+
+std::optional<FileChecksum> DecodeChecksum(const Json& json)
+{
+    if(!json.contains("bytes") && !json.contains("crc32c"))
+        return std::nullopt;
+    const auto& bytes = json.at("bytes");
+    const auto& crc = json.at("crc32c");
+    if(!bytes.is_number_unsigned() || !crc.is_number_unsigned() ||
+       crc.get<uint64_t>() > std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error("invalid archive checksum");
+    return FileChecksum{bytes.get<uint64_t>(), crc.get<uint32_t>()};
 }
 
 ManifestRecord Decode(const Json& json)
@@ -219,6 +238,7 @@ CompactionSwitch DecodeSwitch(const std::string& writer, const Json& json)
     const auto& output = json.at("output");
     change.output = Decode(output);
     change.bounds = DecodeBounds(output, change.output.state);
+    change.checksum = DecodeChecksum(output);
     if(change.writer != writer || change.output.manifest_writer != writer || !change.story_id ||
        change.output.story_id != change.story_id || change.output.state != ManifestState::Published ||
        change.output.exempt || change.output.chunk_id != change.op || change.op.empty() || change.op.size() > 64)
@@ -274,6 +294,8 @@ absl::Status SwitchConflict(const ManifestIndex& index, const CompactionSwitch& 
 void ApplySwitch(CompactionSwitch change, ManifestIndex& index)
 {
     const auto story = change.story_id;
+    if(change.checksum)
+        index.checksums[change.output.file] = *change.checksum;
     for(const auto& input: change.inputs) index.superseded[input.file] = change.output.file;
     if(change.bounds)
         index.physical_bounds[change.output.file] = {*change.bounds,
@@ -529,7 +551,7 @@ absl::Status ManifestLog::appendSwitch(const CompactionSwitch& change)
                            {"writer", writer_},
                            {"story", change.story_id},
                            {"inputs", std::move(inputs)},
-                           {"output", Encode(output, change.bounds)},
+                           {"output", Encode(output, change.bounds, change.checksum)},
                            {"w_floor", EncodeHlc(change.w_floor)}};
         (void)DecodeSwitch(writer_, body);
         return appendFramed("compact_v1", body.dump());
@@ -548,13 +570,14 @@ absl::Status ManifestLog::appendRollback(StoryId story, const std::string& outpu
     return appendFramed("compact_rollback_v1", Json{{"story", story}, {"output", output}}.dump());
 }
 
-absl::Status ManifestLog::append(ManifestRecord record, std::optional<PhysicalBounds> bounds)
+absl::Status
+ManifestLog::append(ManifestRecord record, std::optional<PhysicalBounds> bounds, std::optional<FileChecksum> checksum)
 {
     std::lock_guard lock(mutex_);
     record.manifest_writer = writer_;
     try
     {
-        const auto json = Encode(record, bounds);
+        const auto json = Encode(record, bounds, checksum);
         (void)Decode(json);
         (void)DecodeBounds(json, record.state);
         return appendLine(json.dump());
@@ -634,6 +657,8 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
         if(record.manifest_writer != writer)
             return absl::UnavailableError("foreign writer in manifest");
         const auto bounds = DecodeBounds(json, record.state);
+        if(const auto checksum = DecodeChecksum(json))
+            index.checksums[record.file] = *checksum;
         if(bounds)
             index.physical_bounds[record.file] = {*bounds,
                                                   record.story_id,
@@ -917,6 +942,13 @@ absl::StatusOr<ManifestIndex> ManifestLog::load() const
         return index.status();
     std::lock_guard lock(mutex_);
     return **index;
+}
+
+std::optional<FileChecksum> ManifestLog::checksum(const std::string& file) const
+{
+    std::lock_guard lock(mutex_);
+    const auto found = cache_.checksums.find(file);
+    return found == cache_.checksums.end() ? std::nullopt : std::optional(found->second);
 }
 
 absl::Status ManifestLog::compact()

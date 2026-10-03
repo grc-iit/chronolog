@@ -1,5 +1,6 @@
 #include <absl/log/log.h>
 #include "tier/FileTierStore.h"
+#include <absl/crc/crc32c.h>
 #include "tier/ArchiveReaderPool.h"
 #include "tier/FileIO.h"
 #include <algorithm>
@@ -78,6 +79,44 @@ bool Number(const std::string& text, T& value)
 {
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
     return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+}
+
+FileChecksum Checksum(const ChunkBytes& bytes)
+{
+    return {bytes.size,
+            static_cast<uint32_t>(absl::ComputeCrc32c(
+                    absl::string_view(reinterpret_cast<const char*>(bytes.data.get()), bytes.size)))};
+}
+
+absl::StatusOr<FileChecksum> FileChecksumOf(int fd)
+{
+    FileChecksum result;
+    absl::crc32c_t crc{0};
+    char buffer[65536];
+    for(;;)
+    {
+        const auto count = ::pread(fd, buffer, sizeof(buffer), static_cast<off_t>(result.bytes));
+        if(count < 0 && errno == EINTR)
+            continue;
+        if(count < 0)
+            return tier_detail::IoError("read archive checksum");
+        if(count == 0)
+            break;
+        crc = absl::ExtendCrc32c(crc, absl::string_view(buffer, static_cast<size_t>(count)));
+        result.bytes += static_cast<uint64_t>(count);
+    }
+    result.crc32c = static_cast<uint32_t>(crc);
+    return result;
+}
+
+absl::Status VerifyChecksum(const ChunkBytes& bytes, std::optional<FileChecksum> expected)
+{
+    if(expected)
+    {
+        if(bytes.size != expected->bytes || Checksum(bytes).crc32c != expected->crc32c)
+            return absl::UnavailableError("archive file checksum or length mismatch");
+    }
+    return absl::OkStatus();
 }
 
 absl::StatusOr<ManifestRecord> FromFilename(const std::filesystem::path& relative)
@@ -473,11 +512,14 @@ absl::StatusOr<const ManifestIndex*> FileTierStore::refresh() const
     return log_->current();
 }
 
-absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord& record) const
+absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord& record,
+                                                           std::optional<FileChecksum> checksum) const
 {
     auto bytes = load_file_(root_ / record.file);
     if(!bytes.ok())
         return bytes.status();
+    if(auto status = VerifyChecksum(*bytes, checksum ? checksum : log_->checksum(record.file)); !status.ok())
+        return status;
     auto events = decode_file_(root_ / record.file, *bytes);
     if(!events.ok())
         return events.status();
@@ -595,7 +637,8 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
         const auto w = watermark(**index, story);
         for(auto record: effective(**index, story))
         {
-            if(record.state != ManifestState::Published)
+            if(record.state != ManifestState::Published &&
+               !(record.state == ManifestState::Empty && log_->checksum(record.file)))
                 continue;
             auto events = validate(record);
             if(events.ok())
@@ -606,10 +649,16 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
                 auto refreshed = log_->sync();
                 if(!refreshed.ok())
                     return refreshed.status();
-                if(!effectivePublished(**refreshed, record))
+                const auto current = effective(**refreshed, record.story_id);
+                if(!std::any_of(current.begin(),
+                                current.end(),
+                                [&](const auto& entry)
+                                { return entry.file == record.file && entry.state == record.state; }))
                     continue;
             }
             failed.insert(record.file);
+            if(record.manifest_writer != writer_)
+                continue;
             auto status = rollbackOrLose(record, w);
             if(!status.ok())
                 return status;
@@ -828,7 +877,12 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                 if(Stem(existing.file) != stem)
                     continue;
                 if(existing.state == ManifestState::Empty && chunk.events.empty())
-                    return existing;
+                {
+                    if(!log_->checksum(existing.file))
+                        return existing;
+                    holder = existing;
+                    break;
+                }
                 if(existing.state != ManifestState::Published)
                     return absl::UnavailableError("chunk rotation already published");
                 holder = existing;
@@ -868,7 +922,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         absl::StatusOr<std::vector<Event>> events;
         {
             PublishTurn turn(*this);
-            events = ReadChunkFile(root_ / holder->file);
+            events = validate(*holder);
         }
         if(!events.ok())
             return events.status();
@@ -885,9 +939,15 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         // The answer must name a file that is still the effective holder, never one about to be unlinked.
         const auto& view = viewOf(**index, chunk.story_id);
         const auto replaced = view.superseded.find(stem);
-        const bool current = effectivePublished(**index, *holder) &&
-                             (compacted ? replaced != view.superseded.end() && replaced->second == holder->file
-                                        : replaced == view.superseded.end());
+        const bool current =
+                (holder->state == ManifestState::Empty
+                         ? std::any_of(view.effective.begin(),
+                                       view.effective.end(),
+                                       [&](const auto& entry)
+                                       { return entry.file == holder->file && entry.state == ManifestState::Empty; })
+                         : effectivePublished(**index, *holder)) &&
+                (compacted ? replaced != view.superseded.end() && replaced->second == holder->file
+                           : replaced == view.superseded.end());
         if(!current)
             return absl::UnavailableError("archive file changed during the duplicate check; retry");
         if(!same)
@@ -920,6 +980,9 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         return status;
     if(::fsync(fd.get()) != 0)
         return tier_detail::IoError("fsync chunk");
+    auto checksum = FileChecksumOf(fd.get());
+    if(!checksum.ok())
+        return checksum.status();
     if(::link(temporary.c_str(), (root_ / record.file).c_str()) != 0)
         return tier_detail::IoError("link published chunk");
     if(::unlink(temporary.c_str()) != 0)
@@ -928,7 +991,7 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(!synced.ok())
         return synced;
     std::lock_guard lock(mutex_);
-    status = log_->append(record, physical_bounds);
+    status = log_->append(record, physical_bounds, *checksum);
     if(!status.ok())
         return status;
     if(auto index = refresh(); index.ok())
@@ -1082,6 +1145,8 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
 absl::StatusOr<std::vector<Event>>
 FileTierStore::decodeRecord(const ManifestRecord& record, Range range, size_t max_events, ChunkBytes bytes) const
 {
+    if(auto status = VerifyChecksum(bytes, log_->checksum(record.file)); !status.ok())
+        return status;
     auto events = decode_file_(root_ / record.file, bytes);
     if(!events.ok())
         return events.status();
@@ -1602,6 +1667,9 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         return status;
     if(::fsync(fd.get()) != 0)
         return tier_detail::IoError("fsync compaction output");
+    auto checksum = FileChecksumOf(fd.get());
+    if(!checksum.ok())
+        return checksum.status();
     if(auto status = compactionStep("link"); !status.ok())
     {
         created.keep = true;
@@ -1627,7 +1695,7 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
                           chunk.physical_policy};
     if(!waitCompactionTurn(estimate, policy))
         return absl::CancelledError("archive compaction stopped");
-    auto written = validate(output);
+    auto written = validate(output, *checksum);
     if(!written.ok())
         return written.status();
     std::stable_sort(written->begin(), written->end(), ReplayLess);
@@ -1638,7 +1706,7 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         created.keep = true;
         return status;
     }
-    CompactionSwitch change{writer_, op, story, inputs, output, BoundsOf(events), {}};
+    CompactionSwitch change{writer_, op, story, inputs, output, BoundsOf(events), {}, *checksum};
     {
         std::lock_guard lock(mutex_);
         if(compaction_stopped_ || log_->failed())
