@@ -33,7 +33,6 @@ namespace
 {
 
 constexpr size_t kMaxQueuedRequests = 1024;
-constexpr int kMaxReceiveBytes = 64 << 20;
 constexpr std::chrono::seconds kShutdownDeadline{5};
 
 std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Service& service, int& bound_port)
@@ -41,7 +40,7 @@ std::unique_ptr<grpc::Server> startServer(const std::string& address, grpc::Serv
     grpc::ServerBuilder builder;
     // SO_REUSEPORT would let two Keepers share one port silently.
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
-    builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
+    builder.SetMaxReceiveMessageSize(chronolog::kKeeperAppendReceiveBytes);
     chronolog::rpc::applyServerPolicy(builder);
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &bound_port);
     builder.RegisterService(&service);
