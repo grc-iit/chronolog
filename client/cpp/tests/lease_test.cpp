@@ -273,6 +273,28 @@ public:
     }
     grpc::Status Append(grpc::ServerContext*, const wire::AppendRequest* r, wire::AppendResponse* p) override
     {
+        answer(*r, *p);
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    AppendStream(grpc::ServerContext*,
+                 grpc::ServerReaderWriter<wire::AppendStreamResponse, wire::AppendStreamRequest>* stream) override
+    {
+        wire::AppendStreamRequest request;
+        while(stream->Read(&request))
+        {
+            wire::AppendStreamResponse response;
+            answer(request, response);
+            if(!stream->Write(response))
+                break;
+        }
+        return grpc::Status::OK;
+    }
+    template <class Request, class Response>
+    void answer(const Request& request, Response& response)
+    {
+        const auto* r = &request;
+        auto* p = &response;
         std::lock_guard lock(mutex);
         p->set_batch_id(r->batch_id());
         for(const auto& item: r->items())
@@ -305,7 +327,6 @@ public:
             result->mutable_assigned_hlc()->set_physical_ns(static_cast<int64_t>(item.sequence()));
             result->set_achieved_durability(r->durability());
         }
-        return grpc::Status::OK;
     }
 
 private:

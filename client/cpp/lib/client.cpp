@@ -179,7 +179,7 @@ absl::Status refusal(const v1::AcquireResponse& r)
             typed.matched_incarnation = r.incarnation();
         if(r.has_termination_cause())
             typed.termination_cause = cause <= 4 ? static_cast<AcquisitionTerminationCause>(cause)
-                                                  : AcquisitionTerminationCause::Unspecified;
+                                                 : AcquisitionTerminationCause::Unspecified;
         setAcquireRefusal(result, typed);
     }
     return result;
