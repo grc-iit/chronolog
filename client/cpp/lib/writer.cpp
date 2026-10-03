@@ -40,7 +40,7 @@ absl::StatusOr<bool> Writer::release(Deadline deadline)
     if(!lock.try_lock_until(end))
         return absl::DeadlineExceededError("writer busy");
     grpc::ClientContext context;
-    context.set_deadline(end);
+    detail::withDeadline(context, end);
     v1::ReleaseRequest request;
     request.set_story_id(impl_->acquired.story_id);
     request.set_writer_id(impl_->acquired.writer_id);
@@ -189,7 +189,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
         };
         auto journal = v1::Journal::NewStub(state->channel(acquired.assigned_keeper.endpoint));
         grpc::ClientContext context;
-        context.set_deadline(state->attemptDeadline(end));
+        detail::withDeadline(context, state->attemptDeadline(end));
         absl::Status transport;
         if(!streaming)
         {

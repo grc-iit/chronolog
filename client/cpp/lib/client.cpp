@@ -33,7 +33,7 @@ absl::StatusOr<Client> Client::Connect(ClientOptions options, Deadline deadline)
 }
 #define CATALOG_CALL(Method)                                                                                           \
     grpc::ClientContext context;                                                                                       \
-    context.set_deadline(impl_->state->deadline(deadline));                                                            \
+    detail::withDeadline(context, impl_->state->deadline(deadline));                                                   \
     v1::Method##Response response;                                                                                     \
     auto transport = impl_->state->catalog->Method(&context, request, &response);                                      \
     if(!transport.ok())                                                                                                \

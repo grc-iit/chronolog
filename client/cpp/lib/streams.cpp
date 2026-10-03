@@ -77,14 +77,16 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
     if(std::chrono::system_clock::now() >= end)
         return expired();
     if(!stream)
+        newContext();
+    detail::PullDeadline watchdog(context, end);
+    if(!stream)
     {
         v1::ReadRequest request;
         request.set_story_id(story);
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
-        stream = replay->Read(newContext().get(), request);
+        stream = replay->Read(context.get(), request);
     }
-    detail::PullDeadline watchdog(context, end);
     v1::ReadResponse response;
     if(!stream->Read(&response))
     {
@@ -136,14 +138,16 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::nextPhysical(Deadlin
             return expired();
         const auto current = pending_ranges.back();
         if(!stream)
+            newContext(end);
+        detail::PullDeadline watchdog(context, end);
+        if(!stream)
         {
             v1::ReadRequest request;
             request.set_story_id(story);
             request.mutable_physical()->set_start_ns(current.start_ns);
             request.mutable_physical()->set_end_ns(current.end_ns);
-            stream = replay->Read(newContext(end).get(), request);
+            stream = replay->Read(context.get(), request);
         }
-        detail::PullDeadline watchdog(context, end);
         v1::ReadResponse response;
         std::optional<Completion> completion;
         while(stream->Read(&response))
@@ -253,15 +257,17 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
         if(std::chrono::system_clock::now() >= end)
             return expired();
         if(!stream)
+            newContext();
+        detail::PullDeadline watchdog(context, end);
+        if(!stream)
         {
             v1::TailRequest request;
             request.set_story_id(story);
             auto p = position.value_or(Position{{}, {story, 0, 0, 0}});
             detail::encode(p.hlc, request.mutable_from()->mutable_hlc());
             detail::encode(p.id, request.mutable_from()->mutable_id());
-            stream = replay->Tail(newContext().get(), request);
+            stream = replay->Tail(context.get(), request);
         }
-        detail::PullDeadline watchdog(context, end);
         v1::TailResponse response;
         if(!stream->Read(&response))
         {

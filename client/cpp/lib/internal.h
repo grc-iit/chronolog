@@ -11,6 +11,11 @@
 namespace chronolog::client::detail
 {
 using TimePoint = std::chrono::system_clock::time_point;
+inline void withDeadline(grpc::ClientContext& context, TimePoint end)
+{
+    context.set_deadline(end);
+    context.set_wait_for_ready(true);
+}
 inline absl::Status status(const grpc::Status& s)
 {
     return {static_cast<absl::StatusCode>(s.error_code()), s.error_message()};
@@ -165,7 +170,7 @@ struct State
         if(!options.player_endpoint.empty())
             return options.player_endpoint;
         grpc::ClientContext context;
-        context.set_deadline(end);
+        withDeadline(context, end);
         v1::GetStoryRequest request;
         request.set_story_id(id);
         v1::GetStoryResponse response;
