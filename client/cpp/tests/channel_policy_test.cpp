@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -21,7 +23,9 @@ namespace wire = chronolog::v1;
 namespace sdk = chronolog::client;
 using namespace std::chrono_literals;
 
-class Peer final: public wire::Catalog::Service
+class Peer final
+    : public wire::Catalog::Service
+    , public wire::Replay::Service
 {
 public:
     explicit Peer(std::string name)
@@ -32,7 +36,8 @@ public:
         builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, 500);
         builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
-        builder.RegisterService(this);
+        builder.RegisterService(static_cast<wire::Catalog::Service*>(this));
+        builder.RegisterService(static_cast<wire::Replay::Service*>(this));
         server_ = builder.BuildAndStart();
     }
     ~Peer() override { stop(); }
@@ -49,6 +54,24 @@ public:
     ListChronicles(grpc::ServerContext*, const wire::ListChroniclesRequest*, wire::ListChroniclesResponse* p) override
     {
         p->add_chronicles()->set_name(name_);
+        return grpc::Status::OK;
+    }
+    grpc::Status Acquire(grpc::ServerContext*, const wire::AcquireRequest* r, wire::AcquireResponse* p) override
+    {
+        p->set_story_id(r->story_id());
+        p->set_writer_id(1);
+        p->set_incarnation(1);
+        p->mutable_route()->set_epoch(1);
+        p->mutable_assigned_keeper()->set_process_id("keeper");
+        p->mutable_assigned_keeper()->set_endpoint("127.0.0.1:" + std::to_string(port));
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    Read(grpc::ServerContext*, const wire::ReadRequest*, grpc::ServerWriter<wire::ReadResponse>* writer) override
+    {
+        wire::ReadResponse response;
+        response.mutable_completion()->set_complete(true);
+        writer->Write(response);
         return grpc::Status::OK;
     }
     int port = 0;
@@ -80,6 +103,7 @@ public:
     ~Hop()
     {
         stop_ = true;
+        bytes_cv_.notify_all();
         acceptor_.join();
         for(auto& pump: pumps_) pump.join();
         for(int fd: sockets_) ::close(fd);
@@ -91,6 +115,15 @@ public:
         upstream_ = successor;
         ++generation_;
     }
+    // Withhold the server's first bytes for 500 ms across reconnects, exceeding the 100 ms connect timeout.
+    void delayHandshakes()
+    {
+        std::lock_guard lock(sockets_mutex_);
+        slow_handshake_ = true;
+        release_bytes_.reset();
+        for(int fd: sockets_) ::shutdown(fd, SHUT_RDWR);
+    }
+    int delayedHandshakes() const { return delayed_handshakes_; }
 
 private:
     void accept()
@@ -113,13 +146,16 @@ private:
                 continue;
             }
             const int born = generation_;
-            sockets_.push_back(downstream);
-            sockets_.push_back(upstream);
-            pumps_.emplace_back([this, downstream, upstream, born] { pump(downstream, upstream, born); });
-            pumps_.emplace_back([this, downstream, upstream, born] { pump(upstream, downstream, born); });
+            {
+                std::lock_guard lock(sockets_mutex_);
+                sockets_.push_back(downstream);
+                sockets_.push_back(upstream);
+            }
+            pumps_.emplace_back([this, downstream, upstream, born] { pump(downstream, upstream, born, false); });
+            pumps_.emplace_back([this, downstream, upstream, born] { pump(upstream, downstream, born, true); });
         }
     }
-    void pump(int from, int to, int born)
+    void pump(int from, int to, int born, bool first_server_bytes)
     {
         char buffer[4096];
         while(!stop_)
@@ -129,6 +165,23 @@ private:
                 continue;
             const auto count = ::recv(from, buffer, sizeof(buffer), 0);
             if(count <= 0)
+                return;
+            if(first_server_bytes)
+            {
+                first_server_bytes = false;
+                std::unique_lock lock(sockets_mutex_);
+                if(slow_handshake_)
+                {
+                    if(!release_bytes_)
+                        release_bytes_ = std::chrono::steady_clock::now() + 500ms;
+                    if(std::chrono::steady_clock::now() < *release_bytes_)
+                    {
+                        ++delayed_handshakes_;
+                        bytes_cv_.wait_until(lock, *release_bytes_, [&] { return stop_.load(); });
+                    }
+                }
+            }
+            if(stop_)
                 return;
             if(born == generation_)
                 ::send(to, buffer, static_cast<size_t>(count), MSG_NOSIGNAL);
@@ -143,7 +196,51 @@ private:
     std::thread acceptor_;
     std::vector<std::thread> pumps_;
     std::vector<int> sockets_;
+    std::mutex sockets_mutex_;
+    std::condition_variable bytes_cv_;
+    bool slow_handshake_{};
+    std::optional<std::chrono::steady_clock::time_point> release_bytes_;
+    std::atomic<int> delayed_handshakes_{};
 };
+
+TEST(ClientChannelPolicy, FirstCallWaitsForASlowHandshakeWithinItsDeadline)
+{
+    Peer peer("slow");
+    {
+        SCOPED_TRACE("fresh Player channel Read with a 10 s deadline");
+        Hop hop(peer.port);
+        hop.delayHandshakes();
+        sdk::ClientOptions options;
+        options.catalog_endpoint = "127.0.0.1:" + std::to_string(peer.port);
+        options.player_endpoint = "127.0.0.1:" + std::to_string(hop.port());
+        auto client = sdk::Client::Connect(options);
+        ASSERT_TRUE(client.ok()) << client.status();
+        const auto end = std::chrono::system_clock::now() + 10s;
+        auto read = client->read(1, {{0, 0}, {10, 0}}, end);
+        ASSERT_TRUE(read.ok()) << read.status();
+        auto item = read->next(end);
+        EXPECT_TRUE(item.ok()) << item.status();
+        if(item.ok())
+        {
+            ASSERT_TRUE(*item);
+            ASSERT_TRUE((**item).completion);
+            EXPECT_TRUE((**item).completion->complete);
+        }
+        EXPECT_GT(hop.delayedHandshakes(), 0);
+    }
+    {
+        SCOPED_TRACE("fresh Client's first Acquire after catalog transport reconnects, with a 10 s deadline");
+        Hop hop(peer.port);
+        sdk::ClientOptions options;
+        options.catalog_endpoint = "127.0.0.1:" + std::to_string(hop.port());
+        auto client = sdk::Client::Connect(options);
+        ASSERT_TRUE(client.ok()) << client.status();
+        hop.delayHandshakes();
+        auto writer = client->acquire(1, "writer", std::chrono::system_clock::now() + 10s);
+        EXPECT_TRUE(writer.ok()) << writer.status();
+        EXPECT_GT(hop.delayedHandshakes(), 0);
+    }
+}
 
 // gRPC probes bandwidth with pings of its own, and one of them in flight when the path goes dark used to hold the
 // keepalive ping back for the transport's one minute ping timeout, so both cases are covered. The bound is the
