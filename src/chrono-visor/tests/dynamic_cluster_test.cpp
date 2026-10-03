@@ -433,8 +433,11 @@ TEST_F(DynamicClusterTest, FailureDetectionKeepsLastKeeperAndRetriesLater)
     auto state = dynamic::snapshot(stores[selected]->appliedStore());
     ASSERT_EQ(state.routes(0).route().keepers_size(), 1);
     EXPECT_EQ(state.routes(0).route().keepers(0).process_id(), "keeper-b");
-    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), q, &r).ok());
-    ASSERT_EQ(r.status().code(), 0);
+    wire::JoinKeeperRequest join;
+    join.set_process_id("keeper-a");
+    wire::JoinKeeperResponse joined;
+    ASSERT_TRUE(stubs[selected]->JoinKeeper(a.context().get(), join, &joined).ok());
+    ASSERT_EQ(joined.status().code(), 0);
     bool retried = false;
     for(int n = 0; n < 200; ++n)
     {
