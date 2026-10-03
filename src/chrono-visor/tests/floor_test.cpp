@@ -127,7 +127,7 @@ protected:
         ASSERT_EQ(call<wire::MembershipResponse>(q).status().code(), 0);
     }
 };
-#include "membership_floor_contract_test.cpp"
+#include "membership_floor_contract_test.inc"
 INSTANTIATE_TEST_SUITE_P(Sqlite, MembershipContract, ::testing::Values(false));
 INSTANTIATE_TEST_SUITE_P(Raft, MembershipContract, ::testing::Values(true));
 } // namespace chronolog::floor_contract
