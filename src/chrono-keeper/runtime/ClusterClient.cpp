@@ -138,9 +138,32 @@ absl::Status ClusterClient::registerNow()
         }
         visor_endpoints_ = std::move(endpoints);
     }
+    if(!response.has_policy() && journal_.requiresCatalogPolicy())
+        return absl::FailedPreconditionError("Register omitted the Catalog physical policy");
     if(response.has_policy())
     {
         const auto& policy = response.policy();
+        if(options_.causal_floor_skew_limit_ns != policy.skew_limit_ns())
+            return absl::FailedPreconditionError(absl::StrCat("causal_floor_skew_limit_ns=",
+                                                              options_.causal_floor_skew_limit_ns,
+                                                              " differs from Catalog skew_limit_ns=",
+                                                              policy.skew_limit_ns()));
+        if(policy.skew_limit_ns() < 0 || policy.hlc_lead_ns() < policy.skew_limit_ns())
+            return absl::FailedPreconditionError("invalid Catalog S and D");
+        const auto reserve_ns = static_cast<int64_t>(options_.reserve_ahead_ms) * 1'000'000;
+        const auto catalog_reserve_ns = policy.hlc_lead_ns() - policy.skew_limit_ns();
+        if(reserve_ns != catalog_reserve_ns)
+            return absl::FailedPreconditionError(absl::StrCat("reserve_ahead_ms=",
+                                                              options_.reserve_ahead_ms,
+                                                              " (",
+                                                              reserve_ns,
+                                                              " ns) differs from Catalog reserve_ahead_ns=",
+                                                              catalog_reserve_ns,
+                                                              " (S=",
+                                                              policy.skew_limit_ns(),
+                                                              ", D=",
+                                                              policy.hlc_lead_ns(),
+                                                              ")"));
         const PhysicalPolicy expected;
         if(policy.version() != expected.version || policy.acceptance_window_ns() != expected.acceptance_window_ns ||
            policy.skew_limit_ns() != expected.skew_limit_ns || policy.hlc_lead_ns() != expected.hlc_lead_ns ||
@@ -175,6 +198,8 @@ absl::Status ClusterClient::registerNow()
         if(!status.ok())
             return status;
     }
+    if(response.has_policy())
+        journal_.adoptCatalogSkewLimit(response.policy().skew_limit_ns());
     registered_ = true;
     return absl::OkStatus();
 }

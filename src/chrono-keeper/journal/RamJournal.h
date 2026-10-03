@@ -26,7 +26,9 @@ struct RamJournalConfig
     std::string instance;
     uint32_t append_ceiling_wait_ms{1000};
     size_t payload_max_bytes{1048576};
-    int64_t causal_floor_skew_limit_ns{60'000'000'000};
+    // Standalone journals supply their policy here; service admission waits for the Catalog reply.
+    PhysicalPolicy physical_policy{};
+    bool require_catalog_policy{false};
     // Results kept per writer for idempotent retries.
     size_t dedupe_window{65536};
     size_t admission_evidence_capacity{65536};
@@ -78,6 +80,8 @@ public:
     absl::StatusOr<Hlc> keeperFrontier(StoryId id) const override;
     absl::StatusOr<int64_t> physicalFrontier(StoryId id) const override;
     virtual bool hasPhysicalPolicy() const { return true; }
+    bool requiresCatalogPolicy() const { return config_.require_catalog_policy; }
+    void adoptCatalogSkewLimit(int64_t skew_limit_ns);
 
     struct SealedView
     {
@@ -311,6 +315,8 @@ private:
     std::shared_ptr<const Membership> membership_;
     RamJournalConfig config_;
     std::atomic<bool> admission_ready_{true};
+    std::atomic<int64_t> causal_skew_limit_ns_;
+    std::atomic<bool> catalog_policy_ready_;
     mutable std::array<Shard, kShards> shards_;
     mutable std::mutex physical_mu_;
     mutable std::map<StoryId, int64_t> physical_reports_;
