@@ -12,7 +12,7 @@ target_link_libraries(chronolog_kvs_tests PRIVATE chronolog::kvs chronolog_warni
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME kvs.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_kvs_tests>)
-    set_tests_properties(kvs.acceptance PROPERTIES TIMEOUT 90)
+    set_tests_properties(kvs.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 90)
 endif()
 add_executable(chronolog_kvs_lease_tests tests/lease_test.cpp)
 target_link_libraries(chronolog_kvs_lease_tests PRIVATE chronolog::kvs chronolog::client chronolog_proto GTest::gtest_main chronolog_warnings)

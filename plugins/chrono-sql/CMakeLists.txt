@@ -16,7 +16,7 @@ target_link_libraries(chronolog_sql_acceptance PRIVATE chronolog::sql GTest::gte
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME sql.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_sql_acceptance>)
-    set_tests_properties(sql.acceptance PROPERTIES TIMEOUT 90)
+    set_tests_properties(sql.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 90)
 endif()
 add_executable(chronolog_sql_lease_tests tests/lease_test.cpp)
 target_link_libraries(chronolog_sql_lease_tests PRIVATE chronolog::sql chronolog::client chronolog_proto GTest::gtest_main chronolog_warnings)

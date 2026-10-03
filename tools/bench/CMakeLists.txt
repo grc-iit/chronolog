@@ -20,5 +20,8 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TA
             COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/run.sh ${suite}
             --quick --binaries ${CMAKE_BINARY_DIR} --out ${CMAKE_BINARY_DIR}/bench-results/${suite})
         set_tests_properties(bench.${suite} PROPERTIES TIMEOUT 300 LABELS "bench")
+        if(NOT suite STREQUAL "micro")
+            set_tests_properties(bench.${suite} PROPERTIES RESOURCE_LOCK chronolog_stack)
+        endif()
     endforeach()
 endif()

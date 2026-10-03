@@ -222,7 +222,7 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TA
     add_test(NAME bind_guard_integration
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/bind_guard_test.sh
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher>)
-    set_tests_properties(bind_guard_integration PROPERTIES TIMEOUT 180 LABELS "integration")
+    set_tests_properties(bind_guard_integration PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 180 LABELS "integration")
 endif()
 
 if(CHRONOLOG_BUILD_BENCH)

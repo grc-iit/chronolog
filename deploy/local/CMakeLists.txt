@@ -7,7 +7,7 @@ foreach(gate readiness restart_keeps_endpoints single_supervisor ordered_stop su
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/gates.py" ${gate}
         "${CMAKE_CURRENT_SOURCE_DIR}/chronolog" "${PROJECT_BINARY_DIR}"
         $<TARGET_FILE:local_driver>)
-    set_tests_properties(local.${gate} PROPERTIES TIMEOUT 240 LABELS "integration;local")
+    set_tests_properties(local.${gate} PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 240 LABELS "integration;local")
 endforeach()
 
 if(NOT CHRONOLOG_BUILD_PYTHON AND NOT CHRONOLOG_SANITIZERS)
@@ -21,10 +21,10 @@ if(NOT CHRONOLOG_BUILD_PYTHON AND NOT CHRONOLOG_SANITIZERS)
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.py" "${PROJECT_BINARY_DIR}"
             "${local_wheel_dir}" "${CMAKE_INSTALL_BINDIR}")
-    set_tests_properties(server.install PROPERTIES TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;install")
+    set_tests_properties(server.install PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;install")
     add_test(NAME local.external_liveness
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/external.py" "${local_wheel_dir}"
             "${CMAKE_CURRENT_SOURCE_DIR}/chronolog" $<TARGET_FILE:chrono_visor>)
-    set_tests_properties(local.external_liveness PROPERTIES TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;local")
+    set_tests_properties(local.external_liveness PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;local")
 endif()
