@@ -358,4 +358,133 @@ TEST(KeeperClockAudit, VisorTimeoutsThatLeaveNoDeadlineAreRefused)
     EXPECT_EQ(keeper.client->heartbeatDeadline(), 1000ms);
 }
 
+TEST(KeeperPolicy, ConfiguredSkewMismatchRefusesRegister)
+{
+    FakeVisor visor;
+    visor.policy = policyWith(15000, 2000);
+    Server server(visor);
+    test::RamRig rig({.require_catalog_policy = true});
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    keeper::ClusterClient::Options options{"self", "instance", "self:1"};
+    options.causal_floor_skew_limit_ns = 59'000'000'000;
+    keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
+                                 options,
+                                 *rig.journal,
+                                 membership,
+                                 watcher);
+    const auto status = client.registerNow();
+    EXPECT_TRUE(absl::IsFailedPrecondition(status));
+    EXPECT_NE(status.message().find("causal_floor_skew_limit_ns=59000000000"), std::string::npos);
+    EXPECT_NE(status.message().find("Catalog skew_limit_ns=60000000000"), std::string::npos);
+    EXPECT_FALSE(client.registered());
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    EXPECT_TRUE(absl::IsUnavailable(rig.journal->append({1, 7, {item}}, Durability::Accepted).status()));
+}
+
+TEST(KeeperPolicy, ConfiguredReserveMismatchRefusesRegister)
+{
+    FakeVisor visor;
+    visor.policy = policyWith(15000, 2000);
+    Server server(visor);
+    test::RamRig rig({.require_catalog_policy = true});
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    for(uint32_t reserve_ms: {999u, UINT32_MAX})
+    {
+        keeper::ClusterClient::Options options{"self", "instance", "self:1"};
+        options.reserve_ahead_ms = reserve_ms;
+        keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
+                                     options,
+                                     *rig.journal,
+                                     membership,
+                                     watcher);
+        const auto status = client.registerNow();
+        EXPECT_TRUE(absl::IsFailedPrecondition(status));
+        EXPECT_NE(status.message().find("reserve_ahead_ms=" + std::to_string(reserve_ms)), std::string::npos);
+        EXPECT_NE(status.message().find("Catalog reserve_ahead_ns=1000000000"), std::string::npos);
+        EXPECT_NE(status.message().find("S=60000000000, D=61000000000"), std::string::npos);
+        EXPECT_FALSE(client.registered());
+    }
+}
+
+TEST(KeeperPolicy, MatchingConfigRegisters)
+{
+    FakeVisor visor;
+    visor.policy = policyWith(15000, 2000);
+    Server server(visor);
+    test::RamRig rig({.require_catalog_policy = true});
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
+                                 {"self", "instance", "self:1"},
+                                 *rig.journal,
+                                 membership,
+                                 watcher);
+    EXPECT_TRUE(client.registerNow().ok());
+    EXPECT_TRUE(client.registered());
+}
+
+TEST(KeeperPolicy, RegisteredCatalogSkewControlsCausalFloorBoundary)
+{
+    FakeVisor visor;
+    visor.policy = policyWith(15000, 2000);
+    Server server(visor);
+    test::RamRig rig({.physical_policy = {.skew_limit_ns = 1}, .require_catalog_policy = true});
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
+                                 {"self", "instance", "self:1"},
+                                 *rig.journal,
+                                 membership,
+                                 watcher);
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    item.physical = {100, 0, ClockStatus::Synced};
+    item.causal_floor = {100 + visor.policy->skew_limit_ns() - 1, 0};
+    EXPECT_TRUE(absl::IsUnavailable(rig.journal->append({1, 7, {item}}, Durability::Accepted).status()));
+    ASSERT_TRUE(client.registerNow().ok());
+    auto inside = rig.journal->append({1, 7, {item}}, Durability::Accepted);
+    ASSERT_TRUE(inside.ok()) << inside.status();
+    ASSERT_EQ(inside->size(), 1u);
+    EXPECT_TRUE(inside->front().status.ok()) << inside->front().status;
+    item.sequence = 2;
+    item.causal_floor.physical_ns = 100 + visor.policy->skew_limit_ns() + 1;
+    auto outside = rig.journal->append({1, 7, {item}}, Durability::Accepted);
+    ASSERT_TRUE(outside.ok()) << outside.status();
+    ASSERT_EQ(outside->size(), 1u);
+    EXPECT_TRUE(absl::IsInvalidArgument(outside->front().status));
+    auto events = rig.journal->read(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
+}
+
+TEST(KeeperPolicy, MissingCatalogPolicyLeavesAdmissionClosed)
+{
+    FakeVisor visor;
+    Server server(visor);
+    test::RamRig rig({.require_catalog_policy = true});
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
+                                 {"self", "instance", "self:1"},
+                                 *rig.journal,
+                                 membership,
+                                 watcher);
+    const auto status = client.registerNow();
+    EXPECT_TRUE(absl::IsFailedPrecondition(status));
+    EXPECT_NE(status.message().find("omitted the Catalog physical policy"), std::string::npos);
+    EXPECT_FALSE(client.registered());
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    EXPECT_TRUE(absl::IsUnavailable(rig.journal->append({1, 7, {item}}, Durability::Accepted).status()));
+}
+
 } // namespace chronolog
