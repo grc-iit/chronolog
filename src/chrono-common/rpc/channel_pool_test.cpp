@@ -22,7 +22,7 @@ public:
         : name_(std::move(name))
     {}
     grpc::Status
-    ListMembers(grpc::ServerContext*, const iv1::ListMembersRequest*, iv1::MembershipResponse* response) override
+    ListMembers(grpc::ServerContext*, const iv1::ListMembersRequest*, iv1::ListMembersResponse* response) override
     {
         response->mutable_status()->set_message(name_);
         return grpc::Status::OK;
@@ -53,7 +53,7 @@ std::string Ask(const std::shared_ptr<grpc::Channel>& channel,
 {
     grpc::ClientContext context;
     withTimeout(context, timeout);
-    iv1::MembershipResponse response;
+    iv1::ListMembersResponse response;
     auto status = iv1::Cluster::NewStub(channel)->ListMembers(&context, iv1::ListMembersRequest(), &response);
     if(error)
         *error = status.error_message();

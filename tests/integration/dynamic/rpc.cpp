@@ -71,25 +71,11 @@ Json call(const Json& command)
     RPC(Append, journal, pub)
     RPC(Register, cluster, internal)
     RPC(ExtendCeiling, cluster, internal)
+    RPC(DrainKeeper, cluster, internal)
+    RPC(JoinKeeper, cluster, internal)
+    RPC(AbandonKeeper, cluster, internal)
+    RPC(ListMembers, cluster, internal)
 #undef RPC
-    if(op == "DrainKeeper" || op == "JoinKeeper" || op == "AbandonKeeper" || op == "ListMembers")
-    {
-        auto fn = [&](auto* ctx, const internal::KeeperRequest& request, auto* response)
-        {
-            if(op == "DrainKeeper")
-                return cluster->DrainKeeper(ctx, request, response);
-            if(op == "JoinKeeper")
-                return cluster->JoinKeeper(ctx, request, response);
-            return cluster->AbandonKeeper(ctx, request, response);
-        };
-        if(op == "ListMembers")
-            return unary<internal::ListMembersRequest, internal::MembershipResponse>(
-                    input,
-                    context,
-                    [&](auto* ctx, const auto& request, auto* response)
-                    { return cluster->ListMembers(ctx, request, response); });
-        return unary<internal::KeeperRequest, internal::MembershipResponse>(input, context, fn);
-    }
     if(op == "Read")
     {
         pub::ReadRequest request;
