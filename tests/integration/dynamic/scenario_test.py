@@ -108,6 +108,39 @@ class CatalogReadTest(unittest.TestCase):
         self.scenario.raw.assert_called_once()
 
 
+class PingPongDrainTest(unittest.TestCase):
+    def setUp(self):
+        self.scenario = object.__new__(Scenario)
+        self.joined = dict(revision=164, route=dict(epoch=7, keepers=[dict(process_id='keeper-1'),
+                                                                   dict(process_id='keeper-2')]))
+        self.drained = dict(revision=168, route=dict(epoch=8, keepers=[dict(process_id='keeper-1')]))
+        self.scenario.admin = Mock(return_value=dict(routes=[self.drained]))
+
+    def test_silence_detection_during_deferral_does_not_require_a_second_drain(self):
+        # The owner's automatic drain committed before the probe returned. The manual drain is idempotent.
+        self.scenario.route = Mock(return_value=self.drained)
+        self.assertEqual(self.scenario.drain_after_join(self.joined, 'keeper-2'), self.drained)
+        self.scenario.admin.assert_called_once_with('DrainKeeper', 'keeper-2')
+        self.scenario.route.assert_called_once()
+
+    @patch('scenario.time.sleep')
+    def test_wait_still_requires_owner_removal_and_epoch_advancement(self, sleep):
+        newer_but_present = dict(revision=166, route=dict(epoch=8, keepers=self.joined['route']['keepers']))
+        removed_without_advancement = dict(revision=167, route=dict(epoch=7, keepers=self.drained['route']['keepers']))
+        self.scenario.route = Mock(side_effect=[newer_but_present, removed_without_advancement, self.drained])
+        self.assertEqual(self.scenario.drain_after_join(self.joined, 'keeper-2'), self.drained)
+        self.assertEqual(self.scenario.route.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    @patch('scenario.time.sleep')
+    @patch('scenario.time.monotonic', side_effect=[0, 0, 30])
+    def test_failed_wait_names_the_condition_with_the_existing_deadline(self, monotonic, sleep):
+        self.scenario.route = Mock(return_value=self.joined)
+        with self.assertRaisesRegex(RuntimeError, 'drain keeper-2 after joined epoch 7'):
+            self.scenario.drain_after_join(self.joined, 'keeper-2')
+        self.scenario.route.assert_called_once()
+
+
 class AcquireTest(unittest.TestCase):
     def setUp(self):
         self.scenario = object.__new__(Scenario)
