@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <regex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,7 +30,7 @@ struct Schema
             auto* file = pool.BuildFile(proto);
             if(!file)
                 return false;
-            if(file->package() == "chronolog.v1")
+            if(file->package().starts_with("chronolog."))
                 files.push_back(file);
         }
         return !files.empty();
@@ -102,6 +103,8 @@ void compatibility(const Schema& before, const Schema& after)
 {
     for(auto* file: before.files)
     {
+        if(file->package() != "chronolog.v1")
+            continue;
         require(after.pool.FindFileByName(file->name()), file->name(), "removed file");
         for(int i = 0; i < file->message_type_count(); ++i) checkMessage(file->message_type(i), after.pool);
         for(int i = 0; i < file->enum_type_count(); ++i) checkEnum(file->enum_type(i), after.pool);
@@ -165,29 +168,54 @@ void lintEnum(const descriptor_pb::EnumDescriptor* type)
         require(value->name().starts_with(start), value->full_name(), "enum value lacks prefix " + start);
     }
 }
-void lintMessage(const descriptor_pb::Descriptor* type)
+void lintMessage(const descriptor_pb::Descriptor* type, std::set<const descriptor_pb::FileDescriptor*>& used)
 {
     if(type->options().map_entry())
         return;
     name(type->name(), pascal, type->full_name());
-    for(int i = 0; i < type->field_count(); ++i) name(type->field(i)->name(), snake, type->field(i)->full_name());
+    for(int i = 0; i < type->field_count(); ++i)
+    {
+        auto* field = type->field(i);
+        name(field->name(), snake, field->full_name());
+        if(field->message_type())
+            used.insert(field->message_type()->file());
+        if(field->enum_type())
+            used.insert(field->enum_type()->file());
+    }
     for(int i = 0; i < type->real_oneof_decl_count(); ++i)
         name(type->oneof_decl(i)->name(), snake, type->oneof_decl(i)->full_name());
-    for(int i = 0; i < type->nested_type_count(); ++i) lintMessage(type->nested_type(i));
+    for(int i = 0; i < type->nested_type_count(); ++i) lintMessage(type->nested_type(i), used);
     for(int i = 0; i < type->enum_type_count(); ++i) lintEnum(type->enum_type(i));
 }
+const std::regex version("v[1-9][0-9]*((alpha|beta)[1-9][0-9]*)?");
 void lint(const Schema& schema)
 {
+    std::map<std::string, std::string> packages;
+    std::map<std::string, std::string> rpc_types;
     for(auto* file: schema.files)
     {
         descriptor_pb::FileDescriptorProto definition;
         file->CopyTo(&definition);
         require(definition.syntax() == "proto3", file->name(), "syntax must be proto3");
-        require(file->name().starts_with("chronolog/v1/"), file->name(), "package directory must be chronolog/v1");
-        const auto base = file->name().substr(file->name().find_last_of('/') + 1);
+        const std::string package(file->package());
+        const auto last = package.substr(package.find_last_of('.') + 1);
+        require(std::regex_match(last, version), file->name(), "package must end in a version suffix");
+        std::string directory = package;
+        for(auto& c: directory)
+            if(c == '.')
+                c = '/';
+        const auto slash = file->name().find_last_of('/');
+        const std::string dir(slash == std::string::npos ? std::string_view() : file->name().substr(0, slash));
+        require(dir == directory, file->name(), "package directory must be " + directory);
+        const auto [seen, fresh] = packages.emplace(dir, package);
+        require(fresh || seen->second == package, file->name(), "files in one directory must share a package");
+        const auto base = file->name().substr(slash + 1);
         require(base.ends_with(".proto"), file->name(), "file extension must be .proto");
         name(base.substr(0, base.size() - 6), snake, file->name());
-        for(int i = 0; i < file->message_type_count(); ++i) lintMessage(file->message_type(i));
+        require(!file->public_dependency_count(), file->name(), "public imports are forbidden");
+        require(!file->weak_dependency_count(), file->name(), "weak imports are forbidden");
+        std::set<const descriptor_pb::FileDescriptor*> used;
+        for(int i = 0; i < file->message_type_count(); ++i) lintMessage(file->message_type(i), used);
         for(int i = 0; i < file->enum_type_count(); ++i) lintEnum(file->enum_type(i));
         for(int i = 0; i < file->service_count(); ++i)
         {
@@ -197,14 +225,29 @@ void lint(const Schema& schema)
             {
                 auto* method = service->method(j);
                 name(method->name(), pascal, method->full_name());
+                used.insert(method->input_type()->file());
+                used.insert(method->output_type()->file());
                 require(method->input_type()->name() == std::string(method->name()) + "Request",
                         method->full_name(),
                         "RPC request must be MethodRequest");
                 require(method->output_type()->name() == std::string(method->name()) + "Response",
                         method->full_name(),
                         "RPC response must be MethodResponse");
+                for(auto* type: {method->input_type(), method->output_type()})
+                {
+                    const auto [owner, unique] =
+                            rpc_types.emplace(std::string(type->full_name()), std::string(method->full_name()));
+                    require(unique,
+                            method->full_name(),
+                            "RPC request and response types must be unique; " + owner->first + " is also used by " +
+                                    owner->second);
+                }
             }
         }
+        for(int i = 0; i < file->dependency_count(); ++i)
+            require(used.contains(file->dependency(i)),
+                    file->name(),
+                    "unused import " + std::string(file->dependency(i)->name()));
     }
 }
 } // namespace
