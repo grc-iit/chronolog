@@ -32,6 +32,8 @@ void AcquisitionWatcher::start(std::shared_ptr<grpc::Channel> channel)
 
 bool AcquisitionWatcher::session(std::stop_token stop)
 {
+    LOG(INFO) << "acquisition_watch keeper=" << keeper_id_ << " session start applied=" << appliedRevision()
+              << " gate_admission=" << gate_admission_;
     if(gate_admission_)
         journal_.setAdmissionReady(false);
     grpc::ClientContext context;
@@ -61,7 +63,9 @@ bool AcquisitionWatcher::session(std::stop_token stop)
         }
         progressed = true;
     }
-    reader->Finish();
+    const auto status = reader->Finish();
+    LOG(INFO) << "acquisition_watch keeper=" << keeper_id_ << " session end applied=" << appliedRevision()
+              << " transport=" << status.error_code() << " error=" << status.error_message();
     return progressed;
 }
 
@@ -104,6 +108,8 @@ bool AcquisitionWatcher::applySnapshot(const iv1::AcquisitionSnapshot& snapshot)
     if(gate_admission_)
         journal_.setAdmissionReady(true);
     advance(snapshot.revision());
+    LOG(INFO) << "acquisition_watch keeper=" << keeper_id_ << " snapshot applied=" << snapshot.revision()
+              << " gate_admission=" << gate_admission_;
     if(fenced && on_fence_)
         on_fence_();
     return true;
