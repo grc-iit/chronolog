@@ -1,6 +1,8 @@
 #include "catalog/SqliteMetadataStore.h"
 
 #include <cstdint>
+#include <algorithm>
+#include <string_view>
 #include <optional>
 #include <utility>
 #include <filesystem>
@@ -88,8 +90,9 @@ absl::Status exec(sqlite3* db, const char* sql)
 class Transaction
 {
 public:
-    explicit Transaction(sqlite3* db)
+    Transaction(sqlite3* db, std::function<void(bool)> finish)
         : db_(db)
+        , finish_(std::move(finish))
     {
         nested_ = !sqlite3_get_autocommit(db_);
         status_ = exec(db_, nested_ ? "SAVEPOINT mutation" : "BEGIN IMMEDIATE");
@@ -102,6 +105,8 @@ public:
                          nullptr,
                          nullptr,
                          nullptr);
+        if(!committed_ && !nested_)
+            finish_(false);
     }
     Transaction(const Transaction&) = delete;
     Transaction& operator=(const Transaction&) = delete;
@@ -111,11 +116,14 @@ public:
     {
         absl::Status s = exec(db_, nested_ ? "RELEASE mutation" : "COMMIT");
         committed_ = s.ok();
+        if(committed_ && !nested_)
+            finish_(true);
         return s;
     }
 
 private:
     sqlite3* db_;
+    std::function<void(bool)> finish_;
     absl::Status status_;
     bool committed_{};
     bool nested_{};
@@ -244,6 +252,15 @@ SqliteMetadataStore::~SqliteMetadataStore() { sqlite3_close(db_); }
 
 absl::Status SqliteMetadataStore::initialize()
 {
+    sqlite3_update_hook(
+            db_,
+            [](void* context, int operation, const char*, const char* table, sqlite3_int64)
+            {
+                if((operation == SQLITE_INSERT || operation == SQLITE_UPDATE) &&
+                   std::string_view(table) == "membership_history")
+                    static_cast<SqliteMetadataStore*>(context)->route_changes_pending_ = true;
+            },
+            this);
     sqlite3_busy_timeout(db_, kBusyTimeoutMs);
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "PRAGMA foreign_keys=ON"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "PRAGMA synchronous=FULL"));
@@ -254,7 +271,7 @@ absl::Status SqliteMetadataStore::initialize()
         return absl::UnavailableError(absl::StrCat("catalog database cannot use WAL journal mode, got ", *mode));
 
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS membership_state(value TEXT NOT NULL)"));
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     CHRONOLOG_RETURN_IF_ERROR(exec(db_, "CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL)"));
     CHRONOLOG_RETURN_IF_ERROR(exec(db_,
@@ -354,7 +371,7 @@ absl::StatusOr<Chronicle> SqliteMetadataStore::createChronicle(std::string name)
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto existing = loadChronicle(db_, name);
     if(!existing.ok())
@@ -407,7 +424,7 @@ absl::Status SqliteMetadataStore::destroyChronicle(std::string name)
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto existing = loadChronicle(db_, name);
     if(!existing.ok())
@@ -467,7 +484,7 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
     if(!validName(chronicle) || !validName(name))
         return absl::InvalidArgumentError("invalid chronicle or story name");
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto parent = loadChronicle(db_, chronicle);
     if(!parent.ok())
@@ -543,7 +560,7 @@ absl::StatusOr<std::vector<Story>> SqliteMetadataStore::listStories(std::string 
 absl::Status SqliteMetadataStore::destroyStory(StoryId id)
 {
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto story = loadStory(db_, id);
     if(!story.ok())
@@ -628,7 +645,7 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
     if(writer_identity.empty())
         return absl::InvalidArgumentError("writer identity is empty");
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto story = loadStory(db_, id);
     if(!story.ok())
@@ -761,7 +778,7 @@ absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t 
     AcquisitionChange change;
     {
         std::lock_guard lock(mutex_);
-        Transaction txn(db_);
+        Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
         CHRONOLOG_RETURN_IF_ERROR(txn.begun());
         KeeperRef keeper;
         bool retried = false;
@@ -844,7 +861,7 @@ absl::StatusOr<Epoch> SqliteMetadataStore::compareAndSetEpoch(StoryId id, Epoch 
     if(desired <= expected)
         return absl::InvalidArgumentError("desired epoch must exceed expected");
     std::lock_guard lock(mutex_);
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto story = loadStory(db_, id);
     if(!story.ok())
@@ -914,6 +931,35 @@ absl::StatusOr<KeeperRef> SqliteMetadataStore::releasedKeeper(StoryId id, uint64
         return absl::NotFoundError("release not found");
     return KeeperRef{q.columnText(0), q.columnText(1)};
 }
+std::shared_ptr<SqliteMetadataStore::RouteSignal> SqliteMetadataStore::watchRouteChanges() const
+{
+    std::lock_guard lock(mutex_);
+    auto signal = std::make_shared<RouteSignal>(0);
+    route_signals_.push_back(signal);
+    return signal;
+}
+
+void SqliteMetadataStore::finishRouteTransaction(bool committed)
+{
+    const bool changed = std::exchange(route_changes_pending_, false);
+    if(!committed || !changed)
+        return;
+    std::erase_if(route_signals_,
+                  [](const auto& weak)
+                  {
+                      auto signal = weak.lock();
+                      if(signal)
+                          signal->release();
+                      return !signal;
+                  });
+}
+
+int64_t SqliteMetadataStore::totalChanges() const
+{
+    std::lock_guard lock(mutex_);
+    return sqlite3_total_changes64(db_);
+}
+
 absl::StatusOr<uint64_t> SqliteMetadataStore::appliedIndex() const
 {
     std::lock_guard lock(mutex_);
@@ -939,7 +985,7 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
         std::vector<AcquisitionChange> changes;
         void onAcquisitionChange(const AcquisitionChange& c) override { changes.push_back(c); }
     } pending;
-    Transaction txn(db_);
+    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
     auto revision = nextCounter(db_, "acquisition_revision");
     if(!revision.ok())

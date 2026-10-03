@@ -383,10 +383,14 @@ try
             insert.number(1, at).number(2, story).blob(3, route.SerializeAsString()).next();
         }
         sql(db_, own ? "COMMIT" : "RELEASE physical_policy_clear");
+        if(own)
+            finishRouteTransaction(true);
     }
     catch(...)
     {
         sql(db_, own ? "ROLLBACK" : "ROLLBACK TO physical_policy_clear; RELEASE physical_policy_clear");
+        if(own)
+            finishRouteTransaction(false);
         throw;
     }
     return absl::OkStatus();
@@ -420,10 +424,14 @@ try
                 throw std::runtime_error(status.ToString());
         }
         sql(db_, own ? "COMMIT" : "RELEASE static_policy_registration");
+        if(own)
+            finishRouteTransaction(true);
     }
     catch(...)
     {
         sql(db_, own ? "ROLLBACK" : "ROLLBACK TO static_policy_registration; RELEASE static_policy_registration");
+        if(own)
+            finishRouteTransaction(false);
         throw;
     }
     return absl::OkStatus();
@@ -590,12 +598,18 @@ try
             "membership_meta;");
         writeChanges(db_, {}, state);
         if(own)
+        {
             sql(db_, "COMMIT");
+            finishRouteTransaction(true);
+        }
     }
     catch(...)
     {
         if(own)
+        {
             sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
+            finishRouteTransaction(false);
+        }
         throw;
     }
     return absl::OkStatus();

@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <thread>
+#include <string_view>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -25,21 +26,32 @@ protected:
     {
         if(GetParam())
         {
-            int fd = socket(AF_INET, SOCK_STREAM, 0);
-            ASSERT_GE(fd, 0);
-            sockaddr_in address{};
-            address.sin_family = AF_INET;
-            address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-            ASSERT_EQ(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
-            socklen_t size = sizeof(address);
-            ASSERT_EQ(getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size), 0);
-            const auto endpoint = "127.0.0.1:" + std::to_string(ntohs(address.sin_port));
-            close(fd);
-            auto opened = visor::RaftMetadataStore::open((dir.path() / "raft").string(),
-                                                         visor::testing::twoKeeperTopology(),
-                                                         {1, endpoint, {{1, endpoint, endpoint, endpoint}}});
-            ASSERT_TRUE(opened.ok()) << opened.status();
-            raft = std::move(*opened);
+            absl::Status status;
+            for(int attempt = 0; attempt < 8; ++attempt)
+            {
+                int fd = socket(AF_INET, SOCK_STREAM, 0);
+                ASSERT_GE(fd, 0);
+                sockaddr_in address{};
+                address.sin_family = AF_INET;
+                address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+                ASSERT_EQ(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+                socklen_t size = sizeof(address);
+                ASSERT_EQ(getsockname(fd, reinterpret_cast<sockaddr*>(&address), &size), 0);
+                const auto endpoint = "127.0.0.1:" + std::to_string(ntohs(address.sin_port));
+                close(fd);
+                auto opened = visor::RaftMetadataStore::open((dir.path() / ("raft" + std::to_string(attempt))).string(),
+                                                             visor::testing::twoKeeperTopology(),
+                                                             {1, endpoint, {{1, endpoint, endpoint, endpoint}}});
+                status = opened.status();
+                if(opened.ok())
+                {
+                    raft = std::move(*opened);
+                    break;
+                }
+                if(status.message().find(" in use") == std::string_view::npos)
+                    break;
+            }
+            ASSERT_TRUE(status.ok()) << status;
             const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
             while(!raft->leaderLease() && std::chrono::steady_clock::now() < until)
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));

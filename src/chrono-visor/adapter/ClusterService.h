@@ -12,6 +12,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "catalog/AcquisitionFeed.h"
+#include "catalog/SqliteMetadataStore.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/metadata_store.h"
 #include "membership/StaticRouteMembership.h"
@@ -44,7 +45,9 @@ public:
                    AcquisitionFeed& feed,
                    RaftMetadataStore* raft = nullptr,
                    WorkerPool* pool = nullptr,
-                   std::chrono::milliseconds failure_timeout = std::chrono::milliseconds(15000));
+                   std::chrono::milliseconds failure_timeout = std::chrono::milliseconds(15000),
+                   std::chrono::milliseconds route_poll_period = std::chrono::milliseconds(100));
+    ~ClusterService() override;
 
     grpc::ServerUnaryReactor* ExtendCeiling(grpc::CallbackServerContext*,
                                             const internal::v1::ExtendCeilingRequest*,
@@ -108,6 +111,7 @@ private:
     uint64_t leader_term_{};
     std::chrono::steady_clock::time_point leader_since_;
     std::chrono::milliseconds failure_timeout_{15000};
+    std::shared_ptr<SqliteMetadataStore::RouteSignal> route_signal_;
     std::jthread route_notifications_;
 };
 

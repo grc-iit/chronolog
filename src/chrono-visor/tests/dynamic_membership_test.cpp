@@ -438,7 +438,7 @@ TEST_F(DynamicMembershipTest, OnlyNewOrGrownSettlementProofNeedsProposal)
 TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
 {
 #if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-    GTEST_SKIP() << "timing bounds hold only in uninstrumented builds";
+    GTEST_SKIP() << "large membership cost proof runs in uninstrumented builds";
 #endif
     ASSERT_TRUE(store->applyRaft(1,
                                  [&]
@@ -481,15 +481,25 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
         apply();
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     };
+    int64_t registerRowsMax = 0, extendRowsMax = 0;
     double registerMax = 0, extendMax = 0, registerSum = 0, extendSum = 0;
     double registerApplySum = 0, extendApplySum = 0, registerApplyMax = 0, extendApplyMax = 0;
     for(int n = 0; n < 10; ++n)
     {
+        const auto beforeRegister = store->totalChanges();
         const auto registration = measure([&] { ASSERT_EQ(reg("keeper-a", "keeper-a1").status().code(), 0); });
+        const auto registerRows = store->totalChanges() - beforeRegister;
+        registerRowsMax = std::max(registerRowsMax, registerRows);
+        // One member, one instance and four Raft bookkeeping rows.
+        EXPECT_LE(registerRows, 2 + 4);
         registerApplySum += lastApplyMs;
         registerApplyMax = std::max(registerApplyMax, lastApplyMs);
+        const auto beforeExtend = store->totalChanges();
         const auto extension =
                 measure([&] { ASSERT_EQ(extend("keeper-a", "keeper-a1", 10000, 100 + n).status().code(), 0); });
+        const auto extendRows = store->totalChanges() - beforeExtend;
+        extendRowsMax = std::max(extendRowsMax, extendRows);
+        EXPECT_LE(extendRows, 2 + 4);
         extendApplySum += lastApplyMs;
         extendApplyMax = std::max(extendApplyMax, lastApplyMs);
         registerMax = std::max(registerMax, registration);
@@ -505,10 +515,6 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
                     ASSERT_TRUE(
                             store->applyRaft(store->appliedIndex().value_or(0) + 1, [] { return std::string{}; }).ok());
                 });
-    EXPECT_LT(registerApplyMax, 20);
-    EXPECT_LT(extendApplyMax, 20);
-    EXPECT_LT(registerMax, 20);
-    EXPECT_LT(extendMax, 20);
     wire::MembershipCommand heartbeatCommand;
     auto* heartbeat = heartbeatCommand.mutable_heartbeat();
     heartbeat->set_process_id("keeper-a");
@@ -521,9 +527,12 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
         proof->set_instance("keeper-a1");
         proof->mutable_settled_through()->set_physical_ns(100);
     }
+    const auto beforeProof = store->totalChanges();
     const auto proofMs =
             measure([&] { ASSERT_EQ(call<wire::HeartbeatResponse>(heartbeatCommand).status().code(), 0); });
-    EXPECT_LT(proofMs, 20);
+    const auto proofRows = store->totalChanges() - beforeProof;
+    // 64 proofs, at most one member and instance, and four Raft bookkeeping rows.
+    EXPECT_LE(proofRows, 64 + 2 + 4);
     auto after = dynamic::snapshot(*store);
     ASSERT_EQ(after.members_size(), 64);
     ASSERT_EQ(after.routes_size(), 10000);
@@ -556,8 +565,11 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
                                      return std::string{};
                                  })
                         .ok());
+    const auto beforeTransition = store->totalChanges();
     const auto transitionMs = measure([&] { ASSERT_EQ(change("extra61", 0).status().code(), 0); });
-    EXPECT_LT(transitionMs, 60);
+    const auto transitionRows = store->totalChanges() - beforeTransition;
+    // Three routes, removed/predecessor refs, histories and epochs; 64 member fences; Raft bookkeeping.
+    EXPECT_LE(transitionRows, 3 * 5 + 64 + 4);
     auto routes = store->membershipRouteChanges(0);
     ASSERT_TRUE(routes.ok());
     for(int n = 0; n < 10000; ++n)
@@ -571,7 +583,9 @@ TEST_F(DynamicMembershipTest, ApplyCostFor64KeepersAnd10000Stories)
               << extendApplyMax << " ms; durable no-op mean " << durableBaselineSum / 10
               << " ms; durable Register mean/max " << registerSum / 10 << "/" << registerMax
               << " ms; ExtendCeiling mean/max " << extendSum / 10 << "/" << extendMax << " ms; heartbeat 64 proofs "
-              << proofMs << " ms; transition 3 stories " << transitionMs << " ms" << std::endl;
+              << proofMs << " ms; transition 3 stories " << transitionMs
+              << " ms; rows Register/ExtendCeiling/proofs/transition " << registerRowsMax << "/" << extendRowsMax << "/"
+              << proofRows << "/" << transitionRows << std::endl;
 }
 TEST_F(DynamicMembershipTest, MigratesLegacyMembershipAndPreservesSnapshotInstall)
 {

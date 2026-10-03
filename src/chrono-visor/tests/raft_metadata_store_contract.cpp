@@ -2,6 +2,7 @@
 #include <array>
 #include <chrono>
 #include <thread>
+#include <string_view>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "TestSupport.h"
@@ -33,6 +34,41 @@ int port()
     }
     throw std::runtime_error("Raft test ports unavailable");
 }
+std::filesystem::path startCluster(const std::filesystem::path& root,
+                                   std::array<std::unique_ptr<RaftMetadataStore>, 3>& replicas,
+                                   std::vector<visor::RaftPeer>& peers,
+                                   visor::FenceWaiter fence = nullptr)
+{
+    absl::Status status;
+    for(int attempt = 0; attempt < 8; ++attempt)
+    {
+        peers.clear();
+        for(int i = 0; i < 3; ++i)
+        {
+            const auto endpoint = "127.0.0.1:" + std::to_string(port());
+            peers.push_back({i + 1, endpoint, endpoint, endpoint});
+        }
+        const auto path = root / std::to_string(attempt);
+        std::filesystem::create_directory(path);
+        for(size_t i = 0; i < 3; ++i)
+        {
+            auto opened = RaftMetadataStore::open((path / std::to_string(i)).string(),
+                                                  visor::testing::twoKeeperTopology(),
+                                                  {static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers},
+                                                  fence);
+            status = opened.status();
+            if(!opened.ok())
+                break;
+            replicas[i] = std::move(*opened);
+        }
+        if(status.ok())
+            return path;
+        for(auto& replica: replicas) replica.reset();
+        if(status.message().find(" in use") == std::string_view::npos)
+            break;
+    }
+    throw std::runtime_error(status.ToString());
+}
 MetadataStoreFactory factory(bool majority)
 {
     return [majority]
@@ -42,16 +78,15 @@ MetadataStoreFactory factory(bool majority)
         auto configs = std::make_shared<std::array<visor::RaftConfig, 3>>();
         auto confirm = std::make_shared<std::atomic<bool>>(true);
         std::vector<visor::RaftPeer> peers;
-        for(int i = 0; i < 3; ++i)
-        {
-            std::string endpoint = "127.0.0.1:" + std::to_string(port());
-            peers.push_back({i + 1, endpoint, endpoint, endpoint});
-        }
+        const auto path = startCluster(directory->path(),
+                                       *replicas,
+                                       peers,
+                                       [confirm](const KeeperRef&, uint64_t) { return confirm->load(); });
         for(int i = 0; i < 3; ++i)
             (*configs)[static_cast<size_t>(i)] = {i + 1, peers[static_cast<size_t>(i)].raft_endpoint, peers};
-        auto open = [directory, configs, confirm](size_t i)
+        auto open = [directory, path, configs, confirm](size_t i)
         {
-            auto result = RaftMetadataStore::open((directory->path() / std::to_string(i)).string(),
+            auto result = RaftMetadataStore::open((path / std::to_string(i)).string(),
                                                   visor::testing::twoKeeperTopology(),
                                                   (*configs)[i],
                                                   [confirm](const KeeperRef&, uint64_t) { return confirm->load(); });
@@ -59,7 +94,6 @@ MetadataStoreFactory factory(bool majority)
                 throw std::runtime_error(std::string(result.status().message()));
             return std::move(*result);
         };
-        for(size_t i = 0; i < 3; ++i) (*replicas)[i] = open(i);
         auto select = [replicas]()
         {
             const auto until = std::chrono::steady_clock::now() + 8s;
@@ -230,21 +264,8 @@ TEST(RaftStorageTest, LinearizableReadsAndMutationsStopWithoutQuorum)
 {
     testing::TempDir directory;
     std::vector<RaftPeer> peers;
-    for(int i = 0; i < 3; ++i)
-    {
-        auto endpoint = "127.0.0.1:" + std::to_string(contract::port());
-        peers.push_back({i + 1, endpoint, endpoint, endpoint});
-    }
     std::array<std::unique_ptr<RaftMetadataStore>, 3> replicas;
-    for(size_t i = 0; i < 3; ++i)
-    {
-        RaftConfig config{static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers};
-        auto opened = RaftMetadataStore::open((directory.path() / std::to_string(i)).string(),
-                                              testing::twoKeeperTopology(),
-                                              config);
-        ASSERT_TRUE(opened.ok()) << opened.status();
-        replicas[i] = std::move(*opened);
-    }
+    contract::startCluster(directory.path(), replicas, peers);
     size_t leader = 3;
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
     while(std::chrono::steady_clock::now() < until && leader == 3)
@@ -276,22 +297,16 @@ TEST(RaftStorageTest, RestartedReplicaServesNoWatchSnapshotBelowTheCommittedRevi
 {
     testing::TempDir directory;
     std::vector<RaftPeer> peers;
-    for(int i = 0; i < 3; ++i)
-    {
-        auto endpoint = "127.0.0.1:" + std::to_string(contract::port());
-        peers.push_back({i + 1, endpoint, endpoint, endpoint});
-    }
     std::array<std::unique_ptr<RaftMetadataStore>, 3> replicas;
+    const auto path = contract::startCluster(directory.path(), replicas, peers);
     auto open = [&](size_t i)
     {
         RaftConfig config{static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers};
-        auto opened = RaftMetadataStore::open((directory.path() / std::to_string(i)).string(),
-                                              testing::twoKeeperTopology(),
-                                              config);
+        auto opened =
+                RaftMetadataStore::open((path / std::to_string(i)).string(), testing::twoKeeperTopology(), config);
         ASSERT_TRUE(opened.ok()) << opened.status();
         replicas[i] = std::move(*opened);
     };
-    for(size_t i = 0; i < 3; ++i) open(i);
     size_t leader = 3;
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(8);
     while(std::chrono::steady_clock::now() < until && leader == 3)

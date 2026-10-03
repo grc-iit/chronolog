@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <thread>
+#include <string_view>
 #include <random>
 #include <set>
 namespace chronolog::visor
@@ -113,8 +114,9 @@ protected:
     std::array<std::unique_ptr<grpc::Server>, 3> servers;
     std::array<std::unique_ptr<wire::Cluster::Stub>, 3> stubs;
     std::array<std::shared_ptr<grpc::Channel>, 3> channels;
-    void SetUp() override
+    absl::Status start(int attempt)
     {
+        std::filesystem::create_directory(dir.path() / std::to_string(attempt));
         std::vector<RaftPeer> peers;
         for(int i = 0; i < 3; ++i)
         {
@@ -124,10 +126,11 @@ protected:
         }
         for(size_t i = 0; i < 3; ++i)
         {
-            auto opened = RaftMetadataStore::open((dir.path() / std::to_string(i)).string(),
+            auto opened = RaftMetadataStore::open((dir.path() / std::to_string(attempt) / std::to_string(i)).string(),
                                                   testing::twoKeeperTopology(),
                                                   {static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers});
-            ASSERT_TRUE(opened.ok()) << opened.status();
+            if(!opened.ok())
+                return opened.status();
             stores[i] = std::move(*opened);
             memberships[i] = std::make_unique<StaticRouteMembership>(
                     testing::twoKeeperTopology(),
@@ -142,17 +145,41 @@ protected:
                                                            *feeds[i],
                                                            stores[i].get(),
                                                            pools[i].get(),
-                                                           1500ms);
+                                                           1500ms,
+                                                           route_poll_period_);
             grpc::ServerBuilder builder;
             chronolog::rpc::applyServerPolicy(builder);
             builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
             builder.AddListeningPort(peers[i].internal_endpoint, grpc::InsecureServerCredentials());
             builder.RegisterService(services[i].get());
             servers[i] = builder.BuildAndStart();
-            ASSERT_NE(servers[i], nullptr);
+            if(!servers[i])
+                return absl::UnavailableError("cluster RPC port " + peers[i].internal_endpoint + " in use");
             channels[i] = grpc::CreateChannel(peers[i].internal_endpoint, grpc::InsecureChannelCredentials());
             stubs[i] = wire::Cluster::NewStub(channels[i]);
         }
+        return absl::OkStatus();
+    }
+    void SetUp() override
+    {
+        absl::Status status;
+        for(int attempt = 0; attempt < 8; ++attempt)
+        {
+            status = start(attempt);
+            if(status.ok())
+                break;
+            for(size_t i = 0; i < 3; ++i)
+            {
+                stop(i);
+                stubs[i].reset();
+                channels[i].reset();
+                feeds[i].reset();
+                memberships[i].reset();
+            }
+            if(status.message().find(" in use") == std::string_view::npos)
+                break;
+        }
+        ASSERT_TRUE(status.ok()) << status;
         size_t selected = leader();
         ASSERT_LT(selected, 3u);
         if(!seed_story_)
@@ -161,6 +188,7 @@ protected:
         ASSERT_TRUE(stores[selected]->createStory("c", "s").ok());
     }
     bool seed_story_ = true;
+    std::chrono::milliseconds route_poll_period_{100};
     size_t leader()
     {
         const auto until = std::chrono::steady_clock::now() + 8s;
@@ -542,4 +570,94 @@ TEST_F(DynamicClusterBeforeFirstStoryTest, FailureDetectionIgnoresConfiguredKeep
     EXPECT_EQ(route->route().keepers_size(), 2);
 }
 } // namespace
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+class DynamicRouteWakeTest: public DynamicClusterTest
+{
+    void SetUp() override
+    {
+        seed_story_ = false;
+        route_poll_period_ = 1h;
+        DynamicClusterTest::SetUp();
+    }
+};
+TEST_F(DynamicRouteWakeTest, EveryReplicaReceivesRoutesWithoutPeriodicTick)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    for(const auto& id: {"keeper-a", "keeper-b", "grapher"})
+    {
+        wire::CatalogCommand command;
+        auto* request = command.mutable_membership()->mutable_register_();
+        request->set_policy_version(1);
+        auto* process = request->mutable_process();
+        process->set_process_id(id);
+        process->set_instance("instance");
+        process->set_endpoint(std::string(id) + ":50052");
+        process->set_role(std::string(id) == "grapher" ? wire::PROCESS_ROLE_GRAPHER : wire::PROCESS_ROLE_KEEPER);
+        auto result = stores[selected]->propose(command);
+        ASSERT_TRUE(result.ok()) << result.status();
+        wire::RegisterResponse response;
+        ASSERT_TRUE(response.ParseFromString(*result));
+        ASSERT_EQ(response.status().code(), 0);
+    }
+    ASSERT_TRUE(stores[selected]->createChronicle("wake").ok());
+    auto barrier = stores[selected]->createStory("wake", "barrier");
+    ASSERT_TRUE(barrier.ok());
+    std::array<grpc::ClientContext, 3> contexts;
+    std::array<std::unique_ptr<grpc::ClientReader<wire::WatchRoutesResponse>>, 3> readers;
+    std::array<uint64_t, 3> revisions{};
+    for(size_t i = 0; i < 3; ++i)
+    {
+        contexts[i].set_deadline(std::chrono::system_clock::now() + 15s);
+        readers[i] = stubs[i]->WatchRoutes(&contexts[i], wire::WatchRoutesRequest());
+        wire::WatchRoutesResponse update;
+        ASSERT_TRUE(readers[i]->Read(&update));
+        ASSERT_EQ(update.story_id(), barrier->id);
+        revisions[i] = update.revision();
+    }
+    auto created = stores[selected]->createStory("wake", "created");
+    ASSERT_TRUE(created.ok());
+    for(size_t i = 0; i < 3; ++i)
+    {
+        wire::WatchRoutesResponse update;
+        ASSERT_TRUE(readers[i]->Read(&update));
+        EXPECT_EQ(update.story_id(), created->id);
+        EXPECT_TRUE(update.physical_policy());
+        EXPECT_GT(update.revision(), revisions[i]);
+        revisions[i] = update.revision();
+    }
+    wire::CatalogCommand downgrade;
+    auto* heartbeat = downgrade.mutable_membership()->mutable_heartbeat();
+    heartbeat->set_process_id("grapher");
+    heartbeat->set_instance("instance");
+    heartbeat->add_stories_without_physical_policy(created->id);
+    auto result = stores[selected]->propose(downgrade);
+    ASSERT_TRUE(result.ok());
+    wire::HeartbeatResponse response;
+    ASSERT_TRUE(response.ParseFromString(*result));
+    ASSERT_EQ(response.status().code(), 0);
+    for(size_t i = 0; i < 3; ++i)
+    {
+        wire::WatchRoutesResponse update;
+        ASSERT_TRUE(readers[i]->Read(&update));
+        EXPECT_EQ(update.story_id(), created->id);
+        EXPECT_FALSE(update.physical_policy());
+        EXPECT_GT(update.revision(), revisions[i]);
+        revisions[i] = update.revision();
+    }
+    ASSERT_TRUE(stores[selected]->destroyStory(created->id).ok());
+    for(size_t i = 0; i < 3; ++i)
+    {
+        wire::WatchRoutesResponse update;
+        ASSERT_TRUE(readers[i]->Read(&update));
+        EXPECT_EQ(update.story_id(), created->id);
+        EXPECT_TRUE(update.tombstoned());
+        EXPECT_GT(update.revision(), revisions[i]);
+        contexts[i].TryCancel();
+        (void)readers[i]->Finish();
+    }
+}
 } // namespace chronolog::visor

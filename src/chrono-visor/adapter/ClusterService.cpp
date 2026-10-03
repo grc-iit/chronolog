@@ -166,7 +166,8 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                AcquisitionFeed& feed,
                                RaftMetadataStore* raft,
                                WorkerPool* pool,
-                               std::chrono::milliseconds failure_timeout)
+                               std::chrono::milliseconds failure_timeout,
+                               std::chrono::milliseconds route_poll_period)
     : raft_(raft)
     , pool_(pool)
     , membership_(membership)
@@ -175,15 +176,24 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
     , feed_(feed)
     , failure_timeout_(failure_timeout)
 {
-    // Static mode wakes streams on the same cadence for every route history update (W10.6, W10.17).
-    if(raft_ || dynamic_cast<const SqliteMetadataStore*>(&store_))
+    const auto* history = raft_ ? &raft_->appliedStore() : dynamic_cast<const SqliteMetadataStore*>(&store_);
+    if(history)
+    {
+        route_signal_ = history->watchRouteChanges();
         route_notifications_ = std::jthread(
-                [this](std::stop_token stop)
+                [this, route_poll_period](std::stop_token stop)
                 {
+                    auto next_tick = std::chrono::steady_clock::now() + route_poll_period;
                     uint64_t generation = raft_ ? raft_->appliedStore().snapshotGeneration() : 0;
                     while(!stop.stop_requested())
                     {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        (void)route_signal_->try_acquire_until(next_tick);
+                        while(route_signal_->try_acquire()) {}
+                        if(stop.stop_requested())
+                            return;
+                        const bool tick = std::chrono::steady_clock::now() >= next_tick;
+                        if(tick)
+                            next_tick = std::chrono::steady_clock::now() + route_poll_period;
                         std::set<std::shared_ptr<Stream>> streams;
                         {
                             std::lock_guard lock(mutex_);
@@ -191,7 +201,7 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                 return;
                             streams = streams_;
                         }
-                        if(raft_ && raft_->leaderLease())
+                        if(tick && raft_ && raft_->leaderLease())
                         {
                             std::vector<std::string> failed;
                             {
@@ -240,7 +250,10 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                         generation = current;
                     }
                 });
+    }
 }
+
+ClusterService::~ClusterService() { shutdown(); }
 
 grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext* context,
                                                     const internal::v1::ReadClockRequest* request,
@@ -599,6 +612,9 @@ void ClusterService::shutdown()
         closed_ = true;
         open = streams_;
     }
+    route_notifications_.request_stop();
+    if(route_signal_)
+        route_signal_->release();
     for(auto& stream: open) stream->shutdown();
 }
 
