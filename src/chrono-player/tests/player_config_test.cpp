@@ -28,6 +28,7 @@ TEST(player_config, DefaultsMatchTheSpec)
     EXPECT_EQ(cfg->keeper_deadline_ms, 2000u);
     EXPECT_TRUE(cfg->archive_root.empty());
     EXPECT_EQ(cfg->manifest_poll_ms, 1000u);
+    EXPECT_EQ(cfg->archive_read_timeout_ms, 30000u);
 }
 
 TEST(player_config, EnvironmentOverrides)
@@ -39,6 +40,7 @@ TEST(player_config, EnvironmentOverrides)
                                        {"CHRONOLOG_PLAYER_TAIL_MAX_BYTES", "1048576"},
                                        {"CHRONOLOG_PLAYER_ARCHIVE_ROOT", "/archive"},
                                        {"CHRONOLOG_PLAYER_MANIFEST_POLL_MS", "1500"},
+                                       {"CHRONOLOG_PLAYER_ARCHIVE_READ_TIMEOUT_MS", "4000"},
                                        {"CHRONOLOG_PLAYER_KEEPER_INTERNAL", "k1=h:1,k2=h:2"}}));
     ASSERT_TRUE(cfg.ok());
     EXPECT_EQ(cfg->listen, "127.0.0.1:1");
@@ -47,6 +49,7 @@ TEST(player_config, EnvironmentOverrides)
     EXPECT_EQ(cfg->tail_max_bytes, 1048576u);
     EXPECT_EQ(cfg->archive_root, "/archive");
     EXPECT_EQ(cfg->manifest_poll_ms, 1500u);
+    EXPECT_EQ(cfg->archive_read_timeout_ms, 4000u);
     EXPECT_EQ(cfg->keeperInternal({"k2", "x:9"}), "h:2");
 }
 
@@ -70,6 +73,7 @@ TEST(player_config, KeeperInternalAddressFallsBackToTheEndpointHostPlusSuffix)
 
 TEST(player_config, RejectsBadValues)
 {
+    EXPECT_FALSE(PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_ARCHIVE_READ_TIMEOUT_MS", "0"}})).ok());
     EXPECT_FALSE(PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_TAIL_MAX_BYTES", "0"}})).ok());
     EXPECT_FALSE(PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_READ_MAX_EVENTS", "0"}})).ok());
     EXPECT_FALSE(PlayerConfig::load(std::nullopt, env({{"CHRONOLOG_PLAYER_MANIFEST_POLL_MS", "0"}})).ok());

@@ -266,6 +266,20 @@ std::string RandomOp()
     std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(value));
     return text;
 }
+absl::StatusOr<ChunkBytes> LoadTierBytes(const std::shared_ptr<PosixTier>& tier,
+                                         const std::shared_ptr<TierDirectory>& directory,
+                                         const std::string& file)
+{
+    auto status = tier->verify(*directory);
+    if(!status.ok())
+        return status;
+    auto data = PosixTier::read(directory->fd.get(), file);
+    if(!data.ok())
+        return data.status();
+    ChunkBytes bytes{std::make_unique<unsigned char[]>(data->size()), data->size()};
+    std::copy(data->begin(), data->end(), bytes.data.get());
+    return bytes;
+}
 } // namespace
 
 FileTierStore::FileTierStore(std::filesystem::path root,
@@ -377,12 +391,16 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     return store;
 }
 
-absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::filesystem::path root,
-                                                                           std::chrono::milliseconds manifest_poll,
-                                                                           LoadFile load_file,
-                                                                           size_t read_threads,
-                                                                           DecodeFile decode_file)
+absl::StatusOr<std::unique_ptr<FileTierStore>>
+FileTierStore::OpenReadOnly(std::filesystem::path root,
+                            std::chrono::milliseconds manifest_poll,
+                            LoadFile load_file,
+                            size_t read_threads,
+                            DecodeFile decode_file,
+                            std::chrono::milliseconds archive_read_timeout)
 {
+    if(archive_read_timeout.count() <= 0)
+        return absl::InvalidArgumentError("archive read timeout must be positive");
     if(manifest_poll.count() <= 0)
         return absl::InvalidArgumentError("manifest poll must be positive");
     const auto threads = ReaderThreads(read_threads);
@@ -404,6 +422,7 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::OpenReadOnly(std::
                                                                   std::move(decode_file)));
     store->read_only_ = true;
     store->manifest_poll_ = manifest_poll;
+    store->archive_read_timeout_ = archive_read_timeout;
     auto status = store->refreshNow();
     if(!status.ok())
         return status;
@@ -632,7 +651,7 @@ FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure,
             if(next->state != ManifestState::Published)
                 return failure;
         }
-        auto bytes = loadResolvedFile(next->file);
+        auto bytes = loadForRead(root_ / next->file);
         if(!bytes.ok())
         {
             failure = bytes.status();
@@ -1109,7 +1128,14 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         readers = readers_.get();
     }
     using Loaded = absl::StatusOr<ChunkBytes>;
-    std::deque<std::pair<size_t, std::future<Loaded>>> pending;
+    struct Pending
+    {
+        size_t index;
+        std::future<Loaded> ready;
+        ArchiveReaderPool::Deadline deadline;
+        std::shared_ptr<PosixTier> tier;
+    };
+    std::deque<Pending> pending;
     size_t next = 0;
     auto fill = [&]
     {
@@ -1123,21 +1149,56 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
                 results[index] = std::vector<Event>{};
             else
             {
-                auto task = std::make_shared<std::packaged_task<Loaded()>>([this, file = root_ / records[index].file]
-                                                                           { return load_file_(file); });
-                pending.emplace_back(index, task->get_future());
-                if(!readers->submit([task] { (*task)(); }))
-                    results[index] = absl::UnavailableError("archive readers stopping");
+                if(auto migration = log_->location(records[index].file))
+                {
+                    std::shared_ptr<PosixTier> tier;
+                    {
+                        std::lock_guard lock(tier_table_mutex_);
+                        auto found = tiers_.find(migration->tier);
+                        if(found != tiers_.end() && found->second->config.rank == migration->rank &&
+                           found->second->config.tier_uuid == migration->tier_uuid)
+                            tier = found->second;
+                    }
+                    auto directory = tier ? tier->directory() : nullptr;
+                    if(!directory)
+                    {
+                        results[index] = absl::UnavailableError("archive effective tier unavailable");
+                        continue;
+                    }
+                    const auto deadline = std::chrono::steady_clock::now() + tier->timeout();
+                    auto ready = tier->submit([tier, directory, file = records[index].file]
+                                              { return LoadTierBytes(tier, directory, file); });
+                    pending.push_back({index, std::move(ready), deadline, tier});
+                    continue;
+                }
+                const auto deadline = std::chrono::steady_clock::now() + archive_read_timeout_;
+                auto task = std::make_shared<std::packaged_task<Loaded()>>(
+                        [load = load_file_, file = root_ / records[index].file] { return load(file); });
+                auto ready = task->get_future();
+                if(readers->submit([task] { (*task)(); }, deadline))
+                    pending.push_back({index, std::move(ready), deadline, {}});
+                else
+                    results[index] = absl::UnavailableError("archive readers unavailable");
             }
         }
     };
     fill();
     while(!pending.empty())
     {
-        auto [index, ready] = std::move(pending.front());
+        auto [index, ready, deadline, tier] = std::move(pending.front());
         pending.pop_front();
         try
         {
+            if(ready.wait_until(deadline) != std::future_status::ready)
+            {
+                if(tier)
+                    tier->expire();
+                else
+                    readers->expire();
+                results[index] = absl::UnavailableError("archive read deadline exceeded");
+                fill();
+                continue;
+            }
             auto bytes = ready.get();
             results[index] = bytes.ok() ? decodeRecord(records[index], range, max_events, *std::move(bytes))
                                         : afterVanished(records[index], bytes.status(), range, max_events);
@@ -1149,6 +1210,32 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         fill();
     }
     return results;
+}
+
+absl::StatusOr<ChunkBytes> FileTierStore::loadForRead(const std::filesystem::path& file) const
+{
+    const auto relative = file.lexically_relative(root_).generic_string();
+    if(log_->location(relative))
+        return loadResolvedFile(relative);
+    ArchiveReaderPool* readers;
+    {
+        std::lock_guard lock(mutex_);
+        if(!readers_)
+            readers_ = std::make_unique<ArchiveReaderPool>(read_threads_);
+        readers = readers_.get();
+    }
+    const auto deadline = std::chrono::steady_clock::now() + archive_read_timeout_;
+    auto task = std::make_shared<std::packaged_task<absl::StatusOr<ChunkBytes>()>>([load = load_file_, file]
+                                                                                   { return load(file); });
+    auto ready = task->get_future();
+    if(!readers->submit([task] { (*task)(); }, deadline))
+        return absl::UnavailableError("archive readers unavailable");
+    if(ready.wait_until(deadline) != std::future_status::ready)
+    {
+        readers->expire();
+        return absl::UnavailableError("archive read deadline exceeded");
+    }
+    return ready.get();
 }
 
 absl::StatusOr<bool> FileTierStore::canReadRecord(const ManifestRecord& record, Range range) const
@@ -1172,15 +1259,7 @@ absl::StatusOr<bool> FileTierStore::canReadRecord(const ManifestRecord& record, 
 absl::StatusOr<std::vector<Event>>
 FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_events) const
 {
-    auto readable = canReadRecord(record, range);
-    if(!readable.ok())
-        return readable.status();
-    if(!*readable)
-        return std::vector<Event>{};
-    auto bytes = loadResolvedFile(record.file);
-    if(!bytes.ok())
-        return afterVanished(record, bytes.status(), range, max_events);
-    return decodeRecord(record, range, max_events, *std::move(bytes));
+    return readRecords(std::span(&record, 1), range, max_events).front();
 }
 
 absl::StatusOr<std::vector<Event>>
@@ -2629,19 +2708,7 @@ absl::StatusOr<ChunkBytes> FileTierStore::loadResolvedFile(const std::string& fi
     auto directory = tier->directory();
     if(!directory)
         return absl::UnavailableError("archive effective tier unavailable");
-    return tier->run(
-            [tier, directory, file]() -> absl::StatusOr<ChunkBytes>
-            {
-                auto status = tier->verify(*directory);
-                if(!status.ok())
-                    return status;
-                auto data = PosixTier::read(directory->fd.get(), file);
-                if(!data.ok())
-                    return data.status();
-                ChunkBytes bytes{std::make_unique<unsigned char[]>(data->size()), data->size()};
-                std::copy(data->begin(), data->end(), bytes.data.get());
-                return bytes;
-            });
+    return tier->run([tier, directory, file] { return LoadTierBytes(tier, directory, file); });
 }
 
 void FileTierStore::queueTierSweeps()

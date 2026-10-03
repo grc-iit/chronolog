@@ -67,7 +67,8 @@ public:
                  std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000),
                  LoadFile load_file = {},
                  size_t read_threads = 0,
-                 DecodeFile decode_file = {});
+                 DecodeFile decode_file = {},
+                 std::chrono::milliseconds archive_read_timeout = std::chrono::milliseconds(30000));
     absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
@@ -128,6 +129,7 @@ private:
     absl::StatusOr<std::vector<Event>>
     afterVanished(const ManifestRecord& record, absl::Status failure, Range range, size_t max_events) const;
     std::optional<ManifestRecord> successor(const ManifestIndex& index, const ManifestRecord& record) const;
+    absl::StatusOr<ChunkBytes> loadForRead(const std::filesystem::path& file) const;
     bool effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::Status rollbackOrLose(ManifestRecord record, Hlc w);
     void queueCommittedCleanup(const std::set<std::string>& on_disk);
@@ -209,6 +211,7 @@ private:
     std::map<StoryId, std::optional<Hlc>> anchors_;
     mutable std::map<StoryId, Hlc> watermarks_;
     mutable std::unique_ptr<ArchiveReaderPool> readers_;
+    std::chrono::milliseconds archive_read_timeout_{30000};
     Hooks hooks_;
     // Set once a manifest append or fsync failed or a switch could not be made durable; cleared only by reopening.
     bool compaction_stopped_{};

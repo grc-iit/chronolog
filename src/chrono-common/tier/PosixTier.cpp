@@ -9,8 +9,8 @@ namespace chronolog
 PosixTier::PosixTier(TierConfig tier, std::string deployment, size_t threads, std::chrono::milliseconds timeout)
     : config(std::move(tier))
     , deployment_(std::move(deployment))
-    , threads_(threads)
     , timeout_(timeout)
+    , executor_(std::make_unique<ArchiveReaderPool>(threads))
 {}
 
 absl::StatusOr<std::string> PosixTier::read(int root, const std::string& file, bool direct)
