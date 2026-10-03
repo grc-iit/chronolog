@@ -4,6 +4,7 @@
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/membership.h"
+#include "chronolog/message_limits.h"
 #include "journal/RamJournal.h"
 #include "runtime/WorkerPool.h"
 
@@ -21,10 +22,10 @@ public:
     {
         // Applied when the request leaves max_events at zero.
         uint64_t default_max_events{100000};
-        // One response message holds at most this many events or payload bytes.
+        // One response message holds at most this many events or encoded event bytes.
         size_t batch_events{512};
-        size_t batch_bytes{2u << 20};
-        // Total payload bytes in one FetchHot reply; the stream is truncated beyond it.
+        size_t batch_bytes{kEventBatchBytes};
+        // Total encoded event bytes in one FetchHot reply; the stream is truncated beyond it.
         size_t max_bytes{64u << 20};
     };
 

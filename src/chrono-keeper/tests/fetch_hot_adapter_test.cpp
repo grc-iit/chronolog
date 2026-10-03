@@ -98,6 +98,49 @@ TEST(ArchiveTransferTest, FetchHotStreamsBatchesThenOneTrailer)
         EXPECT_TRUE(Before(fetched.events[i - 1].hlc(), fetched.events[i].hlc()));
 }
 
+TEST(ArchiveTransferTest, FetchHotBoundsEncodedAttributesAndAdmitsOversizedFirstEvent)
+{
+    test::AdapterRig rig;
+    std::vector<AppendItem> items;
+    for(uint64_t sequence = 1; sequence <= 4; ++sequence)
+    {
+        auto item = Item(sequence);
+        item.envelope.attributes["padding"] = std::string(sequence == 3 ? 5 << 20 : 1 << 20, 'a');
+        items.push_back(std::move(item));
+    }
+    auto appended = rig.rig.journal->append({1, 7, items}, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_EQ(appended->size(), items.size());
+    for(const auto& result: *appended) ASSERT_TRUE(result.status.ok());
+    auto ctx = test::AdapterRig::context();
+    auto reader = rig.archive->FetchHot(ctx.get(), AllRequest());
+    iv1::FetchHotResponse response;
+    size_t delivered = 0;
+    size_t batches = 0;
+    bool complete = false;
+    for(size_t messages = 0; messages < 10 && reader->Read(&response); ++messages)
+    {
+        size_t bytes = 0;
+        for(const auto& event: response.batch().events())
+        {
+            bytes += event.ByteSizeLong();
+            ASSERT_LT(delivered, items.size());
+            EXPECT_EQ(event.id().sequence(), items[delivered].sequence);
+            EXPECT_EQ(event.envelope().attributes().at("padding"), items[delivered].envelope.attributes.at("padding"));
+            ++delivered;
+        }
+        EXPECT_TRUE(bytes <= kEventBatchBytes || response.batch().events_size() == 1);
+        if(response.has_batch())
+            ++batches;
+        if(response.has_trailer())
+            complete = !response.trailer().truncated();
+    }
+    reader->Finish();
+    EXPECT_EQ(delivered, 4u);
+    EXPECT_EQ(batches, 4u);
+    EXPECT_TRUE(complete);
+}
+
 TEST(ArchiveTransferTest, FetchHotTruncatesAtMaxEvents)
 {
     test::AdapterRig rig;

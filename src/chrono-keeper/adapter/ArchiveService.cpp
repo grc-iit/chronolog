@@ -140,20 +140,21 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 bool truncated = false;
                 for(const auto& event: snapshot->events)
                 {
-                    const size_t bytes = event.envelope.payload.size();
+                    auto encoded = convert::toProto(event);
+                    const size_t bytes = encoded.ByteSizeLong();
                     if(sent >= limit || (sent > 0 && total_bytes + bytes > options_.max_bytes))
                     {
                         truncated = true;
                         break;
                     }
                     if(!current || current->batch().events_size() >= static_cast<int>(options_.batch_events) ||
-                       (current_bytes > 0 && current_bytes + bytes > options_.batch_bytes))
+                       (current_bytes > 0 && current_bytes + bytes > std::min(options_.batch_bytes, kEventBatchBytes)))
                     {
                         current = &out.emplace_back();
                         current->mutable_batch();
                         current_bytes = 0;
                     }
-                    *current->mutable_batch()->add_events() = convert::toProto(event);
+                    *current->mutable_batch()->add_events() = std::move(encoded);
                     current_bytes += bytes;
                     total_bytes += bytes;
                     ++sent;

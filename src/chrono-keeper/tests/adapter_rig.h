@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "adapter/ArchiveService.h"
+#include "rpc/Channel.h"
 #include "adapter/JournalService.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
@@ -28,7 +29,7 @@ public:
         builder.RegisterService(&journal_service_);
         builder.RegisterService(&archive_service_);
         server_ = builder.BuildAndStart();
-        auto channel = grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials());
+        auto channel = rpc::peerChannel("127.0.0.1:" + std::to_string(port));
         journal = v1::Journal::NewStub(channel);
         archive = internal::v1::Archive::NewStub(channel);
     }
