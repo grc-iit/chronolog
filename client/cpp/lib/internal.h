@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <unistd.h>
 
 namespace chronolog::client::detail
 {
@@ -113,6 +114,8 @@ inline grpc::ChannelArguments channelPolicy()
     args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
     return args;
 }
+struct Lifecycle;
+int64_t boottimeNs();
 struct State
 {
     explicit State(ClientOptions value)
@@ -120,6 +123,11 @@ struct State
         , clock(options.time_source)
     {}
     const ClientOptions options;
+    // A forked child inherits no scheduler thread and must not use inherited channels, locks or retry ownership.
+    const pid_t pid{getpid()};
+    std::shared_ptr<Lifecycle> lifecycle;
+    bool forked() const { return getpid() != pid; }
+    int64_t boottime() const { return options.lease.boottime_ns ? options.lease.boottime_ns() : boottimeNs(); }
     ChronoClock clock;
     std::mutex mutex;
     Hlc floor;
