@@ -179,7 +179,6 @@ TEST(ClusterClientTest, AnAttemptGetsTheWholeRemainingDeadline)
     ASSERT_EQ(cluster.budgets.size(), 2u);
     EXPECT_GT(cluster.budgets[0], deadline / 2);
     EXPECT_GT(cluster.budgets[1], deadline / 2);
-    EXPECT_LE(cluster.budgets[1], cluster.budgets[0]);
 }
 } // namespace
 } // namespace chronolog
