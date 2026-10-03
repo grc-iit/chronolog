@@ -25,6 +25,8 @@ if(CHRONOLOG_BUILD_BENCH)
     add_executable(chronolog_archive_physical_bench ../tests/physical_read_bench.cpp)
     target_link_libraries(chronolog_archive_physical_bench PRIVATE
         chronolog_grapher_tier chronolog_warnings nlohmann_json::nlohmann_json)
+    add_executable(chronolog_archive_compaction_bench ../tests/compaction_bench.cpp)
+    target_link_libraries(chronolog_archive_compaction_bench PRIVATE chronolog_grapher_tier chronolog_warnings)
 endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
