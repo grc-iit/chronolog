@@ -64,6 +64,16 @@ async def main():
         wal = str(Path(env['CHRONOLOG_HOME']) / 'instances/default/keeper/wal')
         ready = None
 
+        async def attachments(expected):
+            deadline = time.monotonic() + 30
+            while True:
+                state = cli('status', 'default')
+                require(state['state'] == 'ready', 'ready while supervisor publishes leases')
+                if state['attach']['count'] == expected:
+                    return
+                require(time.monotonic() < deadline, 'published MCP attachment count')
+                await asyncio.sleep(0.1)
+
         async def mcp_session(server_command, server_args, environment, *, write=False, leased=True):
             parameters = StdioServerParameters(command=server_command, args=server_args, env=environment)
             async with stdio_client(parameters) as (read, send), ClientSession(read, send) as session:
@@ -72,8 +82,7 @@ async def main():
                 require({tool.name for tool in tools} == {'context_open', 'context_remember', 'context_recall',
                     'context_latest', 'context_follow', 'context_reconcile', 'context_checkpoint',
                     'context_close', 'context_list', 'context_status'}, 'existing ten MCP tools')
-                state = cli('status', 'default')
-                require(state['attach']['count'] == (1 if leased else 0), 'MCP attachment lease')
+                await attachments(1 if leased else 0)
                 if leased:
                     refusal = command(['chronolog', 'down', 'default'], ok=False)
                     require('foreign attach leases' in refusal, 'down refuses a live MCP lease')
@@ -113,6 +122,7 @@ async def main():
                 closed = await tool('context_close', session_handle=handle)
                 if write:
                     require(closed['release_committed'], 'writer clean close')
+            await attachments(0)
             print('PASS MCP lease, complete recall, time range, latest and follow')
 
         try:

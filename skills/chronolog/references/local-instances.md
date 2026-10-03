@@ -27,7 +27,7 @@ The registry is `$CHRONOLOG_HOME`, default `${XDG_STATE_HOME:-$HOME/.local/state
 | `stopped` | The managed supervisor lock is free, or an external endpoint has no reachable listener. Boot a managed instance with `up`; restart an external deployment with its own operator command. |
 | `starting`, `stopping`, `unresponsive` | Boot or shutdown is in progress, or a held supervisor lock has stale status. The supervisor lock, not a pid file, decides managed liveness. |
 
-`chronolog status default --probe` checks an existing record. An external record always uses live endpoint probes. A managed instance is supervised outside the invoking harness's process group, so session exit does not kill the stack. Each attachment holds an flock lease; the kernel drops it even if its process is killed. `status` reports the attachment count and holders.
+`chronolog status default --probe` checks an existing record. An external record always uses live endpoint probes. A managed instance is supervised outside the invoking harness's process group, so session exit does not kill the stack. Each attachment holds an flock lease; the kernel drops it even if its process is killed. `status` reports the attachment count and holders in a periodic supervisor snapshot; `down` checks the live lease locks.
 
 The default policy is `keep`: the last detach leaves the instance running. `--ephemeral` at creation changes it to `stop`, with a 30-second idle grace by default. `chronolog down` refuses a foreign live lease. A normal stop preserves the Catalog, WAL, archive and fixed endpoints; `--purge` removes the managed instance directory and is for disposable data. Explicit WAL/archive directories outside that directory are not purged.
 
