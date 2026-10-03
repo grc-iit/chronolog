@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.grc-iit/chronolog-mcp",
   "title": "ChronoLog MCP",
-  "description": "Durable conversation logging, story management and Replay with explicit completeness.",
+  "description": "Durable agent memory on ChronoLog contexts: remember, recall, follow and reconcile with explicit completeness.",
   "version": "4.0.0",
   "repository": {
     "url": "https://github.com/grc-iit/ChronoLog",
@@ -29,12 +29,29 @@
         },
         {
           "name": "CHRONOLOG_CHRONICLE",
-          "description": "Default chronicle",
+          "description": "The launcher's chronicle that context names resolve in",
           "default": "chronolog"
         },
         {
-          "name": "CHRONOLOG_WRITER_IDENTITY",
-          "description": "Optional writer identity"
+          "name": "CHRONOLOG_MCP_IDENTITY",
+          "description": "Stable launcher base slot; writable tools need it"
+        },
+        {
+          "name": "CHRONOLOG_MCP_SESSION_ID",
+          "description": "The launcher's run session id; fresh when unset"
+        },
+        {
+          "name": "CHRONOLOG_MCP_HOST_ID",
+          "description": "Host id recorded in acquisition records; defaults to the hostname"
+        },
+        {
+          "name": "CHRONOLOG_MCP_LOCK_DIR",
+          "description": "Directory of the host-local slot locks"
+        },
+        {
+          "name": "CHRONOLOG_MCP_STATE_CHRONICLE",
+          "description": "Chronicle holding the _checkpoints stories",
+          "default": "agent-state"
         }
       ]
     }
@@ -42,21 +59,16 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "tools": [
-        "start_chronolog",
-        "record_interaction",
-        "retrieve_interaction",
-        "stop_chronolog",
-        "list_stories",
-        "create_story",
-        "append",
-        "read",
-        "tail"
-      ],
-      "resources": [
-        "chronolog://status"
-      ],
-      "prompts": [
-        "logging_workflow"
+        "context_open",
+        "context_remember",
+        "context_recall",
+        "context_latest",
+        "context_follow",
+        "context_reconcile",
+        "context_checkpoint",
+        "context_close",
+        "context_list",
+        "context_status"
       ]
     }
   }

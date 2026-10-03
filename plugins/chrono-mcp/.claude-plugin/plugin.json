@@ -1,5 +1,5 @@
 {
   "name": "chronolog-mcp",
-  "description": "Durable conversation logging, story management and Replay with explicit completeness.",
+  "description": "Durable agent memory on ChronoLog contexts with explicit completeness and recovery.",
   "version": "4.0.0"
 }
