@@ -350,18 +350,20 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
                 for(int n = ks->size() - 1; n >= 0; --n)
                     if(ks->Get(n).process_id() == id)
                         ks->DeleteSubrange(n, 1);
-                auto acquisitions = store.storyAcquisitions(r.story_id());
-                require(acquisitions.status());
-                for(const auto& a: *acquisitions)
-                    if(a.assigned_keeper.process_id == id && !ks->empty())
-                    {
-                        auto target =
-                                ks->Get(static_cast<int>(a.writer_id % static_cast<uint64_t>(ks->size()))).process_id();
-                        if(std::find(r.observe_floor().begin(), r.observe_floor().end(), target) ==
-                           r.observe_floor().end())
-                            r.add_observe_floor(target);
-                    }
             }
+            // Released writers can outlive several transitions before their next acquisition.
+            auto acquisitions = store.storyAcquisitions(r.story_id(), true);
+            require(acquisitions.status());
+            const auto& keepers = r.route().keepers();
+            for(const auto& a: *acquisitions)
+                if(!lists(r.route(), a.assigned_keeper.process_id) && !keepers.empty())
+                {
+                    const auto& target =
+                            keepers.Get(static_cast<int>(a.writer_id % static_cast<uint64_t>(keepers.size())))
+                                    .process_id();
+                    if(std::find(r.observe_floor().begin(), r.observe_floor().end(), target) == r.observe_floor().end())
+                        r.add_observe_floor(target);
+                }
             auto bumped = store.compareAndSetEpoch(r.story_id(), r.route().epoch(), r.route().epoch() + 1);
             require(bumped.status());
             r.mutable_route()->set_epoch(*bumped);

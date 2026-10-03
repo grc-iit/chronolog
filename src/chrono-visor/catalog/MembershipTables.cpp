@@ -820,18 +820,25 @@ bool SqliteMetadataStore::membershipWouldEmpty(const std::string& id) const
     return q.next();
 }
 
-absl::StatusOr<std::vector<AcquisitionChange>> SqliteMetadataStore::storyAcquisitions(StoryId id) const
+absl::StatusOr<std::vector<AcquisitionChange>> SqliteMetadataStore::storyAcquisitions(StoryId id,
+                                                                                      bool include_released) const
 try
 {
     std::lock_guard lock(mutex_);
     std::vector<AcquisitionChange> result;
     const auto rev = revision(db_);
     Query q(db_,
-            "SELECT writer_id,incarnation,keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND released=0 "
+            "SELECT writer_id,incarnation,keeper_id,keeper_endpoint,released FROM acquisitions WHERE story_id=?1 "
+            "AND (released=0 OR ?2) "
             "ORDER BY writer_id");
-    q.number(1, id);
+    q.number(1, id).number(2, include_released);
     while(q.next())
-        result.push_back({rev, id, q.number(0), q.number(1), {q.bytes(2), q.bytes(3)}, AcquisitionState::Acquired});
+        result.push_back({rev,
+                          id,
+                          q.number(0),
+                          q.number(1),
+                          {q.bytes(2), q.bytes(3)},
+                          q.number(4) ? AcquisitionState::Released : AcquisitionState::Acquired});
     return result;
 }
 MEMBERSHIP_CATCH
