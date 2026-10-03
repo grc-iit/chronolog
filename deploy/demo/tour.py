@@ -533,9 +533,9 @@ class Tour:
 
     def step10(self):
         self.heading(10, "Agents: MCP and OpenTelemetry",
-                     "chronolog-mcp exposes ChronoLog to any MCP client such as Claude Code. Tool calls land in the same",
-                     "log with durable acknowledgements and the MCP request id as an attribute. OpenTelemetry spans use the",
-                     "GenAI conventions and keep their trace and span ids.")
+                     "chronolog-mcp exposes ChronoLog contexts to any MCP client such as Claude Code. Memories land in the",
+                     "same log with durable acknowledgements, the agent identity and a stable operation id as attributes.",
+                     "OpenTelemetry spans use the GenAI conventions and keep their trace and span ids.")
         try:
             from mcp import ClientSession, StdioServerParameters
             from mcp.client.stdio import stdio_client
@@ -544,38 +544,50 @@ class Tour:
             raise TourError(f"chronolog-mcp and mcp must be installed in this Python environment: {error}")
         chronicle = f"{self.chronicle}-mcp"
         args = ["-m", "chronomcp.server", "--catalog", self.catalog, "--player", self.player,
-                "--chronicle", chronicle, "--identity", "tour-mcp", "--timeout", "10"]
+                "--chronicle", chronicle, "--state-chronicle", f"{chronicle}-state", "--identity", "tour-mcp",
+                "--timeout", "10"]
 
         async def session():
             params = StdioServerParameters(command=sys.executable, args=args, env=dict(os.environ))
             async with stdio_client(params, errlog=open(os.devnull, "w")) as (read, write):
                 async with ClientSession(read, write) as client:
                     await client.initialize()
+
+                    async def tool(tool_name, /, **arguments):
+                        return json.loads((await client.call_tool(tool_name, arguments)).content[0].text)
+
                     tools = sorted(t.name for t in (await client.list_tools()).tools)
-                    created = json.loads((await client.call_tool("create_story", {"story": "mcp-notes"})).content[0].text)
-                    story = created["id"]
-                    appended = json.loads((await client.call_tool(
-                        "append", {"story": story, "content": "the agent remembers this", "attributes":
-                                   {"gen_ai.agent.id": "claude-code", "gen_ai.operation.name": "chat"}})).content[0].text)
+                    opened = await tool("context_open", name="mcp-notes", create=True)
+                    handle = opened["session_handle"]
+                    remembered = await tool("context_remember", session_handle=handle, operation_id="tour-note-1",
+                                            content="the agent remembers this",
+                                            attributes={"gen_ai.operation.name": "chat"})
                     deadline = time.monotonic() + 30
                     while True:
-                        result = json.loads((await client.call_tool("read", {"story": story})).content[0].text)
-                        complete = result["completion"] and result["completion"]["complete"]
-                        if complete or time.monotonic() > deadline:
-                            return tools, appended, result
+                        result = await tool("context_recall", session_handle=handle, view="full")
+                        if result["answer_complete"] or time.monotonic() > deadline:
+                            await tool("context_close", session_handle=handle)
+                            return tools, remembered, result
                         await asyncio.sleep(0.3)
 
-        call(f"python -m chronomcp.server --catalog {self.catalog} --player {self.player} --chronicle {chronicle}  # stdio")
-        tools, appended, result = asyncio.run(asyncio.wait_for(session(), timeout=90))
+        call(f"python -m chronomcp.server --catalog {self.catalog} --player {self.player} --chronicle {chronicle} "
+             "--identity tour-mcp  # stdio")
+        tools, remembered, result = asyncio.run(asyncio.wait_for(session(), timeout=90))
         show("tools", ", ".join(tools))
-        show("append", f"event {appended['event_id']} hlc {appended['hlc']} durability {appended['durability']} acked={appended['acked']}")
-        check({"append", "read", "tail", "create_story", "list_stories"} <= set(tools), "the MCP server lists its story tools")
-        check(appended["acked"], "an MCP append is acknowledged DURABLE")
+        receipt = remembered["receipt"] or {}
+        show("remember", f"event {receipt.get('event_id')} hlc {receipt.get('hlc')} stored {remembered['stored']}")
+        check({"context_open", "context_remember", "context_recall", "context_follow", "context_reconcile"}
+              <= set(tools), "the MCP server lists its context tools")
+        check(remembered["stored"] == "durable", "an MCP memory is acknowledged DURABLE")
         events = result["events"]
-        show("read", f"{len(events)} event, completion {result['completion']['complete']}, attributes {events[0]['attributes']}")
-        check(len(events) == 1 and events[0]["content"] == "the agent remembers this" and result["completion"]["complete"],
-              "an MCP read returns the event with a complete Completion")
-        check("requestId" in events[0]["attributes"], "the MCP request id is stored as an attribute")
+        show("recall", f"{len(events)} event, answer_complete {result['answer_complete']}, attributes "
+                       f"{events[0]['attributes'] if events else None}")
+        check(len(events) == 1 and events[0]["content"]["data"] == "the agent remembers this"
+              and result["answer_complete"] and result["completion"]["complete"],
+              "an MCP recall returns the event with a complete Completion")
+        check(events[0]["attributes"].get("chronolog.operation.id") == "tour-note-1"
+              and events[0]["attributes"].get("gen_ai.agent.id") == "tour-mcp",
+              "the agent identity and operation id are stored as attributes")
         launcher = os.path.join(os.path.dirname(sys.executable), "chronolog-mcp")
         command = launcher if os.path.exists(launcher) else f"{sys.executable} -m chronomcp.server"
         say("Register this stack with Claude Code with one command:")
