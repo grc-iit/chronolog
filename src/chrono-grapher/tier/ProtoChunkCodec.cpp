@@ -1,7 +1,7 @@
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/FileIO.h"
 #include "chronolog/v1/chronolog.pb.h"
-#include <fstream>
+
 
 namespace chronolog
 {
@@ -109,21 +109,23 @@ absl::Status ProtoChunkCodec::write(const std::filesystem::path& file, std::span
     return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<Event>> ProtoChunkCodec::read(const std::filesystem::path& file) const
+absl::StatusOr<std::vector<Event>> ProtoChunkCodec::decode(std::span<unsigned char> input) const
 {
-    std::ifstream input(file, std::ios::binary);
-    if(!input)
-        return absl::UnavailableError("cannot open archived chunk");
+    if(input.size() > kMaxBytes)
+        return absl::UnavailableError("chunk byte limit exceeded");
     std::vector<Event> events;
     std::size_t total = 0;
-    while(input.peek() != std::char_traits<char>::eof())
+    size_t offset = 0;
+    while(offset < input.size())
     {
         uint32_t length = 0;
         bool terminated = false;
         for(unsigned shift = 0; shift < 35; shift += 7)
         {
-            const int byte = input.get();
-            if(byte == std::char_traits<char>::eof() || (shift == 28 && (byte & 0xf0) != 0))
+            if(offset == input.size())
+                return absl::UnavailableError("torn chunk record length");
+            const unsigned char byte = input[offset++];
+            if(shift == 28 && (byte & 0xf0) != 0)
                 return absl::UnavailableError("torn chunk record length");
             length |= static_cast<uint32_t>(byte & 0x7f) << shift;
             if((byte & 0x80) == 0)
@@ -135,19 +137,17 @@ absl::StatusOr<std::vector<Event>> ProtoChunkCodec::read(const std::filesystem::
         if(!terminated || length > kMaxRecord || total + length + 5 > kMaxBytes || events.size() >= kMaxEvents)
             return absl::UnavailableError("invalid chunk record length");
         total += length + 5;
-        std::string bytes(length, '\0');
-        if(!input.read(bytes.data(), length))
+        if(length > input.size() - offset)
             return absl::UnavailableError("torn chunk record");
         v1::Event encoded;
-        if(!encoded.ParseFromString(bytes))
+        if(!encoded.ParseFromArray(input.data() + offset, length))
             return absl::UnavailableError("invalid chunk protobuf");
+        offset += length;
         auto event = Decode(encoded);
         if(!event.ok())
             return event.status();
         events.push_back(*std::move(event));
     }
-    if(input.bad())
-        return absl::UnavailableError("chunk read failed");
     return events;
 }
 } // namespace chronolog

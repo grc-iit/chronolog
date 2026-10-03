@@ -56,6 +56,10 @@ public:
         return codec_->write(path, events);
     }
     absl::StatusOr<std::vector<Event>> read(const fs::path& path) const override { return codec_->read(path); }
+    absl::StatusOr<std::vector<Event>> decode(std::span<unsigned char> bytes) const override
+    {
+        return codec_->decode(bytes);
+    }
 
 private:
     std::shared_ptr<const ChunkCodec> codec_;
@@ -134,10 +138,10 @@ class BlockingRead
 {
 public:
     std::string filename;
-    absl::StatusOr<std::vector<Event>> operator()(const fs::path& path)
+    absl::StatusOr<ChunkBytes> operator()(const fs::path& path)
     {
         if(!filename.empty() && path.filename() != filename)
-            return ReadChunkFile(path);
+            return LoadChunkFile(path);
         {
             std::unique_lock lock(mutex_);
             ++entered_;
@@ -145,7 +149,7 @@ public:
             if(!changed_.wait_for(lock, std::chrono::seconds(5), [&] { return released_; }))
                 timed_out_ = true;
         }
-        return ReadChunkFile(path);
+        return LoadChunkFile(path);
     }
     bool waitEntered(int count)
     {
@@ -274,6 +278,182 @@ TEST(FileTierStore, RecordsFromOneSnapshotAreReadInParallel)
     }
 }
 
+TEST(FileTierStore, BatchReadMatchesSequentialReadRecord)
+{
+    auto directory = TestDirectory();
+    auto store = Open(*directory);
+    ASSERT_TRUE(store.ok());
+    std::vector<ManifestRecord> records;
+    for(int i = 0; i < 7; ++i)
+    {
+        auto chunk = contract::Window(100 + i * 100, 200 + i * 100);
+        auto second = chunk.events.front();
+        ++second.id.sequence;
+        ++second.hlc.logical;
+        chunk.events.push_back(second);
+        auto record = (*store)->publish(chunk);
+        ASSERT_TRUE(record.ok());
+        records.push_back(*record);
+    }
+    fs::remove(*directory / records[3].file);
+    for(auto axis: {Range::Axis::Hlc, Range::Axis::Physical})
+        for(size_t cap: {0u, 1u, 2u, 99u})
+        {
+            Range range{axis, {150, 0}, {650, 0}};
+            auto batch = (*store)->readRecords(records, range, cap);
+            ASSERT_EQ(batch.size(), records.size());
+            for(size_t i = 0; i < records.size(); ++i)
+            {
+                auto sequential = (*store)->readRecord(records[i], range, cap);
+                EXPECT_EQ(batch[i].status(), sequential.status());
+                if(sequential.ok())
+                {
+                    ASSERT_TRUE(batch[i].ok());
+                    ASSERT_EQ(batch[i]->size(), sequential->size());
+                    for(size_t j = 0; j < sequential->size(); ++j)
+                    {
+                        EXPECT_EQ(batch[i]->at(j).id, sequential->at(j).id);
+                        EXPECT_EQ(batch[i]->at(j).hlc, sequential->at(j).hlc);
+                    }
+                }
+            }
+            EXPECT_FALSE(batch[3].ok());
+            EXPECT_TRUE(batch[2].ok());
+            EXPECT_TRUE(batch[4].ok());
+        }
+}
+
+TEST(FileTierStore, BatchReadRunsRecordsConcurrently)
+{
+    auto directory = TestDirectory();
+    BlockingRead gate;
+    auto store = FileTierStore::Open(*directory,
+                                     "primary",
+                                     {{1, {100, 0}}},
+                                     std::make_shared<ProtoChunkCodec>(),
+                                     {},
+                                     std::ref(gate),
+                                     2);
+    ASSERT_TRUE(store.ok());
+    std::vector<ManifestRecord> records;
+    for(int i = 0; i < 5; ++i)
+    {
+        auto record = (*store)->publish(contract::Window(100 + i * 100, 200 + i * 100));
+        ASSERT_TRUE(record.ok());
+        records.push_back(*record);
+    }
+    auto pending =
+            std::async(std::launch::async, [&] { return (*store)->readRecords(records, contract::WholeArchive()); });
+    EXPECT_TRUE(gate.waitEntered(2));
+    EXPECT_TRUE(gate.release());
+    for(const auto& result: pending.get()) EXPECT_TRUE(result.ok());
+}
+
+TEST(FileTierStore, BatchReadOnReadOnlyStore)
+{
+    auto directory = TestDirectory();
+    auto writer = Open(*directory);
+    ASSERT_TRUE(writer.ok());
+    auto record = (*writer)->publish(contract::Window());
+    ASSERT_TRUE(record.ok());
+    auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), {}, 2);
+    ASSERT_TRUE(reader.ok());
+    auto results = (*reader)->readRecords(std::span<const ManifestRecord>(&*record, 1), contract::WholeArchive());
+    ASSERT_EQ(results.size(), 1u);
+    ASSERT_TRUE(results[0].ok());
+    ASSERT_EQ(results[0]->size(), 1u);
+    EXPECT_EQ(results[0]->front().id.sequence, 100u);
+}
+
+TEST(FileTierStore, BatchLoadDecodesOnCallerInInputOrder)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        auto writer = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+        ASSERT_TRUE(writer.ok());
+        for(int i = 0; i < 9; ++i) ASSERT_TRUE((*writer)->publish(contract::Window(100 + 100 * i, 200 + 100 * i)).ok());
+        auto records = (*writer)->manifest(1);
+        ASSERT_TRUE(records.ok());
+        const auto caller = std::this_thread::get_id();
+        std::atomic<size_t> loads{};
+        std::vector<std::string> decoded;
+        auto reader = FileTierStore::OpenReadOnly(
+                *directory,
+                std::chrono::hours(1),
+                [&](const fs::path& file)
+                {
+                    EXPECT_NE(std::this_thread::get_id(), caller);
+                    ++loads;
+                    return LoadChunkFile(file);
+                },
+                2,
+                [&](const fs::path& file, ChunkBytes& bytes)
+                {
+                    EXPECT_EQ(std::this_thread::get_id(), caller);
+                    decoded.push_back(file.filename().string());
+                    return DecodeChunkFile(file, bytes);
+                });
+        ASSERT_TRUE(reader.ok());
+        auto events = (*reader)->read(1, {Range::Axis::Hlc, {0, 0}, {2000, 0}});
+        ASSERT_TRUE(events.ok()) << events.status();
+        EXPECT_EQ(events->size(), 9u);
+        ASSERT_EQ(decoded.size(), records->size());
+        for(size_t i = 0; i < records->size(); ++i)
+            EXPECT_EQ(decoded[i], fs::path((*records)[i].file).filename().string());
+        decoded.clear();
+        std::reverse(records->begin(), records->end());
+        auto batch = (*reader)->readRecords(*records, {Range::Axis::Hlc, {0, 0}, {2000, 0}}, 1);
+        ASSERT_EQ(batch.size(), records->size());
+        ASSERT_EQ(decoded.size(), records->size());
+        for(size_t i = 0; i < records->size(); ++i)
+        {
+            ASSERT_TRUE(batch[i].ok());
+            EXPECT_EQ(batch[i]->size(), 1u);
+            EXPECT_EQ(decoded[i], fs::path((*records)[i].file).filename().string());
+        }
+        EXPECT_EQ(loads.load(), 18u);
+    }
+}
+
+TEST(FileTierStore, LoadedBytesSurviveUnlinkAndDecodeFailureStaysInItsSlot)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<ProtoChunkCodec>(),
+                                                                          std::make_shared<HDF5ChunkCodec>()})
+    {
+        auto directory = TestDirectory();
+        auto writer = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec);
+        ASSERT_TRUE(writer.ok());
+        for(int i = 0; i < 3; ++i) ASSERT_TRUE((*writer)->publish(contract::Window(100 + 100 * i, 200 + 100 * i)).ok());
+        auto records = (*writer)->manifest(1);
+        ASSERT_TRUE(records.ok());
+        auto reader = FileTierStore::OpenReadOnly(
+                *directory,
+                std::chrono::hours(1),
+                [&](const fs::path& file)
+                {
+                    auto bytes = LoadChunkFile(file);
+                    if(bytes.ok())
+                    {
+                        EXPECT_TRUE(fs::remove(file));
+                        if(file.filename() == fs::path((*records)[1].file).filename())
+                            std::fill_n(bytes->data.get(), bytes->size, 0xff);
+                    }
+                    return bytes;
+                },
+                2);
+        ASSERT_TRUE(reader.ok());
+        auto batch = (*reader)->readRecords(*records, contract::WholeArchive());
+        ASSERT_EQ(batch.size(), 3u);
+        ASSERT_TRUE(batch[0].ok());
+        EXPECT_EQ(batch[0]->size(), 1u);
+        EXPECT_FALSE(batch[1].ok());
+        ASSERT_TRUE(batch[2].ok());
+        EXPECT_EQ(batch[2]->size(), 1u);
+    }
+}
+
 TEST(FileTierStore, ReadRecordErasedBeforeOpenIsUnavailable)
 {
     auto directory = TestDirectory();
@@ -302,13 +482,13 @@ Chunk PhysicalChunk(int64_t hlc, TimeReading physical)
 class CountingRead
 {
 public:
-    absl::StatusOr<std::vector<Event>> operator()(const fs::path& path)
+    absl::StatusOr<ChunkBytes> operator()(const fs::path& path)
     {
         {
             std::lock_guard lock(mutex_);
             files_.insert(path.filename().string());
         }
-        return ReadChunkFile(path);
+        return LoadChunkFile(path);
     }
     std::set<std::string> files()
     {
