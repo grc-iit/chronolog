@@ -14,7 +14,7 @@ target_link_libraries(chronolog_grapher_tier PUBLIC
 
 add_executable(chronolog_grapher_tier_tests ../tests/file_tier_store_test.cpp)
 target_link_libraries(chronolog_grapher_tier_tests PRIVATE
-    chronolog_grapher_tier chronolog_warnings GTest::gtest GTest::gtest_main)
+    chronolog_grapher_tier chronolog_warnings nlohmann_json::nlohmann_json GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chronolog_grapher_tier_tests DISCOVERY_TIMEOUT 60
     TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)

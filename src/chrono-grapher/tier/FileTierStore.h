@@ -92,7 +92,7 @@ public:
     // the one switch line and unlinks the superseded inputs. inputs is zero when nothing was eligible. After any
     // manifest append or fsync failure it refuses until the writer reopens.
     absl::StatusOr<CompactionResult> compactOnce(const CompactionPolicy& policy);
-    // Wakes and stops a job waiting for I/O budget or a publish, for shutdown.
+    // Wakes and stops a job waiting for I/O budget or a publish, and every later job of this store, for shutdown.
     void stopCompaction();
 
 private:

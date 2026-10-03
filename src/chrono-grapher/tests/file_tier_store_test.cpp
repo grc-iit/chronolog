@@ -6,7 +6,9 @@
 #include <fstream>
 #include <future>
 #include <limits>
+#include <nlohmann/json.hpp>
 #include <set>
+#include <sstream>
 #include <thread>
 #include <fcntl.h>
 #include <sys/file.h>
@@ -1875,5 +1877,764 @@ TEST(FileTierStore, PhysicalPolicySurvivesBothCodecsAndManifestRecovery)
         ASSERT_FALSE(manifest->empty());
         EXPECT_TRUE(manifest->front().physical_policy);
     }
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+namespace
+{
+const Range kAll{Range::Axis::Hlc, {0, 0}, {int64_t{1} << 40, 0}};
+
+// Window `index` is [100 + 50 * index, 150 + 50 * index) with every Event field set and some unbounded readings.
+Chunk Rich(int index, int events = 2)
+{
+    const int64_t start = 100 + 50 * index;
+    Chunk chunk{"w" + std::to_string(index), 1, {start, 0}, {start + 50, 0}, {}, false, false};
+    for(int k = 0; k < events; ++k)
+    {
+        Event event;
+        event.id = {1, static_cast<uint64_t>(2 + k % 2), 3, static_cast<uint64_t>(1000 * index + k + 1)};
+        event.hlc = {start + k, static_cast<uint32_t>(k)};
+        event.physical.physical_ns = start * 10 + k;
+        event.physical.status = k % 2 ? ClockStatus::Unsynced : ClockStatus::Synced;
+        if(!(k % 2))
+            event.physical.uncertainty_ns = 5;
+        event.durability = k % 2 ? Durability::Accepted : Durability::Durable;
+        event.envelope.content_type = "application/test";
+        event.envelope.payload = std::string(64, static_cast<char>('a' + k)) + std::to_string(index);
+        event.envelope.trace_id = std::string(16, 't');
+        event.envelope.span_id = std::string(8, 's');
+        event.envelope.attributes = {{"window", std::to_string(index)}, {"k", std::to_string(k)}};
+        chunk.events.push_back(event);
+    }
+    return chunk;
+}
+
+CompactionPolicy Eager(size_t min_files = 2)
+{
+    CompactionPolicy policy;
+    policy.min_files = min_files;
+    policy.min_age = std::chrono::seconds(0);
+    policy.io_bytes_per_sec = policy.io_burst_bytes = uint64_t{1} << 30;
+    return policy;
+}
+
+absl::StatusOr<std::unique_ptr<FileTierStore>>
+OpenStore(const fs::path& root,
+          FileTierStore::Hooks hooks = {},
+          std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
+          std::string writer = "primary",
+          FileTierStore::LoadFile load = {})
+{
+    return FileTierStore::Open(root, writer, {{1, {100, 0}}}, std::move(codec), {}, std::move(load), 2, {}, hooks);
+}
+
+bool SameEvents(const std::vector<Event>& a, const std::vector<Event>& b)
+{
+    return std::equal(
+            a.begin(),
+            a.end(),
+            b.begin(),
+            b.end(),
+            [](const Event& x, const Event& y)
+            {
+                return x.id == y.id && x.hlc == y.hlc && x.durability == y.durability &&
+                       x.physical.physical_ns == y.physical.physical_ns && x.physical.status == y.physical.status &&
+                       x.physical.uncertainty_ns == y.physical.uncertainty_ns &&
+                       x.envelope.content_type == y.envelope.content_type && x.envelope.payload == y.envelope.payload &&
+                       x.envelope.trace_id == y.envelope.trace_id && x.envelope.span_id == y.envelope.span_id &&
+                       x.envelope.attributes == y.envelope.attributes;
+            });
+}
+
+std::vector<ManifestRecord> PublishWindows(FileTierStore& store, int count, int first = 0)
+{
+    std::vector<ManifestRecord> records;
+    for(int i = first; i < first + count; ++i)
+    {
+        auto record = store.publish(Rich(i));
+        EXPECT_TRUE(record.ok()) << record.status();
+        if(record.ok())
+            records.push_back(*record);
+    }
+    return records;
+}
+
+// Compaction outputs and temporaries in the story directory.
+std::vector<std::string> CompactionFiles(const fs::path& root)
+{
+    std::vector<std::string> files;
+    for(const auto& file: fs::directory_iterator(root / "1"))
+        if(file.path().filename().string().starts_with("compact-") ||
+           file.path().filename().string().starts_with(".compact-"))
+            files.push_back(file.path().filename().string());
+    return files;
+}
+
+std::vector<ManifestRecord> Effective(FileTierStore& store)
+{
+    auto records = store.manifest(1);
+    EXPECT_TRUE(records.ok()) << records.status();
+    return records.ok() ? *records : std::vector<ManifestRecord>{};
+}
+
+FileTierStore::Hooks CrashAt(std::string step)
+{
+    FileTierStore::Hooks hooks;
+    hooks.compaction_step = [step](std::string_view at)
+    { return at == step ? absl::AbortedError("injected crash at " + step) : absl::OkStatus(); };
+    return hooks;
+}
+} // namespace
+
+TEST(FileTierStore, CompactionCoverageAndEveryEventFieldArePreserved)
+{
+    for(const auto& codec: std::vector<std::shared_ptr<const ChunkCodec>>{std::make_shared<HDF5ChunkCodec>(),
+                                                                          std::make_shared<ProtoChunkCodec>()})
+    {
+        SCOPED_TRACE(codec->extension());
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory, {}, codec);
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 6);
+        const auto before = (*store)->read(1, kAll);
+        ASSERT_TRUE(before.ok());
+        ASSERT_EQ(before->size(), 12u);
+        const auto w = (*store)->contiguousWatermark(1).value();
+        EXPECT_EQ(w, (Hlc{400, 0}));
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok()) << result.status();
+        EXPECT_EQ(result->inputs, 6u);
+        const auto check = [&](FileTierStore& sut)
+        {
+            const auto records = Effective(sut);
+            ASSERT_EQ(records.size(), 1u);
+            EXPECT_EQ(records[0].file, result->output);
+            EXPECT_EQ(records[0].state, ManifestState::Published);
+            EXPECT_EQ(records[0].manifest_writer, "primary");
+            EXPECT_EQ(records[0].start, (Hlc{100, 0}));
+            EXPECT_EQ(records[0].end, (Hlc{400, 0}));
+            EXPECT_EQ(records[0].event_count, 12u);
+            EXPECT_EQ(fs::path(records[0].file).extension(), codec->extension());
+            for(const auto& input: inputs) EXPECT_FALSE(fs::exists(*directory / input.file)) << input.file;
+            auto after = sut.read(1, kAll);
+            ASSERT_TRUE(after.ok()) << after.status();
+            EXPECT_TRUE(SameEvents(*after, *before));
+            EXPECT_EQ(sut.contiguousWatermark(1).value(), w);
+            EXPECT_FALSE(sut.incomplete(1, kAll).value());
+        };
+        check(**store);
+        // B2 bounds of the output cover every event with the saturating interval convention.
+        int64_t min_lo = std::numeric_limits<int64_t>::max(), max_hi = std::numeric_limits<int64_t>::min();
+        for(const auto& event: *before)
+        {
+            const int64_t u = event.physical.status == ClockStatus::Synced ? 5 : 0;
+            min_lo = std::min(min_lo, event.physical.physical_ns - u);
+            max_hi = std::max(max_hi, event.physical.physical_ns + u);
+        }
+        auto index = ManifestLog::OpenReadOnly(*directory)->load();
+        ASSERT_TRUE(index.ok());
+        const auto& bounds = index->physical_bounds.at(result->output);
+        EXPECT_EQ(bounds.bounds.min_lo, min_lo);
+        EXPECT_EQ(bounds.bounds.max_hi, max_hi);
+        EXPECT_TRUE(bounds.bounds.unbounded);
+        EXPECT_EQ(bounds.event_count, 12u);
+        // The switch survives the snapshot and log truncation and a restart.
+        ASSERT_TRUE((*store)->compact().ok());
+        store->reset();
+        auto reopened = OpenStore(*directory, {}, codec);
+        ASSERT_TRUE(reopened.ok()) << reopened.status();
+        check(**reopened);
+        auto again = (*reopened)->compactOnce(Eager());
+        ASSERT_TRUE(again.ok());
+        EXPECT_EQ(again->inputs, 0u);
+    }
+}
+
+TEST(FileTierStore, CompactionRefusesGapEmptyLostExemptForeignAndAboveW)
+{
+    auto directory = TestDirectory();
+    {
+        auto peer = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "secondary");
+        ASSERT_TRUE(peer.ok());
+        PublishWindows(**peer, 2);
+    }
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 2);
+    ASSERT_TRUE((*store)->publish(Rich(2, 0)).ok());
+    const auto lost = PublishWindows(**store, 2, 3);
+    auto exempt = Rich(5);
+    exempt.exempt = true;
+    ASSERT_TRUE((*store)->publish(exempt).ok());
+    PublishWindows(**store, 1, 6);
+    PublishWindows(**store, 2, 8);
+    store->reset();
+    ASSERT_TRUE(fs::remove(*directory / lost[0].file));
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    // The exempt window stops W (I13.4); the Lost window keeps the floor recorded when it was found.
+    const auto w = (*store)->contiguousWatermark(1).value();
+    EXPECT_EQ(w, (Hlc{350, 0}));
+    auto result = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(result.ok()) << result.status();
+    ASSERT_EQ(result->inputs, 2u);
+    auto again = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(again.ok());
+    EXPECT_EQ(again->inputs, 0u);
+    size_t outputs = 0, foreign = 0;
+    for(const auto& record: Effective(**store))
+    {
+        if(record.file == result->output)
+        {
+            ++outputs;
+            EXPECT_EQ(record.start, (Hlc{100, 0}));
+            EXPECT_EQ(record.end, (Hlc{200, 0}));
+        }
+        if(record.manifest_writer == "secondary")
+        {
+            ++foreign;
+            EXPECT_EQ(record.state, ManifestState::Published);
+            EXPECT_TRUE(fs::exists(*directory / record.file));
+        }
+        if(record.file == lost[0].file)
+        {
+            EXPECT_EQ(record.state, ManifestState::Lost);
+        }
+    }
+    EXPECT_EQ(outputs, 1u);
+    EXPECT_EQ(foreign, 2u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+}
+
+TEST(FileTierStore, CompactionOutputHonorsEveryBound)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 12);
+    for(const auto& [policy, empty]: std::vector<std::pair<CompactionPolicy, bool>>{{[]
+                                                                                     {
+                                                                                         auto p = Eager();
+                                                                                         p.small_file_bytes = 1;
+                                                                                         return p;
+                                                                                     }(),
+                                                                                     true},
+                                                                                    {[]
+                                                                                     {
+                                                                                         auto p = Eager();
+                                                                                         p.min_age =
+                                                                                                 std::chrono::hours(1);
+                                                                                         return p;
+                                                                                     }(),
+                                                                                     true},
+                                                                                    {[]
+                                                                                     {
+                                                                                         auto p = Eager();
+                                                                                         p.max_output_bytes = 1;
+                                                                                         return p;
+                                                                                     }(),
+                                                                                     true}})
+    {
+        auto result = (*store)->compactOnce(policy);
+        ASSERT_TRUE(result.ok()) << result.status();
+        EXPECT_EQ(result->inputs == 0, empty);
+    }
+    auto files = Eager();
+    files.max_files = 4;
+    auto events = Eager();
+    events.max_events = 6;
+    auto span = Eager();
+    span.max_span_ns = 120;
+    const std::vector<std::tuple<CompactionPolicy, size_t, Hlc, Hlc>> expected{{files, 4, {100, 0}, {300, 0}},
+                                                                               {events, 3, {300, 0}, {450, 0}},
+                                                                               {span, 2, {450, 0}, {550, 0}}};
+    for(const auto& [policy, inputs, start, end]: expected)
+    {
+        auto result = (*store)->compactOnce(policy);
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->inputs, inputs);
+        for(const auto& record: Effective(**store))
+            if(record.file == result->output)
+            {
+                EXPECT_EQ(record.start, start);
+                EXPECT_EQ(record.end, end);
+                EXPECT_EQ(record.event_count, 2 * inputs);
+            }
+    }
+    // An output is never an input again, and the rest stays below min_files only if the bounds forbid it.
+    auto rest = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(rest.ok());
+    EXPECT_EQ(rest->inputs, 3u);
+    auto none = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(none.ok());
+    EXPECT_EQ(none->inputs, 0u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{700, 0}));
+}
+
+TEST(FileTierStore, CompactionCrashBeforeOrAfterOutputLinkNeverAdoptsTheOutput)
+{
+    for(const std::string step: {"link", "switch"})
+    {
+        SCOPED_TRACE(step);
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory, CrashAt(step));
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 4);
+        const auto before = (*store)->read(1, kAll).value();
+        EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+        const auto left = CompactionFiles(*directory);
+        ASSERT_EQ(left.size(), 1u);
+        EXPECT_EQ(left[0].starts_with(".compact-"), step == "link");
+        EXPECT_EQ(Effective(**store).size(), 4u);
+        store->reset();
+        auto reopened = OpenStore(*directory);
+        ASSERT_TRUE(reopened.ok()) << reopened.status();
+        EXPECT_TRUE(CompactionFiles(*directory).empty());
+        const auto records = Effective(**reopened);
+        ASSERT_EQ(records.size(), 4u);
+        for(const auto& record: records) EXPECT_EQ(record.state, ManifestState::Published);
+        EXPECT_TRUE(SameEvents((*reopened)->read(1, kAll).value(), before));
+        EXPECT_FALSE((*reopened)->incomplete(1, kAll).value());
+    }
+}
+
+TEST(FileTierStore, CompactionCrashAfterSwitchCleansInputsOnlyAfterTheOwnLogFsync)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("cleanup"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    const auto before = (*store)->read(1, kAll).value();
+    const auto w = (*store)->contiguousWatermark(1).value();
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    ASSERT_EQ(Effective(**store).size(), 1u);
+    for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file));
+    EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    store->reset();
+    // The restarted writer sees the switch, but cannot fsync its own log: it must not unlink the inputs.
+    FileTierStore::Hooks failing;
+    failing.manifest_sync = [](int)
+    {
+        errno = EIO;
+        return -1;
+    };
+    store = OpenStore(*directory, failing);
+    ASSERT_TRUE(store.ok()) << store.status();
+    (void)(*store)->retryDeletedFiles();
+    for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file));
+    EXPECT_TRUE(absl::IsFailedPrecondition((*store)->compactOnce(Eager()).status()));
+    store->reset();
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    for(const auto& input: inputs) EXPECT_FALSE(fs::exists(*directory / input.file));
+    const auto records = Effective(**store);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].state, ManifestState::Published);
+    EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+    EXPECT_FALSE((*store)->incomplete(1, kAll).value());
+}
+
+TEST(FileTierStore, CompactionFailedSwitchFsyncStopsCompactionAndBothRecoveryImagesAreSafe)
+{
+    for(const bool line_survives: {true, false})
+    {
+        SCOPED_TRACE(line_survives);
+        auto directory = TestDirectory();
+        auto fail = std::make_shared<std::atomic<bool>>(false);
+        FileTierStore::Hooks hooks;
+        hooks.manifest_sync = [fail](int fd)
+        {
+            if(fail->load())
+            {
+                errno = EIO;
+                return -1;
+            }
+            return ::fsync(fd);
+        };
+        auto store = OpenStore(*directory, hooks);
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 4);
+        const auto before = (*store)->read(1, kAll).value();
+        *fail = true;
+        EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+        *fail = false;
+        ASSERT_EQ(CompactionFiles(*directory).size(), 1u);
+        EXPECT_TRUE(absl::IsFailedPrecondition((*store)->compactOnce(Eager()).status()));
+        (void)(*store)->retryDeletedFiles();
+        for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file));
+        EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+        store->reset();
+        if(!line_survives)
+        {
+            // The complete but undurable line is lost with the page cache.
+            auto log = Bytes(*directory / "manifest/primary.log");
+            ASSERT_EQ(log.back(), '\n');
+            log.pop_back();
+            log.resize(log.rfind('\n') + 1);
+            std::ofstream(*directory / "manifest/primary.log", std::ios::binary | std::ios::trunc) << log;
+        }
+        store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok()) << store.status();
+        const auto records = Effective(**store);
+        ASSERT_EQ(records.size(), line_survives ? 1u : 4u);
+        for(const auto& input: inputs) EXPECT_EQ(fs::exists(*directory / input.file), !line_survives);
+        EXPECT_EQ(CompactionFiles(*directory).size(), line_survives ? 1u : 0u);
+        EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+        EXPECT_FALSE((*store)->incomplete(1, kAll).value());
+    }
+}
+
+TEST(FileTierStore, CompactionCleanupBelongsToTheCommittingWriterUntilATombstone)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("cleanup"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    auto peer = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "secondary");
+    ASSERT_TRUE(peer.ok()) << peer.status();
+    EXPECT_TRUE((*peer)->retryDeletedFiles().ok());
+    EXPECT_EQ((*peer)->compactOnce(Eager()).value().inputs, 0u);
+    for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file));
+    EXPECT_FALSE((*peer)->hasPendingUnlinks(1).value());
+    // In a tombstoned story any writer frees what the compacting writer left behind (I13.11).
+    ASSERT_TRUE((*peer)->tombstone(1).ok());
+    EXPECT_TRUE((*peer)->hasPendingUnlinks(1).value());
+    EXPECT_TRUE((*peer)->retryDeletedFiles().ok());
+    for(const auto& input: inputs) EXPECT_FALSE(fs::exists(*directory / input.file));
+    EXPECT_FALSE((*peer)->hasPendingUnlinks(1).value());
+}
+
+TEST(FileTierStore, CompactionRecoveryKeepsAnUnreferencedOutputWhoseInputsAreMissing)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("switch"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    const auto output = CompactionFiles(*directory);
+    ASSERT_EQ(output.size(), 1u);
+    store->reset();
+    ASSERT_TRUE(fs::remove(*directory / inputs[1].file));
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_TRUE(fs::exists(*directory / "1" / output[0]));
+    for(const auto& record: Effective(**store))
+    {
+        EXPECT_EQ(record.state, record.file == inputs[1].file ? ManifestState::Lost : ManifestState::Published);
+    }
+}
+
+TEST(FileTierStore, CompactionRecoveryRollsBackACorruptOutputWhoseInputsAreIntact)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("cleanup"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    const auto before = (*store)->read(1, kAll).value();
+    const auto w = (*store)->contiguousWatermark(1).value();
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    const auto output = Effective(**store).at(0).file;
+    store->reset();
+    std::ofstream(*directory / output, std::ios::binary | std::ios::trunc) << "corrupt";
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    const auto records = Effective(**store);
+    ASSERT_EQ(records.size(), 4u);
+    for(const auto& record: records) EXPECT_EQ(record.state, ManifestState::Published);
+    EXPECT_FALSE(fs::exists(*directory / output));
+    EXPECT_NE(Bytes(*directory / "manifest/primary.log").find("compact_rollback_v1"), std::string::npos);
+    EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+    EXPECT_FALSE((*store)->incomplete(1, kAll).value());
+    store->reset();
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(Effective(**store).size(), 4u);
+}
+
+TEST(FileTierStore, PeerRecoveryDuringCompactionCleanupWritesNoLost)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    const auto before = (*store)->read(1, kAll).value();
+    std::atomic<int> compactions{0};
+    // The peer's recovery read its index before the switch; the switch and the unlinks land while it validates.
+    auto load = [&](const fs::path& path)
+    {
+        if(path.filename() == fs::path(inputs[0].file).filename() && compactions++ == 0)
+        {
+            auto result = (*store)->compactOnce(Eager());
+            EXPECT_TRUE(result.ok()) << result.status();
+            EXPECT_EQ(result.ok() ? result->inputs : 0, 4u);
+        }
+        return LoadChunkFile(path);
+    };
+    auto peer = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "secondary", load);
+    ASSERT_TRUE(peer.ok()) << peer.status();
+    EXPECT_EQ(compactions.load(), 1);
+    const auto records = Effective(**peer);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].state, ManifestState::Published);
+    EXPECT_FALSE((*peer)->incomplete(1, kAll).value());
+    EXPECT_TRUE(SameEvents((*peer)->read(1, kAll).value(), before));
+    EXPECT_EQ(Bytes(*directory / "manifest/secondary.log").find("\"state\":4"), std::string::npos);
+}
+
+TEST(FileTierStore, CompactionReaderThatPlannedBeforeTheSwitchReadsIdenticalEvents)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 6);
+    auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), {}, 2);
+    ASSERT_TRUE(reader.ok());
+    const auto plan = (*reader)->manifest(1).value();
+    ASSERT_EQ(plan.size(), 6u);
+    const std::vector<Range> ranges{kAll,
+                                    {Range::Axis::Hlc, {130, 0}, {260, 0}},
+                                    {Range::Axis::Physical, {1500, 0}, {2600, 0}}};
+    struct Results
+    {
+        std::vector<std::vector<Event>> single, batch, whole;
+    };
+    const auto collect = [&](FileTierStore& sut)
+    {
+        Results results;
+        for(const auto& range: ranges)
+            for(const size_t cap: {SIZE_MAX, size_t{1}})
+            {
+                for(const auto& record: plan)
+                {
+                    auto events = sut.readRecord(record, range, cap);
+                    EXPECT_TRUE(events.ok()) << events.status();
+                    results.single.push_back(events.ok() ? *events : std::vector<Event>{});
+                }
+                for(auto& events: sut.readRecords(plan, range, cap))
+                {
+                    EXPECT_TRUE(events.ok()) << events.status();
+                    results.batch.push_back(events.ok() ? *events : std::vector<Event>{});
+                }
+            }
+        for(const auto& range: ranges)
+        {
+            auto events = sut.read(1, range);
+            EXPECT_TRUE(events.ok()) << events.status();
+            results.whole.push_back(events.ok() ? *events : std::vector<Event>{});
+        }
+        return results;
+    };
+    const auto before = collect(**reader);
+    auto result = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(result.ok()) << result.status();
+    ASSERT_EQ(result->inputs, 6u);
+    for(const auto& record: plan) ASSERT_FALSE(fs::exists(*directory / record.file));
+    for(auto* sut: {reader->get(), store->get()})
+    {
+        const auto after = collect(*sut);
+        ASSERT_EQ(after.single.size(), before.single.size());
+        for(size_t i = 0; i < before.single.size(); ++i)
+            EXPECT_TRUE(SameEvents(after.single[i], before.single[i])) << i;
+        ASSERT_EQ(after.batch.size(), before.batch.size());
+        for(size_t i = 0; i < before.batch.size(); ++i) EXPECT_TRUE(SameEvents(after.batch[i], before.batch[i])) << i;
+        ASSERT_EQ(after.whole.size(), before.whole.size());
+        for(size_t i = 0; i < before.whole.size(); ++i) EXPECT_TRUE(SameEvents(after.whole[i], before.whole[i])) << i;
+    }
+}
+
+TEST(FileTierStore, CompactionDoesNotChangeWatermarkAcrossRestartRetentionOrOutputLoss)
+{
+    {
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 4);
+        const auto w = (*store)->contiguousWatermark(1).value();
+        EXPECT_EQ(w, (Hlc{300, 0}));
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok());
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        store->reset();
+        store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok());
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        ASSERT_TRUE((*store)->eraseFile(result->output).ok());
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        EXPECT_TRUE((*store)->read(1, kAll).value().empty());
+        EXPECT_FALSE(fs::exists(*directory / result->output));
+    }
+    {
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 4);
+        const auto w = (*store)->contiguousWatermark(1).value();
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok());
+        store->reset();
+        ASSERT_TRUE(fs::remove(*directory / result->output));
+        store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok()) << store.status();
+        const auto records = Effective(**store);
+        ASSERT_EQ(records.size(), 1u);
+        EXPECT_EQ(records[0].state, ManifestState::Lost);
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        EXPECT_TRUE((*store)->incomplete(1, kAll).value());
+    }
+}
+
+TEST(FileTierStore, CompactionAndTombstoneRespectBothCommitOrders)
+{
+    {
+        auto directory = TestDirectory();
+        FileTierStore* sut = nullptr;
+        FileTierStore::Hooks hooks;
+        hooks.compaction_step = [&sut](std::string_view step)
+        { return step == "switch" ? sut->tombstone(1) : absl::OkStatus(); };
+        auto store = OpenStore(*directory, hooks);
+        ASSERT_TRUE(store.ok());
+        sut = store->get();
+        const auto inputs = PublishWindows(**store, 4);
+        EXPECT_TRUE(absl::IsFailedPrecondition((*store)->compactOnce(Eager()).status()));
+        EXPECT_TRUE(CompactionFiles(*directory).empty());
+        for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file));
+        EXPECT_EQ(Effective(**store).size(), 4u);
+        EXPECT_EQ((*store)->compactOnce(Eager()).value().inputs, 0u);
+    }
+    {
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 4);
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE((*store)->tombstone(1).ok());
+        for(const auto& record: Effective(**store))
+            if(record.state == ManifestState::Published)
+            {
+                ASSERT_TRUE((*store)->eraseFile(record.file).ok());
+            }
+        EXPECT_TRUE((*store)->retryDeletedFiles().ok());
+        EXPECT_FALSE((*store)->hasPendingUnlinks(1).value());
+        EXPECT_TRUE(fs::is_empty(*directory / "1"));
+    }
+}
+
+TEST(FileTierStore, CompactionAndInputEraseRespectBothCommitOrders)
+{
+    {
+        auto directory = TestDirectory();
+        FileTierStore* sut = nullptr;
+        std::string erased;
+        FileTierStore::Hooks hooks;
+        hooks.compaction_step = [&](std::string_view step)
+        { return step == "switch" ? sut->eraseFile(erased) : absl::OkStatus(); };
+        auto store = OpenStore(*directory, hooks);
+        ASSERT_TRUE(store.ok());
+        sut = store->get();
+        const auto inputs = PublishWindows(**store, 4);
+        erased = inputs[1].file;
+        EXPECT_TRUE(absl::IsAborted((*store)->compactOnce(Eager()).status()));
+        EXPECT_TRUE(CompactionFiles(*directory).empty());
+        for(const auto& record: Effective(**store))
+        {
+            EXPECT_EQ(record.state, record.file == erased ? ManifestState::Deleted : ManifestState::Published);
+        }
+    }
+    {
+        auto directory = TestDirectory();
+        auto store = OpenStore(*directory);
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 4);
+        const auto w = (*store)->contiguousWatermark(1).value();
+        auto result = (*store)->compactOnce(Eager());
+        ASSERT_TRUE(result.ok());
+        EXPECT_TRUE(absl::IsFailedPrecondition((*store)->eraseFile(inputs[1].file)));
+        EXPECT_EQ((*store)->read(1, kAll).value().size(), 8u);
+        ASSERT_TRUE((*store)->eraseFile(result->output).ok());
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        EXPECT_TRUE((*store)->read(1, kAll).value().empty());
+    }
+}
+
+TEST(FileTierStore, CompactionRetriedPublicationUsesTheOutputWithoutRecreatingTheInput)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    auto result = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(result.ok());
+    auto retry = (*store)->publish(Rich(2));
+    ASSERT_TRUE(retry.ok()) << retry.status();
+    EXPECT_EQ(retry->state, ManifestState::Published);
+    EXPECT_EQ(retry->file, result->output);
+    EXPECT_FALSE(fs::exists(*directory / inputs[2].file));
+    auto changed = Rich(2);
+    changed.events[0].envelope.payload = "changed";
+    EXPECT_TRUE(absl::IsUnavailable((*store)->publish(changed).status()));
+    EXPECT_FALSE(fs::exists(*directory / inputs[2].file));
+    EXPECT_EQ(Effective(**store).size(), 1u);
+}
+
+TEST(ManifestLog, CompactionSwitchIsOneFramedLineThatOldParsersRefuse)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 3);
+    ASSERT_TRUE((*store)->compactOnce(Eager()).ok());
+    std::istringstream log(Bytes(*directory / "manifest/primary.log"));
+    std::vector<std::string> switches;
+    for(std::string line; std::getline(log, line);)
+        if(line.find("compact_v1") != std::string::npos)
+            switches.push_back(line);
+    ASSERT_EQ(switches.size(), 1u);
+    // The output is nested under its own key: a pre-B3 parser finds no top-level record fields and fails closed.
+    const auto json = nlohmann::json::parse(switches[0]);
+    EXPECT_FALSE(json.contains("chunk") || json.contains("watermark") || json.contains("tombstoned"));
+    EXPECT_TRUE(json.at("compact_v1").at("output").contains("chunk"));
+    EXPECT_TRUE(json.contains("length") && json.contains("crc"));
+    EXPECT_EQ(json.at("compact_v1").at("inputs").size(), 3u);
+}
+
+TEST(ManifestLog, AnIncompleteSwitchLineIsRetriedAtTheNextPoll)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 3);
+    ASSERT_TRUE((*store)->compactOnce(Eager()).ok());
+    store->reset();
+    const auto path = *directory / "manifest/primary.log";
+    const auto log = Bytes(path);
+    const auto begin = log.find("{\"length\":");
+    ASSERT_NE(begin, std::string::npos);
+    const auto length = log.find('\n', begin) - begin;
+    // An NFS client can see the final page and newline of a long line while an earlier page is still a hole.
+    auto holed = log;
+    std::fill(holed.begin() + static_cast<long>(begin + 20),
+              holed.begin() + static_cast<long>(begin + length - 20),
+              '\0');
+    std::ofstream(path, std::ios::binary | std::ios::trunc) << holed;
+    auto reader = ManifestLog::OpenReadOnly(*directory);
+    auto index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    EXPECT_TRUE((*index)->switches.empty());
+    EXPECT_EQ((*index)->records.size(), 3u);
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(static_cast<std::streamoff>(begin));
+        file.write(log.data() + begin, static_cast<std::streamsize>(length));
+    }
+    index = reader->sync();
+    ASSERT_TRUE(index.ok()) << index.status();
+    EXPECT_EQ((*index)->switches.size(), 1u);
+    EXPECT_EQ((*index)->superseded.size(), 3u);
 }
 } // namespace chronolog

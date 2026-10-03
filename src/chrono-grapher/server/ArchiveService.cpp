@@ -478,7 +478,8 @@ void ArchiveService::shutdown()
         draining_ = true;
     }
     changed_.notify_all();
-    store_.stopCompaction();
+    if(compactor_)
+        store_.stopCompaction();
     // Joined here so no deletion or compaction is still touching the store when the caller releases it.
     destroyer_->stop();
     if(compactor_)

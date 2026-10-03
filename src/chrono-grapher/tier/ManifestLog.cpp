@@ -714,7 +714,12 @@ absl::StatusOr<std::pair<std::string, off_t>> ReadTail(int fd, off_t offset, off
         return data.status();
     const auto end = data->rfind('\n');
     data->resize(end == std::string::npos ? 0 : end + 1);
-    data->resize(CompletePrefix(*data));
+    if(const auto complete = CompletePrefix(*data); complete != data->size())
+    {
+        LOG_EVERY_N_SEC(WARNING, 60) << "manifest line at byte " << offset + static_cast<off_t>(complete)
+                                     << " is not complete yet; it is retried at the next poll";
+        data->resize(complete);
+    }
     const auto consumed = offset + static_cast<off_t>(data->size());
     return std::pair{*std::move(data), consumed};
 }
