@@ -11,8 +11,8 @@ import sys
 import time
 import getpass
 
-from .registry import (KEYS, ROLES, atomic, binary, control, directory, find, free_ports, home,
-                       leases, load, lock, name_check, probe, status)
+from .registry import (KEYS, ROLES, atomic, binary, boot_id, control, directory, find, free_ports, home,
+                       leases, load, lock, name_check, probe, process_gone, status)
 from .supervisor import configs, detach
 from .tiers import add_marker, initialize_local
 
@@ -130,6 +130,16 @@ def up(args):
     with control(folder / 'run/control.lock'):
         current = status(folder)
         if current['state'] == 'stopped':
+            try:
+                previous = load(folder / 'run/status.json')
+            except FileNotFoundError:
+                previous = {}
+            if previous.get('boot_id') == boot_id():
+                pids = [service['pid'] for service in previous.get('services', {}).values() if service.get('pid')]
+                while not all(process_gone(pid) for pid in pids):
+                    if time.monotonic() >= args._boot_deadline:
+                        raise ValueError('30 s readiness deadline waiting for previous services to exit')
+                    time.sleep(0.05)
             # Preserve endpoints and identities; an explicit binary directory can select an upgrade.
             if args.bin_dir:
                 record['bin_dir'] = str(Path(args.bin_dir).resolve())

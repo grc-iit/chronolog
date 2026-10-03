@@ -70,6 +70,14 @@ MetadataStoreFactory sqliteFactory()
                 return sqlite->sweepExpiry();
             return dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get())->sweepExpiry();
         };
+        harness->beforeNextAcquireSample = [lease_harness](std::function<void()> callback)
+        {
+            dynamic_cast<SqliteMetadataStore*>(lease_harness->sut.get())
+                    ->leaseAuthority()
+                    .beforeNextSampleForTest(std::move(callback));
+        };
+        harness->requestGrant = [lease_harness](const std::string& id)
+        { return dynamic_cast<SqliteMetadataStore*>(lease_harness->sut.get())->requestGrant(id); };
         return harness;
     };
 }

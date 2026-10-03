@@ -29,6 +29,8 @@ struct MetadataStoreHarness
     bool acquisition_leases{};
     std::function<void(int64_t, AuthorityClockMode)> advanceAuthorityClock;
     std::function<absl::Status()> stepExpirySweep;
+    std::function<void(std::function<void()>)> beforeNextAcquireSample;
+    std::function<absl::StatusOr<Acquisition>(const std::string&)> requestGrant;
     // Optional dispatch slots until G2 adds the implemented contract methods.
     std::function<absl::StatusOr<Acquisition>(StoryId, std::string, AcquireOptions)> acquireWithOptions;
     std::function<absl::StatusOr<std::vector<RenewAcquisitionResult>>(const std::vector<RenewAcquisition>&)>
@@ -140,6 +142,35 @@ TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnati
     EXPECT_EQ(refusal->matched_incarnation, first->incarnation);
     EXPECT_EQ(refusal->termination_cause, AcquisitionTerminationCause::Released);
     EXPECT_FALSE(refusal->current_incarnation);
+}
+
+TEST_P(MetadataStoreContract, SameIdRetryPreservesTupleWhenExpiryCommitsBeforeSample)
+{
+    if(!h->durable_restart)
+        return;
+    ASSERT_TRUE(h->beforeNextAcquireSample);
+    ASSERT_TRUE(h->requestGrant);
+    AcquireOptions options;
+    options.acquire_request_id = "expiry-sample-request-00000000001";
+    auto first = h->acquireWithOptions(h->story, "expiry-sample", options);
+    ASSERT_TRUE(first.ok()) << first.status();
+    h->beforeNextAcquireSample(
+            [&]
+            {
+                h->advanceAuthorityClock(first->lease.duration_ns, AuthorityClockMode::Ticking);
+                ASSERT_TRUE(h->stepExpirySweep().ok());
+            });
+    auto retry = h->acquireWithOptions(h->story, "expiry-sample", options);
+    ASSERT_TRUE(absl::IsFailedPrecondition(retry.status())) << retry.status();
+    auto refusal = getAcquireRefusal(retry.status());
+    ASSERT_TRUE(refusal);
+    EXPECT_EQ(refusal->matched_incarnation, first->incarnation);
+    EXPECT_EQ(refusal->termination_cause, AcquisitionTerminationCause::Expired);
+    auto matched = h->requestGrant(options.acquire_request_id);
+    ASSERT_TRUE(matched.ok()) << matched.status();
+    EXPECT_EQ(matched->story_id, first->story_id);
+    EXPECT_EQ(matched->writer_id, first->writer_id);
+    EXPECT_EQ(matched->incarnation, first->incarnation);
 }
 
 TEST_P(MetadataStoreContract, RestartRetainsDurationAndTerminalCause)

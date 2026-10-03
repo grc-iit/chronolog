@@ -272,8 +272,20 @@ void LeaseAuthority::reconcile(const AcquisitionSnapshot& snapshot, std::pair<St
     (void)end;
     for(const auto& row: snapshot.active) applyLocked(row, time, true);
 }
+void LeaseAuthority::beforeNextSampleForTest(std::function<void()> callback)
+{
+    std::lock_guard lock(mutex_);
+    before_sample_ = std::move(callback);
+}
 absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange& row, bool renew)
 {
+    std::function<void()> before;
+    {
+        std::lock_guard lock(mutex_);
+        before = std::move(before_sample_);
+    }
+    if(before)
+        before();
     std::lock_guard lock(mutex_);
     const auto time = now();
     auto status = serviceLocked(time, false);

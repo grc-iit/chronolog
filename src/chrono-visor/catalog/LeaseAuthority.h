@@ -63,6 +63,7 @@ public:
     size_t acceptEvidence(const std::string& keeper, const std::vector<AcquisitionChange>& rows);
     void advanceClock(int64_t ns, bool ticking);
     void eraseForTest(RenewAcquisition tuple);
+    void beforeNextSampleForTest(std::function<void()> callback);
     std::vector<RenewAcquisition> reconciliationTuples();
     void reconcileTerminals(const std::vector<AcquisitionChange>& rows);
     // Selects up to `limit` due or still-pending tuples and marks them pending; a pending tuple refuses renewal
@@ -88,6 +89,7 @@ private:
     absl::Status serviceLocked(int64_t now, bool completed_tick);
     void applyLocked(const AcquisitionChange& change, int64_t now, bool qualified);
     void removeLocked(const Key& key);
+    std::function<void()> before_sample_;
     AcquisitionLeaseConfig config_;
     bool dynamic_{};
     std::atomic<int64_t> clock_offset_{};

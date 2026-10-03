@@ -10,7 +10,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from chronolog_local.registry import free_ports
+from chronolog_local.registry import free_ports, process_gone
 
 
 def require(condition, message):
@@ -28,8 +28,7 @@ def until(predicate, seconds=30):
 
 
 def dead(pid):
-    path = Path('/proc') / str(pid) / 'stat'
-    return not path.exists() or path.read_text().rsplit(')', 1)[1].split()[0] == 'Z'
+    return process_gone(pid)
 
 
 def main():
