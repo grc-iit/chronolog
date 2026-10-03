@@ -112,8 +112,25 @@ class Scenario:
         members = [k['process_id'] for k in r['route']['keepers']]
         return r if int(r['route']['epoch']) > previous and ((keeper in members) == present) else None
 
-    def acquire(self, identity):
-        return self.rpc('Acquire', dict(story_id=self.story, writer_identity=identity))
+    # A Visor that leads without a lease yet, or whose catalog pool is full, refuses before it applies anything.
+    # Acquire is not idempotent, so only these whole-RPC refusals retry.
+    REFUSED_BEFORE_APPLY = ('no Raft leader', 'catalog is overloaded')
+
+    def refused_before_apply(self, result):
+        return result['transport'] == 14 and result.get('error') in self.REFUSED_BEFORE_APPLY
+
+    def acquire(self, identity, seconds=30):
+        request = dict(story_id=self.story, writer_identity=identity)
+        deadline = time.monotonic() + seconds
+        while True:
+            result = self.raw('Acquire', request)
+            if not self.refused_before_apply(result) or time.monotonic() >= deadline:
+                break
+            print(f'RETRY Acquire {result["error"]}', flush=True)
+            time.sleep(.1)
+        if result['transport'] or int(result['response'].get('status', {}).get('code', 0)):
+            raise RuntimeError(f'Acquire: {result}')
+        return result['response']
 
     def append(self, acquired, sequence=1, retry=True, whole_rpc_unavailable=False):
         payload = base64.b64encode(f"{self.story}:{acquired['writer_id']}:{acquired['incarnation']}:{sequence}".encode()).decode()

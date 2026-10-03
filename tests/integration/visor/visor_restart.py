@@ -156,6 +156,7 @@ class Gate(Scenario):
 
         def led():
             reply = self.raw('Acquire', dict(story_id=self.story, writer_identity='leader-probe'))
+            assert reply['transport'] == 0 or self.refused_before_apply(reply), f'leader probe Acquire: {reply}'
             if reply['transport'] == 0 and reply.get('leader'):
                 seen[:] = [int(reply['leader'])]
             return seen[0] if seen else None
