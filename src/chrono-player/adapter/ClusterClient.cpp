@@ -109,6 +109,8 @@ void ClusterClient::apply(const internal::v1::RouteUpdate& update, bool snapshot
             return;
         revision_ = std::max(revision_, update.revision());
         route_revisions_[story] = update.revision();
+        learned_revisions_.try_emplace(story, update.revision());
+        reconcile_.erase(story);
         routes_[story] = convert::fromProto(update);
         physical_policy_[story] = update.physical_policy();
         looked_up_.erase(story);
@@ -131,22 +133,53 @@ void ClusterClient::watch(std::stop_token stop) const
         request.set_process_id(self_.id);
         request.set_instance(self_.instance);
         auto reader = stub_->WatchRoutes(&context, request);
-        // The wire has no snapshot-end marker. Confirm all retained identities asynchronously.
-        if(lookup_)
+        uint64_t floor;
         {
             std::lock_guard lock(mu_);
-            for(const auto& [story, state]: routes_)
-            {
-                (void)state;
-                reconcile_[story] = 0;
-            }
-            cv_.notify_all();
+            floor = revision_;
+            reconcile_.clear();
         }
+        std::set<StoryId> seen;
         internal::v1::WatchRoutesResponse message;
-        bool progressed = false;
+        bool marked = false;
         while(reader->Read(&message))
         {
-            progressed = true;
+            if(message.snapshot_end())
+            {
+                if(!marked)
+                {
+                    std::lock_guard lock(mu_);
+                    for(auto it = routes_.begin(); it != routes_.end();)
+                    {
+                        const auto story = it->first;
+                        if(seen.contains(story))
+                        {
+                            ++it;
+                            continue;
+                        }
+                        const auto learned = learned_revisions_.find(story);
+                        if(message.revision() >= std::max(floor, revision_) && learned != learned_revisions_.end() &&
+                           learned->second <= message.revision())
+                        {
+                            tombstoned_.insert(story);
+                            physical_policy_.erase(story);
+                            it = routes_.erase(it);
+                        }
+                        else
+                        {
+                            if(lookup_)
+                                reconcile_[story] = 0;
+                            ++it;
+                        }
+                    }
+                    revision_ = std::max(revision_, message.revision());
+                    cv_.notify_all();
+                }
+                marked = true;
+                continue;
+            }
+            if(!marked)
+                seen.insert(message.story_id());
             internal::v1::RouteUpdate update;
             if(update.ParseFromString(message.SerializeAsString()))
                 apply(update, true);
@@ -160,7 +193,7 @@ void ClusterClient::watch(std::stop_token stop) const
             }
             (void)refresh(stop);
         }
-        if(progressed)
+        if(marked)
             delay = std::chrono::milliseconds(rpc::kInitialBackoffMs);
         std::unique_lock lock(mu_);
         cv_.wait_for(lock, stop, delay, [] { return false; });
@@ -184,6 +217,11 @@ void ClusterClient::monitor(std::stop_token stop) const
         {
             if(stop.stop_requested())
                 return;
+            {
+                std::lock_guard lock(mu_);
+                if(!reconcile_.contains(story))
+                    continue;
+            }
             auto gone = lookup_(story);
             if(gone.ok() && *gone)
             {

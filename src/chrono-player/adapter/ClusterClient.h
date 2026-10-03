@@ -60,7 +60,7 @@ private:
     mutable std::map<StoryId, bool> physical_policy_;
     mutable int64_t skew_limit_ns_{60000000000LL};
     mutable uint64_t revision_{};
-    mutable std::map<StoryId, uint64_t> route_revisions_;
+    mutable std::map<StoryId, uint64_t> route_revisions_, learned_revisions_;
     mutable std::set<StoryId> tombstoned_, looking_up_;
     mutable std::map<StoryId, absl::Status> looked_up_;
     mutable std::map<StoryId, unsigned> reconcile_;
