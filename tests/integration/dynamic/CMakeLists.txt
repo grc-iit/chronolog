@@ -9,6 +9,9 @@ add_test(NAME dynamic_failover_integration
     --grapher $<TARGET_FILE:chrono_grapher>
     --player $<TARGET_FILE:chrono_player>)
 set_tests_properties(dynamic_failover_integration PROPERTIES TIMEOUT 380)
+add_test(NAME dynamic_scenario_test
+    COMMAND timeout 30 python3 ${CMAKE_CURRENT_SOURCE_DIR}/scenario_test.py)
+set_tests_properties(dynamic_scenario_test PROPERTIES TIMEOUT 35)
 add_executable(dynamic_bootstrap_test bootstrap_test.cpp)
 target_include_directories(dynamic_bootstrap_test PRIVATE ${PROJECT_SOURCE_DIR}/src/chrono-visor/tests)
 target_link_libraries(dynamic_bootstrap_test PRIVATE chronolog_visor_lib GTest::gtest_main chronolog_warnings)

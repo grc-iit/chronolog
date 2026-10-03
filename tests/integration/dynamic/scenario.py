@@ -126,7 +126,7 @@ class Scenario:
             response = self.raw('Append', request, acquired['assigned_keeper']['endpoint'])
             if response['transport']:
                 if whole_rpc_unavailable and response['transport'] == 14:
-                    return dict(status=dict(code=14))
+                    return dict(status=dict(code=14, message=response.get('error', '')), transport=14)
                 raise RuntimeError(str(response))
             result = response['response']['results'][0]
             code = int(result.get('status', {}).get('code', 0))
@@ -192,17 +192,20 @@ class Scenario:
         return self.rpc(op, dict(process_id=keeper), self.internal)
 
     def settled(self, acquired):
-        # A single append whose answer counts. The Keeper learns an acquisition from WatchAcquisitions, so until it
-        # has applied it the append is refused with FAILED_PRECONDITION (writer not registered) whatever the
-        # admission state. That answer says nothing about I4.8, so the same append is sent again.
+        # W10.14 closes admission until the acquisition snapshot restores fences, independently of route application.
+        # That refusal and a writer not yet registered say nothing about I4.8; resend the same append within this bound.
         deadline = time.monotonic() + 30
         while True:
             began = time.time_ns()
-            result = self.append(acquired, retry=False)
+            result = self.append(acquired, retry=False, whole_rpc_unavailable=True)
             ended = time.time_ns()
-            if int(result.get('status', {}).get('code', 0)) != 9:
+            snapshot_pending = (result.get('transport') == 14 and
+                                result['status'].get('message') == 'acquisition snapshot is not applied')
+            if result.get('transport') and not snapshot_pending:
+                raise RuntimeError(str(result))
+            if not snapshot_pending and int(result.get('status', {}).get('code', 0)) != 9:
                 return began, result, ended
-            assert time.monotonic() < deadline, f'the writer never registered at its Keeper: {result}'
+            assert time.monotonic() < deadline, f'acquisition admission never became ready at its Keeper: {result}'
             time.sleep(.05)
 
     def deferral(self, keeper, until, turn):
