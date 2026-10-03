@@ -198,9 +198,14 @@ TEST(CatalogLeaseTest, ExpiryReturnsWithoutWaitingForKeeper)
 TEST(CatalogLeaseTest, ExpiryMakesProgressUnderRenewalLoad)
 {
     testing::TempDir dir;
+    // Continuous service is this gate's precondition: hundreds of fsync'd acquires and renewals must not read as a
+    // service gap (which correctly pauses deadlines; RealServiceStallPausesDeadlines owns that case), so the
+    // allowance covers a slow storage batch and a completed tick follows every batch.
     AcquisitionLeaseConfig config;
     config.acquisition_expiry_batch = 8;
     config.acquisition_renew_batch = 64;
+    config.acquisition_service_gap_ms = 20000;
+    config.lease_safety_margin_ms = 25000;
     auto store = SqliteMetadataStore::open((dir.path() / "catalog.sqlite").string(),
                                            testing::twoKeeperTopology(),
                                            nullptr,
@@ -208,6 +213,7 @@ TEST(CatalogLeaseTest, ExpiryMakesProgressUnderRenewalLoad)
     ASSERT_TRUE(store.ok());
     ASSERT_TRUE((*store)->createChronicle("c").ok());
     const auto story = (*store)->createStory("c", "s")->id;
+    ASSERT_TRUE(config.validate(1000, 3000, 1000).ok());
     std::vector<Acquisition> dead, live;
     for(int i = 0; i < 20; ++i)
     {
@@ -215,11 +221,14 @@ TEST(CatalogLeaseTest, ExpiryMakesProgressUnderRenewalLoad)
         ASSERT_TRUE(grant.ok());
         dead.push_back(*grant);
     }
+    ASSERT_TRUE((*store)->serviceTick().ok());
     for(int i = 0; i < 200; ++i)
     {
         auto grant = (*store)->acquire(story, "live-" + std::to_string(i));
         ASSERT_TRUE(grant.ok());
         live.push_back(*grant);
+        if(i % 20 == 19)
+            ASSERT_TRUE((*store)->serviceTick().ok());
     }
     const auto T = dead.front().lease.duration_ns;
     auto renewAll = [&]
@@ -232,6 +241,7 @@ TEST(CatalogLeaseTest, ExpiryMakesProgressUnderRenewalLoad)
             auto renewed = (*store)->renewAcquisitions(batch);
             ASSERT_TRUE(renewed.ok());
             for(const auto& result: *renewed) ASSERT_TRUE(result.status.ok()) << result.status;
+            ASSERT_TRUE((*store)->leaseAuthority().service(true).ok());
         }
     };
     renewAll();
