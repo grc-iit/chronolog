@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import shutil
+import sys
 import time
 
 ROLES = ('visor', 'keeper', 'grapher', 'player')
@@ -244,7 +246,16 @@ def free_ports(endpoints):
 
 
 def binary(bin_dir, role):
-    root = Path(bin_dir)
+    selected = bin_dir or os.environ.get('CHRONOLOG_BIN_DIR')
+    if not selected:
+        beside = Path(sys.argv[0]).resolve().parent / ('chrono_' + role)
+        if beside.is_file() and os.access(beside, os.X_OK):
+            return str(beside)
+        found = shutil.which('chrono_' + role)
+        if found:
+            return str(Path(found).resolve())
+        raise ValueError(f'cannot find chrono_{role}; set --bin-dir or CHRONOLOG_BIN_DIR, install beside chronolog, or add to PATH')
+    root = Path(selected)
     candidates = (root / ('chrono_' + role), root / 'src' / ('chrono-' + role) /
                   ('server' if role == 'grapher' else '') / ('chrono_' + role))
     for path in candidates:
