@@ -8,10 +8,9 @@
 #include "rpc/Channel.h"
 #include "runtime/ClusterClient.h"
 #include <gtest/gtest.h>
+#include <absl/log/log.h>
 #include <algorithm>
 #include <array>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <thread>
 #include <string_view>
 #include <random>
@@ -22,31 +21,17 @@ namespace
 {
 using namespace std::chrono_literals;
 namespace wire = internal::v1;
-int freePort()
+int candidatePort()
 {
     static std::mt19937 random(std::random_device{}());
     static std::set<int> chosen;
     for(int attempt = 0; attempt < 64; ++attempt)
     {
         const int port = 10000 + (random() % 4400) * 5;
-        if(chosen.contains(port))
-            continue;
-        int fd = socket(AF_INET, SOCK_STREAM, 0);
-        if(fd < 0)
-            throw std::runtime_error("socket failed");
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        address.sin_port = htons(port);
-        const int result = bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
-        close(fd);
-        if(result == 0)
-        {
-            chosen.insert(port);
+        if(chosen.insert(port).second)
             return port;
-        }
     }
-    throw std::runtime_error("no free loopback port block");
+    throw std::runtime_error("no unused loopback port candidate");
 }
 struct KeeperDriver
 {
@@ -135,8 +120,8 @@ protected:
         std::vector<RaftPeer> peers;
         for(int i = 0; i < 3; ++i)
         {
-            auto raft_endpoint = "127.0.0.1:" + std::to_string(freePort());
-            auto endpoint = "127.0.0.1:" + std::to_string(freePort());
+            auto raft_endpoint = "127.0.0.1:" + std::to_string(candidatePort());
+            auto endpoint = "127.0.0.1:" + std::to_string(candidatePort());
             peers.push_back({i + 1, raft_endpoint, endpoint, endpoint});
         }
         for(size_t i = 0; i < 3; ++i)
@@ -200,6 +185,8 @@ protected:
             }
             if(status.message().find(" in use") == std::string_view::npos)
                 break;
+            LOG(WARNING) << "cluster launch " << attempt + 1 << " hit a bind collision: " << status
+                         << "; retrying the whole cluster on fresh ports";
         }
         ASSERT_TRUE(status.ok()) << status;
         size_t selected = leader();

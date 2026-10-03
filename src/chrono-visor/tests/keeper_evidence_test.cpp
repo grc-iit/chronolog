@@ -2,14 +2,14 @@
 // dynamic (one-replica Raft) and static (SQLite) membership: only the current registered
 // instance renews its current assigned unreleased tuple, leader-locally, with no proposal.
 #include <gtest/gtest.h>
+#include <absl/log/log.h>
 
 #include <grpcpp/grpcpp.h>
 
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <future>
 #include <random>
 #include <thread>
+#include <string_view>
 
 #include "TestSupport.h"
 #include "adapter/ClusterService.h"
@@ -26,22 +26,7 @@ namespace wire = internal::v1;
 int loopbackPort()
 {
     static std::mt19937 random(std::random_device{}());
-    for(int attempt = 0; attempt < 64; ++attempt)
-    {
-        const int port = 10000 + (random() % 4400) * 5;
-        int fd = socket(AF_INET, SOCK_STREAM, 0);
-        if(fd < 0)
-            throw std::runtime_error("socket failed");
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        address.sin_port = htons(port);
-        const int result = bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address));
-        close(fd);
-        if(result == 0)
-            return port;
-    }
-    throw std::runtime_error("no free loopback port");
+    return 10000 + (random() % 4400) * 5;
 }
 
 class EvidenceRig: public ::testing::Test
@@ -67,6 +52,13 @@ protected:
                 status = opened.status();
                 if(opened.ok())
                     raft_ = std::move(*opened);
+                else
+                {
+                    if(status.message().find(" in use") == std::string_view::npos)
+                        break;
+                    LOG(WARNING) << "evidence fixture launch " << attempt + 1 << " hit a bind collision: " << status
+                                 << "; retrying on a fresh port";
+                }
             }
             ASSERT_TRUE(raft_) << status;
             const auto deadline = std::chrono::steady_clock::now() + 8s;
@@ -418,41 +410,53 @@ TEST_F(StaticClusterAdapterTest, EvidenceHeartbeatRunsNoReconciliationScan)
 TEST_F(ClusterAdapterTest, ExpiredQueuedCallsDoNoWorkAndAFreshCallIsAnswered)
 {
     registerBoth();
-    std::promise<void> release;
-    auto gate = release.get_future().share();
-    std::atomic<int> blocked{0};
-    for(int worker = 0; worker < 2; ++worker)
-        ASSERT_TRUE(pool_->submit(
-                [&blocked, gate]
-                {
-                    ++blocked;
-                    (void)gate.wait_for(10s);
-                }));
-    const auto until = std::chrono::steady_clock::now() + 5s;
-    while(blocked.load() < 2 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(1ms);
-    ASSERT_EQ(blocked.load(), 2);
+    struct QueuedCalls
+    {
+        std::promise<void> release, started, refused;
+        std::atomic<int> blocked{}, ran{}, dropped{};
+        std::atomic<bool> expired{};
+    };
+    auto calls = std::make_shared<QueuedCalls>();
+    auto started = calls->started.get_future();
+    auto refused = calls->refused.get_future();
     constexpr int kQueued = 20;
     const auto dropped = pool_->dropped();
-    std::atomic<int> expired{0};
     {
-        std::vector<std::jthread> callers;
-        for(int i = 0; i < kQueued; ++i)
-            callers.emplace_back(
-                    [&]
+        struct ReleaseWorkers
+        {
+            QueuedCalls& calls;
+            ~ReleaseWorkers() { calls.release.set_value(); }
+        } release{*calls};
+        auto gate = calls->release.get_future().share();
+        for(int worker = 0; worker < 2; ++worker)
+            ASSERT_TRUE(pool_->submit(
+                    [calls, gate]
                     {
-                        wire::HeartbeatRequest q;
-                        q.set_process_id("keeper-a");
-                        q.set_instance("a1");
-                        q.set_applied_revision(1000);
-                        wire::HeartbeatResponse r;
-                        grpc::ClientContext c;
-                        c.set_deadline(std::chrono::system_clock::now() + 200ms);
-                        if(stub_->Heartbeat(&c, q, &r).error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)
-                            ++expired;
-                    });
+                        if(calls->blocked.fetch_add(1) + 1 == 2)
+                            calls->started.set_value();
+                        gate.wait();
+                    }));
+        ASSERT_EQ(started.wait_for(5s), std::future_status::ready);
+        for(int i = 0; i < kQueued; ++i)
+            ASSERT_TRUE(pool_->submit(
+                    [calls, membership = membership_.get()]
+                    {
+                        ++calls->ran;
+                        (void)membership->heartbeat("keeper-a", "a1", 1000);
+                    },
+                    [calls] { return calls->expired.load(); },
+                    [calls]
+                    {
+                        if(calls->dropped.fetch_add(1) + 1 == kQueued)
+                            calls->refused.set_value();
+                    }));
+        calls->expired = true;
     }
-    ASSERT_EQ(expired.load(), kQueued);
-    release.set_value();
+    ASSERT_EQ(refused.wait_for(5s), std::future_status::ready);
+    EXPECT_EQ(calls->ran.load(), 0);
+    EXPECT_EQ(calls->dropped.load(), kQueued);
+    EXPECT_EQ(pool_->dropped() - dropped, static_cast<uint64_t>(kQueued));
+    EXPECT_FALSE(membership_->waitApplied("keeper-a", 1000, 0ms));
     wire::ListMembersRequest q;
     wire::ListMembersResponse r;
     auto c = context();
@@ -460,9 +464,6 @@ TEST_F(ClusterAdapterTest, ExpiredQueuedCallsDoNoWorkAndAFreshCallIsAnswered)
     const auto status = stub_->ListMembers(c.get(), q, &r);
     ASSERT_TRUE(status.ok()) << status.error_message();
     EXPECT_EQ(r.status().code(), 0);
-    // Every queued heartbeat was answered without work: none applied its revision.
-    EXPECT_EQ(pool_->dropped() - dropped, static_cast<uint64_t>(kQueued));
-    EXPECT_FALSE(membership_->waitApplied("keeper-a", 1000, 0ms));
 }
 
 TEST_F(ClusterAdapterTest, KeeperEvidenceRenewsOnlyCurrentAssignedTuple)
