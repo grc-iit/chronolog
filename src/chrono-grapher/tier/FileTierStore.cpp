@@ -8,9 +8,11 @@
 #include <future>
 #include <deque>
 #include <limits>
+#include <random>
 #include <set>
 #include <sstream>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <tuple>
 
 namespace chronolog
@@ -212,6 +214,17 @@ bool MayIntersect(const ManifestIndex& index, const ManifestRecord& record, Rang
     return file.bounds.min_lo < range.end.physical_ns && file.bounds.max_hi >= range.start.physical_ns;
 }
 
+std::string Stem(const std::string& file) { return std::filesystem::path(file).replace_extension().generic_string(); }
+
+std::string RandomOp()
+{
+    std::random_device random;
+    const uint64_t value = (uint64_t{random()} << 32) ^ random() ^
+                           static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    char text[17];
+    std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(value));
+    return text;
+}
 } // namespace
 
 FileTierStore::FileTierStore(std::filesystem::path root,
@@ -244,7 +257,8 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                    Unlink unlink,
                                                                    LoadFile load_file,
                                                                    size_t read_threads,
-                                                                   DecodeFile decode_file)
+                                                                   DecodeFile decode_file,
+                                                                   Hooks hooks)
 {
     if(!codec || anchors.contains(0))
         return absl::InvalidArgumentError("invalid tier configuration");
@@ -260,6 +274,8 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
     auto log = ManifestLog::Open(root, writer);
     if(!log.ok())
         return log.status();
+    if(hooks.manifest_sync)
+        (*log)->setSync(hooks.manifest_sync);
     auto store = std::unique_ptr<FileTierStore>(new FileTierStore(std::move(root),
                                                                   std::move(writer),
                                                                   *std::move(log),
@@ -269,10 +285,12 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   std::move(load_file),
                                                                   *threads,
                                                                   std::move(decode_file)));
+    store->hooks_ = std::move(hooks);
     const auto started = std::chrono::steady_clock::now();
-    const auto status = store->recover();
-    if(!status.ok())
-        return status;
+    const auto on_disk = store->recover();
+    if(!on_disk.ok())
+        return on_disk.status();
+    store->queueCommittedCleanup(*on_disk);
     // A durable Deleted record is terminal even when its unlink failed or the process stopped before the unlink.
     // Failures remain pending for the deletion worker and do not prevent serving from the recovered manifest.
     const auto cleanup = store->retryDeletedFiles();
@@ -353,18 +371,31 @@ FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, Stor
     auto& view = views_[story];
     const auto found = index.by_story.find(story);
     const size_t count = found == index.by_story.end() ? 0 : found->second.size();
-    if(view.built && view.generation == index.generation && view.applied == count)
+    const auto revisions = index.revisions.find(story);
+    const uint64_t revision = revisions == index.revisions.end() ? 0 : revisions->second;
+    if(view.built && view.generation == index.generation && view.applied == count && view.revision == revision)
         return view;
     view = StoryView{};
     view.built = true;
     view.generation = index.generation;
     view.applied = count;
+    view.revision = revision;
     if(found == index.by_story.end())
         return view;
     std::map<std::string, ManifestRecord> files;
     for(const auto position: found->second)
     {
         const auto& record = index.records[position];
+        // Supersession is keyed by the file alone and outranks every record of any writer that names it; a rolled
+        // back switch supersedes nothing and its output is in no view (I13.12).
+        if(index.rolled_back.contains(record.file))
+            continue;
+        if(const auto replaced = index.superseded.find(record.file);
+           replaced != index.superseded.end() && !index.rolled_back.contains(replaced->second))
+        {
+            view.superseded[Stem(record.file)] = replaced->second;
+            continue;
+        }
         const auto key = record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
                                                        std::to_string(record.start.physical_ns) + ":" +
                                                        std::to_string(record.start.logical)
@@ -459,49 +490,106 @@ absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord&
     return std::move(chunk.events);
 }
 
+std::optional<ManifestRecord> FileTierStore::successor(const ManifestIndex& index, const ManifestRecord& record) const
+{
+    const auto replaced = index.superseded.find(record.file);
+    if(replaced == index.superseded.end() || index.rolled_back.contains(replaced->second))
+        return std::nullopt;
+    for(const auto& entry: viewOf(index, record.story_id).effective)
+        if(entry.file == replaced->second)
+            return entry;
+    return std::nullopt;
+}
+
 bool FileTierStore::retired(const ManifestIndex& index, const ManifestRecord& record) const
 {
+    if(const auto next = successor(index, record))
+        return next->state == ManifestState::Deleted;
     for(const auto& entry: viewOf(index, record.story_id).effective)
         if(entry.file == record.file)
             return entry.state == ManifestState::Deleted;
     return false;
 }
 
-absl::StatusOr<std::vector<Event>> FileTierStore::afterVanished(const ManifestRecord& record,
-                                                                absl::Status failure) const
+bool FileTierStore::effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const
 {
-    if(!ArchiveFileVanished(failure))
-        return failure;
-    const auto seen = forced_started_.load();
-    std::lock_guard lock(mutex_);
-    if(forced_done_ <= seen)
-    {
-        const auto number = ++forced_started_;
-        if(!log_->sync().ok())
-            return failure;
-        polled_ = true;
-        refreshed_ = std::chrono::steady_clock::now();
-        forced_done_ = number;
-    }
-    const auto* index = log_->current();
-    // A destroy erases through Deleted records too, and an admitted read that reaches one of them fails (I6.7).
-    if(index->tombstoned.contains(record.story_id) || !retired(*index, record))
-        return failure;
-    return std::vector<Event>{};
+    const auto& view = viewOf(index, record.story_id);
+    return std::any_of(view.effective.begin(),
+                       view.effective.end(),
+                       [&](const auto& entry)
+                       { return entry.file == record.file && entry.state == ManifestState::Published; });
 }
 
-absl::Status FileTierStore::recover()
+// A record that vanished after it was planned: retention erased it (no events), compaction replaced it (exactly the
+// events the record held, read from the output masked to its window), or it is a real source failure. A successor
+// is a compaction output that is never compacted again, so this follows at most one more manifest transition.
+absl::StatusOr<std::vector<Event>>
+FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure, Range range, size_t max_events) const
+{
+    for(int attempt = 0; attempt < 2 && ArchiveFileVanished(failure); ++attempt)
+    {
+        std::optional<ManifestRecord> next;
+        {
+            const auto seen = forced_started_.load();
+            std::lock_guard lock(mutex_);
+            if(forced_done_ <= seen)
+            {
+                const auto number = ++forced_started_;
+                if(!log_->sync().ok())
+                    return failure;
+                polled_ = true;
+                refreshed_ = std::chrono::steady_clock::now();
+                forced_done_ = number;
+            }
+            const auto* index = log_->current();
+            // A destroy erases through Deleted records too, and an admitted read that reaches one of them fails (I6.7).
+            if(index->tombstoned.contains(record.story_id))
+                return failure;
+            next = successor(*index, record);
+            if(!next)
+                return retired(*index, record) ? absl::StatusOr<std::vector<Event>>(std::vector<Event>{}) : failure;
+            if(next->state == ManifestState::Deleted)
+                return std::vector<Event>{};
+            if(next->state != ManifestState::Published)
+                return failure;
+        }
+        auto bytes = load_file_(root_ / next->file);
+        if(!bytes.ok())
+        {
+            failure = bytes.status();
+            continue;
+        }
+        auto events = decodeRecord(*next, range, SIZE_MAX, *std::move(bytes));
+        if(!events.ok())
+            return events.status();
+        std::vector<Event> selected;
+        for(auto& event: *events)
+        {
+            if(event.hlc < record.start || event.hlc >= record.end)
+                continue;
+            if(selected.size() == max_events)
+                break;
+            selected.push_back(std::move(event));
+        }
+        return selected;
+    }
+    return failure;
+}
+
+// Returns every story file found on disk, so committed compaction cleanup only queues files that still exist.
+absl::StatusOr<std::set<std::string>> FileTierStore::recover()
 {
     auto index = refresh();
     if(!index.ok())
         return index.status();
     std::set<StoryId> stories;
-    std::set<std::string> recorded;
+    std::set<std::string> recorded, failed;
     for(const auto& record: (*index)->records)
     {
         stories.insert(record.story_id);
         recorded.insert(record.file);
     }
+    for(const auto& [input, output]: (*index)->superseded) recorded.insert(input);
     for(const auto story: stories)
     {
         const auto w = watermark(**index, story);
@@ -514,22 +602,22 @@ absl::Status FileTierStore::recover()
                 continue;
             if(ArchiveFileVanished(events.status()))
             {
-                // A peer may have retired the file after this index was read: never mark a Deleted file Lost.
+                // A peer may have retired or compacted the file after this index was read: never mark it Lost then.
                 auto refreshed = log_->sync();
                 if(!refreshed.ok())
                     return refreshed.status();
-                if(retired(**refreshed, record))
+                if(!effectivePublished(**refreshed, record))
                     continue;
             }
-            auto status = log_->rememberWatermark(story, w);
-            if(!status.ok())
-                return status;
-            record.state = ManifestState::Lost;
-            status = log_->append(record);
+            failed.insert(record.file);
+            auto status = rollbackOrLose(record, w);
             if(!status.ok())
                 return status;
         }
     }
+    std::set<std::string> on_disk;
+    std::vector<std::pair<std::filesystem::path, CompactionOutput>> outputs;
+    const auto temporary = CompactionTemporaryPrefix(writer_);
     std::error_code error;
     for(std::filesystem::directory_iterator it(root_, error), end; !error && it != end; it.increment(error))
     {
@@ -540,6 +628,19 @@ absl::Status FileTierStore::recover()
             file.increment(error))
         {
             const auto relative = file->path().lexically_relative(root_);
+            on_disk.insert(relative.generic_string());
+            if(relative.filename().string().starts_with(temporary))
+            {
+                // An own compaction temporary is never named by the manifest.
+                ::unlink(file->path().c_str());
+                continue;
+            }
+            if(auto output = ParseCompactionOutput(relative))
+            {
+                if(output->writer == writer_ && !recorded.contains(relative.generic_string()))
+                    outputs.emplace_back(relative, *std::move(output));
+                continue;
+            }
             if(recorded.contains(relative.generic_string()))
                 continue;
             auto record = FromFilename(relative);
@@ -565,7 +666,100 @@ absl::Status FileTierStore::recover()
     }
     if(error)
         return absl::UnavailableError(error.message());
-    return absl::OkStatus();
+    // An own output no switch names is an aborted compaction. It is removed only while every own effective record in
+    // its window is a Published file that just validated and together they cover the window exactly; otherwise it
+    // may hold the only copy of those events, so it stays and is reported.
+    index = refresh();
+    if(!index.ok())
+        return index.status();
+    for(const auto& [relative, output]: outputs)
+    {
+        StoryId story = 0;
+        (void)Number(relative.parent_path().string(), story);
+        auto covered = output.start;
+        bool removable = !(*index)->tombstoned.contains(story);
+        const auto& view = viewOf(**index, story);
+        for(const auto position: view.by_start)
+        {
+            const auto& record = view.effective[position];
+            if(record.manifest_writer != writer_ || record.end <= output.start || record.start >= output.end)
+                continue;
+            if(record.state != ManifestState::Published || failed.contains(record.file) || record.start != covered)
+                removable = false;
+            covered = record.end;
+        }
+        if(!removable || covered != output.end)
+        {
+            LOG(WARNING) << "archive keeps unreferenced compaction output " << relative.generic_string()
+                         << ": its inputs are not all present and valid";
+            continue;
+        }
+        if(::unlink((root_ / relative).c_str()) != 0 && errno != ENOENT)
+            return tier_detail::IoError("unlink aborted compaction output");
+        on_disk.erase(relative.generic_string());
+        auto synced = tier_detail::SyncDirectory((root_ / relative).parent_path());
+        if(!synced.ok())
+            return synced;
+    }
+    return on_disk;
+}
+
+// An own committed output that fails validation while every input it replaced is still present and valid is rolled
+// back rather than lost: the rollback line restores the inputs. Anything else becomes Lost with W preserved (I13.5).
+absl::Status FileTierStore::rollbackOrLose(ManifestRecord record, Hlc w)
+{
+    const auto* index = log_->current();
+    const auto change = index->switches.find(record.file);
+    if(change != index->switches.end() && change->second.writer == writer_ && !log_->failed())
+    {
+        const auto inputs = change->second.inputs;
+        const bool intact =
+                std::all_of(inputs.begin(), inputs.end(), [this](const auto& input) { return validate(input).ok(); });
+        if(intact)
+        {
+            LOG(WARNING) << "archive rolls back compaction output " << record.file << ": its inputs are intact";
+            auto status = log_->rememberWatermark(record.story_id, w);
+            if(status.ok())
+                status = log_->appendRollback(record.story_id, record.file);
+            if(status.ok())
+                status = refresh().status();
+            return status;
+        }
+    }
+    auto status = log_->rememberWatermark(record.story_id, w);
+    if(!status.ok())
+        return status;
+    record.state = ManifestState::Lost;
+    return log_->append(record);
+}
+
+// Superseded inputs are unlinked only once this incarnation has fsynced its own log, so a switch line that is
+// visible but was never durable cannot cost the inputs. Peers' switches are never cleaned here (I13.12).
+void FileTierStore::queueCommittedCleanup(const std::set<std::string>& on_disk)
+{
+    const auto synced = log_->syncOwn();
+    std::lock_guard lock(mutex_);
+    if(!synced.ok())
+    {
+        compaction_stopped_ = true;
+        LOG(ERROR) << "archive manifest fsync failed at open; compaction and superseded cleanup stop: " << synced;
+        return;
+    }
+    const auto* index = log_->current();
+    for(const auto& [output, change]: index->switches)
+    {
+        if(change.writer != writer_)
+            continue;
+        if(index->rolled_back.contains(output))
+        {
+            if(on_disk.contains(output))
+                pending_unlinks_[output] = change.story_id;
+            continue;
+        }
+        for(const auto& input: change.inputs)
+            if(on_disk.contains(input.file))
+                pending_unlinks_[input.file] = change.story_id;
+    }
 }
 
 absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
@@ -590,9 +784,32 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                           chunk.events.empty() ? ManifestState::Empty : ManifestState::Published,
                           chunk.exempt,
                           chunk.physical_policy};
+    struct PublishTurn
     {
-        // The lock covers the manifest view and the claim on the file name, never the file write, so watermark
-        // reports and other stories are not held up by an HDF5 write or an fsync.
+        FileTierStore& store;
+        explicit PublishTurn(FileTierStore& owner)
+            : store(owner)
+        {
+            std::lock_guard lock(store.admission_);
+            ++store.publishing_;
+        }
+        ~PublishTurn()
+        {
+            {
+                std::lock_guard lock(store.admission_);
+                --store.publishing_;
+            }
+            store.admission_changed_.notify_all();
+        }
+    };
+    const auto stem = Stem(record.file);
+    // A file already holding this window: the same publication, or the compaction output that superseded it, whose
+    // events are compared over the original window only.
+    std::optional<ManifestRecord> holder;
+    bool compacted = false;
+    {
+        // The lock covers the manifest view and the claim on the file name, never the file write or a decode, so
+        // watermark reports and other stories are not held up by HDF5 or an fsync.
         std::unique_lock lock(mutex_);
         while(true)
         {
@@ -603,24 +820,28 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
                 return absl::FailedPreconditionError("story tombstoned");
             if(!known(**index, chunk.story_id))
                 return absl::NotFoundError("unknown story");
-            for(const auto& existing: viewOf(**index, chunk.story_id).effective)
+            const auto& view = viewOf(**index, chunk.story_id);
+            holder.reset();
+            compacted = false;
+            for(const auto& existing: view.effective)
             {
-                auto existing_name = std::filesystem::path(existing.file);
-                auto requested_name = std::filesystem::path(record.file);
-                if(existing_name.replace_extension() != requested_name.replace_extension())
+                if(Stem(existing.file) != stem)
                     continue;
                 if(existing.state == ManifestState::Empty && chunk.events.empty())
                     return existing;
-                if(existing.state == ManifestState::Published)
-                {
-                    auto events = ReadChunkFile(root_ / existing.file);
-                    if(!events.ok())
-                        return events.status();
-                    if(events->size() == chunk.events.size() &&
-                       std::equal(events->begin(), events->end(), chunk.events.begin(), SameEvent))
-                        return existing;
-                }
-                return absl::UnavailableError("chunk rotation already published");
+                if(existing.state != ManifestState::Published)
+                    return absl::UnavailableError("chunk rotation already published");
+                holder = existing;
+                break;
+            }
+            if(const auto replaced = view.superseded.find(stem); !holder && replaced != view.superseded.end())
+            {
+                for(const auto& entry: view.effective)
+                    if(entry.file == replaced->second && entry.state == ManifestState::Published)
+                        holder = entry;
+                if(!holder)
+                    return absl::UnavailableError("chunk rotation was compacted into a file that is not published");
+                compacted = true;
             }
             if(!inflight_.contains(record.file))
                 break;
@@ -641,6 +862,38 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             store.inflight_changed_.notify_all();
         }
     } claim{*this, record.file};
+    if(holder)
+    {
+        // Decoded outside the store mutex: a compaction write can hold the HDF5 mutex for a whole output (I13.12).
+        absl::StatusOr<std::vector<Event>> events;
+        {
+            PublishTurn turn(*this);
+            events = ReadChunkFile(root_ / holder->file);
+        }
+        if(!events.ok())
+            return events.status();
+        if(compacted)
+            std::erase_if(*events,
+                          [&](const auto& event) { return event.hlc < chunk.start || event.hlc >= chunk.end; });
+        std::stable_sort(events->begin(), events->end(), ReplayLess);
+        const bool same = events->size() == chunk.events.size() &&
+                          std::equal(events->begin(), events->end(), chunk.events.begin(), SameEvent);
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        // The answer must name a file that is still the effective holder, never one about to be unlinked.
+        const auto& view = viewOf(**index, chunk.story_id);
+        const auto replaced = view.superseded.find(stem);
+        const bool current = effectivePublished(**index, *holder) &&
+                             (compacted ? replaced != view.superseded.end() && replaced->second == holder->file
+                                        : replaced == view.superseded.end());
+        if(!current)
+            return absl::UnavailableError("archive file changed during the duplicate check; retry");
+        if(!same)
+            return absl::UnavailableError("chunk rotation already published");
+        return *holder;
+    }
     const auto directory = root_ / std::to_string(chunk.story_id);
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -658,7 +911,11 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         const std::string& file;
         ~Cleanup() { ::unlink(file.c_str()); }
     } cleanup{temporary};
-    auto status = codec_->writeChunk(temporary, chunk);
+    absl::Status status;
+    {
+        PublishTurn turn(*this);
+        status = codec_->writeChunk(temporary, chunk);
+    }
     if(!status.ok())
         return status;
     if(::fsync(fd.get()) != 0)
@@ -779,7 +1036,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         {
             auto bytes = ready.get();
             results[index] = bytes.ok() ? decodeRecord(records[index], range, max_events, *std::move(bytes))
-                                        : afterVanished(records[index], bytes.status());
+                                        : afterVanished(records[index], bytes.status(), range, max_events);
         }
         catch(const std::exception& error)
         {
@@ -818,7 +1075,7 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         return std::vector<Event>{};
     auto bytes = load_file_(root_ / record.file);
     if(!bytes.ok())
-        return afterVanished(record, bytes.status());
+        return afterVanished(record, bytes.status(), range, max_events);
     return decodeRecord(record, range, max_events, *std::move(bytes));
 }
 
@@ -915,6 +1172,11 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
                                     });
     if(found == (*index)->records.end())
         return absl::NotFoundError("unknown archive file");
+    // A caller that selected an input before its compaction must reselect from the effective view; erasing the
+    // whole output for one old input, or reporting the input erased while the output holds its events, is wrong.
+    if(const auto replaced = (*index)->superseded.find(file);
+       replaced != (*index)->superseded.end() && !(*index)->rolled_back.contains(replaced->second))
+        return absl::FailedPreconditionError("archive file was superseded by compaction; reselect");
     auto record = *found;
     const bool deleted = std::any_of((*index)->records.begin(),
                                      (*index)->records.end(),
@@ -976,10 +1238,53 @@ absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
     return status;
 }
 
+// In a tombstoned story any writer may unlink any writer's superseded inputs, rolled back or unreferenced
+// compaction outputs and compaction temporaries, so a destroy completes while the compacting writer is down for good.
+void FileTierStore::sweepTombstoned()
+{
+    std::vector<StoryId> stories;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return;
+        for(const auto story: (*index)->tombstoned)
+            if(!swept_.contains(story))
+                stories.push_back(story);
+    }
+    for(const auto story: stories)
+    {
+        std::vector<std::string> found;
+        std::error_code error;
+        for(std::filesystem::directory_iterator it(root_ / std::to_string(story), error), end; !error && it != end;
+            it.increment(error))
+        {
+            const auto relative = it->path().lexically_relative(root_);
+            if(relative.filename().string().starts_with(".compact-") || ParseCompactionOutput(relative))
+                found.push_back(relative.generic_string());
+        }
+        if(error && error != std::errc::no_such_file_or_directory)
+            continue;
+        std::lock_guard lock(mutex_);
+        const auto* index = log_->current();
+        for(const auto& [output, change]: index->switches)
+            if(change.story_id == story)
+                for(const auto& input: change.inputs)
+                    if(!index->rolled_back.contains(output))
+                        pending_unlinks_[input.file] = story;
+        for(const auto& file: found)
+            if(!index->switches.contains(file) || index->rolled_back.contains(file) ||
+               file.find("/.compact-") != std::string::npos)
+                pending_unlinks_[file] = story;
+        swept_.insert(story);
+    }
+}
+
 absl::Status FileTierStore::retryDeletedFiles()
 {
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
+    sweepTombstoned();
     std::vector<std::string> files;
     {
         std::lock_guard lock(mutex_);
@@ -1010,6 +1315,8 @@ absl::StatusOr<bool> FileTierStore::hasPendingUnlinks(StoryId story)
     if(!index.ok())
         return index.status();
     collectDeletedFiles(**index);
+    if(((*index)->tombstoned.contains(story) && !swept_.contains(story)) || compacting_.load() == story)
+        return true;
     return std::any_of(pending_unlinks_.begin(),
                        pending_unlinks_.end(),
                        [story](const auto& pending) { return pending.second == story; });
@@ -1076,5 +1383,321 @@ absl::Status FileTierStore::compact()
         return absl::FailedPreconditionError("read-only tier store");
     std::lock_guard lock(mutex_);
     return log_->compact();
+}
+struct FileTierStore::CompactionJob
+{
+    StoryId story{};
+    std::vector<ManifestRecord> inputs;
+    std::vector<uint64_t> sizes;
+};
+
+absl::Status FileTierStore::compactionStep(std::string_view step) const
+{
+    return hooks_.compaction_step ? hooks_.compaction_step(step) : absl::OkStatus();
+}
+
+void FileTierStore::stopCompaction()
+{
+    {
+        std::lock_guard lock(admission_);
+        stop_compaction_ = true;
+    }
+    admission_changed_.notify_all();
+}
+
+// Admits one compaction codec call or file read: never while a publish is in its codec call, and only within the
+// byte budget, whose debt the next call pays. Holds no store, manifest or codec lock while it waits.
+bool FileTierStore::waitCompactionTurn(uint64_t bytes, const CompactionPolicy& policy)
+{
+    std::unique_lock lock(admission_);
+    while(true)
+    {
+        if(stop_compaction_)
+            return false;
+        if(publishing_)
+        {
+            admission_changed_.wait(lock);
+            continue;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        const double rate = static_cast<double>(policy.io_bytes_per_sec);
+        const double burst = static_cast<double>(std::max(policy.io_burst_bytes, uint64_t{1}));
+        if(io_refilled_ == std::chrono::steady_clock::time_point{})
+            io_tokens_ = burst;
+        else
+            io_tokens_ = std::min(burst, io_tokens_ + std::chrono::duration<double>(now - io_refilled_).count() * rate);
+        io_refilled_ = now;
+        if(io_tokens_ > 0)
+        {
+            io_tokens_ -= static_cast<double>(bytes);
+            return true;
+        }
+        admission_changed_.wait_for(lock, std::chrono::duration<double>((1.0 - io_tokens_) / rate));
+    }
+}
+
+absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPolicy& policy)
+{
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
+    if(policy.min_files < 2 || policy.max_files < policy.min_files || !policy.max_events || policy.max_events > 65536 ||
+       !policy.max_output_bytes || !policy.io_bytes_per_sec || policy.max_span_ns <= 0)
+        return absl::InvalidArgumentError("invalid compaction policy");
+    std::vector<std::pair<StoryId, std::vector<ManifestRecord>>> runs;
+    {
+        std::lock_guard lock(mutex_);
+        if(compaction_stopped_ || log_->failed())
+        {
+            compaction_stopped_ = true;
+            return absl::FailedPreconditionError("archive compaction stopped after a manifest failure");
+        }
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        std::vector<StoryId> stories;
+        for(const auto& [story, positions]: (*index)->by_story)
+            if(!(*index)->tombstoned.contains(story))
+                stories.push_back(story);
+        if(stories.empty())
+            return CompactionResult{};
+        std::rotate(stories.begin(),
+                    stories.begin() + static_cast<long>(next_story_++ % stories.size()),
+                    stories.end());
+        for(const auto story: stories)
+        {
+            const auto w = watermark(**index, story);
+            const auto& view = viewOf(**index, story);
+            std::vector<ManifestRecord> run;
+            const auto close = [&]
+            {
+                if(run.size() >= policy.min_files)
+                    runs.emplace_back(story, std::move(run));
+                run.clear();
+            };
+            for(const auto position: view.by_start)
+            {
+                const auto& record = view.effective[position];
+                const bool own = record.manifest_writer == writer_;
+                const bool claimed = std::any_of(inflight_.begin(),
+                                                 inflight_.end(),
+                                                 [&](const auto& file) { return Stem(file) == Stem(record.file); });
+                const bool eligible = own && record.state == ManifestState::Published && !record.exempt &&
+                                      record.end <= w && record.event_count <= policy.max_events && !claimed &&
+                                      !ParseCompactionOutput(record.file);
+                if(!eligible)
+                {
+                    // Another writer's copy of a window neither joins nor breaks a run; anything else breaks it.
+                    if(own || record.exempt ||
+                       (record.state != ManifestState::Published && record.state != ManifestState::Empty))
+                        close();
+                    continue;
+                }
+                if(!run.empty() &&
+                   (run.back().end != record.start || run.back().physical_policy != record.physical_policy))
+                    close();
+                run.push_back(record);
+            }
+            close();
+        }
+    }
+    const auto now = std::chrono::system_clock::now();
+    for(auto& [story, run]: runs)
+    {
+        CompactionJob job{story, {}, {}};
+        uint64_t bytes = 0, events = 0;
+        for(const auto& record: run)
+        {
+            struct stat info
+            {
+            };
+            tier_detail::Fd fd(::open((root_ / record.file).c_str(), O_RDONLY | O_CLOEXEC));
+            const bool opened = fd.get() >= 0 && ::fstat(fd.get(), &info) == 0;
+            const auto size = opened ? static_cast<uint64_t>(info.st_size) : 0;
+            const auto modified = std::chrono::system_clock::time_point(std::chrono::seconds(info.st_mtim.tv_sec) +
+                                                                        std::chrono::nanoseconds(info.st_mtim.tv_nsec));
+            const bool usable = opened && size <= policy.small_file_bytes && size <= policy.max_output_bytes &&
+                                now - modified >= policy.min_age &&
+                                record.end.physical_ns - record.start.physical_ns <= policy.max_span_ns;
+            const bool fits = !job.inputs.empty() && job.inputs.size() < policy.max_files &&
+                              events + record.event_count <= policy.max_events &&
+                              bytes + size <= policy.max_output_bytes &&
+                              record.end.physical_ns - job.inputs.front().start.physical_ns <= policy.max_span_ns;
+            if(!usable || (!job.inputs.empty() && !fits))
+            {
+                if(job.inputs.size() >= policy.min_files)
+                    break;
+                job.inputs.clear();
+                job.sizes.clear();
+                bytes = events = 0;
+                if(!usable)
+                    continue;
+            }
+            job.inputs.push_back(record);
+            job.sizes.push_back(size);
+            bytes += size;
+            events += record.event_count;
+        }
+        if(job.inputs.size() >= policy.min_files)
+            return runCompaction(policy, std::move(job));
+    }
+    return CompactionResult{};
+}
+
+absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPolicy& policy, CompactionJob job)
+{
+    compacting_ = job.story;
+    struct Active
+    {
+        std::atomic<StoryId>& story;
+        ~Active() { story = 0; }
+    } active{compacting_};
+    // Files this job created, removed on every abort before the switch. A step hook that stops the job models a
+    // crash and leaves them for recovery.
+    struct Created
+    {
+        std::vector<std::filesystem::path> files;
+        bool keep{};
+        ~Created()
+        {
+            if(!keep)
+                for(const auto& file: files) ::unlink(file.c_str());
+        }
+    } created;
+    const auto story = job.story;
+    const auto& inputs = job.inputs;
+    std::vector<Event> events;
+    for(size_t i = 0; i < inputs.size(); ++i)
+    {
+        if(!waitCompactionTurn(job.sizes[i], policy))
+            return absl::CancelledError("archive compaction stopped");
+        auto loaded = validate(inputs[i]);
+        if(!loaded.ok())
+            return loaded.status();
+        events.insert(events.end(), std::make_move_iterator(loaded->begin()), std::make_move_iterator(loaded->end()));
+    }
+    std::vector<EventId> ids;
+    for(const auto& event: events) ids.push_back(event.id);
+    std::sort(ids.begin(), ids.end());
+    if(std::adjacent_find(ids.begin(), ids.end()) != ids.end())
+        return absl::DataLossError("compaction inputs repeat an event id");
+    std::sort(events.begin(), events.end(), ReplayLess);
+    const auto op = RandomOp();
+    Chunk chunk{op, story, inputs.front().start, inputs.back().end, events, false, inputs.front().physical_policy};
+    if(const auto valid = ValidChunk(chunk); !valid.ok())
+        return valid;
+    const auto directory = root_ / std::to_string(story);
+    const auto relative = std::filesystem::path(std::to_string(story)) /
+                          CompactionOutputName({writer_, op, chunk.start, chunk.end}, codec_->extension());
+    const auto final = root_ / relative;
+    std::string temporary = (directory / (CompactionTemporaryPrefix(writer_) + "XXXXXX")).string();
+    tier_detail::Fd fd(::mkstemp(temporary.data()));
+    if(fd.get() < 0)
+        return tier_detail::IoError("create compaction temporary");
+    created.files.push_back(temporary);
+    uint64_t estimate = 0;
+    for(const auto size: job.sizes) estimate += size;
+    if(!waitCompactionTurn(estimate, policy))
+        return absl::CancelledError("archive compaction stopped");
+    if(auto status = codec_->writeChunk(temporary, chunk); !status.ok())
+        return status;
+    if(::fsync(fd.get()) != 0)
+        return tier_detail::IoError("fsync compaction output");
+    if(auto status = compactionStep("link"); !status.ok())
+    {
+        created.keep = true;
+        return status;
+    }
+    // link fails rather than replaces an existing name, also on NFS (I13.1).
+    if(::link(temporary.c_str(), final.c_str()) != 0)
+        return tier_detail::IoError("link compaction output");
+    created.files.push_back(final);
+    if(::unlink(temporary.c_str()) != 0)
+        return tier_detail::IoError("unlink compaction temporary");
+    if(auto synced = tier_detail::SyncDirectory(directory); !synced.ok())
+        return synced;
+    ManifestRecord output{op,
+                          writer_,
+                          relative.generic_string(),
+                          story,
+                          chunk.start,
+                          chunk.end,
+                          events.size(),
+                          ManifestState::Published,
+                          false,
+                          chunk.physical_policy};
+    if(!waitCompactionTurn(estimate, policy))
+        return absl::CancelledError("archive compaction stopped");
+    auto written = validate(output);
+    if(!written.ok())
+        return written.status();
+    std::stable_sort(written->begin(), written->end(), ReplayLess);
+    if(written->size() != events.size() || !std::equal(written->begin(), written->end(), events.begin(), SameEvent))
+        return absl::DataLossError("compaction output differs from its inputs");
+    if(auto status = compactionStep("switch"); !status.ok())
+    {
+        created.keep = true;
+        return status;
+    }
+    CompactionSwitch change{writer_, op, story, inputs, output, BoundsOf(events), {}};
+    {
+        std::lock_guard lock(mutex_);
+        if(compaction_stopped_ || log_->failed())
+        {
+            compaction_stopped_ = true;
+            return absl::FailedPreconditionError("archive compaction stopped after a manifest failure");
+        }
+        // The final check reads the manifest again under the mutex that also orders tombstones and erasures, and
+        // appends the switch without releasing it.
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        if((*index)->tombstoned.contains(story))
+            return absl::FailedPreconditionError("story tombstoned during compaction");
+        const auto& view = viewOf(**index, story);
+        for(const auto& input: inputs)
+        {
+            const bool same = std::any_of(view.effective.begin(),
+                                          view.effective.end(),
+                                          [&](const auto& entry)
+                                          {
+                                              return entry.file == input.file &&
+                                                     entry.state == ManifestState::Published &&
+                                                     entry.manifest_writer == writer_ && entry.start == input.start &&
+                                                     entry.end == input.end && entry.event_count == input.event_count;
+                                          });
+            const bool claimed = std::any_of(inflight_.begin(),
+                                             inflight_.end(),
+                                             [&](const auto& file) { return Stem(file) == Stem(input.file); });
+            if(!same || claimed)
+                return absl::AbortedError("compaction input changed before the switch");
+        }
+        change.w_floor = watermark(**index, story);
+        if(inputs.back().end > change.w_floor)
+            return absl::AbortedError("compaction inputs are above the watermark");
+        if(auto status = log_->appendSwitch(change); !status.ok())
+        {
+            // The line may be complete in the log without being durable: keep both sides and stop compacting.
+            compaction_stopped_ = true;
+            created.keep = true;
+            LOG(ERROR) << "archive compaction switch for " << output.file
+                       << " is not durable; compaction stops: " << status;
+            return status;
+        }
+        created.keep = true;
+        if(auto installed = refresh(); installed.ok())
+            (void)watermark(**installed, story);
+    }
+    if(auto status = compactionStep("cleanup"); !status.ok())
+        return status;
+    // Fed only by this thread after its own fsync of the switch succeeded (I13.12).
+    for(const auto& input: inputs)
+        if(!unlinkDeletedFile(input.file).ok())
+        {
+            std::lock_guard lock(mutex_);
+            pending_unlinks_[input.file] = story;
+        }
+    LOG(INFO) << "archive compacted story=" << story << " inputs=" << inputs.size() << " events=" << events.size()
+              << " output=" << output.file;
+    return CompactionResult{inputs.size(), output.file};
 }
 } // namespace chronolog

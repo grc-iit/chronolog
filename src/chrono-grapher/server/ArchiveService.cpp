@@ -72,10 +72,14 @@ bool HasPublishedFiles(const FileTierStore& store, StoryId story)
 }
 } // namespace
 
-ArchiveService::ArchiveService(FileTierStore& store, std::string instance, TransferLimits limits)
+ArchiveService::ArchiveService(FileTierStore& store,
+                               std::string instance,
+                               TransferLimits limits,
+                               CompactionSettings compaction)
     : store_(store)
     , instance_(std::move(instance))
     , limits_(limits)
+    , compaction_(compaction)
     , pool_(std::make_unique<WorkerPool>(std::max<uint32_t>(1, limits.concurrent_transfers),
                                          std::max<uint32_t>(1, limits.concurrent_transfers)))
     , destroyer_(std::make_unique<WorkerPool>(1, 1))
@@ -87,6 +91,11 @@ ArchiveService::ArchiveService(FileTierStore& store, std::string instance, Trans
             if(HasPublishedFiles(store_, story))
                 destroy_queue_.push_back(story);
     destroyer_->submit([this] { destroyLoop(); });
+    if(compaction_.enabled)
+    {
+        compactor_ = std::make_unique<WorkerPool>(1, 1);
+        compactor_->submit([this] { compactLoop(); });
+    }
 }
 
 ArchiveService::~ArchiveService() { shutdown(); }
@@ -421,7 +430,8 @@ bool ArchiveService::eraseFiles(StoryId story)
                 continue;
             any = true;
             const auto erased = store_.eraseFile(record.file);
-            if(!erased.ok() && !absl::IsNotFound(erased))
+            // FAILED_PRECONDITION: compaction superseded the file after this selection; the loop reselects.
+            if(!erased.ok() && !absl::IsNotFound(erased) && !absl::IsFailedPrecondition(erased))
             {
                 LOG_EVERY_N_SEC(ERROR, 10)
                         << "cannot erase " << record.file << " of tombstoned story " << story << ": " << erased;
@@ -430,11 +440,34 @@ bool ArchiveService::eraseFiles(StoryId story)
         }
         if(!any)
         {
+            (void)store_.retryDeletedFiles();
             const auto pending = store_.hasPendingUnlinks(story);
             return pending.ok() && !*pending;
         }
         if(failed)
             return false;
+    }
+}
+
+// One job at a time on its own worker (M11.7), never on a transfer worker. Committed cleanup runs before the next
+// job. Shutdown stops a job waiting for its budget; a job stopped mid-way leaves only work that recovery resumes.
+void ArchiveService::compactLoop()
+{
+    CHRONOLOG_ASSERT_WORKER_THREAD();
+    std::unique_lock lock(mutex_);
+    while(!draining_)
+    {
+        lock.unlock();
+        const auto cleanup = store_.retryDeletedFiles();
+        if(!cleanup.ok())
+            LOG_EVERY_N_SEC(ERROR, 10) << "archive cleanup before compaction failed: " << cleanup;
+        const auto result = store_.compactOnce(compaction_.policy);
+        if(!result.ok() && !absl::IsCancelled(result.status()))
+            LOG_EVERY_N_SEC(WARNING, 60) << "archive compaction skipped: " << result.status();
+        lock.lock();
+        if(result.ok() && result->inputs)
+            continue;
+        changed_.wait_for(lock, compaction_.scan_interval, [&] { return draining_; });
     }
 }
 
@@ -445,7 +478,10 @@ void ArchiveService::shutdown()
         draining_ = true;
     }
     changed_.notify_all();
-    // Joined here so no deletion is still touching the store when the caller releases it.
+    store_.stopCompaction();
+    // Joined here so no deletion or compaction is still touching the store when the caller releases it.
     destroyer_->stop();
+    if(compactor_)
+        compactor_->stop();
 }
 } // namespace chronolog::grapher

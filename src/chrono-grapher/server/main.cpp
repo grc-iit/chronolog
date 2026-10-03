@@ -68,7 +68,10 @@ int main(int argc, char** argv)
     identifier << std::hex << std::setfill('0');
     for(int i = 0; i < 4; ++i) identifier << std::setw(8) << random();
     const std::string instance = identifier.str();
-    chronolog::grapher::ArchiveService archive(**store, instance, config->limits);
+    if(config->compaction.enabled)
+        LOG(INFO) << "archive compaction enabled min_files=" << config->compaction.policy.min_files
+                  << " max_files=" << config->compaction.policy.max_files;
+    chronolog::grapher::ArchiveService archive(**store, instance, config->limits, config->compaction);
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     chronolog::rpc::applyServerPolicy(builder);

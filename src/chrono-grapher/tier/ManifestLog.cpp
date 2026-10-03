@@ -1,7 +1,10 @@
 #include "chrono-grapher/tier/ManifestLog.h"
 #include "chrono-grapher/tier/FileIO.h"
+#include <absl/crc/crc32c.h>
 #include <absl/log/check.h>
+#include <absl/log/log.h>
 #include <algorithm>
+#include <charconv>
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -89,6 +92,206 @@ ManifestRecord Decode(const Json& json)
     return record;
 }
 
+
+std::string Hex(std::string_view input)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string output;
+    for(unsigned char c: input)
+    {
+        output += digits[c >> 4];
+        output += digits[c & 15];
+    }
+    return output;
+}
+
+std::optional<std::string> Unhex(std::string_view input)
+{
+    if(input.empty() || input.size() % 2 != 0)
+        return std::nullopt;
+    std::string output;
+    for(size_t i = 0; i < input.size(); i += 2)
+    {
+        unsigned byte = 0;
+        const auto parsed = std::from_chars(input.data() + i, input.data() + i + 2, byte, 16);
+        if(parsed.ec != std::errc{} || parsed.ptr != input.data() + i + 2)
+            return std::nullopt;
+        output += static_cast<char>(byte);
+    }
+    return output;
+}
+
+template <typename T>
+bool Number(std::string_view text, T& value)
+{
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return !text.empty() && parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+}
+
+// A framed line carries the byte length and CRC32C of its body ahead of it. Over NFS a long line can be visible with
+// its final page and newline present while an earlier page is still a hole; such a line, or any line holding a NUL,
+// is not yet complete and is retried at the next poll rather than failing the refresh.
+constexpr std::string_view kFrame = "{\"length\":";
+enum class Framing
+{
+    Plain,
+    Incomplete,
+    Framed
+};
+
+std::string Frame(std::string_view key, const std::string& body)
+{
+    return std::string(kFrame) + std::to_string(body.size()) +
+           ",\"crc\":" + std::to_string(static_cast<uint32_t>(absl::ComputeCrc32c(body))) + ",\"" + std::string(key) +
+           "\":" + body + "}";
+}
+
+Framing Unframe(std::string_view line, std::string_view& key, std::string_view& body)
+{
+    if(line.find('\0') != std::string_view::npos)
+        return Framing::Incomplete;
+    if(!line.starts_with(kFrame))
+        return Framing::Plain;
+    auto rest = line.substr(kFrame.size());
+    auto field = [&rest](char end, std::string_view& value)
+    {
+        const auto at = rest.find(end);
+        if(at == std::string_view::npos)
+            return false;
+        value = rest.substr(0, at);
+        rest.remove_prefix(at + 1);
+        return true;
+    };
+    std::string_view length_text, crc_text;
+    size_t length = 0;
+    uint32_t crc = 0;
+    if(!field(',', length_text) || !Number(length_text, length) || !rest.starts_with("\"crc\":"))
+        return Framing::Incomplete;
+    rest.remove_prefix(6);
+    if(!field(',', crc_text) || !Number(crc_text, crc) || !rest.starts_with('"'))
+        return Framing::Incomplete;
+    rest.remove_prefix(1);
+    if(!field('"', key) || !rest.starts_with(':') || !rest.ends_with('}'))
+        return Framing::Incomplete;
+    body = rest.substr(1, rest.size() - 2);
+    if(body.size() != length || static_cast<uint32_t>(absl::ComputeCrc32c(body)) != crc)
+        return Framing::Incomplete;
+    return Framing::Framed;
+}
+
+bool IncompleteLine(std::string_view line)
+{
+    std::string_view key, body;
+    return Unframe(line, key, body) == Framing::Incomplete;
+}
+
+// Bytes of `data` (complete lines) before the first line that is not yet complete.
+size_t CompletePrefix(const std::string& data)
+{
+    size_t begin = 0;
+    while(begin < data.size())
+    {
+        const auto end = data.find('\n', begin);
+        if(IncompleteLine(std::string_view(data).substr(begin, end - begin)))
+            return begin;
+        begin = end + 1;
+    }
+    return data.size();
+}
+
+Json EncodeHlc(Hlc value) { return {value.physical_ns, value.logical}; }
+Hlc DecodeHlc(const Json& json) { return {json.at(0).get<int64_t>(), json.at(1).get<uint32_t>()}; }
+
+bool StoryFile(const std::string& file, StoryId story)
+{
+    const std::filesystem::path path(file);
+    return !file.empty() && !path.is_absolute() && path.parent_path() == std::to_string(story) &&
+           path.filename() != "." && path.filename() != ".." && path.filename().string().front() != '.';
+}
+
+CompactionSwitch DecodeSwitch(const std::string& writer, const Json& json)
+{
+    CompactionSwitch change;
+    change.writer = json.at("writer").get<std::string>();
+    change.op = json.at("op").get<std::string>();
+    change.story_id = json.at("story").get<StoryId>();
+    change.w_floor = DecodeHlc(json.at("w_floor"));
+    const auto& output = json.at("output");
+    change.output = Decode(output);
+    change.bounds = DecodeBounds(output, change.output.state);
+    if(change.writer != writer || change.output.manifest_writer != writer || !change.story_id ||
+       change.output.story_id != change.story_id || change.output.state != ManifestState::Published ||
+       change.output.exempt || change.output.chunk_id != change.op || change.op.empty() || change.op.size() > 64)
+        throw std::runtime_error("invalid compaction output identity");
+    const auto name = ParseCompactionOutput(change.output.file);
+    if(!name || name->writer != writer || name->op != change.op || name->start != change.output.start ||
+       name->end != change.output.end || !StoryFile(change.output.file, change.story_id))
+        throw std::runtime_error("invalid compaction output name");
+    const auto& inputs = json.at("inputs");
+    if(!inputs.is_array() || inputs.size() < 2 || inputs.size() > 65536)
+        throw std::runtime_error("invalid compaction input list");
+    std::set<std::string> files;
+    uint64_t total = 0;
+    for(const auto& entry: inputs)
+    {
+        ManifestRecord input;
+        input.chunk_id = entry.at("chunk").get<std::string>();
+        input.manifest_writer = writer;
+        input.file = entry.at("file").get<std::string>();
+        input.story_id = change.story_id;
+        input.start = DecodeHlc(entry.at("start"));
+        input.end = DecodeHlc(entry.at("end"));
+        input.event_count = entry.at("count").get<uint64_t>();
+        input.physical_policy = entry.at("physical_policy").get<bool>();
+        if(input.chunk_id.empty() || input.start >= input.end || !input.event_count || input.event_count > 65536 ||
+           !StoryFile(input.file, change.story_id) || ParseCompactionOutput(input.file) ||
+           !files.insert(input.file).second || input.physical_policy != change.output.physical_policy ||
+           (!change.inputs.empty() && change.inputs.back().end != input.start))
+            throw std::runtime_error("invalid compaction input");
+        total += input.event_count;
+        change.inputs.push_back(std::move(input));
+    }
+    if(change.inputs.front().start != change.output.start || change.inputs.back().end != change.output.end ||
+       total != change.output.event_count)
+        throw std::runtime_error("compaction output does not cover its inputs exactly");
+    return change;
+}
+
+// A second switch naming an input or an output already claimed by a different switch is a conflict.
+absl::Status SwitchConflict(const ManifestIndex& index, const CompactionSwitch& change)
+{
+    if(const auto found = index.switches.find(change.output.file); found != index.switches.end())
+        return found->second.op == change.op ? absl::AlreadyExistsError("repeated compaction switch")
+                                             : absl::UnavailableError("compaction output named twice");
+    if(index.superseded.contains(change.output.file))
+        return absl::UnavailableError("compaction output superseded");
+    for(const auto& input: change.inputs)
+        if(index.superseded.contains(input.file) || index.switches.contains(input.file))
+            return absl::UnavailableError("compaction input superseded twice");
+    return absl::OkStatus();
+}
+
+void ApplySwitch(CompactionSwitch change, ManifestIndex& index)
+{
+    const auto story = change.story_id;
+    for(const auto& input: change.inputs) index.superseded[input.file] = change.output.file;
+    if(change.bounds)
+        index.physical_bounds[change.output.file] = {*change.bounds,
+                                                     story,
+                                                     change.output.start,
+                                                     change.output.end,
+                                                     change.output.event_count};
+    if(!change.output.physical_policy)
+        index.without_physical_policy.insert(story);
+    auto [floor, inserted] = index.watermarks.emplace(story, change.w_floor);
+    if(!inserted)
+        floor->second = std::max(floor->second, change.w_floor);
+    index.by_story[story].push_back(index.records.size());
+    index.records.push_back(change.output);
+    ++index.revisions[story];
+    index.switches.emplace(change.output.file, std::move(change));
+}
+
 absl::StatusOr<std::vector<std::string>> ReadLines(const std::filesystem::path& path)
 {
     std::ifstream input(path, std::ios::binary);
@@ -143,7 +346,79 @@ absl::Status RepairTail(int fd)
         return tier_detail::IoError("truncate manifest tail");
     return absl::OkStatus();
 }
+// A final framed line whose body does not match its length and checksum was never completely written: the writer
+// drops it before appending, as RepairTail drops a line without its newline.
+absl::Status RepairIncompleteTail(int fd)
+{
+    const auto size = ::lseek(fd, 0, SEEK_END);
+    if(size < 0)
+        return tier_detail::IoError("seek manifest");
+    std::string data(static_cast<size_t>(size), '\0');
+    for(size_t read = 0; read < data.size();)
+    {
+        const auto n = ::pread(fd, data.data() + read, data.size() - read, static_cast<off_t>(read));
+        if(n < 0 && errno == EINTR)
+            continue;
+        if(n <= 0)
+            return tier_detail::IoError("read manifest tail");
+        read += static_cast<size_t>(n);
+    }
+    const auto complete = CompletePrefix(data);
+    if(complete == data.size())
+        return absl::OkStatus();
+    if(data.find('\n', complete) + 1 != data.size())
+    {
+        LOG(ERROR) << "manifest holds an incomplete line before complete ones at byte " << complete;
+        return absl::OkStatus();
+    }
+    if(::ftruncate(fd, static_cast<off_t>(complete)) != 0)
+        return tier_detail::IoError("truncate manifest tail");
+    return absl::OkStatus();
+}
 } // namespace
+
+std::string CompactionOutputName(const CompactionOutput& output, const std::string& extension)
+{
+    return "compact-" + Hex(output.writer) + "-" + output.op + "_" + std::to_string(output.start.physical_ns) + "_" +
+           std::to_string(output.start.logical) + "_" + std::to_string(output.end.physical_ns) + "_" +
+           std::to_string(output.end.logical) + extension;
+}
+
+std::optional<CompactionOutput> ParseCompactionOutput(const std::filesystem::path& relative)
+{
+    const auto extension = relative.extension();
+    const auto stem = relative.stem().string();
+    if((extension != ".h5" && extension != ".pb") || !stem.starts_with("compact-"))
+        return std::nullopt;
+    const std::string_view rest = std::string_view(stem).substr(8);
+    const auto dash = rest.find('-');
+    if(dash == std::string_view::npos)
+        return std::nullopt;
+    auto writer = Unhex(rest.substr(0, dash));
+    std::vector<std::string_view> fields;
+    for(auto tail = rest.substr(dash + 1);;)
+    {
+        const auto at = tail.find('_');
+        fields.push_back(tail.substr(0, at));
+        if(at == std::string_view::npos)
+            break;
+        tail.remove_prefix(at + 1);
+    }
+    CompactionOutput output;
+    if(!writer || !SafeWriter(*writer) || fields.size() != 5 || fields[0].empty() || fields[0].size() > 64 ||
+       !std::all_of(fields[0].begin(),
+                    fields[0].end(),
+                    [](unsigned char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }) ||
+       !Number(fields[1], output.start.physical_ns) || !Number(fields[2], output.start.logical) ||
+       !Number(fields[3], output.end.physical_ns) || !Number(fields[4], output.end.logical) ||
+       output.start >= output.end)
+        return std::nullopt;
+    output.writer = *writer;
+    output.op = fields[0];
+    return output;
+}
+
+std::string CompactionTemporaryPrefix(const std::string& writer) { return ".compact-" + Hex(writer) + "."; }
 
 ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd, PathStat path_stat)
     : directory_(std::move(directory))
@@ -181,7 +456,9 @@ ManifestLog::Open(std::filesystem::path root, std::string writer, PathStat path_
     auto result = std::unique_ptr<ManifestLog>(new ManifestLog(directory, std::move(writer), fd, std::move(path_stat)));
     if(::flock(fd, LOCK_EX | LOCK_NB) != 0)
         return absl::UnavailableError("manifest writer already active");
-    const auto status = RepairTail(fd);
+    auto status = RepairTail(fd);
+    if(status.ok())
+        status = RepairIncompleteTail(fd);
     if(!status.ok())
         return status;
     const auto synced = tier_detail::SyncDirectory(root);
@@ -199,15 +476,76 @@ std::filesystem::path ManifestLog::snapshotPath() const { return directory_ / (w
 absl::Status ManifestLog::appendLine(std::string line)
 {
     line += '\n';
-    const auto repaired = RepairTail(fd_);
-    if(!repaired.ok())
-        return repaired;
-    const auto status = tier_detail::WriteAll(fd_, line);
+    auto status = RepairTail(fd_);
+    if(status.ok())
+        status = tier_detail::WriteAll(fd_, line);
+    if(status.ok() && sync(fd_) != 0)
+        status = tier_detail::IoError("fsync manifest");
     if(!status.ok())
-        return status;
-    if(::fsync(fd_) != 0)
-        return tier_detail::IoError("fsync manifest");
-    return absl::OkStatus();
+        failed_ = true;
+    return status;
+}
+
+void ManifestLog::setSync(std::function<int(int)> sync)
+{
+    std::lock_guard lock(mutex_);
+    sync_ = std::move(sync);
+}
+
+absl::Status ManifestLog::syncOwn()
+{
+    std::lock_guard lock(mutex_);
+    if(sync(fd_) == 0)
+        return absl::OkStatus();
+    failed_ = true;
+    return tier_detail::IoError("fsync manifest");
+}
+
+absl::Status ManifestLog::appendFramed(std::string_view key, const std::string& body)
+{
+    const auto line = Frame(key, body);
+    std::string_view parsed_key, parsed_body;
+    if(Unframe(line, parsed_key, parsed_body) != Framing::Framed)
+        return absl::InternalError("compaction line does not frame");
+    std::lock_guard lock(mutex_);
+    return appendLine(line);
+}
+
+absl::Status ManifestLog::appendSwitch(const CompactionSwitch& change)
+{
+    try
+    {
+        Json inputs = Json::array();
+        for(const auto& input: change.inputs)
+            inputs.push_back({{"chunk", input.chunk_id},
+                              {"file", input.file},
+                              {"start", EncodeHlc(input.start)},
+                              {"end", EncodeHlc(input.end)},
+                              {"count", input.event_count},
+                              {"physical_policy", input.physical_policy}});
+        auto output = change.output;
+        output.manifest_writer = writer_;
+        const Json body = {{"op", change.op},
+                           {"writer", writer_},
+                           {"story", change.story_id},
+                           {"inputs", std::move(inputs)},
+                           {"output", Encode(output, change.bounds)},
+                           {"w_floor", EncodeHlc(change.w_floor)}};
+        (void)DecodeSwitch(writer_, body);
+        return appendFramed("compact_v1", body.dump());
+    }
+    catch(const std::exception& error)
+    {
+        return absl::InvalidArgumentError(error.what());
+    }
+}
+
+absl::Status ManifestLog::appendRollback(StoryId story, const std::string& output)
+{
+    const auto name = ParseCompactionOutput(output);
+    if(!name || name->writer != writer_ || !StoryFile(output, story))
+        return absl::InvalidArgumentError("rollback names no compaction output of this writer");
+    return appendFramed("compact_rollback_v1", Json{{"story", story}, {"output", output}}.dump());
 }
 
 absl::Status ManifestLog::append(ManifestRecord record, std::optional<PhysicalBounds> bounds)
@@ -243,6 +581,37 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
 {
     try
     {
+        std::string_view key, body;
+        const auto framing = Unframe(line, key, body);
+        if(framing == Framing::Incomplete)
+            return absl::UnavailableError("incomplete manifest line");
+        if(framing == Framing::Framed)
+        {
+            const auto json = Json::parse(body);
+            if(key == "compact_v1")
+            {
+                auto change = DecodeSwitch(writer, json);
+                const auto conflict = SwitchConflict(index, change);
+                if(absl::IsAlreadyExists(conflict))
+                    return absl::OkStatus();
+                if(!conflict.ok())
+                    return conflict;
+                ApplySwitch(std::move(change), index);
+                return absl::OkStatus();
+            }
+            if(key == "compact_rollback_v1")
+            {
+                const auto story = json.at("story").get<StoryId>();
+                const auto output = json.at("output").get<std::string>();
+                const auto name = ParseCompactionOutput(output);
+                if(!story || !name || name->writer != writer || !StoryFile(output, story))
+                    return absl::UnavailableError("invalid compaction rollback");
+                index.rolled_back.insert(output);
+                ++index.revisions[story];
+                return absl::OkStatus();
+            }
+            return absl::UnavailableError("unknown framed manifest line");
+        }
         const auto json = Json::parse(line);
         if(json.contains("watermark"))
         {
@@ -345,6 +714,7 @@ absl::StatusOr<std::pair<std::string, off_t>> ReadTail(int fd, off_t offset, off
         return data.status();
     const auto end = data->rfind('\n');
     data->resize(end == std::string::npos ? 0 : end + 1);
+    data->resize(CompletePrefix(*data));
     const auto consumed = offset + static_cast<off_t>(data->size());
     return std::pair{*std::move(data), consumed};
 }
@@ -441,6 +811,7 @@ absl::Status ManifestLog::advance() const
         std::string data;
     };
     std::vector<Pending> pending;
+    std::map<std::string, std::string> claimed;
     for(auto& [writer, cursors]: cursors_)
     {
         for(const auto* extension: {".snap", ".log"})
@@ -481,11 +852,30 @@ absl::Status ManifestLog::advance() const
                 continue;
             // Every failure applyLine can report depends on the line alone, so a line that applies to a scratch index
             // applies to the cache too and the cache is never left half advanced.
+            // A switch also must not conflict with the cache or with another switch read in this same advance.
             auto valid = ForEachLine(tail->first,
                                      [&](std::string line)
                                      {
                                          ManifestIndex scratch;
-                                         return applyLine(writer, line, scratch);
+                                         auto status = applyLine(writer, line, scratch);
+                                         if(!status.ok())
+                                             return status;
+                                         for(const auto& [output, change]: scratch.switches)
+                                         {
+                                             const auto conflict = SwitchConflict(cache_, change);
+                                             if(absl::IsAlreadyExists(conflict))
+                                                 continue;
+                                             if(!conflict.ok())
+                                                 return conflict;
+                                             for(const auto& input: change.inputs)
+                                                 if(const auto [it, inserted] = claimed.emplace(input.file, change.op);
+                                                    !inserted && it->second != change.op)
+                                                     return absl::UnavailableError("compaction input superseded twice");
+                                             if(const auto [it, inserted] = claimed.emplace(output, change.op);
+                                                !inserted && it->second != change.op)
+                                                 return absl::UnavailableError("compaction output named twice");
+                                         }
+                                         return absl::OkStatus();
                                      });
             if(!valid.ok())
                 return valid;
@@ -562,8 +952,11 @@ absl::Status ManifestLog::compact()
     const auto synced = tier_detail::SyncDirectory(directory_);
     if(!synced.ok())
         return synced;
-    if(::ftruncate(fd_, 0) != 0 || ::fsync(fd_) != 0)
+    if(::ftruncate(fd_, 0) != 0 || sync(fd_) != 0)
+    {
+        failed_ = true;
         return tier_detail::IoError("truncate compacted manifest");
+    }
     synced_ = false;
     return absl::OkStatus();
 }
