@@ -16,7 +16,7 @@
         "name": "Gnosis Research Center, Illinois Tech"
       },
       "repository": "https://github.com/grc-iit/ChronoLog",
-      "license": "BSD-3-Clause",
+      "license": "BSD-2-Clause",
       "strict": false,
       "skills": [
         "./chronolog"

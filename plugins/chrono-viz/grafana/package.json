@@ -2,6 +2,7 @@
   "name": "chronolog-viz-datasource",
   "version": "4.0.0",
   "private": true,
+  "license": "BSD-2-Clause",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "webpack --mode production",
