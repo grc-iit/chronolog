@@ -188,6 +188,8 @@ class Scenario(Smoke):
             if row['grapher']:
                 control('pause', row['grapher'])
         self.agent_append(failed, 'local', 10)
+        failed_instance = next(m.process.instance for m in self.membership().members
+                               if m.process.process_id == failed['keeper'])
         control('kill', failed['keeper'])
         try:
             removed = self.wait_membership(lambda m: any(r.story_id == story and
@@ -218,6 +220,9 @@ class Scenario(Smoke):
             for row in TABLE:
                 if row['grapher']:
                     control('resume', row['grapher'])
+        self.wait_membership(lambda m: any(x.process.process_id == failed['keeper'] and
+            x.process.instance != failed_instance and any(i.granted for i in x.instances
+            if i.instance == x.process.instance) for x in m.members))
         # Rejoin is explicit after dynamic removal; registration alone cannot change a committed Route.
         from chronolog.internal.v1 import internal_pb2 as ipb, internal_pb2_grpc as irpc
         joined = irpc.ClusterStub(self.connect(TABLE[1]['ip'] + ':50061')).JoinKeeper(
