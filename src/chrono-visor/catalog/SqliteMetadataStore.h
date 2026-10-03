@@ -57,6 +57,8 @@ public:
     absl::StatusOr<std::vector<RenewAcquisitionResult>>
     renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
     LeaseAuthority& leaseAuthority() { return leases_; }
+    // Static Keeper heartbeat evidence after instance validation; returns the number of tuples renewed.
+    absl::StatusOr<size_t> acceptKeeperEvidence(const std::string& keeper, const std::vector<RenewAcquisition>& tuples);
     absl::Status reconcileLeases();
     absl::Status serviceTick();
 
