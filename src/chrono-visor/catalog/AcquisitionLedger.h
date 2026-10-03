@@ -29,6 +29,7 @@ struct AcquisitionChange
     AcquisitionState state{AcquisitionState::Acquired};
     int64_t duration_ns{};
     AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
+    uint64_t applied_index{};
 };
 
 struct AcquisitionSnapshot

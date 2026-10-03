@@ -112,12 +112,12 @@ public:
     virtual absl::Status destroyStory(StoryId id) = 0;
 
     /**
-     * Acquire a writer identity for a story.
+     * Acquire a writer identity for a story with the finite default lease.
      * Preconditions: Live story and nonempty stable writer identity. An identity that still holds an active
      * acquisition has crashed: acquire supersedes it by releasing the old incarnation, with its own revision and
      * without a fence wait, in the same atomic step that creates the next incarnation.
      * Postconditions: Returns stable writer_id, persisted strictly increased incarnation, route, epoch and
-     * assigned_keeper stable per (writer_id, epoch).
+     * assigned_keeper stable per (writer_id, epoch) and a positive finite lease. A fresh logical call\n     * generates its request id before proposal and retains it across call-owned retries.
      * Status codes: OK; INVALID_ARGUMENT for empty identity; NOT_FOUND for unknown id; FAILED_PRECONDITION for
      * tombstone; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; persistence completes before success.

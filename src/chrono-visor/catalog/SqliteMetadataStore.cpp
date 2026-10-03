@@ -727,7 +727,8 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
 absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
                                                                    std::string writer_identity,
                                                                    AcquireOptions options,
-                                                                   int64_t duration_ns)
+                                                                   int64_t duration_ns,
+                                                                   const internal::v1::AcquireCommand* selected)
 {
     if(duration_ns <= 0 || options.acquire_request_id.empty())
         return absl::InvalidArgumentError("invalid carried lease");
@@ -775,6 +776,14 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
             return terminalRetry(response.incarnation(), static_cast<AcquisitionTerminationCause>(terminal.column(0)));
         }
         return convert::fromAcquireResponse(response);
+    }
+    if(selected)
+    {
+        auto current_route = membershipRoute(id);
+        if(!current_route.ok())
+            return current_route.status();
+        if(convert::toProto(*current_route).SerializeAsString() != selected->route().SerializeAsString())
+            return absl::FailedPreconditionError("selected route changed before apply");
     }
     auto story = loadStory(db_, id);
     if(!story.ok())
@@ -891,6 +900,10 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
 
     if(!keeper.ok())
         return keeper.status();
+    if(selected && (selected->assigned_keeper().process_id() != keeper->process_id ||
+                    selected->assigned_keeper().endpoint() != keeper->endpoint))
+        return absl::FailedPreconditionError("selected assignment changed before apply");
+
     {
         Statement upsert(db_,
                          "INSERT OR REPLACE INTO acquisitions(story_id, writer_id, incarnation, released, keeper_id,"
@@ -1103,6 +1116,60 @@ void SqliteMetadataStore::setObserver(AcquisitionObserver* observer)
     observer_ = observer;
 }
 
+absl::StatusOr<internal::v1::AcquireCommand> SqliteMetadataStore::prepareAcquire(const v1::AcquireRequest& request,
+                                                                                 int64_t duration_ns) const
+{
+    std::lock_guard lock(mutex_);
+    internal::v1::AcquireCommand command;
+    *command.mutable_request() = request;
+    command.set_lease_duration_ns(duration_ns);
+    auto existing = requestGrant(request.acquire_request_id());
+    if(existing.ok())
+    {
+        *command.mutable_route() = convert::toProto(existing->route);
+        *command.mutable_assigned_keeper() = convert::toProto(existing->assigned_keeper);
+        command.set_prior_incarnation(existing->incarnation);
+        return command;
+    }
+    if(!absl::IsNotFound(existing.status()))
+        return existing.status();
+    auto route = membershipRoute(request.story_id());
+    if(!route.ok())
+        return route.status();
+    if(route->keepers.empty())
+        return absl::FailedPreconditionError("route has no keepers");
+    *command.mutable_route() = convert::toProto(*route);
+    auto last_writer = currentCounter(db_, "writer_id");
+    if(!last_writer.ok())
+        return last_writer.status();
+    uint64_t writer = *last_writer + 1;
+    Statement identity(db_, "SELECT writer_id FROM writers WHERE writer_identity=?1");
+    CHRONOLOG_RETURN_IF_ERROR(identity.prepared());
+    identity.text(1, request.writer_identity());
+    auto found = identity.step();
+    if(!found.ok())
+        return found.status();
+    if(*found)
+        writer = identity.column(0);
+    KeeperRef keeper = route->keepers[writer % route->keepers.size()];
+    Statement prior(
+            db_,
+            "SELECT incarnation,keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+    CHRONOLOG_RETURN_IF_ERROR(prior.prepared());
+    prior.integer(1, request.story_id()).integer(2, writer);
+    found = prior.step();
+    if(!found.ok())
+        return found.status();
+    if(*found)
+    {
+        command.set_prior_incarnation(prior.column(0));
+        for(const auto& candidate: route->keepers)
+            if(candidate.process_id == prior.columnText(1))
+                keeper = candidate;
+    }
+    *command.mutable_assigned_keeper() = convert::toProto(keeper);
+    return command;
+}
 void SqliteMetadataStore::setLeaseObserver(AcquisitionObserver* observer)
 {
     std::lock_guard lock(mutex_);
@@ -1127,10 +1194,18 @@ absl::StatusOr<std::vector<AcquisitionChange>>
 SqliteMetadataStore::acquisitionRows(const std::vector<RenewAcquisition>& tuples) const
 {
     std::lock_guard lock(mutex_);
+    auto observed_revision = currentCounter(db_, "acquisition_revision");
+    if(!observed_revision.ok())
+        return observed_revision.status();
     std::vector<AcquisitionChange> rows;
     for(const auto& t: tuples)
     {
-        AcquisitionChange row{0, t.story_id, t.writer_id, t.incarnation, {}, AcquisitionState::Released};
+        AcquisitionChange row{*observed_revision,
+                              t.story_id,
+                              t.writer_id,
+                              t.incarnation,
+                              {},
+                              AcquisitionState::Released};
         Statement terminal(db_,
                            "SELECT revision,keeper_id,keeper_endpoint,termination_cause FROM releases WHERE "
                            "story_id=?1 AND writer_id=?2 AND incarnation=?3");
@@ -1203,11 +1278,37 @@ absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::scanAcquisitions(std::p
     }
     return snapshot;
 }
+absl::Status SqliteMetadataStore::reconcileLeases()
+{
+    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
+    std::lock_guard lock(reconciliation_mutex_);
+    auto snapshot = scanAcquisitions(reconciliation_cursor_, leases_.config().acquisition_scan_batch);
+    if(!snapshot.ok())
+        return snapshot.status();
+    const bool end = snapshot->active.size() < leases_.config().acquisition_scan_batch;
+    leases_.reconcile(*snapshot, reconciliation_cursor_, end);
+    reconciliation_cursor_ = end ? std::pair<StoryId, uint64_t>{}
+                                 : std::pair{snapshot->active.back().story_id, snapshot->active.back().writer_id};
+    auto tuples = leases_.reconciliationTuples();
+    if(!tuples.empty())
+    {
+        auto rows = acquisitionRows(tuples);
+        if(!rows.ok())
+            return rows.status();
+        leases_.reconcileTerminals(*rows);
+    }
+    return leases_.service();
+}
+absl::Status SqliteMetadataStore::serviceTick()
+{
+    CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
+    return leases_.service(true);
+}
 absl::StatusOr<std::vector<RenewAcquisitionResult>>
 SqliteMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples)
 {
     CHRONOLOG_RETURN_IF_ERROR(validateRenew(tuples, leases_.config().acquisition_renew_batch));
-    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
+    CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
     auto rows = acquisitionRows(tuples);
     if(!rows.ok())
         return rows.status();
@@ -1338,7 +1439,11 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
         return done.status();
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
     applied_index_.store(index);
-    for(const auto& c: pending.changes) notify(c);
+    for(auto c: pending.changes)
+    {
+        c.applied_index = index;
+        notify(c);
+    }
     return result;
 }
 absl::Status SqliteMetadataStore::backupTo(const std::string& path) const

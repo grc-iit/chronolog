@@ -2,11 +2,15 @@
 #include <array>
 #include <chrono>
 #include <thread>
+#include <future>
+#include <sys/wait.h>
+#include <signal.h>
 #include <string_view>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "TestSupport.h"
 #include "raft/RaftMetadataStore.h"
+#include "adapter/Convert.h"
 #include "metadata_store_contract_test.cpp"
 namespace chronolog::contract
 {
@@ -153,6 +157,7 @@ INSTANTIATE_TEST_SUITE_P(RaftMajorityRestart, MetadataStoreContract, ::testing::
 } // namespace chronolog::contract
 namespace chronolog::visor
 {
+using namespace std::chrono_literals;
 TEST(RaftStorageTest, SnapshotRestoresAppliedIndexAndReplayDoesNotDuplicateMutation)
 {
     testing::TempDir dir;
@@ -276,6 +281,7 @@ TEST(RaftStorageTest, DurableLogTruncationPackingAndCompactionSurviveReopen)
 } // namespace chronolog::visor
 namespace chronolog::visor
 {
+using namespace std::chrono_literals;
 TEST(RaftStorageTest, LinearizableReadsAndMutationsStopWithoutQuorum)
 {
     testing::TempDir directory;
@@ -309,6 +315,7 @@ TEST(RaftStorageTest, LinearizableReadsAndMutationsStopWithoutQuorum)
 } // namespace chronolog::visor
 namespace chronolog::visor
 {
+using namespace std::chrono_literals;
 TEST(RaftStorageTest, RestartedReplicaServesNoWatchSnapshotBelowTheCommittedRevision)
 {
     testing::TempDir directory;
@@ -378,5 +385,588 @@ TEST(RaftStorageTest, RestartedReplicaServesNoWatchSnapshotBelowTheCommittedRevi
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     EXPECT_TRUE(served);
+}
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+using namespace std::chrono_literals;
+namespace
+{
+std::unique_ptr<RaftMetadataStore>
+leaseRaft(testing::TempDir& dir, const std::shared_ptr<RaftTestControl>& control, AcquisitionLeaseConfig leases = {})
+{
+    const auto endpoint = "127.0.0.1:" + std::to_string(contract::port());
+    RaftConfig config{1, endpoint, {{1, endpoint, endpoint, endpoint}}};
+    auto opened = RaftMetadataStore::open((dir.path() / "lease-catalog").string(),
+                                          testing::twoKeeperTopology(),
+                                          config,
+                                          nullptr,
+                                          leases,
+                                          control);
+    if(!opened.ok())
+        throw std::runtime_error(opened.status().ToString());
+    auto store = std::move(*opened);
+    const auto deadline = std::chrono::steady_clock::now() + 8s;
+    while(!store->leaderLease() && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(10ms);
+    if(!store->leaderLease())
+        throw std::runtime_error("lease test leader did not qualify");
+    return store;
+}
+StoryId leaseStory(RaftMetadataStore& store)
+{
+    auto chronicle = store.createChronicle("lease");
+    if(!chronicle.ok())
+        throw std::runtime_error(chronicle.status().ToString());
+    auto story = store.createStory("lease", "story");
+    if(!story.ok())
+        throw std::runtime_error(story.status().ToString());
+    return story->id;
+}
+AcquisitionChange liveRow(RaftMetadataStore& store, const Acquisition& grant)
+{
+    auto rows = store.appliedStore().acquisitionRows({{grant.story_id, grant.writer_id, grant.incarnation}});
+    if(!rows.ok())
+        throw std::runtime_error(rows.status().ToString());
+    return rows->front();
+}
+} // namespace
+
+TEST(RaftStorageTest, RenewalDoesNotAppendOrBumpRevision)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "renew");
+    ASSERT_TRUE(grant.ok());
+    const auto index = store->appliedStore().appliedIndex().value_or(0);
+    const auto changes = store->appliedStore().totalChanges();
+    const auto revision = store->snapshotAcquisitions()->revision;
+    const auto proposals = control->proposal_count.load();
+    store->leaseAuthority().advanceClock(1000000000, true);
+    auto renewed = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}, {story, 99999, 1}});
+    ASSERT_TRUE(renewed.ok());
+    EXPECT_TRUE(renewed->front().status.ok());
+    EXPECT_TRUE(absl::IsNotFound(renewed->back().status));
+    EXPECT_EQ(store->appliedStore().totalChanges(), changes);
+    EXPECT_EQ(store->appliedStore().appliedIndex().value_or(0), index);
+    EXPECT_EQ(store->snapshotAcquisitions()->revision, revision);
+    EXPECT_EQ(control->proposal_count.load(), proposals);
+}
+
+TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    AcquireOptions options;
+    options.acquire_request_id = "missing-map-request-000000000001";
+    auto grant = store->acquire(story, "missing", options);
+    ASSERT_TRUE(grant.ok());
+    const RenewAcquisition tuple{story, grant->writer_id, grant->incarnation};
+    for(int path = 0; path < 3; ++path)
+    {
+        store->leaseAuthority().eraseForTest(tuple);
+        EXPECT_EQ(store->leaseAuthority().size(), 0u);
+        if(path == 0)
+        {
+            ASSERT_TRUE(store->reconcileLeases().ok());
+        }
+        if(path == 1)
+        {
+            ASSERT_TRUE(store->acquire(story, "missing", options).ok());
+        }
+        if(path == 2)
+        {
+            auto renewal = store->renewAcquisitions({tuple});
+            ASSERT_TRUE(renewal.ok());
+            ASSERT_TRUE(renewal->front().status.ok());
+        }
+        EXPECT_EQ(store->leaseAuthority().size(), 1u);
+    }
+    auto row = liveRow(*store, *grant);
+    store->leaseAuthority().advanceClock(grant->lease.duration_ns + 1, true);
+    auto due = store->leaseAuthority().sample(row, false);
+    ASSERT_TRUE(due.ok());
+    EXPECT_EQ(due->remaining_ns, 0);
+    ASSERT_TRUE(store->reconcileLeases().ok());
+    due = store->leaseAuthority().sample(row, false);
+    ASSERT_TRUE(due.ok());
+    EXPECT_EQ(due->remaining_ns, 0);
+    auto renewal = store->renewAcquisitions({tuple});
+    ASSERT_TRUE(renewal.ok());
+    EXPECT_TRUE(absl::IsUnavailable(renewal->front().status));
+    ASSERT_TRUE(store->release(story, grant->writer_id, grant->incarnation).ok());
+    EXPECT_EQ(store->leaseAuthority().size(), 0u);
+    EXPECT_EQ(store->snapshotAcquisitions()->active.size(), 0u);
+}
+
+TEST(RaftStorageTest, IntraTermLeaseLapsePausesDeadlinesWithoutReset)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "pause");
+    ASSERT_TRUE(grant.ok());
+    auto row = liveRow(*store, *grant);
+    store->leaseAuthority().advanceClock(grant->lease.duration_ns * 9 / 10, true);
+    auto before = store->leaseAuthority().sample(row, false);
+    ASSERT_TRUE(before.ok());
+    const auto term = store->term();
+    const auto proposals = control->proposal_count.load();
+    for(int lapse = 0; lapse < 2; ++lapse)
+    {
+        control->qualification_enabled = false;
+        auto refused = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+        EXPECT_TRUE(absl::IsUnavailable(refused.status()));
+        EXPECT_TRUE(absl::IsUnavailable(store->acquire(story, "refused").status()));
+        store->leaseAuthority().advanceClock(grant->lease.duration_ns * 2, true);
+        EXPECT_TRUE(absl::IsUnavailable(store->serviceTick()));
+        control->qualification_enabled = true;
+        ASSERT_TRUE(store->serviceTick().ok());
+        auto remaining = store->leaseAuthority().sample(row, false);
+        ASSERT_TRUE(remaining.ok());
+        EXPECT_LT(remaining->remaining_ns, grant->lease.duration_ns / 5);
+        EXPECT_GT(remaining->remaining_ns, before->remaining_ns - 1000000000);
+        EXPECT_EQ(store->term(), term);
+    }
+    EXPECT_EQ(control->proposal_count.load(), proposals);
+}
+
+TEST(RaftStorageTest, TimedOutAcquireThatCommitsLaterReturnsTheSameGrant)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    AcquireOptions options;
+    options.acquire_request_id = "late-retry-request-000000000001";
+    control->holdNextApply();
+    auto proposal = std::async(std::launch::async, [&] { return store->acquire(story, "late", options); });
+    const auto accepted = control->waitAccepted(2s);
+    EXPECT_NE(accepted, 0u);
+    const auto waited = proposal.wait_for(5s);
+    if(waited != std::future_status::ready)
+        control->releaseApply();
+    ASSERT_EQ(waited, std::future_status::ready);
+    auto timed_out = proposal.get();
+    EXPECT_TRUE(absl::IsUnavailable(timed_out.status()));
+    control->releaseApply();
+    const auto until = std::chrono::steady_clock::now() + 3s;
+    while(store->appliedStore().publishedAppliedIndex() < accepted && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(5ms);
+    ASSERT_GE(store->appliedStore().publishedAppliedIndex(), accepted);
+    auto committed = store->requestGrant(options.acquire_request_id);
+    ASSERT_TRUE(committed.ok());
+    const auto revision = store->snapshotAcquisitions()->revision;
+    auto retry = store->acquire(story, "late", options);
+    ASSERT_TRUE(retry.ok()) << retry.status();
+    EXPECT_EQ(retry->incarnation, committed->incarnation);
+    EXPECT_EQ(retry->assigned_keeper, committed->assigned_keeper);
+    EXPECT_EQ(retry->route, committed->route);
+    EXPECT_EQ(store->snapshotAcquisitions()->revision, revision);
+}
+
+TEST(RaftStorageTest, LateCommittedGrantWithoutRetryStillExpires)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    for(int kind = 0; kind < 2; ++kind)
+    {
+        AcquireOptions options;
+        options.acquire_request_id = "late-no-retry-00000000000000001" + std::to_string(kind);
+        options.takeover = kind == 1;
+        if(kind == 1)
+            options.expected_prior_incarnation = 1;
+        control->holdNextApply();
+        auto proposal = std::async(std::launch::async, [&] { return store->acquire(story, "silent", options); });
+        const auto accepted = control->waitAccepted(2s);
+        EXPECT_NE(accepted, 0u);
+        const auto waited = proposal.wait_for(5s);
+        if(waited != std::future_status::ready)
+            control->releaseApply();
+        ASSERT_EQ(waited, std::future_status::ready);
+        EXPECT_TRUE(absl::IsUnavailable(proposal.get().status()));
+        control->releaseApply();
+        const auto until = std::chrono::steady_clock::now() + 3s;
+        while(store->appliedStore().publishedAppliedIndex() < accepted && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(5ms);
+        ASSERT_GE(store->appliedStore().publishedAppliedIndex(), accepted);
+        auto grant = store->requestGrant(options.acquire_request_id);
+        ASSERT_TRUE(grant.ok());
+        auto row = liveRow(*store, *grant);
+        ASSERT_EQ(store->leaseAuthority().size(), 1u);
+        ASSERT_TRUE(store->leaderLease());
+        auto installed = store->leaseAuthority().sample(row, false);
+        ASSERT_TRUE(installed.ok());
+        EXPECT_GT(installed->remaining_ns, grant->lease.duration_ns * 9 / 10);
+        store->leaseAuthority().advanceClock(grant->lease.duration_ns + 1, true);
+        auto due = store->leaseAuthority().sample(row, false);
+        ASSERT_TRUE(due.ok());
+        EXPECT_EQ(due->remaining_ns, 0);
+        auto selected_due = store->leaseAuthority().dueTuples(1);
+        ASSERT_TRUE(selected_due.ok());
+        ASSERT_EQ(selected_due->size(), 1u);
+        EXPECT_EQ(selected_due->front().incarnation, grant->incarnation);
+        EXPECT_EQ(store->snapshotAcquisitions()->active.size(), 1u);
+    }
+}
+
+TEST(RaftStorageTest, NewLeaderRebuildBuffersTransitionsAfterCapturedAppliedIndex)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    control->holdNextRebuild();
+    auto rebuild = std::async(std::launch::async, [&] { return store->serviceTick(); });
+    const bool captured = control->waitRebuild(2s);
+    if(!captured)
+        control->releaseRebuild();
+    ASSERT_TRUE(captured);
+    v1::AcquireRequest request;
+    request.set_story_id(story);
+    request.set_writer_identity("step-up");
+    request.set_acquire_request_id("step-up-request-000000000000001");
+    auto selected = store->appliedStore().prepareAcquire(request, 300000000000);
+    ASSERT_TRUE(selected.ok());
+    internal::v1::CatalogCommand command;
+    *command.mutable_acquire_with_lease() = *selected;
+    auto committed = store->propose(command);
+    EXPECT_TRUE(committed.ok());
+    const auto applied = store->appliedStore().publishedAppliedIndex();
+    EXPECT_GT(applied, control->captured_index);
+    control->releaseRebuild();
+    ASSERT_TRUE(rebuild.get().ok());
+    EXPECT_EQ(store->leaseAuthority().size(), 1u);
+    auto grant = store->requestGrant(request.acquire_request_id());
+    ASSERT_TRUE(grant.ok());
+    auto row = liveRow(*store, *grant);
+    EXPECT_TRUE(store->leaseAuthority().sample(row, false).ok());
+}
+
+TEST(RaftStorageTest, RetryIdSynthesisRunsOnlyAtProposer)
+{
+    testing::TempDir dir;
+    auto control = std::make_shared<RaftTestControl>();
+    auto store = leaseRaft(dir, control);
+    const auto story = leaseStory(*store);
+    control->suppress_reply = true;
+    auto lost = store->acquire(story, "synthesized");
+    EXPECT_TRUE(absl::IsUnavailable(lost.status()));
+    auto snapshot = store->snapshotAcquisitions();
+    ASSERT_TRUE(snapshot.ok());
+    ASSERT_EQ(snapshot->active.size(), 1u);
+    EXPECT_EQ(snapshot->active.front().incarnation, 1u);
+    EXPECT_EQ(control->proposal_count.load(), 3u);
+    internal::v1::CatalogCommand serialized;
+    ASSERT_TRUE(serialized.ParseFromString(control->lastCommand()));
+    ASSERT_EQ(serialized.mutation_case(), internal::v1::CatalogCommand::kAcquireWithLease);
+    const auto& carried = serialized.acquire_with_lease();
+    EXPECT_EQ(carried.lease_duration_ns(), 300000000000);
+    EXPECT_EQ(carried.request().acquire_request_id().size(), 32u);
+    auto grant = store->requestGrant(carried.request().acquire_request_id());
+    ASSERT_TRUE(grant.ok());
+    EXPECT_EQ(grant->incarnation, 1u);
+}
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+using namespace std::chrono_literals;
+TEST(RaftStorageTest, LeaseCommandReplayIsDeterministic)
+{
+    testing::TempDir first_dir, second_dir;
+    AcquisitionLeaseConfig alternate;
+    alternate.acquisition_lease_default_ns = 900000000000;
+    auto first = SqliteMetadataStore::open((first_dir.path() / "catalog").string(),
+                                           testing::twoKeeperTopology(),
+                                           nullptr,
+                                           {},
+                                           true);
+    auto second = SqliteMetadataStore::open((second_dir.path() / "catalog").string(),
+                                            testing::twoKeeperTopology(),
+                                            nullptr,
+                                            alternate,
+                                            true);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(second.ok());
+    std::string responses[2];
+    int replica = 0;
+    for(auto* store: {first->get(), second->get()})
+    {
+        store->leaseAuthority().advanceClock(replica ? 600000000000 : 0, false);
+        ASSERT_TRUE(store->applyRaft(1, [&] { return store->createChronicle("replay").status().ToString(); }).ok());
+        ASSERT_TRUE(
+                store->applyRaft(2, [&] { return store->createStory("replay", "story").status().ToString(); }).ok());
+        v1::AcquireRequest request;
+        request.set_story_id(1);
+        request.set_writer_identity("replay");
+        request.set_acquire_request_id("replay-request-0000000000000001");
+        auto command = store->prepareAcquire(request, 300000000000);
+        ASSERT_TRUE(command.ok());
+        auto applied = store->applyRaft(3,
+                                        [&]
+                                        {
+                                            auto grant = store->acquireAfterFence(
+                                                    1,
+                                                    "replay",
+                                                    convert::fromAcquireRequest(command->request()),
+                                                    command->lease_duration_ns(),
+                                                    &*command);
+                                            if(!grant.ok())
+                                                return grant.status().ToString();
+                                            return convert::toAcquireResponse(*grant).SerializeAsString();
+                                        });
+        ASSERT_TRUE(applied.ok());
+        responses[replica++] = *applied;
+        const auto revision = store->snapshotAcquisitions()->revision;
+        auto duplicate = store->applyRaft(4,
+                                          [&]
+                                          {
+                                              auto grant = store->acquireAfterFence(
+                                                      1,
+                                                      "replay",
+                                                      convert::fromAcquireRequest(command->request()),
+                                                      command->lease_duration_ns(),
+                                                      &*command);
+                                              if(!grant.ok())
+                                                  return grant.status().ToString();
+                                              return convert::toAcquireResponse(*grant).SerializeAsString();
+                                          });
+        ASSERT_TRUE(duplicate.ok());
+        EXPECT_EQ(*duplicate, *applied);
+        EXPECT_EQ(store->snapshotAcquisitions()->revision, revision);
+        EXPECT_EQ(store->leaseAuthority().size(), 0u);
+    }
+    EXPECT_EQ(responses[0], responses[1]);
+}
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+TEST(RaftStorageTest, RealServiceStallPausesDeadlines)
+{
+    int ready[2], resume[2];
+    ASSERT_EQ(pipe(ready), 0);
+    ASSERT_EQ(pipe(resume), 0);
+    const auto child = fork();
+    ASSERT_GE(child, 0);
+    if(!child)
+    {
+        close(ready[0]);
+        close(resume[1]);
+        testing::TempDir dir;
+        auto control = std::make_shared<RaftTestControl>();
+        AcquisitionLeaseConfig config;
+        config.acquisition_lease_min_ns = 100000000;
+        config.acquisition_lease_default_ns = 100000000;
+        config.acquisition_lease_max_ns = 100000000;
+        config.acquisition_service_tick_ms = 2;
+        config.acquisition_service_gap_ms = 20;
+        auto store = leaseRaft(dir, control, config);
+        const auto story = leaseStory(*store);
+        auto grant = store->acquire(story, "real-stall");
+        if(!grant.ok() || !store->serviceTick().ok())
+            _exit(2);
+        const char marker = 'r';
+        if(write(ready[1], &marker, 1) != 1)
+            _exit(3);
+        char signal;
+        if(read(resume[0], &signal, 1) != 1)
+            _exit(4);
+        auto renewal = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+        if(!renewal.ok() || !renewal->front().status.ok())
+            _exit(5);
+        auto row = liveRow(*store, *grant);
+        for(int i = 0; i < 70; ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if(!store->serviceTick().ok())
+                _exit(6);
+        }
+        auto due = store->leaseAuthority().sample(row, false);
+        if(!due.ok() || due->remaining_ns != 0)
+            _exit(7);
+        store.reset();
+        _exit(0);
+    }
+    close(ready[1]);
+    close(resume[0]);
+    char marker;
+    ASSERT_EQ(read(ready[0], &marker, 1), 1);
+    ASSERT_EQ(kill(child, SIGSTOP), 0);
+    int status{};
+    ASSERT_EQ(waitpid(child, &status, WUNTRACED), child);
+    ASSERT_TRUE(WIFSTOPPED(status));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    ASSERT_EQ(kill(child, SIGCONT), 0);
+    ASSERT_EQ(write(resume[1], &marker, 1), 1);
+    ASSERT_EQ(waitpid(child, &status, 0), child);
+    close(ready[0]);
+    close(resume[1]);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+namespace
+{
+struct FsyncBarrier;
+FsyncBarrier* active_fsync_barrier{};
+struct FsyncBarrier
+{
+    struct File
+    {
+        const sqlite3_io_methods* original;
+        sqlite3_io_methods methods;
+        bool catalog;
+    };
+    sqlite3_vfs* original = sqlite3_vfs_find(nullptr);
+    sqlite3_vfs vfs = *original;
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::map<sqlite3_file*, File> files;
+    bool armed{}, hit{}, held{};
+    FsyncBarrier()
+    {
+        active_fsync_barrier = this;
+        vfs.zName = "g2-fsync-barrier";
+        vfs.xOpen = open;
+        if(sqlite3_vfs_register(&vfs, 1) != SQLITE_OK)
+            throw std::runtime_error("fsync test VFS registration failed");
+    }
+    ~FsyncBarrier()
+    {
+        release();
+        sqlite3_vfs_register(original, 1);
+        sqlite3_vfs_unregister(&vfs);
+        active_fsync_barrier = nullptr;
+    }
+    static int open(sqlite3_vfs*, const char* name, sqlite3_file* file, int flags, int* output)
+    {
+        auto& barrier = *active_fsync_barrier;
+        const int result = barrier.original->xOpen(barrier.original, name, file, flags, output);
+        if(result != SQLITE_OK || !file->pMethods)
+            return result;
+        std::lock_guard lock(barrier.mutex);
+        auto& wrapped = barrier.files
+                                .emplace(file,
+                                         File{file->pMethods,
+                                              *file->pMethods,
+                                              name && std::string_view(name).find("lease-catalog-wal") !=
+                                                              std::string_view::npos})
+                                .first->second;
+        wrapped.methods.xSync = sync;
+        wrapped.methods.xClose = close;
+        file->pMethods = &wrapped.methods;
+        return result;
+    }
+    static int close(sqlite3_file* file)
+    {
+        auto& barrier = *active_fsync_barrier;
+        const sqlite3_io_methods* methods;
+        {
+            std::lock_guard lock(barrier.mutex);
+            methods = barrier.files.at(file).original;
+        }
+        const auto result = methods->xClose(file);
+        {
+            std::lock_guard lock(barrier.mutex);
+            barrier.files.erase(file);
+        }
+        return result;
+    }
+    static int sync(sqlite3_file* file, int flags)
+    {
+        auto& barrier = *active_fsync_barrier;
+        std::unique_lock lock(barrier.mutex);
+        const auto wrapped = barrier.files.at(file);
+        if(barrier.armed && wrapped.catalog)
+        {
+            barrier.armed = false;
+            barrier.hit = true;
+            barrier.cv.notify_all();
+            if(!barrier.cv.wait_for(lock, 3s, [&] { return !barrier.held; }))
+                return SQLITE_IOERR_FSYNC;
+        }
+        lock.unlock();
+        return wrapped.original->xSync(file, flags);
+    }
+    void arm()
+    {
+        std::lock_guard lock(mutex);
+        armed = true;
+        held = true;
+        hit = false;
+    }
+    bool wait()
+    {
+        std::unique_lock lock(mutex);
+        return cv.wait_for(lock, 2s, [&] { return hit; });
+    }
+    void release()
+    {
+        std::lock_guard lock(mutex);
+        held = false;
+        cv.notify_all();
+    }
+};
+} // namespace
+
+TEST(RaftStorageTest, BlockedSqliteFsyncPausesDeadlinesWithoutHoldingMapLock)
+{
+    testing::TempDir dir;
+    FsyncBarrier barrier;
+    auto control = std::make_shared<RaftTestControl>();
+    AcquisitionLeaseConfig config;
+    config.acquisition_lease_min_ns = 100000000;
+    config.acquisition_lease_default_ns = 100000000;
+    config.acquisition_lease_max_ns = 100000000;
+    config.acquisition_service_tick_ms = 2;
+    config.acquisition_service_gap_ms = 20;
+    auto store = leaseRaft(dir, control, config);
+    const auto story = leaseStory(*store);
+    auto grant = store->acquire(story, "before-fsync");
+    ASSERT_TRUE(grant.ok());
+    auto row = liveRow(*store, *grant);
+    ASSERT_TRUE(store->serviceTick().ok());
+    barrier.arm();
+    auto blocked = std::async(std::launch::async, [&] { return store->acquire(story, "blocked-fsync"); });
+    const bool reached = barrier.wait();
+    if(!reached)
+        barrier.release();
+    ASSERT_TRUE(reached);
+    auto tick = std::async(std::launch::async, [&] { return store->serviceTick(); });
+    std::this_thread::sleep_for(200ms);
+    EXPECT_TRUE(store->leaderLease());
+    // Reading qualification and the map succeeds while SQLite's actual xSync is held.
+    auto preserved = store->leaseAuthority().sample(row, false);
+    EXPECT_TRUE(preserved.ok()) << preserved.status();
+    if(preserved.ok())
+    {
+        EXPECT_GT(preserved->remaining_ns, 50000000);
+    }
+    barrier.release();
+    EXPECT_TRUE(blocked.get().ok());
+    EXPECT_TRUE(tick.get().ok());
+    auto renewed = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(renewed.ok());
+    ASSERT_TRUE(renewed->front().status.ok()) << renewed->front().status;
+    for(int i = 0; i < 70; ++i)
+    {
+        std::this_thread::sleep_for(2ms);
+        ASSERT_TRUE(store->serviceTick().ok());
+    }
+    auto due = store->leaseAuthority().sample(row, false);
+    ASSERT_TRUE(due.ok());
+    EXPECT_EQ(due->remaining_ns, 0);
 }
 } // namespace chronolog::visor

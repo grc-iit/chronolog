@@ -53,11 +53,10 @@ protected:
     }
 };
 
-// G1 stages these non-enforcement gates; G2 enables every store factory.
+// Every store factory runs the finite-grant contract before enforcement.
 TEST_P(MetadataStoreContract, EveryAcquisitionHasAFiniteLease)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     auto grant = h->sut->acquire(h->story, "finite");
     ASSERT_TRUE(grant.ok()) << grant.status();
     EXPECT_GT(grant->lease.duration_ns, 0);
@@ -68,8 +67,7 @@ TEST_P(MetadataStoreContract, EveryAcquisitionHasAFiniteLease)
 
 TEST_P(MetadataStoreContract, LeaseRequestUsesDefaultAndClamps)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_GT(h->lease_min_ns, 1);
     ASSERT_LE(h->lease_min_ns, h->lease_default_ns);
@@ -97,8 +95,7 @@ TEST_P(MetadataStoreContract, LeaseRequestUsesDefaultAndClamps)
 
 TEST_P(MetadataStoreContract, RetriedAcquireAfterLostReplyReturnsTheSameGrant)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_TRUE(h->advanceAuthorityClock);
     AcquireOptions options;
@@ -118,8 +115,7 @@ TEST_P(MetadataStoreContract, RetriedAcquireAfterLostReplyReturnsTheSameGrant)
 
 TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnation)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     AcquireOptions options;
     options.acquire_request_id = "terminal-retry-request-0000000001";
@@ -137,8 +133,7 @@ TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnati
 
 TEST_P(MetadataStoreContract, RestartRetainsDurationAndTerminalCause)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_TRUE(h->renewAcquisitions);
     ASSERT_TRUE(h->restart);

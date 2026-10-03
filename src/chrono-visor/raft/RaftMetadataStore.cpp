@@ -90,7 +90,8 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
             auto value = wrapped ? store.acquireAfterFence(q.story_id(),
                                                            q.writer_identity(),
                                                            convert::fromAcquireRequest(q),
-                                                           c.acquire_with_lease().lease_duration_ns())
+                                                           c.acquire_with_lease().lease_duration_ns(),
+                                                           &c.acquire_with_lease())
                                  : store.acquireAfterFence(q.story_id(), q.writer_identity());
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
@@ -185,10 +186,10 @@ public:
         , durable_(durable)
         , path_(std::move(path))
     {}
-    ptr<buffer> pre_commit(ulong index, buffer&) override
+    ptr<buffer> pre_commit(ulong index, buffer& data) override
     {
         if(control_)
-            control_->accepted(index);
+            control_->accepted(index, string(data));
         return nullptr;
     }
     ptr<buffer> commit(ulong index, buffer& data) override
@@ -387,6 +388,8 @@ std::string RaftMetadataStore::leaderEndpoint(bool internal) const
 }
 bool RaftMetadataStore::leaderLease() const
 {
+    const auto observed_term = server_->get_term();
+    const auto sampled = leases_.now();
     const auto barrier = server_->get_log_idx_at_becoming_leader();
     bool qualified = server_->is_leader() && barrier && store_->publishedAppliedIndex() >= barrier;
     size_t live = 1;
@@ -394,9 +397,10 @@ bool RaftMetadataStore::leaderLease() const
         for(const auto& p: server_->get_peer_info_all())
             if(p.last_log_idx_ >= barrier && p.last_succ_resp_us_ < static_cast<ulong>(config_.election_lower_ms) * 500)
                 ++live;
-    qualified = qualified && live > config_.peers.size() / 2 && (!control_ || control_->qualification_enabled.load());
+    qualified = qualified && live > config_.peers.size() / 2 && observed_term == server_->get_term() &&
+                (!control_ || control_->qualification_enabled.load());
     auto& leases = const_cast<LeaseAuthority&>(leases_);
-    leases.publish({server_->get_term(), leases.now(), qualified});
+    leases.publish({observed_term, sampled, qualified});
     // Record an RPC-detected lapse even when no monitor has run.
     if(!qualified)
         (void)leases.service();
@@ -414,6 +418,8 @@ absl::Status RaftMetadataStore::activateLeases()
         auto snapshot = store_->snapshotAcquisitions();
         if(!snapshot.ok())
             return snapshot.status();
+        if(control_)
+            control_->snapshotCaptured(snapshot->applied_index);
         if(!leaderLease() || term != server_->get_term())
             return absl::UnavailableError("authority changed during rebuild");
         leases_.rebuild(*snapshot);
@@ -437,6 +443,14 @@ absl::Status RaftMetadataStore::reconcileLeases()
     leases_.reconcile(*snapshot, scan_cursor_, end);
     scan_cursor_ = end ? std::pair<StoryId, uint64_t>{}
                        : std::pair{snapshot->active.back().story_id, snapshot->active.back().writer_id};
+    auto tuples = leases_.reconciliationTuples();
+    if(!tuples.empty())
+    {
+        auto rows = store_->acquisitionRows(tuples);
+        if(!rows.ok())
+            return rows.status();
+        leases_.reconcileTerminals(*rows);
+    }
     return leases_.service();
 }
 absl::Status RaftMetadataStore::serviceTick()
@@ -454,9 +468,23 @@ absl::StatusOr<std::string> RaftMetadataStore::propose(const internal::v1::Catal
 {
     if(!leaderLease())
         return absl::UnavailableError("no leader lease");
+    internal::v1::CatalogCommand command = c;
+    if(c.mutation_case() == internal::v1::CatalogCommand::kAcquire)
+    {
+        auto request = c.acquire();
+        if(request.acquire_request_id().empty())
+            request.set_acquire_request_id(newAcquireRequestId());
+        auto duration = leases_.config().duration(convert::fromAcquireRequest(request));
+        if(!duration.ok())
+            return duration.status();
+        auto selected = store_->prepareAcquire(request, *duration);
+        if(!selected.ok())
+            return selected.status();
+        *command.mutable_acquire_with_lease() = *selected;
+    }
     if(control_)
         ++control_->proposal_count;
-    auto result = server_->append_entries({bytes(c.SerializeAsString())});
+    auto result = server_->append_entries({bytes(command.SerializeAsString())});
     if(!result->get_accepted() || result->get_result_code() != cmd_result_code::OK || !result->get())
         return absl::UnavailableError("Raft proposal failed");
     if(control_ && control_->suppress_reply.exchange(false))
@@ -573,7 +601,10 @@ absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string i
     if(options.expected_prior_incarnation)
         q->set_expected_prior_incarnation(*options.expected_prior_incarnation);
     q->set_takeover(options.takeover);
-    command->set_lease_duration_ns(*duration);
+    auto selected = store_->prepareAcquire(*q, *duration);
+    if(!selected.ok())
+        return selected.status();
+    *command = *selected;
     auto result = propose(c);
     if(!result.ok())
         return result.status();

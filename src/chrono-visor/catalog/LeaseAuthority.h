@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 
 #include "catalog/AcquisitionLedger.h"
 
@@ -55,6 +56,9 @@ public:
     absl::StatusOr<AcquisitionLease> sample(const AcquisitionChange& row, bool renew);
     void advanceClock(int64_t ns, bool ticking);
     void eraseForTest(RenewAcquisition tuple);
+    std::vector<RenewAcquisition> reconciliationTuples();
+    void reconcileTerminals(const std::vector<AcquisitionChange>& rows);
+    absl::StatusOr<std::vector<RenewAcquisition>> dueTuples(size_t limit);
     size_t size() const;
     const AcquisitionLeaseConfig& config() const { return config_; }
 
@@ -67,17 +71,22 @@ private:
     };
     absl::Status serviceLocked(int64_t now, bool completed_tick);
     void applyLocked(const AcquisitionChange& change, int64_t now, bool qualified);
+    void removeLocked(const Key& key);
     AcquisitionLeaseConfig config_;
     bool dynamic_{};
     std::atomic<int64_t> clock_offset_{};
     std::atomic<std::shared_ptr<const LeaseQualification>> qualification_;
     mutable std::mutex mutex_;
     std::map<Key, Entry> entries_;
+    std::set<std::pair<int64_t, Key>> due_;
+    std::set<Key> deferred_initialization_;
     std::map<std::pair<StoryId, uint64_t>, uint64_t> revisions_;
     std::optional<int64_t> lapse_start_;
     int64_t last_tick_{};
+    int64_t gap_accounted_through_{};
     uint64_t term_{};
     bool rebuilding_{};
     std::vector<AcquisitionChange> buffered_;
+    Key reconciliation_cursor_{};
 };
 } // namespace chronolog::visor

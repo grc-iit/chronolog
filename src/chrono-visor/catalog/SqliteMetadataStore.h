@@ -57,13 +57,20 @@ public:
     absl::StatusOr<std::vector<RenewAcquisitionResult>>
     renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
     LeaseAuthority& leaseAuthority() { return leases_; }
+    absl::Status reconcileLeases();
+    absl::Status serviceTick();
 
     // The commit without the wait, for Raft apply, which must be deterministic and never blocks.
     absl::StatusOr<Acquisition> acquireAfterFence(StoryId id, std::string writer_identity);
-    absl::StatusOr<Acquisition>
-    acquireAfterFence(StoryId id, std::string writer_identity, AcquireOptions options, int64_t duration_ns);
+    absl::StatusOr<Acquisition> acquireAfterFence(StoryId id,
+                                                  std::string writer_identity,
+                                                  AcquireOptions options,
+                                                  int64_t duration_ns,
+                                                  const internal::v1::AcquireCommand* selected = nullptr);
     absl::StatusOr<std::vector<AcquisitionChange>> acquisitionRows(const std::vector<RenewAcquisition>& tuples) const;
     absl::StatusOr<AcquisitionSnapshot> scanAcquisitions(std::pair<StoryId, uint64_t> after, size_t limit) const;
+    absl::StatusOr<internal::v1::AcquireCommand> prepareAcquire(const v1::AcquireRequest& request,
+                                                                int64_t duration_ns) const;
     void setLeaseObserver(AcquisitionObserver* observer);
     uint64_t publishedAppliedIndex() const { return applied_index_.load(); }
 
@@ -123,6 +130,8 @@ private:
 
     LeaseAuthority leases_;
     bool replica_{};
+    std::mutex reconciliation_mutex_;
+    std::pair<StoryId, uint64_t> reconciliation_cursor_{};
     AcquisitionObserver* lease_observer_{};
     std::atomic<uint64_t> applied_index_{};
     void notify(const AcquisitionChange& change);

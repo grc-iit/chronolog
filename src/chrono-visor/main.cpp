@@ -175,39 +175,28 @@ int main(int argc, char** argv)
                                              &pool,
                                              std::chrono::milliseconds(config->heartbeat_timeout_ms));
 
-    std::atomic<bool> tick_queued{false};
-    std::pair<chronolog::StoryId, uint64_t> lease_cursor{};
+    struct LeaseTickState
+    {
+        std::atomic<bool> queued{};
+    };
+    auto lease_tick_state = std::make_shared<LeaseTickState>();
     std::jthread lease_ticks(
-            [&](std::stop_token stop)
+            [&, state = lease_tick_state](std::stop_token stop)
             {
                 while(!stop.stop_requested())
                 {
-                    if(!tick_queued.exchange(true))
+                    if(!state->queued.exchange(true))
                     {
                         if(!pool.submit(
-                                   [&]
+                                   [&, state]
                                    {
                                        if(raft)
                                            (void)raft->serviceTick();
                                        else
-                                       {
-                                           auto snapshot =
-                                                   applied->scanAcquisitions(lease_cursor,
-                                                                             config->leases.acquisition_scan_batch);
-                                           if(snapshot.ok())
-                                           {
-                                               const bool end =
-                                                       snapshot->active.size() < config->leases.acquisition_scan_batch;
-                                               applied->leaseAuthority().reconcile(*snapshot, lease_cursor, end);
-                                               lease_cursor = end ? std::pair<chronolog::StoryId, uint64_t>{}
-                                                                  : std::pair{snapshot->active.back().story_id,
-                                                                              snapshot->active.back().writer_id};
-                                               (void)applied->leaseAuthority().service(true);
-                                           }
-                                       }
-                                       tick_queued = false;
+                                           (void)applied->serviceTick();
+                                       state->queued = false;
                                    }))
-                            tick_queued = false;
+                            state->queued = false;
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds(config->leases.acquisition_service_tick_ms));
                 }

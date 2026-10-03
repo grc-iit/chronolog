@@ -24,6 +24,9 @@ absl::Status AcquisitionLeaseConfig::validate(uint32_t election, uint32_t heartb
 }
 absl::StatusOr<int64_t> AcquisitionLeaseConfig::duration(const AcquireOptions& o) const
 {
+    if(acquisition_lease_min_ns <= 0 || acquisition_lease_default_ns < acquisition_lease_min_ns ||
+       acquisition_lease_max_ns < acquisition_lease_default_ns || acquisition_lease_max_ns > INT64_MAX / 2)
+        return absl::InvalidArgumentError("invalid finite lease bounds");
     if((o.lease_duration_ns && *o.lease_duration_ns <= 0) ||
        (o.preferred_keeper_process_id && o.preferred_keeper_process_id->empty()) ||
        (o.expected_prior_incarnation && !*o.expected_prior_incarnation) || o.acquire_request_id.empty() ||
@@ -118,12 +121,22 @@ int64_t LeaseAuthority::now() const
                    .count() +
            clock_offset_.load();
 }
-void LeaseAuthority::publish(LeaseQualification q) { qualification_.store(std::make_shared<LeaseQualification>(q)); }
+void LeaseAuthority::publish(LeaseQualification q)
+{
+    auto prior = qualification_.load();
+    auto next = std::make_shared<const LeaseQualification>(q);
+    while(q.sampled_ns >= prior->sampled_ns && q.term >= prior->term)
+        if(qualification_.compare_exchange_weak(prior, next))
+            return;
+}
 absl::Status LeaseAuthority::serviceLocked(int64_t time, bool tick)
 {
     const auto q = qualification_.load();
     if(time - last_tick_ > int64_t(config_.acquisition_service_gap_ms) * 1000000)
-        lapse_start_ = lapse_start_ ? std::min(*lapse_start_, last_tick_) : last_tick_;
+    {
+        const auto start = std::max(last_tick_, gap_accounted_through_);
+        lapse_start_ = lapse_start_ ? std::min(*lapse_start_, start) : start;
+    }
     if(!q->qualified || (dynamic_ && q->term != term_) || rebuilding_)
     {
         if(!lapse_start_)
@@ -139,12 +152,22 @@ absl::Status LeaseAuthority::serviceLocked(int64_t time, bool tick)
         const int64_t pause = time - *lapse_start_;
         for(auto& [key, entry]: entries_)
             if(entry.deadline)
+            {
+                due_.erase({entry.deadline, key});
                 entry.deadline += pause;
+                due_.insert({entry.deadline, key});
+            }
         lapse_start_.reset();
+        gap_accounted_through_ = time;
+        last_tick_ = time;
     }
-    for(auto& [key, entry]: entries_)
-        if(!entry.deadline)
-            entry.deadline = time + entry.row.duration_ns;
+    for(const auto& key: deferred_initialization_)
+    {
+        auto& entry = entries_.at(key);
+        entry.deadline = time + entry.row.duration_ns;
+        due_.insert({entry.deadline, key});
+    }
+    deferred_initialization_.clear();
     if(tick)
         last_tick_ = time;
     return absl::OkStatus();
@@ -165,13 +188,16 @@ void LeaseAuthority::rebuild(const AcquisitionSnapshot& snapshot)
 {
     std::lock_guard lock(mutex_);
     entries_.clear();
+    due_.clear();
+    deferred_initialization_.clear();
     revisions_.clear();
     lapse_start_.reset();
     const auto time = now();
     last_tick_ = time;
+    gap_accounted_through_ = time;
     for(const auto& row: snapshot.active) applyLocked(row, time, true);
     for(const auto& row: buffered_)
-        if(row.revision > snapshot.revision)
+        if(row.applied_index ? row.applied_index > snapshot.applied_index : row.revision > snapshot.revision)
             applyLocked(row, time, true);
     buffered_.clear();
     rebuilding_ = false;
@@ -185,11 +211,17 @@ void LeaseAuthority::applyLocked(const AcquisitionChange& row, int64_t time, boo
     const Key key{row.story_id, row.writer_id, row.incarnation};
     if(row.state == AcquisitionState::Released)
     {
-        entries_.erase(key);
+        removeLocked(key);
         return;
     }
     if(!entries_.contains(key))
+    {
         entries_[key] = {row, qualified ? time + row.duration_ns : 0};
+        if(qualified)
+            due_.insert({entries_[key].deadline, key});
+        else
+            deferred_initialization_.insert(key);
+    }
 }
 void LeaseAuthority::onAcquisitionChange(const AcquisitionChange& row)
 {
@@ -216,20 +248,8 @@ void LeaseAuthority::reconcile(const AcquisitionSnapshot& snapshot, std::pair<St
     const auto time = now();
     if(!serviceLocked(time, false).ok())
         return;
-    auto through = end ? std::pair{UINT64_MAX, UINT64_MAX}
-                       : std::pair{snapshot.active.back().story_id, snapshot.active.back().writer_id};
-    for(auto it = entries_.begin(); it != entries_.end();)
-    {
-        const auto slot = std::pair{std::get<0>(it->first), std::get<1>(it->first)};
-        const bool present = std::any_of(snapshot.active.begin(),
-                                         snapshot.active.end(),
-                                         [&](const auto& row)
-                                         { return it->first == Key{row.story_id, row.writer_id, row.incarnation}; });
-        if(slot > after && slot <= through && revisions_[slot] <= snapshot.revision && !present)
-            it = entries_.erase(it);
-        else
-            ++it;
-    }
+    (void)after;
+    (void)end;
     for(const auto& row: snapshot.active) applyLocked(row, time, true);
 }
 absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange& row, bool renew)
@@ -252,7 +272,9 @@ absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange&
     {
         if(time >= entry.deadline)
             return absl::UnavailableError("acquisition deadline is due");
+        due_.erase({entry.deadline, key});
         entry.deadline = std::max(entry.deadline, time + row.duration_ns);
+        due_.insert({entry.deadline, key});
     }
     return AcquisitionLease{row.duration_ns, std::max<int64_t>(0, entry.deadline - time)};
 }
@@ -265,6 +287,10 @@ void LeaseAuthority::advanceClock(int64_t ns, bool ticking)
         clock_offset_.fetch_add(ns);
         return;
     }
+    auto initial = *qualification_.load();
+    initial.sampled_ns = now();
+    publish(initial);
+    (void)service(true);
     const auto step = int64_t(config_.acquisition_service_tick_ms) * 1000000;
     for(int64_t left = ns; left > 0;)
     {
@@ -277,10 +303,61 @@ void LeaseAuthority::advanceClock(int64_t ns, bool ticking)
         (void)service(true);
     }
 }
+std::vector<RenewAcquisition> LeaseAuthority::reconciliationTuples()
+{
+    std::lock_guard lock(mutex_);
+    std::vector<RenewAcquisition> tuples;
+    auto it = entries_.upper_bound(reconciliation_cursor_);
+    if(it == entries_.end())
+    {
+        reconciliation_cursor_ = {};
+        it = entries_.begin();
+    }
+    for(size_t count = 0; it != entries_.end() && count < config_.acquisition_scan_batch; ++it, ++count)
+    {
+        reconciliation_cursor_ = it->first;
+        tuples.push_back({std::get<0>(it->first), std::get<1>(it->first), std::get<2>(it->first)});
+    }
+    return tuples;
+}
+void LeaseAuthority::reconcileTerminals(const std::vector<AcquisitionChange>& rows)
+{
+    std::lock_guard lock(mutex_);
+    for(const auto& row: rows)
+    {
+        if(row.state != AcquisitionState::Released)
+            continue;
+        auto entry = entries_.find({row.story_id, row.writer_id, row.incarnation});
+        if(entry != entries_.end() && (row.termination_cause != AcquisitionTerminationCause::Unspecified ||
+                                       entry->second.row.revision <= row.revision))
+            removeLocked(entry->first);
+    }
+}
 void LeaseAuthority::eraseForTest(RenewAcquisition t)
 {
     std::lock_guard lock(mutex_);
-    entries_.erase({t.story_id, t.writer_id, t.incarnation});
+    removeLocked({t.story_id, t.writer_id, t.incarnation});
+}
+void LeaseAuthority::removeLocked(const Key& key)
+{
+    auto it = entries_.find(key);
+    if(it == entries_.end())
+        return;
+    due_.erase({it->second.deadline, key});
+    deferred_initialization_.erase(key);
+    entries_.erase(it);
+}
+absl::StatusOr<std::vector<RenewAcquisition>> LeaseAuthority::dueTuples(size_t limit)
+{
+    std::lock_guard lock(mutex_);
+    const auto time = now();
+    auto status = serviceLocked(time, false);
+    if(!status.ok())
+        return status;
+    std::vector<RenewAcquisition> tuples;
+    for(auto it = due_.begin(); it != due_.end() && tuples.size() < limit && it->first <= time; ++it)
+        tuples.push_back({std::get<0>(it->second), std::get<1>(it->second), std::get<2>(it->second)});
+    return tuples;
 }
 size_t LeaseAuthority::size() const
 {
