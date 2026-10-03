@@ -1338,7 +1338,8 @@ absl::StatusOr<size_t> SqliteMetadataStore::acceptKeeperEvidence(const std::stri
 {
     if(replica_)
         return absl::FailedPreconditionError("replica stores hold no lease authority");
-    CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
+    // O(evidence) map updates; the bounded reconciliation scan runs from the lease sweep (serviceTick).
+    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
     const size_t batch = leases_.config().acquisition_evidence_batch;
     size_t renewed = 0;
     for(size_t begin = 0; begin < tuples.size(); begin += batch)
