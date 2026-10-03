@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "chronolog-viz"
 version = "4.0.0"
 requires-python = ">=3.12"
+license = "BSD-2-Clause"
 dependencies = ["chronolog>=4,<5", "fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
 
 [tool.hatch.build.targets.wheel]
