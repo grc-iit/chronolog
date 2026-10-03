@@ -14,5 +14,7 @@ add_test(NAME ContractHeaders.NoGeneratedIncludes
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/include_guard_test.sh" "${PROJECT_SOURCE_DIR}")
 add_test(NAME SdkBuild.NoInternalProto
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/sdk_internal_guard_test.sh" "${PROJECT_SOURCE_DIR}")
+add_test(NAME ContractLogs.NoPayloadInLogs
+    COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/log_payload_guard_test.sh" "${PROJECT_SOURCE_DIR}")
 set_tests_properties(ProtoContract.AdditiveCompatibility ProtoContract.NamingLint
-    ContractHeaders.NoGeneratedIncludes SdkBuild.NoInternalProto PROPERTIES TIMEOUT 30)
+    ContractHeaders.NoGeneratedIncludes SdkBuild.NoInternalProto ContractLogs.NoPayloadInLogs PROPERTIES TIMEOUT 30)
