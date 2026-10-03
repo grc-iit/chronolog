@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <thread>
+#include <string_view>
 #include <random>
 #include <set>
 namespace chronolog::visor
@@ -113,8 +114,9 @@ protected:
     std::array<std::unique_ptr<grpc::Server>, 3> servers;
     std::array<std::unique_ptr<wire::Cluster::Stub>, 3> stubs;
     std::array<std::shared_ptr<grpc::Channel>, 3> channels;
-    void SetUp() override
+    absl::Status start(int attempt)
     {
+        std::filesystem::create_directory(dir.path() / std::to_string(attempt));
         std::vector<RaftPeer> peers;
         for(int i = 0; i < 3; ++i)
         {
@@ -124,10 +126,11 @@ protected:
         }
         for(size_t i = 0; i < 3; ++i)
         {
-            auto opened = RaftMetadataStore::open((dir.path() / std::to_string(i)).string(),
+            auto opened = RaftMetadataStore::open((dir.path() / std::to_string(attempt) / std::to_string(i)).string(),
                                                   testing::twoKeeperTopology(),
                                                   {static_cast<int32_t>(i + 1), peers[i].raft_endpoint, peers});
-            ASSERT_TRUE(opened.ok()) << opened.status();
+            if(!opened.ok())
+                return opened.status();
             stores[i] = std::move(*opened);
             memberships[i] = std::make_unique<StaticRouteMembership>(
                     testing::twoKeeperTopology(),
@@ -149,10 +152,33 @@ protected:
             builder.AddListeningPort(peers[i].internal_endpoint, grpc::InsecureServerCredentials());
             builder.RegisterService(services[i].get());
             servers[i] = builder.BuildAndStart();
-            ASSERT_NE(servers[i], nullptr);
+            if(!servers[i])
+                return absl::UnavailableError("cluster RPC port " + peers[i].internal_endpoint + " in use");
             channels[i] = grpc::CreateChannel(peers[i].internal_endpoint, grpc::InsecureChannelCredentials());
             stubs[i] = wire::Cluster::NewStub(channels[i]);
         }
+        return absl::OkStatus();
+    }
+    void SetUp() override
+    {
+        absl::Status status;
+        for(int attempt = 0; attempt < 8; ++attempt)
+        {
+            status = start(attempt);
+            if(status.ok())
+                break;
+            for(size_t i = 0; i < 3; ++i)
+            {
+                stop(i);
+                stubs[i].reset();
+                channels[i].reset();
+                feeds[i].reset();
+                memberships[i].reset();
+            }
+            if(status.message().find(" in use") == std::string_view::npos)
+                break;
+        }
+        ASSERT_TRUE(status.ok()) << status;
         size_t selected = leader();
         ASSERT_LT(selected, 3u);
         if(!seed_story_)
