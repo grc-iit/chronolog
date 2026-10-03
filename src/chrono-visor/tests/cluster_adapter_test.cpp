@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -16,7 +17,9 @@
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/InMemoryMetadataStore.h"
 #include "catalog/SqliteMetadataStore.h"
+#include "clock/FakeClock.h"
 #include "membership/StaticRouteMembership.h"
+#include "VisorConfig.h"
 
 namespace chronolog::visor
 {
@@ -44,7 +47,15 @@ protected:
                 15s);
         feed_ = std::make_unique<AcquisitionFeed>();
         store_->setObserver(feed_.get());
-        service_ = std::make_unique<ClusterService>(*membership_, *store_, *store_, *feed_);
+        service_ = std::make_unique<ClusterService>(*membership_,
+                                                    *store_,
+                                                    *store_,
+                                                    *feed_,
+                                                    nullptr,
+                                                    nullptr,
+                                                    9s,
+                                                    100ms,
+                                                    ClusterServiceOptions{&clock_, "visor-a:50061", "va1", 2500ms});
 
         grpc::ServerBuilder builder;
         int port = 0;
@@ -72,6 +83,7 @@ protected:
         return ctx;
     }
 
+    FakeClock clock_{1'700'000'000'000'000'000, 25};
     std::unique_ptr<InMemoryMetadataStore> store_;
     std::unique_ptr<StaticRouteMembership> membership_;
     std::unique_ptr<AcquisitionFeed> feed_;
@@ -80,6 +92,12 @@ protected:
     std::unique_ptr<iv1::Cluster::Stub> stub_;
     StoryId story_{};
 };
+
+void expectResponder(const iv1::ClockResponder& responder, const std::string& replica, const std::string& instance)
+{
+    EXPECT_EQ(responder.replica_id(), replica);
+    EXPECT_EQ(responder.instance(), instance);
+}
 
 TEST_F(cluster_adapter, MismatchedPolicyRefusesRegistration)
 {
@@ -111,7 +129,7 @@ TEST_F(cluster_adapter, RegisterAndHeartbeatFenceAnObsoleteInstance)
     ASSERT_TRUE(stub_->Register(context().get(), registration, &registered).ok());
     EXPECT_EQ(registered.status().code(), 0);
     EXPECT_GT(registered.authority_tick_ns(), 0u);
-    // The Visor has no chrony bound, so it reports Unsynced without uncertainty.
+    // The injected Visor clock is Unsynced, so the reading carries no uncertainty.
     EXPECT_EQ(registered.physical().status(), v1::CLOCK_STATUS_UNSYNCED);
     EXPECT_FALSE(registered.physical().has_uncertainty_ns());
 
@@ -141,11 +159,83 @@ TEST_F(cluster_adapter, RegisterWithoutARoleIsAnItemFailure)
     EXPECT_EQ(registered.status().code(), static_cast<int>(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(cluster_adapter, ReadClockIsUnimplemented)
+// B45 gate 5, static half: ReadClock answers from the local clock with no Raft, never manufacturing a bound (I8.3).
+TEST_F(cluster_adapter, StaticReadClockServesTheLocalReadingWithoutRaft)
 {
-    iv1::ReadClockResponse response;
-    EXPECT_EQ(stub_->ReadClock(context().get(), iv1::ReadClockRequest(), &response).error_code(),
-              grpc::StatusCode::UNIMPLEMENTED);
+    iv1::ReadClockRequest audit;
+    audit.set_audit_local_replica(true);
+    for(const auto& request: {iv1::ReadClockRequest(), audit})
+    {
+        clock_.setStatus(ClockStatus::Synced);
+        iv1::ReadClockResponse response;
+        ASSERT_TRUE(stub_->ReadClock(context().get(), request, &response).ok());
+        EXPECT_EQ(response.physical().status(), v1::CLOCK_STATUS_SYNCED);
+        EXPECT_EQ(response.physical().physical_ns(), 1'700'000'000'000'000'000);
+        ASSERT_TRUE(response.physical().has_uncertainty_ns());
+        EXPECT_EQ(response.physical().uncertainty_ns(), 25u);
+        EXPECT_GT(response.authority_tick_ns(), 0);
+        expectResponder(response.clock_responder(), "visor-a:50061", "va1");
+
+        clock_.setStatus(ClockStatus::Unsynced);
+        clock_.setPhysical(1'700'000'000'000'000'777);
+        ASSERT_TRUE(stub_->ReadClock(context().get(), request, &response).ok());
+        EXPECT_EQ(response.physical().status(), v1::CLOCK_STATUS_UNSYNCED);
+        EXPECT_EQ(response.physical().physical_ns(), 1'700'000'000'000'000'777);
+        EXPECT_FALSE(response.physical().has_uncertainty_ns());
+        expectResponder(response.clock_responder(), "visor-a:50061", "va1");
+
+        clock_.setStatus(ClockStatus::Unavailable);
+        EXPECT_EQ(stub_->ReadClock(context().get(), request, &response).error_code(), grpc::StatusCode::UNAVAILABLE);
+        clock_.setPhysical(1'700'000'000'000'000'000);
+    }
+}
+
+// A9: every RegisterResponse policy carries the Visor's Keeper timeouts, including a refused registration.
+TEST_F(cluster_adapter, RegisterIssuesTheVisorKeeperTimeoutsAndStampsTheResponder)
+{
+    clock_.setStatus(ClockStatus::Synced);
+    iv1::RegisterRequest request;
+    auto* p = request.mutable_process();
+    p->set_process_id("keeper-1");
+    p->set_instance("i1");
+    p->set_endpoint("keeper-a:50052");
+    p->set_role(iv1::PROCESS_ROLE_KEEPER);
+    for(uint64_t version: {2u, 1u})
+    {
+        request.set_policy_version(version);
+        iv1::RegisterResponse response;
+        ASSERT_TRUE(stub_->Register(context().get(), request, &response).ok());
+        EXPECT_EQ(response.status().code(), version == 1 ? 0 : 9);
+        ASSERT_TRUE(response.has_policy());
+        EXPECT_EQ(response.policy().keeper_failure_timeout_ms(), 9000u);
+        EXPECT_EQ(response.policy().release_fence_timeout_ms(), 2500u);
+        EXPECT_EQ(response.physical().status(), v1::CLOCK_STATUS_SYNCED);
+        EXPECT_EQ(response.physical().uncertainty_ns(), 25u);
+        expectResponder(response.clock_responder(), "visor-a:50061", "va1");
+    }
+    iv1::HeartbeatRequest heartbeat;
+    heartbeat.set_process_id("keeper-1");
+    heartbeat.set_instance("i1");
+    iv1::HeartbeatResponse answer;
+    ASSERT_TRUE(stub_->Heartbeat(context().get(), heartbeat, &answer).ok());
+    EXPECT_EQ(answer.status().code(), 0);
+    EXPECT_EQ(answer.physical().physical_ns(), 1'700'000'000'000'000'000);
+    expectResponder(answer.clock_responder(), "visor-a:50061", "va1");
+}
+
+TEST(VisorConfigTimeouts, ZeroKeeperTimeoutsFailAtConfigLoad)
+{
+    for(const char* key: {"CHRONOLOG_VISOR_KEEPER_FAILURE_TIMEOUT_MS", "CHRONOLOG_VISOR_RELEASE_FENCE_TIMEOUT_MS"})
+    {
+        auto loaded = VisorConfig::load(std::nullopt,
+                                        [key](const char* name) -> const char*
+                                        { return std::string_view(name) == key ? "0" : nullptr; });
+        EXPECT_TRUE(absl::IsInvalidArgument(loaded.status())) << key;
+    }
+    auto loaded = VisorConfig::load(std::nullopt, [](const char*) -> const char* { return nullptr; });
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_GT(loaded->heartbeat_timeout_ms, 0u);
+    EXPECT_GT(loaded->release_fence_timeout_ms, 0u);
 }
 
 TEST_F(cluster_adapter, WatchRoutesSendsOneFullSnapshotThenHolds)

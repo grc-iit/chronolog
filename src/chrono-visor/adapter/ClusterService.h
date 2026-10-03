@@ -13,6 +13,7 @@
 
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/SqliteMetadataStore.h"
+#include "chronolog/clock.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/metadata_store.h"
 #include "membership/StaticRouteMembership.h"
@@ -21,6 +22,17 @@ namespace chronolog::visor
 {
 class RaftMetadataStore;
 class WorkerPool;
+
+// What this replica stamps on the replies it generates: its physical Clock, its identity and the Keeper
+// timeouts it issues in RegisterResponse.policy.
+struct ClusterServiceOptions
+{
+    // Every physical reading comes from here (I8.3). Null reads CLOCK_REALTIME as Unsynced with no bound.
+    const Clock* clock = nullptr;
+    std::string replica_id;
+    std::string instance;
+    std::chrono::milliseconds release_fence_timeout{2000};
+};
 
 // chronolog.internal.v1.Cluster: process registration, heartbeat, route
 // distribution and acquisition updates. Dynamic replicas forward unary calls and
@@ -46,7 +58,8 @@ public:
                    RaftMetadataStore* raft = nullptr,
                    WorkerPool* pool = nullptr,
                    std::chrono::milliseconds failure_timeout = std::chrono::milliseconds(15000),
-                   std::chrono::milliseconds route_poll_period = std::chrono::milliseconds(100));
+                   std::chrono::milliseconds route_poll_period = std::chrono::milliseconds(100),
+                   ClusterServiceOptions options = {});
     ~ClusterService() override;
 
     grpc::ServerUnaryReactor* ExtendCeiling(grpc::CallbackServerContext*,
@@ -95,6 +108,10 @@ private:
     void forget(Stream* stream);
     // Routes of every live story, or the failure that prevented listing them.
     absl::StatusOr<std::vector<internal::v1::RouteUpdate>> routeSnapshot() const;
+    // This replica's physical reading, authority tick and identity. Returns false when no reading exists.
+    template <class Response>
+    bool stampClock(Response* response) const;
+    void issueTimeouts(internal::v1::MembershipPolicy* policy) const;
 
     RaftMetadataStore* raft_;
     WorkerPool* pool_;
@@ -111,6 +128,10 @@ private:
     uint64_t leader_term_{};
     std::chrono::steady_clock::time_point leader_since_;
     std::chrono::milliseconds failure_timeout_{15000};
+    std::unique_ptr<Clock> owned_clock_;
+    const Clock* clock_;
+    internal::v1::ClockResponder responder_;
+    std::chrono::milliseconds release_fence_timeout_;
     std::shared_ptr<SqliteMetadataStore::RouteSignal> route_signal_;
     std::jthread route_notifications_;
 };

@@ -19,7 +19,8 @@ add_library(chronolog_visor_lib STATIC
     membership/StaticRouteMembership.cpp)
 target_include_directories(chronolog_visor_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(chronolog_visor_lib
-    PUBLIC NuRaft::static_lib chronolog_contracts chronolog_common_rpc chronolog_internal_proto chronolog_proto
+    PUBLIC NuRaft::static_lib chronolog_contracts chronolog_common_rpc chronolog_common_clock chronolog_internal_proto
+           chronolog_proto
            unofficial::sqlite3::sqlite3 nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings absl::log)
 
