@@ -113,17 +113,18 @@ ClockAuditDecision VisorClockAudit::record(const Bracket& bracket,
                                                 elapsed / 1'000'000 * kSlewPpm + kReadGapNs);
     auto result = audit_.record(sample);
     const auto reason = result.decision.reason;
-    if(!result.transition && (reason == ClockAuditReason::MissingIdentity || reason == ClockAuditReason::Capacity))
-        // No entry carries these; report them as coverage without a replica.
+    const bool unattributed = reason == ClockAuditReason::MissingIdentity || reason == ClockAuditReason::Capacity;
+    std::lock_guard lock(mutex_);
+    // No entry carries these; report them once as coverage without a replica until an attributed reply arrives.
+    if(unattributed && unattributed_ != reason)
         result.transition = ClockAuditTransition{ClockAuditTransition::Kind::CoverageLost,
                                                  sample.responder,
                                                  ClockAuditState::Unknown,
                                                  result.decision};
+    if(reason != ClockAuditReason::TransportFailure)
+        unattributed_ = unattributed ? reason : ClockAuditReason::None;
     if(result.transition)
-    {
-        std::lock_guard lock(mutex_);
         pending_.push_back(*result.transition);
-    }
     return result.decision;
 }
 
