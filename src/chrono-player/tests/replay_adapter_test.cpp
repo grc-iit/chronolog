@@ -93,6 +93,9 @@ public:
 
     std::atomic<unsigned> unavailable{0};
     std::atomic<unsigned> calls{0};
+    std::atomic<bool> enforce_epoch{false};
+    std::atomic<unsigned> stale_epochs{0};
+    std::atomic<Epoch> accepted_epoch{0};
 
     // Both keepers of a read must be inside FetchHot at once for every call to see its peer.
     struct Rendezvous
@@ -143,6 +146,12 @@ public:
             truncated = truncated_;
             delay = delay_;
         }
+        if(enforce_epoch && request->expect_epoch() != epoch)
+        {
+            ++stale_epochs;
+            return {grpc::StatusCode::FAILED_PRECONDITION, "stale epoch"};
+        }
+        accepted_epoch = request->expect_epoch();
         if(refused)
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "story was destroyed");
         for(auto waited = 0ms; waited < delay && !context->IsCancelled(); waited += 20ms)
@@ -882,4 +891,61 @@ TEST_F(replay_adapter, CallsAfterShutdownAreUnavailable)
 }
 
 } // namespace
+} // namespace chronolog::player
+
+namespace chronolog::player
+{
+TEST_F(replay_adapter, ReadRecoversCorrectEpochAfterKeeperRefusesSupersededRoute)
+{
+    class ChangedRoute final: public RouteSource
+    {
+    public:
+        explicit ChangedRoute(std::atomic<unsigned>& refused)
+            : refused_(refused)
+        {}
+        absl::StatusOr<Route> route(StoryId) const override { return Route{7, {{"keeper-a", "keeper-a"}}, "", ""}; }
+        absl::StatusOr<RouteState>
+        routeStateAfter(StoryId, Epoch epoch, std::chrono::system_clock::time_point) const override
+        {
+            EXPECT_EQ(epoch, 7);
+            EXPECT_GT(refused_.load(), 0u);
+            RouteState state;
+            state.route = Route{8, {{"keeper-a", "keeper-a"}}, "", ""};
+            return state;
+        }
+
+    private:
+        std::atomic<unsigned>& refused_;
+    };
+    a_.setEpoch(8);
+    a_.enforce_epoch = true;
+    auto routes = std::make_shared<ChangedRoute>(a_.stale_epochs);
+    auto source = std::make_shared<KeeperHotSource>(routes, nullptr, [this](const KeeperRef&) { return a_addr_; });
+    ReplayService service(std::make_shared<HotReplay>(source), catalog_);
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    auto stub = v1::Replay::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
+    auto ctx = context();
+    auto reader = stub->Read(ctx.get(), hlcRead(100, 200));
+    v1::ReadResponse response;
+    bool complete = false;
+    size_t events = 0;
+    while(reader->Read(&response))
+    {
+        events += response.batch().events_size();
+        if(response.has_completion())
+            complete = response.completion().complete();
+    }
+    EXPECT_TRUE(reader->Finish().ok());
+    EXPECT_TRUE(complete);
+    EXPECT_EQ(events, 3u);
+    EXPECT_EQ(a_.stale_epochs, 1u);
+    EXPECT_EQ(a_.accepted_epoch, 8u);
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
 } // namespace chronolog::player

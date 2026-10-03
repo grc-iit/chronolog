@@ -70,6 +70,15 @@ int main(int argc, char** argv)
 
     std::shared_ptr<player::RouteSource> routes;
     std::shared_ptr<player::WriterDirectory> writers;
+    std::shared_ptr<const player::StoryCatalog> catalog = std::make_shared<player::AnyStoryCatalog>();
+    player::ClusterClient::TombstoneLookup lookup;
+    if(!config->visor.empty())
+    {
+        auto client = std::make_shared<player::CatalogClient>(rpc::peerChannel(config->visor),
+                                                              std::chrono::milliseconds(config->keeper_deadline_ms));
+        catalog = client;
+        lookup = [client](StoryId story) { return client->tombstoned(story); };
+    }
     if(config->static_routes)
     {
         routes = std::make_shared<player::StaticRouteSource>(*config->static_routes);
@@ -85,7 +94,8 @@ int main(int argc, char** argv)
                      ProcessRole::Player};
         auto cluster = std::make_shared<player::ClusterClient>(visor,
                                                                self,
-                                                               std::chrono::milliseconds(config->keeper_deadline_ms));
+                                                               std::chrono::milliseconds(config->keeper_deadline_ms),
+                                                               lookup);
         cluster->onRoute(
                 [writers](const Route& route)
                 {
@@ -109,11 +119,6 @@ int main(int argc, char** argv)
         }
         routes = cluster;
     }
-
-    std::shared_ptr<const player::StoryCatalog> catalog = std::make_shared<player::AnyStoryCatalog>();
-    if(!config->visor.empty())
-        catalog = std::make_shared<player::CatalogClient>(rpc::peerChannel(config->visor),
-                                                          std::chrono::milliseconds(config->keeper_deadline_ms));
 
     const player::PlayerConfig& cfg = *config;
     player::KeeperHotSourceOptions source_options;

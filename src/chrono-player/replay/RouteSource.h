@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <vector>
 #include "chrono-player/replay/HotSource.h"
 
@@ -20,6 +21,11 @@ public:
         RouteState state;
         state.route = *r;
         return state;
+    }
+    virtual absl::StatusOr<RouteState>
+    routeStateAfter(StoryId story, Epoch, std::chrono::system_clock::time_point) const
+    {
+        return routeState(story);
     }
     virtual bool physicalPolicy(StoryId) const { return false; }
     virtual int64_t skewLimitNs() const { return 60000000000LL; }
