@@ -44,6 +44,11 @@ class Scenario(Smoke):
         self.expected = {}
         self.sequences = {}
 
+    def settled_chunks(self, story):
+        logs = control('transfer-log', '')
+        pattern = rf'archive_settled chunk=\S+ story={story} start=(\d+):(\d+) end=(\d+):(\d+)'
+        return sorted(((int(m[1]), int(m[2])), (int(m[3]), int(m[4]))) for m in re.finditer(pattern, logs))
+
     def restart(self, service):
         roles = ([r['keeper'] for r in TABLE] if service == 'chrono-keeper'
                  else [r['grapher'] for r in TABLE if r['grapher']])
@@ -187,17 +192,21 @@ class Scenario(Smoke):
         try:
             removed = self.wait_membership(lambda m: any(r.story_id == story and
                 failed['keeper'] not in [k.process_id for k in r.route.keepers] for r in m.routes))
-            route = next(r for r in removed.routes if r.story_id == story)
             for row in TABLE:
                 self.replay = self.rpc.ReplayStub(self.connect(row['ip'] + ':50054'))
                 _, completion = self.read(self.request(story))
                 assert not completion.complete and completion.reason in (
                     self.pb.INCOMPLETE_REASON_SOURCE_FAILED, self.pb.INCOMPLETE_REASON_LAGGING_WRITERS), completion
-            stale = self.agent(failed, 'local', 'reacquire', story=story,
-                identity=chronicle + '-' + failed['node'] + '-local', preferred=failed['keeper'])
-            assert stale['keeper_preference'] == 'KEEPER_PREFERENCE_RESULT_NOT_IN_ROUTE', stale
-            assert stale['assigned'] != failed['keeper'], stale
-            assert stale['request_id'] != acquisitions[(failed['node'], 'local')]['request_id'], stale
+            for row in TABLE:
+                for slot in ('local', 'remote'):
+                    previous = acquisitions[(row['node'], slot)]
+                    if previous['assigned'] != failed['keeper']:
+                        continue
+                    stale = self.agent(row, slot, 'reacquire', story=story,
+                        identity=chronicle + '-' + row['node'] + '-' + slot, preferred=failed['keeper'])
+                    assert stale['keeper_preference'] == 'KEEPER_PREFERENCE_RESULT_NOT_IN_ROUTE', stale
+                    assert stale['assigned'] != failed['keeper'], stale
+                    assert stale['request_id'] != previous['request_id'], stale
             survivor = TABLE[1]
             retained = self.agent(survivor, 'local', 'reacquire', story=story,
                 identity=chronicle + '-' + survivor['node'] + '-local', preferred=TABLE[2]['keeper'], takeover=True)

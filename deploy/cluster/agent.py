@@ -54,6 +54,23 @@ def main(request):
                 time.sleep(.1)
             raise RuntimeError('acquire stayed unavailable: ' + str(last))
         acquired = pb.AcquireResponse.FromString(base64.b64decode(state['acquired']))
+        route = None
+        for endpoint in request['catalogs']:
+            try:
+                story = rpc.CatalogStub(connect(endpoint)).GetStory(
+                    pb.GetStoryRequest(story_id=acquired.story_id), timeout=3)
+                assert story.status.code == 0, story
+                route = story.story.route
+                break
+            except grpc.RpcError as error:
+                if error.code() != grpc.StatusCode.UNAVAILABLE:
+                    raise
+        assert route is not None, 'no Catalog could refresh the Route'
+        assigned = next((k for k in route.keepers if k.process_id == acquired.assigned_keeper.process_id), None)
+        assert assigned is not None, 'removed owner needs explicit conditional re-acquire'
+        acquired.route.CopyFrom(route)
+        acquired.assigned_keeper.CopyFrom(assigned)
+        state['acquired'] = base64.b64encode(acquired.SerializeToString()).decode()
         journal = rpc.JournalStub(connect(acquired.assigned_keeper.endpoint))
         events, latency = [], []
         for sequence in range(state['sequence'] + 1, state['sequence'] + request['count'] + 1):
