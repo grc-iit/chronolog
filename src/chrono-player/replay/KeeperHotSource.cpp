@@ -43,6 +43,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       std::atomic<size_t>& retained,
                                       bool policy,
                                       bool tail,
+                                      size_t read_budget,
                                       std::chrono::system_clock::time_point deadline) const
 {
     KeeperFetch out;
@@ -63,9 +64,12 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         scan.start = std::min(scan.start, scan.end);
     }
     // A Tail round must make progress when every source is truncated, which needs two events per answer (I6.13).
-    const uint64_t max_events =
-            tail && options_.max_events ? std::max<uint64_t>(options_.max_events, 2) : options_.max_events;
-    const size_t budget = tail ? std::max<size_t>(options_.read_max_events, 2) : options_.read_max_events;
+    const uint64_t max_events = read_budget ? read_budget
+                                            : (tail && options_.max_events ? std::max<uint64_t>(options_.max_events, 2)
+                                                                           : options_.max_events);
+    const size_t budget = read_budget
+                                  ? read_budget
+                                  : (tail ? std::max<size_t>(options_.read_max_events, 2) : options_.read_max_events);
     auto request = convert::fetchHotRequest(story, scan, max_events);
     if(range.axis == Range::Axis::Physical)
     {
@@ -137,6 +141,12 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& rang
     return fetchImpl(story, range, true, nullptr);
 }
 
+absl::StatusOr<HotFetch> KeeperHotSource::fetchRead(StoryId story, const Range& range, size_t target) const
+{
+    const size_t budget = target == SIZE_MAX ? target : target + 1;
+    return fetchImpl(story, range, true, nullptr, budget);
+}
+
 absl::StatusOr<HotFetch> KeeperHotSource::fetchTail(StoryId story, Hlc from, const TailStarts& starts) const
 {
     return fetchImpl(story, Range{Range::Axis::Hlc, from, maxHlc()}, true, &starts);
@@ -147,8 +157,11 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysical(StoryId story, const Ran
     return fetchImpl(story, range, policy, nullptr);
 }
 
-absl::StatusOr<HotFetch>
-KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts) const
+absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
+                                                    const Range& range,
+                                                    bool policy,
+                                                    const TailStarts* starts,
+                                                    size_t read_budget) const
 {
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto state = routes_->routeState(story);
@@ -201,9 +214,10 @@ KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const
                                                              own,
                                                              state->route.epoch,
                                                              nullptr,
-                                                             tail ? mine : retained,
+                                                             tail || read_budget ? mine : retained,
                                                              out.physical_policy,
                                                              tail,
+                                                             read_budget,
                                                              deadline);
                                          }));
         }
@@ -237,9 +251,10 @@ KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const
                                                              own,
                                                              p.epoch,
                                                              &p,
-                                                             tail ? mine : retained,
+                                                             tail || read_budget ? mine : retained,
                                                              out.physical_policy,
                                                              tail,
+                                                             read_budget,
                                                              deadline);
                                          }));
         }

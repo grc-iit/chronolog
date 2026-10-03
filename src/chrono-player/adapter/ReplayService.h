@@ -23,6 +23,8 @@ public:
     grpc::ServerWriteReactor<v1::ReadResponse>* Read(grpc::CallbackServerContext*, const v1::ReadRequest*) override;
     grpc::ServerWriteReactor<v1::TailResponse>* Tail(grpc::CallbackServerContext*, const v1::TailRequest*) override;
 
+    absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId story, Range range, size_t max_events) const;
+
     // Drains: refuses new calls and cancels open streams, so tails finish with a
     // complete=false Completion.
     void shutdown();

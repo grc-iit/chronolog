@@ -79,6 +79,10 @@ public:
     // Whole-query failures (NOT_FOUND, UNAVAILABLE) are statuses. Per-Keeper failures are
     // answered=false entries. Sources may return events outside range; consumers filter.
     virtual absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const = 0;
+    virtual absl::StatusOr<HotFetch> fetchRead(StoryId story, const Range& range, size_t) const
+    {
+        return fetch(story, range);
+    }
     virtual absl::StatusOr<HotFetch> fetchPhysical(StoryId story, const Range& range, bool) const
     {
         return fetch(story, range);
