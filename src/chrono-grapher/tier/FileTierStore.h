@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <functional>
 #include <set>
+#include <span>
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/ManifestLog.h"
 #include "chronolog/tier_store.h"
@@ -15,7 +16,8 @@ class FileTierStore final: public TierStore
 {
 public:
     using Unlink = std::function<int(const std::filesystem::path&)>;
-    using ReadFile = std::function<absl::StatusOr<std::vector<Event>>(const std::filesystem::path&)>;
+    using LoadFile = std::function<absl::StatusOr<ChunkBytes>(const std::filesystem::path&)>;
+    using DecodeFile = std::function<absl::StatusOr<std::vector<Event>>(const std::filesystem::path&, ChunkBytes&)>;
     ~FileTierStore() override;
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     Open(std::filesystem::path root,
@@ -23,19 +25,24 @@ public:
          std::map<StoryId, Hlc> anchors = {},
          std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
          Unlink unlink = {},
-         ReadFile read_file = {},
-         size_t read_threads = 0);
+         LoadFile load_file = {},
+         size_t read_threads = 0,
+         DecodeFile decode_file = {});
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     OpenReadOnly(std::filesystem::path root,
                  std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000),
-                 ReadFile read_file = {},
-                 size_t read_threads = 0);
+                 LoadFile load_file = {},
+                 size_t read_threads = 0,
+                 DecodeFile decode_file = {});
     absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
     absl::StatusOr<std::vector<Event>> read(StoryId story, Range range) const override;
     absl::StatusOr<std::vector<Event>>
     readRecord(const ManifestRecord& record, Range range, size_t max_events = SIZE_MAX) const;
+    size_t readConcurrency() const { return read_threads_; }
+    std::vector<absl::StatusOr<std::vector<Event>>>
+    readRecords(std::span<const ManifestRecord> records, Range range, size_t max_events = SIZE_MAX) const;
     absl::StatusOr<std::vector<ManifestRecord>> manifest(StoryId story) const override;
     absl::StatusOr<Hlc> contiguousWatermark(StoryId story) const override;
     absl::StatusOr<bool> incomplete(StoryId story, Range range) const;
@@ -59,11 +66,13 @@ private:
                   std::map<StoryId, Hlc> anchors,
                   std::shared_ptr<const ChunkCodec> codec,
                   Unlink unlink,
-                  ReadFile read_file,
-                  size_t read_threads);
+                  LoadFile load_file,
+                  size_t read_threads,
+                  DecodeFile decode_file);
     absl::Status recover();
+    absl::StatusOr<bool> canReadRecord(const ManifestRecord& record, Range range) const;
     absl::StatusOr<std::vector<Event>>
-    readFileRecord(const ManifestRecord& record, Range range, size_t max_events = SIZE_MAX) const;
+    decodeRecord(const ManifestRecord& record, Range range, size_t max_events, ChunkBytes bytes) const;
     void collectDeletedFiles(const ManifestIndex& index);
     absl::Status unlinkDeletedFile(const std::string& file);
     struct StoryView
@@ -96,7 +105,8 @@ private:
     std::unique_ptr<ManifestLog> log_;
     std::shared_ptr<const ChunkCodec> codec_;
     Unlink unlink_;
-    ReadFile read_file_;
+    LoadFile load_file_;
+    DecodeFile decode_file_;
     const size_t read_threads_;
     std::map<std::string, StoryId> pending_unlinks_;
     uint64_t deletion_generation_{};

@@ -18,42 +18,6 @@ constexpr std::size_t MaxBytes = 256 * 1024 * 1024;
 constexpr std::size_t MaxEvents = 65536;
 constexpr std::size_t MaxAttributes = 1024 * 1024;
 
-struct FileImage
-{
-    std::unique_ptr<unsigned char[]> data;
-    std::size_t size;
-};
-
-absl::StatusOr<FileImage> ReadImage(const std::filesystem::path& path)
-{
-    tier_detail::Fd fd(::open(path.c_str(), O_RDONLY | O_CLOEXEC));
-    if(fd.get() < 0)
-        return tier_detail::IoError("open HDF5 chunk");
-    struct stat info
-    {
-    };
-    if(::fstat(fd.get(), &info) != 0)
-        return tier_detail::IoError("stat HDF5 chunk");
-    // Leave room for dataset and heap metadata beyond the decoded byte budget.
-    if(info.st_size <= 0 || static_cast<uint64_t>(info.st_size) > 2 * MaxBytes)
-        return absl::UnavailableError("invalid HDF5 chunk file size");
-    const auto size = static_cast<std::size_t>(info.st_size);
-    FileImage image{std::make_unique_for_overwrite<unsigned char[]>(size), size};
-    std::size_t offset = 0;
-    while(offset < image.size)
-    {
-        const auto count = ::read(fd.get(), image.data.get() + offset, image.size - offset);
-        if(count < 0 && errno == EINTR)
-            continue;
-        if(count < 0)
-            return tier_detail::IoError("read HDF5 chunk");
-        if(count == 0)
-            return absl::UnavailableError("truncated HDF5 chunk file");
-        offset += static_cast<std::size_t>(count);
-    }
-    return image;
-}
-
 struct ReadOnlyImage
 {
     unsigned char* data;
@@ -358,16 +322,15 @@ absl::Status HDF5ChunkCodec::writeChunk(const std::filesystem::path& file, const
 {
     return Write(file, chunk.events, chunk.story_id, chunk.start, chunk.end);
 }
-absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::path& file) const
+absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::decode(std::span<unsigned char> bytes) const
 {
+    if(bytes.empty() || bytes.size() > 2 * MaxBytes)
+        return absl::UnavailableError("invalid HDF5 chunk file size");
     try
     {
-        auto image = ReadImage(file);
-        if(!image.ok())
-            return image.status();
         // The non-thread-safe HDF5 API only sees memory; disk reads can overlap.
         std::lock_guard lock(hdf5_mutex);
-        ReadOnlyImage borrowed{image->data.get(), image->size};
+        ReadOnlyImage borrowed{bytes.data(), bytes.size()};
         Handle access(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
         Check(H5Pset_fapl_core(access, 64 * 1024, false));
         // Every HDF5 handle closes before the borrowed read-only image is released.
@@ -379,7 +342,7 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::p
                                               ReadOnlyImage::FreeContext,
                                               &borrowed};
         Check(H5Pset_file_image_callbacks(access, &callbacks));
-        Check(H5Pset_file_image(access, image->data.get(), image->size));
+        Check(H5Pset_file_image(access, bytes.data(), bytes.size()));
         Handle input(H5Fopen("chronolog-archive-file-image", H5F_ACC_RDONLY, access), H5Fclose);
         Handle group(H5Gopen2(input, "chunk", H5P_DEFAULT), H5Gclose);
         Handle type(EventType(), H5Tclose);
@@ -435,13 +398,5 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::read(const std::filesystem::p
     {
         return absl::UnavailableError(error.what());
     }
-}
-absl::StatusOr<std::vector<Event>> ReadChunkFile(const std::filesystem::path& file)
-{
-    if(file.extension() == ".pb")
-        return ProtoChunkCodec().read(file);
-    if(file.extension() == ".h5")
-        return HDF5ChunkCodec().read(file);
-    return absl::UnavailableError("unknown archive codec extension");
 }
 } // namespace chronolog

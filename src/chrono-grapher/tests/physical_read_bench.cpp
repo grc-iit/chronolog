@@ -49,7 +49,7 @@ int Read(const std::filesystem::path& root)
                                              [&](const auto& path)
                                              {
                                                  ++opened;
-                                                 return ReadChunkFile(path);
+                                                 return LoadChunkFile(path);
                                              });
     if(!store.ok())
     {
