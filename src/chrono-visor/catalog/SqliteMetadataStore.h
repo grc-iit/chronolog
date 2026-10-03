@@ -4,6 +4,8 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <semaphore>
+#include <vector>
 #include <string>
 
 #include <sqlite3.h>
@@ -64,6 +66,9 @@ public:
     absl::StatusOr<uint64_t> appliedIndex() const;
     // Rows written on this connection, including Raft bookkeeping, for apply-cost tests.
     int64_t totalChanges() const;
+    using RouteSignal = std::counting_semaphore<>;
+    // The signal releases after a route-history commit; consumers read history on their own thread.
+    std::shared_ptr<RouteSignal> watchRouteChanges() const;
     absl::StatusOr<KeeperRef> releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const;
     absl::Status backupTo(const std::string& path) const;
     absl::Status installFrom(const std::string& path);
@@ -102,6 +107,9 @@ private:
     // Inside the destroy transaction: one fresh acquisition revision, then a tombstoned RouteUpdate per story
     // in membership_history (W10.17). Under Raft apply the command's own revision is the fresh one.
     absl::Status tombstoneStories(const std::vector<StoryId>& stories);
+    void finishRouteTransaction(bool committed);
+    bool route_changes_pending_{};
+    mutable std::vector<std::weak_ptr<RouteSignal>> route_signals_;
     sqlite3* db_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;

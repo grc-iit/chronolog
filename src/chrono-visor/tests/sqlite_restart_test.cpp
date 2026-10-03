@@ -161,3 +161,40 @@ TEST(sqlite_restart, LiveStoryNamesAreUniquePerChronicle)
 
 } // namespace
 } // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+TEST(sqlite_restart, RouteSignalsFollowCommitAndIgnoreRollback)
+{
+    testing::TempDir dir;
+    auto opened = SqliteMetadataStore::open((dir.path() / "catalog").string(), testing::twoKeeperTopology());
+    ASSERT_TRUE(opened.ok());
+    auto& store = **opened;
+    auto signal = store.watchRouteChanges();
+    ASSERT_TRUE(store.createChronicle("c").ok());
+    EXPECT_FALSE(signal->try_acquire());
+    auto result = store.applyRaft(1,
+                                  [&]
+                                  {
+                                      auto story = store.createStory("c", "committed");
+                                      EXPECT_TRUE(story.ok());
+                                      EXPECT_FALSE(signal->try_acquire());
+                                      return std::string{};
+                                  });
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(signal->try_acquire());
+    EXPECT_FALSE(signal->try_acquire());
+    EXPECT_THROW(store.applyRaft(2,
+                                 [&]() -> std::string
+                                 {
+                                     EXPECT_TRUE(store.createStory("c", "rolled-back").ok());
+                                     EXPECT_FALSE(signal->try_acquire());
+                                     throw std::runtime_error("rollback");
+                                 }),
+                 std::runtime_error);
+    EXPECT_FALSE(signal->try_acquire());
+    ASSERT_TRUE(store.createChronicle("other").ok());
+    EXPECT_FALSE(signal->try_acquire());
+    EXPECT_EQ(store.listStories("c")->size(), 1u);
+}
+} // namespace chronolog::visor

@@ -305,7 +305,14 @@ protected:
                 15s);
         feed_ = std::make_unique<AcquisitionFeed>();
         store_->setObserver(feed_.get());
-        service_ = std::make_unique<ClusterService>(*membership_, *store_, *store_, *feed_);
+        service_ = std::make_unique<ClusterService>(*membership_,
+                                                    *store_,
+                                                    *store_,
+                                                    *feed_,
+                                                    nullptr,
+                                                    nullptr,
+                                                    15s,
+                                                    route_poll_period_);
         grpc::ServerBuilder builder;
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -324,6 +331,7 @@ protected:
         store_->setObserver(nullptr);
     }
 
+    std::chrono::milliseconds route_poll_period_{100};
     testing::TempDir dir_;
     std::unique_ptr<SqliteMetadataStore> store_;
     std::unique_ptr<StaticRouteMembership> membership_;
@@ -483,4 +491,50 @@ TEST_F(cluster_adapter_sqlite, WatchRoutesReconnectOmitsStoryAndChronicleTombsto
 }
 
 } // namespace
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+class cluster_route_wake: public cluster_adapter_sqlite
+{
+    void SetUp() override
+    {
+        route_poll_period_ = 1h;
+        cluster_adapter_sqlite::SetUp();
+    }
+};
+TEST_F(cluster_route_wake, RoutesArriveWithoutPeriodicTick)
+{
+    ASSERT_TRUE(store_->registerStaticPolicy("keeper-a", 1).ok());
+    ASSERT_TRUE(store_->registerStaticPolicy("keeper-b", 1).ok());
+    auto barrier = store_->createStory("c", "barrier");
+    ASSERT_TRUE(barrier.ok());
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + 10s);
+    auto reader = stub_->WatchRoutes(&context, iv1::WatchRoutesRequest());
+    iv1::WatchRoutesResponse update;
+    ASSERT_TRUE(reader->Read(&update));
+    ASSERT_EQ(update.story_id(), barrier->id);
+    auto revision = update.revision();
+    auto created = store_->createStory("c", "created");
+    ASSERT_TRUE(created.ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), created->id);
+    EXPECT_TRUE(update.physical_policy());
+    EXPECT_GT(update.revision(), revision);
+    revision = update.revision();
+    ASSERT_TRUE(store_->clearPhysicalPolicy({created->id}).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), created->id);
+    EXPECT_FALSE(update.physical_policy());
+    EXPECT_GT(update.revision(), revision);
+    revision = update.revision();
+    ASSERT_TRUE(store_->destroyStory(created->id).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), created->id);
+    EXPECT_TRUE(update.tombstoned());
+    EXPECT_GT(update.revision(), revision);
+    context.TryCancel();
+    (void)reader->Finish();
+}
 } // namespace chronolog::visor
