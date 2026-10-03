@@ -14,6 +14,7 @@ import getpass
 from .registry import (KEYS, ROLES, atomic, binary, control, directory, find, free_ports, home,
                        leases, load, lock, name_check, probe, status)
 from .supervisor import configs, detach
+from .tiers import add_marker, initialize_local
 
 
 def create(args):
@@ -49,7 +50,9 @@ def create(args):
                   'owner': {'uid': os.getuid(), 'user': getpass.getuser(), 'created_by': args.label},
                   'endpoints': endpoints, 'paths': {'catalog_db': str(folder / 'visor/catalog.sqlite'),
                   'wal_dir': str(wal), 'logs': str(folder / 'logs')},
-                  'tiers': [{'name': 'local', 'kind': 'posix', 'root': str(archive), 'budget_bytes': args.budget_bytes}],
+                  'tiers': [{'name': 'local', 'kind': 'posix', 'root': str(archive), 'rank': 0, 'budget_bytes': args.budget_bytes}],
+                  'tier_io_timeout_ms': args.tier_io_timeout_ms,
+                  'tier_probe_interval_ms': args.tier_probe_interval_ms,
                   'policy': {'on_last_detach': 'stop' if args.ephemeral else args.on_last_detach,
                              'idle_grace_s': args.idle_grace_s if args.idle_grace_s is not None else (30 if args.ephemeral else 300)},
                   'bin_dir': str(Path(bin_dir).resolve()) if bin_dir else None, 'insecure_bind_all': args.insecure_bind_all,
@@ -59,12 +62,48 @@ def create(args):
                 raise ValueError('non-loopback bind requires --insecure-bind-all')
             if record['policy']['idle_grace_s'] < 0 or args.budget_bytes < 0:
                 raise ValueError('grace and budget must be nonnegative')
+            if args.tier_io_timeout_ms <= 0 or args.tier_probe_interval_ms <= 0:
+                raise ValueError('tier probe deadlines and intervals must be positive')
             configs(record)
+            initialize_local(record)
             atomic(folder / 'instance.json', record)
         except Exception:
             shutil.rmtree(folder)
             raise
         return folder, record
+
+
+def tier_add(args):
+    name_check(args.tier_name)
+    if args.tier_name == 'local' or args.rank <= 0:
+        raise ValueError('slow tiers require a name other than local and a positive rank')
+    folder, _ = find(args.name)
+    if folder is None:
+        raise ValueError('external instances have no managed tiers')
+    with control(folder / 'run/control.lock'):
+        record = load(folder / 'instance.json')
+        if any(tier['name'] == args.tier_name or tier.get('rank', 0) == args.rank
+               for tier in record['tiers']):
+            raise ValueError('tier name and rank must be unique')
+        root = Path(args.root).expanduser().absolute()
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if any(os.path.samefile(root, tier['root']) for tier in record['tiers']):
+            raise ValueError('tier root is already configured')
+        deployment_id = record.get('deployment_id', record['id'])
+        tier = add_marker({'name': args.tier_name, 'root': str(root), 'rank': args.rank,
+                           'kind': 'posix'}, deployment_id)
+        if 'deployment_id' not in record:
+            initialize_local(record)
+        record['tiers'] = sorted(record['tiers'] + [tier], key=lambda item: item['rank'])
+        atomic(folder / 'instance.json', record)
+        return tier
+
+
+def tier_ls(args):
+    folder, _ = find(args.name)
+    if folder is None:
+        raise ValueError('external instances have no managed tiers')
+    return status(folder)['tiers']
 
 
 def remap_unbooted(folder, record, args):
@@ -240,6 +279,8 @@ def parser():
         p.add_argument('--wal-dir')
         p.add_argument('--local-root')
         p.add_argument('--budget-bytes', type=int, default=0)
+        p.add_argument('--tier-io-timeout-ms', type=int, default=1000)
+        p.add_argument('--tier-probe-interval-ms', type=int, default=5000)
         p.add_argument('--ephemeral', action='store_true')
         p.add_argument('--on-last-detach', choices=('keep', 'stop'), default='keep')
         p.add_argument('--idle-grace-s', type=float)
@@ -247,6 +288,15 @@ def parser():
         p.add_argument('--label', default='shell')
         if action in ('run', 'env'):
             p.add_argument('--up', action='store_true')
+    tier = sub.add_parser('tier').add_subparsers(dest='tier_action', required=True)
+    p = tier.add_parser('add')
+    p.add_argument('name')
+    p.add_argument('tier_name')
+    p.add_argument('root')
+    p.add_argument('--rank', type=int, required=True)
+    p.add_argument('--kind', choices=('slow',), required=True)
+    p = tier.add_parser('ls')
+    p.add_argument('name', nargs='?', default='default')
     p = sub.add_parser('doctor')
     p.add_argument('--bin-dir')
     p = sub.add_parser('down')
@@ -284,6 +334,8 @@ def main():
     try:
         if args.action == 'doctor':
             output = {'binaries': {role: binary(args.bin_dir, role) for role in ROLES}}
+        elif args.action == 'tier':
+            output = tier_add(args) if args.tier_action == 'add' else tier_ls(args)
         elif args.action == 'create':
             output = create(args)[1]
         elif args.action == 'up':
