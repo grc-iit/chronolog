@@ -212,19 +212,6 @@ bool MayIntersect(const ManifestIndex& index, const ManifestRecord& record, Rang
     return file.bounds.min_lo < range.end.physical_ns && file.bounds.max_hi >= range.start.physical_ns;
 }
 
-absl::StatusOr<std::vector<Event>> ValidateFile(const std::filesystem::path& root, const ManifestRecord& record)
-{
-    auto events = ReadChunkFile(root / record.file);
-    if(!events.ok())
-        return events.status();
-    if(events->size() != record.event_count)
-        return absl::UnavailableError("chunk event count mismatch");
-    Chunk chunk{record.chunk_id, record.story_id, record.start, record.end, *std::move(events), record.exempt};
-    const auto valid = ValidChunk(chunk);
-    if(!valid.ok())
-        return absl::UnavailableError(valid.message());
-    return std::move(chunk.events);
-}
 } // namespace
 
 FileTierStore::FileTierStore(std::filesystem::path root,
@@ -455,6 +442,54 @@ absl::StatusOr<const ManifestIndex*> FileTierStore::refresh() const
     return log_->current();
 }
 
+absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord& record) const
+{
+    auto bytes = load_file_(root_ / record.file);
+    if(!bytes.ok())
+        return bytes.status();
+    auto events = decode_file_(root_ / record.file, *bytes);
+    if(!events.ok())
+        return events.status();
+    if(events->size() != record.event_count)
+        return absl::UnavailableError("chunk event count mismatch");
+    Chunk chunk{record.chunk_id, record.story_id, record.start, record.end, *std::move(events), record.exempt};
+    const auto valid = ValidChunk(chunk);
+    if(!valid.ok())
+        return absl::UnavailableError(valid.message());
+    return std::move(chunk.events);
+}
+
+bool FileTierStore::retired(const ManifestIndex& index, const ManifestRecord& record) const
+{
+    for(const auto& entry: viewOf(index, record.story_id).effective)
+        if(entry.file == record.file)
+            return entry.state == ManifestState::Deleted;
+    return false;
+}
+
+absl::StatusOr<std::vector<Event>> FileTierStore::afterVanished(const ManifestRecord& record,
+                                                                absl::Status failure) const
+{
+    if(!ArchiveFileVanished(failure))
+        return failure;
+    const auto seen = forced_started_.load();
+    std::lock_guard lock(mutex_);
+    if(forced_done_ <= seen)
+    {
+        const auto number = ++forced_started_;
+        if(!log_->sync().ok())
+            return failure;
+        polled_ = true;
+        refreshed_ = std::chrono::steady_clock::now();
+        forced_done_ = number;
+    }
+    const auto* index = log_->current();
+    // A destroy erases through Deleted records too, and an admitted read that reaches one of them fails (I6.7).
+    if(index->tombstoned.contains(record.story_id) || !retired(*index, record))
+        return failure;
+    return std::vector<Event>{};
+}
+
 absl::Status FileTierStore::recover()
 {
     auto index = refresh();
@@ -474,8 +509,18 @@ absl::Status FileTierStore::recover()
         {
             if(record.state != ManifestState::Published)
                 continue;
-            if(ValidateFile(root_, record).ok())
+            auto events = validate(record);
+            if(events.ok())
                 continue;
+            if(ArchiveFileVanished(events.status()))
+            {
+                // A peer may have retired the file after this index was read: never mark a Deleted file Lost.
+                auto refreshed = log_->sync();
+                if(!refreshed.ok())
+                    return refreshed.status();
+                if(retired(**refreshed, record))
+                    continue;
+            }
             auto status = log_->rememberWatermark(story, w);
             if(!status.ok())
                 return status;
@@ -506,7 +551,7 @@ absl::Status FileTierStore::recover()
                                                    O_RDWR | O_CLOEXEC));
             if(owner.get() >= 0 && ::flock(owner.get(), LOCK_EX | LOCK_NB) != 0)
                 continue;
-            auto events = ValidateFile(root_, *record);
+            auto events = validate(*record);
             if(!events.ok())
                 continue;
             auto synced = tier_detail::SyncDirectory(it->path());
@@ -734,7 +779,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         {
             auto bytes = ready.get();
             results[index] = bytes.ok() ? decodeRecord(records[index], range, max_events, *std::move(bytes))
-                                        : Result(bytes.status());
+                                        : afterVanished(records[index], bytes.status());
         }
         catch(const std::exception& error)
         {
@@ -773,7 +818,7 @@ FileTierStore::readRecord(const ManifestRecord& record, Range range, size_t max_
         return std::vector<Event>{};
     auto bytes = load_file_(root_ / record.file);
     if(!bytes.ok())
-        return bytes.status();
+        return afterVanished(record, bytes.status());
     return decodeRecord(record, range, max_events, *std::move(bytes));
 }
 

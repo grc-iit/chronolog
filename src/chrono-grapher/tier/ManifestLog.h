@@ -69,13 +69,14 @@ private:
         ino_t inode{};
         off_t offset{};
         bool present{};
+        std::string fingerprint;
     };
     struct WriterCursors
     {
         Cursor log, snapshot;
     };
     absl::Status rebuild() const;
-    absl::Status advance(bool& changed) const;
+    absl::Status advance() const;
     absl::Status applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const;
     std::filesystem::path directory_;
     std::string writer_;

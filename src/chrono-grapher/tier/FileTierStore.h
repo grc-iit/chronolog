@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -70,6 +71,9 @@ private:
                   size_t read_threads,
                   DecodeFile decode_file);
     absl::Status recover();
+    absl::StatusOr<std::vector<Event>> validate(const ManifestRecord& record) const;
+    bool retired(const ManifestIndex& index, const ManifestRecord& record) const;
+    absl::StatusOr<std::vector<Event>> afterVanished(const ManifestRecord& record, absl::Status failure) const;
     absl::StatusOr<bool> canReadRecord(const ManifestRecord& record, Range range) const;
     absl::StatusOr<std::vector<Event>>
     decodeRecord(const ManifestRecord& record, Range range, size_t max_events, ChunkBytes bytes) const;
@@ -100,6 +104,10 @@ private:
     std::set<std::string> inflight_;
     std::condition_variable inflight_changed_;
     mutable std::chrono::steady_clock::time_point refreshed_{};
+    // Forced refreshes after a vanished file: started_ counts those begun, done_ is the number of the last that
+    // succeeded. A reader that saw a vanish reuses any refresh numbered above what started_ read at that moment.
+    mutable std::atomic<uint64_t> forced_started_{};
+    mutable uint64_t forced_done_{};
     std::filesystem::path root_;
     std::string writer_;
     std::unique_ptr<ManifestLog> log_;

@@ -612,6 +612,7 @@ TEST(FileTierStore, ReadRecordErasedBeforeOpenIsUnavailable)
     auto reading =
             std::async(std::launch::async, [&] { return (*reader)->readRecord(*record, contract::WholeArchive()); });
     ASSERT_TRUE(gate.waitEntered(1));
+    ASSERT_TRUE((*writer)->tombstone(1).ok());
     ASSERT_TRUE((*writer)->eraseFile(record->file).ok());
     EXPECT_TRUE(gate.release());
     EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
@@ -730,6 +731,7 @@ TEST(FileTierStore, PhysicalPruningNeverDropsAnIntersectingEvent)
         store->reset();
         store = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, codec, {}, std::ref(reads));
         ASSERT_TRUE(store.ok()) << store.status();
+        reads.clear();
         const Range range{Range::Axis::Physical, {100, 0}, {101, 0}};
         auto events = (*store)->read(1, range);
         ASSERT_TRUE(events.ok()) << events.status();
