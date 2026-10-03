@@ -24,7 +24,8 @@ namespace chronolog::keeper
 // A tombstoned update drops the story in the journal (W10.17). At the marker, a story the journal holds that this
 // watcher learned from a route at a revision at or below R and the snapshot did not list was destroyed, and is
 // dropped as a received tombstone. A background reconciler asks the Catalog about every other unlisted story.
-// A stream that ends before its marker reconciles nothing.
+// A stream that ends before its marker reconciles nothing. The journal acknowledges R at the marker and each later
+// revision once it is applied.
 class RouteWatcher
 {
 public:
@@ -41,6 +42,7 @@ public:
 
 private:
     bool session(std::stop_token stop);
+    void apply(const internal::v1::WatchRoutesResponse& message);
     void conclude(uint64_t revision, uint64_t floor);
     void reconcile(std::stop_token stop);
 

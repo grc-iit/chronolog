@@ -382,4 +382,25 @@ TEST_F(RouteWatcherTest, StreamEndingBeforeItsMarkerReconcilesNothing)
     EXPECT_FALSE(rig_.journal->dropped(1));
 }
 
+TEST_F(RouteWatcherTest, AcknowledgesTheSnapshotAtItsMarkerAndEachDeltaAfterIt)
+{
+    cluster_.script({RouteUpdate(1, 5, 7)});
+    start();
+    cluster_.push(RouteUpdate(2, 6, 3));
+    awaitApplied(2, 3);
+    EXPECT_EQ(rig_.journal->appliedRouteRevision(), 0u);
+
+    cluster_.push(SnapshotEnd(6));
+    cluster_.push(RouteUpdate(3, 7, 1));
+    awaitApplied(3, 1);
+    EXPECT_EQ(rig_.journal->appliedRouteRevision(), 7u);
+
+    // A same-epoch change, such as a predecessor removed on settlement, reaches the Keeper only here.
+    cluster_.push(RouteUpdate(1, 9, 7));
+    for(auto deadline = std::chrono::steady_clock::now() + 10s;
+        rig_.journal->appliedRouteRevision() < 9 && std::chrono::steady_clock::now() < deadline;)
+        std::this_thread::yield();
+    EXPECT_EQ(rig_.journal->appliedRouteRevision(), 9u);
+}
+
 } // namespace chronolog

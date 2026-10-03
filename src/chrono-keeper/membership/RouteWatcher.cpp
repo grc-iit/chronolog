@@ -62,51 +62,61 @@ bool RouteWatcher::session(std::stop_token stop)
         if(message.snapshot_end())
         {
             if(!marked && journal_)
+            {
                 conclude(message.revision(), floor);
+                journal_->acknowledgeRoutes(message.revision());
+            }
             marked = true;
             continue;
         }
-        // A tombstone is applied before the epoch and revision guards, whatever its revision, and never moves the
-        // applied revision. Every later update for the story is ignored (I3.5).
-        if(message.tombstoned())
-        {
-            tombstoned_.insert(message.story_id());
-            if(journal_)
-                (void)journal_->dropStory(message.story_id(), true);
-            continue;
-        }
-        if(tombstoned_.contains(message.story_id()))
-            continue;
-        {
-            std::lock_guard lock(mu_);
-            seen_.insert(message.story_id());
-        }
-        auto current = membership_.route(message.story_id());
-        if(current.ok() && message.route().epoch() < current->epoch)
-            continue;
-        auto& prior = applied_[message.story_id()];
-        if(message.revision() < applied_revision_ || message.revision() < prior.first ||
-           message.route().epoch() < prior.second)
-            continue;
-        applied_revision_ = message.revision();
-        prior = {message.revision(), message.route().epoch()};
-        learned_.try_emplace(message.story_id(), message.revision());
-        auto state = convert::routeState(message);
-        auto install = [&] { membership_.setRouteState(message.story_id(), state); };
-        if(journal_)
-            journal_->applyRoute(message.story_id(),
-                                 state,
-                                 std::find(message.observe_floor().begin(),
-                                           message.observe_floor().end(),
-                                           process_id_) != message.observe_floor().end(),
-                                 message.revision(),
-                                 install);
-        else
-            install();
+        apply(message);
+        // Stream order: every revision up to this one has been applied (W10.6).
+        if(marked && journal_)
+            journal_->acknowledgeRoutes(message.revision());
     }
     reader->Finish();
     // A stream that ended before its marker is a failed connect, retried with the backoff.
     return marked;
+}
+
+void RouteWatcher::apply(const iv1::WatchRoutesResponse& message)
+{
+    // A tombstone is applied before the epoch and revision guards, whatever its revision, and never moves the
+    // applied revision. Every later update for the story is ignored (I3.5).
+    if(message.tombstoned())
+    {
+        tombstoned_.insert(message.story_id());
+        if(journal_)
+            (void)journal_->dropStory(message.story_id(), true);
+        return;
+    }
+    if(tombstoned_.contains(message.story_id()))
+        return;
+    {
+        std::lock_guard lock(mu_);
+        seen_.insert(message.story_id());
+    }
+    auto current = membership_.route(message.story_id());
+    if(current.ok() && message.route().epoch() < current->epoch)
+        return;
+    auto& prior = applied_[message.story_id()];
+    if(message.revision() < applied_revision_ || message.revision() < prior.first ||
+       message.route().epoch() < prior.second)
+        return;
+    applied_revision_ = message.revision();
+    prior = {message.revision(), message.route().epoch()};
+    learned_.try_emplace(message.story_id(), message.revision());
+    auto state = convert::routeState(message);
+    auto install = [&] { membership_.setRouteState(message.story_id(), state); };
+    if(journal_)
+        journal_->applyRoute(message.story_id(),
+                             state,
+                             std::find(message.observe_floor().begin(), message.observe_floor().end(), process_id_) !=
+                                     message.observe_floor().end(),
+                             message.revision(),
+                             install);
+    else
+        install();
 }
 
 void RouteWatcher::conclude(uint64_t revision, uint64_t floor)
