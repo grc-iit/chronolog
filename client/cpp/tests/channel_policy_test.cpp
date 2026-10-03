@@ -29,9 +29,10 @@ class Peer final
     , public wire::Journal::Service
 {
 public:
-    explicit Peer(std::string name, std::string keeper = {})
+    explicit Peer(std::string name, std::string keeper = {}, size_t attribute_bytes = 0)
         : name_(std::move(name))
         , keeper_(std::move(keeper))
+        , attribute_bytes_(attribute_bytes)
     {
         grpc::ServerBuilder builder;
         // The server policy of every ChronoLog service, so the client's keepalive pings are not strikes.
@@ -79,9 +80,18 @@ public:
         return grpc::Status::OK;
     }
     grpc::Status
-    Read(grpc::ServerContext*, const wire::ReadRequest*, grpc::ServerWriter<wire::ReadResponse>* writer) override
+    Read(grpc::ServerContext*, const wire::ReadRequest* r, grpc::ServerWriter<wire::ReadResponse>* writer) override
     {
         wire::ReadResponse response;
+        if(attribute_bytes_)
+        {
+            auto* event = response.mutable_batch()->add_events();
+            event->mutable_id()->set_story_id(r->story_id());
+            event->mutable_id()->set_sequence(1);
+            (*event->mutable_envelope()->mutable_attributes())["large"] = std::string(attribute_bytes_, 'a');
+            writer->Write(response);
+            response.Clear();
+        }
         response.mutable_completion()->set_complete(true);
         writer->Write(response);
         return grpc::Status::OK;
@@ -94,6 +104,8 @@ public:
         event->mutable_id()->set_story_id(r->story_id());
         event->mutable_id()->set_sequence(1);
         event->mutable_hlc()->set_physical_ns(5);
+        if(attribute_bytes_)
+            (*event->mutable_envelope()->mutable_attributes())["large"] = std::string(attribute_bytes_, 'a');
         writer->Write(response);
         response.Clear();
         response.mutable_completion()->set_complete(false);
@@ -138,6 +150,7 @@ public:
 private:
     std::string name_;
     const std::string keeper_;
+    const size_t attribute_bytes_;
     std::unique_ptr<grpc::Server> server_;
 };
 
@@ -262,6 +275,46 @@ private:
     std::optional<std::chrono::steady_clock::time_point> release_bytes_;
     std::atomic<int> delayed_handshakes_{};
 };
+
+TEST(ClientChannelPolicy, DefaultReceivesAnAdmittedLargeEventAndExplicitLimitOverrides)
+{
+    constexpr size_t attributeBytes = 5 * 1024 * 1024;
+    Peer peer("large-event", {}, attributeBytes);
+    for(bool limited: {false, true})
+    {
+        SCOPED_TRACE(limited ? "explicit receive limit" : "default receive limit");
+        sdk::ClientOptions options;
+        options.catalog_endpoint = "127.0.0.1:" + std::to_string(peer.port);
+        if(limited)
+            options.channel_args[GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH] = 1024 * 1024;
+        auto client = sdk::Client::Connect(options);
+        ASSERT_TRUE(client.ok()) << client.status();
+        for(bool tail: {false, true})
+        {
+            SCOPED_TRACE(tail ? "Tail" : "Read");
+            const auto end = std::chrono::system_clock::now() + 5s;
+            auto stream = tail ? client->tail(1, {}, end) : client->read(1, {{0, 0}, {10, 0}}, end);
+            ASSERT_TRUE(stream.ok()) << stream.status();
+            auto item = stream->next(end);
+            const bool delivered = item.ok() && *item && !(**item).events.empty();
+            EXPECT_EQ(delivered, !limited);
+            if(delivered)
+            {
+                ASSERT_EQ((**item).events.size(), 1u);
+                EXPECT_EQ((**item).events[0].id.sequence, 1u);
+                EXPECT_EQ((**item).events[0].envelope.attributes.at("large"), std::string(attributeBytes, 'a'));
+                if(!tail)
+                {
+                    auto completion = stream->next(end);
+                    ASSERT_TRUE(completion.ok() && *completion);
+                    ASSERT_TRUE((**completion).completion);
+                    EXPECT_TRUE((**completion).completion->complete);
+                }
+            }
+            stream->cancel();
+        }
+    }
+}
 
 TEST(ClientChannelPolicy, FirstCallWaitsForASlowHandshakeWithinItsDeadline)
 {

@@ -1,5 +1,6 @@
 #pragma once
 #include "chronolog/client/client.h"
+#include "chronolog/message_limits.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include <grpcpp/grpcpp.h>
 #include <algorithm>
@@ -98,6 +99,7 @@ inline bool retryable(const absl::Status& s)
 inline grpc::ChannelArguments channelPolicy()
 {
     grpc::ChannelArguments args;
+    args.SetMaxReceiveMessageSize(kEventStreamReceiveBytes);
     args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, 1000);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
     args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
