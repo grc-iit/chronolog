@@ -83,7 +83,7 @@ class Scenario:
         except RuntimeError:
             raise RuntimeError(f'{op} stayed UNAVAILABLE for {seconds}s: {last}')
 
-    def wait(self, fn, seconds=30):
+    def wait(self, fn, seconds=30, context=None):
         deadline = time.monotonic() + seconds
         detail = None
         while time.monotonic() < deadline:
@@ -95,10 +95,13 @@ class Scenario:
             except RuntimeError as error:
                 detail = str(error)
             time.sleep(.1)
+        if context:
+            detail = f'{context}; last result={detail}; last state={getattr(self, "last_state", None)}'
         raise RuntimeError(f'bounded wait failed: {detail}')
 
     def state(self):
-        return self.call('ListMembers', endpoint=self.internal)
+        self.last_state = self.call('ListMembers', endpoint=self.internal)
+        return self.last_state
 
     def route(self):
         return next(r for r in self.state().get('routes', []) if int(r['story_id']) == self.story)
@@ -237,6 +240,17 @@ class Scenario:
 
     def admin(self, op, keeper):
         return self.rpc(op, dict(process_id=keeper), self.internal)
+
+    def drain_after_join(self, joined, owner):
+        # Silence detection may drain the owner during the deferral probe. A duplicate DrainKeeper is a no-op,
+        # so require advancement from the joined route that still contained the owner.
+        before = int(joined['route']['epoch'])
+        print(f'ping-pong drain {owner} after joined epoch {before}', flush=True)
+        self.admin('DrainKeeper', owner)
+        if not any(k['process_id'] == owner for k in joined['route']['keepers']):
+            return joined
+        return self.wait(lambda: self.changed(before, owner, False),
+                         context=f'drain {owner} after joined epoch {before}')
 
     def settled(self, acquired):
         # W10.14 closes admission until the acquisition snapshot restores fences, independently of route application.
@@ -630,14 +644,15 @@ class Scenario:
             other = 'keeper-1' if owner == 'keeper-2' else 'keeper-2'
             before = int(self.route()['route']['epoch'])
             self.admin('JoinKeeper', other)
-            joined = self.wait(lambda: self.changed(before, other, True))
-            self.wait(lambda: self.applied(other, int(joined['revision'])))
+            joined = self.wait(lambda: self.changed(before, other, True),
+                               context=f'ping-pong turn {turn} join {other} after epoch {before}')
+            self.wait(lambda: self.applied(other, int(joined['revision'])),
+                      context=f'ping-pong turn {turn} {other} acknowledges join revision {joined["revision"]}')
             until = int(joined.get('physical_floor_ns', 0)) - int(self.policy['acceptance_budget_ns'])
             unavailable += self.deferral(other, until, turn)
-            before = int(self.route()['route']['epoch'])
-            self.admin('DrainKeeper', owner)
-            route = self.wait(lambda: self.changed(before, owner, False))
-            self.wait(lambda: self.applied(other, int(route['revision'])))
+            route = self.drain_after_join(joined, owner)
+            self.wait(lambda: self.applied(other, int(route['revision'])),
+                      context=f'ping-pong turn {turn} {other} acknowledges drain revision {route["revision"]}')
             # Draining the owner terminated the identity's holder, so this is a conditional plain Acquire.
             a = self.acquire(identity, expected=successor['incarnation'])
             successor = a
