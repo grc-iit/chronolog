@@ -41,7 +41,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       Epoch expected_epoch,
                                       const Predecessor* predecessor,
                                       std::atomic<size_t>& retained,
-                                      bool policy) const
+                                      bool policy,
+                                      bool tail) const
 {
     KeeperFetch out;
     out.frontier.process_id = keeper.process_id;
@@ -49,7 +50,10 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
     out.frontier.expected_epoch = expected_epoch;
     out.frontier.predecessor = predecessor != nullptr;
     if(predecessor)
+    {
         out.frontier.own_cut = predecessor->own_cut;
+        out.frontier.instance = predecessor->instance;
+    }
 
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto scan = range.axis == Range::Axis::Physical ? physicalWindow(range, policy) : range;
@@ -58,7 +62,11 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         scan.end = std::min(scan.end, predecessor->own_cut);
         scan.start = std::min(scan.start, scan.end);
     }
-    auto request = convert::fetchHotRequest(story, scan, options_.max_events);
+    // A Tail round must make progress when every source is truncated, which needs two events per answer (I6.13).
+    const uint64_t max_events =
+            tail && options_.max_events ? std::max<uint64_t>(options_.max_events, 2) : options_.max_events;
+    const size_t budget = tail ? std::max<size_t>(options_.read_max_events, 2) : options_.read_max_events;
+    auto request = convert::fetchHotRequest(story, scan, max_events);
     if(range.axis == Range::Axis::Physical)
     {
         request.mutable_physical_filter()->set_start_ns(range.start.physical_ns);
@@ -88,8 +96,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                     if(limited)
                         continue;
                     size_t count = retained.load();
-                    while(count < options_.read_max_events && !retained.compare_exchange_weak(count, count + 1)) {}
-                    if(count < options_.read_max_events)
+                    while(count < budget && !retained.compare_exchange_weak(count, count + 1)) {}
+                    if(count < budget)
                         out.events.push_back(convert::fromProto(event));
                     else
                         limited = true;
@@ -98,6 +106,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
             else if(response.has_trailer())
             {
                 trailer = true;
+                out.frontier.instance = response.trailer().instance();
                 instance_matches = !predecessor || response.trailer().instance() == predecessor->instance;
                 if(response.trailer().has_physical_frontier_ns())
                     out.frontier.physical_frontier = response.trailer().physical_frontier_ns();
@@ -108,6 +117,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
             }
         }
         const auto status = reader->Finish();
+        out.frontier.status = static_cast<absl::StatusCode>(status.error_code());
         out.frontier.truncated |= limited;
         out.frontier.answered = status.ok() && trailer && instance_matches && out.frontier.epoch == expected_epoch;
         if(!out.frontier.answered)
@@ -124,15 +134,21 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& range) const
 {
-    return fetchImpl(story, range, true);
+    return fetchImpl(story, range, true, nullptr);
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchTail(StoryId story, Hlc from, const TailStarts& starts) const
+{
+    return fetchImpl(story, Range{Range::Axis::Hlc, from, maxHlc()}, true, &starts);
 }
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysical(StoryId story, const Range& range, bool policy) const
 {
-    return fetchImpl(story, range, policy);
+    return fetchImpl(story, range, policy, nullptr);
 }
 
-absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy) const
+absl::StatusOr<HotFetch>
+KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts) const
 {
     auto state = routes_->routeState(story);
     if(!state.ok())
@@ -143,19 +159,59 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story, const Range& 
     out.abandoned = state->abandoned;
     out.physical_policy = policy && routes_->physicalPolicy(story);
     std::atomic<size_t> retained{0};
+    // A Tail round gives every source its own start and its own budget.
+    const bool tail = starts != nullptr;
+    auto startOf = [&](const SourceId& id)
+    {
+        if(tail)
+            if(auto it = starts->find(id); it != starts->end())
+                return std::max(it->second, range.start);
+        return range.start;
+    };
+    auto useRetained = [&](const SourceId& id, Epoch epoch, const Predecessor* predecessor)
+    {
+        if(!tail)
+            return false;
+        const auto it = starts->retained.find(id);
+        if(it == starts->retained.end() || it->second.epoch != epoch ||
+           (predecessor && it->second.instance != predecessor->instance))
+            return false;
+        auto frontier = it->second;
+        if(predecessor)
+            frontier.own_cut = predecessor->own_cut;
+        out.keepers.push_back({std::move(frontier), {}});
+        return true;
+    };
     std::vector<std::future<KeeperFetch>> pending;
     for(const auto& keeper: state->route.keepers)
-        pending.push_back(std::async(
-                std::launch::async,
-                [&, keeper] {
-                    return fetchOne(keeper, story, range, state->route.epoch, nullptr, retained, out.physical_policy);
-                }));
+    {
+        if(useRetained({keeper.process_id, 0}, state->route.epoch, nullptr))
+            continue;
+        Range own = range;
+        own.start = startOf({keeper.process_id, 0});
+        pending.push_back(std::async(std::launch::async,
+                                     [&, keeper, own]
+                                     {
+                                         std::atomic<size_t> mine{0};
+                                         return fetchOne(keeper,
+                                                         story,
+                                                         own,
+                                                         state->route.epoch,
+                                                         nullptr,
+                                                         tail ? mine : retained,
+                                                         out.physical_policy,
+                                                         tail);
+                                     }));
+    }
     for(const auto& p: state->predecessors)
     {
+        if(useRetained({p.keeper.process_id, p.epoch}, p.epoch, &p))
+            continue;
         Range own = range;
         if(range.axis == Range::Axis::Hlc)
         {
-            if(range.start >= p.own_cut)
+            own.start = startOf({p.keeper.process_id, p.epoch});
+            if(own.start >= p.own_cut)
                 continue;
             own.end = std::min(range.end, p.own_cut);
         }
@@ -168,9 +224,19 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story, const Range& 
             if(range.start.physical_ns >= bound)
                 continue;
         }
-        pending.push_back(std::async(
-                std::launch::async,
-                [&, p, own] { return fetchOne(p.keeper, story, own, p.epoch, &p, retained, out.physical_policy); }));
+        pending.push_back(std::async(std::launch::async,
+                                     [&, p, own]
+                                     {
+                                         std::atomic<size_t> mine{0};
+                                         return fetchOne(p.keeper,
+                                                         story,
+                                                         own,
+                                                         p.epoch,
+                                                         &p,
+                                                         tail ? mine : retained,
+                                                         out.physical_policy,
+                                                         tail);
+                                     }));
     }
     for(auto& f: pending)
     {

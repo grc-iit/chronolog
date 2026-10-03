@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <future>
 #include <map>
 #include <mutex>
 #include <thread>
@@ -66,6 +67,29 @@ public:
         std::lock_guard lk(mu_);
         delay_ = delay;
     }
+    void setInstance(std::string instance)
+    {
+        std::lock_guard lk(mu_);
+        instance_ = std::move(instance);
+    }
+    // Replaces what the Keeper holds and reports; a different instance is a restart.
+    void hold(std::string instance, std::vector<v1::Event> events, int64_t physical_ns)
+    {
+        std::lock_guard lk(mu_);
+        instance_ = std::move(instance);
+        events_ = std::move(events);
+        sealed_ = physical_ns;
+    }
+    void refuse(bool refused)
+    {
+        std::lock_guard lk(mu_);
+        refused_ = refused;
+    }
+    bool waitCalls(unsigned calls)
+    {
+        std::unique_lock lk(mu_);
+        return called_.wait_for(lk, 10s, [&] { return seen_ >= calls; });
+    }
 
     std::atomic<unsigned> unavailable{0};
     std::atomic<unsigned> calls{0};
@@ -85,6 +109,11 @@ public:
                           grpc::ServerWriter<iv1::FetchHotResponse>* writer) override
     {
         ++calls;
+        {
+            std::lock_guard lk(mu_);
+            ++seen_;
+        }
+        called_.notify_all();
         if(rendezvous)
         {
             std::unique_lock lk(rendezvous->mu);
@@ -101,15 +130,21 @@ public:
         int64_t sealed;
         uint64_t epoch;
         bool truncated;
+        bool refused;
+        std::string instance;
         std::chrono::milliseconds delay;
         {
             std::lock_guard lk(mu_);
+            refused = refused_;
+            instance = instance_;
             events = events_;
             sealed = sealed_;
             epoch = epoch_;
             truncated = truncated_;
             delay = delay_;
         }
+        if(refused)
+            return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "story was destroyed");
         for(auto waited = 0ms; waited < delay && !context->IsCancelled(); waited += 20ms)
             std::this_thread::sleep_for(20ms);
         if(request->story_id() != kStory)
@@ -145,6 +180,7 @@ public:
             writer->Write(batch);
         iv1::FetchHotResponse trailer;
         trailer.mutable_trailer()->set_epoch(epoch);
+        trailer.mutable_trailer()->set_instance(instance);
         trailer.mutable_trailer()->mutable_sealed_frontier()->set_physical_ns(sealed);
         trailer.mutable_trailer()->set_truncated(truncated);
         writer->Write(trailer);
@@ -153,6 +189,10 @@ public:
 
 private:
     std::mutex mu_;
+    std::condition_variable called_;
+    unsigned seen_{};
+    bool refused_{};
+    std::string instance_;
     std::vector<v1::Event> events_;
     int64_t sealed_{200};
     uint64_t epoch_{7};
@@ -164,6 +204,8 @@ struct FakeCatalog final: StoryCatalog
 {
     absl::Status ensureLive(StoryId story) const override
     {
+        std::lock_guard lk(mu);
+        ++lookups;
         auto it = stories.find(story);
         if(it == stories.end())
             return absl::FailedPreconditionError("unknown story");
@@ -171,6 +213,18 @@ struct FakeCatalog final: StoryCatalog
             return absl::FailedPreconditionError("story is tombstoned");
         return absl::OkStatus();
     }
+    void tombstone(StoryId story)
+    {
+        std::lock_guard lk(mu);
+        stories[story] = true;
+    }
+    unsigned asked() const
+    {
+        std::lock_guard lk(mu);
+        return lookups;
+    }
+    mutable std::mutex mu;
+    mutable unsigned lookups{};
     std::map<StoryId, bool> stories{{kStory, false}, {2, true}};
 };
 
@@ -203,6 +257,7 @@ protected:
         Route route{7, {{"keeper-a", "keeper-a"}, {"keeper-b", "keeper-b"}}, "", ""};
         KeeperHotSourceOptions options;
         options.deadline = 500ms;
+        tune(options);
         source_ = std::make_shared<KeeperHotSource>(
                 std::make_shared<StaticRouteSource>(route),
                 std::make_shared<FakeWriters>(),
@@ -215,8 +270,8 @@ protected:
         HotReplayOptions replay_options;
         replay_options.batch_size = 2;
         replay_options.tail_poll = 20ms;
-        service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options),
-                                                   std::make_shared<FakeCatalog>());
+        replay_options.story_live = [catalog = catalog_](StoryId story) { return catalog->ensureLive(story); };
+        service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options), catalog_);
         grpc::ServerBuilder builder;
         chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
@@ -290,7 +345,10 @@ protected:
         return request;
     }
 
+    virtual void tune(KeeperHotSourceOptions&) {}
+
     FakeArchive a_, b_;
+    std::shared_ptr<FakeCatalog> catalog_ = std::make_shared<FakeCatalog>();
     std::string a_addr_, b_addr_;
     std::unique_ptr<grpc::Server> a_server_, b_server_, server_;
     std::shared_ptr<KeeperHotSource> source_;
@@ -544,9 +602,12 @@ TEST_F(replay_adapter, TailResumesExclusivelyAndFollowsNewEvents)
     };
     pump(3);
     EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160}));
-    a_.add(protoEvent(2, 4, 170));
+    // A Keeper never shows an event below the seal it reported, so the new event lies above it and the seals move on.
+    a_.add(protoEvent(2, 4, 210));
+    a_.seal(300);
+    b_.seal(300);
     pump(4);
-    EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160, 170}));
+    EXPECT_EQ(seen, (std::vector<int64_t>{140, 150, 160, 210}));
     ctx->TryCancel();
     while(reader->Read(&response)) {}
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);
@@ -582,6 +643,236 @@ TEST_F(replay_adapter, ShutdownEndsATailWithAnIncompleteCompletion)
     EXPECT_TRUE(reader->Finish().ok());
     ASSERT_EQ(completions.size(), 1u);
     EXPECT_FALSE(completions[0].complete());
+}
+
+// A Keeper that refuses a destroyed story is evidence, not proof: only the Catalog ends the Tail (I6.13).
+TEST_F(replay_adapter, TailEndsFailedPreconditionWhenAKeeperRefusesAndTheCatalogConfirms)
+{
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 2, 130)));
+    v1::TailResponse response;
+    size_t seen = 0;
+    for(int i = 0; i < 100 && seen < 3 && reader->Read(&response); ++i) seen += response.batch().events_size();
+    ASSERT_EQ(seen, 3u);
+    catalog_->tombstone(kStory);
+    a_.refuse(true);
+    b_.refuse(true);
+    while(reader->Read(&response)) {}
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+}
+
+TEST_F(replay_adapter, TailStallsWhileTheCatalogDoesNotConfirmAKeeperRefusal)
+{
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 2, 130)));
+    v1::TailResponse response;
+    size_t seen = 0;
+    for(int i = 0; i < 100 && seen < 3 && reader->Read(&response); ++i) seen += response.batch().events_size();
+    ASSERT_EQ(seen, 3u);
+    a_.refuse(true);
+    b_.refuse(true);
+    ASSERT_TRUE(a_.waitCalls(a_.calls.load() + 5));
+    auto more = std::async(std::launch::async, [&] { return reader->Read(&response); });
+    EXPECT_GE(catalog_->asked(), 2u);
+    a_.refuse(false);
+    b_.refuse(false);
+    a_.add(protoEvent(2, 4, 210));
+    a_.seal(300);
+    b_.seal(300);
+    ASSERT_EQ(more.wait_for(10s), std::future_status::ready);
+    ASSERT_TRUE(more.get());
+    ASSERT_EQ(response.batch().events_size(), 1);
+    EXPECT_EQ(response.batch().events(0).hlc().physical_ns(), 210);
+    catalog_->tombstone(kStory);
+    a_.refuse(true);
+    b_.refuse(true);
+    more = std::async(std::launch::async, [&] { return reader->Read(&response); });
+    ASSERT_EQ(more.wait_for(10s), std::future_status::ready);
+    EXPECT_FALSE(more.get());
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+}
+
+TEST_F(replay_adapter, TailKeepsStallingWhileAKeeperIsDown)
+{
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 2, 130)));
+    v1::TailResponse response;
+    size_t seen = 0;
+    for(int i = 0; i < 100 && seen < 3 && reader->Read(&response); ++i) seen += response.batch().events_size();
+    ASSERT_EQ(seen, 3u);
+    const unsigned asked = catalog_->asked();
+    a_.unavailable = 1000000;
+    ASSERT_TRUE(a_.waitCalls(a_.calls.load() + 5));
+    auto more = std::async(std::launch::async, [&] { return reader->Read(&response); });
+    // No Keeper refused the story, so there is nothing for the Catalog to confirm.
+    EXPECT_EQ(catalog_->asked(), asked);
+    ctx->TryCancel();
+    EXPECT_FALSE(more.get());
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);
+}
+
+TEST_F(replay_adapter, TailStopsFetchingASourceWhoseBufferIsFull)
+{
+    b_.refuse(true);
+    HotReplayOptions options;
+    options.read_max_events = 2;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto calls = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    (*stream)->cancel();
+    (void)next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, calls);
+}
+
+TEST_F(replay_adapter, TailBoundsBufferedPayloadAndResumesAfterDelivery)
+{
+    a_.hold("a1", {}, 300);
+    for(int64_t t: {110, 130, 150})
+    {
+        auto e = protoEvent(2, t, t);
+        e.mutable_envelope()->set_payload(std::string(12, 'x'));
+        a_.add(std::move(e));
+    }
+    b_.hold("b1", {}, 100);
+    HotReplayOptions options;
+    options.tail_max_bytes = 48;
+    options.batch_size = 10;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto before = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    b_.seal(300);
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto first = next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, before);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(*first);
+    ASSERT_EQ((**first).events.size(), 2u);
+    EXPECT_EQ((**first).events[0].hlc.physical_ns, 110);
+    EXPECT_EQ((**first).events[1].hlc.physical_ns, 130);
+    auto last = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    if(last.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto batch = last.get();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc.physical_ns, 150);
+    (*stream)->cancel();
+}
+
+TEST_F(replay_adapter, TailDeliversAnEventLargerThanItsByteShare)
+{
+    a_.hold("a1", {}, 300);
+    for(int64_t time: {110, 130})
+    {
+        auto e = protoEvent(2, time, time);
+        e.mutable_envelope()->set_payload(std::string(100, 'x'));
+        a_.add(std::move(e));
+    }
+    b_.hold("b1", {}, 100);
+    HotReplayOptions options;
+    options.tail_max_bytes = 96;
+    options.batch_size = 10;
+    options.tail_poll = 1ms;
+    HotReplay replay(source_, options);
+    Event start;
+    start.id.story_id = kStory;
+    auto stream = replay.tail(kStory, start);
+    ASSERT_TRUE(stream.ok());
+    const auto before = a_.calls.load();
+    auto next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    const bool polled = b_.waitCalls(b_.calls.load() + 5);
+    const auto after = a_.calls.load();
+    b_.seal(300);
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    auto batch = next.get();
+    ASSERT_TRUE(polled);
+    EXPECT_EQ(after, before);
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc, (Hlc{110, 0}));
+    EXPECT_EQ((**batch).events[0].envelope.payload, std::string(100, 'x'));
+    EXPECT_FALSE((**batch).completion);
+    next = std::async(std::launch::async, [&] { return (*stream)->next(); });
+    if(next.wait_for(5s) != std::future_status::ready)
+        (*stream)->cancel();
+    batch = next.get();
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc, (Hlc{130, 0}));
+    EXPECT_EQ((**batch).events[0].envelope.payload, std::string(100, 'x'));
+    EXPECT_FALSE((**batch).completion);
+    EXPECT_GT(a_.calls.load(), before);
+    (*stream)->cancel();
+}
+
+TEST_F(replay_adapter, TailAcrossAKeeperRestartHasNoGapOrDuplicate)
+{
+    a_.setInstance("a1");
+    b_.hold("b1", {protoEvent(4, 1, 120)}, 125);
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 0, 100)));
+    std::vector<int64_t> seen;
+    v1::TailResponse response;
+    auto pump = [&](size_t want)
+    {
+        for(int i = 0; i < 100 && seen.size() < want && reader->Read(&response); ++i)
+        {
+            EXPECT_FALSE(response.has_completion());
+            for(const auto& e: response.batch().events()) seen.push_back(e.hlc().physical_ns());
+        }
+    };
+    // keeper-b's seal holds the Tail at 125 while keeper-a's later events wait in the Player.
+    pump(2);
+    EXPECT_EQ(seen, (std::vector<int64_t>{110, 120}));
+    // keeper-b shows an event below the ones keeper-a showed, and keeper-a restarts with its DURABLE events recovered.
+    b_.hold("b1", {protoEvent(4, 1, 120), protoEvent(4, 2, 135), protoEvent(4, 3, 160)}, 300);
+    a_.hold("a2", {protoEvent(2, 2, 130), protoEvent(2, 3, 150), protoEvent(2, 4, 210)}, 300);
+    pump(7);
+    EXPECT_EQ(seen, (std::vector<int64_t>{110, 120, 130, 135, 150, 160, 210}));
+    ctx->TryCancel();
+    while(reader->Read(&response)) {}
+}
+
+class replay_adapter_small_budget: public replay_adapter
+{
+    void tune(KeeperHotSourceOptions& options) override { options.read_max_events = 3; }
+};
+
+// With one budget shared by both Keepers the second would answer nothing and the Tail would stand still.
+TEST_F(replay_adapter_small_budget, TailMakesProgressWhenTheBudgetIsSmallerThanTheBacklog)
+{
+    for(int64_t at: {170, 190}) a_.add(protoEvent(2, at, at));
+    for(int64_t at: {180, 200}) b_.add(protoEvent(4, at, at));
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 0, 100)));
+    std::vector<int64_t> seen;
+    v1::TailResponse response;
+    for(int i = 0; i < 100 && seen.size() < 9 && reader->Read(&response); ++i)
+        for(const auto& e: response.batch().events()) seen.push_back(e.hlc().physical_ns());
+    EXPECT_EQ(seen, (std::vector<int64_t>{110, 120, 130, 140, 150, 160, 170, 180, 190}));
+    ctx->TryCancel();
+    while(reader->Read(&response)) {}
 }
 
 TEST_F(replay_adapter, CallsAfterShutdownAreUnavailable)
