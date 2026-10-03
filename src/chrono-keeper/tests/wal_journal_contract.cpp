@@ -11,9 +11,7 @@ namespace
 
 std::unique_ptr<JournalHarness> MakeWal()
 {
-    auto rig = std::make_shared<test::WalRig>(4096);
-    rig->ram_config.dedupe_window = 16;
-    rig->reopen();
+    auto rig = std::make_shared<test::WalRig>(4096, 16);
     auto h = std::make_unique<JournalHarness>();
     h->payload_limit = rig->ram_config.payload_max_bytes;
     h->supports_durable = true;

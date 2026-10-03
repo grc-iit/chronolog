@@ -151,9 +151,10 @@ struct WalRig
     ScannedWalJournal* current{};
     std::unique_ptr<WalJournal> journal;
 
-    explicit WalRig(uint64_t segment_bytes = 64ull << 20)
+    explicit WalRig(uint64_t segment_bytes = 64ull << 20, size_t dedupe_window = 65536)
     {
         config.wal_segment_bytes = segment_bytes;
+        ram_config.dedupe_window = dedupe_window;
         ram_config.process_id = "self";
         ram_config.instance = "instance";
         ram_config.append_ceiling_wait_ms = 100;
