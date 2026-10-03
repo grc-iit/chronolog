@@ -183,6 +183,8 @@ message RegisterResponse
     chronolog.v1.TimeReading physical = 3;
     // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
     int64 authority_tick_ns = 4;
+    // Visor that generated physical and authority_tick_ns; a forwarder preserves it.
+    ClockResponder clock_responder = 9;
 }
 message StoryFrontiers
 {
@@ -232,6 +234,8 @@ message HeartbeatResponse
     chronolog.v1.TimeReading physical = 3;
     // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
     int64 authority_tick_ns = 4;
+    // Visor that generated physical and authority_tick_ns; a forwarder preserves it.
+    ClockResponder clock_responder = 5;
 }
 message RouteSubscription
 {
@@ -259,7 +263,18 @@ message RouteUpdate
     bool tombstoned = 11;
 }
 
-message ReadClockRequest {}
+// Identity of the Visor replica process that generated a clock reading.
+message ClockResponder
+{
+    string replica_id = 1;
+    string instance = 2;
+}
+message ReadClockRequest
+{
+    // True: the addressed replica answers with its own reading, without forwarding or a lease.
+    // False: a dynamic follower forwards to the leader.
+    bool audit_local_replica = 1;
+}
 // authority_tick_ns is Visor steady-clock tick at service time, not realtime.
 // Physical uncertainty comes from chrony/kernel: delay/2+dispersion+drift*age.
 message ReadClockResponse
@@ -268,6 +283,8 @@ message ReadClockResponse
     chronolog.v1.TimeReading physical = 1;
     // Visor monotonic tick in nanoseconds captured at service time, not CLOCK_REALTIME.
     int64 authority_tick_ns = 2;
+    // Visor that generated physical and authority_tick_ns; a forwarder preserves it.
+    ClockResponder clock_responder = 3;
 }
 
 // Internal hot replay uses the same half-open HLC/physical range representation.
@@ -540,6 +557,9 @@ message MembershipPolicy
     int64 skew_limit_ns = 7;
     int64 hlc_lead_ns = 8;
     int64 uncertainty_cap_ns = 9;
+    // The Visor's Keeper liveness timeouts; Keepers take them from here so the two sides cannot drift.
+    uint32 keeper_failure_timeout_ms = 10;
+    uint32 release_fence_timeout_ms = 11;
 }
 message Predecessor
 {
