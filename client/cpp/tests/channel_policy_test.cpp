@@ -293,25 +293,31 @@ TEST(ClientChannelPolicy, DefaultReceivesAnAdmittedLargeEventAndExplicitLimitOve
         {
             SCOPED_TRACE(tail ? "Tail" : "Read");
             const auto end = std::chrono::system_clock::now() + 5s;
-            auto stream = tail ? client->tail(1, {}, end) : client->read(1, {{0, 0}, {10, 0}}, end);
-            ASSERT_TRUE(stream.ok()) << stream.status();
-            auto item = stream->next(end);
-            const bool delivered = item.ok() && *item && !(**item).events.empty();
-            EXPECT_EQ(delivered, !limited);
-            if(delivered)
+            auto check = [&](auto stream)
             {
-                ASSERT_EQ((**item).events.size(), 1u);
-                EXPECT_EQ((**item).events[0].id.sequence, 1u);
-                EXPECT_EQ((**item).events[0].envelope.attributes.at("large"), std::string(attributeBytes, 'a'));
-                if(!tail)
+                ASSERT_TRUE(stream.ok()) << stream.status();
+                auto item = stream->next(end);
+                const bool delivered = item.ok() && *item && !(**item).events.empty();
+                EXPECT_EQ(delivered, !limited);
+                if(delivered)
                 {
-                    auto completion = stream->next(end);
-                    ASSERT_TRUE(completion.ok() && *completion);
-                    ASSERT_TRUE((**completion).completion);
-                    EXPECT_TRUE((**completion).completion->complete);
+                    ASSERT_EQ((**item).events.size(), 1u);
+                    EXPECT_EQ((**item).events[0].id.sequence, 1u);
+                    EXPECT_EQ((**item).events[0].envelope.attributes.at("large"), std::string(attributeBytes, 'a'));
+                    if(!tail)
+                    {
+                        auto completion = stream->next(end);
+                        ASSERT_TRUE(completion.ok() && *completion);
+                        ASSERT_TRUE((**completion).completion);
+                        EXPECT_TRUE((**completion).completion->complete);
+                    }
                 }
-            }
-            stream->cancel();
+                stream->cancel();
+            };
+            if(tail)
+                check(client->tail(1, {}, end));
+            else
+                check(client->read(1, {{0, 0}, {10, 0}}, end));
         }
     }
 }
