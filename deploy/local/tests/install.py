@@ -1,7 +1,9 @@
 import json
 import os
 from pathlib import Path
+import random
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,9 +43,27 @@ def main():
         for role in ('visor', 'keeper', 'grapher', 'player'):
             expected = prefix / bindir / ('chrono_' + role)
             assert Path(doctor['binaries'][role]) == expected, 'FAIL installed binary resolution ' + role
+        base = None
+        for _ in range(3):
+            candidate = 10000 + random.randrange(4399) * 5
+            sockets = []
+            try:
+                for offset in range(10):
+                    sock = socket.socket()
+                    sockets.append(sock)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.bind(('127.0.0.1', candidate + offset))
+                base = candidate
+                break
+            except OSError:
+                pass
+            finally:
+                for sock in sockets:
+                    sock.close()
+        assert base is not None, 'FAIL two five-port test blocks unavailable'
         ready = None
         try:
-            ready = json.loads(call([cli, 'up', '--ephemeral']))
+            ready = json.loads(call([cli, 'up', '--ephemeral', '--port-base', str(base)]))
             assert ready['state'] == 'ready' and ready['probe'] == 'rpc', 'FAIL installed RPC readiness'
             for service in ready['services'].values():
                 exe = (Path('/proc') / str(service['pid']) / 'exe').resolve()
