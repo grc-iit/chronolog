@@ -1,5 +1,6 @@
 #pragma once
 #include <napi.h>
+#include "enum_names.h"
 #include "chronolog/client/client.h"
 #include "chronolog/context/context.h"
 #include <atomic>
@@ -21,8 +22,6 @@ namespace ctx = chronolog::context;
 using Js = Napi::Value;
 constexpr double max_safe_integer = 9007199254740991.0;
 
-const char* codeName(absl::StatusCode code);
-const char* rejectionName(AppendRejection);
 Js status(Napi::Env, const absl::Status&);
 Js error(Napi::Env, const absl::Status&);
 Napi::Object object(Js);

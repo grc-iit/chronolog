@@ -3,58 +3,11 @@
 
 namespace binding
 {
-const char* codeName(absl::StatusCode code)
-{
-    static const char* names[] = {"OK",
-                                  "CANCELLED",
-                                  "UNKNOWN",
-                                  "INVALID_ARGUMENT",
-                                  "DEADLINE_EXCEEDED",
-                                  "NOT_FOUND",
-                                  "ALREADY_EXISTS",
-                                  "PERMISSION_DENIED",
-                                  "RESOURCE_EXHAUSTED",
-                                  "FAILED_PRECONDITION",
-                                  "ABORTED",
-                                  "OUT_OF_RANGE",
-                                  "UNIMPLEMENTED",
-                                  "INTERNAL",
-                                  "UNAVAILABLE",
-                                  "DATA_LOSS",
-                                  "UNAUTHENTICATED"};
-    auto index = static_cast<unsigned>(code);
-    return index < std::size(names) ? names[index] : "UNKNOWN";
-}
-const char* rejectionName(AppendRejection value)
-{
-    static const char* names[] = {"UNSPECIFIED",
-                                  "FENCED_RELEASED",
-                                  "FENCED_SUPERSEDED",
-                                  "SEQUENCE_GAP",
-                                  "DEDUPE_WINDOW",
-                                  "EARLIER_ITEM_FAILED",
-                                  "NOT_REGISTERED",
-                                  "STALE_EPOCH",
-                                  "UNASSIGNED_KEEPER",
-                                  "KEEPER_NOT_IN_ROUTE",
-                                  "STORY_TOMBSTONED",
-                                  "FENCED_EXPIRED",
-                                  "FENCED_OWNER_REMOVED"};
-    auto index = static_cast<unsigned>(value);
-    return index < std::size(names) ? names[index] : "UNSPECIFIED";
-}
-const char* causeName(AcquisitionTerminationCause value)
-{
-    static const char* names[] = {"UNSPECIFIED", "EXPIRED", "RELEASED", "SUPERSEDED", "OWNER_REMOVED"};
-    auto index = static_cast<unsigned>(value);
-    return index < std::size(names) ? names[index] : "UNSPECIFIED";
-}
 Js refusal(Napi::Env env, const AcquireRefusal& value)
 {
-    static const char* reasons[] = {"UNSPECIFIED", "HELD", "PRIOR_MISMATCH"};
+    static const std::initializer_list<const char*> reasons = {"UNSPECIFIED", "HELD", "PRIOR_MISMATCH"};
     auto out = Napi::Object::New(env);
-    auto index = static_cast<unsigned>(value.refusal_reason);
-    out.Set("refusalReason", index < std::size(reasons) ? reasons[index] : "UNSPECIFIED");
+    out.Set("refusalReason", enumName(value.refusal_reason, reasons));
     if(value.current_incarnation)
         out.Set("currentIncarnation", Napi::BigInt::New(env, *value.current_incarnation));
     if(value.matched_incarnation)
@@ -337,9 +290,8 @@ Js js(Napi::Env env, const Acquisition& value)
     out.Set("lease", lease);
     if(value.keeper_preference)
     {
-        static const char* names[] = {"UNSPECIFIED", "HONORED", "NOT_IN_ROUTE", "RETAINED"};
-        auto index = static_cast<unsigned>(*value.keeper_preference);
-        out.Set("keeperPreference", index < std::size(names) ? names[index] : "UNSPECIFIED");
+        static const std::initializer_list<const char*> names = {"UNSPECIFIED", "HONORED", "NOT_IN_ROUTE", "RETAINED"};
+        out.Set("keeperPreference", enumName(*value.keeper_preference, names));
     }
     return out;
 }
@@ -388,10 +340,7 @@ Js js(Napi::Env env, const Event& value)
     out.Set("durability", static_cast<int>(value.durability));
     auto physical = Napi::Object::New(env);
     physical.Set("physicalNs", Napi::BigInt::New(env, value.physical.physical_ns));
-    physical.Set("status",
-                 value.physical.status == ClockStatus::Synced     ? "SYNCED"
-                 : value.physical.status == ClockStatus::Unsynced ? "UNSYNCED"
-                                                                  : "UNAVAILABLE");
+    physical.Set("status", enumName(value.physical.status, {"SYNCED", "UNSYNCED", "UNAVAILABLE"}));
     if(value.physical.uncertainty_ns)
         physical.Set("uncertaintyNs", Napi::BigInt::New(env, *value.physical.uncertainty_ns));
     out.Set("physical", physical);
@@ -412,8 +361,12 @@ Js js(Napi::Env env, const Completion& value)
     auto out = Napi::Object::New(env);
     out.Set("complete", value.complete);
     out.Set("frontier", js(env, value.frontier));
-    static const char* names[] = {"NONE", "LAGGING_WRITERS", "PHYSICAL_AXIS_UNBOUNDED", "SOURCE_FAILED", "TRUNCATED"};
-    out.Set("reason", names[static_cast<int>(value.reason)]);
+    static const std::initializer_list<const char*> names = {"NONE",
+                                                             "LAGGING_WRITERS",
+                                                             "PHYSICAL_AXIS_UNBOUNDED",
+                                                             "SOURCE_FAILED",
+                                                             "TRUNCATED"};
+    out.Set("reason", enumName(value.reason, names));
     auto laggards = Napi::Array::New(env, value.laggards.size());
     for(size_t i = 0; i < value.laggards.size(); ++i)
     {
