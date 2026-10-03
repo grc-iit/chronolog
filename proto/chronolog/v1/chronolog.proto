@@ -363,6 +363,22 @@ message AppendRequest
     // Echoed for bidi response correlation.
     uint64 batch_id = 5;
 }
+enum AppendRejection
+{
+    APPEND_REJECTION_UNSPECIFIED = 0;
+    APPEND_REJECTION_FENCED_RELEASED = 1;
+    APPEND_REJECTION_FENCED_SUPERSEDED = 2;
+    APPEND_REJECTION_SEQUENCE_GAP = 3;
+    APPEND_REJECTION_DEDUPE_WINDOW = 4;
+    APPEND_REJECTION_EARLIER_ITEM_FAILED = 5;
+    APPEND_REJECTION_NOT_REGISTERED = 6;
+    APPEND_REJECTION_STALE_EPOCH = 7;
+    APPEND_REJECTION_UNASSIGNED_KEEPER = 8;
+    APPEND_REJECTION_KEEPER_NOT_IN_ROUTE = 9;
+    APPEND_REJECTION_STORY_TOMBSTONED = 10;
+    APPEND_REJECTION_FENCED_EXPIRED = 11;
+    APPEND_REJECTION_FENCED_OWNER_REMOVED = 12;
+}
 // DURABILITY_ACCEPTED is RAM only; only fsync'd Keeper WAL DURABILITY_DURABLE is an ack.
 // Unsupported requested durability explicitly fails; never silently downgrade.
 // DURABILITY_ACCEPTED becomes visible at acceptance. DURABILITY_DURABLE becomes visible only after
@@ -382,6 +398,8 @@ message AppendResult
     EventId id = 4;
     // Current ownership route on epoch rejection; transport status remains OK.
     Route current_route = 5;
+    // Typed per-item FAILED_PRECONDITION reason; never branch on status.message.
+    AppendRejection rejection = 6;
 }
 message AppendResponse
 {
@@ -422,6 +440,8 @@ message ReadRequest
         // Writer physical time ns; always incomplete in v1.
         PhysicalRange physical = 3;
     }
+    // Zero preserves read_max_events; HLC tie groups can exceed this soft target.
+    uint32 max_events = 4;
 }
 message Position
 {
