@@ -533,63 +533,80 @@ TEST_F(replay_adapter, MaxEventsZeroKeepsTheConfiguredLimit)
 {
     HotReplayOptions options;
     options.read_max_events = 2;
-    auto replay = std::make_shared<HotReplay>(source_, options);
-    ReplayService service(replay, catalog_);
-    for(size_t target: {0u, 1u, 4u})
+    ReplayService service(std::make_shared<HotReplay>(source_, options), catalog_);
+    grpc::ServerBuilder builder;
+    chronolog::rpc::applyServerPolicy(builder);
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    auto stub = v1::Replay::NewStub(
+            grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
+    for(uint32_t target: {0u, 1u, 4u})
     {
-        auto stream = service.read(kStory, {Range::Axis::Hlc, {100, 0}, {200, 0}}, target);
-        ASSERT_TRUE(stream.ok()) << stream.status();
-        std::vector<Event> events;
-        std::optional<Completion> completion;
-        for(int i = 0; i < 10; ++i)
+        auto request = hlcRead(100, 200);
+        request.set_max_events(target);
+        auto ctx = context();
+        auto reader = stub->Read(ctx.get(), request);
+        v1::ReadResponse response;
+        size_t count = 0;
+        std::optional<v1::Completion> completion;
+        while(reader->Read(&response))
         {
-            auto batch = (*stream)->next();
-            ASSERT_TRUE(batch.ok()) << batch.status();
-            if(!*batch)
-                break;
-            events.insert(events.end(), (**batch).events.begin(), (**batch).events.end());
-            if((**batch).completion)
-                completion = (**batch).completion;
+            count += response.batch().events_size();
+            if(response.has_completion())
+                completion = response.completion();
         }
+        EXPECT_TRUE(reader->Finish().ok());
         ASSERT_TRUE(completion);
-        EXPECT_EQ(events.size(), target ? target : 2u);
-        EXPECT_EQ(completion->reason, IncompleteReason::Truncated);
-        EXPECT_EQ(completion->frontier, (Hlc{110 + static_cast<int64_t>(events.size()) * 10, 0}));
+        EXPECT_EQ(count, target ? target : 2u);
+        EXPECT_EQ(completion->reason(), v1::INCOMPLETE_REASON_TRUNCATED);
+        EXPECT_EQ(completion->frontier().physical_ns(), 110 + static_cast<int64_t>(count) * 10);
     }
+    service.shutdown();
+    server->Shutdown();
 }
 
 TEST_F(replay_adapter, ReadLookaheadCompletesEqualHlcGroupsAcrossProcesses)
 {
     a_.hold("a", {protoEvent(2, 1, 100), protoEvent(2, 2, 120), protoEvent(2, 3, 140)}, 200);
     b_.hold("b", {protoEvent(4, 1, 100), protoEvent(4, 2, 120), protoEvent(4, 3, 140)}, 200);
-    HotReplay replay(source_);
-    Hlc start{100, 0};
+    int64_t start = 100;
     for(int page = 0; page < 3; ++page)
     {
-        auto stream = replay.read(kStory, {Range::Axis::Hlc, start, {200, 0}}, 1);
-        ASSERT_TRUE(stream.ok()) << stream.status();
-        size_t count = 0;
-        std::optional<Completion> completion;
-        for(int batch_index = 0; batch_index < 10; ++batch_index)
-        {
-            auto batch = (*stream)->next();
-            ASSERT_TRUE(batch.ok());
-            if(!*batch)
-                break;
-            for(const auto& event: (**batch).events)
-            {
-                EXPECT_EQ(event.hlc, start);
-                ++count;
-            }
-            if((**batch).completion)
-                completion = (**batch).completion;
-        }
-        EXPECT_EQ(count, 2u);
-        ASSERT_TRUE(completion);
-        EXPECT_GT(completion->frontier, start);
-        EXPECT_EQ(completion->complete, page == 2);
-        start = completion->frontier;
+        auto request = hlcRead(start, 200);
+        request.set_max_events(1);
+        auto result = read(request);
+        ASSERT_TRUE(result.status.ok());
+        ASSERT_EQ(result.events.size(), 2u);
+        for(const auto& event: result.events) EXPECT_EQ(event.hlc().physical_ns(), start);
+        ASSERT_EQ(result.completions.size(), 1u);
+        const auto& completion = result.completions.front();
+        EXPECT_GT(completion.frontier().physical_ns(), start);
+        EXPECT_EQ(completion.complete(), page == 2);
+        start = completion.frontier().physical_ns();
     }
+}
+
+TEST_F(replay_adapter, PhysicalRequestTargetDoesNotInventAnHlcContinuation)
+{
+    auto request = hlcRead(100, 200);
+    request.mutable_physical()->set_start_ns(100);
+    request.mutable_physical()->set_end_ns(200);
+    auto baseline = read(request);
+    ASSERT_TRUE(baseline.status.ok());
+    ASSERT_EQ(baseline.completions.size(), 1u);
+    request.set_max_events(1);
+    auto result = read(request);
+    ASSERT_TRUE(result.status.ok());
+    EXPECT_EQ(result.events.size(), 1u);
+    ASSERT_EQ(result.completions.size(), 1u);
+    EXPECT_FALSE(result.completions.front().complete());
+    EXPECT_EQ(result.completions.front().reason(), v1::INCOMPLETE_REASON_TRUNCATED);
+    EXPECT_EQ(result.completions.front().frontier().physical_ns(),
+              baseline.completions.front().frontier().physical_ns());
+    EXPECT_EQ(result.completions.front().frontier().logical(), baseline.completions.front().frontier().logical());
 }
 
 TEST_F(replay_adapter, PhysicalReadAboveTheLimitIsTruncatedWithoutClaim)

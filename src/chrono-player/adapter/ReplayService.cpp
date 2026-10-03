@@ -253,7 +253,9 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
     if(!range.ok())
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(range.status()));
     const StoryId story = request->story_id();
-    return open<v1::ReadResponse>(story, [this, story, range = *range] { return read(story, range, 0); });
+    const size_t max_events = request->max_events();
+    return open<v1::ReadResponse>(story,
+                                  [this, story, range = *range, max_events] { return read(story, range, max_events); });
 }
 
 grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackServerContext*,

@@ -412,9 +412,6 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
         completion.complete = false;
         completion.reason = IncompleteReason::Truncated;
     }
-    if(completion.reason == IncompleteReason::Truncated && completion.frontier <= range.start &&
-       range.start < range.end)
-        completion.reason = IncompleteReason::SourceFailed;
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options.batch_size));
 }
@@ -879,11 +876,16 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                     auto prefix = source_->fetchRead(id, Range{Range::Axis::Hlc, range.start, group_end}, SIZE_MAX);
                     if(!prefix.ok())
                         return prefix.status();
-                    if(prefix->route_epoch != fetched->route_epoch || prefix->keepers.size() != fetched->keepers.size())
+                    if(prefix->route_epoch != fetched->route_epoch ||
+                       prefix->keepers.size() != fetched->keepers.size() ||
+                       prefix->archived_below > fetched->archived_below)
                         return absl::UnavailableError("route changed while admitting archive prefix");
                     for(size_t k = 0; k < prefix->keepers.size(); ++k)
                         if(prefix->keepers[k].frontier.instance != fetched->keepers[k].frontier.instance ||
                            prefix->keepers[k].frontier.process_id != fetched->keepers[k].frontier.process_id ||
+                           prefix->keepers[k].frontier.expected_epoch != fetched->keepers[k].frontier.expected_epoch ||
+                           prefix->keepers[k].frontier.predecessor != fetched->keepers[k].frontier.predecessor ||
+                           prefix->keepers[k].frontier.own_cut != fetched->keepers[k].frontier.own_cut ||
                            prefix->keepers[k].frontier.evicted_below > fetched->keepers[k].frontier.evicted_below)
                             return absl::UnavailableError("source changed while admitting archive prefix");
                     fetched = std::move(prefix);

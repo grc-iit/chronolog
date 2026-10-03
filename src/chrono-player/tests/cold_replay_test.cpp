@@ -993,6 +993,35 @@ TEST_F(ColdReplay, ArchiveAdmissionExtendsTheHotPrefixPastTheTarget)
     EXPECT_EQ(events.front().id, event(220).id);
 }
 
+TEST_F(ColdReplay, ArchiveAdmissionRefusesChangedCoverage)
+{
+    publish(110);
+    source->response.keepers[0].events = {event(120), event(140)};
+    source->response.keepers[0].frontier.truncated = true;
+    for(int change = 0; change < 3; ++change)
+    {
+        size_t requests = 0;
+        source->bounded = [&](const Range&, size_t)
+        {
+            auto response = source->response;
+            if(++requests == 2)
+            {
+                if(change == 0)
+                    response.archived_below = {250, 0};
+                else if(change == 1)
+                    response.keepers[0].frontier.instance = "restarted";
+                else
+                    response.keepers[0].frontier.own_cut = {250, 0};
+            }
+            return response;
+        };
+        HotReplay replay(source, options);
+        auto stream = replay.read(1, {Range::Axis::Hlc, {100, 0}, {300, 0}}, 1);
+        EXPECT_EQ(requests, 2u);
+        EXPECT_EQ(stream.status().code(), absl::StatusCode::kUnavailable);
+    }
+}
+
 TEST_F(ColdReplay, EqualHlcGroupIsNeverSplit)
 {
     options.read_max_events = 1;
