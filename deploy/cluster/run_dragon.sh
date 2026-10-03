@@ -3,7 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p build/cluster
 exec 8>"$HOME/chronolog-sprint/stack.lock"
-flock -w 60 8
+echo "Waiting for dragon stack lock"
+flock 8
 exec systemd-run --user --scope --quiet -p MemoryMax=4G -p MemorySwapMax=0 \
     timeout -k 90 820 bash -c '
         python3 deploy/cluster/cluster.py "$@" & driver=$!
