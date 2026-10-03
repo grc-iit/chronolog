@@ -1,0 +1,11 @@
+execute_process(COMMAND ${emulator} "${checker}" "${mode}" ${inputs}
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+if(NOT "${result}" STREQUAL "${expected}")
+    message(FATAL_ERROR "Expected exit ${expected}, got ${result}: ${output}${error}")
+endif()
+if(NOT "${diagnostic}" STREQUAL "")
+    string(FIND "${error}" "${diagnostic}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "Missing diagnostic ${diagnostic}: ${output}${error}")
+    endif()
+endif()
