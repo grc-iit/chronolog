@@ -11,6 +11,8 @@
 namespace chronolog::client
 {
 using Deadline = std::optional<std::chrono::system_clock::time_point>;
+using AppendRejection = chronolog::AppendRejection;
+AppendRejection rejectionOf(const absl::Status&);
 struct RetryPolicy
 {
     size_t max_retries{3};
@@ -48,6 +50,10 @@ struct HlcRange
 {
     Hlc start;
     Hlc end;
+};
+struct ReadOptions
+{
+    std::optional<uint32_t> max_events;
 };
 struct PhysicalRange
 {
@@ -138,10 +144,12 @@ public:
     absl::Status destroyChronicle(const std::string&, Deadline deadline = {});
     absl::StatusOr<Story> createStory(const std::string& chronicle, const std::string& name, Deadline deadline = {});
     absl::StatusOr<Story> getStory(StoryId, Deadline deadline = {});
+    absl::StatusOr<Route> route(StoryId, Deadline deadline = {});
     absl::StatusOr<std::vector<Story>> listStories(const std::string& chronicle, Deadline deadline = {});
     absl::Status destroyStory(StoryId, Deadline deadline = {});
     absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, Deadline deadline = {});
+    absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});
     absl::StatusOr<TailStream> tail(StoryId, std::optional<Position> after = {}, Deadline deadline = {});
 
