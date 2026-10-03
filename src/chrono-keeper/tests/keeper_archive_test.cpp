@@ -497,7 +497,7 @@ TEST(KeeperTransfer, RealGrapherPersistsSplitChunksAndConfirmsTheirReceipts)
 }
 
 // I12.3: a refusal is a send failure. Only a tombstone or a dropped=true report frees a story's chunks.
-TEST(KeeperTransfer, RealGrapherNotFoundIsASendFailureNotADropSignal)
+TEST(KeeperTransfer, RealGrapherRefusalIsASendFailureNotADropSignal)
 {
     auto directory = std::make_shared<WalControl>();
     auto store = FileTierStore::Open(directory->directory, "grapher", {{1, {0, 0}}});
