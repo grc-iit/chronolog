@@ -43,6 +43,7 @@ chrono_player_test(chrono_player_hot_replay_contract_test tests/hot_replay_contr
 chrono_player_test(chrono_player_adapter_test "tests/replay_adapter_test.cpp;tests/player_config_test.cpp" "")
 
 chrono_player_test(chrono_player_cold_replay_test "tests/cold_replay_test.cpp;tests/sequential_archive.cpp" "")
+chrono_player_test(chrono_player_compacted_replay_test tests/compacted_replay_test.cpp "")
 
 chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.cpp "")
 chrono_player_test(chrono_player_catalog_client_dns_test tests/catalog_client_dns_test.cpp "")
@@ -62,4 +63,6 @@ target_link_libraries(chrono_player_route_tail_probe PRIVATE chronolog_common_rp
 if(CHRONOLOG_BUILD_BENCH)
     add_executable(chrono_player_archive_pool_bench tests/archive_pool_bench.cpp)
     target_link_libraries(chrono_player_archive_pool_bench PRIVATE chrono_player_replay chronolog_warnings)
+    add_executable(chrono_player_compacted_read_bench tests/compacted_read_bench.cpp)
+    target_link_libraries(chrono_player_compacted_read_bench PRIVATE chrono_player_replay chronolog_warnings)
 endif()
