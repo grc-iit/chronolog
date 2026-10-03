@@ -2,6 +2,7 @@
 // its behavior the generic suite cannot see: heartbeat liveness, applied revisions and
 // the Release fence wait.
 #include <atomic>
+#include <barrier>
 #include <chrono>
 #include <fstream>
 #include <thread>
@@ -225,6 +226,77 @@ TEST(static_route_membership, AppliedRevisionNeverLowersAndResetsOnNewInstance)
     EXPECT_FALSE(membership->waitApplied("keeper-1", 1, 0ms));
     EXPECT_FALSE(membership->heartbeat("keeper-1", "i1", 9).ok());
     EXPECT_FALSE(membership->waitApplied("keeper-1", 9, 0ms));
+}
+
+TEST(static_route_membership, SameInstanceRegisterPreservesAppliedRevisionForConcurrentWait)
+{
+    auto membership = make(1);
+    const Process keeper{"keeper-1", "i1", "keeper-a:50052", ProcessRole::Keeper};
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 5).ok());
+    std::barrier ready(2);
+    bool confirmed = false;
+    std::thread waiter(
+            [&]
+            {
+                ready.arrive_and_wait();
+                confirmed = membership->waitApplied(keeper.id, 5, 0ms);
+            });
+    ready.arrive_and_wait();
+    const auto refreshed = membership->registerProcess(keeper);
+    waiter.join();
+    ASSERT_TRUE(refreshed.ok());
+    EXPECT_TRUE(confirmed);
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 5, 0ms));
+    EXPECT_FALSE(membership->waitApplied(keeper.id, 6, 0ms));
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 3).ok());
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 5, 0ms));
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 6).ok());
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 6, 0ms));
+}
+
+TEST(static_route_membership, SameInstanceRegisterPreservesLivenessUntilAHeartbeat)
+{
+    StaticRouteMembership::TimePoint now{};
+    auto membership = make(1, [&now] { return now; });
+    Process keeper{"keeper-1", "i1", "keeper-a:50052", ProcessRole::Keeper};
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    now += 10s;
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 5).ok());
+    now += 14s;
+    keeper.endpoint = "keeper-a:50053";
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    EXPECT_EQ(membership->process(keeper.id)->endpoint, keeper.endpoint);
+    EXPECT_TRUE(membership->alive(keeper.id));
+    now += 2s;
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    EXPECT_FALSE(membership->alive(keeper.id));
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 5, 0ms));
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 5).ok());
+    EXPECT_TRUE(membership->alive(keeper.id));
+    now += 16s;
+    keeper.instance = "i2";
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    EXPECT_TRUE(membership->alive(keeper.id));
+    EXPECT_FALSE(membership->waitApplied(keeper.id, 5, 0ms));
+}
+
+TEST(static_route_membership, NewInstanceRegisterRequiresItsOwnAppliedRevision)
+{
+    auto membership = make(1);
+    Process keeper{"keeper-1", "i1", "keeper-a:50052", ProcessRole::Keeper};
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 5).ok());
+    keeper.instance = "i2";
+    ASSERT_TRUE(membership->registerProcess(keeper).ok());
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 0, 0ms));
+    EXPECT_FALSE(membership->waitApplied(keeper.id, 1, 0ms));
+    EXPECT_EQ(membership->heartbeat(keeper.id, "i1", 5).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(membership->waitApplied(keeper.id, 5, 0ms));
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 4).ok());
+    EXPECT_FALSE(membership->waitApplied(keeper.id, 5, 0ms));
+    ASSERT_TRUE(membership->heartbeat(keeper.id, keeper.instance, 5).ok());
+    EXPECT_TRUE(membership->waitApplied(keeper.id, 5, 0ms));
 }
 
 TEST(static_route_membership, WaitAppliedWakesWhenAHeartbeatArrives)

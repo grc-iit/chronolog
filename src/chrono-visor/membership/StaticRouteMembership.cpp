@@ -40,6 +40,12 @@ absl::Status StaticRouteMembership::registerProcess(Process process)
     if(process.id.empty() || process.instance.empty() || process.endpoint.empty())
         return absl::InvalidArgumentError("process id, instance and endpoint are required");
     std::unique_lock lock(mutex_);
+    auto current = processes_.find(process.id);
+    if(current != processes_.end() && current->second.process.instance == process.instance)
+    {
+        current->second.process = std::move(process);
+        return absl::OkStatus();
+    }
     // The latest registration wins. Instance strings are opaque, so recency is
     // arrival order, and the previous instance's heartbeats are fenced.
     Entry entry{process, now_(), 0};

@@ -789,6 +789,25 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                     propose = false;
                 }
             }
+            bool new_instance = false;
+            if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
+            {
+                auto loaded = raft_->appliedStore().membershipCommandState(*q);
+                if(!loaded.ok())
+                {
+                    reactor->Finish(
+                            grpc::Status(grpc::StatusCode::UNAVAILABLE, std::string(loaded.status().message())));
+                    return;
+                }
+                new_instance =
+                        std::none_of(loaded->members().begin(),
+                                     loaded->members().end(),
+                                     [&](const auto& member)
+                                     {
+                                         return member.process().process_id() == request->process().process_id() &&
+                                                member.process().instance() == request->process().instance();
+                                     });
+            }
             {
                 std::lock_guard lock(heartbeat_mutex_);
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
@@ -809,10 +828,10 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                             }
                 }
                 for(const auto& [id, applied]: applied_routes_) *q->add_applied_routes() = applied;
-                // Liveness is refreshed before the command can apply, so no detection tick sees a newly
-                // registered or joined Keeper with a stale timestamp and drains it.
+                // Initialize new-instance liveness before apply so detection cannot drain it on a stale timestamp.
                 if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
-                    heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
+                    if(new_instance)
+                        heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
                 if constexpr(std::is_same_v<Request, internal::v1::JoinKeeperRequest>)
                     heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
             }
@@ -856,8 +875,11 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                 {
                     for(const auto& endpoint: raft_->replicaEndpoints()) response->add_visor_replicas(endpoint);
                     (void)membership_.registerProcess(*convert::fromProto(request->process()));
-                    std::lock_guard lock(heartbeat_mutex_);
-                    heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
+                    if(new_instance)
+                    {
+                        std::lock_guard lock(heartbeat_mutex_);
+                        heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
+                    }
                 }
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
