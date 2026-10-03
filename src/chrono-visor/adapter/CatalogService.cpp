@@ -286,10 +286,66 @@ grpc::ServerUnaryReactor* CatalogService::Acquire(grpc::CallbackServerContext* c
                         }
                         if(request->story_id() == 0 || request->writer_identity().empty())
                             return invalid("story_id and writer_identity are required");
-                        auto result = store_.acquire(request->story_id(), request->writer_identity());
+                        auto result = store_.acquire(request->story_id(),
+                                                     request->writer_identity(),
+                                                     convert::fromAcquireRequest(*request));
                         if(result.ok())
                             *response = convert::toAcquireResponse(*result);
+                        if(!result.ok())
+                        {
+                            convert::acquireRefusal(result.status(), *response);
+                            if(response->incarnation())
+                            {
+                                auto* ledger = dynamic_cast<AcquisitionLedger*>(&store_);
+                                if(ledger)
+                                {
+                                    auto grant = ledger->requestGrant(request->acquire_request_id());
+                                    if(grant.ok())
+                                    {
+                                        response->set_story_id(grant->story_id);
+                                        response->set_writer_id(grant->writer_id);
+                                    }
+                                }
+                            }
+                        }
                         return finish(result.status(), response);
+                    });
+}
+grpc::ServerUnaryReactor* CatalogService::RenewAcquisitions(grpc::CallbackServerContext* context,
+                                                            const v1::RenewAcquisitionsRequest* request,
+                                                            v1::RenewAcquisitionsResponse* response)
+{
+    return dispatch(context,
+                    [this, context, request, response]()
+                    {
+                        if(raft_ && !raft_->leaderLease())
+                            return forward(context,
+                                           [&](auto& stub, auto& ctx)
+                                           { return stub.RenewAcquisitions(&ctx, *request, response); });
+                        std::vector<RenewAcquisition> tuples;
+                        for(const auto& t: request->acquisitions())
+                            tuples.push_back({t.story_id(), t.writer_id(), t.incarnation()});
+                        auto results = store_.renewAcquisitions(tuples);
+                        if(!results.ok())
+                            return grpc::Status(static_cast<grpc::StatusCode>(results.status().code()),
+                                                std::string(results.status().message()));
+                        for(const auto& result: *results)
+                        {
+                            auto* item = response->add_results();
+                            item->mutable_acquisition()->set_story_id(result.acquisition.story_id);
+                            item->mutable_acquisition()->set_writer_id(result.acquisition.writer_id);
+                            item->mutable_acquisition()->set_incarnation(result.acquisition.incarnation);
+                            *item->mutable_status() = convert::toProto(result.status);
+                            if(result.lease)
+                            {
+                                item->mutable_lease()->set_duration_ns(result.lease->duration_ns);
+                                item->mutable_lease()->set_remaining_ns(result.lease->remaining_ns);
+                            }
+                            if(result.termination_cause)
+                                item->set_termination_cause(
+                                        static_cast<v1::AcquisitionTerminationCause>(*result.termination_cause));
+                        }
+                        return grpc::Status::OK;
                     });
 }
 

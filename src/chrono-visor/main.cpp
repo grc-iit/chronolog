@@ -113,7 +113,11 @@ int main(int argc, char** argv)
     chronolog::visor::SqliteMetadataStore* applied = nullptr;
     if(config->membership_mode == "dynamic")
     {
-        auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path, topology, config->raft, fence_waiter);
+        auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path,
+                                                                topology,
+                                                                config->raft,
+                                                                fence_waiter,
+                                                                config->leases);
         if(!opened.ok())
         {
             LOG(ERROR) << "chrono_visor: " << opened.status();
@@ -125,7 +129,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        auto opened = chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter);
+        auto opened =
+                chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter, config->leases);
         if(!opened.ok())
         {
             LOG(ERROR) << "chrono_visor: " << opened.status();
@@ -170,6 +175,33 @@ int main(int argc, char** argv)
                                              &pool,
                                              std::chrono::milliseconds(config->heartbeat_timeout_ms));
 
+    struct LeaseTickState
+    {
+        std::atomic<bool> queued{};
+    };
+    auto lease_tick_state = std::make_shared<LeaseTickState>();
+    std::jthread lease_ticks(
+            [&, state = lease_tick_state](std::stop_token stop)
+            {
+                while(!stop.stop_requested())
+                {
+                    if(!state->queued.exchange(true))
+                    {
+                        if(!pool.submit(
+                                   [&, state]
+                                   {
+                                       if(raft)
+                                           (void)raft->serviceTick();
+                                       else
+                                           (void)applied->serviceTick();
+                                       state->queued = false;
+                                   }))
+                            state->queued = false;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(config->leases.acquisition_service_tick_ms));
+                }
+            });
+
     int public_port = 0;
     int internal_port = 0;
     auto public_server = startServer(config->listen, catalog, public_port);
@@ -213,6 +245,8 @@ int main(int argc, char** argv)
     internal_server->Wait();
     finished = true;
     watcher.join();
+    lease_ticks.request_stop();
+    lease_ticks.join();
     ledger.setObserver(nullptr);
     return 0;
 }

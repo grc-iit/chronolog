@@ -47,6 +47,23 @@ MetadataStoreFactory sqliteFactory()
             raw->sut.reset();
             raw->sut = open();
         };
+        harness->acquisition_leases = true;
+        harness->static_fence_proof = true;
+        harness->lease_default_ns = 300000000000;
+        harness->lease_min_ns = 30000000000;
+        harness->lease_max_ns = 3600000000000;
+        auto* lease_harness = harness.get();
+        harness->acquireWithOptions = [lease_harness](StoryId id, std::string identity, AcquireOptions options)
+        { return lease_harness->sut->acquire(id, std::move(identity), std::move(options)); };
+        harness->renewAcquisitions = [lease_harness](const std::vector<RenewAcquisition>& tuples)
+        { return lease_harness->sut->renewAcquisitions(tuples); };
+        harness->advanceAuthorityClock = [lease_harness](int64_t ns, AuthorityClockMode mode)
+        {
+            if(auto* sqlite = dynamic_cast<visor::SqliteMetadataStore*>(lease_harness->sut.get()))
+                sqlite->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+            else if(auto* memory = dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get()))
+                memory->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+        };
         return harness;
     };
 }
@@ -63,6 +80,23 @@ MetadataStoreFactory inMemoryFactory()
         harness->confirmReleaseFence = [confirm](bool value) { confirm->store(value); };
         // The double has no durable state, so a restart keeps the live instance.
         harness->restart = [] {};
+        harness->acquisition_leases = true;
+        harness->static_fence_proof = true;
+        harness->lease_default_ns = 300000000000;
+        harness->lease_min_ns = 30000000000;
+        harness->lease_max_ns = 3600000000000;
+        auto* lease_harness = harness.get();
+        harness->acquireWithOptions = [lease_harness](StoryId id, std::string identity, AcquireOptions options)
+        { return lease_harness->sut->acquire(id, std::move(identity), std::move(options)); };
+        harness->renewAcquisitions = [lease_harness](const std::vector<RenewAcquisition>& tuples)
+        { return lease_harness->sut->renewAcquisitions(tuples); };
+        harness->advanceAuthorityClock = [lease_harness](int64_t ns, AuthorityClockMode mode)
+        {
+            if(auto* sqlite = dynamic_cast<visor::SqliteMetadataStore*>(lease_harness->sut.get()))
+                sqlite->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+            else if(auto* memory = dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get()))
+                memory->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+        };
         return harness;
     };
 }

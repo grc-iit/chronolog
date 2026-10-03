@@ -328,6 +328,16 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | group-commit window | Keeper WAL | 1 ms initial, TBD after measurement | section 5 OPEN |
 | causal_floor skew limit | Keeper | TBD | I8.6 |
 | heartbeat timeout | Visor Cluster | TBD | MembershipContract.RegisterHeartbeatAndRestartFencing |
+| acquisition_lease_default_ns | Visor | 300000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_lease_min_ns | Visor | 30000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_lease_max_ns | Visor | 3600000000000 | RFC-G G2, `AcquisitionLeaseConfig` |
+| lease_safety_margin_ms | Visor | 5000 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_service_tick_ms | Visor | 100 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_service_gap_ms | Visor | 1000 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_scan_batch | Visor | 256 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_expiry_batch | Visor | 256 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_renew_batch | Visor | 256 | RFC-G G2, `AcquisitionLeaseConfig` |
+| acquisition_evidence_batch | Visor | 256 | RFC-G G2, `AcquisitionLeaseConfig` |
 | chunk checksum algorithm | Keeper to Grapher | CRC32C | W10.4 |
 | manifest fsync per append | Grapher | off | `ArchiveManifest` constructor default, origin/archive-file-manifest |
 | tail_max_bytes | Player | TBD until measured; implementation starts at 67108864 | `src/chrono-player/PlayerConfig.h`, RFC-D P1.2 |

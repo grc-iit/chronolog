@@ -50,6 +50,9 @@ public:
     grpc::ServerUnaryReactor* Acquire(grpc::CallbackServerContext* context,
                                       const v1::AcquireRequest* request,
                                       v1::AcquireResponse* response) override;
+    grpc::ServerUnaryReactor* RenewAcquisitions(grpc::CallbackServerContext* context,
+                                                const v1::RenewAcquisitionsRequest* request,
+                                                v1::RenewAcquisitionsResponse* response) override;
     grpc::ServerUnaryReactor* Release(grpc::CallbackServerContext* context,
                                       const v1::ReleaseRequest* request,
                                       v1::ReleaseResponse* response) override;

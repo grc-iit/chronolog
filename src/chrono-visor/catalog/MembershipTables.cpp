@@ -329,13 +329,22 @@ try
 }
 MEMBERSHIP_CATCH
 
+uint64_t SqliteMetadataStore::allocateMembershipRevision()
+{
+    std::lock_guard lock(mutex_);
+    return routeMutationRevision();
+}
+
 uint64_t SqliteMetadataStore::routeMutationRevision()
 {
     if(apply_revision_)
         return *apply_revision_;
     Query bump(db_, "UPDATE counters SET value = value + 1 WHERE name='acquisition_revision'");
     bump.next();
-    return revision(db_);
+    auto at = revision(db_);
+    if(applying_)
+        apply_revision_ = at;
+    return at;
 }
 
 absl::StatusOr<PhysicalPolicy> SqliteMetadataStore::physicalPolicy() const

@@ -53,11 +53,10 @@ protected:
     }
 };
 
-// G1 stages these non-enforcement gates; G2 enables every store factory.
+// Every store factory runs the finite-grant contract before enforcement.
 TEST_P(MetadataStoreContract, EveryAcquisitionHasAFiniteLease)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     auto grant = h->sut->acquire(h->story, "finite");
     ASSERT_TRUE(grant.ok()) << grant.status();
     EXPECT_GT(grant->lease.duration_ns, 0);
@@ -68,8 +67,7 @@ TEST_P(MetadataStoreContract, EveryAcquisitionHasAFiniteLease)
 
 TEST_P(MetadataStoreContract, LeaseRequestUsesDefaultAndClamps)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_GT(h->lease_min_ns, 1);
     ASSERT_LE(h->lease_min_ns, h->lease_default_ns);
@@ -97,8 +95,7 @@ TEST_P(MetadataStoreContract, LeaseRequestUsesDefaultAndClamps)
 
 TEST_P(MetadataStoreContract, RetriedAcquireAfterLostReplyReturnsTheSameGrant)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_TRUE(h->advanceAuthorityClock);
     AcquireOptions options;
@@ -118,8 +115,7 @@ TEST_P(MetadataStoreContract, RetriedAcquireAfterLostReplyReturnsTheSameGrant)
 
 TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnation)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     AcquireOptions options;
     options.acquire_request_id = "terminal-retry-request-0000000001";
@@ -137,8 +133,7 @@ TEST_P(MetadataStoreContract, SameIdTerminalRetryReportsCauseAndMatchedIncarnati
 
 TEST_P(MetadataStoreContract, RestartRetainsDurationAndTerminalCause)
 {
-    if(!h->acquisition_leases)
-        GTEST_SKIP() << "RFC-G G1 staging; enabled by G2";
+    ASSERT_TRUE(h->acquisition_leases);
     ASSERT_TRUE(h->acquireWithOptions);
     ASSERT_TRUE(h->renewAcquisitions);
     ASSERT_TRUE(h->restart);
@@ -162,6 +157,116 @@ TEST_P(MetadataStoreContract, RestartRetainsDurationAndTerminalCause)
     EXPECT_TRUE(absl::IsFailedPrecondition(terminal->front().status));
     EXPECT_EQ(terminal->front().termination_cause, AcquisitionTerminationCause::Released);
     EXPECT_FALSE(terminal->front().lease);
+}
+
+TEST_P(MetadataStoreContract, CompareAndSwapTakeoverRequiresCurrentPriorIncarnation)
+{
+    auto first = h->sut->acquire(h->story, "cas");
+    ASSERT_TRUE(first.ok()) << first.status();
+    AcquireOptions options;
+    options.takeover = true;
+    options.expected_prior_incarnation = first->incarnation;
+    options.acquire_request_id = "cas-request-00000000000000000001";
+    auto second = h->sut->acquire(h->story, "cas", options);
+    ASSERT_TRUE(second.ok()) << second.status();
+    EXPECT_EQ(second->incarnation, first->incarnation + 1);
+    options.acquire_request_id = "cas-mismatch-000000000000000001";
+    auto mismatch = h->sut->acquire(h->story, "cas", options);
+    ASSERT_TRUE(absl::IsFailedPrecondition(mismatch.status()));
+    auto detail = getAcquireRefusal(mismatch.status());
+    ASSERT_TRUE(detail);
+    EXPECT_EQ(detail->refusal_reason, AcquireRefusalReason::PriorMismatch);
+    EXPECT_EQ(detail->current_incarnation, second->incarnation);
+    ASSERT_TRUE(h->sut->release(h->story, second->writer_id, second->incarnation).ok());
+    options.expected_prior_incarnation = second->incarnation;
+    options.acquire_request_id = "cas-terminal-000000000000000001";
+    auto terminal_match = h->sut->acquire(h->story, "cas", options);
+    ASSERT_TRUE(terminal_match.ok()) << terminal_match.status();
+    EXPECT_EQ(terminal_match->incarnation, second->incarnation + 1);
+}
+
+TEST_P(MetadataStoreContract, PriorMismatchReportsCurrentIncarnation)
+{
+    AcquireOptions options;
+    options.takeover = true;
+    options.expected_prior_incarnation = 1;
+    options.acquire_request_id = "absent-prior-000000000000000001";
+    auto absent = h->sut->acquire(h->story, "absent", options);
+    ASSERT_TRUE(absl::IsFailedPrecondition(absent.status()));
+    auto detail = getAcquireRefusal(absent.status());
+    ASSERT_TRUE(detail);
+    EXPECT_EQ(detail->refusal_reason, AcquireRefusalReason::PriorMismatch);
+    EXPECT_FALSE(detail->current_incarnation);
+    auto first = h->sut->acquire(h->story, "absent");
+    ASSERT_TRUE(first.ok());
+    options.expected_prior_incarnation = first->incarnation + 1;
+    auto mismatch = h->sut->acquire(h->story, "absent", options);
+    detail = getAcquireRefusal(mismatch.status());
+    ASSERT_TRUE(detail);
+    EXPECT_EQ(detail->current_incarnation, first->incarnation);
+}
+
+TEST_P(MetadataStoreContract, ExplicitTakeoverRecordsSuperseded)
+{
+    AcquireOptions options;
+    options.acquire_request_id = "cause-first-0000000000000000001";
+    auto first = h->sut->acquire(h->story, "cause", options);
+    ASSERT_TRUE(first.ok());
+    AcquireOptions takeover;
+    takeover.takeover = true;
+    takeover.acquire_request_id = "cause-second-000000000000000001";
+    auto second = h->sut->acquire(h->story, "cause", takeover);
+    ASSERT_TRUE(second.ok());
+    auto retry = h->sut->acquire(h->story, "cause", options);
+    auto detail = getAcquireRefusal(retry.status());
+    ASSERT_TRUE(detail);
+    EXPECT_EQ(detail->matched_incarnation, first->incarnation);
+    EXPECT_EQ(detail->current_incarnation, second->incarnation);
+    auto results = h->sut->renewAcquisitions({{h->story, first->writer_id, first->incarnation}});
+    ASSERT_TRUE(results.ok());
+    ASSERT_EQ(results->size(), 1u);
+    EXPECT_EQ(results->front().termination_cause, AcquisitionTerminationCause::Superseded);
+    auto release = h->sut->release(h->story, first->writer_id, first->incarnation);
+    ASSERT_TRUE(release.ok());
+    auto same = h->sut->renewAcquisitions({{h->story, first->writer_id, first->incarnation}});
+    ASSERT_TRUE(same.ok());
+    EXPECT_EQ(same->front().termination_cause, AcquisitionTerminationCause::Superseded);
+}
+
+TEST_P(MetadataStoreContract, RequestIdRejectsChangedInputsWithoutMutation)
+{
+    AcquireOptions options;
+    options.acquire_request_id = "changed-inputs-0000000000000001";
+    auto grant = h->sut->acquire(h->story, "inputs", options);
+    ASSERT_TRUE(grant.ok());
+    for(int mutation = 0; mutation < 4; ++mutation)
+    {
+        auto changed = options;
+        if(mutation == 0)
+            changed.lease_duration_ns = 1;
+        if(mutation == 1)
+            changed.takeover = true;
+        if(mutation == 2)
+            changed.expected_prior_incarnation = grant->incarnation;
+        auto result = h->sut->acquire(h->story, mutation == 3 ? "different" : "inputs", changed);
+        EXPECT_TRUE(absl::IsInvalidArgument(result.status()));
+    }
+    auto retry = h->sut->acquire(h->story, "inputs", options);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->incarnation, grant->incarnation);
+}
+
+TEST_P(MetadataStoreContract, StaticSuspendOrRestartExcludesDowntime)
+{
+    auto grant = h->sut->acquire(h->story, "gap");
+    ASSERT_TRUE(grant.ok());
+    h->advanceAuthorityClock(grant->lease.duration_ns / 2, AuthorityClockMode::Ticking);
+    h->advanceAuthorityClock(grant->lease.duration_ns * 2, AuthorityClockMode::Jump);
+    auto renewed = h->sut->renewAcquisitions({{h->story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(renewed.ok()) << renewed.status();
+    ASSERT_TRUE(renewed->front().status.ok()) << renewed->front().status;
+    ASSERT_TRUE(renewed->front().lease);
+    EXPECT_GT(renewed->front().lease->remaining_ns, grant->lease.duration_ns * 3 / 4);
 }
 
 TEST_P(MetadataStoreContract, ChronicleAndStoryCrud)

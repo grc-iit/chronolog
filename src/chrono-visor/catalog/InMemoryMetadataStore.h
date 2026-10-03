@@ -9,6 +9,7 @@
 
 #include "catalog/AcquisitionLedger.h"
 #include "chronolog/metadata_store.h"
+#include "catalog/LeaseAuthority.h"
 #include "membership/Topology.h"
 
 namespace chronolog::visor
@@ -21,7 +22,9 @@ class InMemoryMetadataStore final
 {
 public:
     // `fence_waiter` may be empty, in which case release always reports fenced=false.
-    explicit InMemoryMetadataStore(Topology topology, FenceWaiter fence_waiter = nullptr);
+    explicit InMemoryMetadataStore(Topology topology,
+                                   FenceWaiter fence_waiter = nullptr,
+                                   AcquisitionLeaseConfig leases = {});
 
     absl::StatusOr<Chronicle> createChronicle(std::string name) override;
     absl::StatusOr<Chronicle> getChronicle(std::string name) const override;
@@ -32,11 +35,17 @@ public:
     absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const override;
     absl::Status destroyStory(StoryId id) override;
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
+    absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity, AcquireOptions options) override;
+    absl::StatusOr<std::vector<RenewAcquisitionResult>>
+    renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
+    LeaseAuthority& leaseAuthority() { return leases_; }
+
     absl::StatusOr<ReleaseResult> release(StoryId id, uint64_t writer_id, uint64_t incarnation) override;
     absl::StatusOr<Epoch> compareAndSetEpoch(StoryId id, Epoch expected, Epoch desired) override;
 
     absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const override;
     void setObserver(AcquisitionObserver* observer) override;
+    absl::StatusOr<Acquisition> requestGrant(const std::string& request_id) const override;
 
 private:
     struct AcquisitionRow
@@ -44,6 +53,8 @@ private:
         uint64_t incarnation{};
         bool released{};
         KeeperRef assigned_keeper;
+        int64_t duration_ns{};
+        uint64_t revision{};
     };
 
     bool hasActiveAcquisition(StoryId id) const;
@@ -52,6 +63,13 @@ private:
     static constexpr size_t kNoChronicle = static_cast<size_t>(-1);
     void notify(const AcquisitionChange& change);
 
+    LeaseAuthority leases_;
+    struct Grant
+    {
+        std::string inputs;
+        Acquisition acquisition;
+    };
+    std::map<std::string, Grant> grants_;
     const Topology topology_;
     const FenceWaiter fence_waiter_;
     mutable std::mutex mutex_;

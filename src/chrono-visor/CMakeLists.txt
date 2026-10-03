@@ -11,6 +11,7 @@ add_library(chronolog_visor_lib STATIC
     adapter/ClusterService.cpp
     adapter/Convert.cpp
     adapter/WorkerPool.cpp
+    catalog/LeaseAuthority.cpp
     catalog/AcquisitionFeed.cpp
     catalog/InMemoryMetadataStore.cpp
     catalog/SqliteMetadataStore.cpp
@@ -31,6 +32,7 @@ target_link_libraries(chrono_visor PRIVATE chronolog_visor_lib chronolog_warning
 add_executable(chronolog_visor_tests
     tests/sqlite_metadata_store_contract.cpp
     tests/static_route_membership_contract.cpp
+    tests/acquisition_lease_test.cpp
     tests/sqlite_restart_test.cpp
     tests/catalog_adapter_test.cpp
     "${PROJECT_SOURCE_DIR}/tests/contract/catalog/catalog_adapter_test.cpp"

@@ -90,6 +90,16 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
                                                 "release_fence_timeout_ms",
                                                 "worker_threads",
                                                 "insecure_bind_all",
+                                                "acquisition_lease_default_ns",
+                                                "acquisition_lease_min_ns",
+                                                "acquisition_lease_max_ns",
+                                                "lease_safety_margin_ms",
+                                                "acquisition_service_tick_ms",
+                                                "acquisition_service_gap_ms",
+                                                "acquisition_scan_batch",
+                                                "acquisition_expiry_batch",
+                                                "acquisition_renew_batch",
+                                                "acquisition_evidence_batch",
                                                 "log_level"};
     if(!json.is_object())
         return absl::InvalidArgumentError("configuration must be a JSON object");
@@ -98,6 +108,26 @@ absl::Status applyJson(const nlohmann::json& json, VisorConfig& cfg)
             return absl::InvalidArgumentError(absl::StrCat("unknown configuration key ", key));
     try
     {
+        if(json.contains("acquisition_lease_default_ns"))
+            cfg.leases.acquisition_lease_default_ns = json.at("acquisition_lease_default_ns").get<int64_t>();
+        if(json.contains("acquisition_lease_min_ns"))
+            cfg.leases.acquisition_lease_min_ns = json.at("acquisition_lease_min_ns").get<int64_t>();
+        if(json.contains("acquisition_lease_max_ns"))
+            cfg.leases.acquisition_lease_max_ns = json.at("acquisition_lease_max_ns").get<int64_t>();
+        if(json.contains("lease_safety_margin_ms"))
+            cfg.leases.lease_safety_margin_ms = json.at("lease_safety_margin_ms").get<uint32_t>();
+        if(json.contains("acquisition_service_tick_ms"))
+            cfg.leases.acquisition_service_tick_ms = json.at("acquisition_service_tick_ms").get<uint32_t>();
+        if(json.contains("acquisition_service_gap_ms"))
+            cfg.leases.acquisition_service_gap_ms = json.at("acquisition_service_gap_ms").get<uint32_t>();
+        if(json.contains("acquisition_scan_batch"))
+            cfg.leases.acquisition_scan_batch = json.at("acquisition_scan_batch").get<uint32_t>();
+        if(json.contains("acquisition_expiry_batch"))
+            cfg.leases.acquisition_expiry_batch = json.at("acquisition_expiry_batch").get<uint32_t>();
+        if(json.contains("acquisition_renew_batch"))
+            cfg.leases.acquisition_renew_batch = json.at("acquisition_renew_batch").get<uint32_t>();
+        if(json.contains("acquisition_evidence_batch"))
+            cfg.leases.acquisition_evidence_batch = json.at("acquisition_evidence_batch").get<uint32_t>();
         if(json.contains("membership_mode"))
             cfg.membership_mode = json.at("membership_mode").get<std::string>();
         if(json.contains("raft"))
@@ -217,7 +247,14 @@ VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv, 
     for(auto [key, field]: {std::pair<const char*, uint32_t*>{"heartbeat_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"keeper_failure_timeout_ms", &cfg.heartbeat_timeout_ms},
                             {"release_fence_timeout_ms", &cfg.release_fence_timeout_ms},
-                            {"worker_threads", &cfg.worker_threads}})
+                            {"worker_threads", &cfg.worker_threads},
+                            {"lease_safety_margin_ms", &cfg.leases.lease_safety_margin_ms},
+                            {"acquisition_service_tick_ms", &cfg.leases.acquisition_service_tick_ms},
+                            {"acquisition_service_gap_ms", &cfg.leases.acquisition_service_gap_ms},
+                            {"acquisition_scan_batch", &cfg.leases.acquisition_scan_batch},
+                            {"acquisition_expiry_batch", &cfg.leases.acquisition_expiry_batch},
+                            {"acquisition_renew_batch", &cfg.leases.acquisition_renew_batch},
+                            {"acquisition_evidence_batch", &cfg.leases.acquisition_evidence_batch}})
     {
         if(auto v = env(key))
         {
@@ -225,6 +262,27 @@ VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv, 
             if(!parsed.ok())
                 return parsed.status();
             *field = *parsed;
+        }
+    }
+    for(auto [key, field]:
+        {std::pair<const char*, int64_t*>{"acquisition_lease_default_ns", &cfg.leases.acquisition_lease_default_ns},
+         {"acquisition_lease_min_ns", &cfg.leases.acquisition_lease_min_ns},
+         {"acquisition_lease_max_ns", &cfg.leases.acquisition_lease_max_ns}})
+    {
+        if(auto value = env(key))
+        {
+            try
+            {
+                size_t consumed = 0;
+                auto parsed = std::stoll(*value, &consumed);
+                if(consumed != value->size())
+                    return absl::InvalidArgumentError("invalid lease duration configuration");
+                *field = parsed;
+            }
+            catch(const std::exception&)
+            {
+                return absl::InvalidArgumentError("invalid lease duration configuration");
+            }
         }
     }
     if(auto v = env("insecure_bind_all"))
@@ -244,6 +302,9 @@ VisorConfig::load(const std::optional<std::string>& path, const Getenv& getenv, 
 
 absl::Status VisorConfig::validate() const
 {
+    auto lease_status = leases.validate(raft.election_upper_ms, heartbeat_timeout_ms, release_fence_timeout_ms);
+    if(!lease_status.ok())
+        return lease_status;
     if(membership_mode != "static" && membership_mode != "dynamic")
         return absl::InvalidArgumentError("membership_mode must be static or dynamic");
     if(membership_mode == "dynamic")

@@ -277,3 +277,92 @@ TEST_F(catalog_adapter, ConcurrentAcquiresGetDistinctWriterIds)
 
 } // namespace
 } // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+TEST_F(catalog_adapter, AcquireLeaseValidationDoesNotMutate)
+{
+    const auto story = makeStory();
+    v1::AcquireRequest request;
+    request.set_story_id(story);
+    request.set_writer_identity("invalid");
+    request.set_acquire_request_id("validation-request-000000000001");
+    const auto before = store_->snapshotAcquisitions()->revision;
+    for(int malformed = 0; malformed < 5; ++malformed)
+    {
+        auto input = request;
+        if(malformed == 0)
+            input.set_lease_duration_ns(0);
+        if(malformed == 1)
+            input.set_lease_duration_ns(-1);
+        if(malformed == 2)
+            input.set_preferred_keeper_process_id("");
+        if(malformed == 3)
+            input.set_expected_prior_incarnation(0);
+        if(malformed == 4)
+            input.set_acquire_request_id(std::string(129, 'x'));
+        v1::AcquireResponse response;
+        EXPECT_TRUE(call(&v1::Catalog::Stub::Acquire, input, &response).ok());
+        EXPECT_EQ(response.status().code(), 3);
+        EXPECT_EQ(store_->snapshotAcquisitions()->revision, before);
+    }
+    v1::AcquireResponse grant;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::Acquire, request, &grant).ok());
+    ASSERT_EQ(grant.status().code(), 0);
+    EXPECT_GT(grant.lease().duration_ns(), 0);
+    EXPECT_GE(grant.lease().remaining_ns(), 0);
+    v1::AcquireResponse retry;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::Acquire, request, &retry).ok());
+    EXPECT_EQ(retry.incarnation(), grant.incarnation());
+    v1::ReleaseRequest release;
+    release.set_story_id(story);
+    release.set_writer_id(grant.writer_id());
+    release.set_incarnation(grant.incarnation());
+    v1::ReleaseResponse released;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::Release, release, &released).ok());
+    ASSERT_TRUE(call(&v1::Catalog::Stub::Acquire, request, &retry).ok());
+    EXPECT_EQ(retry.status().code(), 9);
+    EXPECT_EQ(retry.termination_cause(), v1::ACQUISITION_TERMINATION_CAUSE_RELEASED);
+    EXPECT_EQ(retry.story_id(), story);
+    EXPECT_EQ(retry.writer_id(), grant.writer_id());
+    EXPECT_EQ(retry.incarnation(), grant.incarnation());
+}
+TEST_F(catalog_adapter, RenewBatchPreservesPerEntryResults)
+{
+    const auto story = makeStory();
+    auto live = acquire(story, "live");
+    auto terminal = acquire(story, "terminal");
+    v1::ReleaseRequest release;
+    release.set_story_id(story);
+    release.set_writer_id(terminal.writer_id());
+    release.set_incarnation(terminal.incarnation());
+    v1::ReleaseResponse released;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::Release, release, &released).ok());
+    const auto revision = store_->snapshotAcquisitions()->revision;
+    v1::RenewAcquisitionsRequest request;
+    for(const auto& tuple: std::vector<RenewAcquisition>{{story, live.writer_id(), live.incarnation()},
+                                                         {story, terminal.writer_id(), terminal.incarnation()},
+                                                         {story, 99999, 1}})
+    {
+        auto* item = request.add_acquisitions();
+        item->set_story_id(tuple.story_id);
+        item->set_writer_id(tuple.writer_id);
+        item->set_incarnation(tuple.incarnation);
+    }
+    v1::RenewAcquisitionsResponse response;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::RenewAcquisitions, request, &response).ok());
+    ASSERT_EQ(response.results_size(), 3);
+    EXPECT_EQ(response.results(0).status().code(), 0);
+    EXPECT_TRUE(response.results(0).has_lease());
+    EXPECT_EQ(response.results(1).status().code(), 9);
+    EXPECT_EQ(response.results(1).termination_cause(), v1::ACQUISITION_TERMINATION_CAUSE_RELEASED);
+    EXPECT_EQ(response.results(2).status().code(), 5);
+    for(int i = 0; i < 3; ++i)
+        EXPECT_EQ(response.results(i).acquisition().SerializeAsString(), request.acquisitions(i).SerializeAsString());
+    EXPECT_EQ(store_->snapshotAcquisitions()->revision, revision);
+    request.mutable_acquisitions(1)->set_incarnation(0);
+    EXPECT_EQ(call(&v1::Catalog::Stub::RenewAcquisitions, request, &response).error_code(),
+              grpc::StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(store_->snapshotAcquisitions()->revision, revision);
+}
+} // namespace chronolog::visor
