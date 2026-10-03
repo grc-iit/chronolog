@@ -118,12 +118,19 @@ class Cluster:
         if os.environ.get('RBUILD_HELD') != 'build':
             raise RuntimeError('run through rbuild with the dragon build lock')
         for node in ('mini', 'blade'):
-            process = subprocess.Popen(['ssh', '-o', 'BatchMode=yes', node,
-                'exec 9>~/chronolog-sprint/build.lock; flock 9; echo LOCKED; cat >/dev/null'],
+            unit = f'{self.tag}-build-lock-{node}.scope'
+            process = subprocess.Popen(self.command(node,
+                'exec 9>~/chronolog-sprint/build.lock; flock 9; echo LOCKED; cat >/dev/null', 900, unit),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-            self.build_locks.append(process)
-            if not select.select([process.stdout], [], [], 60)[0] or process.stdout.readline().strip() != 'LOCKED':
-                raise RuntimeError(f'build lock unavailable on {node}')
+            self.build_locks.append((node, unit, process))
+            for _ in range(26):
+                if select.select([process.stdout], [], [], 30)[0]:
+                    if process.stdout.readline().strip() != 'LOCKED':
+                        raise RuntimeError(f'build lock holder exited on {node}')
+                    break
+                print(f'Waiting for {node} build lock', flush=True)
+            else:
+                raise RuntimeError(f'build lock unavailable on {node} within the run bound')
         print('PASS build locks held on dragon mini blade', flush=True)
 
     def stage(self):
@@ -281,11 +288,15 @@ class Cluster:
                 except Exception as error:
                     print(f'FAIL preserve archive {error}', flush=True)
         finally:
-            for process in reversed(self.build_locks):
+            for node, unit, process in reversed(self.build_locks):
                 process.stdin.close()
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
+                    try:
+                        self.run(node, shlex.join(['systemctl', '--user', 'kill', '--signal=SIGKILL', unit]), 10)
+                    except Exception:
+                        pass
                     process.kill()
                     process.wait(timeout=5)
 
