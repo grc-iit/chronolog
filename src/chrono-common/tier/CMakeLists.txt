@@ -5,6 +5,7 @@ add_library(chronolog_common_tier STATIC
     ChunkCodec.cpp
     HDF5ChunkCodec.cpp
     ProtoChunkCodec.cpp
+    PosixTier.cpp
     ManifestLog.cpp
     FileTierStore.cpp)
 target_include_directories(chronolog_common_tier PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")

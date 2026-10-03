@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 namespace chronolog
@@ -2747,5 +2748,278 @@ TEST(ManifestLog, AnIncompleteSwitchLineIsRetriedAtTheNextPoll)
     ASSERT_TRUE(index.ok()) << index.status();
     EXPECT_EQ((*index)->switches.size(), 1u);
     EXPECT_EQ((*index)->superseded.size(), 3u);
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+namespace
+{
+TierConfig MakeSlowTier(const fs::path& root)
+{
+    fs::create_directories(root);
+    struct statfs info
+    {
+    };
+    EXPECT_EQ(::statfs(root.c_str(), &info), 0);
+    nlohmann::json marker{{"deployment_id", "test"},
+                          {"name", "slow"},
+                          {"rank", 1},
+                          {"kind", "posix"},
+                          {"tier_uuid", "tier-uuid"},
+                          {"f_type", info.f_type}};
+    std::ofstream(root / ".chronolog-tier.json") << marker.dump();
+    return {"slow", "posix", root, 1, "tier-uuid"};
+}
+void AttachTier(FileTierStore& store, const fs::path& local, const TierConfig& tier, std::string writer = "primary")
+{
+    std::ofstream(local / "manifest" / (writer + ".validated")) << "{\"writer\":\"" << writer << "\",\"through\":0}";
+    ASSERT_TRUE(store.configureTiers("test", {tier}).ok());
+    ASSERT_TRUE(store.probeTiers().ok());
+}
+} // namespace
+
+TEST(FileTierStore, MigrationCrashAtEveryStepLeavesOneEffectiveCopy)
+{
+    for(int crash = 1; crash <= 6; ++crash)
+    {
+        SCOPED_TRACE(crash);
+        auto directory = TestDirectory();
+        const auto tier = MakeSlowTier(*directory / "slow");
+        FileTierStore::Hooks hooks;
+        hooks.migration_step = [crash](int step)
+        { return step == crash ? absl::AbortedError("injected migration crash") : absl::OkStatus(); };
+        auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok()) << store.status();
+        const auto records = PublishWindows(**store, 1);
+        ASSERT_EQ(records.size(), 1u);
+        const auto original = Bytes(*directory / "local" / records[0].file);
+        AttachTier(**store, *directory / "local", tier);
+        EXPECT_FALSE((*store)->migrateOnce("slow").ok());
+        store->reset();
+        store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok()) << store.status();
+        AttachTier(**store, *directory / "local", tier);
+        auto location = (*store)->location(records[0].file);
+        ASSERT_TRUE(location.ok());
+        EXPECT_EQ(location->has_value(), crash == 6);
+        const auto effective = (location->has_value() ? tier.root : *directory / "local") / records[0].file;
+        EXPECT_EQ(Bytes(effective), original);
+        EXPECT_EQ(Effective(**store).front().state, ManifestState::Published);
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{150, 0}));
+        if(crash == 6)
+        {
+            auto recovered = (*store)->migrateOnce("slow");
+            ASSERT_TRUE(recovered.ok()) << recovered.status();
+            EXPECT_FALSE(fs::exists(*directory / "local" / records[0].file));
+        }
+        else
+        {
+            ASSERT_TRUE((*store)->sweepTiers().ok());
+            EXPECT_FALSE(fs::exists(tier.root / records[0].file));
+        }
+    }
+}
+
+TEST(FileTierStore, MigrationCommitRechecksUnderTheStoreMutex)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    FileTierStore* sut = nullptr;
+    FileTierStore::Hooks hooks;
+    hooks.migration_step = [&sut](int step) { return step == 5 ? sut->tombstone(1) : absl::OkStatus(); };
+    auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    sut = store->get();
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    EXPECT_EQ((*store)->migrateOnce("slow").status().code(), absl::StatusCode::kAborted);
+    EXPECT_FALSE((*store)->location(records[0].file).value().has_value());
+    EXPECT_TRUE(fs::exists(*directory / "local" / records[0].file));
+    EXPECT_FALSE(fs::exists(tier.root / records[0].file));
+}
+
+TEST(FileTierStore, CompactionNeverTakesAMigratedOrMigratingInput)
+{
+    for(bool committed: {false, true})
+    {
+        auto directory = TestDirectory();
+        const auto tier = MakeSlowTier(*directory / "slow");
+        FileTierStore* sut = nullptr;
+        FileTierStore::Hooks hooks;
+        if(!committed)
+            hooks.migration_step = [&sut](int step)
+            {
+                if(step == 3)
+                {
+                    auto compacted = sut->compactOnce(Eager());
+                    EXPECT_TRUE(compacted.ok()) << compacted.status();
+                    if(compacted.ok())
+                        EXPECT_EQ(compacted->inputs, 2u);
+                }
+                return absl::OkStatus();
+            };
+        auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        sut = store->get();
+        const auto records = PublishWindows(**store, 3);
+        AttachTier(**store, *directory / "local", tier);
+        auto moved = (*store)->migrateOnce("slow");
+        ASSERT_TRUE(moved.ok()) << moved.status();
+        EXPECT_EQ(*moved, 1u);
+        if(committed)
+        {
+            auto compacted = (*store)->compactOnce(Eager());
+            ASSERT_TRUE(compacted.ok()) << compacted.status();
+            EXPECT_EQ(compacted->inputs, 2u);
+        }
+        const auto manifest = Effective(**store);
+        EXPECT_EQ(manifest.size(), 2u);
+        EXPECT_EQ(manifest.front().file, records.front().file);
+        EXPECT_TRUE(fs::exists(tier.root / records.front().file));
+    }
+}
+
+TEST(FileTierStore, MigrationThroughAReplacedRootNeverCommits)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    FileTierStore::Hooks hooks;
+    hooks.migration_step = [tier](int step)
+    {
+        if(step == 2)
+        {
+            fs::rename(tier.root, tier.root.string() + "-original");
+            fs::create_directory(tier.root);
+        }
+        return absl::OkStatus();
+    };
+    auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    EXPECT_FALSE((*store)->migrateOnce("slow").ok());
+    EXPECT_FALSE((*store)->location(records[0].file).value().has_value());
+    EXPECT_TRUE(fs::is_empty(tier.root));
+    EXPECT_TRUE(fs::exists(*directory / "local" / records[0].file));
+    fs::remove(tier.root);
+    fs::rename(tier.root.string() + "-original", tier.root);
+    EXPECT_EQ(Effective(**store).front().state, ManifestState::Published);
+}
+
+TEST(FileTierStore, EraseThroughAReplacedRootStaysPending)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    std::atomic<bool> replace{false};
+    FileTierStore::Hooks hooks;
+    hooks.tier_step = [tier, &replace](std::string_view step)
+    {
+        if(step == "erase" && replace.exchange(false))
+        {
+            fs::rename(tier.root, tier.root.string() + "-original");
+            fs::create_directory(tier.root);
+        }
+        return absl::OkStatus();
+    };
+    auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    ASSERT_TRUE((*store)->migrateOnce("slow").ok());
+    replace = true;
+    EXPECT_FALSE((*store)->eraseFile(records[0].file).ok());
+    EXPECT_FALSE((*store)->awaitTierUnlinksForTesting(std::chrono::seconds(5)).ok());
+    EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
+    EXPECT_TRUE(fs::is_empty(tier.root));
+    EXPECT_TRUE(fs::exists(fs::path(tier.root.string() + "-original") / records[0].file));
+    fs::remove(tier.root);
+    fs::rename(tier.root.string() + "-original", tier.root);
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    EXPECT_FALSE((*store)->retryDeletedFiles().ok());
+    ASSERT_TRUE((*store)->awaitTierUnlinksForTesting(std::chrono::seconds(5)).ok());
+    EXPECT_FALSE((*store)->hasPendingUnlinks(1).value());
+    EXPECT_FALSE(fs::exists(tier.root / records[0].file));
+}
+
+TEST(FileTierStore, PeerSweepNeverRemovesAnotherWritersInFlightDestination)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    std::string file;
+    FileTierStore::Hooks hooks;
+    hooks.migration_step = [&](int step)
+    {
+        if(step == 3)
+        {
+            auto peer = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>(), "peer");
+            EXPECT_TRUE(peer.ok()) << peer.status();
+            if(peer.ok())
+            {
+                AttachTier(**peer, *directory / "local", tier, "peer");
+                EXPECT_TRUE((*peer)->sweepTiers().ok());
+                EXPECT_TRUE(fs::exists(tier.root / file));
+            }
+        }
+        return absl::OkStatus();
+    };
+    auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    file = records[0].file;
+    const auto bytes = Bytes(*directory / "local" / file);
+    AttachTier(**store, *directory / "local", tier);
+    auto migrated = (*store)->migrateOnce("slow");
+    ASSERT_TRUE(migrated.ok()) << migrated.status();
+    EXPECT_EQ(Bytes(tier.root / file), bytes);
+    EXPECT_TRUE((*store)->location(file).value().has_value());
+}
+
+TEST(FileTierStore, EmptyMountPointIsUnavailableNeverLost)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    ASSERT_TRUE((*store)->migrateOnce("slow").ok());
+    store->reset();
+    fs::rename(tier.root, tier.root.string() + "-original");
+    fs::create_directory(tier.root);
+    store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    ASSERT_TRUE((*store)->configureTiers("test", {tier}).ok());
+    EXPECT_FALSE((*store)->probeTiers().ok());
+    EXPECT_FALSE((*store)->migrateOnce("slow").ok());
+    EXPECT_EQ(Effective(**store).front().state, ManifestState::Published);
+    EXPECT_TRUE(fs::is_empty(tier.root));
+    EXPECT_TRUE((*store)->location(records[0].file).value().has_value());
+}
+
+TEST(ManifestLog, ForeignMigrateLineFailsTheRefreshClosed)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    auto reader = ManifestLog::OpenReadOnly(*directory);
+    ASSERT_TRUE(reader->sync().ok());
+    nlohmann::json body{{"writer", "primary"},
+                        {"story", 1},
+                        {"file", records[0].file},
+                        {"tier", "slow"},
+                        {"rank", 1},
+                        {"tier_uuid", "uuid"},
+                        {"bytes", 0u},
+                        {"crc32c", 0u},
+                        {"token", "token"}};
+    const auto text = body.dump();
+    nlohmann::json framed{{"migrate_v1", body},
+                          {"bytes", text.size()},
+                          {"crc32c", static_cast<uint32_t>(absl::ComputeCrc32c(text))}};
+    std::ofstream(*directory / "manifest/foreign.log") << framed.dump() << '\n';
+    EXPECT_FALSE(reader->sync().ok());
+    EXPECT_TRUE(reader->current()->locations.empty());
 }
 } // namespace chronolog

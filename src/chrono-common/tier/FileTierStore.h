@@ -8,6 +8,7 @@
 #include <span>
 #include "tier/ChunkCodec.h"
 #include "tier/ManifestLog.h"
+#include "tier/PosixTier.h"
 #include "chronolog/tier_store.h"
 
 namespace chronolog
@@ -46,6 +47,8 @@ public:
     struct Hooks
     {
         std::function<int(int)> manifest_sync;
+        std::function<absl::Status(int)> migration_step;
+        std::function<absl::Status(std::string_view)> tier_step;
         std::function<absl::Status(std::string_view)> compaction_step;
     };
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
@@ -57,7 +60,8 @@ public:
          LoadFile load_file = {},
          size_t read_threads = 0,
          DecodeFile decode_file = {},
-         Hooks hooks = {});
+         Hooks hooks = {},
+         TierChain chain = {});
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     OpenReadOnly(std::filesystem::path root,
                  std::chrono::milliseconds manifest_poll = std::chrono::milliseconds(1000),
@@ -94,6 +98,17 @@ public:
     absl::StatusOr<CompactionResult> compactOnce(const CompactionPolicy& policy);
     // Wakes and stops a job waiting for I/O budget or a publish, and every later job of this store, for shutdown.
     void stopCompaction();
+    absl::Status configureTiers(std::string deployment,
+                                std::vector<TierConfig> tiers,
+                                size_t threads = 2,
+                                std::chrono::milliseconds timeout = std::chrono::milliseconds(1000));
+    absl::Status probeTiers();
+    absl::StatusOr<size_t> migrateOnce(const std::string& destination);
+    absl::Status sweepTiers();
+    absl::Status writeTierReplicas();
+    absl::Status awaitTierUnlinksForTesting(std::chrono::milliseconds timeout);
+    absl::StatusOr<std::optional<MigrationLocation>> location(const std::string& file) const;
+
 
 private:
     FileTierStore(std::filesystem::path root,
@@ -116,6 +131,17 @@ private:
     absl::Status rollbackOrLose(ManifestRecord record, Hlc w);
     void queueCommittedCleanup(const std::set<std::string>& on_disk);
     void sweepTombstoned();
+    struct Claim
+    {
+        StoryId story;
+        std::string token;
+    };
+    std::shared_ptr<Claim> claim(const std::string& file, StoryId story);
+    bool migrationEligible(const ManifestIndex& index,
+                           const ManifestRecord& record,
+                           const std::shared_ptr<Claim>& own = {}) const;
+    absl::Status cleanupMigrations();
+    std::vector<std::shared_ptr<Claim>> stopped_migrations_;
     struct CompactionJob;
     absl::StatusOr<CompactionResult> runCompaction(const CompactionPolicy& policy, CompactionJob job);
     absl::Status compactionStep(std::string_view step) const;
@@ -166,6 +192,12 @@ private:
     DecodeFile decode_file_;
     const size_t read_threads_;
     std::map<std::string, StoryId> pending_unlinks_;
+    std::map<std::string, std::weak_ptr<Claim>> claims_;
+    std::map<std::string, std::shared_ptr<PosixTier>> tiers_;
+    std::map<std::string, std::future<absl::Status>> tier_unlinks_;
+    std::map<std::string, std::shared_ptr<std::vector<std::future<absl::Status>>>> unlink_results_;
+    std::string deployment_;
+    bool migration_stopped_{};
     uint64_t deletion_generation_{};
     size_t deletion_applied_{};
     mutable std::mutex mutex_;

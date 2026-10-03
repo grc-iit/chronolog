@@ -52,10 +52,21 @@ struct CompactionOutput
 std::string CompactionOutputName(const CompactionOutput& output, const std::string& extension);
 std::optional<CompactionOutput> ParseCompactionOutput(const std::filesystem::path& relative);
 std::string CompactionTemporaryPrefix(const std::string& writer);
+struct MigrationLocation
+{
+    std::string writer, file, tier, tier_uuid, token;
+    StoryId story_id{};
+    uint32_t rank{};
+    FileChecksum checksum;
+};
+std::optional<std::string> ArchiveFileWriter(const std::filesystem::path& file);
 struct ManifestIndex
 {
+    std::map<std::string, MigrationLocation> locations;
+    std::map<std::pair<std::string, uint32_t>, MigrationLocation> migration_ranks;
     std::vector<ManifestRecord> records;
     std::map<std::string, FileChecksum> checksums;
+    std::map<std::string, uint64_t> record_sequences;
     std::map<std::string, FilePhysicalBounds> physical_bounds;
     std::map<StoryId, Hlc> watermarks;
     std::set<StoryId> tombstoned;
@@ -90,6 +101,7 @@ public:
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).
     absl::Status appendTombstone(StoryId story);
+    absl::Status appendMigration(const MigrationLocation& location);
     absl::Status appendSwitch(const CompactionSwitch& change);
     absl::Status appendRollback(StoryId story, const std::string& output);
     // Fsyncs this writer's log. Superseded inputs are unlinked only after a switch line is durable through it.
