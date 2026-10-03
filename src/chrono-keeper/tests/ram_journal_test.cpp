@@ -27,6 +27,34 @@ Range All() { return {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}}; }
 
 } // namespace
 
+TEST(RamJournal, AdmissionEvidenceIsBoundedCoalescedAndFair)
+{
+    RamJournalConfig config;
+    config.admission_evidence_capacity = 3;
+    config.admission_evidence_batch = 1;
+    test::RamRig rig(config);
+    for(uint64_t writer = 2; writer <= 5; ++writer)
+    {
+        ASSERT_TRUE(rig.journal->registerWriter(1, writer, 3).ok());
+        auto result = rig.journal->append(Batch({Item(1, writer), Item(2, writer)}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->back().status.ok());
+    }
+    for(uint64_t writer = 2; writer <= 4; ++writer)
+    {
+        auto evidence = rig.journal->drainAdmissionEvidence();
+        ASSERT_EQ(evidence.size(), 1u);
+        EXPECT_EQ(evidence.front(), (RamJournal::WriterKey{1, writer, 3}));
+        auto result = rig.journal->append(Batch({Item(writer + 1, 2)}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+    }
+    auto evidence = rig.journal->drainAdmissionEvidence();
+    ASSERT_EQ(evidence.size(), 1u);
+    EXPECT_EQ(evidence.front().writer_id, 2u);
+    EXPECT_TRUE(rig.journal->drainAdmissionEvidence().empty());
+}
+
 TEST(RamJournal, AppendRejectionReasonsBeforeAnyWriterRegistration)
 {
     auto clock = std::make_shared<test::AssignmentClock>(100);

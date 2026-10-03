@@ -100,7 +100,10 @@ void RamJournal::unassignWriter(StoryId story, uint64_t writer_id)
         slot->second.assigned = false;
 }
 
-void RamJournal::releaseWriter(StoryId story, uint64_t writer_id, uint64_t incarnation)
+void RamJournal::releaseWriter(StoryId story,
+                               uint64_t writer_id,
+                               uint64_t incarnation,
+                               AcquisitionTerminationCause cause)
 {
     std::shared_ptr<Writer> writer;
     {
@@ -117,6 +120,8 @@ void RamJournal::releaseWriter(StoryId story, uint64_t writer_id, uint64_t incar
         return;
     std::lock_guard lock(writer->mu);
     writer->released = true;
+    if(writer->termination_cause == AcquisitionTerminationCause::Unspecified)
+        writer->termination_cause = cause;
 }
 
 std::optional<AppendResult> RamJournal::appendOne(StoryId story,
@@ -163,21 +168,64 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
             return fail(absl::FailedPreconditionError("writer is not assigned to this keeper"),
                         true,
                         AppendRejection::UnassignedKeeper);
-        if(item.incarnation < slot->second.incarnation)
-            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"),
-                        false,
-                        AppendRejection::FencedSuperseded);
         if(item.incarnation > slot->second.incarnation)
             return fail(absl::FailedPreconditionError("incarnation not yet registered at this keeper"),
                         true,
                         AppendRejection::NotRegistered);
+        auto historical = it->second.writers.find({item.writer_id, item.incarnation});
+        if(historical != it->second.writers.end())
+            writer = historical->second;
+        if(item.incarnation < slot->second.incarnation)
+        {
+            if(writer)
+            {
+                std::lock_guard writer_lock(writer->mu);
+                switch(writer->termination_cause)
+                {
+                    case AcquisitionTerminationCause::Expired:
+                        return fail(absl::FailedPreconditionError("incarnation expired"),
+                                    false,
+                                    AppendRejection::FencedExpired);
+                    case AcquisitionTerminationCause::OwnerRemoved:
+                        return fail(absl::FailedPreconditionError("owner removed"),
+                                    false,
+                                    AppendRejection::FencedOwnerRemoved);
+                    case AcquisitionTerminationCause::Released:
+                        return fail(absl::FailedPreconditionError("incarnation released"),
+                                    false,
+                                    AppendRejection::FencedReleased);
+                    default:
+                        break;
+                }
+            }
+            return fail(absl::FailedPreconditionError("incarnation is older than the one acquired"),
+                        false,
+                        AppendRejection::FencedSuperseded);
+        }
         writer = slot->second.current;
     }
 
     slotValidated();
     std::lock_guard lock(writer->mu);
     if(writer->released)
-        return fail(absl::FailedPreconditionError("incarnation is released"), false, AppendRejection::FencedReleased);
+    {
+        auto reason = AppendRejection::FencedReleased;
+        switch(writer->termination_cause)
+        {
+            case AcquisitionTerminationCause::Expired:
+                reason = AppendRejection::FencedExpired;
+                break;
+            case AcquisitionTerminationCause::OwnerRemoved:
+                reason = AppendRejection::FencedOwnerRemoved;
+                break;
+            case AcquisitionTerminationCause::Superseded:
+                reason = AppendRejection::FencedSuperseded;
+                break;
+            default:
+                break;
+        }
+        return fail(absl::FailedPreconditionError("incarnation is released"), false, reason);
+    }
     const std::pair<uint64_t, uint64_t> key{item.writer_id, item.incarnation};
     if(poisoned.count(key))
         return fail(absl::FailedPreconditionError("an earlier item of this writer in the batch was rejected; " +
@@ -265,6 +313,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
     event.hlc = hlc;
     event.envelope = item.envelope;
     event.durability = durability == Durability::Accepted ? Durability::Accepted : Durability::Durable;
+    markAdmission({story, item.writer_id, item.incarnation});
     writer->last_hlc = hlc;
     ++writer->next_sequence;
     result.status = absl::OkStatus();
@@ -284,6 +333,28 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
             [this, writer, sequence = item.sequence](absl::Status status)
             { complete(writer, sequence, std::move(status)); });
     return std::nullopt;
+}
+
+void RamJournal::markAdmission(WriterKey key)
+{
+    std::lock_guard lock(evidence_mu_);
+    if(evidence_set_.size() < config_.admission_evidence_capacity && evidence_set_.insert(key).second)
+        evidence_queue_.push_back(key);
+}
+
+std::vector<RamJournal::WriterKey> RamJournal::drainAdmissionEvidence()
+{
+    std::lock_guard lock(evidence_mu_);
+    std::vector<WriterKey> result;
+    const auto count = std::min(evidence_queue_.size(), config_.admission_evidence_batch);
+    result.reserve(count);
+    for(size_t i = 0; i < count; ++i)
+    {
+        result.push_back(evidence_queue_.front());
+        evidence_set_.erase(evidence_queue_.front());
+        evidence_queue_.pop_front();
+    }
+    return result;
 }
 
 void RamJournal::persist(const Event&, std::function<void(absl::Status)>) {}
@@ -365,7 +436,9 @@ std::string RamJournal::checkpointText() const
                                     writer->released ? 1 : 0,
                                     " ",
                                     (slot.current == writer && slot.assigned) ? 1 : 0,
-                                    " 0\n");
+                                    " 0 ",
+                                    static_cast<uint32_t>(writer->termination_cause),
+                                    "\n");
                     ++writers;
                     continue;
                 }
@@ -419,13 +492,15 @@ std::string RamJournal::checkpointText() const
                                 (slot.current == writer && slot.assigned) ? 1 : 0,
                                 " ",
                                 writer->cache_entries + fresh_entries,
+                                " ",
+                                static_cast<uint32_t>(writer->termination_cause),
                                 "\n");
                 for(const auto& block: writer->cache) body += block.text;
                 body += fresh;
                 ++writers;
             }
     }
-    return absl::StrCat("v3 ", writers, "\n", body);
+    return absl::StrCat("v4 ", writers, "\n", body);
 }
 
 void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
@@ -444,6 +519,8 @@ void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
     writer->next_sequence = std::max(writer->next_sequence, checkpoint.next_sequence);
     writer->last_hlc = std::max(writer->last_hlc, checkpoint.last_hlc);
     writer->released = writer->released || checkpoint.released;
+    if(writer->termination_cause == AcquisitionTerminationCause::Unspecified)
+        writer->termination_cause = checkpoint.termination_cause;
     for(const auto& result: checkpoint.window) writer->window[result.id.sequence] = result;
     writer->cache.clear();
     writer->cache_next = 0;

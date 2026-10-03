@@ -32,6 +32,56 @@ AppendBatch batch(std::initializer_list<uint64_t> sequences)
 }
 Range all() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 
+TEST(WalJournal, AdmissionEvidencePrecedesFsyncAndPendingRetriesAddNothing)
+{
+    WalRig rig;
+    rig.control->block();
+    std::promise<absl::StatusOr<std::vector<AppendResult>>> first, retry;
+    rig.current->appendAsync(batch({1}), Durability::Durable, [&](auto result) { first.set_value(std::move(result)); });
+    (void)rig.control->waitPending();
+    EXPECT_EQ(rig.current->drainAdmissionEvidence().size(), 1u);
+    rig.current->appendAsync(batch({1}), Durability::Durable, [&](auto result) { retry.set_value(std::move(result)); });
+    EXPECT_TRUE(rig.current->drainAdmissionEvidence().empty());
+    {
+        std::lock_guard lock(rig.control->mu);
+        rig.control->fail = true;
+    }
+    rig.control->release();
+    auto result = first.get_future().get();
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->front().status.code(), absl::StatusCode::kUnavailable);
+    EXPECT_TRUE(retry.get_future().get().ok());
+    EXPECT_TRUE(rig.current->drainAdmissionEvidence().empty());
+}
+
+TEST(WalJournal, TerminationCausesSurviveCheckpointAndReplay)
+{
+    for(auto cause: {AcquisitionTerminationCause::Expired, AcquisitionTerminationCause::OwnerRemoved})
+    {
+        WalRig rig;
+        auto first = rig.current->append(batch({1}), Durability::Durable);
+        ASSERT_TRUE(first.ok());
+        ASSERT_TRUE(first->front().status.ok());
+        rig.current->releaseWriter(1, 2, 3, cause);
+        const Hlc end{first->front().hlc.physical_ns + 1, 0};
+        ASSERT_TRUE(rig.current->recordSeal({"cause", 1, first->front().hlc, end, {}, false}).ok());
+        rig.reopen();
+        EXPECT_TRUE(rig.current->drainAdmissionEvidence().empty());
+        auto check = [&]
+        {
+            auto result = rig.current->append(batch({1, 2}), Durability::Accepted);
+            ASSERT_TRUE(result.ok());
+            for(const auto& item: *result)
+                EXPECT_EQ(item.rejection,
+                          cause == AcquisitionTerminationCause::Expired ? AppendRejection::FencedExpired
+                                                                        : AppendRejection::FencedOwnerRemoved);
+        };
+        check();
+        ASSERT_TRUE(rig.current->registerWriter(1, 2, 4).ok());
+        check();
+    }
+}
+
 TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
 {
     for(const auto* checkpoint: {"W1\n1 2 3 2 100 1 0 1 1\n1 100 1\n",
@@ -50,7 +100,7 @@ TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
         EXPECT_EQ(retry->front().status.code(),
                   std::string_view(checkpoint).ends_with("11\n") ? absl::StatusCode::kOutOfRange
                                                                  : absl::StatusCode::kOk);
-        EXPECT_TRUE(rig.current->checkpoint().starts_with("v3 "));
+        EXPECT_TRUE(rig.current->checkpoint().starts_with("v4 "));
     }
 }
 
@@ -113,13 +163,13 @@ TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
     EXPECT_TRUE((*next)[0].status.ok());
 }
 
-// The window lines of the one writer in a "v3" checkpoint, by sequence.
+// The window lines of the one writer in a "v4" checkpoint, by sequence.
 std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::string& text, size_t* declared = nullptr)
 {
     std::istringstream in(text);
     std::string line;
     std::getline(in, line);
-    EXPECT_EQ(line, "v3 1");
+    EXPECT_EQ(line, "v4 1");
     std::getline(in, line);
     std::istringstream header(line);
     uint64_t story, writer, incarnation, next, released, assigned;

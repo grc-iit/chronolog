@@ -21,6 +21,8 @@ struct JournalHarness
     std::function<void()> unassignWriter;
     bool supports_durable{};
     bool rejection_reasons{};
+    std::function<size_t()> drainAdmissionEvidence;
+    std::function<void(AcquisitionTerminationCause)> terminateIncarnation;
     size_t dedupe_window{};
     std::function<void(bool)> applySupersession;
     // Pause after slot validation, before acquiring the writer lock.
@@ -152,6 +154,68 @@ TEST_P(JournalContract, AppendRejectionReasons)
     check(Batch({Item()}, 8), AppendRejection::KeeperNotInRoute);
     h->tombstone();
     check(Batch({Item()}, 8), AppendRejection::StoryTombstoned);
+}
+
+TEST_P(JournalContract, OnlyNewAdmissionProducesLeaseLiveness)
+{
+    ASSERT_TRUE(h->drainAdmissionEvidence);
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+    const auto durability = h->supports_durable ? Durability::Durable : Durability::Accepted;
+    auto first = h->sut->append(Batch({Item(), Item(2)}), Durability::Accepted);
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(first->at(0).status.ok());
+    EXPECT_EQ(h->drainAdmissionEvidence(), 1u);
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+    auto retry = h->sut->append(Batch({Item(), Item(2)}), durability);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+    auto gap = h->sut->append(Batch({Item(4)}), durability);
+    ASSERT_TRUE(gap.ok());
+    EXPECT_EQ(gap->at(0).rejection, AppendRejection::SequenceGap);
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+    auto rejected = Item(3);
+    rejected.physical.physical_ns = 100 + PhysicalPolicy{}.skew_limit_ns + 2;
+    auto out = h->sut->append(Batch({rejected}), durability);
+    ASSERT_TRUE(out.ok());
+    EXPECT_EQ(out->at(0).status.code(), absl::StatusCode::kOutOfRange);
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+    auto next = h->sut->append(Batch({Item(4)}), durability);
+    ASSERT_TRUE(next.ok());
+    ASSERT_TRUE(next->at(0).status.ok());
+    h->crashRestart();
+    EXPECT_EQ(h->drainAdmissionEvidence(), 0u);
+}
+
+TEST_P(JournalContract, AppendRejectionReasonsTerminationCauses)
+{
+    for(auto cause: {AcquisitionTerminationCause::Expired, AcquisitionTerminationCause::OwnerRemoved})
+    {
+        h = GetParam()();
+        ASSERT_TRUE(h->terminateIncarnation);
+        const auto reason = cause == AcquisitionTerminationCause::Expired ? AppendRejection::FencedExpired
+                                                                          : AppendRejection::FencedOwnerRemoved;
+        for(size_t i = 1; i <= h->dedupe_window + 1; ++i)
+        {
+            auto admitted = h->sut->append(Batch({Item(i)}), Durability::Accepted);
+            ASSERT_TRUE(admitted.ok());
+            ASSERT_TRUE(admitted->at(0).status.ok());
+        }
+        h->terminateIncarnation(cause);
+        auto check = [&]
+        {
+            auto result = h->sut->append(Batch({Item(), Item(h->dedupe_window + 2)}), Durability::Accepted);
+            ASSERT_TRUE(result.ok());
+            for(const auto& item: *result)
+            {
+                EXPECT_EQ(item.status.code(), absl::StatusCode::kFailedPrecondition);
+                EXPECT_EQ(item.rejection, reason);
+            }
+        };
+        check();
+        h->releaseIncarnation();
+        h->supersedeIncarnation();
+        check();
+    }
 }
 
 TEST_P(JournalContract, AppendRejectionReasonsDedupe)

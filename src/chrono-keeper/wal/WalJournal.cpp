@@ -459,7 +459,8 @@ std::string WalJournal::writersRecord() const { return "W" + checkpointText(); }
 void WalJournal::restoreWriters(std::string_view payload)
 {
     std::istringstream in{std::string(payload)};
-    const bool version3 = payload.starts_with("v3 ");
+    const bool version4 = payload.starts_with("v4 ");
+    const bool version3 = payload.starts_with("v3 ") || version4;
     const bool version2 = payload.starts_with("v2 ") || version3;
     if(version2)
         in.ignore(3);
@@ -475,6 +476,14 @@ void WalJournal::restoreWriters(std::string_view payload)
            writer.key.story_id == 0 || writer.key.writer_id == 0 || writer.key.incarnation == 0 ||
            writer.next_sequence == 0 || window > payload.size())
             throw std::runtime_error("invalid WAL writer checkpoint");
+        if(version4)
+        {
+            uint32_t cause{};
+            if(!(in >> cause) || cause > static_cast<uint32_t>(AcquisitionTerminationCause::OwnerRemoved) ||
+               (cause != 0 && !writer.released))
+                throw std::runtime_error("invalid WAL termination cause");
+            writer.termination_cause = static_cast<AcquisitionTerminationCause>(cause);
+        }
         for(size_t j = 0; j < window; ++j)
         {
             AppendResult result;

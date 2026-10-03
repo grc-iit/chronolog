@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "adapter_rig.h"
+#include "membership/AcquisitionWatcher.h"
 
 namespace chronolog
 {
@@ -10,6 +11,59 @@ namespace
 Range All() { return {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}}; }
 
 } // namespace
+
+TEST(JournalAdapterTest, TerminationCausesAreTyped)
+{
+    for(auto cause: {v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_OWNER_REMOVED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_RELEASED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_SUPERSEDED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_UNSPECIFIED})
+    {
+        test::AdapterRig rig;
+        keeper::AcquisitionWatcher watcher(*rig.rig.journal, "self", nullptr, false);
+        internal::v1::AcquisitionUpdate update;
+        update.set_story_id(1);
+        update.set_writer_id(2);
+        update.set_incarnation(3);
+        update.set_revision(1);
+        update.set_state(internal::v1::ACQUISITION_STATE_RELEASED);
+        update.set_termination_cause(cause);
+        watcher.applyUpdate(update);
+        v1::AppendRequest request;
+        test::AdapterRig::fillRequest(request, 7, {1, 2});
+        v1::AppendResponse response;
+        auto ctx = test::AdapterRig::context();
+        ASSERT_TRUE(rig.journal->Append(ctx.get(), request, &response).ok());
+        ASSERT_EQ(response.results_size(), 2);
+        auto expected = v1::APPEND_REJECTION_FENCED_RELEASED;
+        if(cause == v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED)
+            expected = v1::APPEND_REJECTION_FENCED_EXPIRED;
+        if(cause == v1::ACQUISITION_TERMINATION_CAUSE_OWNER_REMOVED)
+            expected = v1::APPEND_REJECTION_FENCED_OWNER_REMOVED;
+        if(cause == v1::ACQUISITION_TERMINATION_CAUSE_SUPERSEDED)
+            expected = v1::APPEND_REJECTION_FENCED_SUPERSEDED;
+        for(const auto& result: response.results())
+        {
+            EXPECT_EQ(result.status().code(), 9);
+            EXPECT_EQ(result.rejection(), expected);
+        }
+    }
+}
+
+TEST(JournalAdapterTest, RegistrationLagAndSequenceGapHaveNoTerminationCause)
+{
+    test::AdapterRig rig;
+    v1::AppendRequest request;
+    test::AdapterRig::fillRequest(request, 7, {2});
+    *request.add_items() = test::AdapterRig::item(1, 99);
+    v1::AppendResponse response;
+    auto ctx = test::AdapterRig::context();
+    ASSERT_TRUE(rig.journal->Append(ctx.get(), request, &response).ok());
+    ASSERT_EQ(response.results_size(), 2);
+    EXPECT_EQ(response.results(0).rejection(), v1::APPEND_REJECTION_SEQUENCE_GAP);
+    EXPECT_EQ(response.results(1).rejection(), v1::APPEND_REJECTION_NOT_REGISTERED);
+}
 
 TEST(JournalAdapterTest, AppendKeepsRequestOrderAndIsIdempotent)
 {
