@@ -29,6 +29,8 @@ struct RamJournalConfig
     int64_t causal_floor_skew_limit_ns{60'000'000'000};
     // Results kept per writer for idempotent retries.
     size_t dedupe_window{65536};
+    size_t admission_evidence_capacity{65536};
+    size_t admission_evidence_batch{1024};
 };
 
 // RAM storage with an optional asynchronous persistence implementation.
@@ -119,7 +121,11 @@ public:
     // The writer's Keeper is no longer this one.
     void unassignWriter(StoryId story, uint64_t writer_id);
     // Fence one incarnation. Releasing an older incarnation never fences a newer one.
-    void releaseWriter(StoryId story, uint64_t writer_id, uint64_t incarnation);
+    void releaseWriter(StoryId story,
+                       uint64_t writer_id,
+                       uint64_t incarnation,
+                       AcquisitionTerminationCause cause = AcquisitionTerminationCause::Unspecified);
+    std::vector<WriterKey> drainAdmissionEvidence();
 
 protected:
     virtual bool supportsDurable() const { return false; }
@@ -147,9 +153,10 @@ protected:
         uint64_t next_sequence{};
         Hlc last_hlc;
         bool released{}, assigned{};
+        AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
         std::vector<AppendResult> window;
     };
-    // Body of the WAL writers record: "v2 <count>" then one block per writer. Window lines are formatted once and
+    // Body of the WAL writers record: "v4 <count>" then one block per writer. Window lines are formatted once and
     // cached per writer, so the cost of a checkpoint follows what changed since the last one, not the dedupe window.
     std::string checkpointText() const;
     void restoreWriter(const WriterCheckpoint& checkpoint);
@@ -231,6 +238,7 @@ private:
         uint64_t next_sequence{1};
         Hlc last_hlc;
         bool released{};
+        AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
         // Results for recent sequences; back() is next_sequence - 1.
         std::map<uint64_t, AppendResult> window;
         std::map<uint64_t, Pending> pending;
@@ -268,6 +276,11 @@ private:
         mutable std::shared_mutex mu;
         std::unordered_map<StoryId, Story> stories;
     };
+
+    std::mutex evidence_mu_;
+    std::set<WriterKey> evidence_set_;
+    std::deque<WriterKey> evidence_queue_;
+    void markAdmission(WriterKey key);
 
     static constexpr size_t kShards = 16;
 

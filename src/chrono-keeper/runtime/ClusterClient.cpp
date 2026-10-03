@@ -180,6 +180,14 @@ absl::Status ClusterClient::heartbeatNow()
     if(auto rpc = invoke(
                [&](auto& stub, auto& context)
                {
+                   request.clear_admission_evidence();
+                   for(const auto& key: journal_.drainAdmissionEvidence())
+                   {
+                       auto* evidence = request.add_admission_evidence();
+                       evidence->set_story_id(key.story_id);
+                       evidence->set_writer_id(key.writer_id);
+                       evidence->set_incarnation(key.incarnation);
+                   }
                    response.Clear();
                    return stub.Heartbeat(&context, request, &response);
                },

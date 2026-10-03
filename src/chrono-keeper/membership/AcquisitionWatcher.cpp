@@ -126,8 +126,28 @@ void AcquisitionWatcher::applyWriter(const iv1::AcquisitionUpdate& update)
                 journal_.unassignWriter(update.story_id(), update.writer_id());
             break;
         case iv1::ACQUISITION_STATE_RELEASED:
-            journal_.releaseWriter(update.story_id(), update.writer_id(), update.incarnation());
-            break;
+        {
+            AcquisitionTerminationCause cause{AcquisitionTerminationCause::Unspecified};
+            switch(update.termination_cause())
+            {
+                case v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED:
+                    cause = AcquisitionTerminationCause::Expired;
+                    break;
+                case v1::ACQUISITION_TERMINATION_CAUSE_RELEASED:
+                    cause = AcquisitionTerminationCause::Released;
+                    break;
+                case v1::ACQUISITION_TERMINATION_CAUSE_SUPERSEDED:
+                    cause = AcquisitionTerminationCause::Superseded;
+                    break;
+                case v1::ACQUISITION_TERMINATION_CAUSE_OWNER_REMOVED:
+                    cause = AcquisitionTerminationCause::OwnerRemoved;
+                    break;
+                default:
+                    break;
+            }
+            journal_.releaseWriter(update.story_id(), update.writer_id(), update.incarnation(), cause);
+        }
+        break;
         default:
             break;
     }

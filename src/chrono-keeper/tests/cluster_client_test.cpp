@@ -22,11 +22,65 @@ public:
     {
         std::lock_guard lock(mutex);
         last = *request;
-        return grpc::Status::OK;
+        return fail ? grpc::Status(grpc::StatusCode::UNAVAILABLE, "lost delivery") : grpc::Status::OK;
     }
+    bool fail{false};
     std::mutex mutex;
     iv1::HeartbeatRequest last;
 };
+
+TEST(ClusterClientTest, FailedHeartbeatDoesNotReplayEvidenceForever)
+{
+    CapturingCluster cluster;
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&cluster);
+    auto server = builder.BuildAndStart();
+    ASSERT_NE(server, nullptr);
+    test::RamRig rig;
+    keeper::ConfigMembership membership;
+    keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
+    keeper::ClusterClient client(
+            grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()),
+            {"self", "instance", "self:1", std::chrono::milliseconds(5000)},
+            *rig.journal,
+            membership,
+            watcher);
+    AppendItem item;
+    item.writer_id = 2;
+    item.incarnation = 3;
+    item.sequence = 1;
+    ASSERT_TRUE(rig.journal->append({1, 7, {item}}, Durability::Accepted).ok());
+    {
+        std::lock_guard lock(cluster.mutex);
+        cluster.fail = true;
+    }
+    EXPECT_FALSE(client.heartbeatNow().ok());
+    {
+        std::lock_guard lock(cluster.mutex);
+        ASSERT_EQ(cluster.last.admission_evidence_size(), 1);
+        EXPECT_EQ(cluster.last.process_id(), "self");
+        EXPECT_EQ(cluster.last.instance(), "instance");
+        EXPECT_EQ(cluster.last.admission_evidence(0).story_id(), 1u);
+        EXPECT_EQ(cluster.last.admission_evidence(0).writer_id(), 2u);
+        EXPECT_EQ(cluster.last.admission_evidence(0).incarnation(), 3u);
+        cluster.fail = false;
+    }
+    ASSERT_TRUE(client.heartbeatNow().ok());
+    {
+        std::lock_guard lock(cluster.mutex);
+        EXPECT_EQ(cluster.last.admission_evidence_size(), 0);
+    }
+    item.sequence = 2;
+    ASSERT_TRUE(rig.journal->append({1, 7, {item}}, Durability::Accepted).ok());
+    ASSERT_TRUE(client.heartbeatNow().ok());
+    {
+        std::lock_guard lock(cluster.mutex);
+        EXPECT_EQ(cluster.last.admission_evidence_size(), 1);
+    }
+    server->Shutdown(std::chrono::system_clock::now());
+}
 
 // I4.14: the leader removes a drained predecessor only when the report carries a sealed frontier at
 // or above the cut (MembershipState heartbeat apply), so the Keeper must send it with the report.

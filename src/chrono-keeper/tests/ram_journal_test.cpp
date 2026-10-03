@@ -27,6 +27,34 @@ Range All() { return {Range::Axis::Hlc, {0, 0}, {INT64_MAX, 0}}; }
 
 } // namespace
 
+TEST(RamJournal, AdmissionEvidenceIsBoundedCoalescedAndFair)
+{
+    RamJournalConfig config;
+    config.admission_evidence_capacity = 3;
+    config.admission_evidence_batch = 1;
+    test::RamRig rig(config);
+    for(uint64_t writer = 2; writer <= 5; ++writer)
+    {
+        ASSERT_TRUE(rig.journal->registerWriter(1, writer, 3).ok());
+        auto result = rig.journal->append(Batch({Item(1, writer), Item(2, writer)}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->back().status.ok());
+    }
+    for(uint64_t writer = 2; writer <= 4; ++writer)
+    {
+        auto evidence = rig.journal->drainAdmissionEvidence();
+        ASSERT_EQ(evidence.size(), 1u);
+        EXPECT_EQ(evidence.front(), (RamJournal::WriterKey{1, writer, 3}));
+        auto result = rig.journal->append(Batch({Item(writer + 1, 2)}), Durability::Accepted);
+        ASSERT_TRUE(result.ok());
+        ASSERT_TRUE(result->front().status.ok());
+    }
+    auto evidence = rig.journal->drainAdmissionEvidence();
+    ASSERT_EQ(evidence.size(), 1u);
+    EXPECT_EQ(evidence.front().writer_id, 2u);
+    EXPECT_TRUE(rig.journal->drainAdmissionEvidence().empty());
+}
+
 TEST(RamJournal, AppendRejectionReasonsBeforeAnyWriterRegistration)
 {
     auto clock = std::make_shared<test::AssignmentClock>(100);
@@ -114,6 +142,27 @@ TEST(RamJournal, OlderReleaseDoesNotFenceNewerIncarnation)
     rig.journal->releaseWriter(1, 2, 3);
     auto r = rig.journal->append(Batch({Item(1, 2, 4)}), Durability::Accepted);
     EXPECT_TRUE((*r)[0].status.ok());
+}
+
+TEST(RamJournal, RecordedTerminationCauseOutranksUnassignedKeeper)
+{
+    for(auto cause: {AcquisitionTerminationCause::Expired,
+                     AcquisitionTerminationCause::OwnerRemoved,
+                     AcquisitionTerminationCause::Released,
+                     AcquisitionTerminationCause::Unspecified})
+    {
+        test::RamRig rig;
+        ASSERT_TRUE((*rig.journal->append(Batch({Item(1)}), Durability::Accepted))[0].status.ok());
+        rig.journal->releaseWriter(1, 2, 3, cause);
+        rig.journal->unassignWriter(1, 2);
+        auto r = rig.journal->append(Batch({Item(2)}), Durability::Accepted);
+        ASSERT_TRUE(r.ok());
+        EXPECT_EQ((*r)[0].status.code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ((*r)[0].rejection,
+                  cause == AcquisitionTerminationCause::Expired        ? AppendRejection::FencedExpired
+                  : cause == AcquisitionTerminationCause::OwnerRemoved ? AppendRejection::FencedOwnerRemoved
+                                                                       : AppendRejection::UnassignedKeeper);
+    }
 }
 
 TEST(RamJournal, DedupeWindowEvictsOldResults)

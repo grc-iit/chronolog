@@ -85,6 +85,8 @@ std::unique_ptr<JournalHarness> MakeWal()
             watcher.applyUpdate(update);
         }
     };
+    h->drainAdmissionEvidence = [rig] { return rig->current->drainAdmissionEvidence().size(); };
+    h->terminateIncarnation = [rig](AcquisitionTerminationCause cause) { rig->current->releaseWriter(1, 2, 3, cause); };
     h->rejection_reasons = true;
     h->dedupe_window = rig->ram_config.dedupe_window;
     h->onSlotValidated = [rig](std::function<void()> hook) { rig->current->onSlotValidated(std::move(hook)); };
