@@ -460,6 +460,7 @@ enum AppendRejection
     APPEND_REJECTION_STORY_TOMBSTONED = 10;
     APPEND_REJECTION_FENCED_EXPIRED = 11;
     APPEND_REJECTION_FENCED_OWNER_REMOVED = 12;
+    APPEND_REJECTION_CAPACITY = 13;
 }
 // DURABILITY_ACCEPTED is RAM only; only fsync'd Keeper WAL DURABILITY_DURABLE is an ack.
 // Unsupported requested durability explicitly fails; never silently downgrade.

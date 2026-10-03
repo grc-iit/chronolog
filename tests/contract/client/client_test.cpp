@@ -78,6 +78,12 @@ public:
         {
             seen.push_back(item);
             auto* result = p.add_results();
+            if(capacity)
+            {
+                result->mutable_status()->set_code(8);
+                result->set_rejection(wire::APPEND_REJECTION_CAPACITY);
+                continue;
+            }
             if(refusals > 0)
             {
                 --refusals;
@@ -244,7 +250,7 @@ public:
     std::vector<wire::AcquireRequest> acquire_requests;
     std::vector<wire::Position> resumes;
     std::atomic<int> tails{}, acquisitions{};
-    std::atomic<bool> lose_response{};
+    std::atomic<bool> lose_response{}, capacity{};
     bool stale{}, reorder{}, block_tail{}, refuse_tail{};
     int flaky_calls{1};
     int refusals{};
@@ -254,6 +260,41 @@ public:
     uint64_t busy_events{};
 };
 
+TEST(ClientContract, CapacityRefusalIsRejectedAndTheSameAppendSucceedsLater)
+{
+    for(bool streaming: {false, true})
+    {
+        Server server;
+        server.capacity = true;
+        auto client = sdk::Client::Connect(server.options());
+        ASSERT_TRUE(client.ok()) << client.status();
+        auto writer = client->acquire(1, "writer");
+        ASSERT_TRUE(writer.ok()) << writer.status();
+        sdk::AppendSpec spec{{"", "payload", "", "", {}}};
+        const auto append = [&]() -> absl::StatusOr<sdk::BatchResult>
+        {
+            if(streaming)
+                return writer->appendBatch(std::span(&spec, 1));
+            return sdk::BatchResult{writer->append(spec)};
+        };
+        auto refused = append();
+        ASSERT_TRUE(refused.ok()) << refused.status();
+        ASSERT_EQ(refused->size(), 1u);
+        EXPECT_EQ(refused->front().status().code(), absl::StatusCode::kResourceExhausted);
+        EXPECT_EQ(sdk::rejectionOf(refused->front().status()), sdk::AppendRejection::Capacity);
+        ASSERT_EQ(server.seen.size(), 1u);
+        server.capacity = false;
+        auto admitted = append();
+        ASSERT_TRUE(admitted.ok()) << admitted.status();
+        ASSERT_EQ(admitted->size(), 1u);
+        ASSERT_TRUE(admitted->front().ok()) << admitted->front().status();
+        EXPECT_TRUE(admitted->front()->acked());
+        EXPECT_EQ(admitted->front()->event_id.sequence, 1u);
+        ASSERT_EQ(server.seen.size(), 2u);
+        EXPECT_EQ(server.seen[0].sequence(), server.seen[1].sequence());
+        EXPECT_EQ(server.seen[0].envelope().SerializeAsString(), server.seen[1].envelope().SerializeAsString());
+    }
+}
 TEST(ClientContract, ClientRetriesAnAppendRefusedBeforeTheKeeperLearnsTheAcquisition)
 {
     for(bool streaming: {false, true})

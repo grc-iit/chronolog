@@ -142,11 +142,13 @@ private:
 
 TEST(ClientAppend, RejectionPayloadOnItemAndWholeCallStatus)
 {
-    for(uint32_t value = 0; value <= 12; ++value)
+    for(uint32_t value = 0; value <= 13; ++value)
     {
         const auto reason = static_cast<Reason>(value);
-        const bool definitive = value == 1 || value == 2 || value == 3 || value == 5 || value == 11 || value == 12;
-        AppendPeer peer(Code::kFailedPrecondition, reason, true);
+        const bool definitive =
+                value == 1 || value == 2 || value == 3 || value == 5 || value == 11 || value == 12 || value == 13;
+        const auto code = reason == Reason::Capacity ? Code::kResourceExhausted : Code::kFailedPrecondition;
+        AppendPeer peer(code, reason, true);
         auto client = sdk::Client::Connect(peer.options());
         ASSERT_TRUE(client.ok()) << client.status();
         auto writer = client->acquire(1, "payload");
@@ -171,7 +173,7 @@ TEST(ClientAppend, RejectionPayloadOnItemAndWholeCallStatus)
             const bool route_reason = value == 0 || value == 6 || value == 7 || value == 8 || value == 9;
             EXPECT_EQ(writer->acquisition().route.epoch, route_reason ? 2u : 1u);
         }
-        EXPECT_EQ(status->code(), Code::kFailedPrecondition);
+        EXPECT_EQ(status->code(), code);
         EXPECT_EQ(status->message(), "FENCED_SUPERSEDED: diagnostic text is not a reason");
         EXPECT_TRUE(status->GetPayload("chronolog.dev/append-rejection"));
         EXPECT_EQ(sdk::rejectionOf(*status), reason);

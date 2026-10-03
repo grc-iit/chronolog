@@ -532,7 +532,7 @@ void WalJournal::restoreWriters(std::string_view payload)
             if(version3)
             {
                 uint32_t rejection{};
-                if(!(in >> rejection) || rejection > static_cast<uint32_t>(AppendRejection::FencedOwnerRemoved))
+                if(!(in >> rejection) || rejection > static_cast<uint32_t>(AppendRejection::Capacity))
                     throw std::runtime_error("invalid WAL append rejection");
                 result.rejection = static_cast<AppendRejection>(rejection);
                 if(!absl::IsFailedPrecondition(result.status) && result.rejection != AppendRejection::Unspecified)

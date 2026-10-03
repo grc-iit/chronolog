@@ -9,13 +9,14 @@ Range All() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 } // namespace
 TEST(JournalAdapterTest, AppendRejectionReasonsIgnoreDiagnosticText)
 {
-    for(uint32_t reason = 0; reason <= 10; ++reason)
+    for(uint32_t reason = 0; reason <= 13; ++reason)
     {
         AppendResult result;
         result.rejection = static_cast<AppendRejection>(reason);
         for(const auto* message: {"stale epoch", "changed unrelated diagnostic", "incarnation is released"})
         {
-            result.status = absl::FailedPreconditionError(message);
+            result.status =
+                    reason == 13 ? absl::ResourceExhaustedError(message) : absl::FailedPreconditionError(message);
             auto wire = keeper::convert::toProto(result);
             EXPECT_EQ(static_cast<uint32_t>(wire.rejection()), reason);
             EXPECT_EQ(wire.status().message(), message);
