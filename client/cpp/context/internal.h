@@ -77,6 +77,36 @@ private:
     uint64_t id_{};
 };
 Page readPage(client::Client&, StoryId, client::HlcRange, PageLimits, Deadline, std::shared_ptr<Record> = {});
+struct VerifiedCut
+{
+    std::optional<Hlc> as_of;
+    Page probe; // Cleared of events when no cut was verified.
+    size_t calls{};
+};
+absl::StatusOr<VerifiedCut> verifiedCut(client::Client&,
+                                        StoryId,
+                                        Hlc floor,
+                                        std::chrono::nanoseconds width,
+                                        PageLimits,
+                                        size_t max_read_calls,
+                                        Deadline,
+                                        std::shared_ptr<Record> = {});
+// Backward suffix search for the last n events (matching `match`, when given) of [0, as_of) at a verified cut.
+absl::StatusOr<LatestResult> latestSearch(client::Client&,
+                                          const ContextOptions&,
+                                          StoryId,
+                                          size_t n,
+                                          const LatestOptions&,
+                                          Deadline,
+                                          std::shared_ptr<Record> = {},
+                                          const std::function<bool(const Event&)>& match = {});
+// The n=1 lookup of the newest aggregate on a control story, for the checkpoint store; advisory before an Acquire.
+absl::StatusOr<LatestResult> latestAggregate(client::Client&,
+                                             const ContextOptions&,
+                                             StoryId control,
+                                             const std::function<bool(const Event&)>& is_aggregate,
+                                             const LatestOptions& options = {},
+                                             Deadline deadline = {});
 } // namespace detail
 struct ContextClient::Impl
 {
