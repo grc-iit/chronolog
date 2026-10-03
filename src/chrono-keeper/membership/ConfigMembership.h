@@ -3,6 +3,7 @@
 #include <map>
 #include <shared_mutex>
 #include <vector>
+#include <set>
 
 #include "KeeperConfig.h"
 #include "chronolog/membership.h"
@@ -16,12 +17,21 @@ namespace chronolog::keeper
 class ConfigMembership final: public Membership
 {
 public:
-    using RouteLookup = std::function<absl::StatusOr<Route>(StoryId)>;
+    struct RouteRead
+    {
+        Route route;
+        bool tombstoned{};
+    };
+    using RouteLookup = std::function<absl::StatusOr<RouteRead>(StoryId)>;
 
     explicit ConfigMembership(const std::vector<StaticRoute>& seed = {}, RouteLookup lookup = nullptr);
 
     void setRoute(StoryId id, Route route);
-    void setRouteState(StoryId id, RouteState state);
+    void setRouteState(StoryId id, RouteState state, uint64_t revision = 0);
+    void acknowledgeRoutes(uint64_t revision);
+    void tombstone(StoryId id);
+    // Only resolve may block. Membership contract methods use the cache.
+    absl::Status resolve(StoryId id, std::function<void()> drop = {});
     absl::StatusOr<RouteState> routeState(StoryId id) const override;
 
     absl::StatusOr<Route> route(StoryId id) const override;
@@ -31,8 +41,11 @@ public:
 
 private:
     mutable std::shared_mutex mutex_;
-    mutable std::map<StoryId, Route> routes_;
-    mutable std::map<StoryId, RouteState> states_;
+    std::map<StoryId, Route> routes_;
+    std::map<StoryId, RouteState> states_;
+    std::set<StoryId> tombstoned_;
+    uint64_t applied_revision_{};
+    uint64_t generation_{};
     const RouteLookup lookup_;
 };
 

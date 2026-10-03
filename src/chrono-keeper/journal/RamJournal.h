@@ -45,14 +45,20 @@ public:
                                                      Durability durability = Durability::Unspecified) override;
     using AppendCallback = std::function<void(absl::StatusOr<std::vector<AppendResult>>)>;
     void appendAsync(const AppendBatch& batch, Durability durability, AppendCallback done);
+    // Configure before serving; the resolver runs before taking any story gate.
+    void setRouteResolver(std::function<absl::Status(StoryId)> resolve) { resolve_route_ = std::move(resolve); }
     void enableDynamic(std::string instance,
                        Hlc restart_floor = {},
                        int64_t physical_floor = 0,
                        int64_t acceptance_budget = 3'000'000'000,
                        int64_t hlc_budget = 30'000'000'000);
     void extendCeiling(Hlc ceiling, int64_t physical_ceiling);
-    void
-    applyRoute(StoryId story, RouteState state, bool observe_floor, uint64_t revision, std::function<void()> install);
+    void applyRoute(StoryId story,
+                    RouteState state,
+                    bool observe_floor,
+                    uint64_t revision,
+                    std::function<void()> install,
+                    bool acknowledge = false);
     uint64_t appliedRouteRevision() const;
     void acknowledgeRoutes(uint64_t revision);
     // Story destroy (RFC-C, W10.5, I13.11). The first signal, a Visor tombstone or a dropped=true report, refuses
@@ -310,6 +316,7 @@ private:
     std::shared_ptr<Clock> clock_;
     std::shared_ptr<const Membership> membership_;
     RamJournalConfig config_;
+    std::function<absl::Status(StoryId)> resolve_route_;
     std::atomic<bool> admission_ready_{true};
     mutable std::array<Shard, kShards> shards_;
     mutable std::mutex physical_mu_;

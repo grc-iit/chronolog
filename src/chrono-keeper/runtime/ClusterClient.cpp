@@ -277,6 +277,7 @@ void ClusterClient::applyRoutes(const google::protobuf::RepeatedPtrField<iv1::Ro
         // A tombstone is applied whatever its revision and never moves the applied revision (W10.17).
         if(update.tombstoned())
         {
+            membership_.tombstone(update.story_id());
             (void)journal_.dropStory(update.story_id(), true);
             continue;
         }
@@ -287,10 +288,11 @@ void ClusterClient::applyRoutes(const google::protobuf::RepeatedPtrField<iv1::Ro
                                       update.observe_floor().end(),
                                       options_.process_id) != update.observe_floor().end(),
                             update.revision(),
-                            [&] { membership_.setRouteState(update.story_id(), state); });
+                            [&] { membership_.setRouteState(update.story_id(), state, update.revision()); });
         revision = std::max(revision, update.revision());
     }
     journal_.acknowledgeRoutes(revision);
+    membership_.acknowledgeRoutes(revision);
 }
 absl::Status ClusterClient::extendNow()
 {

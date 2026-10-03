@@ -199,18 +199,19 @@ TEST(ConfigMembership, LearnsNewStoriesOnCacheMiss)
 {
     unsigned lookups = 0;
     ConfigMembership membership({},
-                                [&lookups](StoryId id) -> absl::StatusOr<Route>
+                                [&lookups](StoryId id) -> absl::StatusOr<ConfigMembership::RouteRead>
                                 {
                                     ++lookups;
                                     if(id != 9)
                                         return absl::NotFoundError("unknown story");
-                                    return Route{3, {{"k", "k:1"}}, "g", "p"};
+                                    return ConfigMembership::RouteRead{Route{3, {{"k", "k:1"}}, "g", "p"}, false};
                                 });
+    ASSERT_TRUE(membership.resolve(9).ok());
     EXPECT_TRUE(membership.validateEpoch(9, 3).ok());
     EXPECT_EQ(membership.validateEpoch(9, 2).code(), absl::StatusCode::kFailedPrecondition);
     ASSERT_TRUE(membership.route(9).ok());
     EXPECT_EQ(lookups, 1u);
-    EXPECT_EQ(membership.route(10).status().code(), absl::StatusCode::kNotFound);
+    EXPECT_EQ(membership.resolve(10).code(), absl::StatusCode::kNotFound);
     EXPECT_EQ(lookups, 2u);
     membership.setRoute(9, Route{4, {{"k", "k:1"}}, "g", "p"});
     EXPECT_TRUE(membership.validateEpoch(9, 4).ok());
