@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cerrno>
 #include <filesystem>
+#include <fstream>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -559,6 +560,121 @@ TEST(GrapherConfigTest, ValidatesLimitsAndInternalBindGuard)
     EXPECT_TRUE(loaded->validate().ok());
     loaded->limits.chunk_bytes = 0;
     EXPECT_FALSE(loaded->validate().ok());
+}
+Chunk SmallWindow(int index)
+{
+    const int64_t start = 100 + 50 * index;
+    Event event;
+    event.id = {1, 2, 3, static_cast<uint64_t>(index + 1)};
+    event.hlc = {start, 0};
+    event.envelope.payload = "event";
+    return {"w" + std::to_string(index), 1, {start, 0}, {start + 50, 0}, {event}, false, false};
+}
+
+CompactionSettings EagerCompaction()
+{
+    CompactionSettings settings;
+    settings.enabled = true;
+    settings.scan_interval = std::chrono::seconds(1);
+    settings.policy.min_files = 2;
+    settings.policy.min_age = std::chrono::seconds(0);
+    return settings;
+}
+
+std::filesystem::path FreshRoot()
+{
+    auto root =
+            std::filesystem::temp_directory_path() / ("chronolog_archive_" + std::to_string(::getpid()) + "_" +
+                                                      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+    std::filesystem::remove_all(root);
+    return root;
+}
+
+TEST(ArchiveTransferTest, CompactionRunsOnItsOwnWorkerOnlyWhenEnabled)
+{
+    const auto root = FreshRoot();
+    auto store = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    for(int i = 0; i < 3; ++i) ASSERT_TRUE((*store)->publish(SmallWindow(i)).ok());
+    {
+        ArchiveService disabled(**store, "test-instance");
+        disabled.shutdown();
+    }
+    EXPECT_EQ((*store)->manifest(1).value().size(), 3u);
+    {
+        ArchiveService service(**store, "test-instance", {}, EagerCompaction());
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while((*store)->manifest(1).value().size() != 1 && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        service.shutdown();
+    }
+    const auto records = (*store)->manifest(1).value();
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].event_count, 3u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{250, 0}));
+    store->reset();
+    std::filesystem::remove_all(root);
+}
+
+TEST(ArchiveTransferTest, DestroyWaitsForCompactionCleanup)
+{
+    const auto root = FreshRoot();
+    FileTierStore::Hooks crash;
+    crash.compaction_step = [](std::string_view step)
+    { return step == "cleanup" ? absl::AbortedError("injected crash") : absl::OkStatus(); };
+    {
+        auto writer = FileTierStore::Open(root,
+                                          "compactor",
+                                          {{1, {100, 0}}},
+                                          std::make_shared<HDF5ChunkCodec>(),
+                                          {},
+                                          {},
+                                          0,
+                                          {},
+                                          crash);
+        ASSERT_TRUE(writer.ok());
+        for(int i = 0; i < 3; ++i) ASSERT_TRUE((*writer)->publish(SmallWindow(i)).ok());
+        auto policy = EagerCompaction().policy;
+        EXPECT_FALSE((*writer)->compactOnce(policy).ok());
+    }
+    // The compacting writer never returns; a peer destroys the story and frees its superseded inputs (I13.11).
+    auto store = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    {
+        ArchiveService service(**store, "test-instance");
+        service.tombstone(1);
+        EXPECT_TRUE(service.waitDestroyed(1, std::chrono::seconds(10)));
+        service.shutdown();
+    }
+    EXPECT_TRUE(std::filesystem::is_empty(root / "1"));
+    store->reset();
+    std::filesystem::remove_all(root);
+}
+
+TEST(GrapherConfigTest, CompactionIsDisabledByDefaultAndItsKnobsAreValidated)
+{
+    auto loaded = GrapherConfig::load(std::nullopt);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_FALSE(loaded->compaction.enabled);
+    EXPECT_EQ(loaded->compaction.policy.min_files, 32u);
+    EXPECT_EQ(loaded->compaction.policy.max_files, 128u);
+    EXPECT_EQ(loaded->compaction.policy.min_age, std::chrono::seconds(300));
+    EXPECT_LE(loaded->compaction.policy.max_events, 262144u / 2);
+    loaded->compaction.policy.max_events = 65537;
+    EXPECT_FALSE(loaded->validate().ok());
+    const auto path =
+            std::filesystem::temp_directory_path() / ("chronolog_grapher_config_" + std::to_string(::getpid()));
+    std::ofstream(path) << R"({"compact_enabled": true, "compact_min_age_secs": 0, "compact_max_files": 64})";
+    loaded = GrapherConfig::load(path.string());
+    ASSERT_TRUE(loaded.ok()) << loaded.status();
+    EXPECT_TRUE(loaded->compaction.enabled);
+    EXPECT_EQ(loaded->compaction.policy.min_age, std::chrono::seconds(0));
+    EXPECT_EQ(loaded->compaction.policy.max_files, 64u);
+    std::ofstream(path, std::ios::trunc) << R"({"compact_min_files": 0})";
+    EXPECT_FALSE(GrapherConfig::load(path.string()).ok());
+    std::ofstream(path, std::ios::trunc) << R"({"compact_max_files": 8})";
+    EXPECT_FALSE(GrapherConfig::load(path.string()).ok());
+    std::filesystem::remove(path);
 }
 } // namespace
 } // namespace chronolog::grapher

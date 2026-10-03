@@ -17,10 +17,22 @@ struct TransferLimits
     uint32_t concurrent_transfers = 8;
 };
 
+// Background compaction of small archive files (B3). Disabled by default: it may be enabled only once every Player
+// and Grapher reading the archive root understands compact_v1 lines.
+struct CompactionSettings
+{
+    bool enabled = false;
+    std::chrono::seconds scan_interval{60};
+    CompactionPolicy policy;
+};
+
 class ArchiveService final: public internal::v1::Archive::Service
 {
 public:
-    ArchiveService(FileTierStore& store, std::string instance, TransferLimits limits = {});
+    ArchiveService(FileTierStore& store,
+                   std::string instance,
+                   TransferLimits limits = {},
+                   CompactionSettings compaction = {});
     ~ArchiveService() override;
     grpc::Status TransferChunk(grpc::ServerContext*,
                                grpc::ServerReader<internal::v1::TransferChunkRequest>*,
@@ -40,6 +52,7 @@ public:
 
 private:
     void destroyLoop();
+    void compactLoop();
     bool eraseFiles(StoryId story);
     struct Receipts
     {
@@ -49,6 +62,7 @@ private:
     FileTierStore& store_;
     const std::string instance_;
     const TransferLimits limits_;
+    const CompactionSettings compaction_;
     std::mutex mutex_;
     std::condition_variable changed_;
     std::map<StoryId, Receipts> receipts_;
@@ -59,5 +73,6 @@ private:
     std::deque<StoryId> destroy_queue_;
     std::unique_ptr<WorkerPool> pool_;
     std::unique_ptr<WorkerPool> destroyer_;
+    std::unique_ptr<WorkerPool> compactor_;
 };
 } // namespace chronolog::grapher

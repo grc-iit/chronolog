@@ -1,10 +1,12 @@
 #pragma once
 
 #include "chronolog/types.h"
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -24,6 +26,26 @@ struct FilePhysicalBounds
     Hlc start, end;
     uint64_t event_count{};
 };
+// One compact_v1 line: the output replaces every input in the effective view at once (I13.12).
+struct CompactionSwitch
+{
+    std::string writer, op;
+    StoryId story_id{};
+    std::vector<ManifestRecord> inputs;
+    ManifestRecord output;
+    std::optional<PhysicalBounds> bounds;
+    Hlc w_floor;
+};
+// Compaction outputs carry a reserved name that ordinary orphan adoption cannot parse; the name encodes the
+// writer and the output window so recovery can judge an unreferenced output without its switch line.
+struct CompactionOutput
+{
+    std::string writer, op;
+    Hlc start, end;
+};
+std::string CompactionOutputName(const CompactionOutput& output, const std::string& extension);
+std::optional<CompactionOutput> ParseCompactionOutput(const std::filesystem::path& relative);
+std::string CompactionTemporaryPrefix(const std::string& writer);
 struct ManifestIndex
 {
     std::vector<ManifestRecord> records;
@@ -34,6 +56,13 @@ struct ManifestIndex
     // whole manifest. generation changes whenever the index is rebuilt from scratch.
     std::map<StoryId, std::vector<size_t>> by_story;
     std::set<StoryId> without_physical_policy;
+    // Switches by output file and the input files they supersede, whichever writer's records name those files.
+    // A rolled back switch supersedes nothing and its output is no longer part of any view.
+    std::map<std::string, CompactionSwitch> switches;
+    std::map<std::string, std::string> superseded;
+    std::set<std::string> rolled_back;
+    // Changes whenever a switch or rollback of the story applies, so a cached story view is rebuilt.
+    std::map<StoryId, uint64_t> revisions;
     uint64_t generation{};
 };
 
@@ -51,6 +80,15 @@ public:
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).
     absl::Status appendTombstone(StoryId story);
+    absl::Status appendSwitch(const CompactionSwitch& change);
+    absl::Status appendRollback(StoryId story, const std::string& output);
+    // Fsyncs this writer's log. Superseded inputs are unlinked only after a switch line is durable through it.
+    absl::Status syncOwn();
+    // True once any append, fsync or truncation of this writer's log failed: the log may hold a complete line that
+    // is not durable, so compaction stops until the writer reopens.
+    bool failed() const { return failed_.load(); }
+    // Replaces fsync of the writer log, for fault injection.
+    void setSync(std::function<int(int)> sync);
     absl::StatusOr<ManifestIndex> load() const;
     // Reads only what every writer appended since the previous call and returns the cached index. The pointer stays
     // valid until the next sync, compact or load, and the caller serialises calls.
@@ -78,10 +116,14 @@ private:
     absl::Status rebuild() const;
     absl::Status advance() const;
     absl::Status applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const;
+    absl::Status appendFramed(std::string_view key, const std::string& body);
+    int sync(int fd) const { return sync_ ? sync_(fd) : ::fsync(fd); }
     std::filesystem::path directory_;
     std::string writer_;
     int fd_;
     PathStat path_stat_;
+    std::function<int(int)> sync_;
+    std::atomic<bool> failed_{};
     mutable std::mutex mutex_;
     mutable ManifestIndex cache_;
     mutable std::map<std::string, WriterCursors> cursors_;

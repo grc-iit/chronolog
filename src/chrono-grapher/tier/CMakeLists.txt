@@ -10,11 +10,11 @@ add_library(chronolog_grapher_tier STATIC
 target_include_directories(chronolog_grapher_tier PUBLIC "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(chronolog_grapher_tier PUBLIC
     chronolog_contracts chronolog_proto Threads::Threads
-    PRIVATE hdf5::hdf5-static chronolog_warnings nlohmann_json::nlohmann_json absl::log)
+    PRIVATE hdf5::hdf5-static chronolog_warnings nlohmann_json::nlohmann_json absl::log absl::crc32c)
 
 add_executable(chronolog_grapher_tier_tests ../tests/file_tier_store_test.cpp)
 target_link_libraries(chronolog_grapher_tier_tests PRIVATE
-    chronolog_grapher_tier chronolog_warnings GTest::gtest GTest::gtest_main)
+    chronolog_grapher_tier chronolog_warnings nlohmann_json::nlohmann_json GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chronolog_grapher_tier_tests DISCOVERY_TIMEOUT 60
     TEST_PREFIX "grapher." DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
@@ -25,6 +25,8 @@ if(CHRONOLOG_BUILD_BENCH)
     add_executable(chronolog_archive_physical_bench ../tests/physical_read_bench.cpp)
     target_link_libraries(chronolog_archive_physical_bench PRIVATE
         chronolog_grapher_tier chronolog_warnings nlohmann_json::nlohmann_json)
+    add_executable(chronolog_archive_compaction_bench ../tests/compaction_bench.cpp)
+    target_link_libraries(chronolog_archive_compaction_bench PRIVATE chronolog_grapher_tier chronolog_warnings)
 endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

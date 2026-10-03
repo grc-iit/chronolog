@@ -20,6 +20,7 @@ struct GrapherConfig
     uint32_t rpc_timeout_ms = 2000;
     uint32_t drain_timeout_ms = 5000;
     TransferLimits limits;
+    CompactionSettings compaction;
     bool insecure_bind_all = false;
 
     static absl::StatusOr<GrapherConfig> load(const std::optional<std::string>& path, bool allow_bind_all = false);
