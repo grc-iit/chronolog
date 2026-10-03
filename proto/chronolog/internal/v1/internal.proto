@@ -197,8 +197,18 @@ message StoryFrontiers
  // Keeper-level seal, including writerless stories.
  chronolog.v1.Hlc sealed_frontier = 3;
 }
+message AcquisitionAdmissionEvidence
+{
+    // One coalesced tuple per OK new-sequence admission since heartbeat attempt.
+    uint64 story_id = 1;
+    uint64 writer_id = 2;
+    uint64 incarnation = 3;
+}
 message HeartbeatRequest
 {
+    // Bounded new-admission evidence, validated against current instance/assignment.
+    // Consume before early return; strip before any proposal. Never replay a drained set.
+    repeated AcquisitionAdmissionEvidence admission_evidence = 8;
     repeated uint64 stories_without_physical_policy = 7;
     uint64 applied_route_revision = 6;
  // Relevant updates <= R applied; irrelevant global revisions skipped. Scoped
@@ -344,6 +354,8 @@ enum AcquisitionState
 // Keeper restores all fences from snapshot BEFORE admitting any append.
 message AcquisitionUpdate
 {
+    // Original terminal cause; never relabel a terminal tuple on later Release.
+    chronolog.v1.AcquisitionTerminationCause termination_cause = 8;
     // Persisted global Catalog revision, never reused across Visor restarts.
     // Keeper reports applied_revision after applying relevant updates, and
     // heartbeats immediately after RELEASED rather than waiting for interval.
@@ -455,10 +467,57 @@ message WatchRoutesResponse
     bool tombstoned = 11;
 }
 
+message ExpireAcquisitions
+{
+    // Authority-selected due tuples, revalidated current/unreleased at apply.
+    // No clock, deadline, or authority generation is carried in the log.
+    repeated chronolog.v1.RenewAcquisition acquisitions = 1;
+}
+message AcquisitionFenceObservation
+{
+    chronolog.v1.RenewAcquisition acquisition = 1;
+    string owner_process_id = 2;
+    // Currently registered instance; registration alone is not fence proof.
+    string owner_instance = 3;
+    uint64 release_revision = 4;
+    uint64 applied_revision = 5;
+}
+message AcquireCommand
+{
+    // Only validated public options; every other member is authority-selected.
+    chronolog.v1.AcquireRequest request = 1;
+    // Presence distinguishes no predecessor from a carried incarnation.
+    optional uint64 prior_incarnation = 2;
+    // Resolved once at proposal; replicas neither re-clamp nor sample clocks.
+    int64 lease_duration_ns = 3;
+    chronolog.v1.Route route = 4;
+    chronolog.v1.KeeperRef assigned_keeper = 5;
+    repeated chronolog.v1.RenewAcquisition due_acquisitions = 6;
+    repeated AcquisitionFenceObservation fence_observations = 7;
+    optional chronolog.v1.KeeperPreferenceResult keeper_preference = 8;
+}
+message DestroyStoryCommand
+{
+    chronolog.v1.DestroyStoryRequest request = 1;
+    // Complete authority-selected due set; expiry commits even if destroy refuses.
+    repeated chronolog.v1.RenewAcquisition due_acquisitions = 2;
+    repeated AcquisitionFenceObservation fence_observations = 3;
+}
+message DestroyChronicleCommand
+{
+    chronolog.v1.DestroyChronicleRequest request = 1;
+    // Complete due set for all contained stories; no partial chronicle tombstone.
+    repeated chronolog.v1.RenewAcquisition due_acquisitions = 2;
+    repeated AcquisitionFenceObservation fence_observations = 3;
+}
 message CatalogCommand
 {
     oneof mutation
     {
+        ExpireAcquisitions expire_acquisitions = 9;
+        AcquireCommand acquire_with_lease = 10;
+        DestroyStoryCommand destroy_story_with_leases = 11;
+        DestroyChronicleCommand destroy_chronicle_with_leases = 12;
         MembershipCommand membership = 8;
   chronolog.v1.CreateChronicleRequest create_chronicle = 1;
   chronolog.v1.DestroyChronicleRequest destroy_chronicle = 2;

@@ -4,6 +4,8 @@
 #include <vector>
 
 #include "chronolog/types.h"
+#include "chronolog/acquire_refusal.h"
+#include <limits>
 
 namespace
 {
@@ -44,6 +46,52 @@ TEST(Types, HlcComparesPhysicalBeforeLogical)
     EXPECT_LT((chronolog::Hlc{1, 9}), (chronolog::Hlc{2, 0}));
     EXPECT_LT((chronolog::Hlc{2, 0}), (chronolog::Hlc{2, 1}));
     EXPECT_EQ((chronolog::Hlc{3, 3}), (chronolog::Hlc{3, 3}));
+}
+
+TEST(Types, AcquireRefusalPayloadPreservesTypedDetails)
+{
+    using namespace chronolog;
+    for(auto reason:
+        {AcquireRefusalReason::Unspecified, AcquireRefusalReason::Held, AcquireRefusalReason::PriorMismatch})
+        for(auto cause: {AcquisitionTerminationCause::Unspecified,
+                         AcquisitionTerminationCause::Expired,
+                         AcquisitionTerminationCause::Released,
+                         AcquisitionTerminationCause::Superseded,
+                         AcquisitionTerminationCause::OwnerRemoved})
+        {
+            AcquireRefusal refusal{reason,
+                                   std::numeric_limits<uint64_t>::max(),
+                                   7,
+                                   std::numeric_limits<int64_t>::max(),
+                                   cause};
+            auto status = absl::FailedPreconditionError("unrelated diagnostic");
+            setAcquireRefusal(status, refusal);
+            EXPECT_EQ(getAcquireRefusal(status), refusal);
+            auto copied = absl::FailedPreconditionError("changed diagnostic");
+            copied.SetPayload(kAcquireRefusalPayload, *status.GetPayload(kAcquireRefusalPayload));
+            EXPECT_EQ(getAcquireRefusal(copied), refusal);
+        }
+    AcquireRefusal absent;
+    auto status = absl::FailedPreconditionError("HELD is only diagnostic text here");
+    EXPECT_FALSE(getAcquireRefusal(status));
+    setAcquireRefusal(status, absent);
+    EXPECT_EQ(getAcquireRefusal(status), absent);
+}
+
+TEST(Types, AcquireRefusalRejectsMalformedPayload)
+{
+    using namespace chronolog;
+    auto status = absl::FailedPreconditionError("ignored");
+    status.SetPayload(kAcquireRefusalPayload, absl::Cord("invalid"));
+    EXPECT_FALSE(getAcquireRefusal(status));
+    AcquireRefusal refusal;
+    refusal.remaining_ns = -1;
+    setAcquireRefusal(status, refusal);
+    EXPECT_FALSE(getAcquireRefusal(status));
+    refusal.remaining_ns = 0;
+    refusal.refusal_reason = static_cast<AcquireRefusalReason>(99);
+    setAcquireRefusal(status, refusal);
+    EXPECT_FALSE(getAcquireRefusal(status));
 }
 
 } // namespace
