@@ -1,0 +1,3 @@
+syntax = "proto3";
+package chronolog.other.v1;
+message Second {}

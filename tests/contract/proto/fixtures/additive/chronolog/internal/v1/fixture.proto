@@ -1,0 +1,17 @@
+syntax = "proto3";
+package chronolog.internal.v1;
+message ProbeRequest {
+  string retained = 1;
+  int64 sequence = 2;
+  bool added = 3;
+}
+message ProbeResponse {}
+enum ProbeState {
+  PROBE_STATE_UNSPECIFIED = 0;
+  PROBE_STATE_READY = 1;
+  PROBE_STATE_DONE = 2;
+}
+service Probe {
+  rpc Inspect(ProbeRequest) returns (ProbeResponse);
+}
+message Added {}

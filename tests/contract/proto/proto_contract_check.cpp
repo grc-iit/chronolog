@@ -30,7 +30,7 @@ struct Schema
             auto* file = pool.BuildFile(proto);
             if(!file)
                 return false;
-            if(file->package().starts_with("chronolog."))
+            if(file->name().starts_with("chronolog/") || file->package().starts_with("chronolog."))
                 files.push_back(file);
         }
         return !files.empty();
@@ -99,11 +99,12 @@ void checkMessage(const descriptor_pb::Descriptor* before, const descriptor_pb::
     for(int i = 0; i < before->enum_type_count(); ++i) checkEnum(before->enum_type(i), after);
 }
 
-void compatibility(const Schema& before, const Schema& after)
+void compatibility(const Schema& before, const Schema& after, std::string_view package = {})
 {
     for(auto* file: before.files)
     {
-        if(file->package() != "chronolog.v1")
+        if((file->package() != "chronolog.v1" && file->package() != "chronolog.internal.v1") ||
+           (!package.empty() && file->package() != package))
             continue;
         require(after.pool.FindFileByName(file->name()), file->name(), "removed file");
         for(int i = 0; i < file->message_type_count(); ++i) checkMessage(file->message_type(i), after.pool);
@@ -198,17 +199,31 @@ void lint(const Schema& schema)
         file->CopyTo(&definition);
         require(definition.syntax() == "proto3", file->name(), "syntax must be proto3");
         const std::string package(file->package());
+        require(!package.empty(), file->name(), "PACKAGE_DEFINED");
+        size_t start = 0;
+        do {
+            const auto end = package.find('.', start);
+            const auto component = package.substr(start, end - start);
+            require(std::regex_match(component, snake), file->name(), "PACKAGE_LOWER_SNAKE_CASE");
+            if(end == std::string::npos)
+                break;
+            start = end + 1;
+        } while(true);
         const auto last = package.substr(package.find_last_of('.') + 1);
-        require(std::regex_match(last, version), file->name(), "package must end in a version suffix");
+        require(std::regex_match(last, version),
+                file->name(),
+                "PACKAGE_VERSION_SUFFIX: package must end in a version suffix");
         std::string directory = package;
         for(auto& c: directory)
             if(c == '.')
                 c = '/';
         const auto slash = file->name().find_last_of('/');
         const std::string dir(slash == std::string::npos ? std::string_view() : file->name().substr(0, slash));
-        require(dir == directory, file->name(), "package directory must be " + directory);
+        require(dir == directory, file->name(), "PACKAGE_DIRECTORY_MATCH: package directory must be " + directory);
         const auto [seen, fresh] = packages.emplace(dir, package);
-        require(fresh || seen->second == package, file->name(), "files in one directory must share a package");
+        require(fresh || seen->second == package,
+                file->name(),
+                "PACKAGE_SAME_DIRECTORY: files in one directory must share a package");
         const auto base = file->name().substr(slash + 1);
         require(base.ends_with(".proto"), file->name(), "file extension must be .proto");
         name(base.substr(0, base.size() - 6), snake, file->name());
@@ -254,11 +269,14 @@ void lint(const Schema& schema)
 int main(int argc, char** argv)
 {
     Schema before, current;
-    if(argc == 4 && std::string(argv[1]) == "compat")
+    if((argc == 4 || argc == 5) && std::string(argv[1]) == "compat")
     {
         if(!before.load(argv[2]) || !current.load(argv[3]))
             return 2;
-        compatibility(before, current);
+        if(argc == 5 && std::string_view(argv[4]) != "chronolog.internal.v1" &&
+           std::string_view(argv[4]) != "chronolog.v1")
+            return 2;
+        compatibility(before, current, argc == 5 ? std::string_view(argv[4]) : std::string_view());
     }
     else if(argc == 3 && std::string(argv[1]) == "lint")
     {

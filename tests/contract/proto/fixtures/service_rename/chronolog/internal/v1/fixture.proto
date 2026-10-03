@@ -1,0 +1,14 @@
+syntax = "proto3";
+package chronolog.internal.v1;
+message ProbeRequest {
+  string retained = 1;
+  int64 sequence = 2;
+}
+message ProbeResponse {}
+enum ProbeState {
+  PROBE_STATE_UNSPECIFIED = 0;
+  PROBE_STATE_READY = 1;
+}
+service Renamed {
+  rpc Inspect(ProbeRequest) returns (ProbeResponse);
+}

@@ -1,0 +1,3 @@
+syntax = "proto3";
+package chronolog.internal.v1;
+message Fixture {}
