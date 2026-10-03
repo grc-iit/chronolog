@@ -10,6 +10,7 @@
 #include "adapter/Convert.h"
 #include "rpc/Channel.h"
 #include "adapter/WorkerPool.h"
+#include "clock/SystemClock.h"
 #include "raft/RaftMetadataStore.h"
 
 namespace chronolog::visor
@@ -141,13 +142,23 @@ public:
     void OnDone() override { delete this; }
 };
 
-v1::TimeReading nowReading()
+// Only a Synced reading with a finite bound goes out as Synced; a bound is never manufactured (I8.3).
+v1::TimeReading wireReading(const absl::StatusOr<TimeReading>& local)
 {
     v1::TimeReading reading;
-    const auto since_epoch = std::chrono::system_clock::now().time_since_epoch();
-    reading.set_physical_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(since_epoch).count());
-    // The Visor has no chrony bound yet, so it reports Unsynced with no uncertainty.
-    reading.set_status(v1::CLOCK_STATUS_UNSYNCED);
+    if(!local.ok() || local->status == ClockStatus::Unavailable)
+    {
+        reading.set_status(v1::CLOCK_STATUS_UNAVAILABLE);
+        return reading;
+    }
+    reading.set_physical_ns(local->physical_ns);
+    if(local->status == ClockStatus::Synced && local->uncertainty_ns)
+    {
+        reading.set_status(v1::CLOCK_STATUS_SYNCED);
+        reading.set_uncertainty_ns(*local->uncertainty_ns);
+    }
+    else
+        reading.set_status(v1::CLOCK_STATUS_UNSYNCED);
     return reading;
 }
 
@@ -167,7 +178,8 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                RaftMetadataStore* raft,
                                WorkerPool* pool,
                                std::chrono::milliseconds failure_timeout,
-                               std::chrono::milliseconds route_poll_period)
+                               std::chrono::milliseconds route_poll_period,
+                               ClusterServiceOptions options)
     : raft_(raft)
     , pool_(pool)
     , membership_(membership)
@@ -175,7 +187,12 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
     , ledger_(ledger)
     , feed_(feed)
     , failure_timeout_(failure_timeout)
+    , owned_clock_(options.clock ? nullptr : std::make_unique<SystemClock>())
+    , clock_(options.clock ? options.clock : owned_clock_.get())
+    , release_fence_timeout_(options.release_fence_timeout)
 {
+    responder_.set_replica_id(std::move(options.replica_id));
+    responder_.set_instance(std::move(options.instance));
     const auto* history = raft_ ? &raft_->appliedStore() : dynamic_cast<const SqliteMetadataStore*>(&store_);
     if(history)
     {
@@ -260,12 +277,8 @@ grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext*
                                                     internal::v1::ReadClockResponse* response)
 {
     auto* reactor = context->DefaultReactor();
-    if(!raft_)
-    {
-        reactor->Finish(grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "clock exchange is not configured"));
-        return reactor;
-    }
-    if(!raft_->leaderLease())
+    // A clock observation is not a Catalog read: a static replica and an audited replica answer for themselves.
+    if(raft_ && !request->audit_local_replica() && !raft_->leaderLease())
     {
         auto task = [this, context, request, response, reactor]
         {
@@ -284,10 +297,29 @@ grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext*
             reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
         return reactor;
     }
-    *response->mutable_physical() = nowReading();
-    response->set_authority_tick_ns(authorityTickNs());
+    if(!stampClock(response))
+    {
+        response->Clear();
+        reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no physical clock reading"));
+        return reactor;
+    }
     reactor->Finish(grpc::Status::OK);
     return reactor;
+}
+
+template <class Response>
+bool ClusterService::stampClock(Response* response) const
+{
+    *response->mutable_physical() = wireReading(clock_->now());
+    response->set_authority_tick_ns(authorityTickNs());
+    *response->mutable_clock_responder() = responder_;
+    return response->physical().status() != v1::CLOCK_STATUS_UNAVAILABLE;
+}
+
+void ClusterService::issueTimeouts(internal::v1::MembershipPolicy* policy) const
+{
+    policy->set_keeper_failure_timeout_ms(static_cast<uint32_t>(failure_timeout_.count()));
+    policy->set_release_fence_timeout_ms(static_cast<uint32_t>(release_fence_timeout_.count()));
 }
 
 grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* context,
@@ -325,14 +357,14 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
             policy->set_hlc_lead_ns(constants->hlc_lead_ns);
             policy->set_uncertainty_cap_ns(constants->uncertainty_cap_ns);
         }
+        issueTimeouts(policy);
         if(status.ok())
         {
             auto routes = routeSnapshot();
             if(routes.ok())
                 for(auto& route: *routes) *response->add_routes() = std::move(route);
         }
-        *response->mutable_physical() = nowReading();
-        response->set_authority_tick_ns(authorityTickNs());
+        (void)stampClock(response);
         reactor->Finish(grpc::Status::OK);
     };
     if(pool_)
@@ -394,8 +426,7 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                 status = absl::UnimplementedError("physical policy clearing needs a persisted Catalog");
         }
         *response->mutable_status() = convert::toProto(status);
-        *response->mutable_physical() = nowReading();
-        response->set_authority_tick_ns(authorityTickNs());
+        (void)stampClock(response);
         reactor->Finish(grpc::Status::OK);
     };
     if((request->stories_without_physical_policy().empty() && request->admission_evidence().empty()) || !pool_)
@@ -855,10 +886,9 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
             }
             if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest> ||
                          std::is_same_v<Request, internal::v1::HeartbeatRequest>)
-            {
-                *response->mutable_physical() = nowReading();
-                response->set_authority_tick_ns(authorityTickNs());
-            }
+                (void)stampClock(response);
+            if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
+                issueTimeouts(response->mutable_policy());
         }
         reactor->Finish(grpc::Status::OK);
     };

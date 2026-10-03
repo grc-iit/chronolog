@@ -102,6 +102,7 @@ struct KeeperDriver
         return r;
     }
 };
+constexpr int64_t kEpochNs = 1'700'000'000'000'000'000;
 class DynamicClusterTest: public ::testing::Test
 {
 protected:
@@ -114,6 +115,9 @@ protected:
     std::array<std::unique_ptr<grpc::Server>, 3> servers;
     std::array<std::unique_ptr<wire::Cluster::Stub>, 3> stubs;
     std::array<std::shared_ptr<grpc::Channel>, 3> channels;
+    // Replica i reads (i + 1) seconds past a fixed epoch with a bound of i + 1 ns, so each reading names its replica.
+    std::array<std::unique_ptr<FakeClock>, 3> clocks;
+    std::array<std::string, 3> endpoints;
     absl::Status start(int attempt)
     {
         std::filesystem::create_directory(dir.path() / std::to_string(attempt));
@@ -139,14 +143,19 @@ protected:
                     1500ms);
             feeds[i] = std::make_unique<AcquisitionFeed>();
             pools[i] = std::make_unique<WorkerPool>(2, 64);
-            services[i] = std::make_unique<ClusterService>(*memberships[i],
-                                                           stores[i]->appliedStore(),
-                                                           stores[i]->appliedStore(),
-                                                           *feeds[i],
-                                                           stores[i].get(),
-                                                           pools[i].get(),
-                                                           1500ms,
-                                                           route_poll_period_);
+            clocks[i] = std::make_unique<FakeClock>(kEpochNs + int64_t(i + 1) * 1'000'000'000, i + 1);
+            clocks[i]->setStatus(ClockStatus::Synced);
+            endpoints[i] = peers[i].internal_endpoint;
+            services[i] = std::make_unique<ClusterService>(
+                    *memberships[i],
+                    stores[i]->appliedStore(),
+                    stores[i]->appliedStore(),
+                    *feeds[i],
+                    stores[i].get(),
+                    pools[i].get(),
+                    1500ms,
+                    route_poll_period_,
+                    ClusterServiceOptions{clocks[i].get(), endpoints[i], "replica-" + std::to_string(i), 700ms});
             grpc::ServerBuilder builder;
             chronolog::rpc::applyServerPolicy(builder);
             builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
@@ -211,6 +220,7 @@ protected:
         pools[i].reset();
         services[i].reset();
         stores[i].reset();
+        clocks[i].reset();
     }
     void TearDown() override
     {
@@ -297,6 +307,73 @@ TEST_F(DynamicClusterTest, FollowerForwardsKeeperDriverAndRouteFencesSurviveLead
     EXPECT_EQ(state.routes(0).predecessors(0).instance(), "a1");
     EXPECT_EQ(state.routes(0).revision(), revision);
 }
+// B45 gate 5, dynamic half: ReadClock forwards to the leader by default; audit_local_replica answers from the
+// addressed follower itself, even with no quorum and so no lease anywhere (I8.3).
+TEST_F(DynamicClusterTest, ReadClockForwardsByDefaultAndAuditsTheAddressedReplica)
+{
+    auto lead = leader();
+    ASSERT_LT(lead, 3u);
+    auto follower = (lead + 1) % 3;
+    auto call = [&](size_t replica, bool audit)
+    {
+        wire::ReadClockRequest request;
+        request.set_audit_local_replica(audit);
+        wire::ReadClockResponse response;
+        grpc::ClientContext context;
+        context.set_deadline(std::chrono::system_clock::now() + 4s);
+        auto status = stubs[replica]->ReadClock(&context, request, &response);
+        if(!status.ok())
+            throw std::runtime_error(status.error_message());
+        return response;
+    };
+    auto forwarded = call(follower, false);
+    EXPECT_EQ(forwarded.clock_responder().replica_id(), endpoints[lead]);
+    EXPECT_EQ(forwarded.clock_responder().instance(), "replica-" + std::to_string(lead));
+    EXPECT_EQ(forwarded.physical().physical_ns(), kEpochNs + int64_t(lead + 1) * 1'000'000'000);
+    EXPECT_EQ(forwarded.physical().uncertainty_ns(), lead + 1);
+
+    stop(lead);
+    stop((lead + 2) % 3);
+    ASSERT_FALSE(stores[follower]->leaderLease());
+    auto audited = call(follower, true);
+    EXPECT_EQ(audited.clock_responder().replica_id(), endpoints[follower]);
+    EXPECT_EQ(audited.clock_responder().instance(), "replica-" + std::to_string(follower));
+    EXPECT_EQ(audited.physical().status(), v1::CLOCK_STATUS_SYNCED);
+    EXPECT_EQ(audited.physical().physical_ns(), kEpochNs + int64_t(follower + 1) * 1'000'000'000);
+    EXPECT_EQ(audited.physical().uncertainty_ns(), follower + 1);
+
+    clocks[follower]->setStatus(ClockStatus::Unsynced);
+    audited = call(follower, true);
+    EXPECT_EQ(audited.physical().status(), v1::CLOCK_STATUS_UNSYNCED);
+    EXPECT_FALSE(audited.physical().has_uncertainty_ns());
+    EXPECT_EQ(audited.clock_responder().replica_id(), endpoints[follower]);
+}
+
+// A forwarded Register and Heartbeat carry the leader's reading and identity, and the leader's Keeper timeouts (A9).
+TEST_F(DynamicClusterTest, ForwardedRegisterAndHeartbeatCarryTheLeadersClock)
+{
+    auto lead = leader();
+    ASSERT_LT(lead, 3u);
+    auto follower = (lead + 1) % 3;
+    clocks[follower]->setStatus(ClockStatus::Unsynced);
+    KeeperDriver a{*stubs[follower], "keeper-a", "a1"};
+    auto registered = a.Register();
+    ASSERT_EQ(registered.status().code(), 0);
+    EXPECT_EQ(registered.clock_responder().replica_id(), endpoints[lead]);
+    EXPECT_EQ(registered.clock_responder().instance(), "replica-" + std::to_string(lead));
+    EXPECT_EQ(registered.physical().status(), v1::CLOCK_STATUS_SYNCED);
+    EXPECT_EQ(registered.physical().physical_ns(), kEpochNs + int64_t(lead + 1) * 1'000'000'000);
+    EXPECT_EQ(registered.physical().uncertainty_ns(), lead + 1);
+    EXPECT_EQ(registered.policy().keeper_failure_timeout_ms(), 1500u);
+    EXPECT_EQ(registered.policy().release_fence_timeout_ms(), 700u);
+    auto beat = a.Heartbeat();
+    ASSERT_EQ(beat.status().code(), 0);
+    EXPECT_EQ(beat.clock_responder().replica_id(), endpoints[lead]);
+    EXPECT_EQ(beat.clock_responder().instance(), "replica-" + std::to_string(lead));
+    EXPECT_EQ(beat.physical().physical_ns(), kEpochNs + int64_t(lead + 1) * 1'000'000'000);
+    EXPECT_EQ(beat.physical().uncertainty_ns(), lead + 1);
+}
+
 TEST_F(DynamicClusterTest, ForwardingToTheLeaderReusesOneChannelPerPeer)
 {
     auto old = leader();

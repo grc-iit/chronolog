@@ -305,6 +305,9 @@ absl::Status VisorConfig::validate() const
     auto lease_status = leases.validate(raft.election_upper_ms, heartbeat_timeout_ms, release_fence_timeout_ms);
     if(!lease_status.ok())
         return lease_status;
+    // Keepers take both from RegisterResponse.policy, so a zero here would reach every Keeper.
+    if(heartbeat_timeout_ms == 0 || release_fence_timeout_ms == 0)
+        return absl::InvalidArgumentError("keeper_failure_timeout_ms and release_fence_timeout_ms must be positive");
     if(membership_mode != "static" && membership_mode != "dynamic")
         return absl::InvalidArgumentError("membership_mode must be static or dynamic");
     if(membership_mode == "dynamic")

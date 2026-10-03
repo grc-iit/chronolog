@@ -11,14 +11,17 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdio>
 #include <ctime>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <string>
 #include <thread>
 
+#include "clock/KernelClock.h"
 #include "rpc/Channel.h"
 #include "VisorConfig.h"
 #include "adapter/CatalogService.h"
@@ -48,6 +51,23 @@ startServer(const std::string& address, grpc::Service& service, int& bound_port,
     if(extra)
         builder.RegisterService(extra);
     return builder.BuildAndStart();
+}
+
+std::string newInstanceId()
+{
+    std::random_device random;
+    char buffer[40];
+    std::snprintf(buffer, sizeof(buffer), "%08x%08x", random(), random());
+    return buffer;
+}
+
+// The address Keepers learn this replica by: its entry in RegisterResponse.visor_replicas when dynamic.
+std::string replicaId(const chronolog::visor::VisorConfig& config)
+{
+    for(const auto& peer: config.raft.peers)
+        if(config.membership_mode == "dynamic" && peer.id == config.raft.server_id)
+            return peer.internal_endpoint;
+    return config.internal_listen;
 }
 
 } // namespace
@@ -171,13 +191,16 @@ int main(int argc, char** argv)
 
     chronolog::visor::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
     chronolog::visor::CatalogService catalog(catalog_store, pool, raft, &membership);
+    chronolog::KernelClock clock;
     chronolog::visor::ClusterService cluster(membership,
                                              ledger,
                                              ledger,
                                              feed,
                                              raft,
                                              &pool,
-                                             std::chrono::milliseconds(config->heartbeat_timeout_ms));
+                                             std::chrono::milliseconds(config->heartbeat_timeout_ms),
+                                             std::chrono::milliseconds(100),
+                                             {&clock, replicaId(*config), newInstanceId(), fence_timeout});
 
     struct LeaseTickState
     {
