@@ -80,16 +80,17 @@ export PATH="$prefix/bin:$PATH" CHRONOLOG_HOME="$prefix/state"
 
 `doctor` resolves the four installed executables. `up` waits for readiness and prints the endpoints; `ls` reports
 managed and registered external instances. This placement uses Dragon's `/home` NVMe for the WAL and its `/` NVMe
-for the local archive (`/tmp` is on `/` there):
+for the local archive (`/var/tmp` is on `/` there):
 
 ```sh
 chronolog doctor
-chronolog up --wal-dir "$prefix/wal" --local-root "/tmp/chronolog-demo-$(id -u)/$sha/archive"
+chronolog up --wal-dir "$prefix/wal" --local-root "/var/tmp/chronolog-demo-$(id -u)/$sha/archive"
 chronolog ls
 chronolog status
 ```
 
-Choose a persistent directory on the desired filesystem for real use; `/tmp` is disposable rehearsal storage.
+Choose a persistent directory on the desired filesystem for real use. `/var/tmp` survives reboot on Dragon;
+the rehearsal retains this archive after stopping.
 Without placement flags, the WAL is under `$CHRONOLOG_HOME/instances/default/keeper/wal` and the local tier under
 `$CHRONOLOG_HOME/instances/default/grapher/archive`. The catalog, logs and registry also live under
 `$CHRONOLOG_HOME`; its default is `$XDG_STATE_HOME/chronolog`, or `~/.local/state/chronolog`.
