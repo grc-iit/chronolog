@@ -171,6 +171,7 @@ v1::AppendResult toProto(const AppendResult& result)
     v1::AppendResult out;
     *out.mutable_status() = toProto(result.status);
     out.set_achieved_durability(toProto(result.achieved));
+    out.set_rejection(static_cast<v1::AppendRejection>(result.rejection));
     *out.mutable_assigned_hlc() = toProto(result.hlc);
     *out.mutable_id() = toProto(result.id);
     if(result.current_route)

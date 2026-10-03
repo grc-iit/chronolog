@@ -7,6 +7,30 @@ namespace
 {
 Range All() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 } // namespace
+TEST(JournalAdapterTest, AppendRejectionReasonsIgnoreDiagnosticText)
+{
+    for(uint32_t reason = 0; reason <= 10; ++reason)
+    {
+        AppendResult result;
+        result.rejection = static_cast<AppendRejection>(reason);
+        for(const auto* message: {"stale epoch", "changed unrelated diagnostic", "incarnation is released"})
+        {
+            result.status = absl::FailedPreconditionError(message);
+            auto wire = keeper::convert::toProto(result);
+            EXPECT_EQ(static_cast<uint32_t>(wire.rejection()), reason);
+            EXPECT_EQ(wire.status().message(), message);
+        }
+    }
+    test::AdapterRig rig;
+    v1::AppendRequest request;
+    test::AdapterRig::fillRequest(request, 7, {2, 1});
+    v1::AppendResponse response;
+    auto context = test::AdapterRig::context();
+    ASSERT_TRUE(rig.journal->Append(context.get(), request, &response).ok());
+    ASSERT_EQ(response.results_size(), 2);
+    EXPECT_EQ(response.results(0).rejection(), v1::APPEND_REJECTION_SEQUENCE_GAP);
+    EXPECT_EQ(response.results(1).rejection(), v1::APPEND_REJECTION_EARLIER_ITEM_FAILED);
+}
 TEST(JournalAdapterTest, CancelledStreamKeepsAcceptedItems)
 {
     test::AdapterRig rig;

@@ -84,6 +84,11 @@ class ScannedRamJournal final: public RamJournal
 {
 public:
     using RamJournal::RamJournal;
+    void onSlotValidated(std::function<void()> hook)
+    {
+        std::lock_guard lock(mu_);
+        slot_validated_ = std::move(hook);
+    }
     void onAssignment(std::function<void(Hlc)> hook)
     {
         std::lock_guard lock(mu_);
@@ -96,6 +101,16 @@ public:
     }
 
 protected:
+    void slotValidated() override
+    {
+        std::function<void()> hook;
+        {
+            std::lock_guard lock(mu_);
+            hook = slot_validated_;
+        }
+        if(hook)
+            hook();
+    }
     void assignmentObserved(Hlc hlc) override
     {
         std::function<void(Hlc)> hook;
@@ -121,6 +136,7 @@ private:
     mutable std::mutex mu_;
     std::function<void()> scanned_;
     std::function<void(Hlc)> assigned_;
+    std::function<void()> slot_validated_;
 };
 
 // Fresh RamJournal on a FakeClock at physical 100 with writer 2 incarnation 3 registered on story 1.

@@ -78,13 +78,13 @@ TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
     EXPECT_TRUE((*next)[0].status.ok());
 }
 
-// The window lines of the one writer in a "v2" checkpoint, by sequence.
+// The window lines of the one writer in a "v3" checkpoint, by sequence.
 std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::string& text, size_t* declared = nullptr)
 {
     std::istringstream in(text);
     std::string line;
     std::getline(in, line);
-    EXPECT_EQ(line, "v2 1");
+    EXPECT_EQ(line, "v3 1");
     std::getline(in, line);
     std::istringstream header(line);
     uint64_t story, writer, incarnation, next, released, assigned;
@@ -96,10 +96,11 @@ std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::str
         *declared = count;
     std::map<uint64_t, std::pair<int64_t, uint32_t>> window;
     uint64_t sequence;
-    int code;
-    while(in >> sequence >> physical >> logical >> code)
+    int code, rejection;
+    while(in >> sequence >> physical >> logical >> code >> rejection)
     {
         EXPECT_EQ(code, 0);
+        EXPECT_EQ(rejection, 0);
         EXPECT_TRUE(window.emplace(sequence, std::pair{physical, logical}).second)
                 << "sequence " << sequence << " twice";
     }
