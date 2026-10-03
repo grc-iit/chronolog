@@ -30,6 +30,6 @@ if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
         add_test(NAME python.${name} COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${CMAKE_CURRENT_SOURCE_DIR}/../tests/acceptance.sh"
             $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
             "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../tests/${file}.py")
-        set_tests_properties(python.${name} PROPERTIES TIMEOUT 90 ENVIRONMENT "${python_env}")
+        set_tests_properties(python.${name} PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 90 ENVIRONMENT "${python_env}")
     endforeach()
 endif()

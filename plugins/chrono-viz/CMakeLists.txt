@@ -24,5 +24,5 @@ if(TARGET _core AND TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chro
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
         "${PROJECT_SOURCE_DIR}/build/viz-venv/bin/python"
         "${CMAKE_CURRENT_SOURCE_DIR}/backend/test_stack.py")
-    set_tests_properties(plugin.viz.acceptance PROPERTIES TIMEOUT 120)
+    set_tests_properties(plugin.viz.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 120)
 endif()

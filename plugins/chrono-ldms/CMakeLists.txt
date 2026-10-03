@@ -23,7 +23,7 @@ gtest_discover_tests(chronolog_ldms_lease_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME ldms.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_ldms_tests>)
-    set_tests_properties(ldms.acceptance PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE
+    set_tests_properties(ldms.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 120
         ENVIRONMENT "CHRONOLOG_LDMS_FAKE=$<TARGET_FILE:chronolog_ldms_fake_ldmsd>")
 endif()
 

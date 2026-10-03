@@ -17,7 +17,7 @@ gtest_discover_tests(chronolog_stream_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "st
 if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
     add_test(NAME stream.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/cpp/tests/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player> $<TARGET_FILE:chronolog_stream_tests>)
-    set_tests_properties(stream.acceptance PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    set_tests_properties(stream.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 90)
 endif()
 add_executable(chronolog_stream_lease_tests tests/lease_test.cpp)
 target_link_libraries(chronolog_stream_lease_tests PRIVATE chronolog::stream chronolog::kvs chronolog::client chronolog_proto GTest::gtest_main chronolog_warnings)

@@ -67,6 +67,7 @@ endif()
 add_test(NAME visor_binary_acceptance
          COMMAND ${visor_acceptance_launcher} timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance.sh"
                  $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_acceptance_client>)
+set_tests_properties(visor_binary_acceptance PROPERTIES RESOURCE_LOCK chronolog_stack)
 
 add_executable(chronolog_raft_tests tests/raft_metadata_store_contract.cpp)
 target_include_directories(chronolog_raft_tests PRIVATE tests "${PROJECT_SOURCE_DIR}/tests/contract")
@@ -77,7 +78,7 @@ add_executable(visor_raft_acceptance_client tests/raft_acceptance_client.cpp)
 target_link_libraries(visor_raft_acceptance_client PRIVATE chronolog_proto chronolog_warnings)
 add_test(NAME visor_raft_binary_acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} timeout 120 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/raft_acceptance.sh"
     $<TARGET_FILE:chrono_visor> $<TARGET_FILE:visor_raft_acceptance_client>)
-set_tests_properties(visor_raft_binary_acceptance PROPERTIES TIMEOUT 125 RESOURCE_LOCK visor_raft_ports)
+set_tests_properties(visor_raft_binary_acceptance PROPERTIES TIMEOUT 125 RESOURCE_LOCK "visor_raft_ports;chronolog_stack")
 
 add_executable(chronolog_admin dynamic/admin.cpp)
 target_link_libraries(chronolog_admin PRIVATE chronolog_common_rpc chronolog_internal_proto chronolog_warnings)
