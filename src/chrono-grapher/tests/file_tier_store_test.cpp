@@ -385,6 +385,7 @@ TEST(FileTierStore, PhysicalPruningNeverDropsAnIntersectingEvent)
             ASSERT_TRUE(legacy.ok());
             auto record = Record(900, 1000);
             record.file = "1/legacy" + codec->extension();
+            std::ofstream(*directory / record.file).close();
             ASSERT_TRUE(codec->writeChunk(*directory / record.file, PhysicalChunk(900, {500, 0, ClockStatus::Synced}))
                                 .ok());
             ASSERT_TRUE((*legacy)->append(record).ok());
