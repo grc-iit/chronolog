@@ -144,15 +144,18 @@ absl::Status RepairTail(int fd)
 }
 } // namespace
 
-ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd)
+ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd, PathStat path_stat)
     : directory_(std::move(directory))
     , writer_(std::move(writer))
     , fd_(fd)
+    , path_stat_(path_stat ? std::move(path_stat)
+                           : PathStat([](const std::filesystem::path& path, struct stat& info)
+                                      { return ::stat(path.c_str(), &info); }))
 {}
 
-std::unique_ptr<ManifestLog> ManifestLog::OpenReadOnly(std::filesystem::path root)
+std::unique_ptr<ManifestLog> ManifestLog::OpenReadOnly(std::filesystem::path root, PathStat path_stat)
 {
-    return std::unique_ptr<ManifestLog>(new ManifestLog(root / "manifest", "", -1));
+    return std::unique_ptr<ManifestLog>(new ManifestLog(root / "manifest", "", -1, std::move(path_stat)));
 }
 
 ManifestLog::~ManifestLog()
@@ -161,7 +164,8 @@ ManifestLog::~ManifestLog()
         ::close(fd_);
 }
 
-absl::StatusOr<std::unique_ptr<ManifestLog>> ManifestLog::Open(std::filesystem::path root, std::string writer)
+absl::StatusOr<std::unique_ptr<ManifestLog>>
+ManifestLog::Open(std::filesystem::path root, std::string writer, PathStat path_stat)
 {
     if(!SafeWriter(writer))
         return absl::InvalidArgumentError("invalid manifest writer");
@@ -173,7 +177,7 @@ absl::StatusOr<std::unique_ptr<ManifestLog>> ManifestLog::Open(std::filesystem::
     const int fd = ::open((directory / (writer + ".log")).c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC, 0644);
     if(fd < 0)
         return tier_detail::IoError("open writer log");
-    auto result = std::unique_ptr<ManifestLog>(new ManifestLog(directory, std::move(writer), fd));
+    auto result = std::unique_ptr<ManifestLog>(new ManifestLog(directory, std::move(writer), fd, std::move(path_stat)));
     if(::flock(fd, LOCK_EX | LOCK_NB) != 0)
         return absl::UnavailableError("manifest writer already active");
     const auto status = RepairTail(fd);
@@ -411,7 +415,7 @@ absl::Status ManifestLog::advance(bool& changed) const
         {
             auto& cursor = std::string(extension) == ".log" ? cursors.log : cursors.snapshot;
             const auto path = directory_ / (writer + extension);
-            if(::stat(path.c_str(), &info) != 0)
+            if(path_stat_(path, info) != 0)
             {
                 if(errno != ENOENT)
                     return tier_detail::IoError("stat manifest");

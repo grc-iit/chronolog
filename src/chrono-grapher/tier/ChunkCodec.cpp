@@ -1,5 +1,6 @@
 #include "chrono-grapher/tier/ChunkCodec.h"
 #include "chrono-grapher/tier/FileIO.h"
+#include <absl/strings/cord.h>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -7,17 +8,21 @@ namespace chronolog
 {
 namespace
 {
+constexpr std::string_view kVanished = "type.chronolog.io/archive-file-vanished";
+
+absl::Status LoadError(std::string_view operation) { return ArchiveFileError(operation, errno); }
+
 absl::StatusOr<ChunkBytes> LoadBytes(const std::filesystem::path& file, bool hdf5)
 {
     const size_t limit = (hdf5 ? 512u : 256u) * 1024 * 1024;
     tier_detail::Fd fd(::open(file.c_str(), O_RDONLY | O_CLOEXEC));
     if(fd.get() < 0)
-        return tier_detail::IoError("open archived chunk");
+        return LoadError("open archived chunk");
     struct stat info
     {
     };
     if(::fstat(fd.get(), &info) != 0)
-        return tier_detail::IoError("stat archived chunk");
+        return LoadError("stat archived chunk");
     if(info.st_size < 0 || static_cast<uint64_t>(info.st_size) > limit || (hdf5 && info.st_size == 0))
         return absl::UnavailableError("invalid archived chunk file size");
     if(!S_ISREG(info.st_mode))
@@ -31,7 +36,7 @@ absl::StatusOr<ChunkBytes> LoadBytes(const std::filesystem::path& file, bool hdf
             if(count < 0 && errno == EINTR)
                 continue;
             if(count < 0)
-                return tier_detail::IoError("read archived chunk");
+                return LoadError("read archived chunk");
             if(count == 0)
                 break;
             if(static_cast<size_t>(count) > limit - bytes.size())
@@ -52,7 +57,7 @@ absl::StatusOr<ChunkBytes> LoadBytes(const std::filesystem::path& file, bool hdf
         if(count < 0 && errno == EINTR)
             continue;
         if(count < 0)
-            return tier_detail::IoError("read archived chunk");
+            return LoadError("read archived chunk");
         if(count == 0)
             return absl::UnavailableError("truncated archived chunk file");
         offset += static_cast<size_t>(count);
@@ -61,6 +66,16 @@ absl::StatusOr<ChunkBytes> LoadBytes(const std::filesystem::path& file, bool hdf
 }
 
 } // namespace
+
+absl::Status ArchiveFileError(std::string_view operation, int error)
+{
+    auto status = absl::UnavailableError(std::string(operation) + ": " + std::strerror(error));
+    if(error == ENOENT || error == ESTALE)
+        status.SetPayload(kVanished, absl::Cord("1"));
+    return status;
+}
+
+bool ArchiveFileVanished(const absl::Status& status) { return status.GetPayload(kVanished).has_value(); }
 
 absl::StatusOr<ChunkBytes> LoadChunkFile(const std::filesystem::path& file)
 {
