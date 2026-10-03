@@ -21,7 +21,7 @@ struct StaticRoute
     Route route;
 };
 
-// A writer admitted at boot, for a Keeper running without a Visor.
+// A writer installed at boot; appends still wait for Catalog policy validation.
 struct StaticWriter
 {
     StoryId story_id{};
