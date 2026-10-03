@@ -388,6 +388,7 @@ void Runtime::shutdown()
 
 namespace
 {
+using binding::pack;
 using Client = Held<sdk::Client>;
 using Writer = Held<sdk::Writer>;
 using ReadStream = Held<sdk::ReadStream>;
