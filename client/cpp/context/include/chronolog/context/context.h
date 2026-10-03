@@ -121,6 +121,18 @@ struct RecallOptions
     PageLimits limits;
     size_t max_read_calls{32};
 };
+struct LatestOptions
+{
+    std::optional<Hlc> before;
+    PageLimits limits;
+    size_t max_read_calls{32};
+};
+struct LatestResult
+{
+    Page page;
+    std::optional<Hlc> as_of;
+    bool selection_complete{false};
+};
 struct AcquisitionProvenance
 {
     std::string host_id;
@@ -286,6 +298,7 @@ public:
     const AgentIdentity& identity() const;
     absl::StatusOr<MemoryResult> remember(const Memory&, RememberOptions options = {}, Deadline deadline = {});
     absl::StatusOr<Page> recall(RecallOptions options = {}, Deadline deadline = {});
+    absl::StatusOr<LatestResult> latest(size_t n, LatestOptions options = {}, Deadline deadline = {});
     absl::StatusOr<ReconcileResult> reconcile(ReconcileOptions options = {}, Deadline deadline = {});
     absl::Status acknowledgeProcessed(const Position&);
     Checkpoint checkpoint() const;

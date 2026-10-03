@@ -96,6 +96,53 @@ Page readPage(client::Client& sdk,
         page.has_more = true;
     return page;
 }
+absl::StatusOr<VerifiedCut> verifiedCut(client::Client& sdk,
+                                        StoryId story,
+                                        Hlc floor,
+                                        std::chrono::nanoseconds width,
+                                        PageLimits limits,
+                                        size_t max_read_calls,
+                                        Deadline deadline,
+                                        std::shared_ptr<Record> record)
+{
+    VerifiedCut result;
+    auto next_floor = successor(floor);
+    if(!next_floor.ok())
+        return next_floor.status();
+    Hlc candidate = std::max(*next_floor, realtime());
+    Page& probe = result.probe;
+    while(result.calls < max_read_calls)
+    {
+        const auto range = probeRange(candidate, width);
+        if(range.start >= range.end)
+            break;
+        probe = readPage(sdk, story, range, limits, deadline, record);
+        ++result.calls;
+        if(!probe.stream_status.ok() || !probe.completion)
+            break;
+        if(probe.completion->complete)
+        {
+            result.as_of = std::max(candidate, probe.completion->frontier);
+            return result;
+        }
+        const auto frontier = probe.completion->frontier;
+        if(frontier <= Hlc{} || frontier == candidate)
+            break;
+        candidate = frontier;
+    }
+    probe.events.clear();
+    probe.raw_bytes = 0;
+    probe.after.reset();
+    probe.delivered_prefix_end.reset();
+    probe.next_cursor.reset();
+    probe.answer_complete = false;
+    probe.has_more = true;
+    probe.range.reset();
+    probe.cut_covers_causal_floor = false;
+    if(result.calls >= max_read_calls)
+        probe.limited = DeliveryLimit::ReadCalls;
+    return result;
+}
 } // namespace detail
 namespace
 {
@@ -170,47 +217,20 @@ absl::StatusOr<Page> ContextSession::recall(RecallOptions options, Deadline dead
     }
     else if(!options.end)
     {
-        auto next_floor = detail::successor(floor);
-        if(!next_floor.ok())
-            return next_floor.status();
-        Hlc candidate = std::max(*next_floor, detail::realtime());
-        Page probe;
-        bool verified = false;
-        while(calls < options.max_read_calls)
-        {
-            const auto range = detail::probeRange(candidate, core.options.cut_probe_width);
-            if(range.start >= range.end)
-                break;
-            probe = detail::readPage(core.sdk, story, range, options.limits, deadline, impl_->record);
-            ++calls;
-            if(!probe.stream_status.ok() || !probe.completion)
-                break;
-            if(probe.completion->complete)
-            {
-                original.end = std::max(candidate, probe.completion->frontier);
-                verified = true;
-                break;
-            }
-            const auto frontier = probe.completion->frontier;
-            if(frontier <= Hlc{} || frontier == candidate)
-                break;
-            candidate = frontier;
-        }
-        if(!verified)
-        {
-            probe.events.clear();
-            probe.raw_bytes = 0;
-            probe.after.reset();
-            probe.delivered_prefix_end.reset();
-            probe.next_cursor.reset();
-            probe.answer_complete = false;
-            probe.has_more = true;
-            probe.range.reset();
-            probe.cut_covers_causal_floor = false;
-            if(calls >= options.max_read_calls)
-                probe.limited = DeliveryLimit::ReadCalls;
-            return probe;
-        }
+        auto cut = detail::verifiedCut(core.sdk,
+                                       story,
+                                       floor,
+                                       core.options.cut_probe_width,
+                                       options.limits,
+                                       options.max_read_calls,
+                                       deadline,
+                                       impl_->record);
+        if(!cut.ok())
+            return cut.status();
+        calls = cut->calls;
+        if(!cut->as_of)
+            return std::move(cut->probe);
+        original.end = *cut->as_of;
     }
     if(original.start.physical_ns < 0 || original.end.physical_ns < 0 || original.end < original.start)
         return absl::InvalidArgumentError("invalid recall range");
