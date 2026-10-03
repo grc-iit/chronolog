@@ -8,6 +8,8 @@ target_link_libraries(chronolog_grapher_server PUBLIC
 add_executable(chrono_grapher main.cpp)
 target_link_libraries(chrono_grapher PRIVATE chronolog_grapher_server chronolog_warnings
     absl::log absl::log_initialize absl::log_globals)
+include(GNUInstallDirs)
+install(TARGETS chrono_grapher RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT server)
 
 add_executable(chronolog_grapher_server_tests ../tests/archive_service_test.cpp ../tests/tombstone_watcher_test.cpp
     ../tests/visor_clock_audit_test.cpp)
