@@ -54,6 +54,8 @@ public:
     void reconcile(const AcquisitionSnapshot& snapshot, std::pair<StoryId, uint64_t> after, bool end);
     void onAcquisitionChange(const AcquisitionChange& change) override;
     absl::StatusOr<AcquisitionLease> sample(const AcquisitionChange& row, bool renew);
+    // Keeper admission evidence renews only live rows assigned to `keeper`, under the renewal rules.
+    size_t acceptEvidence(const std::string& keeper, const std::vector<AcquisitionChange>& rows);
     void advanceClock(int64_t ns, bool ticking);
     void eraseForTest(RenewAcquisition tuple);
     std::vector<RenewAcquisition> reconciliationTuples();

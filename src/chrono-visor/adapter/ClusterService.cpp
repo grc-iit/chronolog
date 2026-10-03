@@ -345,6 +345,23 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     return reactor;
 }
 
+namespace
+{
+// Bounded tuple list from HeartbeatRequest field 8; entries past the bound supply no evidence.
+std::vector<RenewAcquisition> evidenceTuples(const internal::v1::HeartbeatRequest& request)
+{
+    std::vector<RenewAcquisition> tuples;
+    const int count = std::min(request.admission_evidence_size(), 65536);
+    tuples.reserve(count);
+    for(int i = 0; i < count; ++i)
+    {
+        const auto& e = request.admission_evidence(i);
+        tuples.push_back({e.story_id(), e.writer_id(), e.incarnation()});
+    }
+    return tuples;
+}
+} // namespace
+
 grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext* context,
                                                     const internal::v1::HeartbeatRequest* request,
                                                     internal::v1::HeartbeatResponse* response)
@@ -356,6 +373,10 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
     {
         absl::Status status =
                 membership_.heartbeat(request.process_id(), request.instance(), request.applied_revision());
+        // Evidence renews only after instance validation and never changes the heartbeat result.
+        if(status.ok() && request.admission_evidence_size())
+            if(auto* sqlite = const_cast<SqliteMetadataStore*>(dynamic_cast<const SqliteMetadataStore*>(&store_)))
+                (void)sqlite->acceptKeeperEvidence(request.process_id(), evidenceTuples(request));
         if(status.ok() && !request.stories_without_physical_policy().empty())
         {
             auto process = membership_.process(request.process_id());
@@ -377,7 +398,7 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
         response->set_authority_tick_ns(authorityTickNs());
         reactor->Finish(grpc::Status::OK);
     };
-    if(request->stories_without_physical_policy().empty() || !pool_)
+    if((request->stories_without_physical_policy().empty() && request->admission_evidence().empty()) || !pool_)
         task();
     else if(!pool_->submit(std::move(task)))
         reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
@@ -689,7 +710,11 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
             if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
                 *q->mutable_register_() = *request;
             else if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
+            {
                 *q->mutable_heartbeat() = *request;
+                // Admission evidence is leader-local lease memory and never enters a Raft entry.
+                q->mutable_heartbeat()->clear_admission_evidence();
+            }
             else if constexpr(std::is_same_v<Request, internal::v1::ExtendCeilingRequest>)
                 *q->mutable_extend() = *request;
             else
@@ -713,14 +738,19 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                     return;
                 }
                 const auto& state = *loaded;
-                if(!dynamic::heartbeatChanges(state, *request))
+                bool current = false;
+                for(const auto& m: state.members())
+                    if(m.process().process_id() == request->process_id() &&
+                       m.process().instance() == request->instance())
+                        current = true;
+                // Consumed before the evidence-only early return, so it costs no proposal.
+                if(current && request->admission_evidence_size())
+                    (void)raft_->acceptKeeperEvidence(request->process_id(), evidenceTuples(*request));
+                if(!dynamic::heartbeatChanges(state, q->heartbeat()))
                 {
                     internal::v1::HeartbeatResponse plain;
-                    auto status = absl::FailedPreconditionError("obsolete or unknown process instance");
-                    for(const auto& m: state.members())
-                        if(m.process().process_id() == request->process_id() &&
-                           m.process().instance() == request->instance())
-                            status = absl::OkStatus();
+                    auto status = current ? absl::OkStatus()
+                                          : absl::FailedPreconditionError("obsolete or unknown process instance");
                     *plain.mutable_status() = convert::toProto(status);
                     result = plain.SerializeAsString();
                     propose = false;

@@ -278,6 +278,15 @@ absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange&
     }
     return AcquisitionLease{row.duration_ns, std::max<int64_t>(0, entry.deadline - time)};
 }
+size_t LeaseAuthority::acceptEvidence(const std::string& keeper, const std::vector<AcquisitionChange>& rows)
+{
+    size_t renewed = 0;
+    for(const auto& row: rows)
+        if(row.state == AcquisitionState::Acquired && row.assigned_keeper.process_id == keeper &&
+           sample(row, true).ok())
+            ++renewed;
+    return renewed;
+}
 void LeaseAuthority::advanceClock(int64_t ns, bool ticking)
 {
     if(ns < 0 || ns > INT64_MAX / 4)

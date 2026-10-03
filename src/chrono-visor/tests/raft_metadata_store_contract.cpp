@@ -466,7 +466,7 @@ TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
     auto grant = store->acquire(story, "missing", options);
     ASSERT_TRUE(grant.ok());
     const RenewAcquisition tuple{story, grant->writer_id, grant->incarnation};
-    for(int path = 0; path < 3; ++path)
+    for(int path = 0; path < 4; ++path)
     {
         store->leaseAuthority().eraseForTest(tuple);
         EXPECT_EQ(store->leaseAuthority().size(), 0u);
@@ -484,6 +484,12 @@ TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
             ASSERT_TRUE(renewal.ok());
             ASSERT_TRUE(renewal->front().status.ok());
         }
+        if(path == 3)
+        {
+            auto renewed = store->acceptKeeperEvidence(grant->assigned_keeper.process_id, {tuple});
+            ASSERT_TRUE(renewed.ok());
+            EXPECT_EQ(*renewed, 1u);
+        }
         EXPECT_EQ(store->leaseAuthority().size(), 1u);
     }
     auto row = liveRow(*store, *grant);
@@ -498,6 +504,12 @@ TEST(RaftStorageTest, MissingLiveDeadlineIsReconciled)
     auto renewal = store->renewAcquisitions({tuple});
     ASSERT_TRUE(renewal.ok());
     EXPECT_TRUE(absl::IsUnavailable(renewal->front().status));
+    auto evidence = store->acceptKeeperEvidence(grant->assigned_keeper.process_id, {tuple});
+    ASSERT_TRUE(evidence.ok());
+    EXPECT_EQ(*evidence, 0u);
+    due = store->leaseAuthority().sample(row, false);
+    ASSERT_TRUE(due.ok());
+    EXPECT_EQ(due->remaining_ns, 0);
     ASSERT_TRUE(store->release(story, grant->writer_id, grant->incarnation).ok());
     EXPECT_EQ(store->leaseAuthority().size(), 0u);
     EXPECT_EQ(store->snapshotAcquisitions()->active.size(), 0u);

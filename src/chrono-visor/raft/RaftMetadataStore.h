@@ -33,6 +33,8 @@ public:
     absl::StatusOr<std::vector<RenewAcquisitionResult>>
     renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
     LeaseAuthority& leaseAuthority() { return leases_; }
+    // Leader-local Keeper heartbeat evidence; never proposed. Returns the number of tuples renewed.
+    absl::StatusOr<size_t> acceptKeeperEvidence(const std::string& keeper, const std::vector<RenewAcquisition>& tuples);
 
     absl::StatusOr<ReleaseResult> release(StoryId id, uint64_t writer_id, uint64_t incarnation) override;
     absl::StatusOr<Epoch> compareAndSetEpoch(StoryId id, Epoch expected, Epoch desired) override;
