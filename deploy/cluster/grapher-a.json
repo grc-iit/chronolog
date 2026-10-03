@@ -1,8 +1,0 @@
-{
-  "process_id": "grapher-a",
-  "manifest_writer": "grapher-a",
-  "internal_listen": "100.101.232.95:50053",
-  "self_endpoint": "100.101.232.95:50053",
-  "visor_internal": "100.124.181.9:50061",
-  "archive_root": "/mnt/nfs/chronolog-sprint/archive"
-}
