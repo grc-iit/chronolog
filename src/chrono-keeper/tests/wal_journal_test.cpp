@@ -32,6 +32,41 @@ AppendBatch batch(std::initializer_list<uint64_t> sequences)
 }
 Range all() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 
+TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
+{
+    for(const auto* checkpoint: {"W1\n1 2 3 2 100 1 0 1 1\n1 100 1\n",
+                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 100 1 0\n",
+                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 0 0 11\n"})
+    {
+        WalRig rig;
+        rig.journal.reset();
+        const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+        const auto bytes = wal::frame(checkpoint);
+        std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+        rig.reopen();
+        auto retry = rig.current->append(batch({1}), Durability::Durable);
+        ASSERT_TRUE(retry.ok());
+        EXPECT_EQ(retry->front().rejection, AppendRejection::Unspecified);
+        EXPECT_EQ(retry->front().status.code(),
+                  std::string_view(checkpoint).ends_with("11\n") ? absl::StatusCode::kOutOfRange
+                                                                 : absl::StatusCode::kOk);
+        EXPECT_TRUE(rig.current->checkpoint().starts_with("v3 "));
+    }
+}
+
+TEST(WalJournal, AppendRejectionReasonsRejectMalformedCheckpoint)
+{
+    for(const auto* result: {"1 100 1 0 13\n", "1 100 1 0 3\n", "1 100 1 0\n"})
+    {
+        WalRig rig;
+        rig.journal.reset();
+        const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+        const auto bytes = wal::frame(std::string("Wv3 1\n1 2 3 2 100 1 0 1 1\n") + result);
+        std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+        EXPECT_THROW(rig.reopen(), std::runtime_error);
+    }
+}
+
 TEST(WalJournal, RecoveredUnsettledSealRequiresArchiveEvenWhenAcceptedEventsAreGone)
 {
     WalRig rig;
