@@ -227,3 +227,7 @@ endif()
 if(CHRONOLOG_BUILD_BENCH)
     add_subdirectory(tools/bench)
 endif()
+
+if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player AND TARGET chronolog_client)
+    add_subdirectory(deploy/local)
+endif()
