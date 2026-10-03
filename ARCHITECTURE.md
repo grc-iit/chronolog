@@ -341,7 +341,7 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | chunk checksum algorithm | Keeper to Grapher | CRC32C | W10.4 |
 | manifest fsync per append | Grapher | off | `ArchiveManifest` constructor default, origin/archive-file-manifest |
 | tail_max_bytes | Player | TBD until measured; implementation starts at 67108864 | `src/chrono-player/PlayerConfig.h`, RFC-D P1.2 |
-| compact_enabled | Grapher | false; enable only once every Player and Grapher on the archive root reads compact_v1 and the wal replay gates over compacted outputs have landed | I13.12, `src/chrono-grapher/server/GrapherConfig.cpp` |
+| compact_enabled | Grapher | true since f642d9f8, after the Player gates over compacted outputs landed in 87b86780; a deployment whose archive root has a Player or Grapher that cannot read compact_v1 MUST set it false | I13.12, `src/chrono-grapher/server/GrapherConfig.h` |
 | compact_scan_interval_secs | Grapher | 60 | I13.12 |
 | compact_min_files | Grapher | 32 | I13.12 |
 | compact_max_files | Grapher | 128 | I13.12 |
