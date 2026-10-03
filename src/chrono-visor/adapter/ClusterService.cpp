@@ -108,6 +108,11 @@ private:
         }
         else
         {
+            if(failed_ && failed_())
+            {
+                finished_ = true;
+                this->Finish(grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "subscriber fell behind, resubscribe"));
+            }
             return;
         }
         writing_ = true;
@@ -498,12 +503,15 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
         snapshot.push_back(std::move(message));
     }
     std::function<std::optional<internal::v1::WatchRoutesResponse>()> pull;
+    std::function<bool()> failed;
     if(history)
     {
         auto state = std::make_shared<std::pair<uint64_t, std::deque<internal::v1::WatchRoutesResponse>>>();
+        auto trimmed = std::make_shared<bool>(false);
         state->first = cursor;
         for(const auto& message: snapshot) state->first = std::max(state->first, message.revision());
-        pull = [history, state]() -> std::optional<internal::v1::WatchRoutesResponse>
+        failed = [trimmed] { return *trimmed; };
+        pull = [history, state, trimmed]() -> std::optional<internal::v1::WatchRoutesResponse>
         {
             if(state->second.empty())
             {
@@ -514,15 +522,17 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
                 if(!loaded.ok())
                     return std::nullopt;
                 const auto& current = *loaded;
-                bool trimmed = state->first < current.route_history_floor();
-                const auto& updates = trimmed ? current.routes() : current.route_history();
-                for(const auto& update: updates)
-                    if(trimmed || update.revision() > state->first)
+                if(state->first < current.route_history_floor())
+                {
+                    // Reconnect resets the subscriber's seen set for W10.17 tombstone reconciliation.
+                    *trimmed = true;
+                    return std::nullopt;
+                }
+                for(const auto& update: current.route_history())
+                    if(update.revision() > state->first)
                     {
                         auto& message = state->second.emplace_back();
                         message.ParseFromString(update.SerializeAsString());
-                        if(trimmed)
-                            message.set_revision(current.revision());
                     }
                 state->first = current.revision();
             }
@@ -535,7 +545,7 @@ ClusterService::WatchRoutes(grpc::CallbackServerContext*, const internal::v1::Wa
     }
     return startStream<internal::v1::WatchRoutesResponse>(std::move(snapshot),
                                                           std::move(pull),
-                                                          nullptr,
+                                                          std::move(failed),
                                                           nullptr,
                                                           nullptr);
 }
