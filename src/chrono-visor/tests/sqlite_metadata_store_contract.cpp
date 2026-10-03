@@ -64,6 +64,12 @@ MetadataStoreFactory sqliteFactory()
             else if(auto* memory = dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get()))
                 memory->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
         };
+        harness->stepExpirySweep = [lease_harness]() -> absl::Status
+        {
+            if(auto* sqlite = dynamic_cast<visor::SqliteMetadataStore*>(lease_harness->sut.get()))
+                return sqlite->sweepExpiry();
+            return dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get())->sweepExpiry();
+        };
         return harness;
     };
 }
@@ -96,6 +102,12 @@ MetadataStoreFactory inMemoryFactory()
                 sqlite->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
             else if(auto* memory = dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get()))
                 memory->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+        };
+        harness->stepExpirySweep = [lease_harness]() -> absl::Status
+        {
+            if(auto* sqlite = dynamic_cast<visor::SqliteMetadataStore*>(lease_harness->sut.get()))
+                return sqlite->sweepExpiry();
+            return dynamic_cast<visor::InMemoryMetadataStore*>(lease_harness->sut.get())->sweepExpiry();
         };
         return harness;
     };

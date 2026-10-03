@@ -148,6 +148,8 @@ MetadataStoreFactory factory(bool majority)
             ASSERT_TRUE(raft->serviceTick().ok());
             raft->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
         };
+        h->stepExpirySweep = [lease_harness]
+        { return dynamic_cast<RaftMetadataStore*>(lease_harness->sut.get())->sweepExpiry(); };
         return h;
     };
 }

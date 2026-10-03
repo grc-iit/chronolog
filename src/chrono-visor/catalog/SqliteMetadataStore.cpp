@@ -4,12 +4,14 @@
 #include <algorithm>
 #include <string_view>
 #include <optional>
+#include <set>
 #include <utility>
 #include <filesystem>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "absl/strings/str_cat.h"
+#include "chronolog/acquire_refusal.h"
 #include "adapter/Convert.h"
 
 namespace chronolog::visor
@@ -476,60 +478,201 @@ absl::Status SqliteMetadataStore::destroyChronicle(std::string name)
 {
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
-    std::lock_guard lock(mutex_);
-    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
-    CHRONOLOG_RETURN_IF_ERROR(txn.begun());
-    auto existing = loadChronicle(db_, name);
-    if(!existing.ok())
-        return existing.status();
-    if(!*existing)
-        return absl::NotFoundError("unknown chronicle");
-    if((*existing)->chronicle.tombstoned)
-        return absl::OkStatus();
-    const uint64_t chronicle_id = (*existing)->id;
+    return destroy(0, name);
+}
+
+absl::Status SqliteMetadataStore::destroyChronicleWithDue(std::string name, const std::vector<RenewAcquisition>& due)
+{
+    if(!validName(name))
+        return absl::InvalidArgumentError("invalid chronicle name");
+    FenceProofs none;
+    return destroyTransaction(0, name, due, DestroyMode::Apply, none);
+}
+
+absl::Status SqliteMetadataStore::destroyStoryWithDue(StoryId id, const std::vector<RenewAcquisition>& due)
+{
+    FenceProofs none;
+    return destroyTransaction(id, "", due, DestroyMode::Apply, none);
+}
+
+// Static destroy (I3.6): materialize the authority's complete due set, refuse a live row, then prove every
+// EXPIRED or SUPERSEDED fence through the current owner instance outside the store lock, and tombstone only
+// if the required proof set did not grow meanwhile. Under Raft apply the wrapper's carried set is used instead.
+absl::Status SqliteMetadataStore::destroy(StoryId story, const std::string& chronicle)
+{
+    FenceProofs proofs;
     {
-        Statement active(db_,
-                         "SELECT 1 FROM acquisitions a JOIN stories s ON s.id = a.story_id"
-                         " WHERE s.chronicle_id = ?1 AND a.released = 0 LIMIT 1");
-        CHRONOLOG_RETURN_IF_ERROR(active.prepared());
-        active.integer(1, chronicle_id);
-        auto row = active.step();
-        if(!row.ok())
-            return row.status();
-        if(*row)
-            return absl::FailedPreconditionError("story has an active acquisition");
+        std::lock_guard lock(mutex_);
+        if(applying_)
+            return destroyTransaction(story, chronicle, {}, DestroyMode::Apply, proofs);
     }
-    std::vector<StoryId> destroyed;
+    std::set<StoryId> stories;
+    if(chronicle.empty())
+        stories.insert(story);
+    else
     {
-        Statement live(db_, "SELECT id FROM stories WHERE chronicle_id = ?1 AND tombstoned = 0 ORDER BY id");
-        CHRONOLOG_RETURN_IF_ERROR(live.prepared());
-        live.integer(1, chronicle_id);
-        while(true)
+        auto listed = listStories(chronicle);
+        if(!listed.ok())
+            return listed.status();
+        for(const auto& s: *listed)
+            if(!s.tombstoned)
+                stories.insert(s.id);
+    }
+    for(int attempt = 0; attempt < 3; ++attempt)
+    {
+        std::vector<RenewAcquisition> due;
+        if(!replica_)
         {
-            auto row = live.step();
-            if(!row.ok())
-                return row.status();
-            if(!*row)
-                break;
-            destroyed.push_back(live.column(0));
+            auto selected = leases_.dueTuples(stories);
+            if(!selected.ok())
+                return selected.status();
+            due = std::move(*selected);
         }
+        proofs.clear();
+        auto checked = destroyTransaction(story, chronicle, due, DestroyMode::Check, proofs);
+        if(checked.ok() || absl::IsFailedPrecondition(checked) || absl::IsNotFound(checked))
+            leases_.resolve(due);
+        if(!checked.ok())
+            return checked;
+        for(const auto& [process, required]: proofs)
+            if(!fence_waiter_ || !fence_waiter_(required.first, required.second))
+                return absl::FailedPreconditionError("static destroy requires a confirmed fence");
+        auto committed = destroyTransaction(story, chronicle, {}, DestroyMode::Commit, proofs);
+        if(!absl::IsAborted(committed))
+            return committed;
     }
-    CHRONOLOG_RETURN_IF_ERROR(tombstoneStories(destroyed));
+    return absl::UnavailableError("static destroy fence proof kept changing");
+}
+
+absl::Status SqliteMetadataStore::destroyTransaction(StoryId story,
+                                                     const std::string& chronicle,
+                                                     const std::vector<RenewAcquisition>& due,
+                                                     DestroyMode mode,
+                                                     FenceProofs& proofs)
+{
+    std::vector<AcquisitionChange> changes;
+    absl::Status result;
     {
-        Statement stories(db_, "UPDATE stories SET tombstoned = 1 WHERE chronicle_id = ?1");
-        CHRONOLOG_RETURN_IF_ERROR(stories.prepared());
-        stories.integer(1, chronicle_id);
-        auto done = stories.step();
-        if(!done.ok())
-            return done.status();
+        std::lock_guard lock(mutex_);
+        Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
+        CHRONOLOG_RETURN_IF_ERROR(txn.begun());
+        std::vector<StoryId> stories;
+        bool tombstoned = false;
+        uint64_t chronicle_id = 0;
+        if(!chronicle.empty())
+        {
+            auto existing = loadChronicle(db_, chronicle);
+            if(!existing.ok())
+                return existing.status();
+            if(!*existing)
+                return absl::NotFoundError("unknown chronicle");
+            if((*existing)->chronicle.tombstoned)
+                return absl::OkStatus();
+            chronicle_id = (*existing)->id;
+            Statement live(db_, "SELECT id FROM stories WHERE chronicle_id = ?1 AND tombstoned = 0 ORDER BY id");
+            CHRONOLOG_RETURN_IF_ERROR(live.prepared());
+            live.integer(1, chronicle_id);
+            while(true)
+            {
+                auto row = live.step();
+                if(!row.ok())
+                    return row.status();
+                if(!*row)
+                    break;
+                stories.push_back(live.column(0));
+            }
+        }
+        else
+        {
+            auto loaded = loadStory(db_, story);
+            if(!loaded.ok())
+                return loaded.status();
+            if(!*loaded)
+                return absl::NotFoundError("unknown story");
+            tombstoned = (*loaded)->tombstoned;
+            stories.push_back(story);
+        }
+        std::vector<RenewAcquisition> owned;
+        for(const auto& t: due)
+            if(std::find(stories.begin(), stories.end(), t.story_id) != stories.end())
+                owned.push_back(t);
+        std::vector<RenewAcquisitionResult> outcomes;
+        CHRONOLOG_RETURN_IF_ERROR(expireLocked(owned, outcomes, changes));
+        for(const auto id: stories)
+        {
+            auto active = storyHasActiveAcquisition(db_, id);
+            if(!active.ok())
+                return active.status();
+            if(*active)
+                result = absl::FailedPreconditionError("story has an active acquisition");
+        }
+        if(result.ok() && mode != DestroyMode::Apply)
+        {
+            FenceProofs required;
+            for(const auto id: stories)
+            {
+                Statement terminal(db_,
+                                   "SELECT keeper_id,keeper_endpoint,revision FROM releases WHERE story_id=?1 AND "
+                                   "termination_cause IN (1,3)");
+                CHRONOLOG_RETURN_IF_ERROR(terminal.prepared());
+                terminal.integer(1, id);
+                while(true)
+                {
+                    auto row = terminal.step();
+                    if(!row.ok())
+                        return row.status();
+                    if(!*row)
+                        break;
+                    auto& slot = required[terminal.columnText(0)];
+                    if(terminal.column(2) >= slot.second)
+                        slot = {KeeperRef{terminal.columnText(0), terminal.columnText(1)}, terminal.column(2)};
+                }
+            }
+            if(mode == DestroyMode::Check)
+                proofs = std::move(required);
+            else
+                for(const auto& [process, needed]: required)
+                {
+                    auto proven = proofs.find(process);
+                    if(proven == proofs.end() || proven->second.second < needed.second)
+                        return absl::AbortedError("static destroy fence proof changed");
+                }
+        }
+        if(result.ok() && mode != DestroyMode::Check)
+        {
+            if(!chronicle.empty())
+            {
+                CHRONOLOG_RETURN_IF_ERROR(tombstoneStories(stories));
+                Statement update(db_, "UPDATE stories SET tombstoned = 1 WHERE chronicle_id = ?1");
+                CHRONOLOG_RETURN_IF_ERROR(update.prepared());
+                update.integer(1, chronicle_id);
+                auto done = update.step();
+                if(!done.ok())
+                    return done.status();
+                Statement mark(db_, "UPDATE chronicles SET tombstoned = 1 WHERE id = ?1");
+                CHRONOLOG_RETURN_IF_ERROR(mark.prepared());
+                mark.integer(1, chronicle_id);
+                done = mark.step();
+                if(!done.ok())
+                    return done.status();
+            }
+            else
+            {
+                if(!tombstoned)
+                    CHRONOLOG_RETURN_IF_ERROR(tombstoneStories({story}));
+                Statement update(db_, "UPDATE stories SET tombstoned = 1 WHERE id = ?1");
+                CHRONOLOG_RETURN_IF_ERROR(update.prepared());
+                update.integer(1, story);
+                auto done = update.step();
+                if(!done.ok())
+                    return done.status();
+            }
+        }
+        // A refused destroy still commits its materialized expiry transitions.
+        CHRONOLOG_RETURN_IF_ERROR(txn.commit());
+        for(const auto& change: changes) notify(change);
     }
-    Statement chronicle(db_, "UPDATE chronicles SET tombstoned = 1 WHERE id = ?1");
-    CHRONOLOG_RETURN_IF_ERROR(chronicle.prepared());
-    chronicle.integer(1, chronicle_id);
-    auto done = chronicle.step();
-    if(!done.ok())
-        return done.status();
-    return txn.commit();
+    return result;
 }
 
 absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, std::string name)
@@ -610,31 +753,7 @@ absl::StatusOr<std::vector<Story>> SqliteMetadataStore::listStories(std::string 
     return out;
 }
 
-absl::Status SqliteMetadataStore::destroyStory(StoryId id)
-{
-    std::lock_guard lock(mutex_);
-    Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
-    CHRONOLOG_RETURN_IF_ERROR(txn.begun());
-    auto story = loadStory(db_, id);
-    if(!story.ok())
-        return story.status();
-    if(!*story)
-        return absl::NotFoundError("unknown story");
-    auto active = storyHasActiveAcquisition(db_, id);
-    if(!active.ok())
-        return active.status();
-    if(*active)
-        return absl::FailedPreconditionError("story has an active acquisition");
-    if(!(*story)->tombstoned)
-        CHRONOLOG_RETURN_IF_ERROR(tombstoneStories({id}));
-    Statement update(db_, "UPDATE stories SET tombstoned = 1 WHERE id = ?1");
-    CHRONOLOG_RETURN_IF_ERROR(update.prepared());
-    update.integer(1, id);
-    auto done = update.step();
-    if(!done.ok())
-        return done.status();
-    return txn.commit();
-}
+absl::Status SqliteMetadataStore::destroyStory(StoryId id) { return destroy(id, ""); }
 
 void SqliteMetadataStore::setOwnerFence(FenceWaiter fence)
 {
@@ -705,9 +824,31 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
         return duration.status();
     CHRONOLOG_RETURN_IF_ERROR(leases_.service());
     CHRONOLOG_RETURN_IF_ERROR(awaitOldOwnerFence(id, identity));
-    auto grant = acquireAfterFence(id, std::move(identity), options, *duration);
+    std::vector<RenewAcquisition> due;
+    auto current = currentAcquisition(id, identity);
+    if(!current.ok())
+        return current.status();
+    if(*current && (*current)->state == AcquisitionState::Acquired)
+        if(auto tuple = leases_.dueTuple(**current))
+            due.push_back(*tuple);
+    auto grant = acquireAfterFence(id, identity, options, *duration, nullptr, due);
+    if(grant.ok() || absl::IsFailedPrecondition(grant.status()))
+        leases_.resolve(due);
     if(!grant.ok())
-        return grant.status();
+    {
+        auto refusal = getAcquireRefusal(grant.status());
+        if(!refusal || refusal->refusal_reason != AcquireRefusalReason::Held)
+            return grant.status();
+        current = currentAcquisition(id, identity);
+        if(!current.ok())
+            return current.status();
+        if(!*current)
+            return grant.status();
+        auto lease = leases_.sample(**current, false);
+        if(!lease.ok())
+            return lease.status();
+        return withRemaining(grant.status(), lease->remaining_ns);
+    }
     auto rows = acquisitionRows({{id, grant->writer_id, grant->incarnation}});
     if(!rows.ok())
         return rows.status();
@@ -728,7 +869,8 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
                                                                    std::string writer_identity,
                                                                    AcquireOptions options,
                                                                    int64_t duration_ns,
-                                                                   const internal::v1::AcquireCommand* selected)
+                                                                   const internal::v1::AcquireCommand* selected,
+                                                                   std::vector<RenewAcquisition> due)
 {
     if(duration_ns <= 0 || options.acquire_request_id.empty())
         return absl::InvalidArgumentError("invalid carried lease");
@@ -830,8 +972,31 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
             return done.status();
     }
 
+    // Due tuples are materialized before the active check, after request-id and expected-prior resolution.
+    if(selected)
+        for(const auto& t: selected->due_acquisitions()) due.push_back({t.story_id(), t.writer_id(), t.incarnation()});
+    std::vector<AcquisitionChange> expired;
+    {
+        std::vector<RenewAcquisitionResult> outcomes;
+        CHRONOLOG_RETURN_IF_ERROR(expireLocked(due, outcomes, expired));
+    }
     uint64_t incarnation = 1;
     std::optional<AcquisitionChange> superseded;
+    if(selected && !options.takeover)
+    {
+        // Plain apply refuses any row that differs from the carried predecessor, even a terminal one.
+        Statement current(db_, "SELECT incarnation,released FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+        CHRONOLOG_RETURN_IF_ERROR(current.prepared());
+        current.integer(1, id).integer(2, writer_id);
+        auto found = current.step();
+        if(!found.ok())
+            return found.status();
+        const auto now_prior = *found ? std::optional<uint64_t>(current.column(0)) : std::nullopt;
+        const auto carried = selected->has_prior_incarnation() ? std::optional<uint64_t>(selected->prior_incarnation())
+                                                               : std::nullopt;
+        if(now_prior != carried)
+            return *found && current.column(1) == 0 ? heldRefusal() : priorMismatch(now_prior);
+    }
     {
         Statement prior(db_,
                         "SELECT incarnation, released, keeper_id, keeper_endpoint FROM acquisitions"
@@ -846,8 +1011,10 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
             if(prior.column(0) == UINT64_MAX)
                 return absl::ResourceExhaustedError("incarnation overflow");
             incarnation = prior.column(0) + 1;
-            // A writer that re-acquires while still active has crashed. Its old
-            // incarnation is released in the same transaction as the new one.
+            // A live holder refuses a plain Acquire (HELD); only explicit takeover supersedes it, recording
+            // SUPERSEDED in the same transaction as the successor.
+            if(prior.column(1) == 0 && !options.takeover)
+                return heldRefusal();
             if(prior.column(1) == 0)
             {
                 auto released_revision = nextCounter(db_, "acquisition_revision");
@@ -938,6 +1105,7 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
     if(!saved.ok())
         return saved.status();
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
+    for(const auto& change: expired) notify(change);
     if(superseded)
         notify(*superseded);
     notify({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired, duration_ns});
@@ -1302,13 +1470,146 @@ absl::Status SqliteMetadataStore::reconcileLeases()
 absl::Status SqliteMetadataStore::serviceTick()
 {
     CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
+    CHRONOLOG_RETURN_IF_ERROR(sweepExpiry());
     return leases_.service(true);
+}
+absl::Status SqliteMetadataStore::sweepExpiry()
+{
+    if(replica_)
+        return absl::FailedPreconditionError("replica stores hold no lease authority");
+    auto due = leases_.dueTuples(leases_.config().acquisition_expiry_batch);
+    if(!due.ok())
+        return due.status();
+    if(due->empty())
+        return absl::OkStatus();
+    auto outcomes = expireAcquisitions(*due);
+    if(!outcomes.ok())
+        return outcomes.status();
+    leases_.resolve(*due);
+    return absl::OkStatus();
+}
+absl::StatusOr<std::vector<RenewAcquisitionResult>>
+SqliteMetadataStore::expireAcquisitions(const std::vector<RenewAcquisition>& tuples)
+{
+    std::vector<RenewAcquisitionResult> results;
+    std::vector<AcquisitionChange> changes;
+    {
+        std::lock_guard lock(mutex_);
+        Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
+        CHRONOLOG_RETURN_IF_ERROR(txn.begun());
+        CHRONOLOG_RETURN_IF_ERROR(expireLocked(tuples, results, changes));
+        CHRONOLOG_RETURN_IF_ERROR(txn.commit());
+        for(const auto& change: changes) notify(change);
+    }
+    return results;
+}
+absl::Status SqliteMetadataStore::expireLocked(const std::vector<RenewAcquisition>& tuples,
+                                               std::vector<RenewAcquisitionResult>& results,
+                                               std::vector<AcquisitionChange>& changes)
+{
+    for(const auto& t: tuples)
+    {
+        RenewAcquisitionResult result{t, absl::NotFoundError("unknown acquisition"), {}, {}};
+        Statement live(db_,
+                       "SELECT incarnation,released,keeper_id,keeper_endpoint,duration_ns FROM acquisitions "
+                       "WHERE story_id=?1 AND writer_id=?2");
+        CHRONOLOG_RETURN_IF_ERROR(live.prepared());
+        live.integer(1, t.story_id).integer(2, t.writer_id);
+        auto found = live.step();
+        if(!found.ok())
+            return found.status();
+        if(*found && live.column(0) == t.incarnation && live.column(1) == 0)
+        {
+            AcquisitionChange change{0,
+                                     t.story_id,
+                                     t.writer_id,
+                                     t.incarnation,
+                                     KeeperRef{live.columnText(2), live.columnText(3)},
+                                     AcquisitionState::Released,
+                                     static_cast<int64_t>(live.column(4)),
+                                     AcquisitionTerminationCause::Expired};
+            Statement update(db_, "UPDATE acquisitions SET released = 1 WHERE story_id = ?1 AND writer_id = ?2");
+            CHRONOLOG_RETURN_IF_ERROR(update.prepared());
+            update.integer(1, t.story_id).integer(2, t.writer_id);
+            auto done = update.step();
+            if(!done.ok())
+                return done.status();
+            auto revision = nextCounter(db_, "acquisition_revision");
+            if(!revision.ok())
+                return revision.status();
+            change.revision = *revision;
+            Statement record(db_,
+                             "INSERT INTO releases(story_id, writer_id, incarnation, revision, keeper_id, "
+                             "keeper_endpoint, termination_cause) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)");
+            CHRONOLOG_RETURN_IF_ERROR(record.prepared());
+            record.integer(1, t.story_id)
+                    .integer(2, t.writer_id)
+                    .integer(3, t.incarnation)
+                    .integer(4, *revision)
+                    .text(5, change.assigned_keeper.process_id)
+                    .text(6, change.assigned_keeper.endpoint);
+            done = record.step();
+            if(!done.ok())
+                return done.status();
+            changes.push_back(change);
+            result.status = absl::OkStatus();
+            result.termination_cause = AcquisitionTerminationCause::Expired;
+        }
+        else
+        {
+            Statement terminal(
+                    db_,
+                    "SELECT termination_cause FROM releases WHERE story_id=?1 AND writer_id=?2 AND incarnation=?3");
+            CHRONOLOG_RETURN_IF_ERROR(terminal.prepared());
+            terminal.integer(1, t.story_id).integer(2, t.writer_id).integer(3, t.incarnation);
+            auto recorded = terminal.step();
+            if(!recorded.ok())
+                return recorded.status();
+            if(*recorded)
+            {
+                result.status = absl::FailedPreconditionError("acquisition is terminal");
+                result.termination_cause = static_cast<AcquisitionTerminationCause>(terminal.column(0));
+            }
+            else if(*found && live.column(0) > t.incarnation)
+            {
+                result.status = absl::FailedPreconditionError("acquisition is terminal");
+                result.termination_cause = AcquisitionTerminationCause::Superseded;
+            }
+        }
+        results.push_back(std::move(result));
+    }
+    return absl::OkStatus();
+}
+absl::StatusOr<std::optional<AcquisitionChange>>
+SqliteMetadataStore::currentAcquisition(StoryId id, const std::string& identity) const
+{
+    std::lock_guard lock(mutex_);
+    Statement find(db_,
+                   "SELECT a.writer_id,a.incarnation,a.released,a.keeper_id,a.keeper_endpoint,a.duration_ns,"
+                   "a.revision FROM writers w JOIN acquisitions a ON a.writer_id = w.writer_id"
+                   " WHERE w.writer_identity = ?1 AND a.story_id = ?2");
+    CHRONOLOG_RETURN_IF_ERROR(find.prepared());
+    find.text(1, identity).integer(2, id);
+    auto row = find.step();
+    if(!row.ok())
+        return row.status();
+    if(!*row)
+        return std::optional<AcquisitionChange>();
+    return std::optional<AcquisitionChange>(
+            AcquisitionChange{find.column(6),
+                              id,
+                              find.column(0),
+                              find.column(1),
+                              {find.columnText(3), find.columnText(4)},
+                              find.column(2) ? AcquisitionState::Released : AcquisitionState::Acquired,
+                              static_cast<int64_t>(find.column(5))});
 }
 absl::StatusOr<std::vector<RenewAcquisitionResult>>
 SqliteMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples)
 {
     CHRONOLOG_RETURN_IF_ERROR(validateRenew(tuples, leases_.config().acquisition_renew_batch));
-    CHRONOLOG_RETURN_IF_ERROR(reconcileLeases());
+    // Per-tuple rows only: sample() installs a missing current row; the bounded scan stays on serviceTick.
+    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
     auto rows = acquisitionRows(tuples);
     if(!rows.ok())
         return rows.status();

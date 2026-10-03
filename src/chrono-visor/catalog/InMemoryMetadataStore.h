@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -39,6 +40,8 @@ public:
     absl::StatusOr<std::vector<RenewAcquisitionResult>>
     renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
     LeaseAuthority& leaseAuthority() { return leases_; }
+    // One bounded expiry sweep; the double is its own static authority.
+    absl::Status sweepExpiry();
 
     absl::StatusOr<ReleaseResult> release(StoryId id, uint64_t writer_id, uint64_t incarnation) override;
     absl::StatusOr<Epoch> compareAndSetEpoch(StoryId id, Epoch expected, Epoch desired) override;
@@ -58,6 +61,9 @@ private:
     };
 
     bool hasActiveAcquisition(StoryId id) const;
+    // Under mutex_: expires still-current unreleased tuples (EXPIRED), returning the committed changes.
+    std::vector<AcquisitionChange> expireLocked(const std::vector<RenewAcquisition>& tuples);
+    absl::Status destroy(const std::vector<StoryId>& stories, std::optional<size_t> chronicle);
     // The live identity for a name, else the most recently destroyed one, else npos.
     size_t findChronicle(const std::string& name) const;
     static constexpr size_t kNoChronicle = static_cast<size_t>(-1);

@@ -54,8 +54,11 @@ public:
         for(const auto& peer: config_.peers) out.push_back(peer.internal_endpoint);
         return out;
     }
+    // Reconciliation, one bounded expiry proposal, then a completed service tick.
     absl::Status serviceTick();
     absl::Status reconcileLeases();
+    // Qualified leader only: select one bounded due batch and propose ExpireAcquisitions.
+    absl::Status sweepExpiry();
     SqliteMetadataStore& appliedStore() { return *store_; }
 
 private:
