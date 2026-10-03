@@ -87,6 +87,7 @@ private:
     void collectLocked();
     void settleLocked(State& state);
     bool safe(const State& state) const;
+    void resolvePendingRoutes();
     void refreshSubscriptions();
     bool watch(const std::string& endpoint, Subscription& subscription, std::stop_token stop);
     Hlc align(Hlc hlc) const;

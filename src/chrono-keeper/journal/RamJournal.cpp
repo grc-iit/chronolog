@@ -75,6 +75,8 @@ void RamJournal::adoptCatalogSkewLimit(int64_t skew_limit_ns)
 
 absl::Status RamJournal::requireStory(StoryId id) const
 {
+    if(auto resolved = resolveRoute(id); !resolved.ok())
+        return resolved;
     auto route = membership_->route(id);
     return route.status();
 }
@@ -598,6 +600,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
     if(durability != Durability::Unspecified && durability != Durability::Accepted && durability != Durability::Durable)
         return done(absl::InvalidArgumentError("unknown durability"));
 
+    // Resolve on the calling worker before admission. Validation under the gate reads only the cache.
+    auto resolved = resolveRoute(batch.story_id);
     std::vector<AppendResult> results;
     results.reserve(batch.items.size());
     struct BatchState
@@ -634,7 +638,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         {
             auto gate = admission(batch.story_id);
             std::shared_lock gate_lock(gate->gate);
-            auto status = membership_->validateEpoch(batch.story_id, batch.epoch);
+            auto status = resolved.ok() ? membership_->validateEpoch(batch.story_id, batch.epoch) : resolved;
             auto rejection =
                     absl::IsFailedPrecondition(status) ? AppendRejection::StaleEpoch : AppendRejection::Unspecified;
             auto route = currentRoute(batch.story_id);
@@ -656,7 +660,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
                     rejection = AppendRejection::StoryTombstoned;
                 }
                 else if(status.ok() && dynamic_ &&
-                        (!scheduleSteps(*gate) || ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
+                        (!route || gate->state.route.epoch != route->epoch || !scheduleSteps(*gate) ||
+                         ceiling_ <= std::max(gate->state.ordering_cut, gate->observe_floor)))
                     status = absl::UnavailableError("route clock steps or ceiling deferred");
             }
             if(!status.ok())
@@ -1070,7 +1075,8 @@ void RamJournal::applyRoute(StoryId story,
                             RouteState state,
                             bool observe,
                             uint64_t revision,
-                            std::function<void()> install)
+                            std::function<void()> install,
+                            bool acknowledge)
 {
     auto a = admission(story);
     std::unique_lock gate_lock(a->gate);
@@ -1096,6 +1102,9 @@ void RamJournal::applyRoute(StoryId story,
     a->state = std::move(state);
     a->revision = revision;
     a->installed = true;
+    // Publish the acknowledged revision with the cache entry while the state lock excludes heartbeats.
+    if(acknowledge)
+        applied_route_revision_ = std::max(applied_route_revision_, revision);
     install();
     if(dynamic_)
         (void)scheduleSteps(*a);

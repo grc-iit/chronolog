@@ -12,13 +12,14 @@ add_executable(chronolog_keeper_tests
     "${CMAKE_SOURCE_DIR}/tests/contract/archive/keeper_archive_adapter_test.cpp"
     ram_journal_contract.cpp
     ram_journal_test.cpp
+    route_read_test.cpp
     route_watcher_test.cpp
     system_clock_contract.cpp)
 target_include_directories(chronolog_keeper_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/tests/contract")
 target_link_libraries(chronolog_keeper_tests PRIVATE
-    chronolog_keeper_lib chronolog_keeper_journal chronolog_common_clock chronolog_warnings
+    chronolog_keeper_archive chronolog_keeper_lib chronolog_keeper_journal chronolog_common_clock chronolog_warnings
     GTest::gtest GTest::gtest_main Threads::Threads absl::log_sink absl::log_sink_registry)
 # See the root CMakeLists.txt: ThreadSanitizer needs ASLR disabled on this kernel.
 if("thread" IN_LIST CHRONOLOG_SANITIZERS)
