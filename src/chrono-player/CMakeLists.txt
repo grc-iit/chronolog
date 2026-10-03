@@ -55,3 +55,6 @@ if(CHRONOLOG_BUILD_VISOR)
     chrono_player_test(chrono_player_physical_policy_test tests/physical_policy_catalog_test.cpp "")
     target_link_libraries(chrono_player_physical_policy_test PRIVATE chronolog_visor_lib)
 endif()
+
+add_executable(chrono_player_route_tail_probe tests/route_tail_probe.cpp)
+target_link_libraries(chrono_player_route_tail_probe PRIVATE chronolog_common_rpc chronolog_proto chronolog_warnings)

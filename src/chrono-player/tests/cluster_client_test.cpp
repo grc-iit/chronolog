@@ -43,7 +43,7 @@ public:
     std::condition_variable cv;
     std::vector<wire::RouteUpdate> snapshot{update()}, messages;
     std::atomic<int> calls{}, watches{}, heartbeats{};
-    bool overflow{}, unknown{}, unavailable{};
+    bool overflow{}, unknown{}, unavailable{}, obsolete{};
     grpc::Status Register(grpc::ServerContext*, const wire::RegisterRequest*, wire::RegisterResponse* r) override
     {
         ++calls;
@@ -67,9 +67,21 @@ public:
         cv.notify_all();
         if(unavailable)
             return {grpc::StatusCode::UNAVAILABLE, "unavailable"};
-        if(unknown)
-            r->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kNotFound));
+        if(unknown || obsolete)
+            r->mutable_status()->set_code(static_cast<int>(absl::StatusCode::kFailedPrecondition));
         cv.notify_all();
+        return grpc::Status::OK;
+    }
+    grpc::Status
+    ListMembers(grpc::ServerContext*, const wire::ListMembersRequest*, wire::MembershipResponse* r) override
+    {
+        std::lock_guard lock(mu);
+        if(!unknown)
+        {
+            auto* process = r->add_members()->mutable_process();
+            process->set_process_id("player");
+            process->set_instance(obsolete ? "newer" : "instance");
+        }
         return grpc::Status::OK;
     }
     grpc::Status WatchRoutes(grpc::ServerContext* context,
@@ -270,6 +282,19 @@ TEST_F(ClusterClientTest, UnseenStoryUsesOneLookupAndTransientFailureIsNotDeleti
     catalog.publish(update(100, 1, 20));
     auto result = waiting.get();
     ASSERT_TRUE(result.ok()) << result.status();
+    EXPECT_EQ(catalog.calls, 1);
+}
+TEST_F(ClusterClientTest, ObsoleteRegistrationDoesNotReplaceNewerInstance)
+{
+    start();
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.obsolete = true;
+    }
+    {
+        std::unique_lock lock(catalog.mu);
+        ASSERT_TRUE(catalog.cv.wait_for(lock, 3s, [&] { return catalog.heartbeats >= 2; }));
+    }
     EXPECT_EQ(catalog.calls, 1);
 }
 TEST_F(ClusterClientTest, UnknownRegistrationReregistersButTransportFailureDoesNot)

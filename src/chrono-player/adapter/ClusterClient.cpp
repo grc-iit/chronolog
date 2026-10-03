@@ -199,8 +199,22 @@ void ClusterClient::monitor(std::stop_token stop) const
         request.set_instance(self_.instance);
         internal::v1::HeartbeatResponse response;
         auto status = stub_->Heartbeat(&context, request, &response);
-        if(status.error_code() == grpc::StatusCode::NOT_FOUND ||
-           (status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kNotFound)))
+        bool unknown = status.error_code() == grpc::StatusCode::NOT_FOUND ||
+                       (status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kNotFound));
+        if(status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kFailedPrecondition))
+        {
+            // Dynamic heartbeats conflate obsolete and missing registrations; never replace a newer instance.
+            grpc::ClientContext listing;
+            rpc::withTimeout(listing, deadline_);
+            std::stop_callback cancel_listing(stop, [&] { listing.TryCancel(); });
+            internal::v1::MembershipResponse members;
+            auto listed = stub_->ListMembers(&listing, internal::v1::ListMembersRequest{}, &members);
+            unknown = listed.ok() && members.status().code() == 0 &&
+                      std::none_of(members.members().begin(),
+                                   members.members().end(),
+                                   [&](const auto& member) { return member.process().process_id() == self_.id; });
+        }
+        if(unknown && !stop.stop_requested())
         {
             {
                 std::lock_guard lock(registration_mu_);
