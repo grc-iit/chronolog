@@ -83,6 +83,7 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
     {
         v1::ReadRequest request;
         request.set_story_id(story);
+        request.set_max_events(options.max_events.value_or(0));
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
         stream = replay->Read(context.get(), request);

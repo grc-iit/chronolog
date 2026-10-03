@@ -17,6 +17,7 @@ struct Writer::Impl
     uint64_t sequence{1};
     uint64_t batch_id{};
     bool requires_reacquisition{};
+    std::optional<absl::Status> fenced;
     struct Pending
     {
         std::vector<AppendSpec> specs;
@@ -87,9 +88,10 @@ struct ReplayState
 } // namespace detail
 struct ReadStream::Impl: detail::ReplayState
 {
-    Impl(std::shared_ptr<detail::State> s, std::string endpoint, StoryId id, HlcRange r, Deadline d)
+    Impl(std::shared_ptr<detail::State> s, std::string endpoint, StoryId id, HlcRange r, ReadOptions o, Deadline d)
         : ReplayState(std::move(s), std::move(endpoint), id, d)
         , range(r)
+        , options(o)
     {}
     Impl(std::shared_ptr<detail::State> s, std::string endpoint, StoryId id, PhysicalRange r, Deadline d)
         : ReplayState(std::move(s), std::move(endpoint), id, d)
@@ -97,6 +99,7 @@ struct ReadStream::Impl: detail::ReplayState
         , pending_ranges{r}
     {}
     HlcRange range;
+    ReadOptions options;
     std::optional<PhysicalRange> physical;
     std::vector<PhysicalRange> pending_ranges;
     std::set<EventId> seen;
