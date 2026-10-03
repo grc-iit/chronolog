@@ -667,7 +667,8 @@ RaftMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples
 absl::StatusOr<size_t> RaftMetadataStore::acceptKeeperEvidence(const std::string& keeper,
                                                                const std::vector<RenewAcquisition>& tuples)
 {
-    auto status = reconcileLeases();
+    // O(evidence) map updates; the bounded reconciliation scan runs from the lease sweep (serviceTick).
+    auto status = activateLeases();
     if(!status.ok())
         return status;
     const size_t batch = leases_.config().acquisition_evidence_batch;

@@ -7,6 +7,7 @@
 
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <future>
 #include <random>
 #include <thread>
 
@@ -205,6 +206,7 @@ protected:
     void revokedInstanceCannotRenew();
     void heartbeatEvidenceAddsNoProposal();
     void failedHeartbeatDoesNotReplayEvidenceForever();
+    void evidenceHeartbeatRunsNoReconciliationScan();
 
     bool dynamic_;
     testing::TempDir dir_;
@@ -374,6 +376,81 @@ void EvidenceRig::failedHeartbeatDoesNotReplayEvidenceForever()
     advance(T * 5 / 8);
     EXPECT_EQ(heartbeat(owner, instanceOf(owner), {}), 0);
     EXPECT_EQ(remaining(grant), 0);
+}
+
+void EvidenceRig::evidenceHeartbeatRunsNoReconciliationScan()
+{
+    registerBoth();
+    std::vector<Acquisition> grants;
+    for(const auto* identity: {"r1", "r2", "r3", "r4"}) grants.push_back(acquire(identity));
+    const auto owner = grants.front().assigned_keeper.process_id;
+    std::vector<RenewAcquisition> evidence;
+    for(const auto& grant: grants) evidence.push_back(tuple(grant));
+    const auto T = grants.front().lease.duration_ns;
+    advance(T / 2);
+    const auto scans = leases_->reconciliations();
+    for(int beat = 0; beat < 5; ++beat) ASSERT_EQ(heartbeat(owner, instanceOf(owner), evidence), 0);
+    // Evidence is map updates for its own tuples; the bounded scan belongs to the lease sweep.
+    EXPECT_EQ(leases_->reconciliations(), scans);
+    EXPECT_GT(remaining(grants.front()), T * 7 / 8);
+    ASSERT_TRUE((dynamic_ ? raft_->serviceTick() : sqlite_->serviceTick()).ok());
+    EXPECT_GT(leases_->reconciliations(), scans);
+}
+
+TEST_F(ClusterAdapterTest, EvidenceHeartbeatRunsNoReconciliationScan) { evidenceHeartbeatRunsNoReconciliationScan(); }
+TEST_F(StaticClusterAdapterTest, EvidenceHeartbeatRunsNoReconciliationScan)
+{
+    evidenceHeartbeatRunsNoReconciliationScan();
+}
+
+TEST_F(ClusterAdapterTest, ExpiredQueuedCallsDoNoWorkAndAFreshCallIsAnswered)
+{
+    registerBoth();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::atomic<int> blocked{0};
+    for(int worker = 0; worker < 2; ++worker)
+        ASSERT_TRUE(pool_->submit(
+                [&blocked, gate]
+                {
+                    ++blocked;
+                    (void)gate.wait_for(10s);
+                }));
+    const auto until = std::chrono::steady_clock::now() + 5s;
+    while(blocked.load() < 2 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(1ms);
+    ASSERT_EQ(blocked.load(), 2);
+    constexpr int kQueued = 20;
+    const auto dropped = pool_->dropped();
+    std::atomic<int> expired{0};
+    {
+        std::vector<std::jthread> callers;
+        for(int i = 0; i < kQueued; ++i)
+            callers.emplace_back(
+                    [&]
+                    {
+                        wire::HeartbeatRequest q;
+                        q.set_process_id("keeper-a");
+                        q.set_instance("a1");
+                        q.set_applied_revision(1000);
+                        wire::HeartbeatResponse r;
+                        grpc::ClientContext c;
+                        c.set_deadline(std::chrono::system_clock::now() + 200ms);
+                        if(stub_->Heartbeat(&c, q, &r).error_code() == grpc::StatusCode::DEADLINE_EXCEEDED)
+                            ++expired;
+                    });
+    }
+    ASSERT_EQ(expired.load(), kQueued);
+    release.set_value();
+    wire::ListMembersRequest q;
+    wire::MembershipResponse r;
+    auto c = context();
+    c->set_deadline(std::chrono::system_clock::now() + 5s);
+    const auto status = stub_->ListMembers(c.get(), q, &r);
+    ASSERT_TRUE(status.ok()) << status.error_message();
+    EXPECT_EQ(r.status().code(), 0);
+    // Every queued heartbeat was answered without work: none applied its revision.
+    EXPECT_EQ(pool_->dropped() - dropped, static_cast<uint64_t>(kQueued));
+    EXPECT_FALSE(membership_->waitApplied("keeper-a", 1000, 0ms));
 }
 
 TEST_F(ClusterAdapterTest, KeeperEvidenceRenewsOnlyCurrentAssignedTuple)

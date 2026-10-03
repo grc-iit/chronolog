@@ -280,7 +280,7 @@ grpc::ServerUnaryReactor* ClusterService::ReadClock(grpc::CallbackServerContext*
             auto stub = internal::v1::Cluster::NewStub(rpc::peerChannel(endpoint));
             reactor->Finish(stub->ReadClock(&ctx, *request, response));
         };
-        if(!pool_ || !pool_->submit(std::move(task)))
+        if(!pool_ || !SubmitCall(*pool_, context, reactor, std::move(task)))
             reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
         return reactor;
     }
@@ -337,7 +337,7 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
     };
     if(pool_)
     {
-        if(!pool_->submit(std::move(task)))
+        if(!SubmitCall(*pool_, context, reactor, std::move(task)))
             reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     }
     else
@@ -400,7 +400,7 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
     };
     if((request->stories_without_physical_policy().empty() && request->admission_evidence().empty()) || !pool_)
         task();
-    else if(!pool_->submit(std::move(task)))
+    else if(!SubmitCall(*pool_, context, reactor, std::move(task)))
         reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     return reactor;
 }
@@ -867,7 +867,7 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
         }
         reactor->Finish(grpc::Status::OK);
     };
-    if(!pool_ || !pool_->submit(std::move(task)))
+    if(!pool_ || !SubmitCall(*pool_, context, reactor, std::move(task)))
         reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "cluster overloaded"));
     return reactor;
 }

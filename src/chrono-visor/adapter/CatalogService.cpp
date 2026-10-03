@@ -85,7 +85,7 @@ grpc::ServerUnaryReactor* CatalogService::dispatch(grpc::CallbackServerContext* 
     if(raft_)
         context->AddInitialMetadata("chronolog-raft-leader", std::to_string(raft_->leaderId()));
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
-    if(!pool_.submit([reactor, fn = std::move(fn)]() mutable { reactor->Finish(fn()); }))
+    if(!SubmitCall(pool_, context, reactor, [reactor, fn = std::move(fn)]() mutable { reactor->Finish(fn()); }))
         reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "catalog is overloaded"));
     return reactor;
 }

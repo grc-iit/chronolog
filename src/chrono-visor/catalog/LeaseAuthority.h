@@ -52,6 +52,8 @@ public:
     void beginRebuild(uint64_t term);
     void rebuild(const AcquisitionSnapshot& snapshot);
     void reconcile(const AcquisitionSnapshot& snapshot, std::pair<StoryId, uint64_t> after, bool end);
+    // Reconciliation batches applied so far; each follows one bounded acquisitions scan.
+    uint64_t reconciliations() const { return reconciliations_.load(); }
     void onAcquisitionChange(const AcquisitionChange& change) override;
     absl::StatusOr<AcquisitionLease> sample(const AcquisitionChange& row, bool renew);
     // Keeper admission evidence renews only live rows assigned to `keeper`, under the renewal rules.
@@ -77,6 +79,7 @@ private:
     AcquisitionLeaseConfig config_;
     bool dynamic_{};
     std::atomic<int64_t> clock_offset_{};
+    std::atomic<uint64_t> reconciliations_{};
     std::atomic<std::shared_ptr<const LeaseQualification>> qualification_;
     mutable std::mutex mutex_;
     std::map<Key, Entry> entries_;

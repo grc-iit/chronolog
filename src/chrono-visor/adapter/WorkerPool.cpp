@@ -9,8 +9,7 @@ WorkerPool::WorkerPool(size_t threads, size_t max_queue)
     : max_queue_(max_queue)
 {
     workers_.reserve(threads);
-    for(size_t i = 0; i < threads; ++i)
-        workers_.emplace_back([this] { run(); });
+    for(size_t i = 0; i < threads; ++i) workers_.emplace_back([this] { run(); });
 }
 
 WorkerPool::~WorkerPool()
@@ -23,13 +22,15 @@ WorkerPool::~WorkerPool()
     workers_.clear();
 }
 
-bool WorkerPool::submit(std::function<void()> task)
+bool WorkerPool::submit(std::function<void()> task) { return submit(std::move(task), {}, {}); }
+
+bool WorkerPool::submit(std::function<void()> task, std::function<bool()> expired, std::function<void()> refuse)
 {
     {
         std::lock_guard lock(mutex_);
         if(stopping_ || queue_.size() >= max_queue_)
             return false;
-        queue_.push_back(std::move(task));
+        queue_.push_back({std::move(task), std::move(refuse), std::move(expired)});
     }
     cv_.notify_one();
     return true;
@@ -39,16 +40,22 @@ void WorkerPool::run()
 {
     while(true)
     {
-        std::function<void()> task;
+        Item item;
         {
             std::unique_lock lock(mutex_);
             cv_.wait(lock, [&] { return stopping_ || !queue_.empty(); });
             if(queue_.empty())
                 return;
-            task = std::move(queue_.front());
+            item = std::move(queue_.front());
             queue_.pop_front();
         }
-        task();
+        if(item.expired && item.expired())
+        {
+            ++dropped_;
+            item.refuse();
+        }
+        else
+            item.task();
     }
 }
 
