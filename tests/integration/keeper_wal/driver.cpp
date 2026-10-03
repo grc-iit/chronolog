@@ -1,5 +1,6 @@
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <set>
@@ -357,11 +358,198 @@ int after(const char* out)
     std::cout << "resumed above the reported frontier\n";
     return 0;
 }
+
+int compactWrite(const char* catalog, const char* out, const char* archive, const char* name)
+{
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    if(!client->getChronicle("compaction").ok() && !client->createChronicle("compaction").ok())
+        fail("createChronicle");
+    auto story = client->createStory("compaction", name);
+    if(!story.ok())
+        fail("createStory");
+    std::ofstream(path(out, "story")) << story->id << '\n';
+    auto writer = client->acquire(story->id, "seed");
+    if(!writer.ok())
+        fail("acquire");
+    std::ofstream rows(path(out, "events.tsv"));
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    size_t files = 0;
+    for(size_t i = 0; files < 8; ++i)
+    {
+        if(std::chrono::steady_clock::now() >= deadline)
+            fail("eight small archive files never published");
+        sdk::AppendSpec spec;
+        spec.envelope.payload = "event-" + std::to_string(i);
+        auto result = writer->append(spec);
+        if(!result.ok() || !result->acked())
+            fail("seed append was not acknowledged durable");
+        const auto id = result->event_id;
+        rows << id.story_id << ' ' << id.writer_id << ' ' << id.incarnation << ' ' << id.sequence << ' '
+             << result->hlc.physical_ns << ' ' << result->hlc.logical << " 2 2 " << spec.envelope.payload << '\n';
+        rows.flush();
+        files = 0;
+        std::error_code error;
+        for(std::filesystem::directory_iterator it(std::filesystem::path(archive) / std::to_string(story->id), error),
+            end;
+            !error && it != end;
+            it.increment(error))
+            files += it->path().extension() == ".h5";
+        std::this_thread::sleep_for(50ms);
+    }
+    auto released = writer->release();
+    if(!released.ok() || !*released)
+        fail("seed release");
+    return 0;
+}
+
+void exact(const std::vector<Row>& rows, const std::vector<Event>& events)
+{
+    std::string why;
+    if(events.size() != rows.size() || !contains(rows, events, why))
+        fail("exact acknowledged event set: expected=" + std::to_string(rows.size()) +
+             " actual=" + std::to_string(events.size()) + " " + why);
+}
+
+int compactRead(const char* catalog, const char* keeper, const char* out)
+{
+    const auto rows = loadRows(path(out, "events.tsv"));
+    if(rows.empty())
+        fail("empty acknowledged set");
+    Hlc last{};
+    for(const auto& row: rows) last = std::max(last, row.hlc);
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    bool archived = false;
+    while(std::chrono::steady_clock::now() < deadline)
+    {
+        auto hot = fetchHot(keeper, loadStory(out), 1);
+        if(hot.ok && hot.evicted > last)
+        {
+            archived = true;
+            break;
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+    if(!archived)
+        fail("acknowledged events did not all leave the Keeper");
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    ++last.logical;
+    auto read = client->read(loadStory(out), {Hlc{}, last}, std::chrono::system_clock::now() + 30s);
+    if(!read.ok())
+        fail("read open: " + std::string(read.status().message()));
+    std::vector<Event> events;
+    size_t completions = 0;
+    for(size_t pulls = 0; pulls < rows.size() + 10; ++pulls)
+    {
+        auto item = read->next();
+        if(!item.ok())
+            fail("read stream: " + std::string(item.status().message()));
+        if(!*item)
+            break;
+        if((**item).completion)
+        {
+            ++completions;
+            if(!(**item).completion->complete)
+                fail("read Completion was incomplete");
+        }
+        for(auto& event: (**item).events) events.push_back(std::move(event));
+    }
+    if(completions != 1)
+        fail("read did not return exactly one complete Completion");
+    exact(rows, events);
+    std::cout << "complete exact read events=" << events.size() << '\n';
+    return 0;
+}
+
+int compactTail(const char* catalog, const char* out)
+{
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    const auto initial = loadRows(path(out, "events.tsv"));
+    auto tail = client->tail(loadStory(out), {}, std::chrono::system_clock::now() + 90s);
+    if(!tail.ok())
+        fail("tail open");
+    std::vector<Event> events;
+    for(size_t pulls = 0; pulls < 10000; ++pulls)
+    {
+        auto item = tail->next();
+        if(!item.ok() || !*item)
+            fail("tail ended before the post-compaction sentinel");
+        bool end = false;
+        for(auto& event: (**item).events)
+        {
+            end |= event.envelope.payload == "tail-end";
+            events.push_back(std::move(event));
+        }
+        if(events.size() == initial.size())
+        {
+            exact(initial, events);
+            std::ofstream(path(out, "tail.ready")) << "initial events observed\n";
+        }
+        if(end)
+        {
+            exact(loadRows(path(out, "events.tsv")), events);
+            tail->cancel();
+            std::cout << "exact Tail across switch events=" << events.size() << '\n';
+            return 0;
+        }
+    }
+    fail("Tail frame bound exhausted");
+}
+
+int compactEnd(const char* catalog, const char* out)
+{
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    auto writer = client->acquire(loadStory(out), "sentinel");
+    if(!writer.ok())
+        fail("sentinel acquire");
+    sdk::AppendSpec spec;
+    spec.envelope.payload = "tail-end";
+    auto result = writer->append(spec);
+    if(!result.ok() || !result->acked())
+        fail("sentinel append");
+    const auto id = result->event_id;
+    std::ofstream rows(path(out, "events.tsv"), std::ios::app);
+    rows << id.story_id << ' ' << id.writer_id << ' ' << id.incarnation << ' ' << id.sequence << ' '
+         << result->hlc.physical_ns << ' ' << result->hlc.logical << " 2 2 tail-end\n";
+    rows.close();
+    auto released = writer->release();
+    if(!released.ok() || !*released)
+        fail("sentinel release");
+    return 0;
+}
+
+int compactDestroy(const char* catalog, const char* out)
+{
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    const auto status = client->destroyStory(loadStory(out));
+    if(!status.ok())
+        fail("destroy: " + std::string(status.message()));
+    return 0;
+}
 } // namespace
 
 int main(int argc, char** argv)
 {
     const std::string command = argc > 1 ? argv[1] : "";
+    if(command == "compact-write" && argc == 6)
+        return compactWrite(argv[2], argv[3], argv[4], argv[5]);
+    if(command == "compact-read" && argc == 5)
+        return compactRead(argv[2], argv[3], argv[4]);
+    if(command == "compact-tail" && argc == 4)
+        return compactTail(argv[2], argv[3]);
+    if(command == "compact-end" && argc == 4)
+        return compactEnd(argv[2], argv[3]);
+    if(command == "compact-destroy" && argc == 4)
+        return compactDestroy(argv[2], argv[3]);
     if(command == "write" && argc == 4)
         return write(argv[2], argv[3]);
     if(command == "frontier" && argc == 4)
