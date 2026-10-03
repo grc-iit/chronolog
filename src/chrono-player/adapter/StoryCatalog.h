@@ -30,6 +30,7 @@ public:
     CatalogClient(std::shared_ptr<grpc::Channel> visor,
                   std::chrono::milliseconds deadline = std::chrono::milliseconds(2000));
     absl::Status ensureLive(StoryId story) const override;
+    absl::StatusOr<bool> tombstoned(StoryId story) const;
 
 private:
     std::unique_ptr<v1::Catalog::Stub> stub_;
