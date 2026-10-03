@@ -340,6 +340,8 @@ def main():
                         '--python_out=' + str(OUT / 'stubs'), '--grpc_python_out=' + str(OUT / 'stubs'),
                         'chronolog/v1/chronolog.proto', 'chronolog/internal/v1/internal.proto'],
                        timeout=30, check=True)
+        for package in ('chronolog', 'chronolog/v1', 'chronolog/internal', 'chronolog/internal/v1'):
+            (OUT / 'stubs' / package / '__init__.py').touch()
         cluster.stage()
         for role in cluster.services:
             if role.startswith('visor'):
