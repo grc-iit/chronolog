@@ -363,7 +363,7 @@ TEST(KeeperPolicy, ConfiguredSkewMismatchRefusesRegister)
     FakeVisor visor;
     visor.policy = policyWith(15000, 2000);
     Server server(visor);
-    test::RamRig rig({.require_catalog_policy = true});
+    test::RamRig rig({.process_id = {}, .instance = {}, .require_catalog_policy = true});
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
     keeper::ClusterClient::Options options{"self", "instance", "self:1"};
@@ -390,7 +390,7 @@ TEST(KeeperPolicy, ConfiguredReserveMismatchRefusesRegister)
     FakeVisor visor;
     visor.policy = policyWith(15000, 2000);
     Server server(visor);
-    test::RamRig rig({.require_catalog_policy = true});
+    test::RamRig rig({.process_id = {}, .instance = {}, .require_catalog_policy = true});
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
     for(uint32_t reserve_ms: {999u, UINT32_MAX})
@@ -416,7 +416,7 @@ TEST(KeeperPolicy, MatchingConfigRegisters)
     FakeVisor visor;
     visor.policy = policyWith(15000, 2000);
     Server server(visor);
-    test::RamRig rig({.require_catalog_policy = true});
+    test::RamRig rig({.process_id = {}, .instance = {}, .require_catalog_policy = true});
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
     keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
@@ -433,7 +433,10 @@ TEST(KeeperPolicy, RegisteredCatalogSkewControlsCausalFloorBoundary)
     FakeVisor visor;
     visor.policy = policyWith(15000, 2000);
     Server server(visor);
-    test::RamRig rig({.physical_policy = {.skew_limit_ns = 1}, .require_catalog_policy = true});
+    test::RamRig rig({.process_id = {},
+                      .instance = {},
+                      .physical_policy = {.skew_limit_ns = 1},
+                      .require_catalog_policy = true});
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
     keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),
@@ -468,7 +471,7 @@ TEST(KeeperPolicy, MissingCatalogPolicyLeavesAdmissionClosed)
 {
     FakeVisor visor;
     Server server(visor);
-    test::RamRig rig({.require_catalog_policy = true});
+    test::RamRig rig({.process_id = {}, .instance = {}, .require_catalog_policy = true});
     keeper::ConfigMembership membership;
     keeper::AcquisitionWatcher watcher(*rig.journal, "self", nullptr, false);
     keeper::ClusterClient client(grpc::CreateChannel(server.endpoint(), grpc::InsecureChannelCredentials()),

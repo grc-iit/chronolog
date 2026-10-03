@@ -120,6 +120,7 @@ int main(int argc, char** argv)
     journal_config.payload_max_bytes = config->payload_max_bytes;
     journal_config.require_catalog_policy = true;
     journal_config.dedupe_window = config->dedupe_window;
+    // Recovery uses the compiled D - S; Register must confirm it before admission.
     WalJournalConfig wal_config{
             config->wal_dir,
             config->group_commit_max_bytes,
