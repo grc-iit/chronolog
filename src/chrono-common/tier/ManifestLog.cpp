@@ -926,7 +926,7 @@ absl::Status ManifestLog::advance() const
     };
     std::vector<Pending> pending;
     std::map<std::string, std::string> claimed;
-    ManifestIndex migrations = cache_;
+    ManifestIndex migrations;
     for(auto& [writer, cursors]: cursors_)
     {
         for(const auto* extension: {".snap", ".log"})
@@ -975,9 +975,12 @@ absl::Status ManifestLog::advance() const
                                          auto status = applyLine(writer, line, scratch);
                                          if(!status.ok())
                                              return status;
-                                         for(const auto& [file, m]: scratch.locations)
+                                         for(const auto& [file_rank, m]: scratch.migration_ranks)
                                          {
-                                             auto conflict = MigrationConflict(migrations, m);
+                                             auto conflict = MigrationConflict(cache_, m);
+                                             if(!conflict.ok())
+                                                 return conflict;
+                                             conflict = MigrationConflict(migrations, m);
                                              if(!conflict.ok())
                                                  return conflict;
                                              ApplyMigration(migrations, m);
@@ -1034,6 +1037,13 @@ absl::StatusOr<ManifestIndex> ManifestLog::load() const
         return index.status();
     std::lock_guard lock(mutex_);
     return **index;
+}
+
+std::optional<MigrationLocation> ManifestLog::location(const std::string& file) const
+{
+    std::lock_guard lock(mutex_);
+    const auto found = cache_.locations.find(file);
+    return found == cache_.locations.end() ? std::nullopt : std::optional(found->second);
 }
 
 std::optional<FileChecksum> ManifestLog::checksum(const std::string& file) const

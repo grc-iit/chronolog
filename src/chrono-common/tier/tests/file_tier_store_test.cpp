@@ -2855,7 +2855,9 @@ TEST(FileTierStore, CompactionNeverTakesAMigratedOrMigratingInput)
                     auto compacted = sut->compactOnce(Eager());
                     EXPECT_TRUE(compacted.ok()) << compacted.status();
                     if(compacted.ok())
+                    {
                         EXPECT_EQ(compacted->inputs, 2u);
+                    }
                 }
                 return absl::OkStatus();
             };
@@ -2972,6 +2974,9 @@ TEST(FileTierStore, PeerSweepNeverRemovesAnotherWritersInFlightDestination)
     auto migrated = (*store)->migrateOnce("slow");
     ASSERT_TRUE(migrated.ok()) << migrated.status();
     EXPECT_EQ(Bytes(tier.root / file), bytes);
+    auto read = (*store)->readRecord(records[0], kAll);
+    ASSERT_TRUE(read.ok()) << read.status();
+    EXPECT_TRUE(SameEvents(*read, Rich(0).events));
     EXPECT_TRUE((*store)->location(file).value().has_value());
 }
 
@@ -3015,10 +3020,9 @@ TEST(ManifestLog, ForeignMigrateLineFailsTheRefreshClosed)
                         {"crc32c", 0u},
                         {"token", "token"}};
     const auto text = body.dump();
-    nlohmann::json framed{{"migrate_v1", body},
-                          {"bytes", text.size()},
-                          {"crc32c", static_cast<uint32_t>(absl::ComputeCrc32c(text))}};
-    std::ofstream(*directory / "manifest/foreign.log") << framed.dump() << '\n';
+    std::ofstream(*directory / "manifest/foreign.log")
+            << "{\"length\":" << text.size() << ",\"crc\":" << static_cast<uint32_t>(absl::ComputeCrc32c(text))
+            << ",\"migrate_v1\":" << text << "}\n";
     EXPECT_FALSE(reader->sync().ok());
     EXPECT_TRUE(reader->current()->locations.empty());
 }

@@ -63,17 +63,20 @@ public:
         try
         {
             std::thread(
-                    [promise, count, task = std::move(task)]() mutable
+                    [promise, count, task = std::optional<F>(std::move(task))]() mutable
                     {
+                        std::optional<Result> result;
                         try
                         {
-                            promise->set_value(task());
+                            result.emplace((*task)());
                         }
                         catch(const std::exception& error)
                         {
-                            promise->set_value(Result(absl::UnavailableError(error.what())));
+                            result.emplace(absl::UnavailableError(error.what()));
                         }
+                        task.reset();
                         --*count;
+                        promise->set_value(std::move(*result));
                     })
                     .detach();
         }

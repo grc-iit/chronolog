@@ -107,6 +107,7 @@ public:
     absl::Status sweepTiers();
     absl::Status writeTierReplicas();
     absl::Status awaitTierUnlinksForTesting(std::chrono::milliseconds timeout);
+    absl::StatusOr<ChunkBytes> loadResolvedFile(const std::string& file) const;
     absl::StatusOr<std::optional<MigrationLocation>> location(const std::string& file) const;
 
 
@@ -141,6 +142,9 @@ private:
                            const ManifestRecord& record,
                            const std::shared_ptr<Claim>& own = {}) const;
     absl::Status cleanupMigrations();
+    void queueTierSweeps();
+    std::map<std::pair<std::string, StoryId>, std::future<absl::Status>> tier_sweeps_;
+    std::set<std::pair<std::string, StoryId>> tier_swept_;
     std::vector<std::shared_ptr<Claim>> stopped_migrations_;
     struct CompactionJob;
     absl::StatusOr<CompactionResult> runCompaction(const CompactionPolicy& policy, CompactionJob job);
@@ -194,6 +198,7 @@ private:
     std::map<std::string, StoryId> pending_unlinks_;
     std::map<std::string, std::weak_ptr<Claim>> claims_;
     std::map<std::string, std::shared_ptr<PosixTier>> tiers_;
+    mutable std::mutex tier_table_mutex_;
     std::map<std::string, std::future<absl::Status>> tier_unlinks_;
     std::map<std::string, std::shared_ptr<std::vector<std::future<absl::Status>>>> unlink_results_;
     std::string deployment_;

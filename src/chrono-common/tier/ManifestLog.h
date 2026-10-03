@@ -97,6 +97,7 @@ public:
     absl::Status append(ManifestRecord record,
                         std::optional<PhysicalBounds> bounds = std::nullopt,
                         std::optional<FileChecksum> checksum = std::nullopt);
+    std::optional<MigrationLocation> location(const std::string& file) const;
     std::optional<FileChecksum> checksum(const std::string& file) const;
     absl::Status rememberWatermark(StoryId story, Hlc watermark);
     // Fsync'd before it returns. Compaction keeps the line, so the story stays tombstoned for good (I13.11).

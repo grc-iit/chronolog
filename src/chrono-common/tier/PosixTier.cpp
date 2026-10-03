@@ -15,12 +15,51 @@ PosixTier::PosixTier(TierConfig tier, std::string deployment, size_t threads, st
 
 absl::StatusOr<std::string> PosixTier::read(int root, const std::string& file, bool direct)
 {
+    if(direct)
+    {
+        tier_detail::Fd direct_fd(::openat(root, file.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_DIRECT));
+        if(direct_fd.get() >= 0)
+        {
+            struct stat info
+            {
+            };
+            if(::fstat(direct_fd.get(), &info) != 0)
+                return tier_detail::IoError("stat direct tier file");
+            void* memory = nullptr;
+            if(::posix_memalign(&memory, 4096, 65536) != 0)
+                return absl::ResourceExhaustedError("direct tier buffer allocation failed");
+            std::unique_ptr<void, decltype(&::free)> buffer(memory, &::free);
+            std::string bytes;
+            bool refused = false;
+            while(bytes.size() < static_cast<uint64_t>(info.st_size))
+            {
+                const auto n = ::pread(direct_fd.get(), buffer.get(), 65536, static_cast<off_t>(bytes.size()));
+                if(n < 0 && errno == EINTR)
+                    continue;
+                if(n < 0 && (errno == EINVAL || errno == EOPNOTSUPP))
+                {
+                    refused = true;
+                    break;
+                }
+                if(n <= 0)
+                    return absl::UnavailableError("direct tier verification read failed");
+                bytes.append(static_cast<const char*>(buffer.get()), static_cast<size_t>(n));
+            }
+            if(!refused)
+            {
+                VLOG(1) << "tier verification uses O_DIRECT";
+                return bytes;
+            }
+        }
+        else if(errno != EINVAL && errno != EOPNOTSUPP)
+            return tier_detail::IoError("open direct tier file");
+    }
     tier_detail::Fd fd(::openat(root, file.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
     if(fd.get() < 0)
         return tier_detail::IoError("open tier file");
     if(direct)
     {
-        // Unaligned chunk tails require buffered I/O; invalidate the client's cached bytes before verification.
+        // The file system refused direct I/O; invalidate buffered bytes before verification.
         const auto error = ::posix_fadvise(fd.get(), 0, 0, POSIX_FADV_DONTNEED);
         if(error)
             return absl::UnavailableError("cannot invalidate tier verification cache");
@@ -80,6 +119,12 @@ absl::Status PosixTier::probe()
     if(probing_.exchange(true))
         return absl::UnavailableError("tier probe already outstanding");
     auto self = shared_from_this();
+    auto completion = std::shared_ptr<int>(new int(0),
+                                           [self](int* value)
+                                           {
+                                               self->probing_ = false;
+                                               delete value;
+                                           });
     uint64_t epoch;
     {
         std::lock_guard lock(mutex_);
@@ -87,13 +132,8 @@ absl::Status PosixTier::probe()
         directory_.reset();
     }
     return run(
-            [self, epoch]() -> absl::Status
+            [self, epoch, completion]() -> absl::Status
             {
-                struct Done
-                {
-                    std::atomic<bool>& flag;
-                    ~Done() { flag = false; }
-                } done{self->probing_};
                 auto directory = std::make_shared<TierDirectory>(
                         ::open(self->config.root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW),
                         epoch);
