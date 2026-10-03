@@ -7,6 +7,7 @@
 #include <deque>
 #include <filesystem>
 #include <map>
+#include "rpc/Channel.h"
 #include <mutex>
 #include <unistd.h>
 
@@ -35,6 +36,14 @@ wire::WatchRoutesResponse Tombstone(StoryId story, uint64_t revision)
     return message;
 }
 
+wire::WatchRoutesResponse End(uint64_t revision)
+{
+    wire::WatchRoutesResponse message;
+    message.set_snapshot_end(true);
+    message.set_revision(revision);
+    return message;
+}
+
 // Sends the scripted snapshot, then whatever the test pushes, until the client cancels.
 class FakeCluster final: public wire::Cluster::Service
 {
@@ -52,6 +61,18 @@ public:
         }
         ready_.notify_all();
     }
+    bool waitConnections(int count)
+    {
+        std::unique_lock lock(mutex_);
+        return ready_.wait_for(lock, 10s, [&] { return connections_ >= count; });
+    }
+    void reconnect(std::vector<wire::WatchRoutesResponse> snapshot)
+    {
+        std::lock_guard lock(mutex_);
+        snapshot_ = std::move(snapshot);
+        disconnect_ = true;
+        ready_.notify_all();
+    }
     grpc::Status WatchRoutes(grpc::ServerContext* context,
                              const wire::WatchRoutesRequest*,
                              grpc::ServerWriter<wire::WatchRoutesResponse>* writer) override
@@ -60,6 +81,8 @@ public:
         {
             std::lock_guard lock(mutex_);
             snapshot = snapshot_;
+            ++connections_;
+            ready_.notify_all();
         }
         for(const auto& message: snapshot)
             if(!writer->Write(message))
@@ -68,7 +91,12 @@ public:
         for(int tick = 0; tick < 400 && !context->IsCancelled(); ++tick)
         {
             std::unique_lock lock(mutex_);
-            ready_.wait_for(lock, 50ms, [this] { return !outbox_.empty(); });
+            ready_.wait_for(lock, 50ms, [this] { return disconnect_ || !outbox_.empty(); });
+            if(disconnect_)
+            {
+                disconnect_ = false;
+                return {grpc::StatusCode::UNAVAILABLE, "disconnect"};
+            }
             if(outbox_.empty())
                 continue;
             auto message = std::move(outbox_.front());
@@ -81,6 +109,8 @@ public:
     }
 
 private:
+    bool disconnect_{};
+    int connections_{};
     std::mutex mutex_;
     std::condition_variable ready_;
     std::vector<wire::WatchRoutesResponse> snapshot_;
@@ -117,7 +147,7 @@ protected:
         builder.RegisterService(&cluster_);
         server_ = builder.BuildAndStart();
         ASSERT_NE(server_, nullptr);
-        channel_ = grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials());
+        channel_ = rpc::peerChannel("127.0.0.1:" + std::to_string(port));
     }
 
     void TearDown() override
@@ -146,8 +176,7 @@ protected:
                     if(call <= unavailable_first)
                         return absl::UnavailableError("catalog not reachable");
                     return destroyed.contains(story);
-                },
-                0ms);
+                });
     }
 
     bool waitLookups(StoryId story, int calls)
@@ -172,7 +201,7 @@ protected:
 
 TEST_F(TombstoneWatcherTest, TombstonedUpdatesFreeEveryDestroyedStoryAndNothingElse)
 {
-    cluster_.script({Route(3, 5), Route(4, 5)});
+    cluster_.script({Route(3, 5), Route(4, 5), End(5)});
     start({});
     // One chronicle destroy emits one tombstone per story at a single revision.
     cluster_.push(Tombstone(1, 6));
@@ -189,7 +218,7 @@ TEST_F(TombstoneWatcherTest, TombstonedUpdatesFreeEveryDestroyedStoryAndNothingE
 
 TEST_F(TombstoneWatcherTest, SnapshotReconciliationConfirmsAStoryTheSnapshotDoesNotList)
 {
-    cluster_.script({Route(2, 5), Route(3, 5)});
+    cluster_.script({Route(2, 5), Route(3, 5), End(5)});
     // Story 1 was destroyed while this Grapher was down; the Catalog answers only on the third attempt. Story 4 is
     // absent from the snapshot too but live.
     start({1}, 2);
@@ -201,6 +230,79 @@ TEST_F(TombstoneWatcherTest, SnapshotReconciliationConfirmsAStoryTheSnapshotDoes
     EXPECT_EQ(state(4), ManifestState::Published) << "absence from a snapshot is never taken for a destroy";
     std::lock_guard lock(lookups_mutex_);
     EXPECT_GE(lookups_[1], 3);
+}
+
+TEST_F(TombstoneWatcherTest, SlowSnapshotNeverLooksUpBeforeItsMarker)
+{
+    cluster_.script({Route(1, 5)});
+    start({2});
+    ASSERT_TRUE(cluster_.waitConnections(1));
+    {
+        std::unique_lock lock(lookups_mutex_);
+        EXPECT_FALSE(lookups_changed_.wait_for(lock, 600ms, [&] { return !lookups_.empty(); }));
+    }
+    EXPECT_EQ(state(2), ManifestState::Published);
+    cluster_.push(Route(2, 5));
+    cluster_.push(End(5));
+    ASSERT_TRUE(waitLookups(4, 1));
+    EXPECT_EQ(state(2), ManifestState::Published);
+    std::lock_guard lock(lookups_mutex_);
+    EXPECT_EQ(lookups_[2], 0);
+}
+
+TEST_F(TombstoneWatcherTest, DestroyDuringDisconnectIsAppliedAtTheMarkerWithoutLookup)
+{
+    cluster_.script({Route(1, 5), Route(2, 5), Route(3, 5), End(5)});
+    start({});
+    ASSERT_TRUE(waitLookups(4, 1));
+    cluster_.reconnect({Route(2, 6), Route(3, 6)});
+    ASSERT_TRUE(cluster_.waitConnections(2));
+    EXPECT_EQ(state(1), ManifestState::Published);
+    cluster_.push(End(6));
+    ASSERT_TRUE(archive_->waitDestroyed(1, 10s));
+    EXPECT_TRUE(store_->tombstoned(1).value());
+    cluster_.push(Route(1, 9));
+    cluster_.push(Tombstone(1, 10));
+    cluster_.push(End(10));
+    watcher_.reset();
+    EXPECT_EQ(state(1), ManifestState::Deleted);
+    std::lock_guard lock(lookups_mutex_);
+    EXPECT_EQ(lookups_[1], 0);
+}
+
+TEST_F(TombstoneWatcherTest, StoryKnownAboveTheSnapshotKeepsItsArchive)
+{
+    cluster_.script({Route(1, 9), End(9)});
+    start({});
+    ASSERT_TRUE(waitLookups(4, 1));
+    cluster_.reconnect({Route(2, 5), End(5)});
+    ASSERT_TRUE(cluster_.waitConnections(2));
+    ASSERT_TRUE(waitLookups(1, 1));
+    EXPECT_EQ(state(1), ManifestState::Published);
+}
+
+TEST_F(TombstoneWatcherTest, RegressingSnapshotConcludesNothing)
+{
+    cluster_.script({Route(1, 5), Route(2, 5), Route(3, 5), End(9)});
+    start({});
+    ASSERT_TRUE(waitLookups(4, 1));
+    cluster_.reconnect({Route(2, 6), Route(3, 6), End(6)});
+    ASSERT_TRUE(cluster_.waitConnections(2));
+    ASSERT_TRUE(waitLookups(1, 1));
+    EXPECT_EQ(state(1), ManifestState::Published);
+}
+
+TEST_F(TombstoneWatcherTest, StreamEndingBeforeItsMarkerReconcilesNothing)
+{
+    cluster_.script({Route(1, 5)});
+    start({2});
+    ASSERT_TRUE(cluster_.waitConnections(1));
+    cluster_.reconnect({Route(1, 5)});
+    ASSERT_TRUE(cluster_.waitConnections(2));
+    watcher_.reset();
+    EXPECT_EQ(state(2), ManifestState::Published);
+    std::lock_guard lock(lookups_mutex_);
+    EXPECT_TRUE(lookups_.empty());
 }
 } // namespace
 } // namespace chronolog::grapher

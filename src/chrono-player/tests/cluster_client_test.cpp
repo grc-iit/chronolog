@@ -5,6 +5,8 @@
 #include <future>
 #include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
+#include "chrono-player/replay/KeeperHotSource.h"
+#include "chrono-player/replay/HotReplay.h"
 
 namespace chronolog::player
 {
@@ -43,7 +45,9 @@ public:
     std::condition_variable cv;
     std::vector<wire::RouteUpdate> snapshot{update()}, messages;
     std::atomic<int> calls{}, watches{}, heartbeats{};
-    bool overflow{}, unknown{}, unavailable{}, obsolete{};
+    bool overflow{}, unknown{}, unavailable{}, obsolete{}, hold_marker{}, hold_entries{};
+    uint64_t marker_revision{};
+    std::atomic<int> markers{}, total_lookups{};
     grpc::Status Register(grpc::ServerContext*, const wire::RegisterRequest*, wire::RegisterResponse* r) override
     {
         ++calls;
@@ -91,6 +95,13 @@ public:
         std::unique_lock lock(mu);
         auto initial = snapshot;
         auto cursor = messages.size();
+        uint64_t revision = marker_revision;
+        if(!revision)
+        {
+            for(const auto& item: initial) revision = std::max(revision, item.revision());
+            for(const auto& item: messages) revision = std::max(revision, item.revision());
+        }
+        for(auto& item: initial) item.set_revision(revision);
         ++watches;
         cv.notify_all();
         auto send = [&](const wire::RouteUpdate& item)
@@ -99,11 +110,25 @@ public:
             response.ParseFromString(item.SerializeAsString());
             return writer->Write(response);
         };
+        while(hold_entries && !context->IsCancelled()) cv.wait_for(lock, 10ms);
         lock.unlock();
         for(const auto& item: initial)
             if(!send(item))
                 return grpc::Status::OK;
         lock.lock();
+        while(hold_marker && !overflow && !context->IsCancelled()) cv.wait_for(lock, 10ms);
+        if(!overflow && !context->IsCancelled())
+        {
+            wire::WatchRoutesResponse marker;
+            marker.set_revision(revision);
+            marker.set_snapshot_end(true);
+            lock.unlock();
+            if(!writer->Write(marker))
+                return grpc::Status::OK;
+            lock.lock();
+            ++markers;
+            cv.notify_all();
+        }
         while(!context->IsCancelled())
         {
             if(overflow)
@@ -140,13 +165,26 @@ public:
         return cv.wait_for(lock, 3s, [&] { return watches >= count; });
     }
 };
+class DestroyedArchive final: public wire::Archive::Service
+{
+public:
+    std::atomic<int> calls{};
+    grpc::Status
+    FetchHot(grpc::ServerContext*, const wire::FetchHotRequest*, grpc::ServerWriter<wire::FetchHotResponse>*) override
+    {
+        ++calls;
+        return {grpc::StatusCode::FAILED_PRECONDITION, "story is tombstoned"};
+    }
+};
 class ClusterClientTest: public ::testing::Test
 {
 protected:
     CatalogSnapshot catalog;
+    DestroyedArchive archive;
+    std::string address;
     std::unique_ptr<grpc::Server> server;
     std::shared_ptr<grpc::Channel> channel;
-    std::unique_ptr<ClusterClient> player;
+    std::shared_ptr<ClusterClient> player;
     std::atomic<int> lookups{};
     std::atomic<bool> gone{}, fail_lookup{};
     void SetUp() override
@@ -156,14 +194,18 @@ protected:
         rpc::applyServerPolicy(builder);
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
         builder.RegisterService(&catalog);
+        builder.RegisterService(&archive);
         server = builder.BuildAndStart();
         ASSERT_NE(server, nullptr);
-        channel = rpc::peerChannel("127.0.0.1:" + std::to_string(port));
-        player = std::make_unique<ClusterClient>(channel,
+        address = "127.0.0.1:" + std::to_string(port);
+        channel = rpc::peerChannel(address);
+        player = std::make_shared<ClusterClient>(channel,
                                                  Process{"player", "instance", "player:50054", ProcessRole::Player},
                                                  1s,
                                                  [this](StoryId id) -> absl::StatusOr<bool>
                                                  {
+                                                     ++catalog.total_lookups;
+                                                     catalog.cv.notify_all();
                                                      if(id == 99)
                                                          ++lookups;
                                                      if(fail_lookup)
@@ -319,6 +361,168 @@ TEST_F(ClusterClientTest, UnknownRegistrationReregistersButTransportFailureDoesN
         ASSERT_TRUE(catalog.cv.wait_for(lock, 3s, [&] { return catalog.heartbeats > previous; }));
     }
     EXPECT_EQ(catalog.calls, 2);
+}
+
+TEST_F(ClusterClientTest, SlowSnapshotNeverLooksUpBeforeItsMarker)
+{
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.hold_entries = true;
+        catalog.hold_marker = true;
+    }
+    start();
+    {
+        std::unique_lock lock(catalog.mu);
+        EXPECT_FALSE(catalog.cv.wait_for(lock, 600ms, [&] { return catalog.total_lookups > 0; }));
+        catalog.hold_entries = false;
+        catalog.hold_marker = false;
+        catalog.cv.notify_all();
+        ASSERT_TRUE(catalog.cv.wait_for(lock, 3s, [&] { return catalog.markers >= 1; }));
+    }
+    ASSERT_TRUE(player->routeState(42).ok());
+    EXPECT_EQ(catalog.total_lookups, 0);
+}
+
+TEST_F(ClusterClientTest, DestroyDuringDisconnectIsConcludedWithoutLookup)
+{
+    start();
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot = {update(43, 1, 2)};
+        catalog.hold_marker = true;
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    ASSERT_TRUE(catalog.subscribed(2));
+    ASSERT_TRUE(after(43, 0).ok());
+    EXPECT_TRUE(player->routeState(42).ok());
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.hold_marker = false;
+        catalog.cv.notify_all();
+    }
+    EXPECT_EQ(after(42, 1).status().code(), absl::StatusCode::kFailedPrecondition);
+    catalog.publish(update(42, 9, 9));
+    catalog.publish(update(44, 1, 10));
+    ASSERT_TRUE(after(44, 0).ok());
+    EXPECT_EQ(player->routeState(42).status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(catalog.total_lookups, 0);
+}
+
+TEST_F(ClusterClientTest, StoryKnownAboveTheSnapshotKeepsItsRouteAndUsesLookup)
+{
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot = {update(42, 1, 9)};
+    }
+    start();
+    catalog.publish(update(42, 2, 10));
+    ASSERT_TRUE(after(42, 1).ok());
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot = {update(43, 1, 5)};
+        catalog.messages.clear();
+        catalog.marker_revision = 5;
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    ASSERT_TRUE(catalog.subscribed(2));
+    {
+        std::unique_lock lock(catalog.mu);
+        ASSERT_TRUE(catalog.cv.wait_for(lock, 3s, [&] { return catalog.total_lookups > 0; }));
+    }
+    EXPECT_EQ(player->routeState(42)->route.epoch, 2);
+}
+
+TEST_F(ClusterClientTest, RegressingSnapshotConcludesNothing)
+{
+    start();
+    catalog.publish(update(43, 1, 9));
+    ASSERT_TRUE(after(43, 0).ok());
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot = {update(43, 1, 6)};
+        catalog.messages.clear();
+        catalog.marker_revision = 6;
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    ASSERT_TRUE(catalog.subscribed(2));
+    {
+        std::unique_lock lock(catalog.mu);
+        ASSERT_TRUE(catalog.cv.wait_for(lock, 3s, [&] { return catalog.total_lookups > 0; }));
+    }
+    EXPECT_TRUE(player->routeState(42).ok());
+}
+
+TEST_F(ClusterClientTest, StreamEndingBeforeItsMarkerReconcilesNothing)
+{
+    start();
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot.clear();
+        catalog.marker_revision = 2;
+        catalog.hold_marker = true;
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    ASSERT_TRUE(catalog.subscribed(2));
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    ASSERT_TRUE(catalog.subscribed(3));
+    EXPECT_TRUE(player->routeState(42).ok());
+    EXPECT_EQ(catalog.total_lookups, 0);
+}
+
+TEST_F(ClusterClientTest, ReadPlannedBeforeReconnectReportsSourceFailedHonestly)
+{
+    start();
+    std::promise<void> planned, resume;
+    auto resumed = resume.get_future().share();
+    std::atomic<bool> signaled{};
+    auto source = std::make_shared<KeeperHotSource>(
+            player,
+            nullptr,
+            [&](const KeeperRef&)
+            {
+                if(!signaled.exchange(true))
+                    planned.set_value();
+                resumed.wait_for(5s);
+                return address;
+            },
+            KeeperHotSourceOptions{1s});
+    HotReplay replay(source);
+    auto read =
+            std::async(std::launch::async, [&] { return replay.read(42, {Range::Axis::Hlc, {1000, 0}, {2000, 0}}); });
+    const auto reached = planned.get_future().wait_for(3s);
+    {
+        std::lock_guard lock(catalog.mu);
+        catalog.snapshot = {update(43, 1, 2)};
+        catalog.overflow = true;
+        catalog.cv.notify_all();
+    }
+    EXPECT_EQ(after(42, 1).status().code(), absl::StatusCode::kFailedPrecondition);
+    resume.set_value();
+    ASSERT_EQ(reached, std::future_status::ready);
+    auto stream = read.get();
+    ASSERT_TRUE(stream.ok()) << stream.status();
+    std::optional<Completion> completion;
+    for(int batch = 0; batch < 10; ++batch)
+    {
+        auto next = (*stream)->next();
+        ASSERT_TRUE(next.ok()) << next.status();
+        if(!*next)
+            break;
+        if((**next).completion)
+            completion = (**next).completion;
+    }
+    ASSERT_GT(archive.calls, 0);
+    ASSERT_TRUE(completion);
+    EXPECT_FALSE(completion->complete);
+    EXPECT_EQ(completion->reason, IncompleteReason::SourceFailed);
 }
 } // namespace
 } // namespace chronolog::player
