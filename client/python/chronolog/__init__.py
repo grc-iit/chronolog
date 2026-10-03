@@ -85,7 +85,12 @@ def _coerce(kind, value):
         return None
     for candidate in (kind, *typing.get_args(kind)):
         if isinstance(candidate, type) and issubclass(candidate, IntEnum) and type(value) is not candidate:
-            return candidate(value)
+            try:
+                return candidate(value)
+            except ValueError:
+                if isinstance(value, int):
+                    return int(value)
+                raise
     return value
 
 
@@ -173,7 +178,7 @@ class Event:
     durability: Durability
 
     def __post_init__(self):
-        object.__setattr__(self, "durability", Durability(self.durability))
+        object.__setattr__(self, "durability", _coerce(Durability, self.durability))
 
     @property
     def payload(self):
@@ -196,7 +201,7 @@ class Completion:
 
     def __post_init__(self):
         object.__setattr__(self, "laggards", tuple(self.laggards))
-        object.__setattr__(self, "reason", IncompleteReason(self.reason))
+        object.__setattr__(self, "reason", _coerce(IncompleteReason, self.reason))
 
 
 @dataclass(frozen=True)
@@ -225,7 +230,7 @@ class AppendResult:
     durability: Durability
 
     def __post_init__(self):
-        object.__setattr__(self, "durability", Durability(self.durability))
+        object.__setattr__(self, "durability", _coerce(Durability, self.durability))
 
     @property
     def acked(self):

@@ -1,16 +1,17 @@
 import { join } from 'node:path';
 
+export type UnknownEnum = `UNKNOWN_${number}`;
 export enum Durability { UNSPECIFIED = 0, ACCEPTED = 1, DURABLE = 2 }
 export type StatusCode = 'OK' | 'CANCELLED' | 'UNKNOWN' | 'INVALID_ARGUMENT' | 'DEADLINE_EXCEEDED' |
   'NOT_FOUND' | 'ALREADY_EXISTS' | 'PERMISSION_DENIED' | 'RESOURCE_EXHAUSTED' | 'FAILED_PRECONDITION' |
-  'ABORTED' | 'OUT_OF_RANGE' | 'UNIMPLEMENTED' | 'INTERNAL' | 'UNAVAILABLE' | 'DATA_LOSS' | 'UNAUTHENTICATED';
+  'ABORTED' | 'OUT_OF_RANGE' | 'UNIMPLEMENTED' | 'INTERNAL' | 'UNAVAILABLE' | 'DATA_LOSS' | 'UNAUTHENTICATED' | UnknownEnum;
 export interface ItemStatus { readonly code: number; readonly message: string }
 export type AppendRejection = 'UNSPECIFIED' | 'FENCED_RELEASED' | 'FENCED_SUPERSEDED' | 'SEQUENCE_GAP' | 'DEDUPE_WINDOW' |
   'EARLIER_ITEM_FAILED' | 'NOT_REGISTERED' | 'STALE_EPOCH' | 'UNASSIGNED_KEEPER' | 'KEEPER_NOT_IN_ROUTE' |
-  'STORY_TOMBSTONED' | 'FENCED_EXPIRED' | 'FENCED_OWNER_REMOVED';
-export type AcquisitionTerminationCause = 'UNSPECIFIED' | 'EXPIRED' | 'RELEASED' | 'SUPERSEDED' | 'OWNER_REMOVED';
+  'STORY_TOMBSTONED' | 'FENCED_EXPIRED' | 'FENCED_OWNER_REMOVED' | UnknownEnum;
+export type AcquisitionTerminationCause = 'UNSPECIFIED' | 'EXPIRED' | 'RELEASED' | 'SUPERSEDED' | 'OWNER_REMOVED' | UnknownEnum;
 export interface AcquireRefusal {
-  readonly refusalReason: 'UNSPECIFIED' | 'HELD' | 'PRIOR_MISMATCH';
+  readonly refusalReason: 'UNSPECIFIED' | 'HELD' | 'PRIOR_MISMATCH' | UnknownEnum;
   readonly currentIncarnation?: bigint;
   readonly matchedIncarnation?: bigint;
   readonly remainingNs: bigint;
@@ -104,7 +105,7 @@ export interface Route { readonly epoch: bigint; readonly keepers: readonly Keep
 export interface AcquisitionLease { readonly durationNs: bigint; readonly remainingNs: bigint }
 export interface Acquisition {
   readonly storyId: bigint; readonly writerId: bigint; readonly incarnation: bigint; readonly route: Route; readonly assignedKeeper: KeeperRef;
-  readonly lease: AcquisitionLease; readonly keeperPreference?: 'UNSPECIFIED' | 'HONORED' | 'NOT_IN_ROUTE' | 'RETAINED';
+  readonly lease: AcquisitionLease; readonly keeperPreference?: 'UNSPECIFIED' | 'HONORED' | 'NOT_IN_ROUTE' | 'RETAINED' | UnknownEnum;
 }
 export interface WriterLease {
   // Last Catalog-confirmed grant; Keeper admissions never refresh it.
@@ -116,13 +117,13 @@ export interface WriterLease {
   readonly renewals: bigint;
 }
 export interface Envelope { readonly contentType: string; readonly payload: Uint8Array; readonly traceId: Uint8Array; readonly spanId: Uint8Array; readonly attributes: Readonly<Record<string, string>> }
-export interface TimeReading { readonly physicalNs: bigint; readonly uncertaintyNs?: bigint; readonly status: 'SYNCED' | 'UNSYNCED' | 'UNAVAILABLE' }
-export interface Event { readonly id: EventId; readonly hlc: Hlc; readonly physical: TimeReading; readonly envelope: Envelope; readonly durability: Durability }
+export interface TimeReading { readonly physicalNs: bigint; readonly uncertaintyNs?: bigint; readonly status: 'SYNCED' | 'UNSYNCED' | 'UNAVAILABLE' | UnknownEnum }
+export interface Event { readonly id: EventId; readonly hlc: Hlc; readonly physical: TimeReading; readonly envelope: Envelope; readonly durability: Durability | number }
 export interface Frontier { readonly writerId: bigint; readonly incarnation: bigint; readonly frontier: Hlc }
-export interface Completion { readonly complete: boolean; readonly frontier: Hlc; readonly laggards: readonly Frontier[]; readonly reason: 'NONE' | 'LAGGING_WRITERS' | 'PHYSICAL_AXIS_UNBOUNDED' | 'SOURCE_FAILED' | 'TRUNCATED' }
+export interface Completion { readonly complete: boolean; readonly frontier: Hlc; readonly laggards: readonly Frontier[]; readonly reason: 'NONE' | 'LAGGING_WRITERS' | 'PHYSICAL_AXIS_UNBOUNDED' | 'SOURCE_FAILED' | 'TRUNCATED' | UnknownEnum }
 export interface Chronicle { readonly name: string; readonly tombstoned: boolean }
 export interface Story { readonly id: bigint; readonly epoch: bigint; readonly chronicle: string; readonly name: string; readonly tombstoned: boolean }
-export interface AppendResult { readonly eventId: EventId; readonly hlc: Hlc; readonly achieved: Durability; readonly acked: boolean }
+export interface AppendResult { readonly eventId: EventId; readonly hlc: Hlc; readonly achieved: Durability | number; readonly acked: boolean }
 export interface HlcRange { readonly start: Hlc; readonly end: Hlc }
 export interface PhysicalRange { readonly startNs: bigint; readonly endNs: bigint }
 export interface Position { readonly hlc: Hlc; readonly id: EventId }
@@ -310,12 +311,12 @@ export class EventStream implements AsyncIterableIterator<Event> {
 export interface ContextRef { readonly storyId: bigint; readonly chronicle: string; readonly name: string }
 export interface AgentIdentity { readonly agentId: string; readonly slot: string }
 export interface WriterStamp { readonly writerId: bigint; readonly incarnation: bigint }
-export type Access = 'READ_ONLY' | 'READ_WRITE';
-export type SessionState = 'READY' | 'TRANSPORT_PENDING' | 'NEEDS_RECONCILE' | 'FENCED' | 'CLOSED';
-export type MemoryOutcome = 'DURABLE' | 'RAM_ONLY_MAY_VANISH' | 'REJECTED' | 'UNKNOWN' | 'FENCED' | 'LANDED';
-export type DeliveryLimit = 'NONE' | 'EVENTS' | 'BYTES' | 'OVERSIZED_EVENT' | 'READ_CALLS';
-export type ReconcileOutcome = 'LANDED' | 'ABSENT' | 'UNKNOWN';
-export type FollowFrom = 'NOW' | 'BEGINNING' | 'POSITION';
+export type Access = 'READ_ONLY' | 'READ_WRITE' | UnknownEnum;
+export type SessionState = 'READY' | 'TRANSPORT_PENDING' | 'NEEDS_RECONCILE' | 'FENCED' | 'CLOSED' | UnknownEnum;
+export type MemoryOutcome = 'DURABLE' | 'RAM_ONLY_MAY_VANISH' | 'REJECTED' | 'UNKNOWN' | 'FENCED' | 'LANDED' | UnknownEnum;
+export type DeliveryLimit = 'NONE' | 'EVENTS' | 'BYTES' | 'OVERSIZED_EVENT' | 'READ_CALLS' | UnknownEnum;
+export type ReconcileOutcome = 'LANDED' | 'ABSENT' | 'UNKNOWN' | UnknownEnum;
+export type FollowFrom = 'NOW' | 'BEGINNING' | 'POSITION' | UnknownEnum;
 export interface PageLimits { maxEvents?: number; maxRawBytes?: number }
 export interface EnvelopeInput {
   payload: Uint8Array; contentType?: string; attributes?: Record<string, string>; traceId?: Uint8Array; spanId?: Uint8Array;
@@ -323,7 +324,7 @@ export interface EnvelopeInput {
 export interface Memory { operationId: string; envelope: EnvelopeInput; durability?: Durability; physical?: TimeReading }
 export interface PriorOutcome {
   readonly operationId: string; readonly status: Status; readonly outcome: MemoryOutcome; readonly receipt?: AppendResult;
-  readonly landed?: Position; readonly observedDurability: Durability;
+  readonly landed?: Position; readonly observedDurability: Durability | number;
 }
 export interface MemoryResult {
   readonly current: PriorOutcome; readonly resolvedPrior: readonly PriorOutcome[]; readonly blockingOperationId?: string;
@@ -349,7 +350,7 @@ export interface ReconcileCheckpoint {
   readonly currentMarkerOperationId?: string; readonly markerHlc?: Hlc;
 }
 export interface ReconciledOperation {
-  readonly operationId: string; readonly outcome: ReconcileOutcome; readonly landed?: Position; readonly observedDurability: Durability;
+  readonly operationId: string; readonly outcome: ReconcileOutcome; readonly landed?: Position; readonly observedDurability: Durability | number;
 }
 export interface OperationDisposition {
   readonly result: ReconciledOperation; readonly priorWriter: WriterStamp; readonly normalizedDigest?: Uint8Array;

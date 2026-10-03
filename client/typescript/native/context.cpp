@@ -1,15 +1,10 @@
 #include "binding.h"
+#include <charconv>
 
 namespace binding
 {
 namespace
 {
-template <class E>
-const char* name(E value, std::initializer_list<const char*> names)
-{
-    auto index = static_cast<size_t>(value);
-    return index < names.size() ? names.begin()[index] : "UNKNOWN";
-}
 template <class E>
 E parse(Js value, std::initializer_list<const char*> names)
 {
@@ -17,6 +12,15 @@ E parse(Js value, std::initializer_list<const char*> names)
     for(size_t i = 0; i < names.size(); ++i)
         if(input == names.begin()[i])
             return static_cast<E>(i);
+    if(input.starts_with("UNKNOWN_"))
+    {
+        std::underlying_type_t<E> number{};
+        const auto first = input.data() + 8;
+        const auto last = input.data() + input.size();
+        const auto parsed = std::from_chars(first, last, number);
+        if(parsed.ec == std::errc{} && parsed.ptr == last)
+            return static_cast<E>(number);
+    }
     throw Napi::RangeError::New(value.Env(), "unknown enum value " + input);
 }
 const std::initializer_list<const char*> session_states = {"READY",
@@ -117,7 +121,7 @@ Js page(Napi::Env env, const ctx::Page& value)
     set(out, "completion", value.completion);
     set(out, "completionRange", value.completion_range);
     out.Set("streamStatus", status(env, value.stream_status));
-    out.Set("limited", name(value.limited, delivery_limits));
+    out.Set("limited", enumName(value.limited, delivery_limits));
     out.Set("rawBytes", count(env, value.raw_bytes));
     out.Set("answerComplete", value.answer_complete);
     out.Set("hasMore", value.has_more);
@@ -133,7 +137,7 @@ Js prior(Napi::Env env, const ctx::PriorOutcome& value)
     auto out = Napi::Object::New(env);
     out.Set("operationId", value.operation_id);
     out.Set("status", status(env, value.status));
-    out.Set("outcome", name(value.outcome, memory_outcomes));
+    out.Set("outcome", enumName(value.outcome, memory_outcomes));
     set(out, "receipt", value.receipt);
     set(out, "landed", value.landed);
     out.Set("observedDurability", static_cast<int>(value.observed_durability));
@@ -143,7 +147,7 @@ Js reconciledJs(Napi::Env env, const ctx::ReconciledOperation& value)
 {
     auto out = Napi::Object::New(env);
     out.Set("operationId", value.operation_id);
-    out.Set("outcome", name(value.outcome, reconcile_outcomes));
+    out.Set("outcome", enumName(value.outcome, reconcile_outcomes));
     set(out, "landed", value.landed);
     out.Set("observedDurability", static_cast<int>(value.observed_durability));
     return out;
@@ -155,7 +159,8 @@ ctx::ReconciledOperation reconciled(Js value)
                                  parse<ctx::ReconcileOutcome>(input.Get("outcome"), reconcile_outcomes),
                                  optional<sdk::Position>(input, "landed", position)};
     if(has(input, "observedDurability"))
-        out.observed_durability = static_cast<Durability>(static_cast<int>(number(input.Get("observedDurability"), 2)));
+        out.observed_durability =
+                static_cast<Durability>(static_cast<int>(number(input.Get("observedDurability"), INT_MAX)));
     return out;
 }
 Js checkpoint(Napi::Env env, const ctx::Checkpoint& value)
@@ -325,7 +330,7 @@ Js js(Napi::Env env, const ctx::MemoryResult& value)
     out.Set("current", prior(env, value.current));
     out.Set("resolvedPrior", jsList(env, value.resolved_prior, prior));
     set(out, "blockingOperationId", value.blocking_operation_id);
-    out.Set("state", name(value.state, session_states));
+    out.Set("state", enumName(value.state, session_states));
     return out;
 }
 Js js(Napi::Env env, const ctx::Page& value) { return page(env, value); }
@@ -545,7 +550,7 @@ Js sessionStatus(const Napi::CallbackInfo& info)
     out.Set("context", ref(env, value.context));
     out.Set("identity", identity(env, value.identity));
     optionalStamp(out, "writer", value.writer);
-    out.Set("state", name(value.state, session_states));
+    out.Set("state", enumName(value.state, session_states));
     set(out, "blockingOperationId", value.blocking_operation_id);
     out.Set("unresolvedOperations", strings(env, value.unresolved_operations));
     out.Set("permanentlyUnknownOperations", strings(env, value.permanently_unknown_operations));

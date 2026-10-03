@@ -106,3 +106,21 @@ def test_typed_rejection_and_refusal_details():
     for code, cls in [(7, cl.PermissionDenied), (10, cl.Aborted), (13, cl.Internal), (15, cl.DataLoss),
                       (16, cl.Unauthenticated), (2, cl.Error)]:
         assert type(cl._error(code, "x")) is cls
+
+
+def test_unknown_enum_values_keep_their_numbers():
+    status = cl._status(9, "new rejection", rejection=13)
+    assert type(status.rejection) is int and status.rejection == 13
+    assert cl.rejection_of(cl._error(9, "new rejection", 13)) == 13
+    for enum in (cl.Durability, cl.IncompleteReason, cl.StatusCode, cl.AppendRejection,
+                 cl.AcquireRefusalReason, cl.AcquisitionTerminationCause, cl.KeeperPreferenceResult,
+                 cl.Access, cl.SessionState, cl.MemoryOutcome, cl.DeliveryLimit,
+                 cl.ReconcileOutcome, cl.FollowFrom):
+        assert type(cl._coerce(enum, 999)) is int and cl._coerce(enum, 999) == 999
+        known = next(iter(enum))
+        assert cl._coerce(enum, int(known)) is known
+    assert cl.Status(code=999).code == 999
+    assert cl.AcquireRefusal(refusal_reason=999, termination_cause=999).termination_cause == 999
+    assert cl.AppendResult(cl.EventId(), cl.Hlc(), 999).durability == 999
+    assert cl.Event(cl.EventId(), cl.TimeReading(), cl.Hlc(), cl.Envelope(), 999).durability == 999
+    assert cl.Completion(reason=999).reason == 999

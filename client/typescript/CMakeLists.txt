@@ -14,3 +14,15 @@ target_include_directories(chronolog_node PRIVATE ${CMAKE_JS_INC} "${CMAKE_CURRE
 target_compile_definitions(chronolog_node PRIVATE NAPI_VERSION=9 NAPI_CPP_EXCEPTIONS)
 target_compile_options(chronolog_node PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(chronolog_node PRIVATE chronolog::context chronolog::client ${CMAKE_JS_LIB})
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/enum_fixture.cpp")
+    add_library(chronolog_enum_test SHARED test/enum_fixture.cpp ${CMAKE_JS_SRC})
+    set_target_properties(chronolog_enum_test PROPERTIES PREFIX "" SUFFIX ".node"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    target_include_directories(chronolog_enum_test PRIVATE ${CMAKE_JS_INC}
+        "${CMAKE_CURRENT_SOURCE_DIR}/node_modules/node-addon-api")
+    target_compile_definitions(chronolog_enum_test PRIVATE NAPI_VERSION=9 NAPI_CPP_EXCEPTIONS)
+    target_compile_options(chronolog_enum_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_link_libraries(chronolog_enum_test PRIVATE chronolog::client ${CMAKE_JS_LIB})
+    add_dependencies(chronolog_node chronolog_enum_test)
+endif()
