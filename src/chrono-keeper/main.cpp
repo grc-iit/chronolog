@@ -18,7 +18,6 @@
 #include "archive/KeeperArchive.h"
 #include "adapter/ArchiveService.h"
 #include "adapter/Convert.h"
-#include "adapter/RouteRead.h"
 #include "adapter/JournalService.h"
 #include "clock/KernelClock.h"
 #include "wal/WalJournal.h"
@@ -109,10 +108,40 @@ int main(int argc, char** argv)
     auto clock = std::make_shared<KernelClock>();
     auto visor = rpc::peerChannel(config->visor_internal);
     const std::string instance = newInstanceId();
-    auto catalog = std::shared_ptr<v1::Catalog::Stub>(v1::Catalog::NewStub(visor));
-    auto membership = std::make_shared<keeper::ConfigMembership>(config->static_routes,
-                                                                 [catalog](StoryId story)
-                                                                 { return keeper::readStoryRoute(*catalog, story); });
+    auto route_stub = std::shared_ptr<internal::v1::Cluster::Stub>(internal::v1::Cluster::NewStub(visor));
+    auto recovered_identity = std::make_shared<std::string>();
+    auto policy_version = std::make_shared<std::atomic<uint64_t>>(0);
+    auto membership = std::make_shared<keeper::ConfigMembership>(
+            config->static_routes,
+            [route_stub,
+             process_id = config->process_id,
+             endpoint = config->self_endpoint,
+             instance,
+             policy_version,
+             recovered_identity](StoryId story) -> absl::StatusOr<Route>
+            {
+                grpc::ClientContext context;
+                rpc::withTimeout(context, std::chrono::seconds(2));
+                internal::v1::RegisterRequest request;
+                request.set_policy_version(policy_version->load());
+                request.set_recovered_instance(*recovered_identity);
+                auto* process = request.mutable_process();
+                process->set_process_id(process_id);
+                process->set_instance(instance);
+                process->set_endpoint(endpoint);
+                process->set_role(internal::v1::PROCESS_ROLE_KEEPER);
+                internal::v1::RegisterResponse response;
+                auto status = route_stub->Register(&context, request, &response);
+                if(!status.ok())
+                    return absl::Status(static_cast<absl::StatusCode>(status.error_code()), status.error_message());
+                if(response.status().code() != 0)
+                    return absl::Status(static_cast<absl::StatusCode>(response.status().code()),
+                                        response.status().message());
+                for(const auto& update: response.routes())
+                    if(update.story_id() == story)
+                        return keeper::convert::fromProto(update.route());
+                return absl::NotFoundError("unknown story");
+            });
     RamJournalConfig journal_config;
     journal_config.process_id = config->process_id;
     journal_config.instance = instance;
@@ -138,8 +167,8 @@ int main(int argc, char** argv)
     }
     auto& journal = *owned_journal;
     const auto recovered_instance = journal.recoveredInstance();
-    journal.setRouteResolver([membership, &journal](StoryId story)
-                             { return membership->resolve(story, [&] { (void)journal.dropStory(story, true); }); });
+    *recovered_identity = recovered_instance;
+    *policy_version = journal.hasPhysicalPolicy() ? PhysicalPolicy{}.version : 0;
     for(const auto& writer: config->static_writers)
         (void)journal.registerWriter(writer.story_id, writer.writer_id, writer.incarnation);
 
@@ -197,6 +226,7 @@ int main(int argc, char** argv)
     acquisitions.start(visor);
     // The Catalog answers on the Visor internal port in both modes. An unlisted story the snapshot marker does not
     // conclude destroyed is confirmed here (W10.17).
+    auto catalog = std::shared_ptr<v1::Catalog::Stub>(v1::Catalog::NewStub(visor));
     keeper::RouteWatcher routes(*membership,
                                 visor,
                                 config->process_id,
