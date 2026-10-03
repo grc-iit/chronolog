@@ -9,9 +9,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <ctime>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -31,6 +34,7 @@ namespace
 
 constexpr size_t kMaxQueuedRequests = 1024;
 constexpr std::chrono::seconds kShutdownDeadline{5};
+constexpr std::chrono::seconds kAcquisitionCountPeriod{10};
 
 std::unique_ptr<grpc::Server>
 startServer(const std::string& address, grpc::Service& service, int& bound_port, grpc::Service* extra = nullptr)
@@ -202,6 +206,38 @@ int main(int argc, char** argv)
                 }
             });
 
+    // The per-Keeper active acquisition count, logged when it changes; the snapshot read runs on a worker.
+    auto count_state = std::make_shared<LeaseTickState>();
+    auto counted = std::make_shared<std::map<std::string, uint64_t>>();
+    auto log_counts = [&ledger, counted, state = count_state]
+    {
+        if(auto snapshot = ledger.snapshotAcquisitions(); snapshot.ok())
+        {
+            auto now = chronolog::visor::activeAcquisitionsPerKeeper(*snapshot);
+            for(const auto& [keeper, count]: *counted)
+                if(!now.contains(keeper))
+                    LOG(INFO) << "keeper active acquisitions keeper=" << keeper << " count=0";
+            for(const auto& [keeper, count]: now)
+                if(auto it = counted->find(keeper); it == counted->end() || it->second != count)
+                    LOG(INFO) << "keeper active acquisitions keeper=" << keeper << " count=" << count;
+            *counted = std::move(now);
+        }
+        state->queued = false;
+    };
+    std::jthread acquisition_counts(
+            [&pool, log_counts, state = count_state](std::stop_token stop)
+            {
+                std::mutex mutex;
+                std::condition_variable_any wake;
+                std::unique_lock lock(mutex);
+                while(!stop.stop_requested())
+                {
+                    if(!state->queued.exchange(true) && !pool.submit(log_counts))
+                        state->queued = false;
+                    wake.wait_for(lock, stop, kAcquisitionCountPeriod, [] { return false; });
+                }
+            });
+
     int public_port = 0;
     int internal_port = 0;
     auto public_server = startServer(config->listen, catalog, public_port);
@@ -245,6 +281,8 @@ int main(int argc, char** argv)
     internal_server->Wait();
     finished = true;
     watcher.join();
+    acquisition_counts.request_stop();
+    acquisition_counts.join();
     lease_ticks.request_stop();
     lease_ticks.join();
     ledger.setObserver(nullptr);

@@ -13,6 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "chronolog/acquire_refusal.h"
 #include "adapter/Convert.h"
+#include "catalog/KeeperChoice.h"
 
 namespace chronolog::visor
 {
@@ -1051,24 +1052,26 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
     auto owning_route = membershipRoute(id);
     if(!owning_route.ok())
         return owning_route.status();
-    absl::StatusOr<KeeperRef> keeper = absl::FailedPreconditionError("route has no keepers");
-    if(!owning_route->keepers.empty())
-        keeper = owning_route->keepers[writer_id % owning_route->keepers.size()];
-    Statement existing(db_, "SELECT keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+    Statement existing(db_, "SELECT keeper_id FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
     CHRONOLOG_RETURN_IF_ERROR(existing.prepared());
     existing.integer(1, id).integer(2, writer_id);
     auto prior_keeper = existing.step();
     if(!prior_keeper.ok())
         return prior_keeper.status();
-    if(*prior_keeper)
-        for(const auto& k: owning_route->keepers)
-            if(k.process_id == existing.columnText(0))
-                keeper = k;
-
-    if(!keeper.ok())
-        return keeper.status();
-    if(selected && (selected->assigned_keeper().process_id() != keeper->process_id ||
-                    selected->assigned_keeper().endpoint() != keeper->endpoint))
+    auto choice = chooseKeeper(owning_route->keepers,
+                               writer_id,
+                               *prior_keeper ? std::optional<std::string>(existing.columnText(0)) : std::nullopt,
+                               options.preferred_keeper_process_id);
+    if(!choice.ok())
+        return choice.status();
+    const KeeperRef* keeper = &choice->keeper;
+    const auto carried_preference = selected && selected->has_keeper_preference()
+                                            ? std::optional<KeeperPreferenceResult>(static_cast<KeeperPreferenceResult>(
+                                                      selected->keeper_preference()))
+                                            : std::nullopt;
+    if(selected &&
+       (selected->assigned_keeper().process_id() != keeper->process_id ||
+        selected->assigned_keeper().endpoint() != keeper->endpoint || carried_preference != choice->preference))
         return absl::FailedPreconditionError("selected assignment changed before apply");
 
     {
@@ -1095,7 +1098,8 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
     auto updated = row_revision.step();
     if(!updated.ok())
         return updated.status();
-    Acquisition grant{id, writer_id, incarnation, *owning_route, *keeper, {duration_ns, duration_ns}};
+    Acquisition
+            grant{id, writer_id, incarnation, *owning_route, *keeper, {duration_ns, duration_ns}, choice->preference};
     Statement persist(db_, "INSERT INTO acquisition_grants(request_id,inputs,response) VALUES(?1,?2,?3)");
     CHRONOLOG_RETURN_IF_ERROR(persist.prepared());
     persist.text(1, options.acquire_request_id)
@@ -1297,6 +1301,8 @@ absl::StatusOr<internal::v1::AcquireCommand> SqliteMetadataStore::prepareAcquire
         *command.mutable_route() = convert::toProto(existing->route);
         *command.mutable_assigned_keeper() = convert::toProto(existing->assigned_keeper);
         command.set_prior_incarnation(existing->incarnation);
+        if(existing->keeper_preference)
+            command.set_keeper_preference(static_cast<v1::KeeperPreferenceResult>(*existing->keeper_preference));
         return command;
     }
     if(!absl::IsNotFound(existing.status()))
@@ -1304,8 +1310,6 @@ absl::StatusOr<internal::v1::AcquireCommand> SqliteMetadataStore::prepareAcquire
     auto route = membershipRoute(request.story_id());
     if(!route.ok())
         return route.status();
-    if(route->keepers.empty())
-        return absl::FailedPreconditionError("route has no keepers");
     *command.mutable_route() = convert::toProto(*route);
     auto last_writer = currentCounter(db_, "writer_id");
     if(!last_writer.ok())
@@ -1319,23 +1323,29 @@ absl::StatusOr<internal::v1::AcquireCommand> SqliteMetadataStore::prepareAcquire
         return found.status();
     if(*found)
         writer = identity.column(0);
-    KeeperRef keeper = route->keepers[writer % route->keepers.size()];
-    Statement prior(
-            db_,
-            "SELECT incarnation,keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+    Statement prior(db_, "SELECT incarnation,keeper_id FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
     CHRONOLOG_RETURN_IF_ERROR(prior.prepared());
     prior.integer(1, request.story_id()).integer(2, writer);
     found = prior.step();
     if(!found.ok())
         return found.status();
+    std::optional<std::string> prior_owner;
     if(*found)
     {
         command.set_prior_incarnation(prior.column(0));
-        for(const auto& candidate: route->keepers)
-            if(candidate.process_id == prior.columnText(1))
-                keeper = candidate;
+        prior_owner = prior.columnText(1);
     }
-    *command.mutable_assigned_keeper() = convert::toProto(keeper);
+    auto choice = chooseKeeper(route->keepers,
+                               writer,
+                               prior_owner,
+                               request.has_preferred_keeper_process_id()
+                                       ? std::optional<std::string>(request.preferred_keeper_process_id())
+                                       : std::nullopt);
+    if(!choice.ok())
+        return choice.status();
+    *command.mutable_assigned_keeper() = convert::toProto(choice->keeper);
+    if(choice->preference)
+        command.set_keeper_preference(static_cast<v1::KeeperPreferenceResult>(*choice->preference));
     return command;
 }
 void SqliteMetadataStore::setLeaseObserver(AcquisitionObserver* observer)
