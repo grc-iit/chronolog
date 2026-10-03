@@ -28,6 +28,7 @@ public:
     HotReplay(std::shared_ptr<const HotSource> source, HotReplayOptions options = {});
 
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range) const override;
+    absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range, size_t max_events) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position) const override;
 
 private:
