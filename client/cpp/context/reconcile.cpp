@@ -816,7 +816,10 @@ absl::StatusOr<std::string> encodeCheckpoint(const Checkpoint& checkpoint, size_
                     {"marker_hlc", optional(checkpoint.recovery->marker_hlc, hlc)}};
     }
     Json encoded = {{"v", checkpoint_version},
-                    {"identity", {checkpoint.identity.agent_id, checkpoint.identity.slot}},
+                    {"identity",
+                     checkpoint.identity.control
+                             ? Json::array({checkpoint.identity.agent_id, checkpoint.identity.slot, "control"})
+                             : Json::array({checkpoint.identity.agent_id, checkpoint.identity.slot})},
                     {"context", {checkpoint.context.story_id, checkpoint.context.chronicle, checkpoint.context.name}},
                     {"causal_floor", hlc(checkpoint.causal_floor)},
                     {"processed_after", optional(checkpoint.processed_after, position)},
@@ -853,7 +856,9 @@ absl::StatusOr<Checkpoint> decodeCheckpoint(std::string_view bytes)
     {
         Checkpoint result;
         const auto& identity = encoded.at("identity");
-        result.identity = {text(identity.at(0)), text(identity.at(1))};
+        if(identity.size() > 3 || (identity.size() == 3 && identity.at(2) != "control"))
+            return absl::InvalidArgumentError("unknown checkpoint identity kind");
+        result.identity = {text(identity.at(0)), text(identity.at(1)), identity.size() == 3};
         const auto& context = encoded.at("context");
         result.context = {number<uint64_t>(context.at(0)), text(context.at(1)), text(context.at(2))};
         result.causal_floor = toHlc(encoded.at("causal_floor"));

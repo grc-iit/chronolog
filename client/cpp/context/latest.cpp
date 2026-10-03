@@ -145,4 +145,11 @@ absl::StatusOr<LatestResult> ContextSession::latest(size_t n, LatestOptions opti
     auto& core = *impl_->core;
     return detail::latestSearch(core.sdk, core.options, context().story_id, n, options, deadline, impl_->record);
 }
+absl::StatusOr<LatestResult> ContextSession::latestAggregate(const std::function<bool(const Event&)>& is_aggregate,
+                                                             LatestOptions options,
+                                                             Deadline deadline)
+{
+    auto& core = *impl_->core;
+    return detail::latestAggregate(core.sdk, core.options, context().story_id, is_aggregate, options, deadline);
+}
 } // namespace chronolog::context
