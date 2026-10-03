@@ -542,6 +542,91 @@ TEST_F(DynamicClusterTest, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
     resumed.TryCancel();
     (void)reconnect->Finish();
 }
+TEST_F(DynamicClusterTest, SameInstanceRegisterPreservesAppliedRevisionsAndReplacementResetsThem)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver keeper{*stubs[selected], "keeper-a", "a1"};
+    ASSERT_EQ(keeper.Register().status().code(), 0);
+    wire::HeartbeatRequest beat;
+    beat.set_process_id(keeper.id);
+    beat.set_instance(keeper.instance);
+    beat.set_applied_revision(5);
+    beat.set_applied_route_revision(5);
+    wire::HeartbeatResponse response;
+    ASSERT_TRUE(stubs[selected]->Heartbeat(keeper.context().get(), beat, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    EXPECT_TRUE(memberships[selected]->waitApplied(keeper.id, 5, 0ms));
+    ASSERT_EQ(keeper.Register().status().code(), 0);
+    EXPECT_TRUE(memberships[selected]->waitApplied(keeper.id, 5, 0ms));
+    auto state = stores[selected]->appliedStore().membershipLivenessState();
+    ASSERT_TRUE(state.ok());
+    auto member = std::find_if(state->members().begin(),
+                               state->members().end(),
+                               [&](const auto& entry) { return entry.process().process_id() == keeper.id; });
+    ASSERT_NE(member, state->members().end());
+    EXPECT_EQ(member->applied_route_revision(), 5u);
+    beat.set_applied_revision(3);
+    beat.set_applied_route_revision(3);
+    ASSERT_TRUE(stubs[selected]->Heartbeat(keeper.context().get(), beat, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    EXPECT_TRUE(memberships[selected]->waitApplied(keeper.id, 5, 0ms));
+
+    wire::RegisterRequest restarted;
+    auto* process = restarted.mutable_process();
+    process->set_process_id(keeper.id);
+    process->set_instance("a2");
+    process->set_endpoint("keeper-a:50052");
+    process->set_role(wire::PROCESS_ROLE_KEEPER);
+    restarted.set_recovered_instance(keeper.instance);
+    wire::RegisterResponse registered;
+    ASSERT_TRUE(stubs[selected]->Register(keeper.context().get(), restarted, &registered).ok());
+    ASSERT_EQ(registered.status().code(), 0);
+    EXPECT_FALSE(memberships[selected]->waitApplied(keeper.id, 1, 0ms));
+    state = stores[selected]->appliedStore().membershipLivenessState();
+    ASSERT_TRUE(state.ok());
+    member = std::find_if(state->members().begin(),
+                          state->members().end(),
+                          [&](const auto& entry) { return entry.process().process_id() == keeper.id; });
+    ASSERT_NE(member, state->members().end());
+    EXPECT_EQ(member->applied_route_revision(), 0u);
+    beat.set_applied_revision(5);
+    ASSERT_TRUE(stubs[selected]->Heartbeat(keeper.context().get(), beat, &response).ok());
+    EXPECT_EQ(response.status().code(), static_cast<int>(absl::StatusCode::kFailedPrecondition));
+    EXPECT_FALSE(memberships[selected]->waitApplied(keeper.id, 5, 0ms));
+    beat.set_instance("a2");
+    ASSERT_TRUE(stubs[selected]->Heartbeat(keeper.context().get(), beat, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    EXPECT_TRUE(memberships[selected]->waitApplied(keeper.id, 5, 0ms));
+}
+
+TEST_F(DynamicClusterTest, SameInstanceRegisterDoesNotKeepASilentKeeperAlive)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[selected], "keeper-a", "a1"}, b{*stubs[selected], "keeper-b", "b1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    ASSERT_EQ(b.Register().status().code(), 0);
+    ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
+    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    bool removed = false;
+    for(int attempt = 0; attempt < 60; ++attempt)
+    {
+        ASSERT_EQ(a.Heartbeat().status().code(), 0);
+        ASSERT_EQ(b.Register().status().code(), 0);
+        auto state = dynamic::snapshot(stores[selected]->appliedStore());
+        if(state.routes(0).route().epoch() > 1)
+        {
+            removed = true;
+            EXPECT_EQ(state.routes(0).route().keepers_size(), 1);
+            EXPECT_EQ(state.routes(0).route().keepers(0).process_id(), a.id);
+            break;
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+    EXPECT_TRUE(removed);
+}
+
 TEST_F(DynamicClusterTest, PlainHeartbeatsDoNotAppendRaftEntries)
 {
     auto selected = leader();

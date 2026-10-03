@@ -137,6 +137,46 @@ TEST_F(StaticDestroyTest, ReplacementInstanceCannotConfirmAnUnappliedExpiry)
     }
 }
 
+TEST_F(StaticDestroyTest, SameInstanceRegisterPreservesConfirmedDestroyFence)
+{
+    for(bool expired: {true, false})
+    {
+        SCOPED_TRACE(expired ? "EXPIRED" : "SUPERSEDED");
+        auto story = store_->createStory("c", expired ? "refresh-expired" : "refresh-superseded");
+        ASSERT_TRUE(story.ok());
+        story_ = story->id;
+        const std::string identity = expired ? "refresh-expired" : "refresh-superseded";
+        auto holder = store_->acquire(story_, identity);
+        ASSERT_TRUE(holder.ok());
+        const auto owner = holder->assigned_keeper.process_id;
+        registerOwner(owner, "i1");
+        const auto revision = expired ? expire(*holder) : supersede(*holder, identity);
+        ASSERT_TRUE(heartbeat(owner, "i1", revision - 1).ok());
+        registerOwner(owner, "i1");
+        EXPECT_EQ(store_->destroyStory(story_).code(), absl::StatusCode::kFailedPrecondition);
+        ASSERT_TRUE(heartbeat(owner, "i1", revision).ok());
+        registerOwner(owner, "i1");
+        EXPECT_TRUE(store_->destroyStory(story_).ok());
+        EXPECT_TRUE(store_->getStory(story_)->tombstoned);
+    }
+}
+
+TEST_F(StaticDestroyTest, SameInstanceRegisterPreservesConfirmedChronicleDestroyFence)
+{
+    auto expired = store_->acquire(story_, "refresh-chronicle-expired");
+    ASSERT_TRUE(expired.ok());
+    auto superseded = store_->acquire(story_, "refresh-chronicle-superseded");
+    ASSERT_TRUE(superseded.ok());
+    for(const auto& keeper: testing::twoKeeperTopology().keepers) registerOwner(keeper.process_id, "i1");
+    const auto expired_revision = expire(*expired);
+    const auto superseded_revision = supersede(*superseded, "refresh-chronicle-superseded");
+    ASSERT_TRUE(heartbeat(expired->assigned_keeper.process_id, "i1", expired_revision).ok());
+    ASSERT_TRUE(heartbeat(superseded->assigned_keeper.process_id, "i1", superseded_revision).ok());
+    for(const auto& keeper: testing::twoKeeperTopology().keepers) registerOwner(keeper.process_id, "i1");
+    EXPECT_TRUE(store_->destroyChronicle("c").ok());
+    EXPECT_TRUE(store_->getStory(story_)->tombstoned);
+}
+
 TEST(CatalogLeaseTest, RenewDoesNoReconciliationScan)
 {
     testing::TempDir dir;
