@@ -167,20 +167,20 @@ absl::Status refusal(const v1::AcquireResponse& r)
     absl::Status result = detail::status(r.status());
     if(!result.ok() && (r.refusal_reason() || r.has_termination_cause() || r.incarnation()))
     {
-        AcquireRefusal detail;
+        AcquireRefusal typed;
         const auto reason = static_cast<uint32_t>(r.refusal_reason());
         const auto cause = static_cast<uint32_t>(r.termination_cause());
-        detail.refusal_reason =
+        typed.refusal_reason =
                 reason <= 2 ? static_cast<AcquireRefusalReason>(reason) : AcquireRefusalReason::Unspecified;
-        detail.remaining_ns = std::max<int64_t>(r.remaining_ns(), 0);
+        typed.remaining_ns = std::max<int64_t>(r.remaining_ns(), 0);
         if(r.has_current_incarnation() && r.current_incarnation())
-            detail.current_incarnation = r.current_incarnation();
+            typed.current_incarnation = r.current_incarnation();
         if(r.incarnation())
-            detail.matched_incarnation = r.incarnation();
+            typed.matched_incarnation = r.incarnation();
         if(r.has_termination_cause())
-            detail.termination_cause = cause <= 4 ? static_cast<AcquisitionTerminationCause>(cause)
+            typed.termination_cause = cause <= 4 ? static_cast<AcquisitionTerminationCause>(cause)
                                                   : AcquisitionTerminationCause::Unspecified;
-        setAcquireRefusal(result, detail);
+        setAcquireRefusal(result, typed);
     }
     return result;
 }
@@ -354,8 +354,8 @@ Client::acquire(StoryId id, const std::string& identity, AcquireOptions options,
     if(!failure.ok())
     {
         // A same-id terminal retry names its matched incarnation; that id can never produce a grant again.
-        const auto detail = getAcquireRefusal(failure);
-        settle(uncertain(failure) && !(detail && detail->matched_incarnation) ? Phase::Unresolved : Phase::Refused);
+        const auto typed = getAcquireRefusal(failure);
+        settle(uncertain(failure) && !(typed && typed->matched_incarnation) ? Phase::Unresolved : Phase::Refused);
         return failure;
     }
     auto lease = std::make_shared<detail::Lease>(

@@ -390,9 +390,11 @@ TEST(ClientLeaseTest, LocalHorizonNeverStopsDispatch)
     ASSERT_TRUE(client.ok()) << client.status();
     auto writer = client->acquire(1, "partitioned");
     ASSERT_TRUE(writer.ok()) << writer.status();
+    // The failed renewal inside the lead window is a diagnostic; past the horizon the scheduler keeps trying.
+    peer.boot += lease_ns / 2 + second_ns;
+    ASSERT_TRUE(peer.waitFor([&] { return !writer->lease().confirmed; }));
+    EXPECT_GT(writer->lease().estimated_remaining_ns, 0);
     peer.boot += lease_ns * 2;
-    ASSERT_TRUE(peer.waitFor([&] { return !peer.renewals.empty(); }));
-    peer.boot += second_ns;
     ASSERT_TRUE(peer.waitFor([&] { return peer.renewals.size() >= 2; }));
     const auto lease = writer->lease();
     EXPECT_FALSE(lease.confirmed);
