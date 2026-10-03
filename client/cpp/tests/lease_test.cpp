@@ -97,10 +97,18 @@ public:
         std::lock_guard lock(mutex);
         return acquires.back();
     }
+    // Client-side state changes without a notification here, so the predicate is re-read every few milliseconds.
     bool waitFor(const std::function<bool()>& done)
     {
         std::unique_lock lock(mutex);
-        return cv.wait_for(lock, 10s, done);
+        const auto end = std::chrono::steady_clock::now() + 10s;
+        while(!done())
+        {
+            if(std::chrono::steady_clock::now() >= end)
+                return false;
+            cv.wait_for(lock, 5ms);
+        }
+        return true;
     }
     void terminate(const std::string& identity, Cause cause)
     {
