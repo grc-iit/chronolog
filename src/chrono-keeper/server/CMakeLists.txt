@@ -24,4 +24,5 @@ target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_archive chronolog_k
     absl::log absl::log_initialize absl::log_globals)
 set_target_properties(chrono_keeper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/src/chrono-keeper")
-install(TARGETS chrono_keeper RUNTIME DESTINATION bin)
+include(GNUInstallDirs)
+install(TARGETS chrono_keeper RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT server)
