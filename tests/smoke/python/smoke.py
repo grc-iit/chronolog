@@ -41,6 +41,29 @@ class Smoke:
         self.channels = []
         self.channel = self.connect(visor)
         self.catalog = self.rpc.CatalogStub(self.channel)
+        self.holds = {}
+
+    def acquire(self, story, identity, prior=None, lease_ns=None):
+        # One fresh process-local request id per logical grant; a Keeper-crash recovery is an explicit takeover
+        # of the recorded prior. Smoke never renews, so every append asserts its hold is inside the finite grant.
+        pb = self.pb
+        request = pb.AcquireRequest(story_id=story, writer_identity=identity, acquire_request_id=os.urandom(16).hex())
+        if prior is not None:
+            request.takeover = True
+            request.expected_prior_incarnation = prior
+        if lease_ns is not None:
+            request.lease_duration_ns = lease_ns
+        acquired = self.catalog.Acquire(request, timeout=self.timeout)
+        if acquired.status.code == 0:
+            self.check(f"Finite grant for {identity}", acquired.lease.duration_ns > 0 and acquired.lease.remaining_ns > 0)
+            self.holds[(acquired.story_id, acquired.writer_id, acquired.incarnation)] = (
+                time.monotonic() + acquired.lease.remaining_ns / 1e9)
+        return acquired
+
+    def hold(self, acquired):
+        deadline = self.holds.get((acquired.story_id, acquired.writer_id, acquired.incarnation))
+        if deadline is None or time.monotonic() >= deadline:
+            raise RuntimeError(f"append by {acquired.writer_id}/{acquired.incarnation} outside its finite grant")
 
     def connect(self, endpoint):
         host, port = endpoint.rsplit(":", 1)
@@ -57,6 +80,7 @@ class Smoke:
 
     def append(self, acquire, sequence, durability, floor=None):
         pb = self.pb
+        self.hold(acquire)
         item = pb.AppendItem(
             writer_id=acquire.writer_id, incarnation=acquire.incarnation, sequence=sequence,
             physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
@@ -168,8 +192,7 @@ class Smoke:
                                            timeout=self.timeout)
         self.check("Create restart story", created.status.code == 0)
         story = created.story.story_id
-        acquired = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer),
-                                        timeout=self.timeout)
+        acquired = self.acquire(story, writer)
         self.check("Acquire restart writer", acquired.status.code == 0)
         self.journal = self.rpc.JournalStub(self.connect(acquired.assigned_keeper.endpoint))
         self.replay = self.rpc.ReplayStub(self.connect(acquired.route.player))
@@ -210,8 +233,7 @@ class Smoke:
         self.read_complete(request(), expected)
         self.check("Keeper SIGKILL restart preserves all 220 ids HLCs and payloads complete", True)
 
-        reacquired = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer),
-                                          timeout=self.timeout)
+        reacquired = self.acquire(story, writer, prior=acquired.incarnation)
         self.check("Reacquire after Keeper restart", reacquired.status.code == 0
                    and reacquired.incarnation > acquired.incarnation)
         assigned = append_range(reacquired, 1, 10, pb.DURABILITY_ACCEPTED)
@@ -233,7 +255,7 @@ class Smoke:
         response = self.catalog.CreateStory(pb.CreateStoryRequest(chronicle=chronicle, name="s1"), timeout=self.timeout)
         self.check("CreateStory", response.status.code == 0 and response.story.story_id != 0)
         story = response.story.story_id
-        first = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer), timeout=self.timeout)
+        first = self.acquire(story, writer)
         self.check("Acquire incarnation 1", first.status.code == 0 and first.story_id == story
                    and first.writer_id != 0 and first.incarnation == 1 and first.route.epoch >= 1
                    and first.assigned_keeper.process_id != "" and first.assigned_keeper.endpoint != ""
@@ -267,7 +289,7 @@ class Smoke:
                     and [e.envelope.payload for e in actual] == [f"event-{n}".encode() for n in range(1, 101)])
         self.check("Read 100 complete", correct_events(events) and completion.complete
                    and completion.reason == pb.INCOMPLETE_REASON_UNSPECIFIED)
-        idle = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=f"idle-{suffix}"), timeout=self.timeout)
+        idle = self.acquire(story, f"idle-{suffix}")
         self.check("Acquire idle writer", idle.status.code == 0 and idle.writer_id != first.writer_id
                    and idle.incarnation == 1)
         events, completion = self.read(request)
@@ -282,9 +304,9 @@ class Smoke:
                    and physical.reason == pb.INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED)
         bounded_story = self.catalog.CreateStory(pb.CreateStoryRequest(
             chronicle=chronicle, name=f"physical-{suffix}"), timeout=self.timeout).story.story_id
-        bounded_writer = self.catalog.Acquire(pb.AcquireRequest(
-            story_id=bounded_story, writer_identity=f"physical-{suffix}"), timeout=self.timeout)
+        bounded_writer = self.acquire(bounded_story, f"physical-{suffix}")
         bounded_journal = self.rpc.JournalStub(self.connect(bounded_writer.assigned_keeper.endpoint))
+        self.hold(bounded_writer)
         stamp = time.time_ns()
         bounded = bounded_journal.Append(pb.AppendRequest(
             story_id=bounded_story, epoch=bounded_writer.route.epoch, durability=pb.DURABILITY_DURABLE,
@@ -326,7 +348,7 @@ class Smoke:
         rejected = self.append(first, 102 if supported else 101, pb.DURABILITY_ACCEPTED, floor)
         self.check("Released incarnation append", rejected.status.code == 9
                    and rejected.achieved_durability == pb.DURABILITY_UNSPECIFIED)
-        second = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=writer), timeout=self.timeout)
+        second = self.acquire(story, writer)
         self.check("Acquire incarnation 2", second.status.code == 0 and second.incarnation == 2
                    and second.writer_id == first.writer_id)
         self.restarts(chronicle, f"restart-{suffix}")

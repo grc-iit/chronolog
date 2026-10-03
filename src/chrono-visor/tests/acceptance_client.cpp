@@ -1,11 +1,15 @@
 // Tiny Catalog client for the binary acceptance script. Prints one value per call.
 //   acceptance_client <address> create-chronicle <name>
 //   acceptance_client <address> create-story <chronicle> <name>      prints story_id
-//   acceptance_client <address> acquire <story_id> <identity>        prints incarnation
+//   acceptance_client <address> acquire <story_id> <identity> [cas-prior]
+//       prints the incarnation, or HELD for a typed refusal of a live holder. Each invocation is one
+//       logical Acquire with its own fresh process-local request id; cas-prior asks for an explicit
+//       compare-and-swap takeover of that incarnation.
 #include <grpcpp/grpcpp.h>
 
 #include <chrono>
 #include <iostream>
+#include <random>
 #include <string>
 
 #include "chronolog/v1/chronolog.grpc.pb.h"
@@ -62,8 +66,22 @@ int main(int argc, char** argv)
         AcquireRequest request;
         request.set_story_id(std::stoull(argv[3]));
         request.set_writer_identity(argv[4]);
+        std::random_device random;
+        std::string id;
+        for(int i = 0; i < 4; ++i) id += std::to_string(random()) + "-";
+        request.set_acquire_request_id(id);
+        if(argc >= 6)
+        {
+            request.set_takeover(true);
+            request.set_expected_prior_incarnation(std::stoull(argv[5]));
+        }
         AcquireResponse response;
         auto status = stub->Acquire(&context, request, &response);
+        if(status.ok() && response.refusal_reason() == ACQUIRE_REFUSAL_REASON_HELD && response.remaining_ns() > 0)
+        {
+            std::cout << "HELD\n";
+            return 0;
+        }
         if(!status.ok() || response.status().code() != 0)
             return fail(command, status, response.status());
         std::cout << response.incarnation() << "\n";

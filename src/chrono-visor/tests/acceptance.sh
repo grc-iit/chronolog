@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Binary acceptance: serve CreateChronicle, CreateStory and Acquire, keep incarnations
-# increasing across a restart, exit 0 on SIGTERM.
+# Binary acceptance: serve CreateChronicle, CreateStory and Acquire, refuse a plain Acquire of a live
+# holder (HELD), keep CAS takeover incarnations increasing across a restart, exit 0 on SIGTERM.
 # Usage: acceptance.sh <chrono_visor> <acceptance_client>
 set -u
 visor=$1
@@ -54,10 +54,12 @@ addr=127.0.0.1:$port
 timeout 15 "$client" "$addr" create-chronicle acceptance >/dev/null || exit 1
 story=$(timeout 15 "$client" "$addr" create-story acceptance s1) || exit 1
 expect "first acquire" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a)" 1
-expect "second acquire" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a)" 2
+expect "second plain acquire" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a)" HELD
+expect "takeover of 1" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a 1)" 2
 stop; expect "SIGTERM exit" $? 0
 
 start || exit 1
-expect "acquire after restart" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a)" 3
+expect "plain acquire after restart" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a)" HELD
+expect "takeover of 2 after restart" "$(timeout 15 "$client" "$addr" acquire "$story" writer-a 2)" 3
 stop; expect "SIGTERM exit" $? 0
 echo "ACCEPTANCE PASSED"

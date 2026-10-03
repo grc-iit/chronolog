@@ -178,19 +178,27 @@ TEST(RaftStorageTest, SnapshotRestoresAppliedIndexAndReplayDoesNotDuplicateMutat
                                 })
                         .ok());
     ASSERT_NE(id, 0u);
-    auto acquire = [&]
+    // The initial command carries one id; the intended successor is a fresh-id CAS against incarnation 1.
+    AcquireOptions initial;
+    initial.acquire_request_id = "snapshot-initial-request-00000001";
+    AcquireOptions successor;
+    successor.takeover = true;
+    successor.expected_prior_incarnation = 1;
+    successor.acquire_request_id = "snapshot-successor-request-000001";
+    auto acquire = [&](const AcquireOptions& options)
     {
-        auto a = store.acquire(id, "writer");
+        auto a = store.acquireAfterFence(id, "writer", options, 300000000000);
         return a.ok() ? std::to_string(a->incarnation) : a.status().ToString();
     };
-    auto first = store.applyRaft(3, acquire);
+    auto first = store.applyRaft(3, [&] { return acquire(initial); });
     ASSERT_TRUE(first.ok());
     EXPECT_EQ(*first, "1");
     auto backup = (dir.path() / "snapshot").string();
     ASSERT_TRUE(store.backupTo(backup).ok());
-    auto second = store.applyRaft(4, acquire);
+    auto second = store.applyRaft(4, [&] { return acquire(successor); });
     ASSERT_TRUE(second.ok());
     EXPECT_EQ(*second, "2");
+    const auto revision = store.snapshotAcquisitions()->revision;
     ASSERT_TRUE(store.installFrom(backup).ok());
     EXPECT_EQ(store.appliedIndex().value_or(0), 3u);
     bool reapplied = false;
@@ -198,14 +206,15 @@ TEST(RaftStorageTest, SnapshotRestoresAppliedIndexAndReplayDoesNotDuplicateMutat
                                   [&]
                                   {
                                       reapplied = true;
-                                      return acquire();
+                                      return acquire(initial);
                                   });
     ASSERT_TRUE(replay.ok());
     EXPECT_EQ(*replay, "1");
     EXPECT_FALSE(reapplied);
-    second = store.applyRaft(4, acquire);
+    second = store.applyRaft(4, [&] { return acquire(successor); });
     ASSERT_TRUE(second.ok());
     EXPECT_EQ(*second, "2");
+    EXPECT_EQ(store.snapshotAcquisitions()->revision, revision);
 }
 
 TEST(RaftStorageTest, PolicyDowngradeHistorySurvivesReplayAndSnapshot)
@@ -797,15 +806,16 @@ TEST(RaftStorageTest, RealServiceStallPausesDeadlines)
         auto renewal = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
         if(!renewal.ok() || !renewal->front().status.ok())
             _exit(5);
-        auto row = liveRow(*store, *grant);
         for(int i = 0; i < 70; ++i)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             if(!store->serviceTick().ok())
                 _exit(6);
         }
-        auto due = store->leaseAuthority().sample(row, false);
-        if(!due.ok() || due->remaining_ns != 0)
+        // Continuous service then commits the dead holder's expiry.
+        auto expired = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+        if(!expired.ok() || !absl::IsFailedPrecondition(expired->front().status) ||
+           expired->front().termination_cause != AcquisitionTerminationCause::Expired)
             _exit(7);
         store.reset();
         _exit(0);
@@ -979,8 +989,10 @@ TEST(RaftStorageTest, BlockedSqliteFsyncPausesDeadlinesWithoutHoldingMapLock)
         std::this_thread::sleep_for(2ms);
         ASSERT_TRUE(store->serviceTick().ok());
     }
-    auto due = store->leaseAuthority().sample(row, false);
-    ASSERT_TRUE(due.ok());
-    EXPECT_EQ(due->remaining_ns, 0);
+    // Continuous service then commits the dead holder's expiry.
+    auto expired = store->renewAcquisitions({{story, grant->writer_id, grant->incarnation}});
+    ASSERT_TRUE(expired.ok());
+    EXPECT_TRUE(absl::IsFailedPrecondition(expired->front().status)) << expired->front().status;
+    EXPECT_EQ(expired->front().termination_cause, AcquisitionTerminationCause::Expired);
 }
 } // namespace chronolog::visor

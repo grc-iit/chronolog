@@ -18,6 +18,7 @@
 #include "adapter/WorkerPool.h"
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/InMemoryMetadataStore.h"
+#include "catalog/LeaseAuthority.h"
 #include "membership/StaticRouteMembership.h"
 
 namespace chronolog::visor
@@ -154,6 +155,7 @@ protected:
         v1::AcquireRequest request;
         request.set_story_id(story);
         request.set_writer_identity("writer");
+        request.set_acquire_request_id(newAcquireRequestId());
         v1::AcquireResponse response;
         grpc::ClientContext context;
         context.set_deadline(std::chrono::system_clock::now() + 10s);

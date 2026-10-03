@@ -31,6 +31,10 @@ def control(op, service):
 
 
 class Scenario(Smoke):
+    # The Visor's configured acquisition_lease_max_ns. This raw driver never renews: it takes the maximum lease
+    # and append_writer asserts every hold stays inside the returned grant.
+    MAX_LEASE_NS = 3_600_000_000_000
+
     def __init__(self, stubs):
         super().__init__(stubs, '100.124.181.9:50051', 10, 'docker', 'cluster', [])
         self.stories = []
@@ -52,8 +56,9 @@ class Scenario(Smoke):
             self.writers[story] = []
             for writer in range(2):
                 identity = f'{chronicle}-{i}-{writer}'
-                acquired = self.catalog.Acquire(pb.AcquireRequest(story_id=story, writer_identity=identity), timeout=10)
+                acquired = self.acquire(story, identity, lease_ns=self.MAX_LEASE_NS)
                 assert acquired.status.code == 0, acquired.status
+                assert acquired.lease.duration_ns == self.MAX_LEASE_NS, acquired.lease
                 assert acquired.route.grapher == ['100.101.232.95:50053', '100.124.181.9:50053'][story % 2]
                 self.writers[story].append((identity, acquired))
                 self.sequences[(story, identity)] = 0
@@ -64,6 +69,7 @@ class Scenario(Smoke):
 
     def append_writer(self, story, identity, acquired, count):
         pb = self.pb
+        self.hold(acquired)
         journal = self.rpc.JournalStub(self.connect(acquired.assigned_keeper.endpoint))
         expected = []
         first = self.sequences[(story, identity)] + 1
@@ -186,7 +192,8 @@ class Scenario(Smoke):
         for story in self.stories:
             for index, (identity, previous) in enumerate(self.writers[story]):
                 if previous.assigned_keeper.process_id == 'keeper-1':
-                    acquired = self.catalog.Acquire(self.pb.AcquireRequest(story_id=story, writer_identity=identity), timeout=10)
+                    # Keeper SIGKILL recovery is an explicit takeover of the writer's own previous incarnation.
+                    acquired = self.acquire(story, identity, prior=previous.incarnation, lease_ns=self.MAX_LEASE_NS)
                     assert acquired.status.code == 0 and acquired.incarnation > previous.incarnation
                     self.writers[story][index] = (identity, acquired)
                     self.sequences[(story, identity)] = 0
