@@ -66,6 +66,32 @@ def test_catalog_append_read_tail_and_fencing(stack):
         assert again.append(b"new", timeout=3).event_id.sequence == 1
 
 
+def test_default_read_and_tail_deliver_eight_maximal_payloads(stack):
+    client, _, story = stack
+    payloads = [bytes([i]) * (1024 * 1024) for i in range(8)]
+    with client.acquire(story, "receive-limit") as writer:
+        results = writer.append_batch(payloads, timeout=5)
+        assert len(results) == 8
+        assert all(isinstance(result, cl.AppendResult) and result.acked for result in results)
+        end = cl.Hlc(results[-1].hlc.physical_ns, results[-1].hlc.logical + 1)
+        for attempt in range(30):
+            reader = client.read(story, results[0].hlc, end, timeout=5)
+            events = list(reader)
+            if reader.completion.complete:
+                break
+            time.sleep(0.1)
+        assert reader.completion.complete
+        assert [event.id for event in events] == [result.event_id for result in results]
+        assert [event.envelope.payload for event in events] == payloads
+        tail = client.tail(story, timeout=5)
+        try:
+            tailed = [next(tail) for _ in range(8)]
+            assert [event.id for event in tailed] == [result.event_id for result in results]
+            assert [event.envelope.payload for event in tailed] == payloads
+        finally:
+            tail.cancel()
+
+
 def test_failed_batch_keeps_item_order_and_sequence(stack):
     client, _, story = stack
     with client.acquire(story, "batch") as writer:

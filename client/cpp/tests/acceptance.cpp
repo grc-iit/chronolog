@@ -159,6 +159,62 @@ int main(int argc, char** argv)
     auto first = again->append({{"", "new incarnation", "", "", {}}});
     REQUIRE(first.ok() && first->event_id.sequence == 1 && first->acked());
     REQUIRE(again->release().ok());
+    auto largeStory = client->createStory("sdk-acceptance", "receive-limit");
+    REQUIRE(largeStory.ok());
+    auto largeWriter = client->acquire(largeStory->id, "receive-limit-writer");
+    REQUIRE(largeWriter.ok());
+    std::vector<sdk::AppendSpec> largeSpecs(8);
+    for(size_t i = 0; i < largeSpecs.size(); ++i)
+        largeSpecs[i].envelope.payload = std::string(1024 * 1024, static_cast<char>(i));
+    auto largeResults = largeWriter->appendBatch(largeSpecs);
+    REQUIRE(largeResults.ok() && largeResults->size() == 8);
+    for(const auto& result: *largeResults) REQUIRE(result.ok() && result->acked());
+    auto largeEnd = largeResults->back()->hlc;
+    ++largeEnd.logical;
+    complete = false;
+    for(int attempt = 0; attempt < 30 && !complete; ++attempt)
+    {
+        auto read = client->read(largeStory->id, {largeResults->front()->hlc, largeEnd});
+        REQUIRE(read.ok());
+        events.clear();
+        for(size_t pull = 0; pull < 10; ++pull)
+        {
+            auto item = read->next();
+            REQUIRE(item.ok());
+            if(!*item)
+                break;
+            if((**item).completion)
+                complete = (**item).completion->complete;
+            for(auto& event: (**item).events) events.push_back(std::move(event));
+        }
+        if(!complete)
+            std::this_thread::sleep_for(100ms);
+    }
+    REQUIRE(complete && events.size() == 8);
+    for(size_t i = 0; i < events.size(); ++i)
+    {
+        REQUIRE(events[i].id == (*largeResults)[i]->event_id);
+        REQUIRE(events[i].envelope.payload == largeSpecs[i].envelope.payload);
+    }
+    auto largeTail = client->tail(largeStory->id, {}, std::chrono::system_clock::now() + 10s);
+    REQUIRE(largeTail.ok());
+    delivered = 0;
+    for(size_t pull = 0; pull < 10 && delivered < 8; ++pull)
+    {
+        auto item = largeTail->next();
+        REQUIRE(item.ok() && *item);
+        for(const auto& event: (**item).events)
+        {
+            REQUIRE(delivered < 8);
+            REQUIRE(event.id == (*largeResults)[delivered]->event_id);
+            REQUIRE(event.envelope.payload == largeSpecs[delivered].envelope.payload);
+            ++delivered;
+        }
+    }
+    REQUIRE(delivered == 8);
+    largeTail->cancel();
+    REQUIRE(largeWriter->release().ok());
+    REQUIRE(client->destroyStory(largeStory->id).ok());
     REQUIRE(client->destroyStory(story->id).ok());
     REQUIRE(client->destroyChronicle("sdk-acceptance").ok());
     std::cout << "SDK ACCEPTANCE PASSED\n";
