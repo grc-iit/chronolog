@@ -207,7 +207,7 @@ void ClusterClient::monitor(std::stop_token stop) const
             grpc::ClientContext listing;
             rpc::withTimeout(listing, deadline_);
             std::stop_callback cancel_listing(stop, [&] { listing.TryCancel(); });
-            internal::v1::MembershipResponse members;
+            internal::v1::ListMembersResponse members;
             auto listed = stub_->ListMembers(&listing, internal::v1::ListMembersRequest{}, &members);
             unknown = listed.ok() && members.status().code() == 0 &&
                       std::none_of(members.members().begin(),

@@ -1,10 +1,11 @@
 add_executable(proto_contract_check proto_contract_check.cpp)
 target_link_libraries(proto_contract_check PRIVATE protobuf::libprotobuf chronolog_warnings)
-set(descriptor "${CMAKE_CURRENT_BINARY_DIR}/chronolog.v1.pb")
+set(descriptor "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pb")
+file(GLOB_RECURSE contract_proto_files CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/proto/chronolog/*.proto")
 add_custom_command(OUTPUT "${descriptor}"
     COMMAND protobuf::protoc --proto_path=${PROJECT_SOURCE_DIR}/proto
-        --include_imports --descriptor_set_out=${descriptor} ${CHRONOLOG_PROTO_FILES}
-    DEPENDS ${CHRONOLOG_PROTO_FILES} protobuf::protoc VERBATIM)
+        --include_imports --descriptor_set_out=${descriptor} ${contract_proto_files}
+    DEPENDS ${contract_proto_files} protobuf::protoc VERBATIM)
 add_custom_target(proto_contract_descriptor ALL DEPENDS "${descriptor}")
 add_dependencies(proto_contract_check proto_contract_descriptor)
 add_test(NAME ProtoContract.AdditiveCompatibility

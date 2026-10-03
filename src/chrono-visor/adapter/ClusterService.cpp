@@ -295,7 +295,7 @@ grpc::ServerUnaryReactor* ClusterService::Register(grpc::CallbackServerContext* 
                                                    internal::v1::RegisterResponse* response)
 {
     if(raft_)
-        return dynamicCall(context, request, response, 1);
+        return dynamicCall(context, request, response);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
     auto task = [this, request = *request, response, reactor]
     {
@@ -367,7 +367,7 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                                                     internal::v1::HeartbeatResponse* response)
 {
     if(raft_)
-        return dynamicCall(context, request, response, 2);
+        return dynamicCall(context, request, response);
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
     auto task = [this, request = *request, response, reactor]
     {
@@ -640,11 +640,16 @@ void ClusterService::shutdown()
 }
 
 
+namespace
+{
+template <typename Request>
+constexpr bool kKeeperCall = std::is_same_v<Request, internal::v1::DrainKeeperRequest> ||
+                             std::is_same_v<Request, internal::v1::JoinKeeperRequest> ||
+                             std::is_same_v<Request, internal::v1::AbandonKeeperRequest>;
+} // namespace
 template <class Request, class Response>
-grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContext* context,
-                                                      const Request* request,
-                                                      Response* response,
-                                                      int operation)
+grpc::ServerUnaryReactor*
+ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request* request, Response* response)
 {
     auto* reactor = context->DefaultReactor();
     if(!raft_)
@@ -652,7 +657,7 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
         reactor->Finish(grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "dynamic membership required"));
         return reactor;
     }
-    auto task = [this, context, request, response, operation, reactor]
+    auto task = [this, context, request, response, reactor]
     {
         if(!raft_->leaderLease())
         {
@@ -676,15 +681,12 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 result = stub->ExtendCeiling(&ctx, *request, response);
             else if constexpr(std::is_same_v<Request, internal::v1::ListMembersRequest>)
                 result = stub->ListMembers(&ctx, *request, response);
+            else if constexpr(std::is_same_v<Request, internal::v1::DrainKeeperRequest>)
+                result = stub->DrainKeeper(&ctx, *request, response);
+            else if constexpr(std::is_same_v<Request, internal::v1::JoinKeeperRequest>)
+                result = stub->JoinKeeper(&ctx, *request, response);
             else
-            {
-                if(operation == 4)
-                    result = stub->DrainKeeper(&ctx, *request, response);
-                else if(operation == 5)
-                    result = stub->JoinKeeper(&ctx, *request, response);
-                else
-                    result = stub->AbandonKeeper(&ctx, *request, response);
-            }
+                result = stub->AbandonKeeper(&ctx, *request, response);
             if(!result.ok())
                 LOG_EVERY_N_SEC(WARNING, 2) << "cluster_forward to leader " << endpoint
                                             << " failed: " << result.error_code() << " " << result.error_message();
@@ -717,15 +719,12 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
             }
             else if constexpr(std::is_same_v<Request, internal::v1::ExtendCeilingRequest>)
                 *q->mutable_extend() = *request;
+            else if constexpr(std::is_same_v<Request, internal::v1::DrainKeeperRequest>)
+                q->mutable_drain()->set_process_id(request->process_id());
+            else if constexpr(std::is_same_v<Request, internal::v1::JoinKeeperRequest>)
+                q->mutable_join()->set_process_id(request->process_id());
             else
-            {
-                if(operation == 4)
-                    *q->mutable_drain() = *request;
-                else if(operation == 5)
-                    *q->mutable_join() = *request;
-                else
-                    *q->mutable_abandon() = *request;
-            }
+                q->mutable_abandon()->set_process_id(request->process_id());
             absl::StatusOr<std::string> result = absl::UnavailableError("not proposed");
             bool propose = true;
             if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
@@ -780,11 +779,8 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                 // registered or joined Keeper with a stale timestamp and drains it.
                 if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest>)
                     heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
-                if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
-                {
-                    if(operation == 5)
-                        heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
-                }
+                if constexpr(std::is_same_v<Request, internal::v1::JoinKeeperRequest>)
+                    heartbeats_[request->process_id()] = std::chrono::steady_clock::now();
             }
             if(propose)
                 result = raft_->propose(command);
@@ -811,13 +807,12 @@ grpc::ServerUnaryReactor* ClusterService::dynamicCall(grpc::CallbackServerContex
                             applied_routes_.erase(pending);
                     }
                 }
-                if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest> ||
-                             std::is_same_v<Request, internal::v1::KeeperRequest>)
+                if constexpr(std::is_same_v<Request, internal::v1::RegisterRequest> || kKeeperCall<Request>)
                 {
                     auto current = dynamic::snapshot(raft_->appliedStore());
                     response->clear_routes();
                     for(const auto& route: current.routes()) *response->add_routes() = route;
-                    if constexpr(std::is_same_v<Request, internal::v1::KeeperRequest>)
+                    if constexpr(kKeeperCall<Request>)
                     {
                         response->clear_members();
                         for(const auto& member: current.members()) *response->add_members() = member;
@@ -875,30 +870,30 @@ grpc::ServerUnaryReactor* ClusterService::ExtendCeiling(grpc::CallbackServerCont
                                                         const internal::v1::ExtendCeilingRequest* q,
                                                         internal::v1::ExtendCeilingResponse* r)
 {
-    return dynamicCall(c, q, r, 3);
+    return dynamicCall(c, q, r);
 }
 grpc::ServerUnaryReactor* ClusterService::DrainKeeper(grpc::CallbackServerContext* c,
-                                                      const internal::v1::KeeperRequest* q,
-                                                      internal::v1::MembershipResponse* r)
+                                                      const internal::v1::DrainKeeperRequest* q,
+                                                      internal::v1::DrainKeeperResponse* r)
 {
-    return dynamicCall(c, q, r, 4);
+    return dynamicCall(c, q, r);
 }
 grpc::ServerUnaryReactor* ClusterService::JoinKeeper(grpc::CallbackServerContext* c,
-                                                     const internal::v1::KeeperRequest* q,
-                                                     internal::v1::MembershipResponse* r)
+                                                     const internal::v1::JoinKeeperRequest* q,
+                                                     internal::v1::JoinKeeperResponse* r)
 {
-    return dynamicCall(c, q, r, 5);
+    return dynamicCall(c, q, r);
 }
 grpc::ServerUnaryReactor* ClusterService::AbandonKeeper(grpc::CallbackServerContext* c,
-                                                        const internal::v1::KeeperRequest* q,
-                                                        internal::v1::MembershipResponse* r)
+                                                        const internal::v1::AbandonKeeperRequest* q,
+                                                        internal::v1::AbandonKeeperResponse* r)
 {
-    return dynamicCall(c, q, r, 6);
+    return dynamicCall(c, q, r);
 }
 grpc::ServerUnaryReactor* ClusterService::ListMembers(grpc::CallbackServerContext* c,
                                                       const internal::v1::ListMembersRequest* q,
-                                                      internal::v1::MembershipResponse* r)
+                                                      internal::v1::ListMembersResponse* r)
 {
-    return dynamicCall(c, q, r, 7);
+    return dynamicCall(c, q, r);
 }
 } // namespace chronolog::visor
