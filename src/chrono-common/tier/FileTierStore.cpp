@@ -1,7 +1,7 @@
 #include <absl/log/log.h>
-#include "chrono-grapher/tier/FileTierStore.h"
-#include "chrono-grapher/tier/ArchiveReaderPool.h"
-#include "chrono-grapher/tier/FileIO.h"
+#include "tier/FileTierStore.h"
+#include "tier/ArchiveReaderPool.h"
+#include "tier/FileIO.h"
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>

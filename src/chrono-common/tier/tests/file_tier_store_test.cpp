@@ -1,5 +1,5 @@
 #include "../../../tests/contract/tier_store_contract_test.cpp"
-#include "chrono-grapher/tier/FileTierStore.h"
+#include "tier/FileTierStore.h"
 #include <atomic>
 #include <cerrno>
 #include <filesystem>
