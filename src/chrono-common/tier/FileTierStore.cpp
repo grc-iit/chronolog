@@ -7,6 +7,8 @@
 #include <charconv>
 #include <cstdlib>
 #include <future>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <deque>
 #include <limits>
 #include <random>
@@ -264,6 +266,20 @@ std::string RandomOp()
     std::snprintf(text, sizeof(text), "%016llx", static_cast<unsigned long long>(value));
     return text;
 }
+absl::StatusOr<ChunkBytes> LoadTierBytes(const std::shared_ptr<PosixTier>& tier,
+                                         const std::shared_ptr<TierDirectory>& directory,
+                                         const std::string& file)
+{
+    auto status = tier->verify(*directory);
+    if(!status.ok())
+        return status;
+    auto data = PosixTier::read(directory->fd.get(), file);
+    if(!data.ok())
+        return data.status();
+    ChunkBytes bytes{std::make_unique<unsigned char[]>(data->size()), data->size()};
+    std::copy(data->begin(), data->end(), bytes.data.get());
+    return bytes;
+}
 } // namespace
 
 FileTierStore::FileTierStore(std::filesystem::path root,
@@ -287,7 +303,10 @@ FileTierStore::FileTierStore(std::filesystem::path root,
     for(const auto& [story, anchor]: anchors) anchors_[story] = anchor;
 }
 
-FileTierStore::~FileTierStore() = default;
+FileTierStore::~FileTierStore()
+{
+    for(const auto& [name, tier]: tiers_) tier->stop();
+}
 
 absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesystem::path root,
                                                                    std::string writer,
@@ -297,7 +316,8 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                    LoadFile load_file,
                                                                    size_t read_threads,
                                                                    DecodeFile decode_file,
-                                                                   Hooks hooks)
+                                                                   Hooks hooks,
+                                                                   TierChain chain)
 {
     if(!codec || anchors.contains(0))
         return absl::InvalidArgumentError("invalid tier configuration");
@@ -310,6 +330,29 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
         load_file = LoadChunkFile;
     if(!decode_file)
         decode_file = DecodeChunkFile;
+    if(!chain.deployment_id.empty())
+    {
+        tier_detail::Fd marker(::open(root.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+        if(marker.get() < 0)
+            return tier_detail::IoError("open local tier marker root");
+        auto bytes = PosixTier::read(marker.get(), ".chronolog-tier.json");
+        if(!bytes.ok())
+            return bytes.status();
+        try
+        {
+            auto identity = nlohmann::json::parse(*bytes);
+            if(identity.at("deployment_id").get<std::string>() != chain.deployment_id ||
+               identity.at("name").get<std::string>() != "local" || identity.at("rank").get<uint32_t>() != 0 ||
+               identity.at("kind").get<std::string>() != "posix")
+                return absl::FailedPreconditionError("local tier marker refused");
+        }
+        catch(const std::exception& error)
+        {
+            return absl::FailedPreconditionError(error.what());
+        }
+    }
+    else if(!chain.tiers.empty())
+        return absl::InvalidArgumentError("tier chain requires deployment identity");
     auto log = ManifestLog::Open(root, writer);
     if(!log.ok())
         return log.status();
@@ -325,6 +368,15 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> FileTierStore::Open(std::filesyst
                                                                   *threads,
                                                                   std::move(decode_file)));
     store->hooks_ = std::move(hooks);
+    if(!chain.deployment_id.empty())
+    {
+        auto status = store->configureTiers(std::move(chain.deployment_id),
+                                            std::move(chain.tiers),
+                                            chain.io_threads,
+                                            chain.io_timeout);
+        if(!status.ok())
+            return status;
+    }
     const auto started = std::chrono::steady_clock::now();
     const auto on_disk = store->recover();
     if(!on_disk.ok())
@@ -520,7 +572,7 @@ absl::StatusOr<const ManifestIndex*> FileTierStore::refresh() const
 absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord& record,
                                                            std::optional<FileChecksum> checksum) const
 {
-    auto bytes = load_file_(root_ / record.file);
+    auto bytes = loadResolvedFile(record.file);
     if(!bytes.ok())
         return bytes.status();
     if(auto status = VerifyChecksum(*bytes, checksum ? checksum : log_->checksum(record.file)); !status.ok())
@@ -593,6 +645,8 @@ FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure,
             if(index->tombstoned.contains(record.story_id))
                 return failure;
             next = successor(*index, record);
+            if(!next && index->locations.contains(record.file))
+                next = record;
             if(!next)
                 return retired(*index, record) ? absl::StatusOr<std::vector<Event>>(std::vector<Event>{}) : failure;
             if(next->state == ManifestState::Deleted)
@@ -645,6 +699,8 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
             if(record.state != ManifestState::Published &&
                !(record.state == ManifestState::Empty && log_->checksum(record.file)))
                 continue;
+            if((*index)->locations.contains(record.file))
+                continue;
             auto events = validate(record);
             if(events.ok())
                 continue;
@@ -654,6 +710,8 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
                 auto refreshed = log_->sync();
                 if(!refreshed.ok())
                     return refreshed.status();
+                if((*refreshed)->locations.contains(record.file))
+                    continue;
                 const auto current = effective(**refreshed, record.story_id);
                 if(!std::any_of(current.begin(),
                                 current.end(),
@@ -1078,6 +1136,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         size_t index;
         std::future<Loaded> ready;
         ArchiveReaderPool::Deadline deadline;
+        std::shared_ptr<PosixTier> tier;
     };
     std::deque<Pending> pending;
     size_t next = 0;
@@ -1093,12 +1152,34 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
                 results[index] = std::vector<Event>{};
             else
             {
+                if(auto migration = log_->location(records[index].file))
+                {
+                    std::shared_ptr<PosixTier> tier;
+                    {
+                        std::lock_guard lock(tier_table_mutex_);
+                        auto found = tiers_.find(migration->tier);
+                        if(found != tiers_.end() && found->second->config.rank == migration->rank &&
+                           found->second->config.tier_uuid == migration->tier_uuid)
+                            tier = found->second;
+                    }
+                    auto directory = tier ? tier->directory() : nullptr;
+                    if(!directory)
+                    {
+                        results[index] = absl::UnavailableError("archive effective tier unavailable");
+                        continue;
+                    }
+                    const auto deadline = std::chrono::steady_clock::now() + tier->timeout();
+                    auto ready = tier->submit([tier, directory, file = records[index].file]
+                                              { return LoadTierBytes(tier, directory, file); });
+                    pending.push_back({index, std::move(ready), deadline, tier});
+                    continue;
+                }
                 const auto deadline = std::chrono::steady_clock::now() + archive_read_timeout_;
                 auto task = std::make_shared<std::packaged_task<Loaded()>>(
                         [load = load_file_, file = root_ / records[index].file] { return load(file); });
                 auto ready = task->get_future();
                 if(readers->submit([task] { (*task)(); }, deadline))
-                    pending.push_back({index, std::move(ready), deadline});
+                    pending.push_back({index, std::move(ready), deadline, {}});
                 else
                     results[index] = absl::UnavailableError("archive readers unavailable");
             }
@@ -1107,13 +1188,16 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
     fill();
     while(!pending.empty())
     {
-        auto [index, ready, deadline] = std::move(pending.front());
+        auto [index, ready, deadline, tier] = std::move(pending.front());
         pending.pop_front();
         try
         {
             if(ready.wait_until(deadline) != std::future_status::ready)
             {
-                readers->expire();
+                if(tier)
+                    tier->expire();
+                else
+                    readers->expire();
                 results[index] = absl::UnavailableError("archive read deadline exceeded");
                 fill();
                 continue;
@@ -1133,6 +1217,9 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
 
 absl::StatusOr<ChunkBytes> FileTierStore::loadForRead(const std::filesystem::path& file) const
 {
+    const auto relative = file.lexically_relative(root_).generic_string();
+    if(log_->location(relative))
+        return loadResolvedFile(relative);
     ArchiveReaderPool* readers;
     {
         std::lock_guard lock(mutex_);
@@ -1269,6 +1356,7 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
                                     [&file](const auto& record)
                                     {
                                         return record.file == file && (record.state == ManifestState::Published ||
+                                                                       record.state == ManifestState::Empty ||
                                                                        record.state == ManifestState::Deleted);
                                     });
     if(found == (*index)->records.end())
@@ -1298,6 +1386,9 @@ absl::Status FileTierStore::eraseFile(const std::string& file)
     if(!index.ok())
         return index.status();
     collectDeletedFiles(**index);
+    // The durable deletion takes effect now; its physical cleanup waits for the existing job's claim.
+    if(auto active = claims_.find(file); active != claims_.end() && !active->second.expired())
+        return absl::OkStatus();
     lock.unlock();
     const auto status = unlinkDeletedFile(file);
     if(status.ok())
@@ -1325,6 +1416,111 @@ void FileTierStore::collectDeletedFiles(const ManifestIndex& index)
 
 absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
 {
+    std::shared_ptr<Claim> held;
+    std::vector<std::shared_ptr<PosixTier>> targets;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        auto pending = pending_unlinks_.find(file);
+        if(pending == pending_unlinks_.end())
+            return absl::AbortedError("unlink no longer pending");
+        const auto story = pending->second;
+        bool eligible = (*index)->tombstoned.contains(story);
+        for(const auto& entry: (*index)->records)
+            if(entry.file == file && entry.state == ManifestState::Deleted)
+                eligible = true;
+        if(auto it = (*index)->superseded.find(file);
+           it != (*index)->superseded.end() && !(*index)->rolled_back.contains(it->second))
+            eligible = true;
+        if((*index)->rolled_back.contains(file))
+            eligible = true;
+        if(!eligible)
+            return absl::AbortedError("unlink no longer Deleted or superseded");
+        if(!(*index)->tombstoned.contains(story) && ArchiveFileWriter(file) != std::optional<std::string>(writer_))
+            return absl::FailedPreconditionError("cannot unlink another writer's file");
+        for(const auto& [name, tier]: tiers_) targets.push_back(tier);
+        auto work = tier_unlinks_.find(file);
+        if(work != tier_unlinks_.end())
+        {
+            if(std::any_of(unlink_results_.at(file)->begin(),
+                           unlink_results_.at(file)->end(),
+                           [](auto& future)
+                           { return future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready; }))
+            {
+                if(std::chrono::steady_clock::now() >= tier_unlink_deadlines_.at(file))
+                    for(const auto& tier: targets) tier->expire();
+                return absl::UnavailableError("tier unlink pending");
+            }
+            auto status = work->second.get();
+            tier_unlinks_.erase(work);
+            unlink_results_.erase(file);
+            tier_unlink_deadlines_.erase(file);
+            if(!status.ok())
+                return status;
+            targets.clear();
+        }
+        if(claims_.contains("sweep/" + std::to_string(story)) &&
+           !claims_.at("sweep/" + std::to_string(story)).expired())
+            return absl::UnavailableError("story tier sweep already claimed");
+        held = claim(file, story);
+        if(!held)
+            return absl::UnavailableError("archive file already claimed");
+        if(!targets.empty())
+        {
+            std::vector<std::pair<std::shared_ptr<PosixTier>, std::shared_ptr<TierDirectory>>> roots;
+            for(const auto& tier: targets)
+            {
+                auto directory = tier->directory();
+                if(!directory)
+                    return absl::UnavailableError("tier deletion pending availability");
+                roots.emplace_back(tier, directory);
+            }
+            // Each tier's work owns its claim and descriptor; the caller only collects ready results.
+            auto futures = std::make_shared<std::vector<std::future<absl::Status>>>();
+            for(const auto& [tier, directory]: roots)
+                futures->push_back(tier->submit(
+                        [tier, directory, held, file, hook = hooks_.tier_step]
+                        {
+                            if(hook)
+                            {
+                                auto status = hook("erase");
+                                if(!status.ok())
+                                    return status;
+                            }
+                            auto status = tier->verify(*directory);
+                            if(status.ok())
+                                status = PosixTier::erase(directory->fd.get(), file);
+                            if(status.ok())
+                                status = tier->verify(*directory);
+                            return status;
+                        }));
+            tier_unlinks_[file] = std::async(std::launch::deferred,
+                                             [futures]() mutable
+                                             {
+                                                 absl::Status status;
+                                                 for(auto& future: *futures)
+                                                 {
+                                                     try
+                                                     {
+                                                         status.Update(future.get());
+                                                     }
+                                                     catch(const std::exception& error)
+                                                     {
+                                                         status.Update(absl::UnavailableError(error.what()));
+                                                     }
+                                                 }
+                                                 return status;
+                                             });
+            // Deferred collection does not execute I/O and is drained only once every task is ready.
+            unlink_results_[file] = futures;
+            auto timeout = targets.front()->timeout();
+            for(const auto& tier: targets) timeout = std::min(timeout, tier->timeout());
+            tier_unlink_deadlines_[file] = std::chrono::steady_clock::now() + timeout;
+            return absl::UnavailableError("tier unlink queued");
+        }
+    }
     if(unlink_(root_ / file) != 0)
     {
         if(errno == ENOENT)
@@ -1368,6 +1564,16 @@ void FileTierStore::sweepTombstoned()
             continue;
         std::lock_guard lock(mutex_);
         const auto* index = log_->current();
+        for(auto record: effective(*index, story))
+            if(record.state == ManifestState::Empty)
+            {
+                auto status = log_->rememberWatermark(story, watermark(*index, story));
+                record.state = ManifestState::Deleted;
+                if(status.ok())
+                    status = log_->append(record);
+                if(status.ok())
+                    pending_unlinks_[record.file] = story;
+            }
         for(const auto& [output, change]: index->switches)
             if(change.story_id == story)
                 for(const auto& input: change.inputs)
@@ -1386,6 +1592,7 @@ absl::Status FileTierStore::retryDeletedFiles()
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
     sweepTombstoned();
+    queueTierSweeps();
     std::vector<std::string> files;
     {
         std::lock_guard lock(mutex_);
@@ -1416,8 +1623,15 @@ absl::StatusOr<bool> FileTierStore::hasPendingUnlinks(StoryId story)
     if(!index.ok())
         return index.status();
     collectDeletedFiles(**index);
+    if((*index)->tombstoned.contains(story))
+        for(const auto& [name, tier]: tiers_)
+            if(!tier_swept_.contains({name, story}))
+                return true;
     if(((*index)->tombstoned.contains(story) && !swept_.contains(story)) || compacting_.load() == story)
         return true;
+    for(const auto& [file, weak]: claims_)
+        if(auto held = weak.lock(); held && held->story == story)
+            return true;
     return std::any_of(pending_unlinks_.begin(),
                        pending_unlinks_.end(),
                        [story](const auto& pending) { return pending.second == story; });
@@ -1490,6 +1704,7 @@ struct FileTierStore::CompactionJob
     StoryId story{};
     std::vector<ManifestRecord> inputs;
     std::vector<uint64_t> sizes;
+    std::vector<std::shared_ptr<Claim>> claims;
 };
 
 absl::Status FileTierStore::compactionStep(std::string_view step) const
@@ -1545,6 +1760,7 @@ absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPoli
        !policy.max_output_bytes || !policy.io_bytes_per_sec || policy.max_span_ns <= 0)
         return absl::InvalidArgumentError("invalid compaction policy");
     std::vector<std::pair<StoryId, std::vector<ManifestRecord>>> runs;
+    std::map<std::string, std::shared_ptr<Claim>> selection_claims;
     {
         std::lock_guard lock(mutex_);
         if(compaction_stopped_ || log_->failed())
@@ -1584,6 +1800,8 @@ absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPoli
                                                  [&](const auto& file) { return Stem(file) == Stem(record.file); });
                 const bool eligible = own && record.state == ManifestState::Published && !record.exempt &&
                                       record.end <= w && record.event_count <= policy.max_events && !claimed &&
+                                      !(*index)->locations.contains(record.file) &&
+                                      (!claims_.contains(record.file) || claims_[record.file].expired()) &&
                                       !ParseCompactionOutput(record.file);
                 if(!eligible)
                 {
@@ -1596,6 +1814,7 @@ absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPoli
                 if(!run.empty() &&
                    (run.back().end != record.start || run.back().physical_policy != record.physical_policy))
                     close();
+                selection_claims[record.file] = claim(record.file, story);
                 run.push_back(record);
             }
             close();
@@ -1604,7 +1823,7 @@ absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPoli
     const auto now = std::chrono::system_clock::now();
     for(auto& [story, run]: runs)
     {
-        CompactionJob job{story, {}, {}};
+        CompactionJob job{story, {}, {}, {}};
         uint64_t bytes = 0, events = 0;
         for(const auto& record: run)
         {
@@ -1629,10 +1848,12 @@ absl::StatusOr<CompactionResult> FileTierStore::compactOnce(const CompactionPoli
                     break;
                 job.inputs.clear();
                 job.sizes.clear();
+                job.claims.clear();
                 bytes = events = 0;
                 if(!usable)
                     continue;
             }
+            job.claims.push_back(selection_claims.at(record.file));
             job.inputs.push_back(record);
             job.sizes.push_back(size);
             bytes += size;
@@ -1772,7 +1993,9 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
             const bool claimed = std::any_of(inflight_.begin(),
                                              inflight_.end(),
                                              [&](const auto& file) { return Stem(file) == Stem(input.file); });
-            if(!same || claimed)
+            if(!same || claimed || (*index)->locations.contains(input.file) || !claims_.contains(input.file) ||
+               claims_[input.file].expired() ||
+               std::find(job.claims.begin(), job.claims.end(), claims_[input.file].lock()) == job.claims.end())
                 return absl::AbortedError("compaction input changed before the switch");
         }
         change.w_floor = watermark(**index, story);
@@ -1795,13 +2018,875 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         return status;
     // Fed only by this thread after its own fsync of the switch succeeded (I13.12).
     for(const auto& input: inputs)
-        if(!unlinkDeletedFile(input.file).ok())
+    {
+        absl::Status status;
+        if(unlink_(root_ / input.file) != 0 && errno != ENOENT)
+            status = tier_detail::IoError("unlink compaction input");
+        else
+            status = tier_detail::SyncDirectory((root_ / input.file).parent_path());
+        if(!status.ok())
         {
             std::lock_guard lock(mutex_);
             pending_unlinks_[input.file] = story;
         }
+    }
     LOG(INFO) << "archive compacted story=" << story << " inputs=" << inputs.size() << " events=" << events.size()
               << " output=" << output.file;
     return CompactionResult{inputs.size(), output.file};
 }
+
+std::shared_ptr<FileTierStore::Claim> FileTierStore::claim(const std::string& file, StoryId story)
+{
+    if(!claims_[file].expired())
+        return {};
+    auto result = std::make_shared<Claim>(Claim{story, RandomOp()});
+    claims_[file] = result;
+    return result;
+}
+
+absl::Status FileTierStore::configureTiers(std::string deployment,
+                                           std::vector<TierConfig> tiers,
+                                           size_t threads,
+                                           std::chrono::milliseconds timeout)
+{
+    if(deployment.empty() || !threads || threads > 8 || timeout.count() <= 0)
+        return absl::InvalidArgumentError("invalid tier executor configuration");
+    std::map<std::string, std::shared_ptr<PosixTier>> configured;
+    std::set<uint32_t> ranks;
+    for(auto& tier: tiers)
+    {
+        if(tier.name.empty() || tier.name == "local" || tier.kind != "posix" || !tier.rank || tier.tier_uuid.empty() ||
+           tier.root.empty() || !ranks.insert(tier.rank).second || configured.contains(tier.name))
+            return absl::InvalidArgumentError("invalid tier table");
+        const auto name = tier.name;
+        configured[name] = std::make_shared<PosixTier>(std::move(tier), deployment, threads, timeout);
+    }
+    std::lock_guard lock(mutex_);
+    if(!tiers_.empty())
+        return absl::FailedPreconditionError("tier table already configured");
+    deployment_ = std::move(deployment);
+    std::lock_guard tier_lock(tier_table_mutex_);
+    tiers_ = std::move(configured);
+    return absl::OkStatus();
+}
+
+absl::Status FileTierStore::probeTiers()
+{
+    std::vector<std::shared_ptr<PosixTier>> tiers;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [name, tier]: tiers_) tiers.push_back(tier);
+    }
+    absl::Status result;
+    for(const auto& tier: tiers) result.Update(tier->probe());
+    return result;
+}
+
+absl::StatusOr<std::optional<MigrationLocation>> FileTierStore::location(const std::string& file) const
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return index.status();
+    auto it = (*index)->locations.find(file);
+    if(it == (*index)->locations.end())
+        return std::optional<MigrationLocation>{};
+    return std::optional<MigrationLocation>{it->second};
+}
+
+bool FileTierStore::migrationEligible(const ManifestIndex& index,
+                                      const ManifestRecord& record,
+                                      const std::shared_ptr<Claim>& own) const
+{
+    std::ifstream mark(root_ / "manifest" / (writer_ + ".validated"));
+    try
+    {
+        nlohmann::json validated;
+        mark >> validated;
+        if(validated.at("writer").get<std::string>() != writer_ || !validated.at("through").is_number_unsigned())
+            return false;
+        auto seq = index.record_sequences.find(record.file);
+        if(seq != index.record_sequences.end() && seq->second > validated.at("through").get<uint64_t>())
+            return false;
+    }
+    catch(const std::exception&)
+    {
+        return false;
+    }
+    if(record.manifest_writer != writer_ || ArchiveFileWriter(record.file) != std::optional<std::string>(writer_) ||
+       index.tombstoned.contains(record.story_id) || record.end > watermark(index, record.story_id))
+        return false;
+    if(auto it = claims_.find(record.file); it != claims_.end())
+        if(auto held = it->second.lock(); held && held != own)
+            return false;
+    if(auto it = index.superseded.find(record.file);
+       it != index.superseded.end() && !index.rolled_back.contains(it->second))
+        return false;
+    for(const auto& file: inflight_)
+        if(Stem(file) == Stem(record.file))
+            return false;
+    for(const auto& entry: effective(index, record.story_id))
+        if(entry.file == record.file)
+        {
+            if(entry.state != ManifestState::Published && entry.state != ManifestState::Empty)
+                return false;
+            if(auto change = index.switches.find(record.file); change != index.switches.end())
+                for(const auto& input: change->second.inputs)
+                    if(pending_unlinks_.contains(input.file) ||
+                       (claims_.contains(input.file) && !claims_.at(input.file).expired()))
+                        return false;
+            return true;
+        }
+    return false;
+}
+
+absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination)
+{
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
+    ManifestRecord record;
+    MigrationLocation migration;
+    std::shared_ptr<Claim> held;
+    std::shared_ptr<PosixTier> tier, source_tier;
+    std::shared_ptr<TierDirectory> directory, source_directory;
+    {
+        std::lock_guard lock(mutex_);
+        if(migration_stopped_ || log_->failed())
+            return absl::FailedPreconditionError("migration stopped after manifest failure");
+        auto target = tiers_.find(destination);
+        if(target == tiers_.end())
+            return absl::InvalidArgumentError("unknown migration tier");
+        tier = target->second;
+        directory = tier->directory();
+        if(!directory)
+            return absl::UnavailableError("migration tier unavailable");
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        // TIER-1 owns validated marks. Legacy records have sequence zero.
+        std::ifstream mark(root_ / "manifest" / (writer_ + ".validated"));
+        nlohmann::json validated;
+        try
+        {
+            mark >> validated;
+        }
+        catch(const std::exception&)
+        {
+            return size_t{0};
+        }
+        if(validated.value("writer", std::string{}) != writer_ || !validated.contains("through"))
+            return size_t{0};
+        for(const auto& [story, positions]: (*index)->by_story)
+        {
+            for(const auto& candidate: effective(**index, story))
+            {
+                if(!migrationEligible(**index, candidate))
+                    continue;
+                auto prior = (*index)->locations.find(candidate.file);
+                if(prior != (*index)->locations.end())
+                {
+                    if(prior->second.rank >= tier->config.rank)
+                        continue;
+                    auto source = tiers_.find(prior->second.tier);
+                    if(source == tiers_.end() || source->second->config.tier_uuid != prior->second.tier_uuid)
+                        continue;
+                    source_tier = source->second;
+                    source_directory = source_tier->directory();
+                    if(!source_directory)
+                        continue;
+                }
+                if(prior == (*index)->locations.end())
+                {
+                    source_tier.reset();
+                    source_directory.reset();
+                }
+                record = candidate;
+                held = claim(record.file, story);
+                migration = {writer_,
+                             record.file,
+                             tier->config.name,
+                             tier->config.tier_uuid,
+                             held->token,
+                             story,
+                             tier->config.rank,
+                             {}};
+                break;
+            }
+            if(held)
+                break;
+        }
+    }
+    if(!held)
+    {
+        auto status = cleanupMigrations();
+        if(status.ok())
+            status = sweepTiers();
+        if(status.ok())
+            status = writeTierReplicas();
+        if(!status.ok())
+            return status;
+        return size_t{0};
+    }
+    const auto step = hooks_.migration_step;
+    if(step)
+    {
+        auto status = step(1);
+        if(!status.ok())
+            return status;
+    }
+    absl::StatusOr<std::string> bytes = absl::UnavailableError("source unavailable");
+    if(source_tier)
+        bytes = source_tier->run(
+                [source_tier, source_directory, held, file = record.file]() -> absl::StatusOr<std::string>
+                {
+                    auto status = source_tier->verify(*source_directory);
+                    if(!status.ok())
+                        return status;
+                    return PosixTier::read(source_directory->fd.get(), file);
+                });
+    else
+    {
+        tier_detail::Fd root(::open(root_.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+        if(root.get() >= 0)
+            bytes = PosixTier::read(root.get(), record.file);
+    }
+    if(!bytes.ok())
+        return bytes.status();
+    migration.checksum = {bytes->size(), static_cast<uint32_t>(absl::ComputeCrc32c(*bytes))};
+    const auto expected = log_->checksum(record.file);
+    if(!expected || expected->bytes != migration.checksum.bytes || expected->crc32c != migration.checksum.crc32c)
+        return absl::UnavailableError("migration source checksum mismatch");
+    const auto temporary = std::to_string(record.story_id) + "/.migrate-" + Hex(writer_) + "." + held->token;
+    auto created = std::make_shared<std::atomic<bool>>(false);
+    auto copied = tier->run(
+            [tier, directory, held, migration, temporary, bytes = *std::move(bytes), step, created]() -> absl::Status
+            {
+                const auto cleanup = [&]
+                {
+                    (void)PosixTier::erase(directory->fd.get(), temporary);
+                    if(created->load())
+                        (void)PosixTier::erase(directory->fd.get(), migration.file);
+                };
+                auto status = tier->verify(*directory);
+                if(!status.ok())
+                    return status;
+                const auto story = std::to_string(migration.story_id);
+                if(::mkdirat(directory->fd.get(), story.c_str(), 0755) != 0 && errno != EEXIST)
+                    return tier_detail::IoError("create tier story");
+                tier_detail::Fd fd(::openat(directory->fd.get(),
+                                            temporary.c_str(),
+                                            O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC | O_NOFOLLOW,
+                                            0644));
+                if(fd.get() < 0)
+                    return tier_detail::IoError("create migration temporary");
+                status = tier_detail::WriteAll(fd.get(), bytes);
+                if(status.ok() && ::fsync(fd.get()) != 0)
+                    status = tier_detail::IoError("sync migration temporary");
+                if(!status.ok())
+                {
+                    cleanup();
+                    return status;
+                }
+                if(step)
+                {
+                    status = step(2);
+                    if(!status.ok())
+                        return status;
+                }
+                if(::linkat(directory->fd.get(), temporary.c_str(), directory->fd.get(), migration.file.c_str(), 0) !=
+                   0)
+                {
+                    if(errno != EEXIST)
+                    {
+                        status = tier_detail::IoError("link migration destination");
+                        cleanup();
+                        return status;
+                    }
+                    auto old = PosixTier::read(directory->fd.get(), migration.file, true);
+                    if(!old.ok() || *old != bytes)
+                    {
+                        status = PosixTier::erase(directory->fd.get(), migration.file);
+                        if(!status.ok())
+                        {
+                            cleanup();
+                            return status;
+                        }
+                        if(::linkat(directory->fd.get(),
+                                    temporary.c_str(),
+                                    directory->fd.get(),
+                                    migration.file.c_str(),
+                                    0) != 0)
+                        {
+                            status = tier_detail::IoError("replace migration destination");
+                            cleanup();
+                            return status;
+                        }
+                        *created = true;
+                    }
+                }
+                else
+                    *created = true;
+                status = PosixTier::erase(directory->fd.get(), temporary);
+                if(!status.ok())
+                {
+                    cleanup();
+                    return status;
+                }
+                if(step)
+                {
+                    status = step(3);
+                    if(!status.ok())
+                        return status;
+                }
+                auto verified = PosixTier::read(directory->fd.get(), migration.file, true);
+                if(!verified.ok() || *verified != bytes)
+                {
+                    cleanup();
+                    return absl::UnavailableError("migration verification failed");
+                }
+                if(step)
+                {
+                    status = step(4);
+                    if(!status.ok())
+                        return status;
+                }
+                status = tier->verify(*directory);
+                if(!tier->current(directory) || !status.ok())
+                {
+                    cleanup();
+                    return absl::UnavailableError("migration availability epoch changed");
+                }
+                return absl::OkStatus();
+            });
+    if(!copied.ok())
+        return copied;
+    if(step)
+    {
+        auto status = step(5);
+        if(!status.ok())
+            return status;
+    }
+    // Re-read the marker on the executor, immediately before acquiring the commit mutex.
+    auto verified = tier->run([tier, directory, held] { return tier->verify(*directory); });
+    absl::Status committed = verified;
+    bool keep = false;
+    {
+        std::lock_guard lock(mutex_);
+        if(committed.ok())
+        {
+            auto index = refresh();
+            if(!index.ok())
+                committed = index.status();
+            else if(migration_stopped_ || log_->failed() || !tier->current(directory) ||
+                    claims_[record.file].lock() != held || !migrationEligible(**index, record, held))
+                committed = absl::AbortedError("migration eligibility changed before commit");
+            else
+            {
+                committed = log_->syncOwn();
+                if(committed.ok())
+                    committed = log_->appendMigration(migration);
+                if(!committed.ok())
+                {
+                    migration_stopped_ = true;
+                    stopped_migrations_.push_back(held);
+                    keep = true;
+                }
+                else
+                {
+                    keep = true;
+                    committed = refresh().status();
+                }
+            }
+        }
+    }
+    if(!keep)
+    {
+        (void)tier->run(
+                [tier, directory, held, temporary, created, file = record.file]
+                {
+                    auto status = PosixTier::erase(directory->fd.get(), temporary);
+                    if(created->load())
+                        status.Update(PosixTier::erase(directory->fd.get(), file));
+                    return status;
+                });
+    }
+    if(!committed.ok())
+        return committed;
+    if(step)
+    {
+        auto status = step(6);
+        if(!status.ok())
+            return status;
+    }
+    absl::Status removed;
+    if(source_tier)
+        removed = source_tier->run(
+                [source_tier, source_directory, held, file = record.file]
+                {
+                    auto status = source_tier->verify(*source_directory);
+                    if(status.ok())
+                        status = PosixTier::erase(source_directory->fd.get(), file);
+                    if(status.ok())
+                        status = source_tier->verify(*source_directory);
+                    return status;
+                });
+    else
+    {
+        if(unlink_(root_ / record.file) != 0 && errno != ENOENT)
+            removed = tier_detail::IoError("unlink migration source");
+        else
+            removed = tier_detail::SyncDirectory((root_ / record.file).parent_path());
+    }
+    if(!removed.ok())
+        return removed;
+    auto replica = writeTierReplicas();
+    if(!replica.ok())
+        return replica;
+    return size_t{1};
+}
+
+absl::Status FileTierStore::sweepTiers()
+{
+    std::vector<std::shared_ptr<PosixTier>> tiers;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [name, tier]: tiers_) tiers.push_back(tier);
+    }
+    absl::Status result;
+    for(const auto& tier: tiers)
+    {
+        auto directory = tier->directory();
+        if(!directory)
+        {
+            result.Update(absl::UnavailableError("tier sweep pending availability"));
+            continue;
+        }
+        auto names = tier->run(
+                [tier, directory]() -> absl::StatusOr<std::vector<std::string>>
+                {
+                    auto status = tier->verify(*directory);
+                    if(!status.ok())
+                        return status;
+                    auto stories = PosixTier::list(directory->fd.get(), ".");
+                    if(!stories.ok())
+                        return stories.status();
+                    std::vector<std::string> names;
+                    for(const auto& story: *stories)
+                    {
+                        StoryId id;
+                        if(!Number(story, id) || !id)
+                            continue;
+                        auto files = PosixTier::list(directory->fd.get(), story);
+                        if(!files.ok())
+                            return files.status();
+                        names.insert(names.end(), files->begin(), files->end());
+                    }
+                    status = tier->verify(*directory);
+                    if(!status.ok())
+                        return status;
+                    return names;
+                });
+        if(!names.ok())
+        {
+            result.Update(names.status());
+            continue;
+        }
+        for(const auto& file: *names)
+        {
+            std::shared_ptr<Claim> held;
+            {
+                std::lock_guard lock(mutex_);
+                auto index = refresh();
+                if(!index.ok())
+                {
+                    result.Update(index.status());
+                    break;
+                }
+                StoryId story;
+                if(!Number(std::filesystem::path(file).parent_path().string(), story))
+                    continue;
+                const bool destroyed = (*index)->tombstoned.contains(story);
+                if(destroyed)
+                {
+                    bool live = false;
+                    for(const auto& record: effective(**index, story))
+                        if(record.state == ManifestState::Published || record.state == ManifestState::Empty)
+                            live = true;
+                    if(live)
+                        continue;
+                }
+                else
+                {
+                    if(ArchiveFileWriter(file) != std::optional<std::string>(writer_) &&
+                       !std::filesystem::path(file).filename().string().starts_with(".migrate-" + Hex(writer_) + "."))
+                        continue;
+                    if((*index)->locations.contains(file))
+                        continue;
+                    bool active_temporary = false;
+                    for(const auto& [name, weak]: claims_)
+                        if(auto active = weak.lock(); active && file.ends_with("." + active->token))
+                            active_temporary = true;
+                    if(active_temporary)
+                        continue;
+                }
+                held = claim(file, story);
+                if(!held)
+                    continue;
+            }
+            result.Update(tier->run(
+                    [tier, directory, held, file, hook = hooks_.tier_step]
+                    {
+                        if(hook)
+                        {
+                            auto status = hook("sweep");
+                            if(!status.ok())
+                                return status;
+                        }
+                        auto status = tier->verify(*directory);
+                        if(status.ok())
+                            status = PosixTier::erase(directory->fd.get(), file);
+                        if(status.ok())
+                            status = tier->verify(*directory);
+                        return status;
+                    }));
+        }
+    }
+    return result;
+}
+
+absl::Status FileTierStore::cleanupMigrations()
+{
+    std::vector<MigrationLocation> migrations;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        auto status = log_->syncOwn();
+        if(!status.ok())
+            return status;
+        for(const auto& [file, location]: (*index)->locations)
+            if(location.writer == writer_)
+                migrations.push_back(location);
+    }
+    absl::Status result;
+    for(const auto& migration: migrations)
+    {
+        std::shared_ptr<Claim> held;
+        std::shared_ptr<PosixTier> target;
+        std::vector<std::shared_ptr<PosixTier>> faster;
+        {
+            std::lock_guard lock(mutex_);
+            auto index = refresh();
+            if(!index.ok())
+            {
+                result.Update(index.status());
+                continue;
+            }
+            if((*index)->tombstoned.contains(migration.story_id) || !tiers_.contains(migration.tier))
+                continue;
+            held = claim(migration.file, migration.story_id);
+            if(!held)
+                continue;
+            target = tiers_.at(migration.tier);
+            for(const auto& [name, tier]: tiers_)
+                if(tier->config.rank < migration.rank)
+                    faster.push_back(tier);
+        }
+        auto directory = target->directory();
+        if(!directory || target->config.tier_uuid != migration.tier_uuid)
+            continue;
+        const auto verify = [target, directory, held, migration]
+        {
+            auto status = target->verify(*directory);
+            if(!status.ok())
+                return status;
+            auto bytes = PosixTier::read(directory->fd.get(), migration.file, true);
+            if(!bytes.ok())
+                return bytes.status();
+            if(bytes->size() != migration.checksum.bytes ||
+               static_cast<uint32_t>(absl::ComputeCrc32c(*bytes)) != migration.checksum.crc32c)
+                return absl::UnavailableError("migration cleanup destination checksum mismatch");
+            return target->verify(*directory);
+        };
+        auto verified = target->run(verify);
+        if(!verified.ok() && target->current(directory))
+            verified = target->run(verify);
+        if(!verified.ok() && target->current(directory))
+        {
+            // An intact faster copy repairs the destination without changing the effective location.
+            absl::StatusOr<std::string> source = absl::UnavailableError("no stale migration source");
+            tier_detail::Fd local(::open(root_.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+            if(local.get() >= 0)
+                source = PosixTier::read(local.get(), migration.file);
+            const auto intact = [&](const absl::StatusOr<std::string>& bytes)
+            {
+                return bytes.ok() && bytes->size() == migration.checksum.bytes &&
+                       static_cast<uint32_t>(absl::ComputeCrc32c(*bytes)) == migration.checksum.crc32c;
+            };
+            if(!intact(source))
+                for(const auto& tier: faster)
+                {
+                    auto root = tier->directory();
+                    if(!root)
+                        continue;
+                    source = tier->run(
+                            [tier, root, held, migration]() -> absl::StatusOr<std::string>
+                            {
+                                auto status = tier->verify(*root);
+                                if(!status.ok())
+                                    return status;
+                                return PosixTier::read(root->fd.get(), migration.file);
+                            });
+                    if(intact(source))
+                        break;
+                }
+            if(intact(source))
+                verified = target->run(
+                        [target, directory, held, migration, bytes = *std::move(source), writer = writer_]
+                        {
+                            auto status = target->verify(*directory);
+                            if(!status.ok())
+                                return status;
+                            const auto story = std::to_string(migration.story_id);
+                            if(::mkdirat(directory->fd.get(), story.c_str(), 0755) != 0 && errno != EEXIST)
+                                return tier_detail::IoError("create migration repair story");
+                            const auto temporary = story + "/.migrate-" + Hex(writer) + "." + held->token;
+                            tier_detail::Fd fd(::openat(directory->fd.get(),
+                                                        temporary.c_str(),
+                                                        O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC | O_NOFOLLOW,
+                                                        0644));
+                            if(fd.get() < 0)
+                                return tier_detail::IoError("create migration repair temporary");
+                            status = tier_detail::WriteAll(fd.get(), bytes);
+                            if(status.ok() && ::fsync(fd.get()) != 0)
+                                status = tier_detail::IoError("sync migration repair");
+                            if(status.ok() && !target->current(directory))
+                                status = absl::UnavailableError("migration repair abandoned");
+                            if(status.ok())
+                                status = PosixTier::erase(directory->fd.get(), migration.file);
+                            bool created = false;
+                            if(status.ok())
+                            {
+                                if(::linkat(directory->fd.get(),
+                                            temporary.c_str(),
+                                            directory->fd.get(),
+                                            migration.file.c_str(),
+                                            0) != 0)
+                                    status = tier_detail::IoError("install migration repair");
+                                else
+                                    created = true;
+                            }
+                            status.Update(PosixTier::erase(directory->fd.get(), temporary));
+                            if(status.ok())
+                            {
+                                auto read = PosixTier::read(directory->fd.get(), migration.file, true);
+                                if(!read.ok() || *read != bytes)
+                                    status = absl::UnavailableError("migration repair verification failed");
+                            }
+                            if(status.ok())
+                                status = target->verify(*directory);
+                            if(!target->current(directory) && created)
+                            {
+                                (void)PosixTier::erase(directory->fd.get(), migration.file);
+                                return absl::UnavailableError("migration repair abandoned");
+                            }
+                            return status;
+                        });
+        }
+        if(!verified.ok())
+        {
+            result.Update(verified);
+            continue;
+        }
+        if(unlink_(root_ / migration.file) != 0 && errno != ENOENT)
+            result.Update(tier_detail::IoError("unlink stale migration source"));
+        else if(std::filesystem::exists((root_ / migration.file).parent_path()))
+            result.Update(tier_detail::SyncDirectory((root_ / migration.file).parent_path()));
+        for(const auto& tier: faster)
+        {
+            auto root = tier->directory();
+            if(!root)
+            {
+                result.Update(absl::UnavailableError("stale migration tier unavailable"));
+                continue;
+            }
+            result.Update(tier->run(
+                    [tier, root, held, file = migration.file]
+                    {
+                        auto status = tier->verify(*root);
+                        if(status.ok())
+                            status = PosixTier::erase(root->fd.get(), file);
+                        if(status.ok())
+                            status = tier->verify(*root);
+                        return status;
+                    }));
+        }
+    }
+    return result;
+}
+
+absl::Status FileTierStore::writeTierReplicas()
+{
+    std::string bytes;
+    std::vector<std::shared_ptr<PosixTier>> tiers;
+    {
+        std::lock_guard lock(mutex_);
+        auto status = log_->compact();
+        if(!status.ok())
+            return status;
+        std::ifstream snapshot(log_->snapshotPath(), std::ios::binary);
+        bytes.assign(std::istreambuf_iterator<char>(snapshot), {});
+        if(snapshot.bad())
+            return absl::UnavailableError("read manifest replica source");
+        for(const auto& [name, tier]: tiers_) tiers.push_back(tier);
+    }
+    absl::Status result;
+    for(const auto& tier: tiers)
+    {
+        auto directory = tier->directory();
+        if(!directory)
+            continue;
+        result.Update(tier->run(
+                [tier, directory, bytes, writer = writer_, token = RandomOp()]
+                {
+                    auto status = tier->verify(*directory);
+                    if(!status.ok())
+                        return status;
+                    if(::mkdirat(directory->fd.get(), "manifest-replica", 0755) != 0 && errno != EEXIST)
+                        return tier_detail::IoError("create manifest replica directory");
+                    const auto temporary = "manifest-replica/." + writer + "." + token;
+                    const auto final = "manifest-replica/" + writer + ".snap";
+                    tier_detail::Fd fd(::openat(directory->fd.get(),
+                                                temporary.c_str(),
+                                                O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC | O_NOFOLLOW,
+                                                0644));
+                    if(fd.get() < 0)
+                        return tier_detail::IoError("create manifest replica");
+                    status = tier_detail::WriteAll(fd.get(), bytes);
+                    if(status.ok() && ::fsync(fd.get()) != 0)
+                        status = tier_detail::IoError("sync manifest replica");
+                    if(status.ok() &&
+                       ::renameat(directory->fd.get(), temporary.c_str(), directory->fd.get(), final.c_str()) != 0)
+                        status = tier_detail::IoError("install manifest replica");
+                    if(!status.ok())
+                    {
+                        (void)::unlinkat(directory->fd.get(), temporary.c_str(), 0);
+                        return status;
+                    }
+                    tier_detail::Fd parent(::openat(directory->fd.get(),
+                                                    "manifest-replica",
+                                                    O_DIRECTORY | O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+                    if(parent.get() < 0 || ::fsync(parent.get()) != 0)
+                        return tier_detail::IoError("sync replica directory");
+                    return tier->verify(*directory);
+                }));
+    }
+    return result;
+}
+absl::Status FileTierStore::awaitTierUnlinksForTesting(std::chrono::milliseconds timeout)
+{
+    std::vector<std::shared_ptr<std::vector<std::future<absl::Status>>>> work;
+    {
+        std::lock_guard lock(mutex_);
+        for(const auto& [file, futures]: unlink_results_) work.push_back(futures);
+    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for(const auto& futures: work)
+        for(auto& future: *futures)
+            if(future.wait_until(deadline) != std::future_status::ready)
+                return absl::UnavailableError("test tier unlink deadline expired");
+    return retryDeletedFiles();
+}
+
+absl::StatusOr<ChunkBytes> FileTierStore::loadResolvedFile(const std::string& file) const
+{
+    auto migration = log_->location(file);
+    if(!migration)
+        return load_file_(root_ / file);
+    std::shared_ptr<PosixTier> tier;
+    {
+        std::lock_guard lock(tier_table_mutex_);
+        auto found = tiers_.find(migration->tier);
+        if(found == tiers_.end() || found->second->config.rank != migration->rank ||
+           found->second->config.tier_uuid != migration->tier_uuid)
+            return absl::UnavailableError("archive effective tier refused");
+        tier = found->second;
+    }
+    auto directory = tier->directory();
+    if(!directory)
+        return absl::UnavailableError("archive effective tier unavailable");
+    return tier->run([tier, directory, file] { return LoadTierBytes(tier, directory, file); });
+}
+
+void FileTierStore::queueTierSweeps()
+{
+    std::lock_guard lock(mutex_);
+    auto index = refresh();
+    if(!index.ok())
+        return;
+    for(auto it = tier_sweeps_.begin(); it != tier_sweeps_.end();)
+    {
+        if(it->second.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+        {
+            ++it;
+            continue;
+        }
+        if(it->second.get().ok())
+            tier_swept_.insert(it->first);
+        it = tier_sweeps_.erase(it);
+    }
+    for(const auto story: (*index)->tombstoned)
+    {
+        if(!swept_.contains(story))
+            continue;
+        bool live = false;
+        for(const auto& record: effective(**index, story))
+            if(record.manifest_writer == writer_ &&
+               (record.state == ManifestState::Published || record.state == ManifestState::Empty))
+                live = true;
+        if(live)
+            continue;
+        bool claimed = false;
+        for(const auto& [file, weak]: claims_)
+            if(auto held = weak.lock(); held && held->story == story)
+                claimed = true;
+        if(claimed)
+            continue;
+        auto held = claim("sweep/" + std::to_string(story), story);
+        for(const auto& [name, tier]: tiers_)
+        {
+            const auto key = std::make_pair(name, story);
+            if(tier_swept_.contains(key) || tier_sweeps_.contains(key))
+                continue;
+            auto directory = tier->directory();
+            if(!directory)
+                continue;
+            tier_sweeps_[key] = tier->submit(
+                    [tier, directory, held, story, hook = hooks_.tier_step]
+                    {
+                        if(hook)
+                        {
+                            auto status = hook("sweep");
+                            if(!status.ok())
+                                return status;
+                        }
+                        auto status = tier->verify(*directory);
+                        if(!status.ok())
+                            return status;
+                        auto files = PosixTier::list(directory->fd.get(), std::to_string(story));
+                        if(!files.ok())
+                            return files.status();
+                        for(const auto& file: *files)
+                        {
+                            status = PosixTier::erase(directory->fd.get(), file);
+                            if(!status.ok())
+                                return status;
+                        }
+                        return tier->verify(*directory);
+                    });
+        }
+    }
+}
+
 } // namespace chronolog

@@ -9,6 +9,7 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <set>
+#include <sstream>
 #include <sys/file.h>
 #include <sys/stat.h>
 
@@ -442,6 +443,79 @@ std::optional<CompactionOutput> ParseCompactionOutput(const std::filesystem::pat
 
 std::string CompactionTemporaryPrefix(const std::string& writer) { return ".compact-" + Hex(writer) + "."; }
 
+std::optional<std::string> ArchiveFileWriter(const std::filesystem::path& file)
+{
+    if(auto output = ParseCompactionOutput(file))
+        return output->writer;
+    if(file.extension() != ".pb" && file.extension() != ".h5")
+        return std::nullopt;
+    std::vector<std::string> fields;
+    std::istringstream stream(file.stem().string());
+    std::string field;
+    while(std::getline(stream, field, '_')) fields.push_back(field);
+    if(fields.size() != 8 && fields.size() != 9)
+        return std::nullopt;
+    return Unhex(fields[6]);
+}
+
+namespace
+{
+MigrationLocation DecodeMigration(const std::string& writer, const Json& json)
+{
+    MigrationLocation m;
+    m.writer = json.at("writer").get<std::string>();
+    m.file = json.at("file").get<std::string>();
+    m.story_id = json.at("story").get<StoryId>();
+    m.tier = json.at("tier").get<std::string>();
+    m.rank = json.at("rank").get<uint32_t>();
+    m.tier_uuid = json.at("tier_uuid").get<std::string>();
+    m.token = json.at("token").get<std::string>();
+    const auto checksum = DecodeChecksum(json);
+    if(m.writer != writer || ArchiveFileWriter(m.file) != std::optional<std::string>(writer) ||
+       !StoryFile(m.file, m.story_id) || !m.rank || !SafeWriter(m.tier) || m.tier == "local" || m.tier_uuid.empty() ||
+       m.token.empty() || !checksum)
+        throw std::runtime_error("invalid or foreign migration");
+    m.checksum = *checksum;
+    return m;
+}
+absl::Status MigrationConflict(const ManifestIndex& index, const MigrationLocation& m)
+{
+    const auto it = index.migration_ranks.find({m.file, m.rank});
+    if(it != index.migration_ranks.end() && (it->second.tier != m.tier || it->second.tier_uuid != m.tier_uuid))
+        return absl::UnavailableError("conflicting migration tier at the same rank");
+    return absl::OkStatus();
+}
+void ApplyMigration(ManifestIndex& index, const MigrationLocation& m)
+{
+    index.migration_ranks[{m.file, m.rank}] = m;
+    auto it = index.locations.find(m.file);
+    if(it == index.locations.end() || it->second.rank < m.rank)
+        index.locations[m.file] = m;
+}
+} // namespace
+
+absl::Status ManifestLog::appendMigration(const MigrationLocation& m)
+{
+    try
+    {
+        Json body{{"writer", writer_},
+                  {"story", m.story_id},
+                  {"file", m.file},
+                  {"tier", m.tier},
+                  {"rank", m.rank},
+                  {"tier_uuid", m.tier_uuid},
+                  {"bytes", m.checksum.bytes},
+                  {"crc32c", m.checksum.crc32c},
+                  {"token", m.token}};
+        (void)DecodeMigration(writer_, body);
+        return appendFramed("migrate_v1", body.dump());
+    }
+    catch(const std::exception& error)
+    {
+        return absl::InvalidArgumentError(error.what());
+    }
+}
+
 ManifestLog::ManifestLog(std::filesystem::path directory, std::string writer, int fd, PathStat path_stat)
     : directory_(std::move(directory))
     , writer_(std::move(writer))
@@ -611,6 +685,15 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
         if(framing == Framing::Framed)
         {
             const auto json = Json::parse(body);
+            if(key == "migrate_v1")
+            {
+                auto m = DecodeMigration(writer, json);
+                auto status = MigrationConflict(index, m);
+                if(!status.ok())
+                    return status;
+                ApplyMigration(index, m);
+                return absl::OkStatus();
+            }
             if(key == "compact_v1")
             {
                 auto change = DecodeSwitch(writer, json);
@@ -656,6 +739,7 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
         auto record = Decode(json);
         if(record.manifest_writer != writer)
             return absl::UnavailableError("foreign writer in manifest");
+        index.record_sequences[record.file] = json.value("seq", uint64_t{0});
         const auto bounds = DecodeBounds(json, record.state);
         if(const auto checksum = DecodeChecksum(json))
             index.checksums[record.file] = *checksum;
@@ -842,6 +926,7 @@ absl::Status ManifestLog::advance() const
     };
     std::vector<Pending> pending;
     std::map<std::string, std::string> claimed;
+    ManifestIndex migrations;
     for(auto& [writer, cursors]: cursors_)
     {
         for(const auto* extension: {".snap", ".log"})
@@ -890,6 +975,16 @@ absl::Status ManifestLog::advance() const
                                          auto status = applyLine(writer, line, scratch);
                                          if(!status.ok())
                                              return status;
+                                         for(const auto& [file_rank, m]: scratch.migration_ranks)
+                                         {
+                                             auto conflict = MigrationConflict(cache_, m);
+                                             if(!conflict.ok())
+                                                 return conflict;
+                                             conflict = MigrationConflict(migrations, m);
+                                             if(!conflict.ok())
+                                                 return conflict;
+                                             ApplyMigration(migrations, m);
+                                         }
                                          for(const auto& [output, change]: scratch.switches)
                                          {
                                              const auto conflict = SwitchConflict(cache_, change);
@@ -942,6 +1037,13 @@ absl::StatusOr<ManifestIndex> ManifestLog::load() const
         return index.status();
     std::lock_guard lock(mutex_);
     return **index;
+}
+
+std::optional<MigrationLocation> ManifestLog::location(const std::string& file) const
+{
+    std::lock_guard lock(mutex_);
+    const auto found = cache_.locations.find(file);
+    return found == cache_.locations.end() ? std::nullopt : std::optional(found->second);
 }
 
 std::optional<FileChecksum> ManifestLog::checksum(const std::string& file) const
