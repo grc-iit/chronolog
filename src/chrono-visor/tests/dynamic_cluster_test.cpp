@@ -11,6 +11,8 @@
 #include <absl/log/log.h>
 #include <algorithm>
 #include <array>
+#include <future>
+#include <latch>
 #include <thread>
 #include <string_view>
 #include <random>
@@ -687,6 +689,55 @@ TEST_F(DynamicClusterTest, FailureDetectionRemovesSilentKeeperAfterFullTimeout)
         std::this_thread::sleep_for(50ms);
     }
     EXPECT_TRUE(removed);
+}
+// Silence is judged by when Heartbeats reach the leader: beats that wait behind busy leader workers prove liveness, and
+// beats from an obsolete instance do not (I4.9).
+TEST_F(DynamicClusterTest, HeartbeatsQueuedBehindBusyLeaderWorkersStillProveLiveness)
+{
+    auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver a{*stubs[selected], "keeper-a", "a1"}, b{*stubs[selected], "keeper-b", "b1"};
+    ASSERT_EQ(a.Register().status().code(), 0);
+    ASSERT_EQ(b.Register().status().code(), 0);
+    ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
+    ASSERT_EQ(b.ExtendCeiling().status().code(), 0);
+    std::promise<void> release;
+    struct Release
+    {
+        std::promise<void>& release;
+        ~Release() { release.set_value(); }
+    } guard{release};
+    std::shared_future<void> released = release.get_future().share();
+    std::latch busy(2);
+    for(int n = 0; n < 2; ++n)
+        ASSERT_TRUE(pools[selected]->submit(
+                [&busy, released]
+                {
+                    busy.count_down();
+                    released.wait();
+                }));
+    busy.wait();
+    auto beat = [&](const std::string& id, const std::string& instance)
+    {
+        wire::HeartbeatRequest q;
+        q.set_process_id(id);
+        q.set_instance(instance);
+        grpc::ClientContext context;
+        context.set_deadline(std::chrono::system_clock::now() + 200ms);
+        wire::HeartbeatResponse r;
+        (void)stubs[selected]->Heartbeat(&context, q, &r);
+    };
+    bool removed = false;
+    for(int attempt = 0; attempt < 40 && !removed; ++attempt)
+    {
+        beat(a.id, a.instance);
+        beat(b.id, "b0");
+        removed = dynamic::snapshot(stores[selected]->appliedStore()).routes(0).route().epoch() > 1;
+    }
+    ASSERT_TRUE(removed);
+    auto state = dynamic::snapshot(stores[selected]->appliedStore());
+    ASSERT_EQ(state.routes(0).route().keepers_size(), 1);
+    EXPECT_EQ(state.routes(0).route().keepers(0).process_id(), a.id);
 }
 class DynamicClusterBeforeFirstStoryTest: public DynamicClusterTest
 {
