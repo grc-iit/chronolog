@@ -1,5 +1,6 @@
 #pragma once
 #include "internal.h"
+#include "lease.h"
 #include <set>
 
 namespace chronolog::client
@@ -14,6 +15,8 @@ struct Writer::Impl
     mutable std::timed_mutex mutex;
     mutable std::mutex acquisition_mutex;
     Acquisition acquired;
+    std::string identity;
+    std::shared_ptr<detail::Lease> lease;
     uint64_t sequence{1};
     uint64_t batch_id{};
     bool requires_reacquisition{};
@@ -26,6 +29,8 @@ struct Writer::Impl
     };
     std::optional<Pending> pending;
     absl::StatusOr<BatchResult> append(std::span<const AppendSpec>, Deadline, bool stream);
+    // Stops renewal and records an authoritative termination for own-prior recovery.
+    void terminated(std::optional<AcquisitionTerminationCause>);
 };
 namespace detail
 {

@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -13,10 +14,26 @@ namespace chronolog::client
 using Deadline = std::optional<std::chrono::system_clock::time_point>;
 using AppendRejection = chronolog::AppendRejection;
 AppendRejection rejectionOf(const absl::Status&);
+using AcquireOptions = chronolog::AcquireOptions;
+using AcquireRefusal = chronolog::AcquireRefusal;
+// Typed HELD, PRIOR_MISMATCH or terminal-retry detail of a refused acquire; never parsed from the message.
+std::optional<AcquireRefusal> acquireRefusalOf(const absl::Status&);
 struct RetryPolicy
 {
     size_t max_retries{3};
     std::chrono::milliseconds backoff{20};
+};
+struct LeaseOptions
+{
+    // Renewal starts once the local estimate of the last Catalog-confirmed grant is within
+    // lead_fraction of its duration plus margin of expiring.
+    double lead_fraction{0.5};
+    std::chrono::milliseconds margin{2000};
+    // Longest single scheduler sleep, which bounds how late renewal starts after a client suspend.
+    std::chrono::milliseconds poll{1000};
+    size_t max_batch{256};
+    // Local CLOCK_BOOTTIME in nanoseconds; empty reads the system clock. Tests inject one.
+    std::function<int64_t()> boottime_ns;
 };
 struct ClientOptions
 {
@@ -31,6 +48,7 @@ struct ClientOptions
     size_t batch_size{128};
     size_t max_batch_items{10000};
     size_t max_batch_bytes{64u << 20};
+    LeaseOptions lease;
 };
 struct AppendSpec
 {
@@ -106,6 +124,16 @@ private:
     explicit TailStream(std::unique_ptr<Impl>);
     friend class Client;
 };
+struct WriterLease
+{
+    // Last Catalog-confirmed grant; Keeper admissions never refresh it.
+    AcquisitionLease grant;
+    int64_t estimated_remaining_ns{};
+    // Diagnostic only: false after a missed horizon or failed renewal. Dispatch never stops on it.
+    bool confirmed{true};
+    std::optional<AcquisitionTerminationCause> termination_cause;
+    uint64_t renewals{};
+};
 class Writer
 {
 public:
@@ -117,7 +145,9 @@ public:
     Acquisition acquisition() const;
     absl::StatusOr<AppendResult> append(const AppendSpec&, Deadline deadline = {});
     absl::StatusOr<BatchResult> appendBatch(std::span<const AppendSpec>, Deadline deadline = {});
+    // Stops renewal before sending Release.
     absl::StatusOr<bool> release(Deadline deadline = {});
+    WriterLease lease() const;
 
 private:
     struct Impl;
@@ -148,6 +178,12 @@ public:
     absl::StatusOr<std::vector<Story>> listStories(const std::string& chronicle, Deadline deadline = {});
     absl::Status destroyStory(StoryId, Deadline deadline = {});
     absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, Deadline deadline = {});
+    // An empty acquire_request_id reuses this Client's unresolved id from an identical earlier call, else mints one.
+    // A supplied id must come from newAcquireRequestId on this Client in this process. Without explicit takeover or
+    // expected_prior_incarnation, an own unreleased or expired prior incarnation is recovered conditionally.
+    absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, AcquireOptions, Deadline deadline = {});
+    // A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls.
+    absl::StatusOr<std::string> newAcquireRequestId();
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});

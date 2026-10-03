@@ -63,6 +63,38 @@ bool same(const AppendSpec& a, const AppendSpec& b)
            a.envelope.payload == b.envelope.payload && a.envelope.trace_id == b.envelope.trace_id &&
            a.envelope.span_id == b.envelope.span_id && a.envelope.attributes == b.envelope.attributes;
 }
+std::optional<AcquisitionTerminationCause> causeOf(AppendRejection reason)
+{
+    switch(reason)
+    {
+        case AppendRejection::FencedExpired:
+            return AcquisitionTerminationCause::Expired;
+        case AppendRejection::FencedReleased:
+            return AcquisitionTerminationCause::Released;
+        case AppendRejection::FencedSuperseded:
+            return AcquisitionTerminationCause::Superseded;
+        case AppendRejection::FencedOwnerRemoved:
+            return AcquisitionTerminationCause::OwnerRemoved;
+        default:
+            return std::nullopt;
+    }
+}
+AppendRejection fencedBy(AcquisitionTerminationCause cause)
+{
+    switch(cause)
+    {
+        case AcquisitionTerminationCause::Expired:
+            return AppendRejection::FencedExpired;
+        case AcquisitionTerminationCause::Released:
+            return AppendRejection::FencedReleased;
+        case AcquisitionTerminationCause::Superseded:
+            return AppendRejection::FencedSuperseded;
+        case AcquisitionTerminationCause::OwnerRemoved:
+            return AppendRejection::FencedOwnerRemoved;
+        default:
+            return AppendRejection::Unspecified;
+    }
+}
 struct Request
 {
     v1::AppendStreamRequest wire;
@@ -84,9 +116,52 @@ AppendRejection rejectionOf(const absl::Status& status)
 Writer::Writer(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl))
 {}
-Writer::~Writer() = default;
+Writer::~Writer()
+{
+    if(impl_ && impl_->state->forked())
+        (void)impl_.release();
+}
 Writer::Writer(Writer&&) noexcept = default;
-Writer& Writer::operator=(Writer&&) noexcept = default;
+Writer& Writer::operator=(Writer&& other) noexcept
+{
+    if(this != &other)
+    {
+        if(impl_ && impl_->state->forked())
+            (void)impl_.release();
+        impl_ = std::move(other.impl_);
+    }
+    return *this;
+}
+WriterLease Writer::lease() const
+{
+    WriterLease out;
+    if(!impl_->lease)
+        return out;
+    const auto now = impl_->state->boottime();
+    std::lock_guard lock(impl_->lease->mutex);
+    const auto& lease = *impl_->lease;
+    out.grant = lease.grant;
+    out.estimated_remaining_ns = lease.grant.duration_ns > 0 ? std::max<int64_t>(lease.expiry - now, 0) : 0;
+    out.confirmed = lease.confirmed && !lease.cause && (lease.grant.duration_ns == 0 || now < lease.expiry);
+    out.termination_cause = lease.cause;
+    out.renewals = lease.renewals;
+    return out;
+}
+void Writer::Impl::terminated(std::optional<AcquisitionTerminationCause> cause)
+{
+    if(lease)
+    {
+        std::lock_guard lock(lease->mutex);
+        if(!lease->cause)
+            lease->cause = cause.value_or(AcquisitionTerminationCause::Unspecified);
+        lease->confirmed = false;
+    }
+    if(cause)
+    {
+        std::lock_guard lock(state->lifecycle->mutex);
+        state->lifecycle->terminal({acquired.story_id, acquired.writer_id, acquired.incarnation}, *cause);
+    }
+}
 Acquisition Writer::acquisition() const
 {
     std::lock_guard lock(impl_->acquisition_mutex);
@@ -94,24 +169,31 @@ Acquisition Writer::acquisition() const
 }
 absl::StatusOr<bool> Writer::release(Deadline deadline)
 {
+    if(impl_->state->forked())
+        return detail::forkedError();
     auto end = impl_->state->deadline(deadline);
     std::unique_lock lock(impl_->mutex, std::defer_lock);
     if(!lock.try_lock_until(end))
         return absl::DeadlineExceededError("writer busy");
-    grpc::ClientContext context;
-    detail::withDeadline(context, end);
-    v1::ReleaseRequest request;
-    request.set_story_id(impl_->acquired.story_id);
-    request.set_writer_id(impl_->acquired.writer_id);
-    request.set_incarnation(impl_->acquired.incarnation);
-    v1::ReleaseResponse response;
-    auto transport = impl_->state->catalog->Release(&context, request, &response);
-    if(!transport.ok())
-        return detail::status(transport);
-    auto status = detail::status(response.status());
-    if(!status.ok())
-        return status;
-    return response.fenced();
+    const RenewAcquisition tuple{impl_->acquired.story_id, impl_->acquired.writer_id, impl_->acquired.incarnation};
+    // Deregister before sending Release so a racing renewal cannot outlive the close.
+    if(impl_->lease)
+    {
+        std::lock_guard lease_lock(impl_->lease->mutex);
+        impl_->lease->closing = true;
+    }
+    auto& life = *impl_->state->lifecycle;
+    {
+        std::lock_guard life_lock(life.mutex);
+        life.releaseAttempted(tuple.story_id, impl_->identity, tuple.incarnation);
+    }
+    auto released = detail::release(*impl_->state, tuple, end);
+    if(released.ok())
+    {
+        std::lock_guard life_lock(life.mutex);
+        life.released(tuple.story_id, impl_->identity, tuple.incarnation);
+    }
+    return released;
 }
 absl::StatusOr<AppendResult> Writer::append(const AppendSpec& spec, Deadline deadline)
 {
@@ -126,6 +208,8 @@ absl::StatusOr<BatchResult> Writer::appendBatch(std::span<const AppendSpec> spec
 }
 absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> specs, Deadline deadline, bool streaming)
 {
+    if(state->forked())
+        return detail::forkedError();
     const auto end = state->deadline(deadline);
     std::unique_lock lock(mutex, std::defer_lock);
     if(!lock.try_lock_until(end))
@@ -224,8 +308,11 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                     if(failure == Failure::Rejected || failure == Failure::Fenced)
                     {
                         pending->outcomes[i] = s;
-                        if(failure == Failure::Fenced)
+                        if(failure == Failure::Fenced && !fenced)
+                        {
                             fenced = s;
+                            terminated(causeOf(rejectionOf(s)));
+                        }
                         continue;
                     }
                     refusal = s;
@@ -373,6 +460,38 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
             return transport;
         if(attempt == state->options.retry.max_retries)
         {
+            // RFC-G section 6: an exhausted not-registered budget asks the Catalog about this tuple once.
+            if(transport.ok() && rejectionOf(refusal) == AppendRejection::NotRegistered &&
+               std::chrono::system_clock::now() < end)
+            {
+                const RenewAcquisition tuple{acquired.story_id, acquired.writer_id, acquired.incarnation};
+                grpc::ClientContext renewal;
+                detail::withDeadline(renewal, end);
+                const auto sent = state->boottime();
+                auto answer = detail::renew(*state, {tuple}, renewal);
+                if(answer.ok())
+                {
+                    const auto& result = answer->results(0);
+                    const auto code = static_cast<absl::StatusCode>(result.status().code());
+                    if(code == absl::StatusCode::kFailedPrecondition)
+                    {
+                        const auto cause = detail::causeOf(result);
+                        fenced = withRejection(absl::FailedPreconditionError("writer acquisition terminated"),
+                                               fencedBy(cause.value_or(AcquisitionTerminationCause::Unspecified)));
+                        terminated(cause);
+                        return *fenced;
+                    }
+                    if(code == absl::StatusCode::kOk && result.lease().duration_ns() > 0 &&
+                       result.lease().remaining_ns() >= 0 && lease)
+                    {
+                        std::lock_guard lease_lock(lease->mutex);
+                        if(!lease->closing && !lease->cause)
+                            lease->confirm({result.lease().duration_ns(), result.lease().remaining_ns()},
+                                           sent,
+                                           state->options.lease);
+                    }
+                }
+            }
             if(!transport.ok())
                 if(auto payload = refusal.GetPayload(rejection_key))
                     transport.SetPayload(rejection_key, *payload);
