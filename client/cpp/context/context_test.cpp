@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
+#include <google/protobuf/util/message_differencer.h>
 #include <mutex>
 #include <condition_variable>
 #include "chronolog/context/context.h"
@@ -285,7 +286,7 @@ TEST(ContextApi, OnePendingOperationAndRedrive)
     EXPECT_EQ(b->current.outcome, ctx::MemoryOutcome::Rejected);
     EXPECT_EQ(b->blocking_operation_id, "A");
     ASSERT_EQ(peer.appends.size(), 2u);
-    EXPECT_EQ(peer.appends[0].items(0).SerializeAsString(), peer.appends[1].items(0).SerializeAsString());
+    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(peer.appends[0].items(0), peer.appends[1].items(0)));
     peer.append_code = absl::StatusCode::kOk;
     b = (*session)->remember(memory("B"));
     ASSERT_TRUE(b.ok());
@@ -294,7 +295,7 @@ TEST(ContextApi, OnePendingOperationAndRedrive)
     EXPECT_EQ(b->resolved_prior[0].outcome, ctx::MemoryOutcome::Durable);
     ASSERT_TRUE(b->current.receipt);
     EXPECT_EQ(b->current.receipt->event_id.sequence, 2u);
-    EXPECT_EQ(peer.appends[2].items(0).SerializeAsString(), peer.appends[0].items(0).SerializeAsString());
+    EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(peer.appends[2].items(0), peer.appends[0].items(0)));
     EXPECT_EQ(peer.appends[3].items(0).envelope().payload(), "memory");
     EXPECT_EQ((*session)->remember(memory("A", "changed")).status().code(), absl::StatusCode::kFailedPrecondition);
     a = (*session)->remember(memory("A"));
