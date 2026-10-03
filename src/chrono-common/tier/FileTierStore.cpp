@@ -1924,6 +1924,18 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         return status;
     if(::fsync(fd.get()) != 0)
         return tier_detail::IoError("fsync compaction output");
+    // The codec writes by path. A tombstone sweep may have unlinked the temporary while this job waited, and the
+    // codec then wrote a new file that this fsync and checksum never covered; stop before linking it.
+    struct stat opened{}, named{};
+    if(::fstat(fd.get(), &opened) != 0 || ::stat(temporary.c_str(), &named) != 0 || opened.st_ino != named.st_ino ||
+       opened.st_dev != named.st_dev)
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(index.ok() && (*index)->tombstoned.contains(story))
+            return absl::FailedPreconditionError("story tombstoned during compaction");
+        return absl::DataLossError("compaction temporary was replaced before link");
+    }
     auto checksum = FileChecksumOf(fd.get());
     if(!checksum.ok())
         return checksum.status();
