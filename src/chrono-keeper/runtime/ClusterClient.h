@@ -56,27 +56,27 @@ private:
     void loop(std::stop_token stop);
     void applyRoutes(const google::protobuf::RepeatedPtrField<internal::v1::RouteUpdate>& routes);
 
-    // One deadline for the whole call: the budget is shared by the attached Visor and its replicas, so
-    // failing over never outlasts the timer the call feeds.
+    // One deadline for the whole call, so failing over never outlasts the timer the call feeds. Each attempt
+    // may use all that is left: only an UNAVAILABLE answer moves on to a replica, and an attempt that runs out
+    // of time ends the call, so a budget held back for the replicas would only starve the attempt doing the work
+    // (a follower forwarding to a loaded leader).
     template <class Call>
     grpc::Status invoke(Call call, std::chrono::milliseconds deadline)
     {
         std::lock_guard lock(rpc_mutex_);
         const auto end = std::chrono::system_clock::now() + deadline;
-        auto attempt = [&](auto& stub, size_t remaining)
+        auto attempt = [&](auto& stub)
         {
             grpc::ClientContext context;
-            const auto now = std::chrono::system_clock::now();
-            rpc::withDeadline(context, now + (end - now) / static_cast<long>(remaining));
+            rpc::withDeadline(context, end);
             return call(stub, context);
         };
-        size_t remaining = 1 + replicas_.size();
-        auto status = attempt(*stub_, remaining--);
+        auto status = attempt(*stub_);
         if(status.error_code() != grpc::StatusCode::UNAVAILABLE)
             return status;
         for(auto& replica: replicas_)
         {
-            status = attempt(*replica, remaining--);
+            status = attempt(*replica);
             if(status.ok())
             {
                 stub_.swap(replica);
