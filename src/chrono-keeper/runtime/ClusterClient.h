@@ -3,13 +3,17 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <grpcpp/grpcpp.h>
 
+#include "chronolog/clock.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
+#include "clock/ClockAudit.h"
 #include "journal/RamJournal.h"
 #include "membership/AcquisitionWatcher.h"
 #include "membership/ConfigMembership.h"
@@ -30,8 +34,14 @@ public:
         std::string endpoint;
         std::chrono::milliseconds interval{5000};
         std::string recovered_instance{};
-        // Deadline of Register and Heartbeat, shorter than the Visor's failure and fence timers (M11.3).
-        std::chrono::milliseconds deadline{1000};
+        // Bootstrap liveness timers, in force until a Register reply carries the Visor's own (A9). The deadline
+        // of Register and Heartbeat derives from the timers in force (M11.3).
+        uint32_t keeper_failure_timeout_ms{15000};
+        uint32_t release_fence_timeout_ms{2000};
+        // Physical clock that brackets each Register and Heartbeat attempt for the clock audit; none disables it.
+        std::shared_ptr<Clock> clock{};
+        // Monotonic nanoseconds; steady_clock when empty.
+        std::function<int64_t()> monotonic{};
     };
 
     ClusterClient(std::shared_ptr<grpc::Channel> channel,
@@ -51,10 +61,42 @@ public:
     void kick();
 
     bool registered() const { return registered_; }
+    std::chrono::milliseconds heartbeatDeadline() const { return std::chrono::milliseconds(deadline_ms_.load()); }
+    // Per-Visor-replica clock audit state; observational only (B45 Part 1).
+    std::vector<ClockAuditEntry> clockAudit() const;
 
 private:
     void loop(std::stop_token stop);
     void applyRoutes(const google::protobuf::RepeatedPtrField<internal::v1::RouteUpdate>& routes);
+    absl::Status adoptTimeouts(const internal::v1::MembershipPolicy& policy);
+    struct ClockMark
+    {
+        TimeReading physical;
+        int64_t monotonic_ns{};
+    };
+    ClockMark mark() const;
+    int64_t monotonicNow() const;
+    // Feeds one attempt's bracket and reply to the audit and logs its transition.
+    template <class Response>
+    void audit(const ClockMark& start, const grpc::Status& rpc, const Response& response)
+    {
+        if(!options_.clock)
+            return;
+        const auto end = mark();
+        ClockAuditSample sample;
+        sample.t0 = start.physical;
+        sample.t1 = end.physical;
+        sample.m0_ns = start.monotonic_ns;
+        sample.m1_ns = end.monotonic_ns;
+        sample.replied = rpc.ok();
+        if(response.has_physical())
+            sample.visor = physicalReading(response.physical());
+        sample.responder = {response.clock_responder().replica_id(), response.clock_responder().instance()};
+        audited(sample);
+    }
+    static TimeReading physicalReading(const v1::TimeReading& reading);
+    void audited(const ClockAuditSample& sample);
+    void logTransition(const ClockAuditTransition& transition) const;
 
     // One deadline for the whole call, so failing over never outlasts the timer the call feeds. Each attempt
     // may use all that is left: only an UNAVAILABLE answer moves on to a replica, and an attempt that runs out
@@ -95,6 +137,11 @@ private:
     ConfigMembership& membership_;
     const AcquisitionWatcher& acquisitions_;
     std::atomic<std::chrono::milliseconds::rep> extend_deadline_ms_{0};
+    std::atomic<uint32_t> failure_timeout_ms_;
+    std::atomic<uint32_t> fence_timeout_ms_;
+    std::atomic<std::chrono::milliseconds::rep> deadline_ms_{0};
+    ClockAudit audit_;
+    std::vector<std::string> visor_endpoints_;
     std::atomic<bool> registered_{false};
     std::mutex mutex_;
     std::condition_variable_any cv_;

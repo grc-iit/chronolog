@@ -2,6 +2,7 @@ include(GoogleTest)
 
 add_executable(chronolog_keeper_tests
     acquisition_watcher_test.cpp
+    clock_audit_client_test.cpp
     cluster_client_test.cpp
     config_test.cpp
     fetch_hot_adapter_test.cpp
@@ -18,7 +19,7 @@ target_include_directories(chronolog_keeper_tests PRIVATE
     "${CMAKE_SOURCE_DIR}/tests/contract")
 target_link_libraries(chronolog_keeper_tests PRIVATE
     chronolog_keeper_lib chronolog_keeper_journal chronolog_common_clock chronolog_warnings
-    GTest::gtest GTest::gtest_main Threads::Threads)
+    GTest::gtest GTest::gtest_main Threads::Threads absl::log_sink absl::log_sink_registry)
 # See the root CMakeLists.txt: ThreadSanitizer needs ASLR disabled on this kernel.
 if("thread" IN_LIST CHRONOLOG_SANITIZERS)
     find_program(CHRONOLOG_SETARCH setarch)
