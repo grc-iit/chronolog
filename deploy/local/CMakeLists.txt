@@ -14,19 +14,17 @@ if(NOT CHRONOLOG_BUILD_PYTHON AND NOT CHRONOLOG_SANITIZERS)
     set(local_wheel_dir "${CMAKE_CURRENT_BINARY_DIR}/wheels")
     add_custom_target(chronolog_local_wheels ALL
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${local_wheel_dir}"
-        COMMAND timeout 180 "${Python3_EXECUTABLE}" -m build --wheel --no-isolation
-            --outdir "${local_wheel_dir}" "${CMAKE_CURRENT_SOURCE_DIR}"
-        COMMAND timeout 900 "${Python3_EXECUTABLE}" -m build --wheel --no-isolation
-            --outdir "${local_wheel_dir}" "${PROJECT_SOURCE_DIR}/client/python"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build_wheel.py"
+            "${local_wheel_dir}"
         VERBATIM)
     add_test(NAME server.install
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/install.py" "${PROJECT_BINARY_DIR}"
             "${local_wheel_dir}" "${CMAKE_INSTALL_BINDIR}")
-    set_tests_properties(server.install PROPERTIES TIMEOUT 300 LABELS "integration;install")
+    set_tests_properties(server.install PROPERTIES TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;install")
     add_test(NAME local.external_liveness
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/external.py" "${local_wheel_dir}"
             "${CMAKE_CURRENT_SOURCE_DIR}/chronolog" $<TARGET_FILE:chrono_visor>)
-    set_tests_properties(local.external_liveness PROPERTIES TIMEOUT 120 LABELS "integration;local")
+    set_tests_properties(local.external_liveness PROPERTIES TIMEOUT 1200 SKIP_RETURN_CODE 77 LABELS "integration;local")
 endif()

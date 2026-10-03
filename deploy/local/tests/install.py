@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 
+from sdk_wheel import prepare_sdk
+
 
 def main():
     build_dir, wheel_dir, bindir = sys.argv[1:]
@@ -17,6 +19,7 @@ def main():
     assert not Path(bindir).is_absolute(), 'FAIL test prefix requires a relative install bindir'
     with tempfile.TemporaryDirectory(prefix='chronolog-install-') as scratch:
         root = Path(scratch)
+        sdk = prepare_sdk(root / 'sdk-wheels', wheel_dir)
         prefix = root / 'prefix'
         env = {key: value for key, value in os.environ.items()
                if not key.startswith(('CHRONOLOG_', 'PYTHON', 'LD_'))}
@@ -34,7 +37,7 @@ def main():
         for component in ('server', 'client'):
             call([cmake, '--install', build_dir, '--prefix', prefix, '--component', component])
         python = prefix / 'bin/python'
-        wheels = [next(wheel_dir.glob(pattern)) for pattern in ('chronolog_local-*.whl', 'chronolog-*.whl')]
+        wheels = [next(wheel_dir.glob('chronolog_local-*.whl')), sdk]
         call([python, '-m', 'pip', 'install', '--no-index', '--no-deps', *wheels])
         cli = prefix / 'bin/chronolog'
         # Only the installed prefix and system tools are visible; the binding comes from this venv.
