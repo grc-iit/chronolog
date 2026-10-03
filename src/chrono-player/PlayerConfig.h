@@ -33,6 +33,9 @@ struct PlayerConfig
     uint32_t tail_poll_ms = 200;
     std::string archive_root;
     uint32_t manifest_poll_ms = 1000;
+    // 30 seconds leaves ample headroom for healthy NVMe and NFS loads; the largest
+    // deployed NFS chunk (197632 bytes) took 10 ms with the client cache bypassed.
+    uint32_t archive_read_timeout_ms = 30000;
     // Stderr threshold: info, warning or error.
     std::string log_level = "info";
     // One Route for every story, replacing registration with the Visor.

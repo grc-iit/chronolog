@@ -69,6 +69,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "tail_poll_ms",
                                                 "archive_root",
                                                 "manifest_poll_ms",
+                                                "archive_read_timeout_ms",
                                                 "log_level",
                                                 "static_routes"};
     if(!json.is_object())
@@ -101,6 +102,7 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         num("tail_poll_ms", cfg.tail_poll_ms);
         str("archive_root", cfg.archive_root);
         num("manifest_poll_ms", cfg.manifest_poll_ms);
+        num("archive_read_timeout_ms", cfg.archive_read_timeout_ms);
         str("log_level", cfg.log_level);
         if(json.contains("keeper_internal"))
             cfg.keeper_internal = json.at("keeper_internal").get<std::map<std::string, std::string>>();
@@ -158,7 +160,8 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"read_max_events", &cfg.read_max_events},
                             {"tail_max_bytes", &cfg.tail_max_bytes},
                             {"tail_poll_ms", &cfg.tail_poll_ms},
-                            {"manifest_poll_ms", &cfg.manifest_poll_ms}})
+                            {"manifest_poll_ms", &cfg.manifest_poll_ms},
+                            {"archive_read_timeout_ms", &cfg.archive_read_timeout_ms}})
     {
         if(auto v = env(key))
         {
@@ -185,9 +188,10 @@ absl::Status PlayerConfig::validate() const
     if(listen.empty() || player_id.empty())
         return absl::InvalidArgumentError("listen and player_id must be set");
     if(tail_max_bytes == 0 || read_max_events == 0 || batch_size == 0 || tail_poll_ms == 0 || keeper_deadline_ms == 0 ||
-       manifest_poll_ms == 0)
-        return absl::InvalidArgumentError("tail_max_bytes, read_max_events, batch_size, tail_poll_ms, "
-                                          "keeper_deadline_ms and manifest_poll_ms must be positive");
+       manifest_poll_ms == 0 || archive_read_timeout_ms == 0)
+        return absl::InvalidArgumentError(
+                "tail_max_bytes, read_max_events, batch_size, tail_poll_ms, "
+                "keeper_deadline_ms, manifest_poll_ms and archive_read_timeout_ms must be positive");
     if(log_level != "info" && log_level != "warning" && log_level != "error")
         return absl::InvalidArgumentError("log_level must be info, warning or error");
     if(!static_routes && visor_internal.empty())

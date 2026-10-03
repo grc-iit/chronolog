@@ -175,6 +175,97 @@ private:
     bool released_{}, timed_out_{};
 };
 
+TEST(FileTierStore, HungArchiveReadEndsWithinTheDeadline)
+{
+    auto directory = TestDirectory();
+    auto writer = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(writer.ok());
+    auto record = (*writer)->publish(contract::Window());
+    ASSERT_TRUE(record.ok());
+    const auto timeout = std::chrono::milliseconds(100);
+    const auto slack = std::chrono::seconds(2);
+    auto release = std::make_shared<std::promise<void>>();
+    auto gate = release->get_future().share();
+    auto exited = std::make_shared<std::promise<void>>();
+    auto done = exited->get_future();
+    auto reader = FileTierStore::OpenReadOnly(
+            *directory,
+            std::chrono::hours(1),
+            [gate, exited](const fs::path&) -> absl::StatusOr<ChunkBytes>
+            {
+                gate.wait();
+                exited->set_value();
+                return absl::UnavailableError("released hung load");
+            },
+            2,
+            {},
+            timeout);
+    ASSERT_TRUE(reader.ok());
+    auto read = std::async(std::launch::async,
+                           [&] { return (*reader)->readRecord(*record, {Range::Axis::Hlc, {100, 0}, {200, 0}}); });
+    const bool ended = read.wait_for(timeout + slack) == std::future_status::ready;
+    release->set_value();
+    EXPECT_TRUE(ended);
+    EXPECT_EQ(read.get().status().code(), absl::StatusCode::kUnavailable);
+    EXPECT_EQ(done.wait_for(timeout + slack), std::future_status::ready);
+}
+
+TEST(FileTierStore, HungArchiveReadDoesNotBlockOtherReadsOrDestruction)
+{
+    auto directory = TestDirectory();
+    auto writer = FileTierStore::Open(*directory, "primary", {{1, {100, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(writer.ok());
+    auto hung = (*writer)->publish(contract::Window());
+    auto other = contract::Window();
+    other.story_id = 2;
+    for(auto& event: other.events) event.id.story_id = 2;
+    ASSERT_TRUE((*writer)->registerStory(2, Hlc{100, 0}).ok());
+    auto healthy = (*writer)->publish(other);
+    ASSERT_TRUE(hung.ok());
+    ASSERT_TRUE(healthy.ok());
+    const auto timeout = std::chrono::milliseconds(100);
+    const auto slack = std::chrono::seconds(2);
+    auto release = std::make_shared<std::promise<void>>();
+    auto gate = release->get_future().share();
+    auto exited = std::make_shared<std::promise<void>>();
+    auto done = exited->get_future();
+    auto reader = FileTierStore::OpenReadOnly(
+            *directory,
+            std::chrono::hours(1),
+            [gate, exited, filename = hung->file](const fs::path& path) -> absl::StatusOr<ChunkBytes>
+            {
+                if(path.generic_string().ends_with(filename))
+                {
+                    gate.wait();
+                    exited->set_value();
+                    return absl::UnavailableError("released hung load");
+                }
+                return LoadChunkFile(path);
+            },
+            2,
+            {},
+            timeout);
+    ASSERT_TRUE(reader.ok());
+    auto reads = std::async(std::launch::async,
+                            [&]
+                            {
+                                auto failed = (*reader)->readRecord(*hung, {Range::Axis::Hlc, {100, 0}, {200, 0}});
+                                EXPECT_EQ(failed.status().code(), absl::StatusCode::kUnavailable);
+                                auto success = (*reader)->readRecord(*healthy, {Range::Axis::Hlc, {100, 0}, {200, 0}});
+                                EXPECT_TRUE(success.ok()) << success.status();
+                                if(success.ok())
+                                {
+                                    EXPECT_EQ(success->size(), 1u);
+                                }
+                                reader->reset();
+                            });
+    const bool ended = reads.wait_for(2 * timeout + slack) == std::future_status::ready;
+    release->set_value();
+    EXPECT_TRUE(ended);
+    reads.get();
+    EXPECT_EQ(done.wait_for(timeout + slack), std::future_status::ready);
+}
+
 TEST(FileTierStore, ConcurrentReadsDoNotSerialize)
 {
     auto directory = TestDirectory();

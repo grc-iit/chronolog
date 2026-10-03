@@ -142,7 +142,12 @@ int main(int argc, char** argv)
     replay_options.story_live = [catalog](StoryId story) { return catalog->ensureLive(story); };
     if(!cfg.archive_root.empty())
     {
-        auto archive = FileTierStore::OpenReadOnly(cfg.archive_root, std::chrono::milliseconds(cfg.manifest_poll_ms));
+        auto archive = FileTierStore::OpenReadOnly(cfg.archive_root,
+                                                   std::chrono::milliseconds(cfg.manifest_poll_ms),
+                                                   {},
+                                                   0,
+                                                   {},
+                                                   std::chrono::milliseconds(cfg.archive_read_timeout_ms));
         if(!archive.ok())
         {
             LOG(ERROR) << "chrono_player: cannot open archive: " << archive.status().message();
