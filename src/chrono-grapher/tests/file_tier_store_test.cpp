@@ -432,7 +432,9 @@ TEST(FileTierStore, PhysicalPruningSurvivesRestartAndCompaction)
     for(const bool compact: {false, true})
     {
         if(compact)
+        {
             ASSERT_TRUE((*store)->compact().ok());
+        }
         store->reset();
         CountingRead reads;
         auto reader = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), std::ref(reads));
