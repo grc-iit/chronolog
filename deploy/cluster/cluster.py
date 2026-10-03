@@ -150,6 +150,7 @@ class Cluster:
                     if node == 'blade':
                         tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
                     tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
+                    tar.add(ROOT / 'deploy/cluster/append_retry.py', arcname=f'run/{self.tag}/append_retry.py')
                     tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
                     tar.add(ROOT / 'tests/smoke/python/requirements.txt', arcname=f'run/{self.tag}/requirements.txt')
                     added = set()

@@ -7,6 +7,7 @@ import time
 import uuid
 
 import grpc
+from append_retry import append
 sys.path.insert(0, 'stubs')
 from chronolog.v1 import chronolog_pb2 as pb, chronolog_pb2_grpc as rpc
 
@@ -80,8 +81,8 @@ def main(request):
                 physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
                 envelope=pb.Envelope(payload=payload))
             started = time.perf_counter_ns()
-            response = journal.Append(pb.AppendRequest(story_id=acquired.story_id, epoch=acquired.route.epoch,
-                durability=pb.DURABILITY_DURABLE, batch_id=sequence, items=[item]), timeout=10)
+            response = append(journal, pb.AppendRequest(story_id=acquired.story_id, epoch=acquired.route.epoch,
+                durability=pb.DURABILITY_DURABLE, batch_id=sequence, items=[item]), grant_deadline=state['deadline'])
             latency.append((time.perf_counter_ns() - started) / 1e6)
             assert response.batch_id == sequence and len(response.results) == 1, response
             result = response.results[0]

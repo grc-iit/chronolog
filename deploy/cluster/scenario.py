@@ -16,6 +16,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(os.environ['CHRONOLOG_CLUSTER_OUT'])
 from topology import TABLE
+from append_retry import append
 ARCHIVE = Path('/mnt/nfs/chronolog-sprint/archive')
 sys.path.insert(0, str(ROOT / 'tests/smoke/python'))
 from smoke import Smoke, hlc_key
@@ -48,6 +49,19 @@ class Scenario(Smoke):
         logs = control('transfer-log', '')
         pattern = rf'archive_settled chunk=\S+ story={story} start=(\d+):(\d+) end=(\d+):(\d+)'
         return sorted(((int(m[1]), int(m[2])), (int(m[3]), int(m[4]))) for m in re.finditer(pattern, logs))
+
+    def append(self, acquired, sequence, durability, floor=None):
+        self.hold(acquired)
+        pb = self.pb
+        item = pb.AppendItem(writer_id=acquired.writer_id, incarnation=acquired.incarnation, sequence=sequence,
+            physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
+            envelope=pb.Envelope(payload=f'event-{sequence}'.encode()))
+        if floor is not None:
+            item.causal_floor.CopyFrom(floor)
+        response = append(self.journal, pb.AppendRequest(story_id=acquired.story_id, epoch=acquired.route.epoch,
+            items=[item], durability=durability, batch_id=sequence), seconds=self.timeout,
+            grant_deadline=self.holds[(acquired.story_id, acquired.writer_id, acquired.incarnation)])
+        return response.results[0]
 
     def restart(self, service):
         roles = ([r['keeper'] for r in TABLE] if service == 'chrono-keeper'
@@ -271,8 +285,9 @@ class Scenario(Smoke):
                 items.append(pb.AppendItem(writer_id=acquired.writer_id, incarnation=acquired.incarnation,
                     sequence=sequence, physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
                     envelope=pb.Envelope(payload=f'{identity}-{sequence}'.encode())))
-            response = journal.Append(pb.AppendRequest(story_id=story, epoch=acquired.route.epoch,
-                durability=pb.DURABILITY_DURABLE, batch_id=first+offset, items=items), timeout=10)
+            response = append(journal, pb.AppendRequest(story_id=story, epoch=acquired.route.epoch,
+                durability=pb.DURABILITY_DURABLE, batch_id=first+offset, items=items),
+                grant_deadline=self.holds[(story, acquired.writer_id, acquired.incarnation)])
             assert len(response.results) == len(items) and response.batch_id == first + offset
             for item, result in zip(items, response.results):
                 assert result.status.code == 0 and result.achieved_durability == pb.DURABILITY_DURABLE, result
