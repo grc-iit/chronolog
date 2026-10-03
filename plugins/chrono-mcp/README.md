@@ -5,12 +5,45 @@ Context API. A context is one story in the launcher's chronicle. Results are bou
 `verdict`, then `answer_complete`, `has_more` and `next_cursor`; ids and nanoseconds are decimal strings, and cursors,
 `at` bounds, follow tokens, ref tokens and checkpoint ids are opaque strings.
 
+## Install
+
+The repository root is a plugin marketplace for Claude Code and Codex. Its one plugin, `chronolog`, installs the
+`chronolog` skill and this server, launched as `uvx chronolog-mcp==4.0.0`.
+
+```sh
+claude plugin marketplace add grc-iit/ChronoLog        # or a local checkout path
+claude plugin install chronolog@chronolog
+codex plugin marketplace add grc-iit/ChronoLog         # or a local checkout path
+codex plugin add chronolog@chronolog
+```
+
+The server reads its settings from the environment: `CHRONOLOG_CATALOG` (default `127.0.0.1:50051`),
+`CHRONOLOG_PLAYER`, `CHRONOLOG_CHRONICLE`, `CHRONOLOG_MCP_IDENTITY` (the stable slot writable tools need),
+`CHRONOLOG_MCP_SESSION_ID`, `CHRONOLOG_MCP_HOST_ID`, `CHRONOLOG_MCP_LOCK_DIR` and `CHRONOLOG_MCP_STATE_CHRONICLE`.
+Codex forwards exactly these variables and `UV_FIND_LINKS` to the server; Claude Code passes its whole environment.
+
+Until `chronolog` and `chronolog-mcp` are published on PyPI, point uv at the wheels a source checkout builds
+(`bash tests/smoke/build_artifacts.sh` writes both to `build/smoke/wheels`) and the same command resolves them
+locally:
+
+```sh
+export UV_FIND_LINKS=/path/to/ChronoLog/build/smoke/wheels
+```
+
+Without the plugin, register the server directly:
+
+```sh
+claude mcp add chronolog -- uvx chronolog-mcp==4.0.0 --identity team/planner
+codex mcp add chronolog -- uvx chronolog-mcp==4.0.0 --identity team/planner
+```
+
+and give Codex the skill by linking `skills/chronolog` into `~/.agents/skills/` (a checkout already exposes it to
+both agents through `.claude/skills` and `.agents/skills`).
+
 ## Run
 
 ```sh
-pip install chronolog chronolog-mcp
 chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle team --identity team/planner
-claude mcp add chronolog -- chronolog-mcp --catalog 127.0.0.1:50051 --identity team/planner
 ```
 
 `--identity` is the stable launcher base slot, reused across runs; writable tools need it. Each agent label on the

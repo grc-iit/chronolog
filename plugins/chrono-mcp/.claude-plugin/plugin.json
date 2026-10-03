@@ -1,5 +1,0 @@
-{
-  "name": "chronolog-mcp",
-  "description": "Durable agent memory on ChronoLog contexts with explicit completeness and recovery.",
-  "version": "4.0.0"
-}

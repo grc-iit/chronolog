@@ -1,0 +1,45 @@
+{
+  "name": "chronolog",
+  "owner": {
+    "name": "Gnosis Research Center, Illinois Tech"
+  },
+  "metadata": {
+    "description": "ChronoLog agent tools: the chronolog skill and the chrono-mcp Context server."
+  },
+  "plugins": [
+    {
+      "name": "chronolog",
+      "source": "./skills",
+      "description": "The chronolog skill and the chrono-mcp server: durable agent memory on ChronoLog contexts with explicit completeness and recovery.",
+      "version": "4.0.0",
+      "author": {
+        "name": "Gnosis Research Center, Illinois Tech"
+      },
+      "repository": "https://github.com/grc-iit/ChronoLog",
+      "license": "BSD-3-Clause",
+      "strict": false,
+      "skills": [
+        "./chronolog"
+      ],
+      "mcpServers": {
+        "chronolog": {
+          "command": "uvx",
+          "args": [
+            "chronolog-mcp==4.0.0"
+          ],
+          "env_vars": [
+            "CHRONOLOG_CATALOG",
+            "CHRONOLOG_PLAYER",
+            "CHRONOLOG_CHRONICLE",
+            "CHRONOLOG_MCP_IDENTITY",
+            "CHRONOLOG_MCP_SESSION_ID",
+            "CHRONOLOG_MCP_HOST_ID",
+            "CHRONOLOG_MCP_LOCK_DIR",
+            "CHRONOLOG_MCP_STATE_CHRONICLE",
+            "UV_FIND_LINKS"
+          ]
+        }
+      }
+    }
+  ]
+}
