@@ -73,7 +73,7 @@ public:
         return grpc::Status::OK;
     }
     grpc::Status
-    ListMembers(grpc::ServerContext*, const wire::ListMembersRequest*, wire::MembershipResponse* r) override
+    ListMembers(grpc::ServerContext*, const wire::ListMembersRequest*, wire::ListMembersResponse* r) override
     {
         std::lock_guard lock(mu);
         if(!unknown)

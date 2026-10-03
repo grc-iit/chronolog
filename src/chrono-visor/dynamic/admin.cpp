@@ -14,33 +14,34 @@ int main(int argc, char** argv)
     auto stub = chronolog::internal::v1::Cluster::NewStub(chronolog::rpc::peerChannel(argv[1]));
     grpc::ClientContext context;
     chronolog::rpc::withTimeout(context, std::chrono::seconds(5));
-    chronolog::internal::v1::MembershipResponse response;
-    grpc::Status status;
+    auto finish = [](const grpc::Status& status, const auto& response)
+    {
+        if(!status.ok())
+        {
+            std::cerr << status.error_message() << "\n";
+            return 1;
+        }
+        std::cout << response.DebugString();
+        return response.status().code() == 0 ? 0 : 1;
+    };
+    auto keeper = [&](auto request, auto response, auto method)
+    {
+        request.set_process_id(argv[3]);
+        return finish((stub.get()->*method)(&context, request, &response), response);
+    };
+    namespace iv1 = chronolog::internal::v1;
     if(action == "list" && argc == 3)
     {
-        chronolog::internal::v1::ListMembersRequest request;
-        status = stub->ListMembers(&context, request, &response);
+        iv1::ListMembersResponse response;
+        return finish(stub->ListMembers(&context, iv1::ListMembersRequest(), &response), response);
     }
-    else if(argc == 4)
-    {
-        chronolog::internal::v1::KeeperRequest request;
-        request.set_process_id(argv[3]);
-        if(action == "drain")
-            status = stub->DrainKeeper(&context, request, &response);
-        else if(action == "join")
-            status = stub->JoinKeeper(&context, request, &response);
-        else if(action == "abandon")
-            status = stub->AbandonKeeper(&context, request, &response);
-        else
-            return 2;
-    }
-    else
+    if(argc != 4)
         return 2;
-    if(!status.ok())
-    {
-        std::cerr << status.error_message() << "\n";
-        return 1;
-    }
-    std::cout << response.DebugString();
-    return response.status().code() == 0 ? 0 : 1;
+    if(action == "drain")
+        return keeper(iv1::DrainKeeperRequest(), iv1::DrainKeeperResponse(), &iv1::Cluster::Stub::DrainKeeper);
+    if(action == "join")
+        return keeper(iv1::JoinKeeperRequest(), iv1::JoinKeeperResponse(), &iv1::Cluster::Stub::JoinKeeper);
+    if(action == "abandon")
+        return keeper(iv1::AbandonKeeperRequest(), iv1::AbandonKeeperResponse(), &iv1::Cluster::Stub::AbandonKeeper);
+    return 2;
 }
