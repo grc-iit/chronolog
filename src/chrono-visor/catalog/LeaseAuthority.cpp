@@ -244,6 +244,7 @@ void LeaseAuthority::onAcquisitionChange(const AcquisitionChange& row)
 }
 void LeaseAuthority::reconcile(const AcquisitionSnapshot& snapshot, std::pair<StoryId, uint64_t> after, bool end)
 {
+    ++reconciliations_;
     std::lock_guard lock(mutex_);
     const auto time = now();
     if(!serviceLocked(time, false).ok())

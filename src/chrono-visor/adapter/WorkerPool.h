@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -25,11 +26,14 @@ public:
 
     // Returns false when the queue is full or the pool is stopping.
     bool submit(std::function<void()> task);
+    // Tasks answered without running because their call had already expired.
+    uint64_t dropped() const { return dropped_.load(); }
 
 private:
     void run();
 
     const size_t max_queue_;
+    std::atomic<uint64_t> dropped_{};
     std::mutex mutex_;
     std::condition_variable cv_;
     std::deque<std::function<void()>> queue_;
