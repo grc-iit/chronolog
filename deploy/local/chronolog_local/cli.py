@@ -24,8 +24,6 @@ def create(args):
         if folder.exists() or (root / 'external' / (args.name + '.json')).exists():
             raise ValueError('instance already exists: ' + args.name)
         bin_dir = args.bin_dir or os.environ.get('CHRONOLOG_BIN_DIR')
-        if not bin_dir:
-            raise ValueError('set --bin-dir or CHRONOLOG_BIN_DIR')
         for role in ROLES:
             binary(bin_dir, role)
         endpoints = None
@@ -54,7 +52,7 @@ def create(args):
                   'tiers': [{'name': 'local', 'kind': 'posix', 'root': str(archive), 'budget_bytes': args.budget_bytes}],
                   'policy': {'on_last_detach': 'stop' if args.ephemeral else args.on_last_detach,
                              'idle_grace_s': args.idle_grace_s if args.idle_grace_s is not None else (30 if args.ephemeral else 300)},
-                  'bin_dir': str(Path(bin_dir).resolve()), 'insecure_bind_all': args.insecure_bind_all,
+                  'bin_dir': str(Path(bin_dir).resolve()) if bin_dir else None, 'insecure_bind_all': args.insecure_bind_all,
                   'overrides': json.loads(args.overrides)}
         try:
             if args.bind != '127.0.0.1' and not args.insecure_bind_all:
@@ -249,6 +247,8 @@ def parser():
         p.add_argument('--label', default='shell')
         if action in ('run', 'env'):
             p.add_argument('--up', action='store_true')
+    p = sub.add_parser('doctor')
+    p.add_argument('--bin-dir')
     p = sub.add_parser('down')
     p.add_argument('name', nargs='?', default='default')
     p.add_argument('--force', action='store_true')
@@ -282,7 +282,9 @@ def main():
     if args.action == 'run':
         args.command = command or []
     try:
-        if args.action == 'create':
+        if args.action == 'doctor':
+            output = {'binaries': {role: binary(args.bin_dir, role) for role in ROLES}}
+        elif args.action == 'create':
             output = create(args)[1]
         elif args.action == 'up':
             output = up(args)

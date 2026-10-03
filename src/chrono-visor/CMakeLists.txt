@@ -27,6 +27,8 @@ target_link_libraries(chronolog_visor_lib
 add_executable(chrono_visor main.cpp)
 target_link_libraries(chrono_visor PRIVATE chronolog_visor_lib chronolog_warnings
     absl::log absl::log_initialize absl::log_globals)
+include(GNUInstallDirs)
+install(TARGETS chrono_visor RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT server)
 
 # Contract suites are included as source into the instantiating test files, so the
 # suite sources are reached through the contract directory.
