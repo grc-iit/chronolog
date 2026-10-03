@@ -16,7 +16,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(os.environ['CHRONOLOG_CLUSTER_OUT'])
 from topology import TABLE
-from append_retry import append
+import chronolog as cl
 ARCHIVE = Path('/mnt/nfs/chronolog-sprint/archive')
 sys.path.insert(0, str(ROOT / 'tests/smoke/python'))
 from smoke import Smoke, hlc_key
@@ -33,13 +33,86 @@ def control(op, service):
     return reply['output']
 
 
+class SdkCatalog:
+    def __init__(self, scenario, raw):
+        self.scenario, self.raw = scenario, raw
+
+    def __getattr__(self, name):
+        return getattr(self.raw, name)
+
+    def Release(self, request, timeout=None):
+        writer = self.scenario.sdk_writers[(request.story_id, request.writer_id, request.incarnation)]
+        return self.scenario.pb.ReleaseResponse(fenced=writer.release(timeout=timeout))
+
+
+class SdkJournal:
+    def __init__(self, scenario):
+        self.scenario = scenario
+
+    def Append(self, request, timeout=None):
+        s, pb = self.scenario, self.scenario.pb
+        assert request.items, request
+        first = request.items[0]
+        key = (request.story_id, first.writer_id, first.incarnation)
+        writer = s.sdk_writers[key]
+        assert all((item.writer_id, item.incarnation) == key[1:] for item in request.items)
+        assert [item.sequence for item in request.items] == list(range(
+            s.sdk_sequences[key] + 1, s.sdk_sequences[key] + len(request.items) + 1))
+        specs = [cl.AppendSpec(cl.Envelope(item.envelope.payload, item.envelope.content_type,
+            dict(item.envelope.attributes), item.envelope.trace_id, item.envelope.span_id),
+            cl.Durability(request.durability), cl.TimeReading(item.physical.physical_ns,
+                item.physical.uncertainty_ns if item.physical.HasField('uncertainty_ns') else None,
+                {pb.CLOCK_STATUS_SYNCED: 0, pb.CLOCK_STATUS_UNSYNCED: 1,
+                 pb.CLOCK_STATUS_UNAVAILABLE: 2, pb.CLOCK_STATUS_UNSPECIFIED: 2}[
+                    item.physical.status])) for item in request.items]
+        if len(specs) == 1:
+            try:
+                results = [writer.append(specs[0].envelope.payload,
+                    content_type=specs[0].envelope.content_type, attributes=specs[0].envelope.attributes,
+                    trace_id=specs[0].envelope.trace_id, span_id=specs[0].envelope.span_id,
+                    durability=specs[0].durability, physical=specs[0].physical, timeout=timeout)]
+            except cl.Error as error:
+                results = [error]
+        else:
+            results = writer.append_batch(specs, timeout=timeout)
+        response = pb.AppendResponse(batch_id=request.batch_id)
+        for item, result in zip(request.items, results):
+            if isinstance(result, cl.Error):
+                response.results.add(status=pb.ItemStatus(code=int(result.status.code), message=result.status.message),
+                                     rejection=int(result.status.rejection))
+                continue
+            event = result.event_id
+            assert (event.story_id, event.writer_id, event.incarnation, event.sequence) == (*key, item.sequence)
+            if item.HasField('causal_floor'):
+                assert hlc_key(result.hlc) > hlc_key(item.causal_floor)
+            response.results.add(id=pb.EventId(story_id=event.story_id, writer_id=event.writer_id,
+                incarnation=event.incarnation, sequence=event.sequence),
+                assigned_hlc=pb.Hlc(physical_ns=result.hlc.physical_ns, logical=result.hlc.logical),
+                achieved_durability=int(result.durability))
+        assert len(response.results) == len(request.items)
+        if all(result.status.code == 0 for result in response.results):
+            s.sdk_sequences[key] += len(request.items)
+        return response
+
+
 class Scenario(Smoke):
-    # The Visor's configured acquisition_lease_max_ns. This raw driver never renews: it takes the maximum lease
-    # and append_writer asserts every hold stays inside the returned grant.
+    # The SDK owns renewal, Route refresh and typed append retries within each call deadline.
     MAX_LEASE_NS = 3_600_000_000_000
 
-    def __init__(self, stubs):
-        super().__init__(stubs, TABLE[0]['ip'] + ':50051', 10, 'docker', 'cluster', [])
+    def __init__(self, stubs, catalogs=None, visor=None):
+        cl.__path__.append(str(Path(stubs) / 'chronolog'))
+        super().__init__(stubs, visor or TABLE[0]['ip'] + ':50051', 10, 'docker', 'cluster', [])
+        self.sdk = cl.connect(catalogs or ','.join(r['ip'] + ':50051' for r in TABLE),
+                              timeout=10, max_retries=500, retry_backoff=.02)
+        self.sdk_writers = {}
+        self.sdk_sequences = {}
+        self.catalog = SdkCatalog(self, self.catalog)
+        raw_rpc = self.rpc
+        class Rpc:
+            CatalogStub = staticmethod(lambda channel: SdkCatalog(self, raw_rpc.CatalogStub(channel)))
+            ReplayStub = raw_rpc.ReplayStub
+            JournalStub = staticmethod(lambda channel: SdkJournal(self))
+        self.rpc = Rpc
         self.stories = []
         self.writers = {}
         self.expected = {}
@@ -50,18 +123,28 @@ class Scenario(Smoke):
         pattern = rf'archive_settled chunk=\S+ story={story} start=(\d+):(\d+) end=(\d+):(\d+)'
         return sorted(((int(m[1]), int(m[2])), (int(m[3]), int(m[4]))) for m in re.finditer(pattern, logs))
 
+    def hold(self, acquired):
+        lease = self.sdk_writers[(acquired.story_id, acquired.writer_id, acquired.incarnation)].lease()
+        assert lease.grant.duration_ns > 0, lease
+
     def append(self, acquired, sequence, durability, floor=None):
-        self.hold(acquired)
-        pb = self.pb
-        item = pb.AppendItem(writer_id=acquired.writer_id, incarnation=acquired.incarnation, sequence=sequence,
-            physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
-            envelope=pb.Envelope(payload=f'event-{sequence}'.encode()))
+        item = self.pb.AppendItem(writer_id=acquired.writer_id, incarnation=acquired.incarnation, sequence=sequence,
+            physical=self.pb.TimeReading(physical_ns=time.time_ns(), status=self.pb.CLOCK_STATUS_UNSYNCED),
+            envelope=self.pb.Envelope(payload=f'event-{sequence}'.encode()))
         if floor is not None:
             item.causal_floor.CopyFrom(floor)
-        response = append(self.journal, pb.AppendRequest(story_id=acquired.story_id, epoch=acquired.route.epoch,
-            items=[item], durability=durability, batch_id=sequence), seconds=self.timeout,
-            grant_deadline=self.holds[(acquired.story_id, acquired.writer_id, acquired.incarnation)])
-        return response.results[0]
+        return SdkJournal(self).Append(self.pb.AppendRequest(story_id=acquired.story_id,
+            epoch=acquired.route.epoch, items=[item], durability=durability, batch_id=sequence),
+            timeout=self.timeout).results[0]
+
+    def close(self):
+        for writer in self.sdk_writers.values():
+            try:
+                writer.release(timeout=5)
+            except cl.Error:
+                pass
+        for channel in self.channels:
+            channel.close()
 
     def restart(self, service):
         roles = ([r['keeper'] for r in TABLE] if service == 'chrono-keeper'
@@ -87,18 +170,26 @@ class Scenario(Smoke):
         raise RuntimeError(f'{method} stayed unavailable: {last}')
 
     def acquire(self, story, identity, prior=None, lease_ns=None, preferred=None):
-        request = self.pb.AcquireRequest(story_id=story, writer_identity=identity,
-            acquire_request_id=uuid.uuid4().hex, lease_duration_ns=lease_ns or self.MAX_LEASE_NS)
-        if prior is not None:
-            request.takeover = True
-            request.expected_prior_incarnation = prior
-        if preferred is not None:
-            request.preferred_keeper_process_id = preferred
-        acquired = self.call('Acquire', request)
-        if acquired.status.code == 0:
-            self.holds[(acquired.story_id, acquired.writer_id, acquired.incarnation)] = (
-                time.monotonic() + acquired.lease.remaining_ns / 1e9)
-        return acquired
+        try:
+            writer = self.sdk.acquire(story, identity, options=cl.AcquireOptions(
+                lease_duration_ns=lease_ns or self.MAX_LEASE_NS, preferred_keeper_process_id=preferred,
+                takeover=prior is not None, expected_prior_incarnation=prior), timeout=30)
+        except cl.Error as error:
+            return self.pb.AcquireResponse(status=self.pb.ItemStatus(code=int(error.status.code),
+                                                                     message=error.status.message))
+        acquired = writer.acquisition
+        key = (acquired.story_id, acquired.writer_id, acquired.incarnation)
+        self.sdk_writers[key] = writer
+        self.sdk_sequences[key] = 0
+        route = self.pb.Route(epoch=acquired.route.epoch, player=acquired.route.player,
+                             grapher=acquired.route.grapher, keepers=[self.pb.KeeperRef(
+                process_id=k.process_id, endpoint=k.endpoint) for k in acquired.route.keepers])
+        return self.pb.AcquireResponse(story_id=acquired.story_id, writer_id=acquired.writer_id,
+            incarnation=acquired.incarnation, route=route,
+            keeper_preference=int(acquired.keeper_preference or 0), assigned_keeper=self.pb.KeeperRef(
+                process_id=acquired.assigned_keeper.process_id, endpoint=acquired.assigned_keeper.endpoint),
+            lease=self.pb.AcquisitionLease(duration_ns=acquired.lease.duration_ns,
+                                            remaining_ns=acquired.lease.remaining_ns))
 
     def membership(self):
         from chronolog.internal.v1 import internal_pb2 as ipb, internal_pb2_grpc as irpc
@@ -285,9 +376,9 @@ class Scenario(Smoke):
                 items.append(pb.AppendItem(writer_id=acquired.writer_id, incarnation=acquired.incarnation,
                     sequence=sequence, physical=pb.TimeReading(physical_ns=time.time_ns(), status=pb.CLOCK_STATUS_UNSYNCED),
                     envelope=pb.Envelope(payload=f'{identity}-{sequence}'.encode())))
-            response = append(journal, pb.AppendRequest(story_id=story, epoch=acquired.route.epoch,
+            response = journal.Append(pb.AppendRequest(story_id=story, epoch=acquired.route.epoch,
                 durability=pb.DURABILITY_DURABLE, batch_id=first+offset, items=items),
-                grant_deadline=self.holds[(story, acquired.writer_id, acquired.incarnation)])
+                timeout=self.timeout)
             assert len(response.results) == len(items) and response.batch_id == first + offset
             for item, result in zip(items, response.results):
                 assert result.status.code == 0 and result.achieved_durability == pb.DURABILITY_DURABLE, result
@@ -420,8 +511,7 @@ def main():
     try:
         scenario.run_cluster()
     finally:
-        for channel in scenario.channels:
-            channel.close()
+        scenario.close()
 
 
 if __name__ == '__main__':

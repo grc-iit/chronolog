@@ -150,7 +150,8 @@ class Cluster:
                     if node == 'blade':
                         tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
                     tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
-                    tar.add(ROOT / 'deploy/cluster/append_retry.py', arcname=f'run/{self.tag}/append_retry.py')
+                    tar.add(ROOT / 'build/python/client/python/binding/package/chronolog',
+                            arcname=f'run/{self.tag}/sdk/chronolog')
                     tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
                     tar.add(ROOT / 'tests/smoke/python/requirements.txt', arcname=f'run/{self.tag}/requirements.txt')
                     added = set()
@@ -185,6 +186,13 @@ class Cluster:
                      f'~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/pip install '
                      '-r requirements.txt >pip.log 2>&1', 120)
             (OUT / f'{node}-hardware.log').write_bytes(self.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
+        for node in NODES:
+            self.launch('sdk-agent-' + node, node, f'cd ~/chronolog-sprint/run/{self.tag} && '
+                f'exec env PYTHONPATH=sdk ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python '
+                'agent.py --serve >>sdk-agent.log 2>&1', 820)
+            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
+                'for attempt in $(seq 1 300); do test ! -S agent.sock || exit 0; sleep .1; done; '
+                'cat sdk-agent.log >&2; exit 1', 35)
         for row in TABLE:
             if not row['grapher']:
                 continue
@@ -216,7 +224,7 @@ class Cluster:
             node = service['node']
             data = json.dumps(service).encode()
             return self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
-                            f'exec ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python agent.py', 90, data).decode()
+                            f'exec env PYTHONPATH=sdk ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python agent.py', 90, data).decode()
         if op in ('pause', 'resume'):
             node, unit, _, _ = self.processes[service]
             sig = 'SIGSTOP' if op == 'pause' else 'SIGCONT'
@@ -275,6 +283,12 @@ class Cluster:
             try:
                 data = self.run(row['node'], f'cat ~/chronolog-sprint/run/{self.tag}/agent-results.jsonl', 10)
                 (OUT / (row['node'] + '-agent.jsonl')).write_bytes(data)
+            except Exception:
+                pass
+        for node in NODES:
+            try:
+                data = self.run(node, f'cat ~/chronolog-sprint/run/{self.tag}/sdk-agent.log', 10)
+                (OUT / (node + '-sdk-agent.log')).write_bytes(data)
             except Exception:
                 pass
         for role, (node, folder, _) in self.services.items():
@@ -343,6 +357,9 @@ def main():
                        timeout=30, check=True)
         for package in ('chronolog', 'chronolog/v1', 'chronolog/internal', 'chronolog/internal/v1'):
             (OUT / 'stubs' / package / '__init__.py').touch()
+        sdk_package = ROOT / 'build/python/client/python/binding/package'
+        if not list((sdk_package / 'chronolog').glob('_core*.so')):
+            raise RuntimeError('build the Python SDK python_package target before a cluster run')
         cluster.stage()
         for role in cluster.services:
             if role.startswith('visor'):
@@ -353,7 +370,8 @@ def main():
         cluster.serve()
         print(f'Logs {OUT}', flush=True)
         subprocess.run([str(python), str(ROOT / 'deploy/cluster/scenario.py')], timeout=400, check=True,
-                       env={**os.environ, 'CHRONOLOG_CLUSTER_SOCKET': cluster.socket_path})
+                       env={**os.environ, 'CHRONOLOG_CLUSTER_SOCKET': cluster.socket_path,
+                            'PYTHONPATH': str(sdk_package)})
         return 0
     except Exception as error:
         print(f'FAIL A7 {error}', flush=True)
