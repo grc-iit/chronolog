@@ -344,6 +344,36 @@ TEST_F(DynamicClusterTest, AcquisitionWatchIsRefusedByAReplicaWithoutALeaderLeas
     EXPECT_FALSE(reader->Read(&message));
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::UNAVAILABLE);
 }
+
+TEST_F(DynamicClusterTest, WatchRoutesReconnectOmitsStoryAndChronicleTombstones)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    const auto kept = stores[selected]->createStory("c", "kept");
+    ASSERT_TRUE(kept.ok()) << kept.status();
+    ASSERT_TRUE(stores[selected]->createChronicle("removed").ok());
+    ASSERT_TRUE(stores[selected]->createStory("removed", "first").ok());
+    ASSERT_TRUE(stores[selected]->createStory("removed", "second").ok());
+    grpc::ClientContext initial;
+    rpc::withTimeout(initial, 10s);
+    auto reader = stubs[selected]->WatchRoutes(&initial, wire::WatchRoutesRequest());
+    wire::WatchRoutesResponse update;
+    for(int i = 0; i < 4; ++i) ASSERT_TRUE(reader->Read(&update));
+    initial.TryCancel();
+    (void)reader->Finish();
+    ASSERT_TRUE(stores[selected]->destroyStory(1).ok());
+    ASSERT_TRUE(stores[selected]->destroyChronicle("removed").ok());
+
+    grpc::ClientContext resumed;
+    rpc::withTimeout(resumed, 10s);
+    auto reconnect = stubs[selected]->WatchRoutes(&resumed, wire::WatchRoutesRequest());
+    ASSERT_TRUE(reconnect->Read(&update));
+    EXPECT_EQ(update.story_id(), kept->id);
+    EXPECT_FALSE(update.tombstoned());
+    EXPECT_EQ(update.revision(), stores[selected]->appliedStore().membershipRevision().value_or(0));
+    resumed.TryCancel();
+    (void)reconnect->Finish();
+}
 TEST_F(DynamicClusterTest, PlainHeartbeatsDoNotAppendRaftEntries)
 {
     auto selected = leader();
@@ -420,6 +450,67 @@ class DynamicClusterBeforeFirstStoryTest: public DynamicClusterTest
 public:
     DynamicClusterBeforeFirstStoryTest() { seed_story_ = false; }
 };
+
+TEST_F(DynamicClusterBeforeFirstStoryTest, WatchRoutesDeliversPolicyDowngradeAtSameEpoch)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    for(const auto& id: {"keeper-a", "keeper-b", "grapher"})
+    {
+        wire::RegisterRequest request;
+        request.set_policy_version(1);
+        auto* process = request.mutable_process();
+        process->set_process_id(id);
+        process->set_instance("instance");
+        process->set_endpoint(std::string(id) + ":50052");
+        process->set_role(std::string(id) == "grapher" ? wire::PROCESS_ROLE_GRAPHER : wire::PROCESS_ROLE_KEEPER);
+        wire::RegisterResponse response;
+        grpc::ClientContext context;
+        rpc::withTimeout(context, 4s);
+        ASSERT_TRUE(stubs[selected]->Register(&context, request, &response).ok());
+        ASSERT_EQ(response.status().code(), 0);
+    }
+    ASSERT_TRUE(stores[selected]->createChronicle("c").ok());
+    auto story = stores[selected]->createStory("c", "s");
+    auto barrier = stores[selected]->createStory("c", "barrier");
+    ASSERT_TRUE(story.ok());
+    ASSERT_TRUE(barrier.ok());
+    grpc::ClientContext watching;
+    rpc::withTimeout(watching, 10s);
+    auto reader = stubs[selected]->WatchRoutes(&watching, wire::WatchRoutesRequest());
+    wire::WatchRoutesResponse update;
+    uint64_t snapshot_revision = 0;
+    for(int i = 0; i < 2; ++i)
+    {
+        ASSERT_TRUE(reader->Read(&update));
+        EXPECT_TRUE(update.physical_policy());
+        snapshot_revision = std::max(snapshot_revision, update.revision());
+    }
+    wire::HeartbeatRequest heartbeat;
+    heartbeat.set_process_id("grapher");
+    heartbeat.set_instance("instance");
+    heartbeat.add_stories_without_physical_policy(story->id);
+    wire::HeartbeatResponse response;
+    grpc::ClientContext context;
+    rpc::withTimeout(context, 4s);
+    ASSERT_TRUE(stubs[selected]->Heartbeat(&context, heartbeat, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    ASSERT_TRUE(stores[selected]->destroyStory(barrier->id).ok());
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), story->id);
+    EXPECT_EQ(update.route().epoch(), 1u);
+    EXPECT_FALSE(update.physical_policy());
+    EXPECT_FALSE(update.tombstoned());
+    EXPECT_GT(update.revision(), snapshot_revision);
+    const auto downgraded_revision = update.revision();
+    ASSERT_TRUE(reader->Read(&update));
+    EXPECT_EQ(update.story_id(), barrier->id);
+    EXPECT_TRUE(update.tombstoned());
+    EXPECT_GT(update.revision(), downgraded_revision);
+    watching.TryCancel();
+    (void)reader->Finish();
+}
+
 // I4.3 and I4.9: a configured Keeper that has not registered yet is not failed, whatever the timeout.
 TEST_F(DynamicClusterBeforeFirstStoryTest, FailureDetectionIgnoresConfiguredKeeperThatHasNotRegistered)
 {

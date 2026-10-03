@@ -1,5 +1,7 @@
 // Instantiates ReplayContract against HotReplay over an in-process fake HotSource.
 #include <algorithm>
+#include <condition_variable>
+#include <map>
 #include <mutex>
 #include <filesystem>
 #include <unistd.h>
@@ -46,20 +48,73 @@ public:
         view_ = writers_;
     }
 
-    absl::StatusOr<HotFetch> fetch(StoryId story, const Range&) const override
+    absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override
     {
         std::lock_guard lk(mu_);
+        // A Read of a destroyed story fails at admission; a Tail's Keepers refuse it instead (fetchTail).
         if(tombstoned_)
             return absl::FailedPreconditionError("story is tombstoned");
         if(story != 1)
             return absl::NotFoundError("unknown story");
-        HotFetch f;
-        f.route_epoch = kEpoch;
-        f.keepers = {a_, b_};
-        f.writers = view_;
-        f.closed = closed_;
-        f.physical_policy = policy_;
-        return f;
+        return snapshot(range.start, nullptr);
+    }
+
+    absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const player::TailStarts& starts) const override
+    {
+        std::lock_guard lk(mu_);
+        if(story != 1)
+            return absl::NotFoundError("unknown story");
+        return snapshot(from, &starts);
+    }
+
+    absl::Status live(StoryId story) const
+    {
+        std::lock_guard lk(mu_);
+        if(tombstoned_)
+            return absl::FailedPreconditionError("story is tombstoned");
+        return story == 1 ? absl::OkStatus() : absl::FailedPreconditionError("unknown story");
+    }
+
+    // Replaces what one Keeper holds and reports; a Keeper set this way answers from the lower bound it is asked for.
+    void setKeeper(const std::string& name, const KeeperContents& contents)
+    {
+        std::lock_guard lk(mu_);
+        KeeperFetch* k = name == "keeper-a" ? &a_ : name == "keeper-b" ? &b_ : &c_;
+        k->events = contents.visible;
+        k->frontier.sealed = contents.sealed;
+        k->frontier.truncated = contents.truncated;
+        k->frontier.instance = contents.instance;
+        if(name == "keeper-c")
+        {
+            k->frontier.process_id = name;
+            k->frontier.answered = true;
+            k->frontier.predecessor = true;
+            k->frontier.own_cut = contents.own_cut.value_or(Hlc{});
+            k->frontier.epoch = k->frontier.expected_epoch = kEpoch - 1;
+            has_c_ = true;
+        }
+        custom_[name] = contents.limit;
+    }
+    void awaitPolls(unsigned n) const
+    {
+        std::unique_lock lk(mu_);
+        const unsigned target = polls_ + n;
+        polled_.wait_for(lk, std::chrono::seconds(10), [&] { return polls_ >= target; });
+    }
+    Hlc lastPollStart() const
+    {
+        std::lock_guard lk(mu_);
+        return last_from_;
+    }
+    Hlc lastSourceStart(const std::string& name) const
+    {
+        std::lock_guard lk(mu_);
+        return source_start_.at(name);
+    }
+    void abandon(Hlc start, Hlc end)
+    {
+        std::lock_guard lk(mu_);
+        abandoned_.push_back(Range{Range::Axis::Hlc, start, end});
     }
 
     void physicalState(bool policy, int64_t frontier, uint64_t uncertainty)
@@ -143,8 +198,67 @@ public:
     }
 
 private:
+    // One consultation: every Keeper answers from the bound the Tail named for it (or `from`), cut at its own limit.
+    HotFetch snapshot(Hlc from, const player::TailStarts* starts) const
+    {
+        ++polls_;
+        last_from_ = from;
+        HotFetch f;
+        f.route_epoch = kEpoch;
+        f.writers = view_;
+        f.closed = closed_;
+        f.physical_policy = policy_;
+        f.abandoned = abandoned_;
+        std::vector<const KeeperFetch*> held{&a_, &b_};
+        if(has_c_)
+            held.push_back(&c_);
+        for(const auto* source: held)
+        {
+            KeeperFetch k = *source;
+            const auto& id = k.frontier.process_id;
+            Hlc start = from;
+            if(starts)
+                if(auto it = starts->find(
+                           player::SourceId{id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
+                   it != starts->end())
+                    start = std::max(from, it->second);
+            source_start_[id] = start;
+            if(k.frontier.predecessor && start >= k.frontier.own_cut)
+                continue;
+            if(auto custom = custom_.find(id); custom != custom_.end())
+            {
+                std::erase_if(k.events,
+                              [&](const Event& e)
+                              { return e.hlc < start || (k.frontier.predecessor && e.hlc >= k.frontier.own_cut); });
+                std::stable_sort(k.events.begin(), k.events.end(), ReplayLess);
+                if(custom->second && k.events.size() > custom->second)
+                {
+                    k.events.resize(custom->second);
+                    k.frontier.truncated = true;
+                }
+            }
+            if(tombstoned_)
+            {
+                k.events.clear();
+                k.frontier.answered = false;
+                k.frontier.status = absl::StatusCode::kFailedPrecondition;
+            }
+            f.keepers.push_back(std::move(k));
+        }
+        polled_.notify_all();
+        return f;
+    }
+
     bool policy_{};
     mutable std::mutex mu_;
+    mutable std::condition_variable polled_;
+    mutable unsigned polls_{};
+    mutable Hlc last_from_;
+    mutable std::map<std::string, Hlc> source_start_;
+    std::map<std::string, size_t> custom_;
+    std::vector<Range> abandoned_;
+    bool has_c_{};
+    KeeperFetch c_;
     KeeperFetch a_, b_;
     std::vector<WriterAssignment> writers_, view_;
     bool closed_{};
@@ -165,6 +279,7 @@ std::unique_ptr<ReplayHarness> makeHarness()
     HotReplayOptions options;
     options.batch_size = 3;
     options.tail_poll = std::chrono::milliseconds(5);
+    options.story_live = [src](StoryId story) { return src->live(story); };
     h->sut = std::make_unique<HotReplay>(src, options);
     h->physicalState = [src](bool p, int64_t f, uint64_t u) { src->physicalState(p, f, u); };
     h->setKeeperFrontiers = [src](std::vector<KeeperFrontier> f) { src->setKeeperFrontiers(f); };
@@ -177,6 +292,11 @@ std::unique_ptr<ReplayHarness> makeHarness()
     // Seeded events are DURABLE and the fake keeps them, so a crash restart is a reopen.
     h->crashRestart = [] {};
     h->tombstoneStory = [src] { src->tombstone(); };
+    h->setKeeper = [src](const std::string& name, KeeperContents contents) { src->setKeeper(name, contents); };
+    h->awaitPolls = [src](unsigned n) { src->awaitPolls(n); };
+    h->lastPollStart = [src] { return src->lastPollStart(); };
+    h->lastSourceStart = [src](const std::string& name) { return src->lastSourceStart(name); };
+    h->abandonRange = [src](Hlc start, Hlc end) { src->abandon(start, end); };
     h->loseWindowBelowWatermark = [src, harness = h.get(), options]
     {
         auto window = std::make_shared<ArchiveWindow>();

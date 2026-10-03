@@ -314,15 +314,7 @@ try
 {
     if(stories.empty())
         return absl::OkStatus();
-    uint64_t at = 0;
-    if(apply_revision_)
-        at = *apply_revision_;
-    else
-    {
-        Query bump(db_, "UPDATE counters SET value = value + 1 WHERE name='acquisition_revision'");
-        bump.next();
-        at = revision(db_);
-    }
+    const auto at = routeMutationRevision();
     for(const auto id: stories)
     {
         wire::RouteUpdate update;
@@ -336,6 +328,15 @@ try
     return absl::OkStatus();
 }
 MEMBERSHIP_CATCH
+
+uint64_t SqliteMetadataStore::routeMutationRevision()
+{
+    if(apply_revision_)
+        return *apply_revision_;
+    Query bump(db_, "UPDATE counters SET value = value + 1 WHERE name='acquisition_revision'");
+    bump.next();
+    return revision(db_);
+}
 
 absl::StatusOr<PhysicalPolicy> SqliteMetadataStore::physicalPolicy() const
 try
@@ -358,10 +359,12 @@ absl::Status SqliteMetadataStore::clearPhysicalPolicy(const std::vector<StoryId>
 try
 {
     std::lock_guard lock(mutex_);
-    sql(db_, "BEGIN IMMEDIATE");
+    const bool own = sqlite3_get_autocommit(db_);
+    sql(db_, own ? "BEGIN IMMEDIATE" : "SAVEPOINT physical_policy_clear");
     try
     {
-        for(const auto story: stories)
+        uint64_t at = 0;
+        for(const auto story: std::set<StoryId>(stories.begin(), stories.end()))
         {
             auto old = membershipRouteUpdate(story);
             if(absl::IsNotFound(old.status()))
@@ -370,15 +373,20 @@ try
                 throw std::runtime_error(std::string(old.status().message()));
             if(!old->physical_policy())
                 continue;
+            if(at == 0)
+                at = routeMutationRevision();
             auto route = *old;
             route.set_physical_policy(false);
+            route.set_revision(at);
             writeRoute(db_, route, &*old);
+            Query insert(db_, "INSERT INTO membership_history(revision,story_id,value) VALUES(?1,?2,?3)");
+            insert.number(1, at).number(2, story).blob(3, route.SerializeAsString()).next();
         }
-        sql(db_, "COMMIT");
+        sql(db_, own ? "COMMIT" : "RELEASE physical_policy_clear");
     }
     catch(...)
     {
-        sql(db_, "ROLLBACK");
+        sql(db_, own ? "ROLLBACK" : "ROLLBACK TO physical_policy_clear; RELEASE physical_policy_clear");
         throw;
     }
     return absl::OkStatus();
@@ -389,7 +397,8 @@ absl::Status SqliteMetadataStore::registerStaticPolicy(const std::string& proces
 try
 {
     std::lock_guard lock(mutex_);
-    sql(db_, "BEGIN IMMEDIATE");
+    const bool own = sqlite3_get_autocommit(db_);
+    sql(db_, own ? "BEGIN IMMEDIATE" : "SAVEPOINT static_policy_registration");
     try
     {
         Query entry(db_,
@@ -401,18 +410,20 @@ try
             auto before = membershipState();
             if(!before.ok())
                 throw std::runtime_error(std::string(before.status().message()));
-            auto after = *before;
-            for(auto& r: *after.mutable_routes())
+            std::vector<StoryId> stories;
+            for(const auto& r: before->routes())
                 for(const auto& k: r.route().keepers())
                     if(k.process_id() == process)
-                        r.set_physical_policy(false);
-            writeChanges(db_, *before, after);
+                        stories.push_back(r.story_id());
+            auto status = clearPhysicalPolicy(stories);
+            if(!status.ok())
+                throw std::runtime_error(status.ToString());
         }
-        sql(db_, "COMMIT");
+        sql(db_, own ? "COMMIT" : "RELEASE static_policy_registration");
     }
     catch(...)
     {
-        sql(db_, "ROLLBACK");
+        sql(db_, own ? "ROLLBACK" : "ROLLBACK TO static_policy_registration; RELEASE static_policy_registration");
         throw;
     }
     return absl::OkStatus();
@@ -429,7 +440,7 @@ try
     metadata(db_, state);
     wire::RouteUpdate route;
     route.set_story_id(id);
-    route.set_revision(state.revision());
+    route.set_revision(routeMutationRevision());
     *route.mutable_route() = convert::toProto(topology_.routeFor(story->epoch, id));
     if(state.has_policy())
     {
@@ -809,18 +820,25 @@ bool SqliteMetadataStore::membershipWouldEmpty(const std::string& id) const
     return q.next();
 }
 
-absl::StatusOr<std::vector<AcquisitionChange>> SqliteMetadataStore::storyAcquisitions(StoryId id) const
+absl::StatusOr<std::vector<AcquisitionChange>> SqliteMetadataStore::storyAcquisitions(StoryId id,
+                                                                                      bool include_released) const
 try
 {
     std::lock_guard lock(mutex_);
     std::vector<AcquisitionChange> result;
     const auto rev = revision(db_);
     Query q(db_,
-            "SELECT writer_id,incarnation,keeper_id,keeper_endpoint FROM acquisitions WHERE story_id=?1 AND released=0 "
+            "SELECT writer_id,incarnation,keeper_id,keeper_endpoint,released FROM acquisitions WHERE story_id=?1 "
+            "AND (released=0 OR ?2) "
             "ORDER BY writer_id");
-    q.number(1, id);
+    q.number(1, id).number(2, include_released);
     while(q.next())
-        result.push_back({rev, id, q.number(0), q.number(1), {q.bytes(2), q.bytes(3)}, AcquisitionState::Acquired});
+        result.push_back({rev,
+                          id,
+                          q.number(0),
+                          q.number(1),
+                          {q.bytes(2), q.bytes(3)},
+                          q.number(4) ? AcquisitionState::Released : AcquisitionState::Acquired});
     return result;
 }
 MEMBERSHIP_CATCH

@@ -22,12 +22,16 @@ struct MembershipHarness
         StoryId story_id{};
         uint64_t revision{};
         bool tombstoned{};
+        Epoch epoch{};
+        bool physical_policy{};
     };
     std::function<absl::Status()> destroyStory;
     std::function<uint64_t()> revision;
     // Updates with revision above the cursor in revision order, as WatchRoutes would deliver them.
     std::function<std::vector<RouteDelta>(uint64_t)> deltasSince;
     std::function<Epoch()> storyEpoch;
+    std::function<absl::Status(const std::vector<StoryId>&)> clearPhysicalPolicy;
+    std::function<absl::StatusOr<StoryId>()> createPolicyStory;
 };
 using MembershipFactory = std::function<std::unique_ptr<MembershipHarness>()>;
 class MembershipContract: public ::testing::TestWithParam<MembershipFactory>
@@ -171,6 +175,34 @@ TEST_P(MembershipContract, DestroyEmitsTombstoneDelta)
     // Destroying again changes nothing and emits no second tombstone.
     ASSERT_TRUE(h->destroyStory().ok());
     EXPECT_EQ(h->deltasSince(cursor).size(), 1u);
+}
+
+TEST_P(MembershipContract, PolicyDowngradeEmitsARevisionedDelta)
+{
+    ASSERT_TRUE(h->clearPhysicalPolicy);
+    ASSERT_TRUE(h->createPolicyStory);
+    auto story = h->createPolicyStory();
+    ASSERT_TRUE(story.ok()) << story.status();
+    const auto epoch = h->sut->route(1)->epoch;
+    const auto cursor = h->revision();
+    ASSERT_TRUE(h->clearPhysicalPolicy({*story, 1, *story, 999}).ok());
+    const auto deltas = h->deltasSince(cursor);
+    ASSERT_EQ(deltas.size(), 2u);
+    EXPECT_EQ(deltas[0].story_id, 1u);
+    EXPECT_EQ(deltas[1].story_id, *story);
+    EXPECT_GT(deltas[0].revision, cursor);
+    EXPECT_EQ(deltas[0].revision, deltas[1].revision);
+    EXPECT_EQ(deltas[0].revision, h->revision());
+    EXPECT_EQ(deltas[0].epoch, epoch);
+    EXPECT_EQ(deltas[1].epoch, 1u);
+    for(const auto& delta: deltas)
+    {
+        EXPECT_FALSE(delta.tombstoned);
+        EXPECT_FALSE(delta.physical_policy);
+    }
+    EXPECT_EQ(h->sut->route(1)->epoch, epoch);
+    ASSERT_TRUE(h->clearPhysicalPolicy({1, *story, 999}).ok());
+    EXPECT_EQ(h->deltasSince(cursor).size(), 2u);
 }
 
 TEST_P(MembershipContract, NoRouteChangeAfterTombstone)

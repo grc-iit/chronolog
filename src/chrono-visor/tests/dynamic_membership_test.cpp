@@ -17,8 +17,9 @@ INSTANTIATE_TEST_SUITE_P(
                     if(!opened.ok())
                         throw std::runtime_error(opened.status().ToString());
                     auto store = std::shared_ptr<visor::SqliteMetadataStore>(std::move(*opened));
-                    if(!store->createChronicle("c").ok() || !store->createStory("c", "s").ok() ||
-                       !store->compareAndSetEpoch(1, 1, 7).ok())
+                    if(!store->registerStaticPolicy("keeper-a", 1).ok() ||
+                       !store->registerStaticPolicy("keeper-b", 1).ok() || !store->createChronicle("c").ok() ||
+                       !store->createStory("c", "s").ok() || !store->compareAndSetEpoch(1, 1, 7).ok())
                         throw std::runtime_error("setup failed");
                     auto harness = std::make_unique<MembershipHarness>();
                     auto submit = [dir, store](const internal::v1::CatalogCommand& c)
@@ -57,8 +58,33 @@ INSTANTIATE_TEST_SUITE_P(
                         if(changes.ok())
                             for(const auto& r: changes->route_history())
                                 if(r.revision() > cursor)
-                                    out.push_back({r.story_id(), r.revision(), r.tombstoned()});
+                                    out.push_back({r.story_id(),
+                                                   r.revision(),
+                                                   r.tombstoned(),
+                                                   r.route().epoch(),
+                                                   r.physical_policy()});
                         return out;
+                    };
+                    harness->createPolicyStory = [store]() -> absl::StatusOr<StoryId>
+                    {
+                        auto story = store->createStory("c", "policy");
+                        if(!story.ok())
+                            return story.status();
+                        if(!store->membershipRouteUpdate(1)->physical_policy() ||
+                           !store->membershipRouteUpdate(story->id)->physical_policy())
+                            return absl::InternalError("policy setup failed");
+                        return story->id;
+                    };
+                    harness->clearPhysicalPolicy = [store](const std::vector<StoryId>& stories)
+                    {
+                        absl::Status status;
+                        auto applied = store->applyRaft(store->appliedIndex().value_or(0) + 1,
+                                                        [&]
+                                                        {
+                                                            status = store->clearPhysicalPolicy(stories);
+                                                            return status.ToString();
+                                                        });
+                        return applied.ok() ? status : applied.status();
                     };
                     harness->storyEpoch = [store] { return store->getStory(1)->epoch; };
                     harness->registerPolicy = [send](uint64_t version)

@@ -81,7 +81,7 @@ public:
     absl::StatusOr<internal::v1::MembershipState> membershipRouteChanges(uint64_t revision) const;
     absl::StatusOr<uint64_t> membershipRevision() const;
     bool membershipWouldEmpty(const std::string& id) const;
-    absl::StatusOr<std::vector<AcquisitionChange>> storyAcquisitions(StoryId id) const;
+    absl::StatusOr<std::vector<AcquisitionChange>> storyAcquisitions(StoryId id, bool include_released = false) const;
     absl::StatusOr<Route> membershipRoute(StoryId id) const;
     absl::Status
     fenceRemovedWriters(StoryId id, const Route& route, uint64_t revision, const std::string& replacement = "");
@@ -96,6 +96,7 @@ private:
     std::atomic<uint64_t> snapshot_generation_{};
     absl::Status initializeMembership();
     absl::Status seedMembershipStory(StoryId id);
+    uint64_t routeMutationRevision();
     // Inside the destroy transaction: one fresh acquisition revision, then a tombstoned RouteUpdate per story
     // in membership_history (W10.17). Under Raft apply the command's own revision is the fresh one.
     absl::Status tombstoneStories(const std::vector<StoryId>& stories);

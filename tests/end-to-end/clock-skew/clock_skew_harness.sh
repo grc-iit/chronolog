@@ -12,6 +12,8 @@
 # Keeper assigns hlc from its own chrony-backed clock, and ReadClock must never feed it (section 8).
 set -eu
 visor=$1 keeper=$2 probe=$3
+keeper_failure_timeout_ms=5000
+release_fence_timeout_ms=1000
 scratch=$(mktemp -d)
 pids=()
 trap 'for pid in "${pids[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done; rm -rf "$scratch"' EXIT
@@ -29,10 +31,10 @@ start() {
 }
 launch() {
     cat > "$scratch/visor.json" <<JSON
-{"membership_mode":"dynamic","listen":"127.0.0.1:$port","internal_listen":"127.0.0.1:$((port+1))","db_path":"$scratch/catalog.sqlite","keepers":[{"process_id":"keeper-1","endpoint":"127.0.0.1:$((port+3))"}],"graphers":["127.0.0.1:$((port+5))"],"player":"127.0.0.1:$((port+6))","keeper_failure_timeout_ms":5000,"release_fence_timeout_ms":1000,"worker_threads":4,"raft":{"server_id":1,"raft_endpoint":"127.0.0.1:$((port+2))","peers":[{"id":1,"raft_endpoint":"127.0.0.1:$((port+2))","catalog_endpoint":"127.0.0.1:$port","internal_endpoint":"127.0.0.1:$((port+1))"}],"election_lower_ms":300,"election_upper_ms":600}}
+{"membership_mode":"dynamic","listen":"127.0.0.1:$port","internal_listen":"127.0.0.1:$((port+1))","db_path":"$scratch/catalog.sqlite","keepers":[{"process_id":"keeper-1","endpoint":"127.0.0.1:$((port+3))"}],"graphers":["127.0.0.1:$((port+5))"],"player":"127.0.0.1:$((port+6))","keeper_failure_timeout_ms":$keeper_failure_timeout_ms,"release_fence_timeout_ms":$release_fence_timeout_ms,"worker_threads":4,"raft":{"server_id":1,"raft_endpoint":"127.0.0.1:$((port+2))","peers":[{"id":1,"raft_endpoint":"127.0.0.1:$((port+2))","catalog_endpoint":"127.0.0.1:$port","internal_endpoint":"127.0.0.1:$((port+1))"}],"election_lower_ms":300,"election_upper_ms":600}}
 JSON
     cat > "$scratch/keeper.json" <<JSON
-{"process_id":"keeper-1","listen":"127.0.0.1:$((port+3))","internal_listen":"127.0.0.1:$((port+4))","self_endpoint":"127.0.0.1:$((port+3))","visor_internal":"127.0.0.1:$((port+1))","wal_dir":"$scratch/wal","worker_threads":4,"heartbeat_interval_ms":100,"append_ceiling_wait_ms":500}
+{"process_id":"keeper-1","listen":"127.0.0.1:$((port+3))","internal_listen":"127.0.0.1:$((port+4))","self_endpoint":"127.0.0.1:$((port+3))","visor_internal":"127.0.0.1:$((port+1))","wal_dir":"$scratch/wal","worker_threads":4,"heartbeat_interval_ms":100,"append_ceiling_wait_ms":500,"keeper_failure_timeout_ms":$keeper_failure_timeout_ms,"release_fence_timeout_ms":$release_fence_timeout_ms}
 JSON
     # The Keeper registers once the Visor holds the leader lease, which ReadClock needs too.
     start visor "$visor" 'catalog ready' && timeout 30 "$probe" offset "127.0.0.1:$((port+1))" 0 > /dev/null &&

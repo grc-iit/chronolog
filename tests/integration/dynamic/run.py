@@ -233,6 +233,7 @@ class Homelab(Local):
 
 
 def configure(stack):
+    liveness_timeouts = dict(keeper_failure_timeout_ms=1500, release_fence_timeout_ms=1000)
     ports = stack.ports()
     peers = [dict(id=i + 1, catalog_endpoint=p[0], internal_endpoint=p[1], raft_endpoint=p[2])
              for i, p in enumerate(ports[:3])]
@@ -249,8 +250,7 @@ def configure(stack):
         node = 'blade' if isinstance(stack, Homelab) and i == 2 else 'dragon'
         stack.write(role, node, dict(membership_mode='dynamic', listen=peer['catalog_endpoint'],
                     internal_listen=peer['internal_endpoint'], db_path=str(stack.folder / (role + '.sqlite')),
-                    keepers=keepers, graphers=graphers, player=player, keeper_failure_timeout_ms=1500,
-                    release_fence_timeout_ms=1000, worker_threads=4,
+                    keepers=keepers, graphers=graphers, player=player, **liveness_timeouts, worker_threads=4,
                     raft=dict(server_id=i + 1, raft_endpoint=peer['raft_endpoint'], peers=peers,
                               election_lower_ms=300 if i == 2 else 1200, election_upper_ms=400 if i == 2 else 1600)))
     for i, p in enumerate(ports[3:5]):
@@ -263,7 +263,7 @@ def configure(stack):
                     seal_interval_ms=100, archive_visibility_delay_secs=1, watermark_resend_timeout_secs=1,
                     shutdown_confirm_timeout_secs=1, worker_threads=4, heartbeat_interval_ms=100,
                     append_ceiling_wait_ms=100, retention_cap_mb=32, wal_max_bytes=67108864,
-                    wal_segment_bytes=8388608))
+                    wal_segment_bytes=8388608, **liveness_timeouts))
     for i, endpoint in enumerate(graphers):
         role = 'grapher-' + ('a' if i == 0 else 'b')
         stack.write(role, 'dragon' if i == 0 else 'blade', dict(process_id=role, manifest_writer=role,
