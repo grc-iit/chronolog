@@ -6,8 +6,8 @@
 #include <functional>
 #include <set>
 #include <span>
-#include "chrono-grapher/tier/ChunkCodec.h"
-#include "chrono-grapher/tier/ManifestLog.h"
+#include "tier/ChunkCodec.h"
+#include "tier/ManifestLog.h"
 #include "chronolog/tier_store.h"
 
 namespace chronolog

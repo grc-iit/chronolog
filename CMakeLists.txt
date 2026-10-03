@@ -152,8 +152,8 @@ if(CHRONOLOG_BUILD_VISOR)
     add_subdirectory(src/chrono-visor)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/tier/CMakeLists.txt")
-    add_subdirectory(src/chrono-grapher/tier)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-common/tier/CMakeLists.txt")
+    add_subdirectory(src/chrono-common/tier)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/server/CMakeLists.txt")
@@ -164,7 +164,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/cpp/CMakeLists.txt")
     add_subdirectory(client/cpp)
 endif()
 
-if(TARGET chronolog_grapher_tier)
+if(TARGET chronolog_common_tier)
     add_subdirectory(deploy/cluster)
 endif()
 
