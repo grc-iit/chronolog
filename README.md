@@ -54,6 +54,102 @@ Presets (`CMakePresets.json`): `dev` (Debug), `release`, `asan` (AddressSanitize
 (ThreadSanitizer), `bench` (RelWithDebInfo with frame pointers) and `python` (dev plus the Python binding). Each
 builds into `build/<preset>`.
 
+## One node with agents
+
+The `chronolog-local` launcher runs the Visor, Keeper, Grapher and Player as local processes without containers.
+Python 3.12 or newer is required. The rehearsal uses the gated source at
+`d74b850f7c098a6c7106024336288fd6a87481fe` on Dragon; install into a fresh user-owned prefix, not a system path.
+From that checkout, with the build toolchain above available:
+
+```sh
+sha=d74b850f7c098a6c7106024336288fd6a87481fe
+prefix="$HOME/chronolog-demo/$sha"
+mkdir -p "$prefix/wheels"
+cmake --preset release
+cmake --build --preset release --target chrono_visor chrono_keeper chrono_grapher chrono_player
+cmake --install build/release --prefix "$prefix" --component server --strip
+python3 -m venv build/demo1-tools
+build/demo1-tools/bin/python -m pip install build 'scikit-build-core>=1.1' 'nanobind>=3.1' hatchling
+build/demo1-tools/bin/python -m build --wheel --no-isolation -Ccmake.build-type=Release --outdir "$prefix/wheels" client/python
+python3 deploy/local/build_wheel.py "$prefix/wheels"
+build/demo1-tools/bin/python -m build --wheel --no-isolation --outdir "$prefix/wheels" plugins/chrono-mcp
+python3 -m venv "$prefix"
+"$prefix/bin/python" -m pip install --find-links "$prefix/wheels" "$prefix"/wheels/chronolog-*.whl "$prefix"/wheels/chronolog_local-*.whl 'chronolog-mcp[local]==4.0.0'
+export PATH="$prefix/bin:$PATH" CHRONOLOG_HOME="$prefix/state"
+```
+
+`doctor` resolves the four installed executables. `up` waits for readiness and prints the endpoints; `ls` reports
+managed and registered external instances. This placement uses Dragon's `/home` NVMe for the WAL and its `/` NVMe
+for the local archive (`/tmp` is on `/` there):
+
+```sh
+chronolog doctor
+chronolog up --wal-dir "$prefix/wal" --local-root "/tmp/chronolog-demo-$(id -u)/$sha/archive"
+chronolog ls
+chronolog status
+```
+
+Choose a persistent directory on the desired filesystem for real use; `/tmp` is disposable rehearsal storage.
+Without placement flags, the WAL is under `$CHRONOLOG_HOME/instances/default/keeper/wal` and the local tier under
+`$CHRONOLOG_HOME/instances/default/grapher/archive`. The catalog, logs and registry also live under
+`$CHRONOLOG_HOME`; its default is `$XDG_STATE_HOME/chronolog`, or `~/.local/state/chronolog`.
+Placement flags choose paths when creating an instance. Subsequent `up` calls reuse the saved paths and endpoints.
+Keep both the WAL and catalog state for restart; an archive alone is not an instance backup.
+
+Install the Claude Code marketplace and plugin from the local checkout, with the prefix on PATH in the shell
+that starts Claude Code:
+
+```sh
+claude plugin marketplace add "$prefix/checkout"
+claude plugin install chronolog@chronolog --scope user
+claude plugin list --json
+```
+
+The rehearsal stages the gated checkout at `$prefix/checkout`. In your own source install, use your checkout's
+absolute path instead. These plugin installation commands do not log in to Claude Code; the PI must authenticate
+before an interactive agent session if the existing login has expired.
+
+The plugin selects `chronolog run --up default -- chronolog-mcp` when the launcher is on PATH. The wrapper supplies
+endpoints and holds an instance lease for the MCP process. Set a stable `CHRONOLOG_MCP_IDENTITY` and
+`CHRONOLOG_CHRONICLE` in the launching shell for writable sessions. Closing an MCP session drops its lease;
+the default `on_last_detach=keep` policy leaves the services running. At creation, `--on-last-detach stop` sets
+stop after the last lease and idle grace; `--ephemeral` selects that policy with a 30-second default grace.
+`--idle-grace-s` chooses the grace. `down` stops services in order and preserves data, and refuses foreign live
+leases. Close the session holding such a lease first.
+
+```sh
+chronolog down
+chronolog ls
+```
+
+After a supervisor SIGKILL its children are killed too; `chronolog up` restarts from the saved instance.
+The supervisor automatically restarts a dead Keeper with bounded backoff; inspect `status` and read Completion
+before drawing conclusions during recovery. An immediate recall can be incomplete, or can already be complete
+when the archive covers the requested range. The rehearsal prints the actual answer and checks that recovery
+returns identical EventIds and HLCs.
+
+Codex was not installed on the rehearsal host. Its marketplace uses the same local checkout and the `chronolog`
+plugin; alternatively configure an MCP server with command `chronolog` and arguments
+`["run", "--up", "default", "--", "chronolog-mcp"]` in the installed Codex's MCP configuration.
+For clio-coder, import the local `skills` plugin through its Library for the skill; that import omits MCP metadata.
+Declare the server separately in user `<config>/mcp.yaml` (or project `.clio-coder/mcp.yaml`):
+
+```yaml
+version: 1
+servers:
+  - id: chronolog
+    command: /absolute/path/to/prefix/bin/chronolog
+    args: [run, --up, default, --, /absolute/path/to/prefix/bin/chronolog-mcp]
+    env:
+      CHRONOLOG_HOME: /absolute/path/to/prefix/state
+      CHRONOLOG_MCP_IDENTITY: clio/main
+      CHRONOLOG_CHRONICLE: agent-memory
+    actionClass: execute
+```
+
+`actionClass` is allowed only at user scope; project declarations require explicit operator trust. Configure
+clio-coder on the machine hosting the instance; its stdio declaration does not itself connect to Dragon over SSH.
+
 ## Run a stack
 
 `deploy/demo/chronolog-demo` builds the runtime image from the native binaries and brings up the Visor, a Keeper,
@@ -296,33 +392,32 @@ cut; `follow` waits on several contexts at once; and `reconcile` recovers writes
 crash or fence, reporting each operation LANDED, ABSENT or UNKNOWN. Checkpoints carry the processed position and
 ownership so a restarted agent resumes without duplicating or silently dropping memories.
 
-`chrono-mcp` exposes that layer to any MCP client as ten tools: `context_open`, `context_remember`,
+`chrono-mcp` exposes that layer to any MCP client as twelve tools: `instance_list`, `instance_control`, `context_open`, `context_remember`,
 `context_recall`, `context_latest`, `context_follow`, `context_reconcile`, `context_checkpoint`, `context_close`,
 `context_list` and `context_status` ([plugins/chrono-mcp/README.md](plugins/chrono-mcp/README.md)).
 
 The repository root is a plugin marketplace for Claude Code and Codex. Its one plugin, `chronolog`, installs the
 `chronolog` skill (`skills/chronolog`) and the chrono-mcp server:
 
-```sh
-claude plugin marketplace add /path/to/ChronoLog && claude plugin install chronolog@chronolog
-codex plugin marketplace add /path/to/ChronoLog && codex plugin add chronolog@chronolog
+The local installation above uses the marketplace's current launch path:
+
+```text
+chronolog run --up default -- chronolog-mcp
 ```
 
-The plugin launches the server as `uvx chronolog-mcp==4.0.0`. Until that package is published, point uv at the
-wheels `chronolog-demo build` produced and the same command resolves them locally; set the stack endpoint and a
-stable identity for writable tools the same way:
-
-```sh
-export UV_FIND_LINKS=$PWD/build/smoke/wheels
-export CHRONOLOG_CATALOG=127.0.0.1:50051 CHRONOLOG_PLAYER=127.0.0.1:50054 CHRONOLOG_MCP_IDENTITY=me/agent
-```
+When no launcher is installed, its fallback is `uvx chronolog-mcp==4.0.0` for an existing deployment. The source
+wheels must be made available through `UV_FIND_LINKS` until publication. `instance_list` discovers instances and
+`instance_control` explicitly attaches, creates, detaches or stops them. `context_recall` accepts `since` and
+exclusive `until` as int64 nanoseconds or RFC 3339. These bounds map to acceptance HLC time, not writer physical
+time; check both `verdict` and `answer_complete`. Use the second event's acceptance nanoseconds as `since` and
+the fifth event's as `until` to select the middle three of five distinct acceptance timestamps.
 
 ## Plugins
 
 - **chrono-kvs**: a versioned key-value store with put, get, get as of an HLC, and history.
 - **chrono-pubsub**: topics with at-least-once delivery and resumable consumers whose positions live in kvs.
 - **chrono-sql**: append-only typed tables with a small SELECT that reports its Completion.
-- **chrono-mcp**: the ten Context tools for agents over MCP.
+- **chrono-mcp**: twelve tools for Context memory and explicit local instance control over MCP.
 - **chrono-stream**: host metrics into ChronoLog and a resumable exporter to InfluxDB with Grafana dashboards.
 - **chrono-viz**: a Grafana datasource for ChronoLog with completeness notices and live tail.
 - **chrono-ldms**: an LDMS store plugin that bridges sampler data into ChronoLog through a non-blocking queue.
