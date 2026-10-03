@@ -4,7 +4,7 @@ add_library(chrono_player_replay STATIC
     replay/HotReplay.cpp
     replay/ReplayMerge.cpp)
 target_include_directories(chrono_player_replay PUBLIC "${CMAKE_SOURCE_DIR}/src")
-target_link_libraries(chrono_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads chronolog_grapher_tier
+target_link_libraries(chrono_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads chronolog_common_tier
     PRIVATE chronolog_warnings absl::log)
 
 # gRPC clients and the Replay service.
@@ -24,6 +24,8 @@ target_link_libraries(chrono_player_lib
 add_executable(chrono_player main.cpp)
 target_link_libraries(chrono_player PRIVATE chrono_player_lib chronolog_warnings
     absl::log absl::log_initialize absl::log_globals)
+include(GNUInstallDirs)
+install(TARGETS chrono_player RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT server)
 
 include(GoogleTest)
 

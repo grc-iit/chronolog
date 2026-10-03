@@ -4,11 +4,19 @@
 #include <thread>
 #include "clock/SystemClock.h"
 
+struct timex;
+
 namespace chronolog
 {
 class KernelClock final: public SystemClock
 {
 public:
+    struct NtpState
+    {
+        ClockStatus status;
+        std::optional<uint64_t> bound;
+    };
+    static NtpState ntpState(const std::function<int(timex*)>& query);
     KernelClock();
     ~KernelClock() override;
 

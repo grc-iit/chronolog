@@ -6,7 +6,6 @@ add_library(chronolog_keeper_lib STATIC
     "${KEEPER_DIR}/KeeperConfig.cpp"
     "${KEEPER_DIR}/adapter/ArchiveService.cpp"
     "${KEEPER_DIR}/adapter/Convert.cpp"
-    "${KEEPER_DIR}/adapter/RouteRead.cpp"
     "${KEEPER_DIR}/adapter/JournalService.cpp"
     "${KEEPER_DIR}/membership/AcquisitionWatcher.cpp"
     "${KEEPER_DIR}/membership/ConfigMembership.cpp"
@@ -24,4 +23,5 @@ target_link_libraries(chrono_keeper PRIVATE chronolog_keeper_archive chronolog_k
     absl::log absl::log_initialize absl::log_globals)
 set_target_properties(chrono_keeper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/src/chrono-keeper")
-install(TARGETS chrono_keeper RUNTIME DESTINATION bin)
+include(GNUInstallDirs)
+install(TARGETS chrono_keeper RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT server)

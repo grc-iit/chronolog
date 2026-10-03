@@ -3,6 +3,19 @@
 
 namespace chronolog
 {
+KernelClock::NtpState KernelClock::ntpState(const std::function<int(timex*)>& query)
+{
+    timex value{};
+    const int result = query(&value);
+    NtpState state{result < 0 ? ClockStatus::Unavailable : ClockStatus::Unsynced, std::nullopt};
+    if(result >= 0 && !(value.status & STA_UNSYNC) && value.maxerror >= 0 &&
+       static_cast<uint64_t>(value.maxerror) <= PhysicalPolicy{}.uncertainty_cap_ns / 1000)
+    {
+        state.status = ClockStatus::Synced;
+        state.bound = static_cast<uint64_t>(value.maxerror) * 1000;
+    }
+    return state;
+}
 SystemClockSource KernelClock::source(const std::shared_ptr<State>& state)
 {
     auto result = SystemClockSource::kernel();
@@ -28,17 +41,10 @@ KernelClock::KernelClock(std::shared_ptr<State> state)
             {
                 for(;;)
                 {
-                    timex value{};
-                    const int result = ntp_adjtime(&value);
+                    const auto snapshot = ntpState(ntp_adjtime);
                     std::unique_lock lock(state->mutex);
-                    state->bound.reset();
-                    state->status = result < 0 ? ClockStatus::Unavailable : ClockStatus::Unsynced;
-                    if(result >= 0 && !(value.status & STA_UNSYNC) && value.maxerror >= 0 &&
-                       static_cast<uint64_t>(value.maxerror) <= PhysicalPolicy{}.uncertainty_cap_ns / 1000)
-                    {
-                        state->status = ClockStatus::Synced;
-                        state->bound = static_cast<uint64_t>(value.maxerror) * 1000;
-                    }
+                    state->bound = snapshot.bound;
+                    state->status = snapshot.status;
                     if(state->cv.wait_for(lock, std::chrono::seconds(1), [&] { return state->stopped; }))
                         return;
                 }

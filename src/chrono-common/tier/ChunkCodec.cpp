@@ -1,5 +1,5 @@
-#include "chrono-grapher/tier/ChunkCodec.h"
-#include "chrono-grapher/tier/FileIO.h"
+#include "tier/ChunkCodec.h"
+#include "tier/FileIO.h"
 #include <absl/strings/cord.h>
 #include <cstring>
 #include <sys/stat.h>

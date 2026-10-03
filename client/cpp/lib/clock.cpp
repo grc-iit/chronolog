@@ -8,13 +8,18 @@ namespace chronolog::client
 struct ChronoClock::Impl
 {
     TimeSource source;
+    NtpAdjtime query;
     std::mutex mutex;
     std::optional<int64_t> last;
 };
 ChronoClock::ChronoClock(TimeSource source)
+    : ChronoClock(std::move(source), ntp_adjtime)
+{}
+ChronoClock::ChronoClock(TimeSource source, NtpAdjtime query)
     : impl_(std::make_unique<Impl>())
 {
     impl_->source = std::move(source);
+    impl_->query = std::move(query);
 }
 ChronoClock::~ChronoClock() = default;
 absl::StatusOr<TimeReading> ChronoClock::now()
@@ -38,7 +43,7 @@ absl::StatusOr<TimeReading> ChronoClock::now()
                                       std::chrono::system_clock::now().time_since_epoch())
                                       .count();
         timex state{};
-        const int result = ntp_adjtime(&state);
+        const int result = impl_->query(&state);
         reading.status = result < 0 ? ClockStatus::Unavailable : ClockStatus::Unsynced;
         if(result >= 0 && !(state.status & STA_UNSYNC) && state.maxerror >= 0 && state.maxerror <= 1000000)
         {
