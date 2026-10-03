@@ -40,6 +40,9 @@ service Catalog
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc Acquire(AcquireRequest) returns (AcquireResponse);
+    // Bounded ordered per-entry renewal; transport success is not entry success.
+    // Renewals update authority memory only, never persisted lease deadlines.
+    rpc RenewAcquisitions(RenewAcquisitionsRequest) returns (RenewAcquisitionsResponse);
     // Release commits a fence revision and waits a configured timeout for Keeper
     // confirmation. fenced=false explicitly reports committed but unconfirmed.
     // Whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE for service
@@ -273,6 +276,34 @@ message ListStoriesResponse
     // stories; interpreted according to the message invariants above.
     repeated Story stories = 2;
 }
+enum AcquireRefusalReason
+{
+    ACQUIRE_REFUSAL_REASON_UNSPECIFIED = 0;
+    ACQUIRE_REFUSAL_REASON_HELD = 1;
+    ACQUIRE_REFUSAL_REASON_PRIOR_MISMATCH = 2;
+}
+enum AcquisitionTerminationCause
+{
+    ACQUISITION_TERMINATION_CAUSE_UNSPECIFIED = 0;
+    ACQUISITION_TERMINATION_CAUSE_EXPIRED = 1;
+    ACQUISITION_TERMINATION_CAUSE_RELEASED = 2;
+    ACQUISITION_TERMINATION_CAUSE_SUPERSEDED = 3;
+    ACQUISITION_TERMINATION_CAUSE_OWNER_REMOVED = 4;
+}
+enum KeeperPreferenceResult
+{
+    KEEPER_PREFERENCE_RESULT_UNSPECIFIED = 0;
+    KEEPER_PREFERENCE_RESULT_HONORED = 1;
+    KEEPER_PREFERENCE_RESULT_NOT_IN_ROUTE = 2;
+    KEEPER_PREFERENCE_RESULT_RETAINED = 3;
+}
+message AcquisitionLease
+{
+    // Positive finite granted duration in nanoseconds; no absolute host deadline.
+    int64 duration_ns = 1;
+    // Nonnegative advisory remainder sampled at the serving authority.
+    int64 remaining_ns = 2;
+}
 // writer_identity is a stable identity key, not a process address.
 message AcquireRequest
 {
@@ -280,6 +311,17 @@ message AcquireRequest
     uint64 story_id = 1;
     // Stable caller identity key used to retain writer_id across re-acquire.
     string writer_identity = 2;
+    // Omitted uses finite default; supplied positive duration clamps to min/max.
+    optional int64 lease_duration_ns = 3;
+    // First-assignment process hint, resolved only through the committed Route.
+    optional string preferred_keeper_process_id = 4;
+    // Explicit supersession; expected prior, when supplied, makes this a CAS.
+    bool takeover = 5;
+    // Nonzero exact prior incarnation; plain conditional acquire requires terminal.
+    optional uint64 expected_prior_incarnation = 6;
+    // Process-local logical call id, at least 128 random bits, at most 128 UTF-8 bytes.
+    // Reuse only for same-process retries; never restore from a checkpoint.
+    string acquire_request_id = 7;
 }
 // Catalog assigns writer_id; persisted incarnation increases on each re-acquire.
 message AcquireResponse
@@ -296,6 +338,46 @@ message AcquireResponse
     uint64 incarnation = 4;
     // route; interpreted according to the message invariants above.
     Route route = 5;
+    // Finite grant; same-id retry preserves the deadline and samples fresh advice.
+    AcquisitionLease lease = 8;
+    // Absent without a preference; existing affinity takes precedence.
+    optional KeeperPreferenceResult keeper_preference = 9;
+    // Typed refusal, independent of diagnostic status.message.
+    AcquireRefusalReason refusal_reason = 10;
+    // Nonnegative authority remainder on HELD.
+    int64 remaining_ns = 11;
+    // Current incarnation on PRIOR_MISMATCH; absent when no prior exists.
+    optional uint64 current_incarnation = 12;
+    // Original cause for terminal same-id retry without a successor.
+    // Existing fields 2/3/4 identify the matched tuple on terminal refusals.
+    optional AcquisitionTerminationCause termination_cause = 13;
+}
+message RenewAcquisition
+{
+    uint64 story_id = 1;
+    uint64 writer_id = 2;
+    uint64 incarnation = 3;
+}
+message RenewAcquisitionResult
+{
+    // Echo the requested tuple; results preserve input order independently.
+    RenewAcquisition acquisition = 1;
+    // OK with lease, NOT_FOUND for unknown tuple, FAILED_PRECONDITION if terminal.
+    ItemStatus status = 2;
+    // Present on success; authority-local renewal is not a durable grant.
+    AcquisitionLease lease = 3;
+    // Original terminal cause; older unknown tuple through a successor is SUPERSEDED.
+    optional AcquisitionTerminationCause termination_cause = 4;
+}
+message RenewAcquisitionsRequest
+{
+    // Bounded tuple batch; malformed/oversized requests fail before processing.
+    repeated RenewAcquisition acquisitions = 1;
+}
+message RenewAcquisitionsResponse
+{
+    // One independent per-entry result in request order (W10.3).
+    repeated RenewAcquisitionResult results = 1;
 }
 message ReleaseRequest
 {
