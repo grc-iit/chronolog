@@ -138,6 +138,7 @@ protected:
     virtual absl::Status persistDrop(StoryId) { return absl::OkStatus(); }
     void restoreDrop(StoryId story);
     virtual void writerScanned(WriterKey) const {}
+    virtual void slotValidated() {}
     virtual void assignmentObserved(Hlc) {}
     void restore(const Event& event);
     struct WriterCheckpoint

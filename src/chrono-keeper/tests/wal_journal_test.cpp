@@ -32,6 +32,41 @@ AppendBatch batch(std::initializer_list<uint64_t> sequences)
 }
 Range all() { return {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}}; }
 
+TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
+{
+    for(const auto* checkpoint: {"W1\n1 2 3 2 100 1 0 1 1\n1 100 1\n",
+                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 100 1 0\n",
+                                 "Wv2 1\n1 2 3 2 100 1 0 1 1\n1 0 0 11\n"})
+    {
+        WalRig rig;
+        rig.journal.reset();
+        const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+        const auto bytes = wal::frame(checkpoint);
+        std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+        rig.reopen();
+        auto retry = rig.current->append(batch({1}), Durability::Durable);
+        ASSERT_TRUE(retry.ok());
+        EXPECT_EQ(retry->front().rejection, AppendRejection::Unspecified);
+        EXPECT_EQ(retry->front().status.code(),
+                  std::string_view(checkpoint).ends_with("11\n") ? absl::StatusCode::kOutOfRange
+                                                                 : absl::StatusCode::kOk);
+        EXPECT_TRUE(rig.current->checkpoint().starts_with("v3 "));
+    }
+}
+
+TEST(WalJournal, AppendRejectionReasonsRejectMalformedCheckpoint)
+{
+    for(const auto* result: {"1 100 1 0 13\n", "1 100 1 0 3\n", "1 100 1 0\n"})
+    {
+        WalRig rig;
+        rig.journal.reset();
+        const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+        const auto bytes = wal::frame(std::string("Wv3 1\n1 2 3 2 100 1 0 1 1\n") + result);
+        std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+        EXPECT_THROW(rig.reopen(), std::runtime_error);
+    }
+}
+
 TEST(WalJournal, RecoveredUnsettledSealRequiresArchiveEvenWhenAcceptedEventsAreGone)
 {
     WalRig rig;
@@ -78,13 +113,13 @@ TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
     EXPECT_TRUE((*next)[0].status.ok());
 }
 
-// The window lines of the one writer in a "v2" checkpoint, by sequence.
+// The window lines of the one writer in a "v3" checkpoint, by sequence.
 std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::string& text, size_t* declared = nullptr)
 {
     std::istringstream in(text);
     std::string line;
     std::getline(in, line);
-    EXPECT_EQ(line, "v2 1");
+    EXPECT_EQ(line, "v3 1");
     std::getline(in, line);
     std::istringstream header(line);
     uint64_t story, writer, incarnation, next, released, assigned;
@@ -96,10 +131,11 @@ std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::str
         *declared = count;
     std::map<uint64_t, std::pair<int64_t, uint32_t>> window;
     uint64_t sequence;
-    int code;
-    while(in >> sequence >> physical >> logical >> code)
+    int code, rejection;
+    while(in >> sequence >> physical >> logical >> code >> rejection)
     {
         EXPECT_EQ(code, 0);
+        EXPECT_EQ(rejection, 0);
         EXPECT_TRUE(window.emplace(sequence, std::pair{physical, logical}).second)
                 << "sequence " << sequence << " twice";
     }

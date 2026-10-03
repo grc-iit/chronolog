@@ -86,6 +86,23 @@ absl::StatusOr<Story> Client::getStory(StoryId id, Deadline deadline)
     CATALOG_CALL(GetStory);
     return detail::decode(response.story());
 }
+absl::StatusOr<Route> Client::route(StoryId id, Deadline deadline)
+{
+    if(!id)
+        return absl::InvalidArgumentError("invalid route story");
+    v1::GetStoryRequest request;
+    request.set_story_id(id);
+    CATALOG_CALL(GetStory);
+    const auto& story = response.story();
+    if(story.tombstoned())
+        return absl::FailedPreconditionError("story is tombstoned");
+    if(!story.has_route() || !story.route().epoch() || story.route().epoch() != story.epoch() ||
+       story.route().keepers().empty() || story.route().player().empty())
+        return absl::DataLossError("story has no current route");
+    auto current = detail::decode(story.route());
+    impl_->state->route(id, current);
+    return current;
+}
 absl::StatusOr<std::vector<Story>> Client::listStories(const std::string& chronicle, Deadline deadline)
 {
     v1::ListStoriesRequest request;
@@ -122,13 +139,17 @@ absl::StatusOr<Writer> Client::acquire(StoryId id, const std::string& identity, 
 #undef CATALOG_CALL
 absl::StatusOr<ReadStream> Client::read(StoryId id, HlcRange range, Deadline deadline)
 {
+    return read(id, range, ReadOptions{}, deadline);
+}
+absl::StatusOr<ReadStream> Client::read(StoryId id, HlcRange range, ReadOptions options, Deadline deadline)
+{
     if(!id || range.end < range.start)
         return absl::InvalidArgumentError("invalid HLC read range");
     auto end = impl_->state->deadline(deadline);
     auto endpoint = impl_->state->playerEndpoint(id, end);
     if(!endpoint.ok())
         return endpoint.status();
-    return ReadStream(std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, id, range, deadline));
+    return ReadStream(std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, id, range, options, deadline));
 }
 absl::StatusOr<ReadStream> Client::readPhysical(StoryId id, PhysicalRange range, Deadline deadline)
 {

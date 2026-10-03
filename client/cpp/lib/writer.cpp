@@ -1,11 +1,58 @@
 #include "handles.h"
 #include <limits>
 #include <numeric>
+#include <absl/strings/cord.h>
 
 namespace chronolog::client
 {
 namespace
 {
+constexpr absl::string_view rejection_key = "chronolog.dev/append-rejection";
+absl::Status withRejection(absl::Status status, AppendRejection reason)
+{
+    const auto value = static_cast<uint32_t>(reason);
+    // Version 1 followed by the unsigned wire reason in network byte order.
+    const char bytes[]{1,
+                       static_cast<char>(value >> 24),
+                       static_cast<char>(value >> 16),
+                       static_cast<char>(value >> 8),
+                       static_cast<char>(value)};
+    status.SetPayload(rejection_key, absl::Cord(absl::string_view(bytes, sizeof(bytes))));
+    return status;
+}
+enum class Failure
+{
+    Pending,
+    Rejected,
+    Fenced,
+    Route
+};
+Failure classify(const absl::Status& status, bool has_route)
+{
+    switch(rejectionOf(status))
+    {
+        case AppendRejection::FencedReleased:
+        case AppendRejection::FencedSuperseded:
+        case AppendRejection::FencedExpired:
+        case AppendRejection::FencedOwnerRemoved:
+            return Failure::Fenced;
+        case AppendRejection::SequenceGap:
+        case AppendRejection::EarlierItemFailed:
+            return Failure::Rejected;
+        case AppendRejection::NotRegistered:
+        case AppendRejection::StaleEpoch:
+        case AppendRejection::UnassignedKeeper:
+        case AppendRejection::KeeperNotInRoute:
+            return Failure::Route;
+        default:
+            break;
+    }
+    if(status.code() == absl::StatusCode::kInvalidArgument || status.code() == absl::StatusCode::kOutOfRange)
+        return Failure::Rejected;
+    if(status.code() == absl::StatusCode::kFailedPrecondition && rejectionOf(status) == AppendRejection::Unspecified)
+        return has_route ? Failure::Route : Failure::Fenced;
+    return Failure::Pending;
+}
 bool same(const AppendSpec& a, const AppendSpec& b)
 {
     const bool physicalSame = a.physical.has_value() == b.physical.has_value() &&
@@ -22,6 +69,18 @@ struct Request
     std::vector<size_t> indices;
 };
 } // namespace
+AppendRejection rejectionOf(const absl::Status& status)
+{
+    const auto payload = status.GetPayload(rejection_key);
+    if(!payload)
+        return AppendRejection::Unspecified;
+    const std::string bytes = static_cast<std::string>(*payload);
+    if(bytes.size() != 5 || bytes[0] != 1)
+        return AppendRejection::Unspecified;
+    uint32_t value = 0;
+    for(size_t i = 1; i < bytes.size(); ++i) value = (value << 8) | static_cast<unsigned char>(bytes[i]);
+    return static_cast<AppendRejection>(value);
+}
 Writer::Writer(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl))
 {}
@@ -73,6 +132,8 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
         return absl::DeadlineExceededError("writer busy");
     if(requires_reacquisition)
         return absl::FailedPreconditionError("writer keeper removed; re-acquire before appending");
+    if(fenced)
+        return *fenced;
     if(specs.empty())
         return BatchResult{};
     if(specs.size() > state->options.max_batch_items || specs.size() > std::numeric_limits<uint64_t>::max() - sequence)
@@ -155,23 +216,28 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                 if(result.has_assigned_hlc())
                     state->observe(detail::decode(result.assigned_hlc()));
                 auto s = detail::status(result.status());
-                if(s.code() == absl::StatusCode::kFailedPrecondition &&
-                   (result.has_current_route() || response.has_current_route()))
-                {
-                    auto route = detail::decode(result.has_current_route() ? result.current_route()
-                                                                           : response.current_route());
-                    if(route.keepers.empty())
-                        return absl::DataLossError("invalid epoch redirect");
-                    refusal = s;
-                    if(route.epoch <= request.wire.epoch())
-                        continue;
-                    if(!redirect || route.epoch > redirect->epoch)
-                        redirect = std::move(route);
-                    continue;
-                }
                 if(!s.ok())
                 {
-                    pending->outcomes[i] = s;
+                    s = withRejection(std::move(s), static_cast<AppendRejection>(result.rejection()));
+                    const bool has_route = result.has_current_route() || response.has_current_route();
+                    const auto failure = classify(s, has_route);
+                    if(failure == Failure::Rejected || failure == Failure::Fenced)
+                    {
+                        pending->outcomes[i] = s;
+                        if(failure == Failure::Fenced)
+                            fenced = s;
+                        continue;
+                    }
+                    refusal = s;
+                    if(failure == Failure::Route && has_route)
+                    {
+                        auto route = detail::decode(result.has_current_route() ? result.current_route()
+                                                                               : response.current_route());
+                        if(route.keepers.empty())
+                            return absl::DataLossError("invalid epoch redirect");
+                        if(route.epoch > request.wire.epoch() && (!redirect || route.epoch > redirect->epoch))
+                            redirect = std::move(route);
+                    }
                     continue;
                 }
                 EventId expected{acquired.story_id,
@@ -275,7 +341,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
             if(transport.ok() && std::find(received.begin(), received.end(), false) != received.end())
                 transport = absl::DataLossError("append stream ended without every batch response");
         }
-        if(redirect)
+        if(redirect && !fenced)
         {
             std::lock_guard acquisition_lock(acquisition_mutex);
             acquired.route = *redirect;
@@ -289,8 +355,9 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                 requires_reacquisition = true;
                 for(size_t i = 0; i < pending->outcomes.size(); ++i)
                     if(!pending->outcomes[i])
-                        pending->outcomes[i] =
-                                absl::UnknownError("append outcome unknown; writer keeper removed; re-acquire");
+                        pending->outcomes[i] = withRejection(
+                                absl::UnknownError("append outcome unknown; writer keeper removed; re-acquire"),
+                                rejectionOf(refusal));
                 break;
             }
             acquired.assigned_keeper = *survivor;
@@ -300,10 +367,17 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
                                           [](const auto& r) { return r.has_value(); });
         if(complete && transport.ok())
             break;
+        if(fenced)
+            return *fenced;
         if(!transport.ok() && !detail::retryable(transport))
             return transport;
         if(attempt == state->options.retry.max_retries)
+        {
+            if(!transport.ok())
+                if(auto payload = refusal.GetPayload(rejection_key))
+                    transport.SetPayload(rejection_key, *payload);
             return transport.ok() ? refusal : transport;
+        }
         std::this_thread::sleep_until(std::min(end, std::chrono::system_clock::now() + state->options.retry.backoff));
     }
     BatchResult out;

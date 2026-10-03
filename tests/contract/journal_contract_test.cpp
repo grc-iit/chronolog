@@ -21,6 +21,8 @@ struct JournalHarness
     std::function<void()> unassignWriter;
     bool supports_durable{};
     bool rejection_reasons{};
+    size_t dedupe_window{};
+    std::function<void(bool)> applySupersession;
     // Pause after slot validation, before acquiring the writer lock.
     std::function<void(std::function<void()>)> onSlotValidated;
     std::function<void()> crashRestart;
@@ -113,6 +115,159 @@ protected:
         ASSERT_NE(h->sut, nullptr);
     }
 };
+
+TEST_P(JournalContract, AppendRejectionReasons)
+{
+    ASSERT_TRUE(h->rejection_reasons);
+    const auto check = [&](AppendBatch batch, AppendRejection reason)
+    {
+        auto results = h->sut->append(batch, Durability::Accepted);
+        ASSERT_TRUE(results.ok()) << results.status();
+        ASSERT_EQ(results->size(), batch.items.size());
+        EXPECT_EQ(results->front().status.code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ(results->front().rejection, reason);
+    };
+    auto unknown = Item();
+    unknown.writer_id = 99;
+    check(Batch({unknown}), AppendRejection::NotRegistered);
+    unknown = Item();
+    unknown.incarnation = 4;
+    check(Batch({unknown}), AppendRejection::NotRegistered);
+    check(Batch({Item()}, 6), AppendRejection::StaleEpoch);
+    auto gap = h->sut->append(Batch({Item(2), Item()}), Durability::Accepted);
+    ASSERT_TRUE(gap.ok());
+    ASSERT_EQ(gap->size(), 2u);
+    EXPECT_EQ(gap->at(0).rejection, AppendRejection::SequenceGap);
+    EXPECT_EQ(gap->at(1).rejection, AppendRejection::EarlierItemFailed);
+    for(const auto& result: *gap) EXPECT_EQ(result.status.code(), absl::StatusCode::kFailedPrecondition);
+    h->releaseIncarnation();
+    check(Batch({Item()}), AppendRejection::FencedReleased);
+    h->supersedeIncarnation();
+    check(Batch({Item()}), AppendRejection::FencedSuperseded);
+    h->unassignWriter();
+    check(Batch({Item()}), AppendRejection::UnassignedKeeper);
+    RouteState state;
+    state.route = {8, {{"other", "other:1"}}, "grapher:1", ""};
+    h->applyRoute(state, false, 10);
+    check(Batch({Item()}, 8), AppendRejection::KeeperNotInRoute);
+    h->tombstone();
+    check(Batch({Item()}, 8), AppendRejection::StoryTombstoned);
+}
+
+TEST_P(JournalContract, AppendRejectionReasonsDedupe)
+{
+    ASSERT_TRUE(h->rejection_reasons);
+    ASSERT_GT(h->dedupe_window, 0u);
+    ASSERT_LE(h->dedupe_window, 65536u);
+    const auto durability = h->supports_durable ? Durability::Durable : Durability::Accepted;
+    auto item = Item();
+    item.physical.physical_ns = 100 + PhysicalPolicy{}.skew_limit_ns + 2;
+    auto rejected = h->sut->append(Batch({item}), durability);
+    ASSERT_TRUE(rejected.ok());
+    ASSERT_EQ(rejected->front().status.code(), absl::StatusCode::kOutOfRange);
+    EXPECT_EQ(rejected->front().rejection, AppendRejection::Unspecified);
+    auto duplicate = h->sut->append(Batch({Item()}), durability);
+    ASSERT_TRUE(duplicate.ok());
+    EXPECT_EQ(duplicate->front().status, rejected->front().status);
+    EXPECT_EQ(duplicate->front().rejection, rejected->front().rejection);
+    auto accepted = h->sut->append(Batch({Item(2)}), durability);
+    ASSERT_TRUE(accepted.ok());
+    ASSERT_TRUE(accepted->front().status.ok());
+    if(h->supports_durable)
+        h->crashRestart();
+    for(auto sequence: {1u, 2u})
+    {
+        auto retry = h->sut->append(Batch({Item(sequence)}), durability);
+        ASSERT_TRUE(retry.ok());
+        EXPECT_EQ(retry->front().status.code(), sequence == 1 ? absl::StatusCode::kOutOfRange : absl::StatusCode::kOk);
+        EXPECT_EQ(retry->front().rejection, AppendRejection::Unspecified);
+    }
+    std::vector<AppendItem> items;
+    for(size_t i = 3; i <= h->dedupe_window + 2; ++i) items.push_back(Item(i));
+    auto filled = h->sut->append(Batch(std::move(items)), Durability::Accepted);
+    ASSERT_TRUE(filled.ok());
+    for(const auto& result: *filled) ASSERT_TRUE(result.status.ok()) << result.status;
+    auto outside = h->sut->append(Batch({Item()}), Durability::Accepted);
+    ASSERT_TRUE(outside.ok());
+    EXPECT_EQ(outside->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(outside->front().rejection, AppendRejection::DedupeWindow);
+}
+
+TEST_P(JournalContract, SupersessionReleaseOrdersOldAdmissionBeforeNewMarker)
+{
+    ASSERT_TRUE(h->rejection_reasons);
+    ASSERT_TRUE(h->onSlotValidated);
+    ASSERT_TRUE(h->applySupersession);
+    using namespace std::chrono_literals;
+    for(bool snapshot: {false, true})
+    {
+        h = GetParam()();
+        std::promise<void> validated, resume;
+        auto ready = validated.get_future();
+        auto resumed = resume.get_future().share();
+        h->onSlotValidated(
+                [&]
+                {
+                    validated.set_value();
+                    EXPECT_EQ(resumed.wait_for(5s), std::future_status::ready);
+                });
+        auto old =
+                std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+        const auto reached = ready.wait_for(5s);
+        if(reached != std::future_status::ready)
+        {
+            resume.set_value();
+            FAIL() << "old append did not validate its slot";
+        }
+        h->onSlotValidated({});
+        h->applySupersession(snapshot);
+        auto marker = Item();
+        marker.incarnation = 4;
+        auto marked = h->sut->append(Batch({marker}), Durability::Accepted);
+        resume.set_value();
+        auto refused = old.get();
+        ASSERT_TRUE(marked.ok());
+        ASSERT_TRUE(marked->front().status.ok());
+        ASSERT_TRUE(refused.ok());
+        EXPECT_EQ(refused->front().status.code(), absl::StatusCode::kFailedPrecondition);
+        EXPECT_EQ(refused->front().rejection, AppendRejection::FencedReleased);
+        EXPECT_EQ(eventCount(), 1u);
+
+        h = GetParam()();
+        ASSERT_TRUE(h->onAssignment);
+        std::promise<void> assigned, finish_assignment;
+        auto assigning = assigned.get_future();
+        auto finishing = finish_assignment.get_future().share();
+        h->onAssignment(
+                [&](Hlc)
+                {
+                    assigned.set_value();
+                    EXPECT_EQ(finishing.wait_for(5s), std::future_status::ready);
+                });
+        auto admitted_call =
+                std::async(std::launch::async, [&] { return h->sut->append(Batch({Item()}), Durability::Accepted); });
+        if(assigning.wait_for(5s) != std::future_status::ready)
+        {
+            finish_assignment.set_value();
+            FAIL() << "old append did not reach assignment";
+        }
+        h->onAssignment({});
+        auto takeover = std::async(std::launch::async,
+                                   [&]
+                                   {
+                                       h->applySupersession(snapshot);
+                                       return h->sut->append(Batch({marker}), Durability::Accepted);
+                                   });
+        finish_assignment.set_value();
+        auto admitted = admitted_call.get();
+        marked = takeover.get();
+        ASSERT_TRUE(admitted.ok());
+        ASSERT_TRUE(admitted->front().status.ok());
+        ASSERT_TRUE(marked.ok());
+        ASSERT_TRUE(marked->front().status.ok());
+        EXPECT_LT(admitted->front().hlc, marked->front().hlc);
+    }
+}
 
 TEST_P(JournalContract, AppendRejectionDefaultsToUnspecified)
 {
