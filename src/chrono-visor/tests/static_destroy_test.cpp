@@ -228,7 +228,9 @@ TEST(CatalogLeaseTest, ExpiryMakesProgressUnderRenewalLoad)
         ASSERT_TRUE(grant.ok());
         live.push_back(*grant);
         if(i % 20 == 19)
+        {
             ASSERT_TRUE((*store)->serviceTick().ok());
+        }
     }
     const auto T = dead.front().lease.duration_ns;
     auto renewAll = [&]
