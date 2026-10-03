@@ -279,6 +279,7 @@ protected:
         HotReplayOptions replay_options;
         replay_options.batch_size = 2;
         replay_options.tail_poll = 20ms;
+        tune(replay_options);
         replay_options.story_live = [catalog = catalog_](StoryId story) { return catalog->ensureLive(story); };
         service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options), catalog_);
         grpc::ServerBuilder builder;
@@ -288,8 +289,7 @@ protected:
         builder.RegisterService(service_.get());
         server_ = builder.BuildAndStart();
         ASSERT_NE(server_, nullptr);
-        stub_ = v1::Replay::NewStub(
-                grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
+        stub_ = v1::Replay::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
     }
 
     void TearDown() override
@@ -355,6 +355,7 @@ protected:
     }
 
     virtual void tune(KeeperHotSourceOptions&) {}
+    virtual void tune(HotReplayOptions&) {}
 
     FakeArchive a_, b_;
     std::shared_ptr<FakeCatalog> catalog_ = std::make_shared<FakeCatalog>();
@@ -364,6 +365,96 @@ protected:
     std::unique_ptr<ReplayService> service_;
     std::unique_ptr<v1::Replay::Stub> stub_;
 };
+
+class replay_adapter_recv: public replay_adapter
+{
+    void tune(HotReplayOptions& options) override { options.batch_size = 1024; }
+};
+
+TEST_F(replay_adapter_recv, ReadDeliversEightMaximalPayloads)
+{
+    std::vector<v1::Event> events;
+    for(uint64_t sequence = 1; sequence <= 8; ++sequence)
+    {
+        auto event = protoEvent(2, sequence, 100 + sequence);
+        event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
+        event.mutable_envelope()->set_payload(std::string(1 << 20, 'x'));
+        events.push_back(std::move(event));
+    }
+    a_.hold("a", events, 200);
+    b_.hold("b", {}, 200);
+    auto ctx = context();
+    auto reader = stub_->Read(ctx.get(), hlcRead(100, 200));
+    v1::ReadResponse response;
+    size_t delivered = 0;
+    size_t completions = 0;
+    for(size_t messages = 0; messages < 20 && reader->Read(&response); ++messages)
+    {
+        size_t bytes = 0;
+        for(const auto& event: response.batch().events())
+        {
+            bytes += event.ByteSizeLong();
+            ASSERT_LT(delivered, events.size());
+            EXPECT_EQ(event.SerializeAsString(), events[delivered++].SerializeAsString());
+        }
+        EXPECT_TRUE(bytes <= kEventBatchBytes || response.batch().events_size() == 1);
+        if(response.has_completion())
+        {
+            ++completions;
+            EXPECT_TRUE(response.completion().complete());
+        }
+    }
+    reader->Finish();
+    EXPECT_EQ(delivered, 8u);
+    EXPECT_EQ(completions, 1u);
+}
+
+TEST_F(replay_adapter_recv, TailDeliversEightMaximalPayloads)
+{
+    std::vector<v1::Event> events;
+    for(uint64_t sequence = 1; sequence <= 8; ++sequence)
+    {
+        auto event = protoEvent(2, sequence, 100 + sequence);
+        event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
+        event.mutable_envelope()->set_payload(std::string(1 << 20, 'x'));
+        events.push_back(std::move(event));
+    }
+    a_.hold("a", events, 200);
+    b_.hold("b", {}, 200);
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tailFrom(protoEvent(2, 0, 100)));
+    v1::TailResponse response;
+    size_t delivered = 0;
+    for(size_t messages = 0; messages < 20 && delivered < events.size() && reader->Read(&response); ++messages)
+    {
+        size_t bytes = 0;
+        for(const auto& event: response.batch().events())
+        {
+            bytes += event.ByteSizeLong();
+            ASSERT_LT(delivered, events.size());
+            EXPECT_EQ(event.SerializeAsString(), events[delivered++].SerializeAsString());
+        }
+        EXPECT_TRUE(bytes <= kEventBatchBytes || response.batch().events_size() == 1);
+    }
+    ctx->TryCancel();
+    while(reader->Read(&response)) {}
+    reader->Finish();
+    EXPECT_EQ(delivered, 8u);
+}
+
+TEST_F(replay_adapter_recv, HotReadDeliversFiveMiBAttributes)
+{
+    auto event = protoEvent(2, 1, 110);
+    event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNAVAILABLE);
+    (*event.mutable_envelope()->mutable_attributes())["padding"] = std::string(5 << 20, 'a');
+    a_.hold("a", {event}, 200);
+    b_.hold("b", {}, 200);
+    auto result = read(hlcRead(100, 200));
+    ASSERT_EQ(result.events.size(), 1u);
+    EXPECT_EQ(result.events.front().SerializeAsString(), event.SerializeAsString());
+    ASSERT_EQ(result.completions.size(), 1u);
+    EXPECT_TRUE(result.completions.front().complete());
+}
 
 TEST_F(replay_adapter, ReadIsCompleteWhenEveryKeeperSealReachesEnd)
 {

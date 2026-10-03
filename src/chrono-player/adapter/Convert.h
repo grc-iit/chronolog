@@ -1,6 +1,7 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
+#include "chrono-player/adapter/EventConvert.h"
 #include "chronolog/internal/v1/internal.pb.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.pb.h"
@@ -10,10 +11,6 @@
 namespace chronolog::player::convert
 {
 
-Hlc fromProto(const v1::Hlc& hlc);
-v1::Hlc toProto(const Hlc& hlc);
-Event fromProto(const v1::Event& event);
-v1::Event toProto(const Event& event);
 Route fromProto(const v1::Route& route);
 RouteState fromProto(const internal::v1::RouteUpdate& update);
 v1::Completion toProto(const Completion& completion);

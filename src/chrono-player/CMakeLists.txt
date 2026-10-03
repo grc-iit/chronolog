@@ -1,5 +1,6 @@
-# Pure replay core: no gRPC beyond the contract types.
+# Replay core with protobuf event sizing, no gRPC.
 add_library(chrono_player_replay STATIC
+    adapter/EventConvert.cpp
     replay/CompletionPolicy.cpp
     replay/HotReplay.cpp
     replay/ReplayMerge.cpp)

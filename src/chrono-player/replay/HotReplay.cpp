@@ -1,4 +1,6 @@
 #include "chrono-player/replay/HotReplay.h"
+#include "chrono-player/adapter/EventConvert.h"
+#include "chronolog/message_limits.h"
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -282,13 +284,32 @@ public:
         if(cancelled_.load())
             return absl::CancelledError("replay stream cancelled");
         ReplayBatch batch;
-        while(!heads_.empty() && batch.events.size() < batch_size_)
+        size_t bytes = 0;
+        while((pending_ || !heads_.empty()) && batch.events.size() < batch_size_)
         {
-            Event e = pop();
-            while(!heads_.empty() && inputs_[heads_.top().input][heads_.top().pos].id == e.id)
-                e.durability = std::max(e.durability, pop().durability);
-            if(seen_.insert(e.id).second)
-                batch.events.push_back(std::move(e));
+            Event e;
+            if(pending_)
+            {
+                e = std::move(*pending_);
+                pending_.reset();
+            }
+            else
+            {
+                e = pop();
+                while(!heads_.empty() && inputs_[heads_.top().input][heads_.top().pos].id == e.id)
+                    e.durability = std::max(e.durability, pop().durability);
+                if(seen_.contains(e.id))
+                    continue;
+            }
+            const size_t event_bytes = convert::toProto(e).ByteSizeLong();
+            if(!batch.events.empty() && bytes + event_bytes > kEventBatchBytes)
+            {
+                pending_ = std::move(e);
+                break;
+            }
+            seen_.insert(e.id);
+            bytes += event_bytes;
+            batch.events.push_back(std::move(e));
         }
         if(!batch.events.empty())
             return std::optional<ReplayBatch>(std::move(batch));
@@ -317,6 +338,7 @@ private:
     std::vector<std::vector<Event>> inputs_;
     std::priority_queue<Head, std::vector<Head>, After> heads_;
     std::set<EventId> seen_;
+    std::optional<Event> pending_;
     Completion completion_;
     size_t batch_size_;
     bool completion_sent_{};
@@ -699,10 +721,15 @@ private:
     std::optional<ReplayBatch> takeBatch()
     {
         ReplayBatch batch;
-        size_t n = std::min(options_.batch_size, pending_.size() - pending_pos_);
-        batch.events.assign(std::make_move_iterator(pending_.begin() + pending_pos_),
-                            std::make_move_iterator(pending_.begin() + pending_pos_ + n));
-        pending_pos_ += n;
+        size_t bytes = 0;
+        while(pending_pos_ < pending_.size() && batch.events.size() < std::max<size_t>(options_.batch_size, 1))
+        {
+            const size_t event_bytes = convert::toProto(pending_[pending_pos_]).ByteSizeLong();
+            if(!batch.events.empty() && bytes + event_bytes > kEventBatchBytes)
+                break;
+            bytes += event_bytes;
+            batch.events.push_back(std::move(pending_[pending_pos_++]));
+        }
         return batch;
     }
 
