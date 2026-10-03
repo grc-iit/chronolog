@@ -14,6 +14,7 @@
 #include "adapter/CatalogService.h"
 #include "adapter/WorkerPool.h"
 #include "catalog/InMemoryMetadataStore.h"
+#include "catalog/LeaseAuthority.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include "membership/StaticRouteMembership.h"
 
@@ -89,6 +90,7 @@ protected:
         v1::AcquireRequest request;
         request.set_story_id(story);
         request.set_writer_identity(identity);
+        request.set_acquire_request_id(newAcquireRequestId());
         v1::AcquireResponse response;
         EXPECT_TRUE(call(&v1::Catalog::Stub::Acquire, request, &response).ok());
         return response;
@@ -167,6 +169,11 @@ TEST_F(catalog_adapter, MalformedRequestsFailTheWholeRequestWithInvalidArgument)
     v1::AcquireResponse acquired;
     EXPECT_EQ(call(&v1::Catalog::Stub::Acquire, acquire_request, &acquired).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
+    // Every producer sends a request id; an Acquire without one is malformed and mutates nothing.
+    acquire_request.set_writer_identity("no-id");
+    EXPECT_EQ(call(&v1::Catalog::Stub::Acquire, acquire_request, &acquired).error_code(),
+              grpc::StatusCode::INVALID_ARGUMENT);
+    EXPECT_TRUE(store_->snapshotAcquisitions()->active.empty());
     v1::ReleaseResponse released;
     EXPECT_EQ(call(&v1::Catalog::Stub::Release, v1::ReleaseRequest(), &released).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
@@ -180,6 +187,7 @@ TEST_F(catalog_adapter, WellFormedButStaleRequestsAreDomainResultsNotGrpcErrors)
     v1::AcquireRequest unknown;
     unknown.set_story_id(999);
     unknown.set_writer_identity("w");
+    unknown.set_acquire_request_id(newAcquireRequestId());
     v1::AcquireResponse acquired;
     EXPECT_TRUE(call(&v1::Catalog::Stub::Acquire, unknown, &acquired).ok());
     EXPECT_EQ(acquired.status().code(), kNotFound);
@@ -210,15 +218,41 @@ TEST_F(catalog_adapter, WellFormedButStaleRequestsAreDomainResultsNotGrpcErrors)
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyChronicle, destroy_chronicle, &destroyed).ok());
     EXPECT_EQ(destroyed.status().code(), kFailedPrecondition);
 
-    // A second acquire with an active identity supersedes the old incarnation, and a
-    // retried release of it returns the revision the supersede committed.
-    auto newer = acquire(story, "w1");
+    // A second plain acquire of a live identity is a typed HELD domain result with no mutation.
+    const auto revision = store_->snapshotAcquisitions()->revision;
+    auto refused = acquire(story, "w1");
+    EXPECT_EQ(refused.status().code(), kFailedPrecondition);
+    EXPECT_EQ(refused.refusal_reason(), v1::ACQUIRE_REFUSAL_REASON_HELD);
+    EXPECT_GT(refused.remaining_ns(), 0);
+    EXPECT_EQ(store_->snapshotAcquisitions()->revision, revision);
+
+    // Explicit CAS takeover supersedes it; a retried release of the old incarnation returns the supersession
+    // revision.
+    v1::AcquireRequest takeover;
+    takeover.set_story_id(story);
+    takeover.set_writer_identity("w1");
+    takeover.set_takeover(true);
+    takeover.set_expected_prior_incarnation(held.incarnation());
+    takeover.set_acquire_request_id(newAcquireRequestId());
+    v1::AcquireResponse newer;
+    EXPECT_TRUE(call(&v1::Catalog::Stub::Acquire, takeover, &newer).ok());
     EXPECT_EQ(newer.status().code(), 0);
-    EXPECT_GT(newer.incarnation(), held.incarnation());
+    EXPECT_EQ(newer.incarnation(), held.incarnation() + 1);
     auto retry = release(held);
     EXPECT_EQ(retry.status().code(), 0);
-    EXPECT_GT(retry.revision(), 0u);
+    EXPECT_GT(retry.revision(), revision);
+    EXPECT_EQ(release(held).revision(), retry.revision());
     EXPECT_EQ(release(newer).status().code(), 0);
+
+    // Static destroy waits for the old owner's current instance to apply the supersession revision.
+    EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyStory, destroy, &status).ok());
+    EXPECT_EQ(status.status().code(), kFailedPrecondition);
+    const auto owner = held.assigned_keeper().process_id();
+    ASSERT_TRUE(membership_
+                        ->registerProcess(
+                                Process{owner, "instance-1", held.assigned_keeper().endpoint(), ProcessRole::Keeper})
+                        .ok());
+    ASSERT_TRUE(membership_->heartbeat(owner, "instance-1", retry.revision()).ok());
     EXPECT_TRUE(call(&v1::Catalog::Stub::DestroyStory, destroy, &status).ok());
     EXPECT_EQ(status.status().code(), 0);
 }
@@ -264,6 +298,7 @@ TEST_F(catalog_adapter, ConcurrentAcquiresGetDistinctWriterIds)
                     v1::AcquireRequest request;
                     request.set_story_id(story);
                     request.set_writer_identity("writer-" + std::to_string(i));
+                    request.set_acquire_request_id(newAcquireRequestId());
                     v1::AcquireResponse response;
                     if(call(&v1::Catalog::Stub::Acquire, request, &response).ok() && response.status().code() == 0)
                         ids[i] = response.writer_id();

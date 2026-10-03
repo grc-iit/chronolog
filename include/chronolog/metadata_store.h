@@ -55,13 +55,16 @@ public:
 
     /**
      * Permanently tombstone a chronicle and every contained story.
-     * Preconditions: Chronicle exists; no contained story has an active acquisition.
-     * Postconditions: Old identities remain destroyed; operation is atomic across contained stories.
+     * Preconditions: Chronicle exists; the story destroy preconditions, due-set materialization and static
+     * fence proof apply to every contained story.
+     * Postconditions: Old identities remain destroyed; tombstoning is atomic across contained stories, never
+     * partial on refusal; materialized expiries still commit on refusal.
      * Status codes: OK; INVALID_ARGUMENT for invalid name; NOT_FOUND for unknown name; FAILED_PRECONDITION for
-     * active acquisitions; UNAVAILABLE for storage failure.
+     * active acquisitions or an unconfirmed static fence; UNAVAILABLE for storage or authority failure.
      * Thread safety: Linearizable with acquisition and create operations.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: ChronicleTombstonePermanence,
-     * DestroyRefusesActiveAcquisitions.
+     * DestroyRefusesActiveAcquisitions, DestroyStillRefusesALiveSiblingLease,
+     * StaticDestroyRequiresConfirmedExpiryFence, StaticDestroyRequiresConfirmedSupersessionFence.
      */
     virtual absl::Status destroyChronicle(std::string name) = 0;
 
@@ -100,27 +103,31 @@ public:
     virtual absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const = 0;
 
     /**
-     * Permanently tombstone a story.
-     * Preconditions: Story exists and has no active acquisitions.
-     * Postconditions: Story stays destroyed across restart; acquire cannot resurrect the old id; reused name gets a new id.
-     * Status codes: OK; NOT_FOUND for unknown id; FAILED_PRECONDITION for active acquisitions; UNAVAILABLE for
-     * storage failure.
-     * Thread safety: Linearizable with acquire/release.
+     * Permanently tombstone a story after materializing its due acquisition set.
+     * Preconditions: Story exists. The serving authority's complete due set is materialized EXPIRED before the
+     * active check. Static authority additionally requires the owning process's currently registered instance
+     * to report applied_revision >= the release revision of every EXPIRED or SUPERSEDED termination, proved
+     * outside Raft apply; heartbeat silence, registration or timeout is never proof.
+     * Postconditions: Story stays destroyed across restart; acquire cannot resurrect the old id; reused name gets a
+     * new id. Materialized expiries stay committed when a live row or a missing static fence refuses destroy.
+     * Status codes: OK; NOT_FOUND for unknown id; FAILED_PRECONDITION for active acquisitions or an unconfirmed
+     * static fence; UNAVAILABLE for storage or authority failure.
+     * Thread safety: Linearizable with acquire/release; fence waits run outside store locks and replica apply.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: StoryTombstonePermanence,
-     * DestroyRefusesActiveAcquisitions.
+     * DestroyRefusesActiveAcquisitions, DestroyMaterializesLeaderDueSet, DestroyRefusalCommitsMaterializedExpiry,
+     * StaticDestroyRequiresConfirmedExpiryFence, StaticDestroyRequiresConfirmedSupersessionFence.
      */
     virtual absl::Status destroyStory(StoryId id) = 0;
 
     /**
      * Acquire a writer identity for a story with the finite default lease.
-     * Preconditions: Live story and nonempty stable writer identity. An identity that still holds an active
-     * acquisition has crashed: acquire supersedes it by releasing the old incarnation, with its own revision and
-     * without a fence wait, in the same atomic step that creates the next incarnation.
+     * Preconditions: Live story and nonempty stable writer identity. A live unexpired holder of the identity
+     * refuses this plain acquire with typed HELD and remaining_ns; it never supersedes implicitly.
      * Postconditions: Returns stable writer_id, persisted strictly increased incarnation, route, epoch and
      * assigned_keeper stable per (writer_id, epoch) and a positive finite lease. A fresh logical call
      * generates its request id before proposal and retains it across call-owned retries.
      * Status codes: OK; INVALID_ARGUMENT for empty identity; NOT_FOUND for unknown id; FAILED_PRECONDITION for
-     * tombstone; UNAVAILABLE for storage failure.
+     * tombstone or HELD; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; persistence completes before success.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: PersistedIncarnationStrictlyIncreases,
      * AcquireReturnsRouteAndEpoch,
@@ -132,10 +139,15 @@ public:
      * Current-live retries preserve their persisted grant and local deadline. Changed inputs fail
      * INVALID_ARGUMENT. CAS requires the current prior incarnation and reports typed PRIOR_MISMATCH.
      * Same-id terminal retries report the matched incarnation and original cause, or its successor.
-     * Plain supersession remains available until the enforcement slice.
+     * Plain acquire refuses an unreleased row (HELD) or a row that differs from the carried predecessor at apply;
+     * plain expected_prior_incarnation requires that exact current row to be terminal; takeover with expected
+     * is CAS against the current row, live or terminal; only explicit takeover records SUPERSEDED. A due current
+     * row is materialized EXPIRED before the active check.
      * Thread safety: Linearizable; deterministic replica apply; no network wait inside apply.
      * Invariant tests: EveryAcquisitionHasAFiniteLease, LeaseRequestUsesDefaultAndClamps,
-     * RetriedAcquireAfterLostReplyReturnsTheSameGrant, SameIdTerminalRetryReportsCauseAndMatchedIncarnation.
+     * RetriedAcquireAfterLostReplyReturnsTheSameGrant, SameIdTerminalRetryReportsCauseAndMatchedIncarnation,
+     * UnexpiredLeaseRefusesSupersessionWithoutTakeover, ConditionalAcquireRequiresCurrentTerminalIncarnation,
+     * ConditionalRecoveryCannotTakeOverANewerHolder, CompareAndSwapTakeoverRequiresCurrentPriorIncarnation.
      */
     virtual absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity, AcquireOptions options) = 0;
 
@@ -144,9 +156,12 @@ public:
      * Successful entries extend only local deadlines, without a durable write, revision or feed delta.
      * Known terminal tuples retain their original cause; missing live deadlines initialize locally.
      * Outer INVALID_ARGUMENT rejects malformed batches; UNAVAILABLE reports authority/storage loss.
-     * Per-entry status is independent; due entries remain UNAVAILABLE until enforcement is enabled.
+     * Per-entry status is independent; an entry at or after its deadline selects expiry and stays UNAVAILABLE
+     * until the committed EXPIRED resolves it. No per-call reconciliation scan.
      * Thread safety: Serialize deadlines separately from storage and proposal waits.
-     * Invariant tests: RestartRetainsDurationAndTerminalCause, RenewalDoesNotAppendOrBumpRevision.
+     * Invariant tests: RestartRetainsDurationAndTerminalCause, RenewalDoesNotAppendOrBumpRevision,
+     * RenewalBeforeExpirySelectionPreventsExpiry, RenewalAtDeadlineSelectsExpiry,
+     * SelectedExpiryCannotAcknowledgeRenewal.
      */
     virtual absl::StatusOr<std::vector<RenewAcquisitionResult>>
     renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) = 0;

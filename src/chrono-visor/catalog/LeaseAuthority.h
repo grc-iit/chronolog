@@ -33,6 +33,9 @@ std::string newAcquireRequestId();
 std::string acquireInputs(StoryId id, const std::string& identity, const AcquireOptions& options);
 absl::Status priorMismatch(std::optional<uint64_t> current, std::optional<uint64_t> matched = {});
 absl::Status terminalRetry(uint64_t matched, AcquisitionTerminationCause cause);
+// FAILED_PRECONDITION/HELD; the serving authority fills remaining_ns after apply.
+absl::Status heldRefusal(int64_t remaining_ns = 0);
+absl::Status withRemaining(absl::Status held, int64_t remaining_ns);
 absl::Status validateRenew(const std::vector<RenewAcquisition>& tuples, size_t limit);
 
 struct LeaseQualification
@@ -62,7 +65,16 @@ public:
     void eraseForTest(RenewAcquisition tuple);
     std::vector<RenewAcquisition> reconciliationTuples();
     void reconcileTerminals(const std::vector<AcquisitionChange>& rows);
+    // Selects up to `limit` due or still-pending tuples and marks them pending; a pending tuple refuses renewal
+    // until a committed outcome resolves it or its entry leaves the map.
     absl::StatusOr<std::vector<RenewAcquisition>> dueTuples(size_t limit);
+    // The complete due set of `stories`, marked pending, for destroy materialization.
+    absl::StatusOr<std::vector<RenewAcquisition>> dueTuples(const std::set<StoryId>& stories);
+    // The tuple when it is due or pending, marked pending; Acquire carries it for materialization.
+    std::optional<RenewAcquisition> dueTuple(const AcquisitionChange& row);
+    // Clears pending marks after a committed outcome for these tuples.
+    void resolve(const std::vector<RenewAcquisition>& tuples);
+    bool pending(const RenewAcquisition& tuple) const;
     size_t size() const;
     const AcquisitionLeaseConfig& config() const { return config_; }
 
@@ -85,6 +97,7 @@ private:
     std::map<Key, Entry> entries_;
     std::set<std::pair<int64_t, Key>> due_;
     std::set<Key> deferred_initialization_;
+    std::set<Key> pending_;
     std::map<std::pair<StoryId, uint64_t>, uint64_t> revisions_;
     std::optional<int64_t> lapse_start_;
     int64_t last_tick_{};

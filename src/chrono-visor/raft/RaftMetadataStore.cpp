@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <filesystem>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -9,6 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "adapter/Convert.h"
+#include "chronolog/acquire_refusal.h"
 #include "dynamic/MembershipState.h"
 namespace chronolog::visor
 {
@@ -110,6 +112,50 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
                     }
                 }
             }
+            return r.SerializeAsString();
+        }
+        case internal::v1::CatalogCommand::kExpireAcquisitions:
+        {
+            std::vector<RenewAcquisition> tuples;
+            for(const auto& t: c.expire_acquisitions().acquisitions())
+                tuples.push_back({t.story_id(), t.writer_id(), t.incarnation()});
+            auto outcomes = store.expireAcquisitions(tuples);
+            requireStorage(outcomes.status());
+            v1::RenewAcquisitionsResponse r;
+            if(outcomes.ok())
+                for(const auto& outcome: *outcomes)
+                {
+                    auto* item = r.add_results();
+                    item->mutable_acquisition()->set_story_id(outcome.acquisition.story_id);
+                    item->mutable_acquisition()->set_writer_id(outcome.acquisition.writer_id);
+                    item->mutable_acquisition()->set_incarnation(outcome.acquisition.incarnation);
+                    *item->mutable_status() = convert::toProto(outcome.status);
+                    if(outcome.termination_cause)
+                        item->set_termination_cause(
+                                static_cast<v1::AcquisitionTerminationCause>(*outcome.termination_cause));
+                }
+            return r.SerializeAsString();
+        }
+        case internal::v1::CatalogCommand::kDestroyStoryWithLeases:
+        {
+            const auto& q = c.destroy_story_with_leases();
+            std::vector<RenewAcquisition> due;
+            for(const auto& t: q.due_acquisitions()) due.push_back({t.story_id(), t.writer_id(), t.incarnation()});
+            v1::DestroyStoryResponse r;
+            auto value = store.destroyStoryWithDue(q.request().story_id(), due);
+            requireStorage(value);
+            *r.mutable_status() = convert::toProto(value);
+            return r.SerializeAsString();
+        }
+        case internal::v1::CatalogCommand::kDestroyChronicleWithLeases:
+        {
+            const auto& q = c.destroy_chronicle_with_leases();
+            std::vector<RenewAcquisition> due;
+            for(const auto& t: q.due_acquisitions()) due.push_back({t.story_id(), t.writer_id(), t.incarnation()});
+            v1::DestroyChronicleResponse r;
+            auto value = store.destroyChronicleWithDue(q.request().name(), due);
+            requireStorage(value);
+            *r.mutable_status() = convert::toProto(value);
             return r.SerializeAsString();
         }
         case internal::v1::CatalogCommand::kRelease:
@@ -458,8 +504,40 @@ absl::Status RaftMetadataStore::serviceTick()
     auto status = reconcileLeases();
     if(!status.ok())
         return status;
+    status = sweepExpiry();
+    if(!status.ok())
+        return status;
     return leases_.service(true);
 }
+absl::Status RaftMetadataStore::sweepExpiry()
+{
+    auto status = activateLeases();
+    if(!status.ok())
+        return status;
+    auto due = leases_.dueTuples(leases_.config().acquisition_expiry_batch);
+    if(!due.ok())
+        return due.status();
+    if(due->empty())
+        return absl::OkStatus();
+    internal::v1::CatalogCommand c;
+    for(const auto& t: *due)
+    {
+        auto* tuple = c.mutable_expire_acquisitions()->add_acquisitions();
+        tuple->set_story_id(t.story_id);
+        tuple->set_writer_id(t.writer_id);
+        tuple->set_incarnation(t.incarnation);
+    }
+    // An unresolved proposal keeps its pending marks; the next sweep proposes them again.
+    auto result = propose(c);
+    if(!result.ok())
+        return result.status();
+    v1::RenewAcquisitionsResponse outcomes;
+    if(!outcomes.ParseFromString(*result) || outcomes.results_size() != static_cast<int>(due->size()))
+        return absl::InternalError("invalid expiry apply response");
+    leases_.resolve(*due);
+    return absl::OkStatus();
+}
+
 absl::StatusOr<Acquisition> RaftMetadataStore::requestGrant(const std::string& id) const
 {
     return store_->requestGrant(id);
@@ -529,12 +607,31 @@ absl::StatusOr<Chronicle> RaftMetadataStore::createChronicle(std::string name)
 }
 absl::Status RaftMetadataStore::destroyChronicle(std::string name)
 {
+    auto authority = activateLeases();
+    if(!authority.ok())
+        return authority;
+    std::set<StoryId> stories;
+    if(auto listed = store_->listStories(name); listed.ok())
+        for(const auto& story: *listed)
+            if(!story.tombstoned)
+                stories.insert(story.id);
+    auto due = leases_.dueTuples(stories);
+    if(!due.ok())
+        return due.status();
     internal::v1::CatalogCommand c;
-    auto* q = c.mutable_destroy_chronicle();
-    q->set_name(name);
+    auto* q = c.mutable_destroy_chronicle_with_leases();
+    q->mutable_request()->set_name(name);
+    for(const auto& t: *due)
+    {
+        auto* tuple = q->add_due_acquisitions();
+        tuple->set_story_id(t.story_id);
+        tuple->set_writer_id(t.writer_id);
+        tuple->set_incarnation(t.incarnation);
+    }
     auto result = propose(c);
     if(!result.ok())
         return result.status();
+    leases_.resolve(*due);
     v1::DestroyChronicleResponse r;
     if(!r.ParseFromString(*result))
         return absl::InternalError("invalid apply response");
@@ -559,12 +656,27 @@ absl::StatusOr<Story> RaftMetadataStore::createStory(std::string chronicle, std:
 }
 absl::Status RaftMetadataStore::destroyStory(StoryId id)
 {
+    auto authority = activateLeases();
+    if(!authority.ok())
+        return authority;
+    // The complete leader-selected due set rides in the command; apply materializes it before I3.6's check.
+    auto due = leases_.dueTuples(std::set<StoryId>{id});
+    if(!due.ok())
+        return due.status();
     internal::v1::CatalogCommand c;
-    auto* q = c.mutable_destroy_story();
-    q->set_story_id(id);
+    auto* q = c.mutable_destroy_story_with_leases();
+    q->mutable_request()->set_story_id(id);
+    for(const auto& t: *due)
+    {
+        auto* tuple = q->add_due_acquisitions();
+        tuple->set_story_id(t.story_id);
+        tuple->set_writer_id(t.writer_id);
+        tuple->set_incarnation(t.incarnation);
+    }
     auto result = propose(c);
     if(!result.ok())
         return result.status();
+    leases_.resolve(*due);
     v1::DestroyStoryResponse r;
     if(!r.ParseFromString(*result))
         return absl::InternalError("invalid apply response");
@@ -605,15 +717,44 @@ absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string i
     if(!selected.ok())
         return selected.status();
     *command = *selected;
+    // A due current holder rides as a carried due tuple, materialized EXPIRED before the active check.
+    std::vector<RenewAcquisition> due;
+    auto current = store_->currentAcquisition(id, identity);
+    if(!current.ok())
+        return current.status();
+    if(*current && (*current)->state == AcquisitionState::Acquired)
+        if(auto tuple = leases_.dueTuple(**current))
+        {
+            due.push_back(*tuple);
+            auto* carried = command->add_due_acquisitions();
+            carried->set_story_id(tuple->story_id);
+            carried->set_writer_id(tuple->writer_id);
+            carried->set_incarnation(tuple->incarnation);
+        }
     auto result = propose(c);
     if(!result.ok())
         return result.status();
+    leases_.resolve(due);
     v1::AcquireResponse r;
     if(!r.ParseFromString(*result))
         return absl::InternalError("invalid apply response");
     auto status = convert::acquireStatus(r);
     if(!status.ok())
-        return status;
+    {
+        // HELD remaining_ns is sampled by this authority after apply, never inside replica apply.
+        auto refusal = getAcquireRefusal(status);
+        if(!refusal || refusal->refusal_reason != AcquireRefusalReason::Held)
+            return status;
+        current = store_->currentAcquisition(id, identity);
+        if(!current.ok())
+            return current.status();
+        if(!*current)
+            return status;
+        auto lease = leases_.sample(**current, false);
+        if(!lease.ok())
+            return lease.status();
+        return withRemaining(status, lease->remaining_ns);
+    }
     authority = activateLeases();
     if(!authority.ok())
         return authority;
@@ -633,7 +774,8 @@ RaftMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples
     auto status = validateRenew(tuples, leases_.config().acquisition_renew_batch);
     if(!status.ok())
         return status;
-    status = reconcileLeases();
+    // Per-tuple rows only: sample() installs a missing current row; the bounded scan stays on serviceTick.
+    status = activateLeases();
     if(!status.ok())
         return status;
     auto rows = store_->acquisitionRows(tuples);

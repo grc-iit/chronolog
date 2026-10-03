@@ -1,3 +1,4 @@
+#include "chronolog/acquire_refusal.h"
 #include "TestSupport.h"
 #include <chrono>
 #include <iostream>
@@ -337,8 +338,16 @@ TEST_F(DynamicMembershipTest, RouteTransitionIsAtomicAndReassignsOnlyRemovedWrit
     EXPECT_EQ(state.routes(0).revision(), state.routes(1).revision());
     EXPECT_EQ(state.routes(0).route().epoch(), 2u);
     EXPECT_EQ(state.routes(1).route().epoch(), 2u);
-    auto surviving = store->acquire(1, survivor.writer_id == a->writer_id ? "first" : "second");
-    ASSERT_TRUE(surviving.ok());
+    const std::string survivor_identity = survivor.writer_id == a->writer_id ? "first" : "second";
+    auto held = store->acquire(1, survivor_identity);
+    ASSERT_TRUE(absl::IsFailedPrecondition(held.status())) << held.status();
+    EXPECT_EQ(getAcquireRefusal(held.status())->refusal_reason, AcquireRefusalReason::Held);
+    AcquireOptions own_prior;
+    own_prior.takeover = true;
+    own_prior.expected_prior_incarnation = survivor.incarnation;
+    own_prior.acquire_request_id = "survivor-own-prior-cas-000000001";
+    auto surviving = store->acquire(1, survivor_identity, own_prior);
+    ASSERT_TRUE(surviving.ok()) << surviving.status();
     EXPECT_EQ(surviving->assigned_keeper.process_id, survivor.assigned_keeper.process_id);
     auto reassigned = store->acquire(1, removed.writer_id == a->writer_id ? "first" : "second");
     ASSERT_TRUE(reassigned.ok());

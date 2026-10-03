@@ -99,6 +99,24 @@ absl::Status terminalRetry(uint64_t matched, AcquisitionTerminationCause cause)
     setAcquireRefusal(status, detail);
     return status;
 }
+absl::Status heldRefusal(int64_t remaining_ns)
+{
+    auto status = absl::FailedPreconditionError("acquisition is held by a live incarnation");
+    AcquireRefusal detail;
+    detail.refusal_reason = AcquireRefusalReason::Held;
+    detail.remaining_ns = remaining_ns;
+    setAcquireRefusal(status, detail);
+    return status;
+}
+absl::Status withRemaining(absl::Status held, int64_t remaining_ns)
+{
+    auto detail = getAcquireRefusal(held);
+    if(!detail || detail->refusal_reason != AcquireRefusalReason::Held)
+        return held;
+    detail->remaining_ns = remaining_ns;
+    setAcquireRefusal(held, *detail);
+    return held;
+}
 absl::Status validateRenew(const std::vector<RenewAcquisition>& tuples, size_t limit)
 {
     if(tuples.empty() || tuples.size() > limit)
@@ -190,6 +208,7 @@ void LeaseAuthority::rebuild(const AcquisitionSnapshot& snapshot)
     entries_.clear();
     due_.clear();
     deferred_initialization_.clear();
+    pending_.clear();
     revisions_.clear();
     lapse_start_.reset();
     const auto time = now();
@@ -271,8 +290,14 @@ absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange&
     auto& entry = it->second;
     if(renew)
     {
+        if(pending_.contains(key))
+            return absl::UnavailableError("acquisition expiry is pending");
+        // Renewal at or after the deadline selects expiry rather than extending: sweep lag is no grace.
         if(time >= entry.deadline)
+        {
+            pending_.insert(key);
             return absl::UnavailableError("acquisition deadline is due");
+        }
         due_.erase({entry.deadline, key});
         entry.deadline = std::max(entry.deadline, time + row.duration_ns);
         due_.insert({entry.deadline, key});
@@ -355,6 +380,7 @@ void LeaseAuthority::removeLocked(const Key& key)
         return;
     due_.erase({it->second.deadline, key});
     deferred_initialization_.erase(key);
+    pending_.erase(key);
     entries_.erase(it);
 }
 absl::StatusOr<std::vector<RenewAcquisition>> LeaseAuthority::dueTuples(size_t limit)
@@ -365,9 +391,54 @@ absl::StatusOr<std::vector<RenewAcquisition>> LeaseAuthority::dueTuples(size_t l
     if(!status.ok())
         return status;
     std::vector<RenewAcquisition> tuples;
+    // Unresolved selections first: a proposal that may not have committed is proposed again, never forgotten.
+    for(auto it = pending_.begin(); it != pending_.end() && tuples.size() < limit; ++it)
+        tuples.push_back({std::get<0>(*it), std::get<1>(*it), std::get<2>(*it)});
     for(auto it = due_.begin(); it != due_.end() && tuples.size() < limit && it->first <= time; ++it)
-        tuples.push_back({std::get<0>(it->second), std::get<1>(it->second), std::get<2>(it->second)});
+        if(pending_.insert(it->second).second)
+            tuples.push_back({std::get<0>(it->second), std::get<1>(it->second), std::get<2>(it->second)});
     return tuples;
+}
+absl::StatusOr<std::vector<RenewAcquisition>> LeaseAuthority::dueTuples(const std::set<StoryId>& stories)
+{
+    std::lock_guard lock(mutex_);
+    const auto time = now();
+    auto status = serviceLocked(time, false);
+    if(!status.ok())
+        return status;
+    std::vector<RenewAcquisition> tuples;
+    for(const auto story: stories)
+        for(auto it = entries_.lower_bound({story, 0, 0}); it != entries_.end() && std::get<0>(it->first) == story;
+            ++it)
+            if(pending_.contains(it->first) || (it->second.deadline && it->second.deadline <= time))
+            {
+                pending_.insert(it->first);
+                tuples.push_back({story, std::get<1>(it->first), std::get<2>(it->first)});
+            }
+    return tuples;
+}
+std::optional<RenewAcquisition> LeaseAuthority::dueTuple(const AcquisitionChange& row)
+{
+    std::lock_guard lock(mutex_);
+    const auto time = now();
+    if(!serviceLocked(time, false).ok())
+        return std::nullopt;
+    const Key key{row.story_id, row.writer_id, row.incarnation};
+    auto it = entries_.find(key);
+    if(it == entries_.end() || (!pending_.contains(key) && (!it->second.deadline || it->second.deadline > time)))
+        return std::nullopt;
+    pending_.insert(key);
+    return RenewAcquisition{row.story_id, row.writer_id, row.incarnation};
+}
+void LeaseAuthority::resolve(const std::vector<RenewAcquisition>& tuples)
+{
+    std::lock_guard lock(mutex_);
+    for(const auto& t: tuples) pending_.erase({t.story_id, t.writer_id, t.incarnation});
+}
+bool LeaseAuthority::pending(const RenewAcquisition& t) const
+{
+    std::lock_guard lock(mutex_);
+    return pending_.contains({t.story_id, t.writer_id, t.incarnation});
 }
 size_t LeaseAuthority::size() const
 {

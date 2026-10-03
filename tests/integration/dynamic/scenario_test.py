@@ -12,7 +12,7 @@ class SettledTest(unittest.TestCase):
         self.scenario = object.__new__(Scenario)
         self.scenario.story = 7
         self.acquired = dict(writer_id=3, incarnation=2, route=dict(epoch=4),
-                             assigned_keeper=dict(endpoint='keeper'))
+                             assigned_keeper=dict(endpoint='keeper'), hold_deadline=float('inf'))
         self.pending = dict(transport=14, error='acquisition snapshot is not applied', response={})
 
     @patch('scenario.time.sleep')
@@ -47,7 +47,8 @@ class SettledTest(unittest.TestCase):
         self.assertEqual(self.scenario.settled(self.acquired)[1], item)
         self.scenario.raw.assert_called_once()
 
-    @patch('scenario.time.monotonic', side_effect=[0, 30])
+    # Samples: the settle deadline, the hold check inside append, then the expired deadline.
+    @patch('scenario.time.monotonic', side_effect=[0, 0, 30])
     def test_snapshot_wait_keeps_the_existing_deadline(self, monotonic):
         self.scenario.raw = Mock(return_value=self.pending)
         with self.assertRaisesRegex(AssertionError, 'acquisition admission never became ready'):
@@ -111,7 +112,8 @@ class AcquireTest(unittest.TestCase):
     def setUp(self):
         self.scenario = object.__new__(Scenario)
         self.scenario.story = 7
-        self.granted = dict(writer_id=3, incarnation=2)
+        self.granted = dict(writer_id=3, incarnation=2,
+                            lease=dict(duration_ns=str(Scenario.MAX_LEASE_NS), remaining_ns=str(Scenario.MAX_LEASE_NS)))
         self.leaseless = dict(transport=14, error='no Raft leader', leader=3)
 
     @patch('scenario.time.sleep')
@@ -119,9 +121,39 @@ class AcquireTest(unittest.TestCase):
         self.scenario.raw = Mock(side_effect=[self.leaseless, dict(transport=14, error='catalog is overloaded'),
                                              dict(transport=0, response=self.granted)])
         self.assertEqual(self.scenario.acquire('main-writer'), self.granted)
-        self.assertEqual(self.scenario.raw.call_args_list,
-                         [(('Acquire', dict(story_id=7, writer_identity='main-writer')),)] * 3)
+        calls = self.scenario.raw.call_args_list
+        self.assertEqual(calls, [calls[0]] * 3)
+        op, request = calls[0].args
+        self.assertEqual(op, 'Acquire')
+        self.assertEqual(len(request.pop('acquire_request_id')), 32)
+        self.assertEqual(request, dict(story_id=7, writer_identity='main-writer',
+                                       lease_duration_ns=Scenario.MAX_LEASE_NS))
         self.assertEqual(sleep.call_count, 2)
+
+    def test_each_logical_acquire_mints_one_id_and_a_frozen_request_keeps_it(self):
+        self.scenario.raw = Mock(return_value=dict(transport=0, response=self.granted))
+        frozen = self.scenario.acquire_request('main-writer', expected=2, takeover=True)
+        self.scenario.acquire('main-writer', request=frozen)
+        self.scenario.acquire('main-writer', request=frozen)
+        self.scenario.acquire('main-writer')
+        ids = [call.args[1]['acquire_request_id'] for call in self.scenario.raw.call_args_list]
+        self.assertEqual(ids[0], ids[1])
+        self.assertNotEqual(ids[1], ids[2])
+        self.assertEqual(frozen['expected_prior_incarnation'], 2)
+        self.assertTrue(frozen['takeover'])
+
+    def test_a_hold_past_the_grant_fails(self):
+        self.scenario.raw = Mock(return_value=dict(transport=0, response=dict(self.granted, lease=dict(
+            duration_ns=str(Scenario.MAX_LEASE_NS), remaining_ns='0'))))
+        acquired = self.scenario.acquire('main-writer')
+        with self.assertRaisesRegex(AssertionError, 'past its grant'):
+            self.scenario.append(acquired)
+
+    def test_a_grant_below_the_maximum_lease_fails(self):
+        self.scenario.raw = Mock(return_value=dict(transport=0, response=dict(self.granted, lease=dict(
+            duration_ns='300000000000', remaining_ns='300000000000'))))
+        with self.assertRaisesRegex(AssertionError, 'maximum lease'):
+            self.scenario.acquire('main-writer')
 
     def test_other_unavailable_is_not_retried(self):
         self.scenario.raw = Mock(return_value=dict(transport=14, error='Socket closed'))

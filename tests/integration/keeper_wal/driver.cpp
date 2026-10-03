@@ -6,6 +6,7 @@
 #include <sstream>
 #include <thread>
 #include <grpcpp/grpcpp.h>
+#include "chronolog/acquire_refusal.h"
 #include "chronolog/client/client.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
@@ -131,6 +132,8 @@ int write(const char* catalog, const char* out)
     auto writer = client->acquire(story->id, "writer");
     if(!writer.ok())
         fail("acquire");
+    // The prior incarnation is recorded beside the story; request ids never leave this process.
+    std::ofstream(path(out, "incarnation")) << writer->acquisition().incarnation << '\n';
     std::ofstream rows(path(out, "events.tsv"));
     for(uint64_t i = 1; i <= 24; ++i)
     {
@@ -164,9 +167,33 @@ int append(const char* catalog, const char* out)
     if(!client.ok())
         fail("catalog");
     const auto story = loadStory(out);
-    auto writer = client->acquire(story, "writer");
+    uint64_t prior = 0;
+    std::ifstream(path(out, "incarnation")) >> prior;
+    if(!prior)
+        fail("no recorded prior incarnation");
+    // A new process recovers its own recorded prior by compare-and-swap with a fresh id. A mismatched prior
+    // refuses PRIOR_MISMATCH without taking over the current holder.
+    auto cas = [&](uint64_t expected)
+    {
+        AcquireOptions options;
+        options.takeover = true;
+        options.expected_prior_incarnation = expected;
+        auto id = client->newAcquireRequestId();
+        if(!id.ok())
+            fail("newAcquireRequestId");
+        options.acquire_request_id = *id;
+        return client->acquire(story, "writer", options);
+    };
+    auto mismatch = cas(prior + 1000);
+    auto refusal = getAcquireRefusal(mismatch.status());
+    if(mismatch.ok() || !refusal || refusal->refusal_reason != AcquireRefusalReason::PriorMismatch ||
+       refusal->current_incarnation != prior)
+        fail("mismatched prior did not refuse PRIOR_MISMATCH: " + std::string(mismatch.status().message()));
+    auto writer = cas(prior);
     if(!writer.ok())
-        fail("reacquire");
+        fail("reacquire: " + std::string(writer.status().message()));
+    if(writer->acquisition().incarnation != prior + 1)
+        fail("reacquire did not create the next incarnation");
     sdk::AppendSpec spec;
     spec.envelope.payload = "after-restart";
     const auto deadline = std::chrono::steady_clock::now() + 60s;

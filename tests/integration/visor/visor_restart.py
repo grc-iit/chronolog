@@ -74,11 +74,22 @@ class Workload(threading.Thread):
 
 
 class Gate(Scenario):
+    probe_request = None
+    probe_acquired = None
+    leader_request = None
+
     def revision(self):
-        # Acquire and release a private writer: the release reports the persisted global Catalog counter.
-        a = self.acquire('revision-probe')
+        # Acquire and release a private writer: the release reports the persisted global Catalog counter. One
+        # logical probe keeps its request id and tuple across wait retries: a lost Acquire reply is retried with
+        # the same id, a failed Release with the same tuple, and the state clears only once the Release resolves.
+        if self.probe_request is None:
+            self.probe_request = self.acquire_request('revision-probe')
+        if self.probe_acquired is None:
+            self.probe_acquired = self.acquire('revision-probe', request=self.probe_request)
+        a = self.probe_acquired
         released = self.rpc('Release', dict(story_id=self.story, writer_id=a['writer_id'],
                                             incarnation=a['incarnation']))
+        self.probe_request = self.probe_acquired = None
         return int(released['revision'])
 
     def acked(self, workload):
@@ -112,7 +123,10 @@ class Gate(Scenario):
             self.stack.stop('visor-' + str(leader))
             follower = self.peers[leader % 3]
             self.endpoint, self.internal = follower['catalog_endpoint'], follower['internal_endpoint']
-            replacement = self.wait(lambda: self.acquire('main-writer'))
+            # Leader loss grants no automatic takeover: the intended successor is an own-prior CAS, one logical
+            # request reused across the wait.
+            request = self.acquire_request('main-writer', expected=main['incarnation'], takeover=True)
+            replacement = self.wait(lambda: self.acquire('main-writer', request=request))
             assert replacement['writer_id'] == main['writer_id'], 'I9.1 writer identity lost across the leader change'
             assert int(replacement['incarnation']) > int(main['incarnation']), 'I9.1 incarnation reused after leader kill'
             revision_after = self.wait(self.revision)
@@ -128,14 +142,16 @@ class Gate(Scenario):
 
             started = self.begin('all Visors killed and restarted')
             revision_before = self.wait(self.revision)
-            main = self.wait(lambda: self.acquire('main-writer'))
+            request = self.acquire_request('main-writer', expected=replacement['incarnation'], takeover=True)
+            main = self.wait(lambda: self.acquire('main-writer', request=request))
             for n in (1, 2, 3):
                 self.stack.stop('visor-' + str(n))
             sequence_before = workload.sequence
             for n in (3, 1, 2):
                 self.stack.start('visor-' + str(n))
             self.endpoint, self.internal = self.peers[2]['catalog_endpoint'], self.peers[2]['internal_endpoint']
-            restarted = self.wait(lambda: self.acquire('main-writer'), 60)
+            request = self.acquire_request('main-writer', expected=main['incarnation'], takeover=True)
+            restarted = self.wait(lambda: self.acquire('main-writer', request=request), 60)
             assert restarted['writer_id'] == main['writer_id'], 'I9.1 writer identity lost across restart'
             assert int(restarted['incarnation']) > int(main['incarnation']), 'I9.1 incarnation reused after restart'
             revision_after = self.wait(self.revision, 60)
@@ -154,8 +170,13 @@ class Gate(Scenario):
     def leader(self):
         seen = []
 
+        # One logical leader probe for the whole gate: resending its id returns the same grant, never a churn of
+        # live holders.
+        if self.leader_request is None:
+            self.leader_request = self.acquire_request('leader-probe')
+
         def led():
-            reply = self.raw('Acquire', dict(story_id=self.story, writer_identity='leader-probe'))
+            reply = self.raw('Acquire', self.leader_request)
             assert reply['transport'] == 0 or self.refused_before_apply(reply), f'leader probe Acquire: {reply}'
             if reply['transport'] == 0 and reply.get('leader'):
                 seen[:] = [int(reply['leader'])]

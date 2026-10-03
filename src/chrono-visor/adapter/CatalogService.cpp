@@ -286,6 +286,9 @@ grpc::ServerUnaryReactor* CatalogService::Acquire(grpc::CallbackServerContext* c
                         }
                         if(request->story_id() == 0 || request->writer_identity().empty())
                             return invalid("story_id and writer_identity are required");
+                        // Every producer sends one process-local id per logical Acquire (A16.8, RFC-G 1).
+                        if(request->acquire_request_id().empty())
+                            return invalid("acquire_request_id is required");
                         auto result = store_.acquire(request->story_id(),
                                                      request->writer_identity(),
                                                      convert::fromAcquireRequest(*request));

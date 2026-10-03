@@ -113,14 +113,43 @@ class Scenario:
         return r if int(r['route']['epoch']) > previous and ((keeper in members) == present) else None
 
     # A Visor that leads without a lease yet, or whose catalog pool is full, refuses before it applies anything.
-    # Acquire is not idempotent, so only these whole-RPC refusals retry.
+    # Only these whole-RPC refusals retry inside acquire(); callers that retry more broadly reuse the request.
     REFUSED_BEFORE_APPLY = ('no Raft leader', 'catalog is overloaded')
+
+    # The Visor's configured acquisition_lease_max_ns. This raw driver never renews, so it requests the maximum
+    # lease and append() asserts every hold stays strictly inside the returned grant.
+    MAX_LEASE_NS = 3_600_000_000_000
 
     def refused_before_apply(self, result):
         return result['transport'] == 14 and result.get('error') in self.REFUSED_BEFORE_APPLY
 
-    def acquire(self, identity, seconds=30):
-        request = dict(story_id=self.story, writer_identity=identity)
+    def acquire_request(self, identity, story=None, expected=None, takeover=False):
+        # One process-local id per logical Acquire, minted before any call() or wait() so every retry of this
+        # request returns the committed grant instead of starting a second logical Acquire.
+        request = dict(story_id=self.story if story is None else story, writer_identity=identity,
+                       acquire_request_id=os.urandom(16).hex(), lease_duration_ns=self.MAX_LEASE_NS)
+        if expected is not None:
+            request['expected_prior_incarnation'] = int(expected)
+        if takeover:
+            request['takeover'] = True
+        return request
+
+    @staticmethod
+    def granted(response):
+        lease = response.get('lease', {})
+        assert int(lease.get('duration_ns', 0)) == Scenario.MAX_LEASE_NS, f'grant is not the maximum lease: {response}'
+        response['hold_deadline'] = time.monotonic() + int(lease.get('remaining_ns', 0)) / 1e9
+        return response
+
+    @staticmethod
+    def hold(acquired):
+        assert time.monotonic() < acquired['hold_deadline'], f'raw driver held an acquisition past its grant: {acquired}'
+
+    def call_acquire(self, request, seconds=30):
+        return self.granted(self.call('Acquire', request, seconds=seconds))
+
+    def acquire(self, identity, seconds=30, request=None, expected=None, takeover=False):
+        request = request or self.acquire_request(identity, expected=expected, takeover=takeover)
         deadline = time.monotonic() + seconds
         while True:
             result = self.raw('Acquire', request)
@@ -130,9 +159,10 @@ class Scenario:
             time.sleep(.1)
         if result['transport'] or int(result['response'].get('status', {}).get('code', 0)):
             raise RuntimeError(f'Acquire: {result}')
-        return result['response']
+        return self.granted(result['response'])
 
     def append(self, acquired, sequence=1, retry=True, whole_rpc_unavailable=False):
+        self.hold(acquired)
         payload = base64.b64encode(f"{self.story}:{acquired['writer_id']}:{acquired['incarnation']}:{sequence}".encode()).decode()
         request = dict(story_id=self.story, epoch=acquired['route']['epoch'], durability='DURABILITY_DURABLE',
                        items=[dict(writer_id=acquired['writer_id'], incarnation=acquired['incarnation'],
@@ -306,7 +336,7 @@ class Scenario:
             story = int(self.call('CreateStory', dict(chronicle=chronicle, name=name))['story']['story_id'])
             writers = {}
             for n in range(16):
-                acquired = self.call('Acquire', dict(story_id=story, writer_identity=f'{name}-{n}'))
+                acquired = self.call_acquire(self.acquire_request(f'{name}-{n}', story=story))
                 writers.setdefault(acquired['assigned_keeper']['process_id'], [acquired, 0])
                 if len(writers) == 2:
                     break
@@ -437,7 +467,7 @@ class Scenario:
         self.wait(lambda: 'partition applied' in self.log_since('proxy-keeper-1', partition_offset))
         self.call('DestroyStory', dict(story_id=missed['id']))
         later = int(self.call('CreateStory', dict(chronicle='destroy', name='later'))['story']['story_id'])
-        self.call('Acquire', dict(story_id=later, writer_identity='later'))
+        self.call_acquire(self.acquire_request('later', story=later))
         self.wait(lambda: self.freed('keeper-2', missed['id']))
         result = self.hot('keeper-1', missed['id'])
         # FetchHot checks the dropped set before the read gate that an acquisition watch reconnect closes.
@@ -482,12 +512,13 @@ class Scenario:
         writers = {}
         for n in range(8):
             identity = 'writer-' + str(n)
-            a = self.call('Acquire', dict(story_id=self.story, writer_identity=identity))
-            writers.setdefault(a['assigned_keeper']['process_id'], (identity, a))
+            request = self.acquire_request(identity)
+            a = self.call_acquire(request)
+            writers.setdefault(a['assigned_keeper']['process_id'], (identity, a, request))
             if len(writers) == 2:
                 break
         assert len(writers) == 2
-        for _, a in writers.values():
+        for _, a, _ in writers.values():
             for sequence in range(1, 9):
                 self.append(a, sequence)
         self.complete()
@@ -496,17 +527,19 @@ class Scenario:
         self.secondary = int(secondary['story']['story_id'])
         self.story = self.secondary
         self.expected[self.story] = {}
-        second_writer = self.call('Acquire', dict(story_id=self.story, writer_identity='secondary'))
+        second_writer = self.call_acquire(self.acquire_request('secondary'))
         for sequence in range(1, 5):
             self.append(second_writer, sequence)
         self.complete()
         self.story = primary
 
         started = self.begin('Visor leader kill')
-        identity, old = writers['keeper-1']
+        identity, old, original = writers['keeper-1']
         observed = []
+        # Leader discovery resends the writer's original logical Acquire: the same id returns the same grant
+        # with the serving leader, so probing never supersedes the live holder.
         def led():
-            metadata = self.raw('Acquire', dict(story_id=self.story, writer_identity=identity))
+            metadata = self.raw('Acquire', original)
             if metadata['transport'] == 0 and metadata.get('leader'):
                 observed[:] = [metadata['leader']]
             return metadata if metadata['transport'] == 0 and metadata.get('leader') == 3 else None
@@ -523,14 +556,17 @@ class Scenario:
                     self.stack.start('visor-' + str(observed[0]))
         assert metadata, 'visor-3 never became the leader'
         leader = metadata['leader']
-        old = metadata['response']
+        old = self.granted(metadata['response'])
+        assert int(old['incarnation']) == int(writers['keeper-1'][1]['incarnation']), 'leader probe changed the grant'
         self.append(old)
         prior_incarnation = int(old['incarnation'])
         previous_revision = int(self.route()['revision'])
         self.stack.stop('visor-' + str(leader))
         follower = self.peers[leader % 3]
         self.endpoint, self.internal = follower['catalog_endpoint'], follower['internal_endpoint']
-        replacement = self.wait(lambda: self.acquire(identity))
+        # The intended successor is an explicit own-prior CAS, one logical request across the wait.
+        successor_request = self.acquire_request(identity, expected=prior_incarnation, takeover=True)
+        replacement = self.wait(lambda: self.acquire(identity, request=successor_request))
         assert int(replacement['incarnation']) > prior_incarnation, 'I9.1 incarnation reused after leader kill'
         self.append(replacement)
         assert int(self.route()['revision']) >= previous_revision
@@ -560,7 +596,9 @@ class Scenario:
         self.mark('Keeper partition I4.7 I4.13 SOURCE_FAILED', started)
 
         started = self.begin('successor above cut')
-        successor = self.acquire(identity)
+        # The owner's removal already terminated the old incarnation (OWNER_REMOVED): a conditional plain
+        # Acquire against it succeeds, and would be HELD if it had not.
+        successor = self.acquire(identity, expected=old['incarnation'])
         assert successor['assigned_keeper']['process_id'] == 'keeper-2'
         assert int(successor['incarnation']) > int(old['incarnation'])
         result = self.append(successor)
@@ -600,7 +638,9 @@ class Scenario:
             self.admin('DrainKeeper', owner)
             route = self.wait(lambda: self.changed(before, owner, False))
             self.wait(lambda: self.applied(other, int(route['revision'])))
-            a = self.acquire(identity)
+            # Draining the owner terminated the identity's holder, so this is a conditional plain Acquire.
+            a = self.acquire(identity, expected=successor['incarnation'])
+            successor = a
             assert a['assigned_keeper']['process_id'] == other
             attempt_time, r, end = self.settled(a)
             code = int(r.get('status', {}).get('code', 0))
@@ -660,8 +700,9 @@ class Scenario:
             self.stack.start('grapher-b')
         self.stack.start(other)
         self.wait(failed)
-        # Outside the abandoned range, the successor remains available and correctly ordered.
-        survivor = self.acquire(identity)
+        # Outside the abandoned range, the successor remains available and correctly ordered. The identity's
+        # holder survived on the remaining Keeper, so its successor is an explicit own-prior CAS.
+        survivor = self.acquire(identity, expected=successor['incarnation'], takeover=True)
         new = self.append(survivor)
         assert hlc(new['assigned_hlc']) > hlc(route['ordering_cut'])
         self.complete(start=hlc(new['assigned_hlc']))

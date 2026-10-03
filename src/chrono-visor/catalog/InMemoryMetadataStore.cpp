@@ -1,6 +1,8 @@
 #include "catalog/InMemoryMetadataStore.h"
 
+#include <algorithm>
 #include <optional>
+#include <set>
 #include <utility>
 
 namespace chronolog::visor
@@ -72,19 +74,103 @@ absl::Status InMemoryMetadataStore::destroyChronicle(std::string name)
 {
     if(!validName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
+    std::vector<StoryId> stories;
+    size_t index;
+    {
+        std::lock_guard lock(mutex_);
+        index = findChronicle(name);
+        if(index == kNoChronicle)
+            return absl::NotFoundError("unknown chronicle");
+        if(chronicles_[index].tombstoned)
+            return absl::OkStatus();
+        for(const auto& [id, story]: stories_)
+            if(parent_.at(id) == index && !story.tombstoned)
+                stories.push_back(id);
+    }
+    return destroy(stories, index);
+}
+
+std::vector<AcquisitionChange> InMemoryMetadataStore::expireLocked(const std::vector<RenewAcquisition>& tuples)
+{
+    std::vector<AcquisitionChange> changes;
+    for(const auto& t: tuples)
+    {
+        auto it = acquisitions_.find({t.story_id, t.writer_id});
+        if(it == acquisitions_.end() || it->second.incarnation != t.incarnation || it->second.released)
+            continue;
+        it->second.released = true;
+        AcquisitionChange change{++revision_,
+                                 t.story_id,
+                                 t.writer_id,
+                                 t.incarnation,
+                                 it->second.assigned_keeper,
+                                 AcquisitionState::Released,
+                                 it->second.duration_ns,
+                                 AcquisitionTerminationCause::Expired};
+        releases_[{t.story_id, t.writer_id, t.incarnation}] = change;
+        notify(change);
+        changes.push_back(change);
+    }
+    return changes;
+}
+
+absl::Status InMemoryMetadataStore::sweepExpiry()
+{
+    auto due = leases_.dueTuples(leases_.config().acquisition_expiry_batch);
+    if(!due.ok())
+        return due.status();
+    {
+        std::lock_guard lock(mutex_);
+        expireLocked(*due);
+    }
+    leases_.resolve(*due);
+    return absl::OkStatus();
+}
+
+// Static semantics: materialize the due set, refuse a live row, then prove every EXPIRED or SUPERSEDED fence
+// outside the lock and tombstone only if no newer proof became required.
+absl::Status InMemoryMetadataStore::destroy(const std::vector<StoryId>& stories, std::optional<size_t> chronicle)
+{
+    auto due = leases_.dueTuples(std::set<StoryId>(stories.begin(), stories.end()));
+    if(!due.ok())
+        return due.status();
+    std::map<std::string, std::pair<KeeperRef, uint64_t>> required;
+    auto requirements = [&]
+    {
+        std::map<std::string, std::pair<KeeperRef, uint64_t>> out;
+        for(const auto& [key, change]: releases_)
+            if(std::find(stories.begin(), stories.end(), std::get<0>(key)) != stories.end() &&
+               (change.termination_cause == AcquisitionTerminationCause::Expired ||
+                change.termination_cause == AcquisitionTerminationCause::Superseded))
+            {
+                auto& slot = out[change.assigned_keeper.process_id];
+                if(change.revision >= slot.second)
+                    slot = {change.assigned_keeper, change.revision};
+            }
+        return out;
+    };
+    {
+        std::lock_guard lock(mutex_);
+        expireLocked(*due);
+        leases_.resolve(*due);
+        for(const auto id: stories)
+            if(hasActiveAcquisition(id))
+                return absl::FailedPreconditionError("story has an active acquisition");
+        required = requirements();
+    }
+    for(const auto& [process, proof]: required)
+        if(!fence_waiter_ || !fence_waiter_(proof.first, proof.second))
+            return absl::FailedPreconditionError("static destroy requires a confirmed fence");
     std::lock_guard lock(mutex_);
-    const size_t index = findChronicle(name);
-    if(index == kNoChronicle)
-        return absl::NotFoundError("unknown chronicle");
-    if(chronicles_[index].tombstoned)
-        return absl::OkStatus();
-    for(const auto& [id, story]: stories_)
-        if(parent_.at(id) == index && hasActiveAcquisition(id))
+    for(const auto id: stories)
+        if(hasActiveAcquisition(id))
             return absl::FailedPreconditionError("story has an active acquisition");
-    chronicles_[index].tombstoned = true;
-    for(auto& [id, story]: stories_)
-        if(parent_.at(id) == index)
-            story.tombstoned = true;
+    for(const auto& [process, needed]: requirements())
+        if(!required.contains(process) || required.at(process).second < needed.second)
+            return absl::UnavailableError("static destroy fence proof changed");
+    if(chronicle)
+        chronicles_[*chronicle].tombstoned = true;
+    for(const auto id: stories) stories_.at(id).tombstoned = true;
     return absl::OkStatus();
 }
 
@@ -133,14 +219,12 @@ absl::StatusOr<std::vector<Story>> InMemoryMetadataStore::listStories(std::strin
 
 absl::Status InMemoryMetadataStore::destroyStory(StoryId id)
 {
-    std::lock_guard lock(mutex_);
-    auto it = stories_.find(id);
-    if(it == stories_.end())
-        return absl::NotFoundError("unknown story");
-    if(hasActiveAcquisition(id))
-        return absl::FailedPreconditionError("story has an active acquisition");
-    it->second.tombstoned = true;
-    return absl::OkStatus();
+    {
+        std::lock_guard lock(mutex_);
+        if(!stories_.contains(id))
+            return absl::NotFoundError("unknown story");
+    }
+    return destroy({id}, std::nullopt);
 }
 
 absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::string identity)
@@ -199,6 +283,36 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
     }
     if(options.expected_prior_incarnation && options.expected_prior_incarnation != prior)
         return priorMismatch(prior);
+    std::vector<RenewAcquisition> due;
+    if(prior)
+    {
+        const auto& current = acquisitions_.at({id, writer->second});
+        if(!current.released)
+            if(auto tuple = leases_.dueTuple({current.revision,
+                                              id,
+                                              writer->second,
+                                              current.incarnation,
+                                              current.assigned_keeper,
+                                              AcquisitionState::Acquired,
+                                              current.duration_ns}))
+                due.push_back(*tuple);
+        expireLocked(due);
+        leases_.resolve(due);
+        if(!current.released && !options.takeover)
+        {
+            auto lease = leases_.sample({current.revision,
+                                         id,
+                                         writer->second,
+                                         current.incarnation,
+                                         current.assigned_keeper,
+                                         AcquisitionState::Acquired,
+                                         current.duration_ns},
+                                        false);
+            if(!lease.ok())
+                return lease.status();
+            return heldRefusal(lease->remaining_ns);
+        }
+    }
     if(writer == writers_.end())
         writer = writers_.emplace(identity, ++last_writer_id_).first;
     const auto writer_id = writer->second;

@@ -191,6 +191,18 @@ protected:
             throw std::runtime_error(grant.status().ToString());
         return *grant;
     }
+    // Explicit own-prior CAS takeover with a fresh request id.
+    Acquisition takeover(const std::string& identity, uint64_t prior)
+    {
+        AcquireOptions options;
+        options.takeover = true;
+        options.expected_prior_incarnation = prior;
+        options.acquire_request_id = newAcquireRequestId();
+        auto grant = store_->acquire(story_, identity, options);
+        if(!grant.ok())
+            throw std::runtime_error(grant.status().ToString());
+        return *grant;
+    }
     static RenewAcquisition tuple(const Acquisition& g) { return {g.story_id, g.writer_id, g.incarnation}; }
     // Registers both Keepers and returns the instance of each.
     void registerBoth()
@@ -258,7 +270,7 @@ void EvidenceRig::keeperEvidenceRenewsOnlyCurrentAssignedTuple()
     EXPECT_GT(remaining(first), T * 7 / 8);
 
     // A superseded incarnation renews neither itself nor its successor.
-    const auto second = acquire("w");
+    const auto second = takeover("w", first.incarnation);
     ASSERT_GT(second.incarnation, first.incarnation);
     const auto holder = second.assigned_keeper.process_id;
     advance(T / 2);
@@ -309,7 +321,7 @@ void EvidenceRig::revokedInstanceCannotRenew()
     const int obsolete = static_cast<int>(absl::StatusCode::kFailedPrecondition);
     EXPECT_EQ(heartbeat(owner, old, {tuple(grant)}), obsolete);
     EXPECT_LT(remaining(grant), T * 5 / 8);
-    const auto again = acquire("revoked");
+    const auto again = takeover("revoked", grant.incarnation);
     ASSERT_GT(again.incarnation, grant.incarnation);
     ASSERT_EQ(again.assigned_keeper.process_id, owner);
     advance(T / 2);

@@ -47,7 +47,13 @@ public:
     grpc::Status Acquire(grpc::ServerContext*, const wire::AcquireRequest* r, wire::AcquireResponse* p) override
     {
         ++acquisitions;
+        {
+            std::lock_guard lock(mutex);
+            acquire_requests.push_back(*r);
+        }
         p->set_story_id(r->story_id());
+        p->mutable_lease()->set_duration_ns(300000000000);
+        p->mutable_lease()->set_remaining_ns(300000000000);
         p->set_writer_id(1);
         p->set_incarnation(acquired_incarnation);
         p->mutable_route()->set_epoch(stale ? 1 : 2);
@@ -235,6 +241,7 @@ public:
     std::unique_ptr<grpc::Server> server;
     std::mutex mutex;
     std::vector<wire::AppendItem> seen;
+    std::vector<wire::AcquireRequest> acquire_requests;
     std::vector<wire::Position> resumes;
     std::atomic<int> tails{}, acquisitions{};
     std::atomic<bool> lose_response{};
@@ -366,6 +373,16 @@ TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquir
         server.acquired_incarnation = 2;
         auto fresh = client->acquire(1, "writer");
         ASSERT_TRUE(fresh.ok()) << fresh.status();
+        // The removed owner's incarnation is a terminal (OWNER_REMOVED) predecessor, so the successor is an
+        // ordinary Acquire with a fresh id, never an implicit takeover.
+        ASSERT_EQ(server.acquire_requests.size(), 2u);
+        const auto& initial = server.acquire_requests[0];
+        const auto& successor = server.acquire_requests[1];
+        EXPECT_FALSE(initial.acquire_request_id().empty());
+        EXPECT_FALSE(successor.acquire_request_id().empty());
+        EXPECT_NE(initial.acquire_request_id(), successor.acquire_request_id());
+        EXPECT_FALSE(initial.takeover());
+        EXPECT_FALSE(successor.takeover());
         auto appended = fresh->append(spec);
         ASSERT_TRUE(appended.ok()) << appended.status();
         EXPECT_EQ(appended->acked(), durability == chronolog::Durability::Durable);

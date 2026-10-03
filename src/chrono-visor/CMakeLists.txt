@@ -38,6 +38,7 @@ add_executable(chronolog_visor_tests
     "${PROJECT_SOURCE_DIR}/tests/contract/catalog/catalog_adapter_test.cpp"
     tests/cluster_adapter_test.cpp
     tests/supersede_test.cpp
+    tests/static_destroy_test.cpp
     tests/fence_end_to_end_test.cpp)
 target_include_directories(chronolog_visor_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/tests"

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <atomic>
 #include <mutex>
@@ -60,7 +61,18 @@ public:
     // Static Keeper heartbeat evidence after instance validation; returns the number of tuples renewed.
     absl::StatusOr<size_t> acceptKeeperEvidence(const std::string& keeper, const std::vector<RenewAcquisition>& tuples);
     absl::Status reconcileLeases();
+    // Reconciliation, one bounded expiry sweep, then a completed service tick.
     absl::Status serviceTick();
+    // Static authority: select one bounded due batch and commit its expiry locally.
+    absl::Status sweepExpiry();
+    // The shared terminal transition: expires only still-current unreleased tuples and returns one ordered
+    // outcome per tuple (OK and EXPIRED when newly expired), so a committed no-op still resolves its selection.
+    absl::StatusOr<std::vector<RenewAcquisitionResult>> expireAcquisitions(const std::vector<RenewAcquisition>& tuples);
+    // Raft apply of the destroy wrappers: materialize the carried due set, then the I3.6 active check.
+    absl::Status destroyStoryWithDue(StoryId id, const std::vector<RenewAcquisition>& due);
+    absl::Status destroyChronicleWithDue(std::string name, const std::vector<RenewAcquisition>& due);
+    // The writer identity's current row on the story, live or terminal.
+    absl::StatusOr<std::optional<AcquisitionChange>> currentAcquisition(StoryId id, const std::string& identity) const;
 
     // The commit without the wait, for Raft apply, which must be deterministic and never blocks.
     absl::StatusOr<Acquisition> acquireAfterFence(StoryId id, std::string writer_identity);
@@ -68,7 +80,8 @@ public:
                                                   std::string writer_identity,
                                                   AcquireOptions options,
                                                   int64_t duration_ns,
-                                                  const internal::v1::AcquireCommand* selected = nullptr);
+                                                  const internal::v1::AcquireCommand* selected = nullptr,
+                                                  std::vector<RenewAcquisition> due = {});
     absl::StatusOr<std::vector<AcquisitionChange>> acquisitionRows(const std::vector<RenewAcquisition>& tuples) const;
     absl::StatusOr<AcquisitionSnapshot> scanAcquisitions(std::pair<StoryId, uint64_t> after, size_t limit) const;
     absl::StatusOr<internal::v1::AcquireCommand> prepareAcquire(const v1::AcquireRequest& request,
@@ -130,6 +143,22 @@ private:
                         AcquisitionLeaseConfig leases,
                         bool replica);
     absl::Status initialize();
+    enum class DestroyMode
+    {
+        Apply,
+        Check,
+        Commit
+    };
+    using FenceProofs = std::map<std::string, std::pair<KeeperRef, uint64_t>>;
+    absl::Status destroy(StoryId story, const std::string& chronicle);
+    absl::Status destroyTransaction(StoryId story,
+                                    const std::string& chronicle,
+                                    const std::vector<RenewAcquisition>& due,
+                                    DestroyMode mode,
+                                    FenceProofs& proofs);
+    absl::Status expireLocked(const std::vector<RenewAcquisition>& tuples,
+                              std::vector<RenewAcquisitionResult>& results,
+                              std::vector<AcquisitionChange>& changes);
 
     LeaseAuthority leases_;
     bool replica_{};

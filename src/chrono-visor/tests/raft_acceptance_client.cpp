@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <thread>
 #include <array>
+#include <random>
 #include "chronolog/v1/chronolog.grpc.pb.h"
 using namespace std::chrono_literals;
 namespace v1 = chronolog::v1;
@@ -101,9 +102,15 @@ int main(int argc, char** argv)
             if(!retry([&] { return std::filesystem::exists(std::string(argv[7]) + "/restarted"); }))
                 return 11;
         }
+        // One process-local id per logical round, frozen before the retry loop, so a reply lost to a leader
+        // kill or the all-node restart returns the committed grant instead of a HELD refusal.
+        std::random_device random;
         v1::AcquireRequest q;
         q.set_story_id(story);
         q.set_writer_identity("writer");
+        q.set_acquire_request_id("round-" + std::to_string(round) + "-" + std::to_string(random()) + "-" +
+                                 std::to_string(random()) + "-" + std::to_string(random()) + "-" +
+                                 std::to_string(random()));
         v1::AcquireResponse acquired;
         if(!retry(
                    [&]
