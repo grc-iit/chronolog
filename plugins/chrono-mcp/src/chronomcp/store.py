@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 import fcntl
 import hashlib
 import json
+import ipaddress
 import os
 import pathlib
 import threading
@@ -72,10 +73,32 @@ class Unavailable(Exception):
         self.verdict, self.state, self.next_action = verdict, state, next_action
 
 
+def catalog_key(catalog):
+    targets = []
+    for target in catalog.split(","):
+        target = target.strip()
+        if target.startswith("unix:"):
+            targets.append("unix:" + os.path.abspath(target[5:]))
+            continue
+        host, separator, port = target.rpartition(":")
+        if not separator:
+            raise ValueError("catalog endpoint must include a port")
+        host = host.strip("[]").lower().rstrip(".")
+        if host == "localhost":
+            host = "127.0.0.1"
+        else:
+            try:
+                host = str(ipaddress.ip_address(host))
+            except ValueError:
+                pass
+        targets.append(f"[{host}]:{int(port)}")
+    return ",".join(sorted(set(targets)))
+
+
 class Launcher:
     """The stable base slot, the fresh run session id and the host-local locks held for the launch."""
 
-    def __init__(self, base, session_id, host_id, lock_dir, catalog):
+    def __init__(self, base, session_id, host_id, lock_dir, catalog, legacy_lock_dir=None):
         self.base, self.session_id, self.host_id = base, session_id, host_id
         self.lock_dir = pathlib.Path(lock_dir)
         self.held = False
@@ -83,23 +106,28 @@ class Launcher:
         if base is None:
             return
         self.lock_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        key = hashlib.sha256(f"{catalog}\n{base}".encode()).hexdigest()[:32]
+        legacy_dir = pathlib.Path(legacy_lock_dir or lock_dir)
+        legacy_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        key = hashlib.sha256(f"catalog:{catalog_key(catalog)}\n{base}".encode()).hexdigest()[:32]
+        legacy_key = hashlib.sha256(f"{catalog}\n{base}".encode()).hexdigest()[:32]
         self.slot_path = self.lock_dir / f"slot-{key}.lock"
-        self.hints_path = self.lock_dir / f"slot-{key}.json"
-        self.lock_id = f"flock:{self.slot_path}"
-        slot = self._lock(self.slot_path)
-        if slot is None:
-            return
-        session = self._lock(self.lock_dir / f"session-{hashlib.sha256(session_id.encode()).hexdigest()[:32]}.lock")
-        if session is None:
-            slot.close()
-            return
-        self._files = [slot, session]
+        legacy_path = legacy_dir / f"slot-{legacy_key}.lock"
+        self.hints_path = legacy_dir / f"slot-{legacy_key}.json"
+        # Retain the prior provenance while holding both lock keys for the migration release.
+        self.lock_id = f"flock:{legacy_path}"
+        paths = [self.slot_path, legacy_path, self.lock_dir / f"slot-{legacy_key}.lock",
+                 self.lock_dir / f"session-{hashlib.sha256(session_id.encode()).hexdigest()[:32]}.lock"]
+        for path in dict.fromkeys(paths):
+            handle = self._lock(path)
+            if handle is None:
+                self.release()
+                return
+            self._files.append(handle)
         self.held = True
 
     @staticmethod
     def _lock(path):
-        handle = open(path, "a+")
+        handle = os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600), "a+")
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

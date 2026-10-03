@@ -6,7 +6,7 @@ if(Python3_Interpreter_FOUND)
             --outdir "${PROJECT_BINARY_DIR}/smoke/wheels" "${CMAKE_CURRENT_SOURCE_DIR}")
     if(CHRONOLOG_BUILD_PYTHON AND TARGET python_package AND TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
         # One stack per file: the acceptance script bounds each pytest run to 60 s.
-        foreach(suite tools recovery takeover bounds)
+        foreach(suite tools recovery takeover bounds local2_a)
             add_test(NAME plugin.mcp.${suite} COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash "${PROJECT_SOURCE_DIR}/client/python/tests/acceptance.sh"
                 $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
                 "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${suite}.py")

@@ -19,6 +19,11 @@
       },
       "environmentVariables": [
         {
+          "name": "CHRONOLOG_HOME",
+          "description": "Local state root; shared MCP slot locks live under locks",
+          "default": "${XDG_STATE_HOME:-$HOME/.local/state}/chronolog"
+        },
+        {
           "name": "CHRONOLOG_CATALOG",
           "description": "Public ChronoLog Catalog endpoint",
           "default": "127.0.0.1:50051"

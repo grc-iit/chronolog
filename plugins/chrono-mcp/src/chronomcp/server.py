@@ -4,6 +4,7 @@ import asyncio
 import base64
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import datetime, timezone
 from functools import wraps
 import math
 import os
@@ -42,6 +43,31 @@ def _bound(value, low, high, name):
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
         raise ValueError(f"{name} must be an integer between {low} and {high}")
     return value
+
+
+def chronolog_home():
+    return os.getenv("CHRONOLOG_HOME") or os.path.join(
+        os.getenv("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "chronolog")
+
+
+def acceptance_bound(value, name):
+    if isinstance(value, int) and not isinstance(value, bool):
+        ns = value
+    elif isinstance(value, str):
+        match = re.fullmatch(
+            r"(\d{4}-\d{2}-\d{2})[Tt](\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?([Zz]|[+-]\d{2}:\d{2})", value)
+        if match is None:
+            raise ValueError(f"{name} must be int64 nanoseconds or RFC 3339 with a timezone and at most 9 fractional digits")
+        date, clock, fraction, offset = match.groups()
+        if offset.lower() != "z" and (int(offset[1:3]) > 23 or int(offset[4:]) > 59):
+            raise ValueError(f"{name} has an invalid timezone offset")
+        instant = datetime.fromisoformat(f"{date}T{clock}{'+00:00' if offset.lower() == 'z' else offset}")
+        delta = instant.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+        ns = (delta.days * 86400 + delta.seconds) * 1_000_000_000 + int((fraction or "").ljust(9, "0"))
+    else:
+        raise ValueError(f"{name} must be int64 nanoseconds or RFC 3339")
+    _bound(ns, -(2**63), 2**63 - 1, name)
+    return cl.Hlc(ns, 0)
 
 
 def _status(s):
@@ -128,7 +154,8 @@ class _State:
         self.contexts = cl.connect_context(cl.ContextOptions(
             args.catalog, args.player, timeout=args.timeout,
             max_checkpoint_payload_bytes=args.max_checkpoint_payload_bytes), timeout=args.timeout)
-        self.launcher = Launcher(args.identity, args.session_id, args.host_id, args.lock_dir, args.catalog)
+        self.launcher = Launcher(args.identity, args.session_id, args.host_id, args.lock_dir, args.catalog,
+                                 getattr(args, "legacy_lock_dir", None))
         self.store = None
         self.store_error = None
         if args.identity is not None:
@@ -273,6 +300,8 @@ def create_server(args):
         raise ValueError("timeout must be finite and between 0 and 300 seconds")
     if not 0 < args.max_checkpoint_payload_bytes <= args.keeper_payload_max_bytes:
         raise ValueError("max_checkpoint_payload_bytes must be positive and at most the Keeper payload_max_bytes")
+    json_default = getattr(args, "max_json_bytes", DEFAULT_JSON)
+    _bound(json_default, 1024, 1 << 20, "max_json_bytes")
     shared = {}
 
     @asynccontextmanager
@@ -507,11 +536,15 @@ def create_server(args):
     @server.tool()
     @_threaded
     def context_recall(session_handle: str, cursor: str | None = None, start: str | None = None,
-                       end: str | None = None, max_events: int = DEFAULT_EVENTS, max_json_bytes: int = DEFAULT_JSON,
-                       view: str = "compact", max_read_calls: int = 32) -> str:
+                       end: str | None = None, max_events: int = DEFAULT_EVENTS, max_json_bytes: int = json_default,
+                       view: str = "compact", max_read_calls: int = 32,
+                       since: int | str | None = None, until: int | str | None = None) -> str:
         """Read a context in Replay order. Omitted start is the beginning, omitted end a verified cut; start and end
         are opaque `at` tokens from returned events (end is exclusive). Pass next_cursor alone to continue; it
-        carries the range. Check verdict and answer_complete before treating a missing event as absent."""
+        carries the range. since/until accept int64 nanoseconds or RFC 3339, exclusive of start/end/cursor;
+        until is exclusive. They map to Hlc{t, 0}: Keeper CLOCK_REALTIME at acceptance, with HLC lead at most D
+        (61 s by default), so these are acceptance-time ranges (I8.7, I8.8), not writer-time readPhysical ranges.
+        HLC coverage can be complete (I6.1). Check verdict and answer_complete before treating a missing event as absent."""
         s = st()
         session = s.session(session_handle)
         _bound(max_events, 1, 1000, "max_events")
@@ -521,7 +554,13 @@ def create_server(args):
             raise ValueError("view must be compact or full")
         if cursor is not None and (start is not None or end is not None):
             raise ValueError("a cursor carries its range; pass it alone")
-        options = cl.RecallOptions(start=at_value(session, start, "start"), end=at_value(session, end, "end"),
+        if (since is not None or until is not None) and any(v is not None for v in (start, end, cursor)):
+            raise ValueError("since/until are exclusive of start/end/cursor")
+        lower = acceptance_bound(since, "since") if since is not None else at_value(session, start, "start")
+        upper = acceptance_bound(until, "until") if until is not None else at_value(session, end, "end")
+        if lower is not None and upper is not None and lower >= upper:
+            raise ValueError("range start must be before its exclusive end")
+        options = cl.RecallOptions(start=lower, end=upper,
                                    cursor=cursor, limits=cl.PageLimits(max_events, max_json_bytes),
                                    max_read_calls=max_read_calls)
         page = session.native.recall(options=options, timeout=args.timeout)
@@ -556,9 +595,12 @@ def create_server(args):
     @server.tool()
     @_threaded
     def context_latest(session_handle: str, n: int = 10, before: str | None = None, max_read_calls: int = 32,
-                       max_json_bytes: int = DEFAULT_JSON, view: str = "compact") -> str:
+                       max_json_bytes: int = json_default, view: str = "compact",
+                       until: int | str | None = None) -> str:
         """The last n events of a context before an optional `at` token (exclusive), oldest first, at a disclosed
-        verified as_of. selection_complete says the last-n selection is proven."""
+        verified as_of. until accepts int64 nanoseconds or RFC 3339, exclusive of before, as Hlc{t, 0}.
+        This is Keeper acceptance time, CLOCK_REALTIME with HLC lead at most D (61 s by default; I8.7, I8.8),
+        not writer-time readPhysical. HLC coverage can be complete (I6.1). selection_complete says the last-n selection is proven."""
         s = st()
         session = s.session(session_handle)
         _bound(n, 1, 1000, "n")
@@ -566,8 +608,11 @@ def create_server(args):
         _bound(max_read_calls, 1, 256, "max_read_calls")
         if view not in ("compact", "full"):
             raise ValueError("view must be compact or full")
+        if until is not None and before is not None:
+            raise ValueError("until is exclusive of before")
+        upper = acceptance_bound(until, "until") if until is not None else at_value(session, before, "before")
         result = session.native.latest(n, options=cl.LatestOptions(
-            before=at_value(session, before, "before"), limits=cl.PageLimits(max(n, 1), max_json_bytes),
+            before=upper, limits=cl.PageLimits(max(n, 1), max_json_bytes),
             max_read_calls=max_read_calls), timeout=args.timeout)
         page = result.page
         projected, count, _ = fit(page.events, view, max_json_bytes - 2048, False)
@@ -589,7 +634,7 @@ def create_server(args):
     @server.tool()
     @_threaded
     def context_follow(subscriptions: list[dict], timeout_s: float = 5.0, max_events: int = DEFAULT_EVENTS,
-                       max_json_bytes: int = DEFAULT_JSON, view: str = "compact") -> str:
+                       max_json_bytes: int = json_default, view: str = "compact") -> str:
         """Wait for new events on one or more contexts under one shared deadline. Each subscription is
         {session_handle, from: "now" | "beginning" | follow_token}. Returns when any context has events or the wait
         ends idle; every context gets a next follow_token, which survives server restarts. Never complete."""
@@ -809,7 +854,9 @@ def main():
                         help="the launcher's run session id; fresh per independent run")
     parser.add_argument("--host-id", default=os.getenv("CHRONOLOG_MCP_HOST_ID") or socket.gethostname())
     parser.add_argument("--lock-dir", default=os.getenv("CHRONOLOG_MCP_LOCK_DIR") or os.path.join(
-        os.getenv("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache"), "chronolog-mcp"))
+        chronolog_home(), "locks"))
+    parser.add_argument("--max-json-bytes", type=int, default=DEFAULT_JSON,
+                        help="default tool JSON budget; use 14336 for clio-coder (one event or HLC group may exceed it)")
     parser.add_argument("--state-chronicle", default=os.getenv("CHRONOLOG_MCP_STATE_CHRONICLE", "agent-state"))
     parser.add_argument("--max-checkpoint-payload-bytes", type=int, default=1 << 20)
     parser.add_argument("--keeper-payload-max-bytes", type=int, default=1 << 20,
@@ -821,6 +868,10 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+    args.legacy_lock_dir = args.lock_dir
+    if args.lock_dir == os.path.join(chronolog_home(), "locks") and not os.getenv("CHRONOLOG_MCP_LOCK_DIR"):
+        args.legacy_lock_dir = os.path.join(
+            os.getenv("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache"), "chronolog-mcp")
     server = create_server(args)
 
     def stop(*_):
