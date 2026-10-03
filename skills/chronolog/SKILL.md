@@ -13,13 +13,62 @@ Mental model in one line: chronicles hold stories, stories hold events, events a
 
 | You want to | Go to |
 |---|---|
-| Bring up a stack and see it work in five minutes | Quickstart below |
+| Find an instance or start one for an agent | Local instances below, then references/local-instances.md |
+| Run the compose demo | Compose quickstart below |
 | Use ChronoLog from your own code or as an agent | "Use it yourself" below, then references/api.md |
 | Explain or present ChronoLog | "Demo it" below, then references/demo.md |
 | Understand the guarantees and the moving parts | references/concepts.md |
 | Deploy across machines, run dynamic membership, debug | references/operations.md |
 
-## Quickstart
+## Local instances
+
+Use the installed `chronolog` launcher for agent memory. It needs Python 3.12; the `chronolog-local` wheel supplies the launcher, the `chronolog` wheel supplies RPC probes, and the `server` install component supplies the four executables. `chronolog doctor` names the executables it will run. In a source tree, `CHRONOLOG_BIN_DIR` can point to `build/dev`; installed servers can sit beside the launcher or on PATH.
+
+Discover before starting anything:
+
+```bash
+chronolog doctor
+chronolog ls
+```
+
+An explicit `CHRONOLOG_CATALOG`, with optional `CHRONOLOG_PLAYER`, overrides registry selection for `run` and `env`. Otherwise choose a `ready` instance by name; a compose demo started with `chronolog-demo up` appears as an external instance with engine and project metadata. For an existing ready instance, substitute its name for `default` in the commands below. A `degraded` instance needs diagnosis before use. If no suitable instance is ready, start the default:
+
+```bash
+chronolog up default
+chronolog status default --probe
+```
+
+`up` waits for readiness. `status --probe` reports the RPC probe when the SDK wheel is installed, otherwise a TCP probe. Start the MCP process through the launcher so it holds a lease and receives the selected endpoints and shared lock directory:
+
+```bash
+chronolog run --up default -- chronolog-mcp --identity agent-memory/main --chronicle agent-memory
+```
+
+When MCP is already connected, use `instance_list(probe=true)` to discover and probe records, then `instance_control(action="attach", name="default")` for a ready instance or `instance_control(action="up", name="default", create=true)` to boot and bind it. Creation requires `create=true`; omit it when the record must already exist. A server with no configured endpoints or ready selection stays unbound and offers these tools instead of starting a stack implicitly. Close writable contexts before switching instances. The CLI path above supplies storage and port options that the MCP tools do not expose.
+
+For Claude Code, use this command as the MCP server command with `claude mcp add chronolog -- chronolog run --up default -- chronolog-mcp --identity agent-memory/main --chronicle agent-memory`. Codex and clio-coder use the same command and arguments; see [local-instances.md](references/local-instances.md) for configuration, storage placement and recovery. Keep identities stable for one writer slot and give independently writing agents distinct identities.
+
+The default policy keeps the instance running after the MCP process exits and drops its lease. Leave it up at session end. Stop it only when the user requests that, or when it is a throwaway ephemeral instance:
+
+```bash
+chronolog down default
+```
+
+`down` refuses a foreign live lease. Close its holder rather than forcing another agent off. Stopping preserves data and endpoints. For a throwaway run, `chronolog up scratch --ephemeral` sets the stop-on-last-detach policy; after its idle grace the supervisor stops it. Purge only disposable data with `chronolog down scratch --purge`.
+
+In MCP, `instance_control(action="detach")` closes this server's contexts and drops its lease, preserving the default instance. `instance_control(action="down", name="default")` requests ordered stop only when the user asks; foreign leases still block it. A launcher wrapper holds a separate lease until its process exits. For MCP-created disposable instances, `on_last_detach="stop"` and `idle_grace_s` set the creation policy. Use the CLI for purge. See [api.md](references/api.md) for all twelve tools and the `since`/`until` acceptance-time bounds for recall and latest.
+
+When boot or an RPC fails, inspect the executable paths and logs:
+
+```bash
+chronolog doctor
+chronolog logs default --service supervisor --lines 40
+chronolog logs default --service visor --lines 40
+```
+
+The marketplace uses the launcher when installed and otherwise keeps the `uvx chronolog-mcp==4.0.0` path for an already running deployment. Explicit harness configuration is the way to share a custom `CHRONOLOG_HOME`; the marketplace's existing environment allowlist is unchanged. The executable walkthrough is [scripts/local-walkthrough.py](scripts/local-walkthrough.py); run it from a built source tree with its smoke venv, launcher wheel and server component installed.
+
+## Compose quickstart
 
 The demo kit lives in `deploy/demo/`. One script drives everything; every subcommand takes `--engine podman|docker` (default: podman when installed, else docker).
 
@@ -93,20 +142,20 @@ with client.read(notes, None, end) as reader:
 ```
 
 Rules that keep an agent correct:
-- Check `reader.completion.complete` before concluding anything from absence. A fresh write becomes readable as complete once the Keeper seals past it (sub-second with the demo settings); if `complete` is false, read again after a short wait or report the `reason` (`LAGGING_WRITERS`, `SOURCE_FAILED`, `TRUNCATED`, `PHYSICAL_AXIS_UNBOUNDED`).
+- Check `reader.completion.complete` before concluding anything from absence. A fresh write becomes readable as complete once the Keeper seals past it; if `complete` is false, read again after a short wait or report the `reason` (`LAGGING_WRITERS`, `SOURCE_FAILED`, `TRUNCATED`, `PHYSICAL_AXIS_UNBOUNDED`).
 - Appends default to DURABLE (fsynced in the Keeper WAL before the ack). `Durability.ACCEPTED` is faster and lives only in Keeper RAM until archived; a Keeper crash can lose it.
 - Use `client.tail(story, after=event)` to follow a story live; never poll `read` in a loop. Tail never claims completeness.
 - Retries are safe: the SDK retries with the same EventId and the Keeper deduplicates.
 - Causality is automatic: whatever a client has read or tailed is ordered before its next append, across stories and machines. Share one Client per agent process so it carries what that agent has seen.
 - Wall-clock questions ("what happened between 14:00 and 14:05") use the physical-time read; it is complete only when the writers' clocks were disciplined. See references/concepts.md.
 
-Agents with MCP: register the bundled server with Claude Code against a running stack:
+For a local instance, register MCP through the launcher as above. To address a remote or manually configured stack directly, register the bundled server with Claude Code:
 
 ```bash
 claude mcp add chronolog -- <venv>/bin/chronolog-mcp --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --chronicle agent-memory --identity agent-memory/main
 ```
 
-Tools: `context_open`, `context_remember`, `context_recall`, `context_latest`, `context_follow`, `context_reconcile`, `context_checkpoint`, `context_close`, `context_list`, `context_status`. A context is one story in the launcher's chronicle; `--identity` is the stable slot writable tools need, and each `agent` label is its own writer inside it. Reuse an operation_id when retrying after an error or timeout; pass every operation_id without a seen outcome to `context_reconcile`, since omitted ids may duplicate. Read `verdict` and `answer_complete` before concluding anything from absence. Any MCP client takes the same command and arguments. OpenTelemetry users can export GenAI spans straight into ChronoLog with `chronolog[otel]` (references/api.md).
+Twelve tools: `instance_list`, `instance_control`, `context_open`, `context_remember`, `context_recall`, `context_latest`, `context_follow`, `context_reconcile`, `context_checkpoint`, `context_close`, `context_list`, `context_status`. A context is one story in the launcher's chronicle; `--identity` is the stable slot writable tools need, and each `agent` label is its own writer inside it. Reuse an operation_id when retrying after an error or timeout; pass every operation_id without a seen outcome to `context_reconcile`, since omitted ids may duplicate. Read `verdict` and `answer_complete` before concluding anything from absence. Any MCP client takes the same command and arguments. OpenTelemetry users can export GenAI spans straight into ChronoLog with `chronolog[otel]` (references/api.md).
 
 Command-line tools (in `build/dev/...` or the bundle's `bin/`): `chronolog_kvs` (versioned key-value), `chronolog_sql` (append-only tables with SELECT), `chronolog_admin` (cluster membership), `chronolog_stream_collect` and `chronolog_stream_export` (telemetry to InfluxDB). Usage strings are in references/api.md.
 

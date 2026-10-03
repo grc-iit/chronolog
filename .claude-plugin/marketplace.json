@@ -23,9 +23,10 @@
       ],
       "mcpServers": {
         "chronolog": {
-          "command": "uvx",
+          "command": "sh",
           "args": [
-            "chronolog-mcp==4.0.0"
+            "-c",
+            "if command -v chronolog >/dev/null 2>&1; then exec chronolog run --up default -- chronolog-mcp; else exec uvx chronolog-mcp==4.0.0; fi"
           ],
           "env_vars": [
             "CHRONOLOG_CATALOG",

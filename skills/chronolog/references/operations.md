@@ -1,5 +1,7 @@
 # Operating ChronoLog
 
+For agent discovery, local boot, leases, storage placement and recovery, start with [local-instances.md](local-instances.md). Containers below remain the demo path.
+
 ## Build from source
 
 Requirements: Linux x86_64 (developed on Ubuntu 24.04), GCC 13, CMake with presets, Ninja, Python 3.12 with venv, Node 22 for the TypeScript binding, and vcpkg at the baseline pinned in `vcpkg.json` (`VCPKG_ROOT` set). The first configure builds gRPC, protobuf, HDF5, SQLite, NuRaft and curl through vcpkg; that takes a long time and a lot of memory, so build on a server rather than a laptop.
@@ -32,7 +34,7 @@ Advertised endpoints matter: a Keeper advertises one address, and clients connec
 
 ## Several machines
 
-`deploy/cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `deploy/cluster/run_dragon.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts. Measured on a three-node homelab over NFS: median 85.7 ms and maximum 201.5 ms from publish to visible.
+`deploy/cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `deploy/cluster/run_dragon.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts.
 
 ## Dynamic membership
 

@@ -103,22 +103,28 @@ Story ids are `bigint`. `tail(story, after)` and `readPhysical(story, {startNs, 
 
 ## MCP server (`chronolog-mcp`, wheel `chronolog_mcp-4.0.0-py3-none-any.whl`)
 
-`chronolog-mcp [--catalog 127.0.0.1:50051] [--player HOST:PORT] [--chronicle chronolog] [--identity BASE_SLOT] [--session-id ID] [--host-id ID] [--lock-dir DIR] [--state-chronicle agent-state] [--max-checkpoint-payload-bytes 1048576] [--keeper-payload-max-bytes 1048576] [--idle-close-s 1800] [--timeout 10] [--transport stdio|http] [--host 127.0.0.1] [--port 8000]`. Environment equivalents: `CHRONOLOG_CATALOG`, `CHRONOLOG_PLAYER`, `CHRONOLOG_CHRONICLE`, `CHRONOLOG_MCP_IDENTITY` (or `CHRONOLOG_WRITER_IDENTITY`), `CHRONOLOG_MCP_SESSION_ID`, `CHRONOLOG_MCP_HOST_ID`, `CHRONOLOG_MCP_LOCK_DIR`, `CHRONOLOG_MCP_STATE_CHRONICLE`, `MCP_TRANSPORT`. Writable tools need `--identity`.
+`chronolog-mcp [--catalog 127.0.0.1:50051] [--player HOST:PORT] [--chronicle chronolog] [--identity BASE_SLOT] [--session-id ID] [--host-id ID] [--lock-dir DIR] [--state-chronicle agent-state] [--max-checkpoint-payload-bytes 1048576] [--keeper-payload-max-bytes 1048576] [--max-json-bytes 24576] [--idle-close-s 1800] [--timeout 10] [--transport stdio|http] [--host 127.0.0.1] [--port 8000]`. Environment equivalents: `CHRONOLOG_CATALOG`, `CHRONOLOG_PLAYER`, `CHRONOLOG_CHRONICLE`, `CHRONOLOG_MCP_IDENTITY` (or `CHRONOLOG_WRITER_IDENTITY`), `CHRONOLOG_MCP_SESSION_ID`, `CHRONOLOG_MCP_HOST_ID`, `CHRONOLOG_MCP_LOCK_DIR`, `CHRONOLOG_MCP_STATE_CHRONICLE`, `CHRONOLOG_HOME`, `CHRONOLOG_INSTANCE`, `CHRONOLOG_AUTOSTART=1`, `MCP_TRANSPORT`. Writable tools need `--identity`.
 
 Every result leads with `verdict`, `answer_complete`, `has_more`, `next_cursor`. Ids and nanoseconds are decimal strings; cursors, `at` bounds, follow tokens, ref tokens and checkpoint ids are opaque strings.
 
 | Tool | Parameters |
 |---|---|
+| `instance_list` | `probe=False`; returns `instances`, `bound_instance_id`; `probe=True` checks endpoints, otherwise external records are `unprobed` |
+| `instance_control` | `action="up"\|"attach"\|"detach"\|"down"`, `name="default"`, `create=False`, `on_last_detach="keep"\|"stop"`, `idle_grace_s`, `force=False`; returns `changed`, `instance`; close writable sessions before rebinding, detach closes this server's sessions, down refuses foreign leases unless forced |
 | `context_open` | `name` or `ref_token`, `agent="self"`, `create=False`, `access="read_write"\|"read_only"`, `resume=False`, `checkpoint_id`; returns `session_handle`, `state` (`READY`, `NEEDS_RECONCILE`, `FENCED`), `takeover_required` |
 | `context_remember` | `session_handle`, `operation_id`, `content` (text or `{encoding: utf8\|base64, data}`), `content_type`, `attributes`, `trace_id`, `span_id`, `durability="durable"`, `physical_ns`, `resend_after_absent=False`; returns `stored` (`durable`, `ram_only_may_vanish`, `rejected`, `unknown`) |
-| `context_recall` | `session_handle`, `cursor` or `start`/`end` (`at` tokens), `max_events=50`, `max_json_bytes=24576`, `view="compact"\|"full"`, `max_read_calls=32` |
-| `context_latest` | `session_handle`, `n=10`, `before` (`at` token), `max_read_calls`, `max_json_bytes`, `view`; returns `as_of`, `selection_complete` |
+| `context_recall` | `session_handle`, `cursor` or `start`/`end` (`at` tokens) or `since`/`until` (integer nanoseconds or RFC 3339), `max_events=50`, `max_json_bytes=24576`, `view="compact"\|"full"`, `max_read_calls=32` |
+| `context_latest` | `session_handle`, `n=10`, `before` (`at` token) or `until` (integer nanoseconds or RFC 3339), `max_read_calls`, `max_json_bytes`, `view`; returns `as_of`, `selection_complete` |
 | `context_follow` | `subscriptions=[{session_handle, from: "now"\|"beginning"\|follow_token}]`, `timeout_s=5` (max 60), `max_events`, `max_json_bytes`, `view` |
 | `context_reconcile` | `session_handle` (omit to recover the checkpoint store), `operation_ids`, `takeover=False`, `max_read_calls`; LANDED, ABSENT or UNKNOWN per id |
 | `context_checkpoint` | `session_handle` (default: every writable handle), `processed` (follow tokens); returns `checkpoint_id` |
 | `context_close` | `session_handle`; `release_committed`, `fenced`, `close_record` |
 | `context_list` | `chronicle=None` |
-| `context_status` | `session_handle` or `agent` |
+| `context_status` | `session_handle` or `agent`; returns bound `instance` metadata, attach count, tiers and clock alongside session status |
+
+`since`/`until` map to HLC `{physical_ns: t, logical: 0}`. Recall uses an inclusive lower bound and exclusive upper bound; do not combine these conveniences with `start`, `end` or `cursor`. Continue a page with `next_cursor` alone. Latest uses an exclusive `until`, mutually exclusive with `before`. These are Keeper acceptance-time bounds, not writer physical-time reads: the HLC follows Keeper CLOCK_REALTIME and can lead it by the policy bound D (61 seconds by default). Historical timestamps inside payloads do not alter event acceptance time. Check `answer_complete` for recall and `selection_complete` plus `as_of` for latest. Live follow never certifies a range.
+
+Without a bound instance, context tools return `store_state="unbound"` and guidance to call `instance_control`. Local instance tools need the `chronolog-local` wheel and local server binaries. Explicit Catalog configuration takes precedence at startup; `CHRONOLOG_AUTOSTART=1` explicitly opts into booting the selected managed instance. See [local-instances.md](local-instances.md) for lifecycle decisions.
 
 ## Command-line tools
 
