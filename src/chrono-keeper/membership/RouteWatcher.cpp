@@ -61,31 +61,40 @@ bool RouteWatcher::session(std::stop_token stop)
     {
         if(message.snapshot_end())
         {
-            if(!marked && journal_)
+            if(!marked)
             {
-                conclude(message.revision(), floor);
-                journal_->acknowledgeRoutes(message.revision());
+                if(journal_)
+                {
+                    conclude(message.revision(), floor);
+                    journal_->acknowledgeRoutes(message.revision());
+                }
+                membership_.acknowledgeRoutes(message.revision());
             }
             marked = true;
             continue;
         }
-        apply(message);
+        apply(message, marked);
         // Stream order: every revision up to this one has been applied (W10.6).
-        if(marked && journal_)
-            journal_->acknowledgeRoutes(message.revision());
+        if(marked)
+        {
+            membership_.acknowledgeRoutes(message.revision());
+            if(journal_)
+                journal_->acknowledgeRoutes(message.revision());
+        }
     }
     reader->Finish();
     // A stream that ended before its marker is a failed connect, retried with the backoff.
     return marked;
 }
 
-void RouteWatcher::apply(const iv1::WatchRoutesResponse& message)
+void RouteWatcher::apply(const iv1::WatchRoutesResponse& message, bool acknowledge)
 {
     // A tombstone is applied before the epoch and revision guards, whatever its revision, and never moves the
     // applied revision. Every later update for the story is ignored (I3.5).
     if(message.tombstoned())
     {
         tombstoned_.insert(message.story_id());
+        membership_.tombstone(message.story_id());
         if(journal_)
             (void)journal_->dropStory(message.story_id(), true);
         return;
@@ -107,14 +116,15 @@ void RouteWatcher::apply(const iv1::WatchRoutesResponse& message)
     prior = {message.revision(), message.route().epoch()};
     learned_.try_emplace(message.story_id(), message.revision());
     auto state = convert::routeState(message);
-    auto install = [&] { membership_.setRouteState(message.story_id(), state); };
+    auto install = [&] { membership_.setRouteState(message.story_id(), state, message.revision()); };
     if(journal_)
         journal_->applyRoute(message.story_id(),
                              state,
                              std::find(message.observe_floor().begin(), message.observe_floor().end(), process_id_) !=
                                      message.observe_floor().end(),
                              message.revision(),
-                             install);
+                             install,
+                             acknowledge);
     else
         install();
 }
@@ -144,6 +154,7 @@ void RouteWatcher::conclude(uint64_t revision, uint64_t floor)
             continue;
         }
         tombstoned_.insert(story);
+        membership_.tombstone(story);
         (void)journal_->dropStory(story, true);
     }
     {
@@ -182,7 +193,10 @@ void RouteWatcher::reconcile(std::stop_token stop)
                 if(tombstone.ok())
                 {
                     if(*tombstone)
+                    {
+                        membership_.tombstone(story);
                         (void)journal_->dropStory(story, true);
+                    }
                     break;
                 }
                 std::unique_lock lock(mu_);

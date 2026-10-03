@@ -42,7 +42,7 @@ public:
 
 private:
     bool session(std::stop_token stop);
-    void apply(const internal::v1::WatchRoutesResponse& message);
+    void apply(const internal::v1::WatchRoutesResponse& message, bool acknowledge);
     void conclude(uint64_t revision, uint64_t floor);
     void reconcile(std::stop_token stop);
 
