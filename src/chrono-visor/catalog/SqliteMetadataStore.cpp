@@ -914,6 +914,12 @@ absl::StatusOr<KeeperRef> SqliteMetadataStore::releasedKeeper(StoryId id, uint64
         return absl::NotFoundError("release not found");
     return KeeperRef{q.columnText(0), q.columnText(1)};
 }
+int64_t SqliteMetadataStore::totalChanges() const
+{
+    std::lock_guard lock(mutex_);
+    return sqlite3_total_changes64(db_);
+}
+
 absl::StatusOr<uint64_t> SqliteMetadataStore::appliedIndex() const
 {
     std::lock_guard lock(mutex_);

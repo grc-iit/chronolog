@@ -62,6 +62,8 @@ public:
 
     absl::StatusOr<std::string> applyRaft(uint64_t index, const std::function<std::string()>& apply);
     absl::StatusOr<uint64_t> appliedIndex() const;
+    // Rows written on this connection, including Raft bookkeeping, for apply-cost tests.
+    int64_t totalChanges() const;
     absl::StatusOr<KeeperRef> releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const;
     absl::Status backupTo(const std::string& path) const;
     absl::Status installFrom(const std::string& path);
