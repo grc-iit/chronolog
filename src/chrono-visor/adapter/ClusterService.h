@@ -127,6 +127,11 @@ private:
     std::map<std::string, internal::v1::AppliedRouteRevision> applied_routes_;
     uint64_t leader_term_{};
     std::chrono::steady_clock::time_point leader_since_;
+    // The instance and time of each process's latest Heartbeat as it reached this replica, before the call queues or
+    // is refused, so the leader's own queueing, slow apply or lease lapse never reads as Keeper silence (I4.9). Never
+    // held across I/O.
+    std::mutex arrival_mutex_;
+    std::map<std::string, std::pair<std::string, std::chrono::steady_clock::time_point>> arrivals_;
     std::chrono::milliseconds failure_timeout_{15000};
     std::unique_ptr<Clock> owned_clock_;
     const Clock* clock_;

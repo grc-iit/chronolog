@@ -242,9 +242,20 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                                         if(member.joined() && !member.process().instance().empty() &&
                                            !raft_->appliedStore().membershipWouldEmpty(member.process().process_id()))
                                         {
-                                            auto it = heartbeats_.find(member.process().process_id());
-                                            if(it == heartbeats_.end() || now - it->second >= failure_timeout_)
-                                                failed.push_back(member.process().process_id());
+                                            const auto& id = member.process().process_id();
+                                            std::optional<std::chrono::steady_clock::time_point> heard;
+                                            if(auto it = heartbeats_.find(id); it != heartbeats_.end())
+                                                heard = it->second;
+                                            {
+                                                std::lock_guard arrival_lock(arrival_mutex_);
+                                                if(auto it = arrivals_.find(id);
+                                                   it != arrivals_.end() &&
+                                                   it->second.first == member.process().instance())
+                                                    heard = std::max(heard.value_or(it->second.second),
+                                                                     it->second.second);
+                                            }
+                                            if(!heard || now - *heard >= failure_timeout_)
+                                                failed.push_back(id);
                                         }
                                 }
                             }
@@ -399,7 +410,13 @@ grpc::ServerUnaryReactor* ClusterService::Heartbeat(grpc::CallbackServerContext*
                                                     internal::v1::HeartbeatResponse* response)
 {
     if(raft_)
+    {
+        {
+            std::lock_guard lock(arrival_mutex_);
+            arrivals_[request->process_id()] = {request->instance(), std::chrono::steady_clock::now()};
+        }
         return dynamicCall(context, request, response);
+    }
     grpc::ServerUnaryReactor* reactor = context->DefaultReactor();
     auto task = [this, request = *request, response, reactor]
     {
