@@ -14,10 +14,11 @@ add_library(chrono_player_lib STATIC
     adapter/ClusterClient.cpp
     adapter/Convert.cpp
     adapter/ReplayService.cpp
+    adapter/VisorClockAudit.cpp
     replay/KeeperHotSource.cpp
     replay/WriterDirectory.cpp)
 target_link_libraries(chrono_player_lib
-    PUBLIC chrono_player_replay chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json
+    PUBLIC chrono_player_replay chronolog_common_clock chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json
     PRIVATE chronolog_warnings absl::log)
 
 add_executable(chrono_player main.cpp)
@@ -46,6 +47,8 @@ chrono_player_test(chrono_player_cold_replay_test "tests/cold_replay_test.cpp;te
 chrono_player_test(chrono_player_compacted_replay_test tests/compacted_replay_test.cpp "")
 
 chrono_player_test(chrono_player_cluster_client_test tests/cluster_client_test.cpp "")
+chrono_player_test(chrono_player_clock_audit_test tests/clock_audit_test.cpp "")
+target_link_libraries(chrono_player_clock_audit_test PRIVATE absl::log_sink absl::log_sink_registry)
 chrono_player_test(chrono_player_catalog_client_dns_test tests/catalog_client_dns_test.cpp "")
 
 chrono_player_test(chrono_player_m8_replay_test "${PROJECT_SOURCE_DIR}/tests/contract/replay/m8_replay_test.cpp" "M8.")

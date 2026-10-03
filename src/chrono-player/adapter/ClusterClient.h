@@ -9,6 +9,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include "chrono-player/adapter/VisorClockAudit.h"
 #include "chrono-player/replay/RouteSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
@@ -24,7 +25,8 @@ public:
     ClusterClient(std::shared_ptr<grpc::Channel> visor_internal,
                   Process self,
                   std::chrono::milliseconds deadline = std::chrono::milliseconds(2000),
-                  TombstoneLookup lookup = {});
+                  TombstoneLookup lookup = {},
+                  std::shared_ptr<VisorClockAudit> clock_audit = {});
     ~ClusterClient() override;
 
     // Called for every Route learned, so the writer directory can follow its Keepers.
@@ -48,6 +50,8 @@ private:
     Process self_;
     std::chrono::milliseconds deadline_;
     TombstoneLookup lookup_;
+    // Records on whichever thread runs Register or Heartbeat; logs only from monitor().
+    std::shared_ptr<VisorClockAudit> clock_audit_;
     mutable std::mutex registration_mu_;
     mutable bool registered_{};
     mutable std::mutex mu_;
