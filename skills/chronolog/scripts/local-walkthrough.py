@@ -78,7 +78,7 @@ async def main():
                     refusal = command(['chronolog', 'down', 'default'], ok=False)
                     require('foreign attach leases' in refusal, 'down refuses a live MCP lease')
 
-                async def tool(name, **arguments):
+                async def tool(name, /, **arguments):
                     result = await asyncio.wait_for(session.call_tool(name, arguments), 15)
                     require(not result.is_error, 'MCP ' + name + ': ' + str(result))
                     return json.loads(result.content[0].text)
