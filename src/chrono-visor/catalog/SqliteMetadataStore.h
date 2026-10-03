@@ -12,6 +12,7 @@
 
 #include "catalog/AcquisitionLedger.h"
 #include "chronolog/metadata_store.h"
+#include "catalog/LeaseAuthority.h"
 #include "membership/Topology.h"
 #include "chronolog/internal/v1/internal.pb.h"
 
@@ -32,8 +33,11 @@ class SqliteMetadataStore final
 {
 public:
     // `fence_waiter` may be empty, in which case release always reports fenced=false.
-    static absl::StatusOr<std::unique_ptr<SqliteMetadataStore>>
-    open(const std::string& path, Topology topology, FenceWaiter fence_waiter = nullptr);
+    static absl::StatusOr<std::unique_ptr<SqliteMetadataStore>> open(const std::string& path,
+                                                                     Topology topology,
+                                                                     FenceWaiter fence_waiter = nullptr,
+                                                                     AcquisitionLeaseConfig leases = {},
+                                                                     bool replica = false);
     ~SqliteMetadataStore() override;
 
     SqliteMetadataStore(const SqliteMetadataStore&) = delete;
@@ -49,8 +53,20 @@ public:
     absl::Status destroyStory(StoryId id) override;
     // Waits for the previous owner's fence when the writer moves to another Keeper (I6.11(d)), then commits.
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
+    absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity, AcquireOptions options) override;
+    absl::StatusOr<std::vector<RenewAcquisitionResult>>
+    renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
+    LeaseAuthority& leaseAuthority() { return leases_; }
+
     // The commit without the wait, for Raft apply, which must be deterministic and never blocks.
     absl::StatusOr<Acquisition> acquireAfterFence(StoryId id, std::string writer_identity);
+    absl::StatusOr<Acquisition>
+    acquireAfterFence(StoryId id, std::string writer_identity, AcquireOptions options, int64_t duration_ns);
+    absl::StatusOr<std::vector<AcquisitionChange>> acquisitionRows(const std::vector<RenewAcquisition>& tuples) const;
+    absl::StatusOr<AcquisitionSnapshot> scanAcquisitions(std::pair<StoryId, uint64_t> after, size_t limit) const;
+    void setLeaseObserver(AcquisitionObserver* observer);
+    uint64_t publishedAppliedIndex() const { return applied_index_.load(); }
+
     // OK when the writer's previous incarnation stays on a Keeper of the current route, has no prior release, or its
     // old owner is fenced; UNAVAILABLE while a live old owner has not applied the release.
     absl::Status awaitOldOwnerFence(StoryId id, const std::string& writer_identity) const;
@@ -61,6 +77,7 @@ public:
 
     absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const override;
     void setObserver(AcquisitionObserver* observer) override;
+    absl::StatusOr<Acquisition> requestGrant(const std::string& request_id) const override;
 
     absl::StatusOr<std::string> applyRaft(uint64_t index, const std::function<std::string()>& apply);
     absl::StatusOr<uint64_t> appliedIndex() const;
@@ -97,9 +114,18 @@ public:
 
 private:
     friend internal::v1::MembershipState dynamic::snapshot(SqliteMetadataStore&);
-    SqliteMetadataStore(sqlite3* db, Topology topology, FenceWaiter fence_waiter);
+    SqliteMetadataStore(sqlite3* db,
+                        Topology topology,
+                        FenceWaiter fence_waiter,
+                        AcquisitionLeaseConfig leases,
+                        bool replica);
     absl::Status initialize();
 
+    LeaseAuthority leases_;
+    bool replica_{};
+    AcquisitionObserver* lease_observer_{};
+    std::atomic<uint64_t> applied_index_{};
+    void notify(const AcquisitionChange& change);
     std::atomic<uint64_t> snapshot_generation_{};
     absl::Status initializeMembership();
     absl::Status seedMembershipStory(StoryId id);
@@ -119,6 +145,8 @@ private:
     mutable std::recursive_mutex mutex_;
     AcquisitionObserver* observer_{};
     std::optional<uint64_t> apply_revision_;
+    bool applying_{};
+    uint64_t applying_index_{};
 };
 
 } // namespace chronolog::visor

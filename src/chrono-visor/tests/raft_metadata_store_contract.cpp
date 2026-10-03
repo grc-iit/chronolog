@@ -128,6 +128,22 @@ MetadataStoreFactory factory(bool majority)
             if(!majority)
                 (*replicas)[old] = open(old);
         };
+        h->acquisition_leases = true;
+        h->static_fence_proof = false;
+        h->lease_default_ns = 300000000000;
+        h->lease_min_ns = 30000000000;
+        h->lease_max_ns = 3600000000000;
+        auto* lease_harness = h.get();
+        h->acquireWithOptions = [lease_harness](StoryId id, std::string identity, AcquireOptions options)
+        { return lease_harness->sut->acquire(id, std::move(identity), std::move(options)); };
+        h->renewAcquisitions = [lease_harness](const std::vector<RenewAcquisition>& tuples)
+        { return lease_harness->sut->renewAcquisitions(tuples); };
+        h->advanceAuthorityClock = [lease_harness](int64_t ns, AuthorityClockMode mode)
+        {
+            auto* raft = dynamic_cast<RaftMetadataStore*>(lease_harness->sut.get());
+            ASSERT_TRUE(raft->serviceTick().ok());
+            raft->leaseAuthority().advanceClock(ns, mode == AuthorityClockMode::Ticking);
+        };
         return h;
     };
 }

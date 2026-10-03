@@ -11,6 +11,7 @@ add_library(chronolog_visor_lib STATIC
     adapter/ClusterService.cpp
     adapter/Convert.cpp
     adapter/WorkerPool.cpp
+    catalog/LeaseAuthority.cpp
     catalog/AcquisitionFeed.cpp
     catalog/InMemoryMetadataStore.cpp
     catalog/SqliteMetadataStore.cpp

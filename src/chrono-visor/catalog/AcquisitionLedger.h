@@ -27,12 +27,15 @@ struct AcquisitionChange
     uint64_t incarnation{};
     KeeperRef assigned_keeper;
     AcquisitionState state{AcquisitionState::Acquired};
+    int64_t duration_ns{};
+    AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
 };
 
 struct AcquisitionSnapshot
 {
     // Every change with revision <= this value is reflected in `active`.
     uint64_t revision{};
+    uint64_t applied_index{};
     std::vector<AcquisitionChange> active;
 };
 
@@ -60,6 +63,7 @@ public:
     virtual absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const = 0;
     // The observer must outlive the ledger or be reset to nullptr first.
     virtual void setObserver(AcquisitionObserver* observer) = 0;
+    virtual absl::StatusOr<Acquisition> requestGrant(const std::string& request_id) const = 0;
 };
 
 // Name validation shared by every MetadataStore implementation.

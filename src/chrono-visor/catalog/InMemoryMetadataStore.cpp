@@ -11,8 +11,9 @@ namespace
 constexpr Epoch kInitialEpoch = 1;
 } // namespace
 
-InMemoryMetadataStore::InMemoryMetadataStore(Topology topology, FenceWaiter fence_waiter)
-    : topology_(std::move(topology))
+InMemoryMetadataStore::InMemoryMetadataStore(Topology topology, FenceWaiter fence_waiter, AcquisitionLeaseConfig leases)
+    : leases_(leases)
+    , topology_(std::move(topology))
     , fence_waiter_(std::move(fence_waiter))
 {}
 
@@ -142,50 +143,149 @@ absl::Status InMemoryMetadataStore::destroyStory(StoryId id)
     return absl::OkStatus();
 }
 
-absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::string writer_identity)
+absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::string identity)
 {
-    if(writer_identity.empty())
+    return acquire(id, std::move(identity), {});
+}
+absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::string identity, AcquireOptions options)
+{
+    if(options.acquire_request_id.empty())
+        options.acquire_request_id = newAcquireRequestId();
+    auto duration = leases_.config().duration(options);
+    if(!duration.ok())
+        return duration.status();
+    if(identity.empty())
         return absl::InvalidArgumentError("writer identity is empty");
-    AcquisitionChange change;
-    Acquisition out;
+    if(auto status = leases_.service(); !status.ok())
+        return status;
+    std::lock_guard lock(mutex_);
+    const auto inputs = acquireInputs(id, identity, options);
+    const auto existing = grants_.find(options.acquire_request_id);
+    if(existing != grants_.end())
     {
-        std::lock_guard lock(mutex_);
-        auto story = stories_.find(id);
-        if(story == stories_.end())
-            return absl::NotFoundError("unknown story");
-        if(story->second.tombstoned)
-            return absl::FailedPreconditionError("story was destroyed");
-        auto writer = writers_.find(writer_identity);
-        if(writer == writers_.end())
-            writer = writers_.emplace(std::move(writer_identity), ++last_writer_id_).first;
-        const uint64_t writer_id = writer->second;
-        auto keeper = topology_.assignKeeper(writer_id, story->second.epoch);
-        if(!keeper.ok())
-            return keeper.status();
-        AcquisitionRow& row = acquisitions_[{id, writer_id}];
-        std::optional<AcquisitionChange> superseded;
-        // A writer that re-acquires while still active has crashed. Its old
-        // incarnation is released together with the new acquire.
-        if(row.incarnation != 0 && !row.released)
-        {
-            superseded = AcquisitionChange{++revision_,
-                                           id,
-                                           writer_id,
-                                           row.incarnation,
-                                           row.assigned_keeper,
-                                           AcquisitionState::Released};
-            releases_[{id, writer_id, row.incarnation}] = *superseded;
-        }
-        row.incarnation += 1;
-        row.released = false;
-        row.assigned_keeper = *keeper;
-        change = {++revision_, id, writer_id, row.incarnation, row.assigned_keeper, AcquisitionState::Acquired};
-        out = {id, writer_id, row.incarnation, topology_.routeFor(story->second.epoch, id), row.assigned_keeper};
-        if(superseded)
-            notify(*superseded);
-        notify(change);
+        if(existing->second.inputs != inputs)
+            return absl::InvalidArgumentError("request id inputs changed");
+        auto out = existing->second.acquisition;
+        const auto& row = acquisitions_.at({id, out.writer_id});
+        if(row.incarnation != out.incarnation)
+            return priorMismatch(row.incarnation, out.incarnation);
+        if(row.released)
+            return terminalRetry(out.incarnation, releases_.at({id, out.writer_id, out.incarnation}).termination_cause);
+        auto lease = leases_.sample({row.revision,
+                                     id,
+                                     out.writer_id,
+                                     out.incarnation,
+                                     row.assigned_keeper,
+                                     AcquisitionState::Acquired,
+                                     row.duration_ns},
+                                    false);
+        if(!lease.ok())
+            return lease.status();
+        out.lease = *lease;
+        return out;
     }
+    auto story = stories_.find(id);
+    if(story == stories_.end())
+        return absl::NotFoundError("unknown story");
+    if(story->second.tombstoned)
+        return absl::FailedPreconditionError("story was destroyed");
+    auto writer = writers_.find(identity);
+    std::optional<uint64_t> prior;
+    if(writer != writers_.end())
+    {
+        auto row = acquisitions_.find({id, writer->second});
+        if(row != acquisitions_.end())
+            prior = row->second.incarnation;
+    }
+    if(options.expected_prior_incarnation && options.expected_prior_incarnation != prior)
+        return priorMismatch(prior);
+    if(writer == writers_.end())
+        writer = writers_.emplace(identity, ++last_writer_id_).first;
+    const auto writer_id = writer->second;
+    auto keeper = topology_.assignKeeper(writer_id, story->second.epoch);
+    if(!keeper.ok())
+        return keeper.status();
+    auto& row = acquisitions_[{id, writer_id}];
+    if(row.incarnation == UINT64_MAX)
+        return absl::ResourceExhaustedError("incarnation overflow");
+    if(row.incarnation && !row.released)
+    {
+        AcquisitionChange terminal{++revision_,
+                                   id,
+                                   writer_id,
+                                   row.incarnation,
+                                   row.assigned_keeper,
+                                   AcquisitionState::Released,
+                                   row.duration_ns,
+                                   AcquisitionTerminationCause::Superseded};
+        releases_[{id, writer_id, row.incarnation}] = terminal;
+        notify(terminal);
+    }
+    ++row.incarnation;
+    row.released = false;
+    row.assigned_keeper = *keeper;
+    row.duration_ns = *duration;
+    row.revision = ++revision_;
+    Acquisition out{id,
+                    writer_id,
+                    row.incarnation,
+                    topology_.routeFor(story->second.epoch, id),
+                    *keeper,
+                    {*duration, *duration}};
+    grants_[options.acquire_request_id] = {inputs, out};
+    notify({row.revision, id, writer_id, row.incarnation, *keeper, AcquisitionState::Acquired, *duration});
+    auto lease = leases_.sample(
+            {row.revision, id, writer_id, row.incarnation, *keeper, AcquisitionState::Acquired, *duration},
+            false);
+    if(!lease.ok())
+        return lease.status();
+    out.lease = *lease;
     return out;
+}
+absl::StatusOr<std::vector<RenewAcquisitionResult>>
+InMemoryMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples)
+{
+    auto status = validateRenew(tuples, leases_.config().acquisition_renew_batch);
+    if(!status.ok())
+        return status;
+    status = leases_.service();
+    if(!status.ok())
+        return status;
+    std::vector<RenewAcquisitionResult> results;
+    std::lock_guard lock(mutex_);
+    for(const auto& tuple: tuples)
+    {
+        RenewAcquisitionResult result{tuple, absl::NotFoundError("unknown acquisition"), {}, {}};
+        const auto terminal = releases_.find({tuple.story_id, tuple.writer_id, tuple.incarnation});
+        const auto row = acquisitions_.find({tuple.story_id, tuple.writer_id});
+        if(terminal != releases_.end())
+        {
+            result.status = absl::FailedPreconditionError("acquisition is terminal");
+            result.termination_cause = terminal->second.termination_cause;
+        }
+        else if(row != acquisitions_.end() && row->second.incarnation > tuple.incarnation)
+        {
+            result.status = absl::FailedPreconditionError("incarnation is stale");
+            result.termination_cause = AcquisitionTerminationCause::Superseded;
+        }
+        else if(row != acquisitions_.end() && row->second.incarnation == tuple.incarnation && !row->second.released)
+        {
+            const auto& live = row->second;
+            auto lease = leases_.sample({live.revision,
+                                         tuple.story_id,
+                                         tuple.writer_id,
+                                         tuple.incarnation,
+                                         live.assigned_keeper,
+                                         AcquisitionState::Acquired,
+                                         live.duration_ns},
+                                        true);
+            result.status = lease.status();
+            if(lease.ok())
+                result.lease = *lease;
+        }
+        results.push_back(std::move(result));
+    }
+    return results;
 }
 
 absl::StatusOr<ReleaseResult> InMemoryMetadataStore::release(StoryId id, uint64_t writer_id, uint64_t incarnation)
@@ -206,7 +306,14 @@ absl::StatusOr<ReleaseResult> InMemoryMetadataStore::release(StoryId id, uint64_
             if(it->second.incarnation != incarnation || it->second.released)
                 return absl::FailedPreconditionError("incarnation is stale");
             it->second.released = true;
-            change = {++revision_, id, writer_id, incarnation, it->second.assigned_keeper, AcquisitionState::Released};
+            change = {++revision_,
+                      id,
+                      writer_id,
+                      incarnation,
+                      it->second.assigned_keeper,
+                      AcquisitionState::Released,
+                      it->second.duration_ns,
+                      AcquisitionTerminationCause::Released};
             releases_[{id, writer_id, incarnation}] = change;
             notify(change);
         }
@@ -241,10 +348,24 @@ absl::StatusOr<AcquisitionSnapshot> InMemoryMetadataStore::snapshotAcquisitions(
     {
         if(row.released)
             continue;
-        snapshot.active.push_back(
-                {revision_, key.first, key.second, row.incarnation, row.assigned_keeper, AcquisitionState::Acquired});
+        snapshot.active.push_back({row.revision,
+                                   key.first,
+                                   key.second,
+                                   row.incarnation,
+                                   row.assigned_keeper,
+                                   AcquisitionState::Acquired,
+                                   row.duration_ns});
     }
     return snapshot;
+}
+
+absl::StatusOr<Acquisition> InMemoryMetadataStore::requestGrant(const std::string& id) const
+{
+    std::lock_guard lock(mutex_);
+    auto it = grants_.find(id);
+    if(it == grants_.end())
+        return absl::NotFoundError("unknown request id");
+    return it->second.acquisition;
 }
 
 void InMemoryMetadataStore::setObserver(AcquisitionObserver* observer)
@@ -255,6 +376,7 @@ void InMemoryMetadataStore::setObserver(AcquisitionObserver* observer)
 
 void InMemoryMetadataStore::notify(const AcquisitionChange& change)
 {
+    leases_.onAcquisitionChange(change);
     if(observer_)
         observer_->onAcquisitionChange(change);
 }

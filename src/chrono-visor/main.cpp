@@ -113,7 +113,11 @@ int main(int argc, char** argv)
     chronolog::visor::SqliteMetadataStore* applied = nullptr;
     if(config->membership_mode == "dynamic")
     {
-        auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path, topology, config->raft, fence_waiter);
+        auto opened = chronolog::visor::RaftMetadataStore::open(config->db_path,
+                                                                topology,
+                                                                config->raft,
+                                                                fence_waiter,
+                                                                config->leases);
         if(!opened.ok())
         {
             LOG(ERROR) << "chrono_visor: " << opened.status();
@@ -125,7 +129,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        auto opened = chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter);
+        auto opened =
+                chronolog::visor::SqliteMetadataStore::open(config->db_path, topology, fence_waiter, config->leases);
         if(!opened.ok())
         {
             LOG(ERROR) << "chrono_visor: " << opened.status();
@@ -170,6 +175,44 @@ int main(int argc, char** argv)
                                              &pool,
                                              std::chrono::milliseconds(config->heartbeat_timeout_ms));
 
+    std::atomic<bool> tick_queued{false};
+    std::pair<chronolog::StoryId, uint64_t> lease_cursor{};
+    std::jthread lease_ticks(
+            [&](std::stop_token stop)
+            {
+                while(!stop.stop_requested())
+                {
+                    if(!tick_queued.exchange(true))
+                    {
+                        if(!pool.submit(
+                                   [&]
+                                   {
+                                       if(raft)
+                                           (void)raft->serviceTick();
+                                       else
+                                       {
+                                           auto snapshot =
+                                                   applied->scanAcquisitions(lease_cursor,
+                                                                             config->leases.acquisition_scan_batch);
+                                           if(snapshot.ok())
+                                           {
+                                               const bool end =
+                                                       snapshot->active.size() < config->leases.acquisition_scan_batch;
+                                               applied->leaseAuthority().reconcile(*snapshot, lease_cursor, end);
+                                               lease_cursor = end ? std::pair<chronolog::StoryId, uint64_t>{}
+                                                                  : std::pair{snapshot->active.back().story_id,
+                                                                              snapshot->active.back().writer_id};
+                                               (void)applied->leaseAuthority().service(true);
+                                           }
+                                       }
+                                       tick_queued = false;
+                                   }))
+                            tick_queued = false;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(config->leases.acquisition_service_tick_ms));
+                }
+            });
+
     int public_port = 0;
     int internal_port = 0;
     auto public_server = startServer(config->listen, catalog, public_port);
@@ -213,6 +256,8 @@ int main(int argc, char** argv)
     internal_server->Wait();
     finished = true;
     watcher.join();
+    lease_ticks.request_stop();
+    lease_ticks.join();
     ledger.setObserver(nullptr);
     return 0;
 }

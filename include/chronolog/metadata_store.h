@@ -126,6 +126,30 @@ public:
      * AssignedKeeperStableWithinWriterEpoch.
      */
     virtual absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) = 0;
+    /**
+     * Acquire a finite grant using a process-local logical request id.
+     * Current-live retries preserve their persisted grant and local deadline. Changed inputs fail
+     * INVALID_ARGUMENT. CAS requires the current prior incarnation and reports typed PRIOR_MISMATCH.
+     * Same-id terminal retries report the matched incarnation and original cause, or its successor.
+     * Plain supersession remains available until the enforcement slice.
+     * Thread safety: Linearizable; deterministic replica apply; no network wait inside apply.
+     * Invariant tests: EveryAcquisitionHasAFiniteLease, LeaseRequestUsesDefaultAndClamps,
+     * RetriedAcquireAfterLostReplyReturnsTheSameGrant, SameIdTerminalRetryReportsCauseAndMatchedIncarnation.
+     */
+    virtual absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity, AcquireOptions options) = 0;
+
+    /**
+     * Renew a bounded ordered batch at the qualified serving authority.
+     * Successful entries extend only local deadlines, without a durable write, revision or feed delta.
+     * Known terminal tuples retain their original cause; missing live deadlines initialize locally.
+     * Outer INVALID_ARGUMENT rejects malformed batches; UNAVAILABLE reports authority/storage loss.
+     * Per-entry status is independent; due entries remain UNAVAILABLE until enforcement is enabled.
+     * Thread safety: Serialize deadlines separately from storage and proposal waits.
+     * Invariant tests: RestartRetainsDurationAndTerminalCause, RenewalDoesNotAppendOrBumpRevision.
+     */
+    virtual absl::StatusOr<std::vector<RenewAcquisitionResult>>
+    renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) = 0;
+
 
     /**
      * Commit release and report whether the assigned Keeper applied its incarnation fence.

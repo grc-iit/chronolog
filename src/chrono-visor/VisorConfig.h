@@ -10,6 +10,7 @@
 #include <absl/status/statusor.h>
 
 #include "chronolog/types.h"
+#include "catalog/LeaseAuthority.h"
 
 namespace chronolog::visor
 {
@@ -37,6 +38,7 @@ struct VisorConfig
 {
     std::string membership_mode = "static";
     RaftConfig raft;
+    AcquisitionLeaseConfig leases;
     std::string listen = "0.0.0.0:50051";
     // Cluster service address. Loopback by default so a bare start never exposes it (S14.3).
     std::string internal_listen = "127.0.0.1:50061";

@@ -18,6 +18,10 @@ v1::Story toProto(const Story& story);
 v1::KeeperRef toProto(const KeeperRef& keeper);
 v1::Route toProto(const Route& route);
 v1::AcquireResponse toAcquireResponse(const Acquisition& acquisition);
+Acquisition fromAcquireResponse(const v1::AcquireResponse& response);
+AcquireOptions fromAcquireRequest(const v1::AcquireRequest& request);
+void acquireRefusal(const absl::Status& status, v1::AcquireResponse& response);
+absl::Status acquireStatus(const v1::AcquireResponse& response);
 internal::v1::AcquisitionUpdate toProto(const AcquisitionChange& change);
 internal::v1::AcquisitionSnapshot toProto(const AcquisitionSnapshot& snapshot);
 

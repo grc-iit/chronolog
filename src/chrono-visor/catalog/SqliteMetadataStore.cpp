@@ -18,7 +18,7 @@ namespace chronolog::visor
 namespace
 {
 
-constexpr int kSchemaVersion = 2;
+constexpr int kSchemaVersion = 3;
 constexpr Epoch kInitialEpoch = 1;
 constexpr int kBusyTimeoutMs = 5000;
 
@@ -222,8 +222,11 @@ absl::StatusOr<bool> storyHasActiveAcquisition(sqlite3* db, StoryId id)
 
 } // namespace
 
-absl::StatusOr<std::unique_ptr<SqliteMetadataStore>>
-SqliteMetadataStore::open(const std::string& path, Topology topology, FenceWaiter fence_waiter)
+absl::StatusOr<std::unique_ptr<SqliteMetadataStore>> SqliteMetadataStore::open(const std::string& path,
+                                                                               Topology topology,
+                                                                               FenceWaiter fence_waiter,
+                                                                               AcquisitionLeaseConfig leases,
+                                                                               bool replica)
 {
     sqlite3* db = nullptr;
     const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
@@ -235,15 +238,32 @@ SqliteMetadataStore::open(const std::string& path, Topology topology, FenceWaite
         return s;
     }
     std::unique_ptr<SqliteMetadataStore> store(
-            new SqliteMetadataStore(db, std::move(topology), std::move(fence_waiter)));
+            new SqliteMetadataStore(db, std::move(topology), std::move(fence_waiter), leases, replica));
     absl::Status init = store->initialize();
     if(!init.ok())
         return init;
+    auto applied = store->appliedIndex();
+    if(!applied.ok())
+        return applied.status();
+    store->applied_index_.store(*applied);
+    if(!replica)
+    {
+        auto snapshot = store->snapshotAcquisitions();
+        if(!snapshot.ok())
+            return snapshot.status();
+        store->leases_.rebuild(*snapshot);
+    }
     return store;
 }
 
-SqliteMetadataStore::SqliteMetadataStore(sqlite3* db, Topology topology, FenceWaiter fence_waiter)
-    : db_(db)
+SqliteMetadataStore::SqliteMetadataStore(sqlite3* db,
+                                         Topology topology,
+                                         FenceWaiter fence_waiter,
+                                         AcquisitionLeaseConfig leases,
+                                         bool replica)
+    : leases_(leases, replica)
+    , replica_(replica)
+    , db_(db)
     , topology_(std::move(topology))
     , fence_waiter_(std::move(fence_waiter))
 {}
@@ -337,7 +357,7 @@ absl::Status SqliteMetadataStore::initialize()
         return row.status();
     if(*row)
     {
-        if(version.column(0) != 1 && version.column(0) != static_cast<uint64_t>(kSchemaVersion))
+        if(version.column(0) < 1 || version.column(0) > static_cast<uint64_t>(kSchemaVersion))
             return absl::FailedPreconditionError(
                     absl::StrCat("catalog schema version ", version.column(0), " is not supported"));
     }
@@ -350,7 +370,40 @@ absl::Status SqliteMetadataStore::initialize()
         if(!done.ok())
             return done.status();
     }
-    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "UPDATE schema_version SET version=2"));
+    auto addColumn = [&](const char* table, const char* name, const char* sql) -> absl::Status
+    {
+        Statement columns(db_, (std::string("PRAGMA table_info(") + table + ")").c_str());
+        CHRONOLOG_RETURN_IF_ERROR(columns.prepared());
+        while(true)
+        {
+            auto found = columns.step();
+            if(!found.ok())
+                return found.status();
+            if(!*found)
+                break;
+            if(columns.columnText(1) == name)
+                return absl::OkStatus();
+        }
+        return exec(db_, sql);
+    };
+    CHRONOLOG_RETURN_IF_ERROR(
+            addColumn("acquisitions",
+                      "duration_ns",
+                      "ALTER TABLE acquisitions ADD COLUMN duration_ns INTEGER NOT NULL DEFAULT 300000000000"));
+    CHRONOLOG_RETURN_IF_ERROR(addColumn("acquisitions",
+                                        "revision",
+                                        "ALTER TABLE acquisitions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"));
+    CHRONOLOG_RETURN_IF_ERROR(
+            addColumn("releases",
+                      "termination_cause",
+                      "ALTER TABLE releases ADD COLUMN termination_cause INTEGER NOT NULL DEFAULT 2"));
+    CHRONOLOG_RETURN_IF_ERROR(
+            exec(db_,
+                 "CREATE INDEX IF NOT EXISTS acquisitions_live ON acquisitions(story_id,writer_id) WHERE released=0"));
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_,
+                                   "CREATE TABLE IF NOT EXISTS acquisition_grants(request_id TEXT PRIMARY KEY, inputs "
+                                   "TEXT NOT NULL, response TEXT NOT NULL)"));
+    CHRONOLOG_RETURN_IF_ERROR(exec(db_, "UPDATE schema_version SET version=3"));
     CHRONOLOG_RETURN_IF_ERROR(initializeMembership());
     return txn.commit();
 }
@@ -634,19 +687,95 @@ absl::Status SqliteMetadataStore::awaitOldOwnerFence(StoryId id, const std::stri
     return absl::OkStatus();
 }
 
-absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string writer_identity)
+absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string identity)
 {
-    CHRONOLOG_RETURN_IF_ERROR(awaitOldOwnerFence(id, writer_identity));
-    return acquireAfterFence(id, std::move(writer_identity));
+    {
+        std::lock_guard lock(mutex_);
+        if(applying_)
+            return acquireAfterFence(id, std::move(identity));
+    }
+    return acquire(id, std::move(identity), {});
+}
+absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string identity, AcquireOptions options)
+{
+    if(options.acquire_request_id.empty())
+        options.acquire_request_id = newAcquireRequestId();
+    auto duration = leases_.config().duration(options);
+    if(!duration.ok())
+        return duration.status();
+    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
+    CHRONOLOG_RETURN_IF_ERROR(awaitOldOwnerFence(id, identity));
+    auto grant = acquireAfterFence(id, std::move(identity), options, *duration);
+    if(!grant.ok())
+        return grant.status();
+    auto rows = acquisitionRows({{id, grant->writer_id, grant->incarnation}});
+    if(!rows.ok())
+        return rows.status();
+    auto lease = leases_.sample(rows->front(), false);
+    if(!lease.ok())
+        return lease.status();
+    grant->lease = *lease;
+    return grant;
 }
 
 absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, std::string writer_identity)
 {
+    AcquireOptions options;
+    options.acquire_request_id = "legacy:" + std::to_string(applying_index_) + ":" + std::to_string(id);
+    return acquireAfterFence(id, std::move(writer_identity), options, 300000000000);
+}
+absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id,
+                                                                   std::string writer_identity,
+                                                                   AcquireOptions options,
+                                                                   int64_t duration_ns)
+{
+    if(duration_ns <= 0 || options.acquire_request_id.empty())
+        return absl::InvalidArgumentError("invalid carried lease");
     if(writer_identity.empty())
         return absl::InvalidArgumentError("writer identity is empty");
     std::lock_guard lock(mutex_);
     Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
+    const auto inputs = acquireInputs(id, writer_identity, options);
+    Statement retry(db_, "SELECT inputs,response FROM acquisition_grants WHERE request_id=?1");
+    CHRONOLOG_RETURN_IF_ERROR(retry.prepared());
+    retry.text(1, options.acquire_request_id);
+    auto matched = retry.step();
+    if(!matched.ok())
+        return matched.status();
+    if(*matched)
+    {
+        if(retry.columnText(0) != inputs)
+            return absl::InvalidArgumentError("request id inputs changed");
+        v1::AcquireResponse response;
+        if(!response.ParseFromString(retry.columnText(1)))
+            return absl::InternalError("invalid persisted grant");
+        Statement current(db_, "SELECT incarnation,released FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+        CHRONOLOG_RETURN_IF_ERROR(current.prepared());
+        current.integer(1, id).integer(2, response.writer_id());
+        auto live = current.step();
+        if(!live.ok())
+            return live.status();
+        if(!*live)
+            return absl::InternalError("grant has no acquisition");
+        if(current.column(0) != response.incarnation())
+            return priorMismatch(current.column(0), response.incarnation());
+        if(current.column(1))
+        {
+            Statement terminal(
+                    db_,
+                    "SELECT termination_cause FROM releases WHERE story_id=?1 AND writer_id=?2 AND incarnation=?3");
+            CHRONOLOG_RETURN_IF_ERROR(terminal.prepared());
+            terminal.integer(1, id).integer(2, response.writer_id()).integer(3, response.incarnation());
+            auto found = terminal.step();
+            if(!found.ok())
+                return found.status();
+            if(!*found)
+                return absl::InternalError("terminal grant has no cause");
+            return terminalRetry(response.incarnation(), static_cast<AcquisitionTerminationCause>(terminal.column(0)));
+        }
+        return convert::fromAcquireResponse(response);
+    }
     auto story = loadStory(db_, id);
     if(!story.ok())
         return story.status();
@@ -665,6 +794,18 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
             return row.status();
         if(*row)
             writer_id = find.column(0);
+    }
+    if(options.expected_prior_incarnation)
+    {
+        Statement current(db_, "SELECT incarnation FROM acquisitions WHERE story_id=?1 AND writer_id=?2");
+        CHRONOLOG_RETURN_IF_ERROR(current.prepared());
+        current.integer(1, id).integer(2, writer_id);
+        auto found = current.step();
+        if(!found.ok())
+            return found.status();
+        const auto prior = *found ? std::optional<uint64_t>(current.column(0)) : std::nullopt;
+        if(options.expected_prior_incarnation != prior)
+            return priorMismatch(prior);
     }
     if(writer_id == 0)
     {
@@ -693,6 +834,8 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
             return row.status();
         if(*row)
         {
+            if(prior.column(0) == UINT64_MAX)
+                return absl::ResourceExhaustedError("incarnation overflow");
             incarnation = prior.column(0) + 1;
             // A writer that re-acquires while still active has crashed. Its old
             // incarnation is released in the same transaction as the new one.
@@ -706,15 +849,18 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
                                                writer_id,
                                                prior.column(0),
                                                KeeperRef{prior.columnText(2), prior.columnText(3)},
-                                               AcquisitionState::Released};
+                                               AcquisitionState::Released,
+                                               0,
+                                               AcquisitionTerminationCause::Superseded};
             }
         }
     }
     if(superseded)
     {
         Statement record(db_,
-                         "INSERT INTO releases(story_id, writer_id, incarnation, revision, keeper_id, keeper_endpoint)"
-                         " VALUES (?1, ?2, ?3, ?4, ?5, ?6)");
+                         "INSERT INTO releases(story_id, writer_id, incarnation, revision, keeper_id, keeper_endpoint, "
+                         "termination_cause)"
+                         " VALUES (?1, ?2, ?3, ?4, ?5, ?6, 3)");
         CHRONOLOG_RETURN_IF_ERROR(record.prepared());
         record.integer(1, id)
                 .integer(2, writer_id)
@@ -748,13 +894,14 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
     {
         Statement upsert(db_,
                          "INSERT OR REPLACE INTO acquisitions(story_id, writer_id, incarnation, released, keeper_id,"
-                         " keeper_endpoint) VALUES (?1, ?2, ?3, 0, ?4, ?5)");
+                         " keeper_endpoint,duration_ns) VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)");
         CHRONOLOG_RETURN_IF_ERROR(upsert.prepared());
         upsert.integer(1, id)
                 .integer(2, writer_id)
                 .integer(3, incarnation)
                 .text(4, keeper->process_id)
-                .text(5, keeper->endpoint);
+                .text(5, keeper->endpoint)
+                .integer(6, duration_ns);
         auto done = upsert.step();
         if(!done.ok())
             return done.status();
@@ -762,15 +909,26 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquireAfterFence(StoryId id, s
     auto revision = nextCounter(db_, "acquisition_revision");
     if(!revision.ok())
         return revision.status();
+    Statement row_revision(db_, "UPDATE acquisitions SET revision=?3 WHERE story_id=?1 AND writer_id=?2");
+    CHRONOLOG_RETURN_IF_ERROR(row_revision.prepared());
+    row_revision.integer(1, id).integer(2, writer_id).integer(3, *revision);
+    auto updated = row_revision.step();
+    if(!updated.ok())
+        return updated.status();
+    Acquisition grant{id, writer_id, incarnation, *owning_route, *keeper, {duration_ns, duration_ns}};
+    Statement persist(db_, "INSERT INTO acquisition_grants(request_id,inputs,response) VALUES(?1,?2,?3)");
+    CHRONOLOG_RETURN_IF_ERROR(persist.prepared());
+    persist.text(1, options.acquire_request_id)
+            .text(2, inputs)
+            .text(3, convert::toAcquireResponse(grant).SerializeAsString());
+    auto saved = persist.step();
+    if(!saved.ok())
+        return saved.status();
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-
-    if(observer_)
-    {
-        if(superseded)
-            observer_->onAcquisitionChange(*superseded);
-        observer_->onAcquisitionChange({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired});
-    }
-    return Acquisition{id, writer_id, incarnation, *owning_route, *keeper};
+    if(superseded)
+        notify(*superseded);
+    notify({*revision, id, writer_id, incarnation, *keeper, AcquisitionState::Acquired, duration_ns});
+    return grant;
 }
 
 absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t writer_id, uint64_t incarnation)
@@ -784,7 +942,7 @@ absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t 
         bool retried = false;
         {
             Statement done_before(db_,
-                                  "SELECT revision, keeper_id, keeper_endpoint FROM releases"
+                                  "SELECT revision, keeper_id, keeper_endpoint, termination_cause FROM releases"
                                   " WHERE story_id = ?1 AND writer_id = ?2 AND incarnation = ?3");
             CHRONOLOG_RETURN_IF_ERROR(done_before.prepared());
             done_before.integer(1, id).integer(2, writer_id).integer(3, incarnation);
@@ -799,7 +957,9 @@ absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t 
                           writer_id,
                           incarnation,
                           KeeperRef{done_before.columnText(1), done_before.columnText(2)},
-                          AcquisitionState::Released};
+                          AcquisitionState::Released,
+                          0,
+                          static_cast<AcquisitionTerminationCause>(done_before.column(3))};
             }
         }
         if(!retried)
@@ -846,9 +1006,15 @@ absl::StatusOr<ReleaseResult> SqliteMetadataStore::release(StoryId id, uint64_t 
                     return done.status();
             }
             CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-            change = {*revision, id, writer_id, incarnation, std::move(keeper), AcquisitionState::Released};
-            if(observer_)
-                observer_->onAcquisitionChange(change);
+            change = {*revision,
+                      id,
+                      writer_id,
+                      incarnation,
+                      std::move(keeper),
+                      AcquisitionState::Released,
+                      0,
+                      AcquisitionTerminationCause::Released};
+            notify(change);
         }
     }
     // The wait happens outside the store lock so a slow Keeper never stalls the Catalog.
@@ -890,8 +1056,10 @@ absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::snapshotAcquisitions() 
     if(!revision.ok())
         return revision.status();
     snapshot.revision = *revision;
+    snapshot.applied_index = applied_index_.load();
     Statement s(db_,
-                "SELECT story_id, writer_id, incarnation, keeper_id, keeper_endpoint FROM acquisitions"
+                "SELECT story_id, writer_id, incarnation, keeper_id, keeper_endpoint, duration_ns, revision FROM "
+                "acquisitions"
                 " WHERE released = 0 ORDER BY story_id, writer_id");
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     while(true)
@@ -901,20 +1069,168 @@ absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::snapshotAcquisitions() 
             return row.status();
         if(!*row)
             break;
-        snapshot.active.push_back({snapshot.revision,
+        snapshot.active.push_back({s.column(6),
                                    s.column(0),
                                    s.column(1),
                                    s.column(2),
                                    KeeperRef{s.columnText(3), s.columnText(4)},
-                                   AcquisitionState::Acquired});
+                                   AcquisitionState::Acquired,
+                                   static_cast<int64_t>(s.column(5))});
     }
     return snapshot;
+}
+
+absl::StatusOr<Acquisition> SqliteMetadataStore::requestGrant(const std::string& id) const
+{
+    std::lock_guard lock(mutex_);
+    Statement grant(db_, "SELECT response FROM acquisition_grants WHERE request_id=?1");
+    CHRONOLOG_RETURN_IF_ERROR(grant.prepared());
+    grant.text(1, id);
+    auto found = grant.step();
+    if(!found.ok())
+        return found.status();
+    if(!*found)
+        return absl::NotFoundError("unknown request id");
+    v1::AcquireResponse response;
+    if(!response.ParseFromString(grant.columnText(0)))
+        return absl::InternalError("invalid persisted grant");
+    return convert::fromAcquireResponse(response);
 }
 
 void SqliteMetadataStore::setObserver(AcquisitionObserver* observer)
 {
     std::lock_guard lock(mutex_);
     observer_ = observer;
+}
+
+void SqliteMetadataStore::setLeaseObserver(AcquisitionObserver* observer)
+{
+    std::lock_guard lock(mutex_);
+    lease_observer_ = observer;
+}
+void SqliteMetadataStore::notify(const AcquisitionChange& change)
+{
+    if(applying_)
+    {
+        if(observer_)
+            observer_->onAcquisitionChange(change);
+        return;
+    }
+    if(!replica_)
+        leases_.onAcquisitionChange(change);
+    if(lease_observer_)
+        lease_observer_->onAcquisitionChange(change);
+    if(observer_)
+        observer_->onAcquisitionChange(change);
+}
+absl::StatusOr<std::vector<AcquisitionChange>>
+SqliteMetadataStore::acquisitionRows(const std::vector<RenewAcquisition>& tuples) const
+{
+    std::lock_guard lock(mutex_);
+    std::vector<AcquisitionChange> rows;
+    for(const auto& t: tuples)
+    {
+        AcquisitionChange row{0, t.story_id, t.writer_id, t.incarnation, {}, AcquisitionState::Released};
+        Statement terminal(db_,
+                           "SELECT revision,keeper_id,keeper_endpoint,termination_cause FROM releases WHERE "
+                           "story_id=?1 AND writer_id=?2 AND incarnation=?3");
+        CHRONOLOG_RETURN_IF_ERROR(terminal.prepared());
+        terminal.integer(1, t.story_id).integer(2, t.writer_id).integer(3, t.incarnation);
+        auto found = terminal.step();
+        if(!found.ok())
+            return found.status();
+        if(*found)
+        {
+            row.revision = terminal.column(0);
+            row.assigned_keeper = {terminal.columnText(1), terminal.columnText(2)};
+            row.termination_cause = static_cast<AcquisitionTerminationCause>(terminal.column(3));
+        }
+        else
+        {
+            Statement live(db_,
+                           "SELECT incarnation,released,keeper_id,keeper_endpoint,duration_ns,revision FROM "
+                           "acquisitions WHERE story_id=?1 AND writer_id=?2");
+            CHRONOLOG_RETURN_IF_ERROR(live.prepared());
+            live.integer(1, t.story_id).integer(2, t.writer_id);
+            auto current = live.step();
+            if(!current.ok())
+                return current.status();
+            if(*current && live.column(0) == t.incarnation)
+            {
+                row.revision = live.column(5);
+                row.duration_ns = static_cast<int64_t>(live.column(4));
+                row.assigned_keeper = {live.columnText(2), live.columnText(3)};
+                if(!live.column(1))
+                    row.state = AcquisitionState::Acquired;
+            }
+            else if(*current && live.column(0) > t.incarnation)
+                row.termination_cause = AcquisitionTerminationCause::Superseded;
+        }
+        rows.push_back(row);
+    }
+    return rows;
+}
+absl::StatusOr<AcquisitionSnapshot> SqliteMetadataStore::scanAcquisitions(std::pair<StoryId, uint64_t> after,
+                                                                          size_t limit) const
+{
+    std::lock_guard lock(mutex_);
+    AcquisitionSnapshot snapshot;
+    auto revision = currentCounter(db_, "acquisition_revision");
+    if(!revision.ok())
+        return revision.status();
+    snapshot.revision = *revision;
+    snapshot.applied_index = applied_index_.load();
+    Statement rows(
+            db_,
+            "SELECT story_id,writer_id,incarnation,keeper_id,keeper_endpoint,duration_ns,revision FROM acquisitions "
+            "WHERE released=0 AND (story_id,writer_id)>(?1,?2) ORDER BY story_id,writer_id LIMIT ?3");
+    CHRONOLOG_RETURN_IF_ERROR(rows.prepared());
+    rows.integer(1, after.first).integer(2, after.second).integer(3, limit);
+    while(true)
+    {
+        auto found = rows.step();
+        if(!found.ok())
+            return found.status();
+        if(!*found)
+            break;
+        snapshot.active.push_back({rows.column(6),
+                                   rows.column(0),
+                                   rows.column(1),
+                                   rows.column(2),
+                                   {rows.columnText(3), rows.columnText(4)},
+                                   AcquisitionState::Acquired,
+                                   static_cast<int64_t>(rows.column(5))});
+    }
+    return snapshot;
+}
+absl::StatusOr<std::vector<RenewAcquisitionResult>>
+SqliteMetadataStore::renewAcquisitions(const std::vector<RenewAcquisition>& tuples)
+{
+    CHRONOLOG_RETURN_IF_ERROR(validateRenew(tuples, leases_.config().acquisition_renew_batch));
+    CHRONOLOG_RETURN_IF_ERROR(leases_.service());
+    auto rows = acquisitionRows(tuples);
+    if(!rows.ok())
+        return rows.status();
+    std::vector<RenewAcquisitionResult> results;
+    for(size_t i = 0; i < tuples.size(); ++i)
+    {
+        const auto& row = (*rows)[i];
+        RenewAcquisitionResult result{tuples[i], absl::NotFoundError("unknown acquisition"), {}, {}};
+        if(row.state == AcquisitionState::Acquired)
+        {
+            auto lease = leases_.sample(row, true);
+            result.status = lease.status();
+            if(lease.ok())
+                result.lease = *lease;
+        }
+        else if(row.termination_cause != AcquisitionTerminationCause::Unspecified)
+        {
+            result.status = absl::FailedPreconditionError("acquisition is terminal");
+            result.termination_cause = row.termination_cause;
+        }
+        results.push_back(std::move(result));
+    }
+    return results;
 }
 
 absl::StatusOr<KeeperRef> SqliteMetadataStore::releasedKeeper(StoryId id, uint64_t writer, uint64_t incarnation) const
@@ -987,12 +1303,11 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
     } pending;
     Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
-    auto revision = nextCounter(db_, "acquisition_revision");
-    if(!revision.ok())
-        return revision.status();
     auto* observer = observer_;
     observer_ = &pending;
-    apply_revision_ = *revision;
+    applying_ = true;
+    applying_index_ = index;
+    apply_revision_.reset();
     std::string result;
     try
     {
@@ -1002,10 +1317,12 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
     {
         observer_ = observer;
         apply_revision_.reset();
+        applying_ = false;
         throw;
     }
     observer_ = observer;
     apply_revision_.reset();
+    applying_ = false;
     Statement update(db_, "UPDATE counters SET value=?1 WHERE name='raft_index'");
     CHRONOLOG_RETURN_IF_ERROR(update.prepared());
     update.integer(1, index);
@@ -1020,8 +1337,8 @@ absl::StatusOr<std::string> SqliteMetadataStore::applyRaft(uint64_t index, const
     if(!done.ok())
         return done.status();
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-    if(observer)
-        for(const auto& c: pending.changes) observer->onAcquisitionChange(c);
+    applied_index_.store(index);
+    for(const auto& c: pending.changes) notify(c);
     return result;
 }
 absl::Status SqliteMetadataStore::backupTo(const std::string& path) const
@@ -1074,6 +1391,10 @@ absl::Status SqliteMetadataStore::installFrom(const std::string& path)
     if(sqlite3_open(destination.c_str(), &db_) != SQLITE_OK)
         return absl::UnavailableError("snapshot reopen failed");
     CHRONOLOG_RETURN_IF_ERROR(initialize());
+    auto applied = appliedIndex();
+    if(!applied.ok())
+        return applied.status();
+    applied_index_.store(*applied);
     snapshot_generation_.fetch_add(1);
     return rc == 0 ? absl::OkStatus() : absl::UnavailableError("snapshot directory fsync failed");
 }
@@ -1116,8 +1437,9 @@ absl::Status SqliteMetadataStore::fenceRemovedWriters(StoryId id,
             continue;
         Statement record(
                 db_,
-                "INSERT OR IGNORE INTO releases(story_id,writer_id,incarnation,revision,keeper_id,keeper_endpoint) "
-                "VALUES (?1,?2,?3,?4,?5,?6)");
+                "INSERT OR IGNORE INTO "
+                "releases(story_id,writer_id,incarnation,revision,keeper_id,keeper_endpoint,termination_cause) "
+                "VALUES (?1,?2,?3,?4,?5,?6,4)");
         CHRONOLOG_RETURN_IF_ERROR(record.prepared());
         record.integer(1, id)
                 .integer(2, change.writer_id)
@@ -1136,8 +1458,8 @@ absl::Status SqliteMetadataStore::fenceRemovedWriters(StoryId id,
             return done.status();
         change.revision = revision;
         change.state = AcquisitionState::Released;
-        if(observer_)
-            observer_->onAcquisitionChange(change);
+        change.termination_cause = AcquisitionTerminationCause::OwnerRemoved;
+        notify(change);
     }
     return absl::OkStatus();
 }

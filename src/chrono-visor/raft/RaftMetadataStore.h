@@ -2,7 +2,9 @@
 #include <libnuraft/nuraft.hxx>
 #include <libnuraft/launcher.hxx>
 #include "raft/DurableState.h"
+#include "raft/RaftTestControl.h"
 #include "catalog/SqliteMetadataStore.h"
+#include "catalog/LeaseAuthority.h"
 #include "chronolog/internal/v1/internal.pb.h"
 namespace chronolog::visor
 {
@@ -11,8 +13,12 @@ class RaftMetadataStore final
     , public AcquisitionLedger
 {
 public:
-    static absl::StatusOr<std::unique_ptr<RaftMetadataStore>>
-    open(const std::string& path, Topology topology, RaftConfig config, FenceWaiter fence_waiter = nullptr);
+    static absl::StatusOr<std::unique_ptr<RaftMetadataStore>> open(const std::string& path,
+                                                                   Topology topology,
+                                                                   RaftConfig config,
+                                                                   FenceWaiter fence_waiter = nullptr,
+                                                                   AcquisitionLeaseConfig leases = {},
+                                                                   std::shared_ptr<RaftTestControl> control = {});
     ~RaftMetadataStore() override;
     absl::StatusOr<Chronicle> createChronicle(std::string name) override;
     absl::StatusOr<Chronicle> getChronicle(std::string name) const override;
@@ -23,10 +29,16 @@ public:
     absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const override;
     absl::Status destroyStory(StoryId id) override;
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
+    absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity, AcquireOptions options) override;
+    absl::StatusOr<std::vector<RenewAcquisitionResult>>
+    renewAcquisitions(const std::vector<RenewAcquisition>& acquisitions) override;
+    LeaseAuthority& leaseAuthority() { return leases_; }
+
     absl::StatusOr<ReleaseResult> release(StoryId id, uint64_t writer_id, uint64_t incarnation) override;
     absl::StatusOr<Epoch> compareAndSetEpoch(StoryId id, Epoch expected, Epoch desired) override;
     absl::StatusOr<AcquisitionSnapshot> snapshotAcquisitions() const override;
     void setObserver(AcquisitionObserver* observer) override;
+    absl::StatusOr<Acquisition> requestGrant(const std::string& request_id) const override;
     bool leaderLease() const;
     bool appliedStateCurrent() const;
     int leaderId() const;
@@ -40,11 +52,23 @@ public:
         for(const auto& peer: config_.peers) out.push_back(peer.internal_endpoint);
         return out;
     }
+    absl::Status serviceTick();
+    absl::Status reconcileLeases();
     SqliteMetadataStore& appliedStore() { return *store_; }
 
 private:
     class Machine;
-    RaftMetadataStore(std::unique_ptr<SqliteMetadataStore> store, RaftConfig config, FenceWaiter waiter);
+    RaftMetadataStore(std::unique_ptr<SqliteMetadataStore> store,
+                      RaftConfig config,
+                      FenceWaiter waiter,
+                      AcquisitionLeaseConfig leases,
+                      std::shared_ptr<RaftTestControl> control);
+    LeaseAuthority leases_;
+    std::shared_ptr<RaftTestControl> control_;
+    std::mutex activation_mutex_;
+    uint64_t active_term_{};
+    std::pair<StoryId, uint64_t> scan_cursor_{};
+    absl::Status activateLeases();
     std::unique_ptr<SqliteMetadataStore> store_;
     RaftConfig config_;
     FenceWaiter fence_waiter_;
