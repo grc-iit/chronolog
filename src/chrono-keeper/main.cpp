@@ -118,14 +118,16 @@ int main(int argc, char** argv)
     journal_config.instance = instance;
     journal_config.append_ceiling_wait_ms = config->append_ceiling_wait_ms;
     journal_config.payload_max_bytes = config->payload_max_bytes;
-    journal_config.causal_floor_skew_limit_ns = config->causal_floor_skew_limit_ns;
+    journal_config.require_catalog_policy = true;
     journal_config.dedupe_window = config->dedupe_window;
-    WalJournalConfig wal_config{config->wal_dir,
-                                config->group_commit_max_bytes,
-                                config->reserve_ahead_ms,
-                                config->wal_max_bytes,
-                                config->wal_segment_bytes,
-                                config->group_commit_window_us};
+    // Recovery uses the compiled D - S; Register must confirm it before admission.
+    WalJournalConfig wal_config{
+            config->wal_dir,
+            config->group_commit_max_bytes,
+            static_cast<uint32_t>((PhysicalPolicy{}.hlc_lead_ns - PhysicalPolicy{}.skew_limit_ns) / 1'000'000),
+            config->wal_max_bytes,
+            config->wal_segment_bytes,
+            config->group_commit_window_us};
     std::unique_ptr<WalJournal> owned_journal;
     try
     {
@@ -182,7 +184,10 @@ int main(int argc, char** argv)
                                    recovered_instance,
                                    config->keeper_failure_timeout_ms,
                                    config->release_fence_timeout_ms,
-                                   clock},
+                                   clock,
+                                   {},
+                                   config->causal_floor_skew_limit_ns,
+                                   config->reserve_ahead_ms},
                                   journal,
                                   *membership,
                                   acquisitions);

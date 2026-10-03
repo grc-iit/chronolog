@@ -21,7 +21,7 @@ struct StaticRoute
     Route route;
 };
 
-// A writer admitted at boot, for a Keeper running without a Visor.
+// A writer installed at boot; appends still wait for Catalog policy validation.
 struct StaticWriter
 {
     StoryId story_id{};
@@ -44,7 +44,7 @@ struct KeeperConfig
     std::string self_endpoint = "chrono-keeper:50052";
     std::string visor_internal = "chrono-visor:50061";
     size_t payload_max_bytes = 1048576;
-    // Section 13 of ARCHITECTURE.md records 60 s (I8.6).
+    // Expected Catalog S (I8.6), checked at Register; never an independent admission limit.
     int64_t causal_floor_skew_limit_ns = 60'000'000'000;
     size_t dedupe_window = 65536;
     std::string wal_dir = "wal";
@@ -52,6 +52,7 @@ struct KeeperConfig
     // I5.10 group-commit window in microseconds, at most 10000. Zero commits each group as soon as the
     // WAL committer is free; nonzero holds a group open that long after its first record.
     uint32_t group_commit_window_us = 0;
+    // Expected Catalog D - S in milliseconds; a mismatch refuses Register.
     uint32_t reserve_ahead_ms = 1000;
     uint64_t wal_max_bytes = 1ull << 30;
     uint64_t wal_segment_bytes = 64ull << 20;

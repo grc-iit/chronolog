@@ -42,6 +42,9 @@ public:
         std::shared_ptr<Clock> clock{};
         // Monotonic nanoseconds; steady_clock when empty.
         std::function<int64_t()> monotonic{};
+        // Assertions of the Catalog S and D, never independent admission policy.
+        int64_t causal_floor_skew_limit_ns{PhysicalPolicy{}.skew_limit_ns};
+        uint32_t reserve_ahead_ms{1000};
     };
 
     ClusterClient(std::shared_ptr<grpc::Channel> channel,

@@ -13,7 +13,7 @@ std::unique_ptr<JournalHarness> MakeRam()
 {
     RamJournalConfig config;
     config.dedupe_window = 16;
-    config.causal_floor_skew_limit_ns = kSkewLimitNs;
+    config.physical_policy.skew_limit_ns = kSkewLimitNs;
     auto rig = std::make_shared<test::RamRig>(config);
 
     auto h = std::make_unique<JournalHarness>();

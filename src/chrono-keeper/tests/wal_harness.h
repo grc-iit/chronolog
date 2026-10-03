@@ -159,7 +159,7 @@ struct WalRig
         ram_config.process_id = "self";
         ram_config.instance = "instance";
         ram_config.append_ceiling_wait_ms = 100;
-        ram_config.causal_floor_skew_limit_ns = 1000;
+        ram_config.physical_policy.skew_limit_ns = 1000;
         config.wal_dir = control->directory;
         reopen();
     }

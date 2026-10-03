@@ -61,8 +61,16 @@ RamJournal::RamJournal(std::shared_ptr<Clock> clock,
     : clock_(std::move(clock))
     , membership_(std::move(membership))
     , config_(config)
+    , causal_skew_limit_ns_(config.physical_policy.skew_limit_ns)
+    , catalog_policy_ready_(!config.require_catalog_policy)
 {
     instance_ = config.instance;
+}
+
+void RamJournal::adoptCatalogSkewLimit(int64_t skew_limit_ns)
+{
+    causal_skew_limit_ns_.store(skew_limit_ns);
+    catalog_policy_ready_.store(true);
 }
 
 absl::Status RamJournal::requireStory(StoryId id) const
@@ -286,7 +294,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         return fail(absl::InvalidArgumentError("span_id must be 8 bytes"));
     if(item.causal_floor.physical_ns < 0 ||
        (item.causal_floor.physical_ns > now_ns &&
-        (now_ns < 0 || item.causal_floor.physical_ns - now_ns > config_.causal_floor_skew_limit_ns)))
+        (now_ns < 0 || item.causal_floor.physical_ns - now_ns > causal_skew_limit_ns_.load())))
         return fail(absl::InvalidArgumentError("causal_floor is beyond the skew limit"));
 
     auto interval = physicalInterval(item.physical);
@@ -585,6 +593,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
         return done(absl::InvalidArgumentError("story_id is required"));
     if(batch.items.empty())
         return done(absl::InvalidArgumentError("batch has no items"));
+    if(!catalog_policy_ready_.load())
+        return done(absl::UnavailableError("Catalog physical policy is not validated"));
     if(!admission_ready_.load())
         return done(absl::UnavailableError("acquisition snapshot is not applied"));
     if(durability != Durability::Unspecified && durability != Durability::Accepted && durability != Durability::Durable)
