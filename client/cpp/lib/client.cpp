@@ -14,6 +14,8 @@ Client::Client(std::unique_ptr<Impl> impl)
 Client::~Client() = default;
 Client::Client(Client&&) noexcept = default;
 Client& Client::operator=(Client&&) noexcept = default;
+void Client::observeFloor(Hlc floor) { impl_->state->observe(floor); }
+Hlc Client::causalFloor() const { return impl_->state->causalFloor(); }
 absl::StatusOr<Client> Client::Connect(ClientOptions options, Deadline deadline)
 {
     if(options.catalog_endpoint.empty() || options.rpc_timeout.count() <= 0 || options.retry.backoff.count() < 0 ||
