@@ -117,7 +117,8 @@ public:
      * acquisition has crashed: acquire supersedes it by releasing the old incarnation, with its own revision and
      * without a fence wait, in the same atomic step that creates the next incarnation.
      * Postconditions: Returns stable writer_id, persisted strictly increased incarnation, route, epoch and
-     * assigned_keeper stable per (writer_id, epoch) and a positive finite lease. A fresh logical call\n     * generates its request id before proposal and retains it across call-owned retries.
+     * assigned_keeper stable per (writer_id, epoch) and a positive finite lease. A fresh logical call
+     * generates its request id before proposal and retains it across call-owned retries.
      * Status codes: OK; INVALID_ARGUMENT for empty identity; NOT_FOUND for unknown id; FAILED_PRECONDITION for
      * tombstone; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; persistence completes before success.
