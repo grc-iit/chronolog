@@ -197,6 +197,15 @@ def find(name):
     raise ValueError(f'no instance {name}; start one with: chronolog up {name} --bin-dir <directory>')
 
 
+def process_gone(pid):
+    process = Path('/proc') / str(pid)
+    try:
+        zombie = (process / 'stat').read_text().rsplit(')', 1)[1].split()[0] == 'Z'
+        return zombie and {task.name for task in (process / 'task').iterdir()} == {str(pid)}
+    except (FileNotFoundError, ProcessLookupError):
+        return not process.exists()
+
+
 def port_holder(port):
     inodes = set()
     for table in ('tcp', 'tcp6'):
@@ -208,9 +217,13 @@ def port_holder(port):
         if not process.name.isdigit():
             continue
         try:
-            for descriptor in (process / 'fd').iterdir():
-                if os.readlink(descriptor) in {'socket:[' + inode + ']' for inode in inodes}:
-                    return 'pid=' + process.name + ' name=' + (process / 'comm').read_text().strip()
+            for task in (process / 'task').iterdir():
+                try:
+                    for descriptor in (task / 'fd').iterdir():
+                        if os.readlink(descriptor) in {'socket:[' + inode + ']' for inode in inodes}:
+                            return 'pid=' + process.name + ' name=' + (task / 'comm').read_text().strip()
+                except (PermissionError, FileNotFoundError, ProcessLookupError):
+                    continue
         except (PermissionError, FileNotFoundError, ProcessLookupError):
             pass
     return 'holder unavailable (kernel socket or another uid)'

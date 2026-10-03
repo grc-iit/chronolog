@@ -739,6 +739,22 @@ absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string i
     if(!r.ParseFromString(*result))
         return absl::InternalError("invalid apply response");
     auto status = convert::acquireStatus(r);
+    auto sampleGrant = [&](const AcquisitionChange& row) -> absl::StatusOr<AcquisitionLease>
+    {
+        auto lease = leases_.sample(row, false);
+        if(row.state == AcquisitionState::Released ||
+           (!lease.ok() && (absl::IsFailedPrecondition(lease.status()) ||
+                            (absl::IsUnavailable(lease.status()) &&
+                             lease.status().message() == "acquisition changed during renewal"))))
+        {
+            auto latest = store_->acquisitionRows({{row.story_id, row.writer_id, row.incarnation}});
+            if(!latest.ok())
+                return latest.status();
+            if(latest->front().state == AcquisitionState::Released)
+                return terminalRetry(row.incarnation, latest->front().termination_cause);
+        }
+        return lease;
+    };
     if(!status.ok())
     {
         // HELD remaining_ns is sampled by this authority after apply, never inside replica apply.
@@ -750,7 +766,7 @@ absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string i
             return current.status();
         if(!*current)
             return status;
-        auto lease = leases_.sample(**current, false);
+        auto lease = sampleGrant(**current);
         if(!lease.ok())
             return lease.status();
         return withRemaining(status, lease->remaining_ns);
@@ -762,7 +778,7 @@ absl::StatusOr<Acquisition> RaftMetadataStore::acquire(StoryId id, std::string i
     auto rows = store_->acquisitionRows({{grant.story_id, grant.writer_id, grant.incarnation}});
     if(!rows.ok())
         return rows.status();
-    auto lease = leases_.sample(rows->front(), false);
+    auto lease = sampleGrant(rows->front());
     if(!lease.ok())
         return lease.status();
     grant.lease = *lease;

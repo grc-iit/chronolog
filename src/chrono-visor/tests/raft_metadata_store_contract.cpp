@@ -151,6 +151,14 @@ MetadataStoreFactory factory(bool majority)
         };
         h->stepExpirySweep = [lease_harness]
         { return dynamic_cast<RaftMetadataStore*>(lease_harness->sut.get())->sweepExpiry(); };
+        h->beforeNextAcquireSample = [lease_harness](std::function<void()> callback)
+        {
+            dynamic_cast<RaftMetadataStore*>(lease_harness->sut.get())
+                    ->leaseAuthority()
+                    .beforeNextSampleForTest(std::move(callback));
+        };
+        h->requestGrant = [lease_harness](const std::string& id)
+        { return dynamic_cast<RaftMetadataStore*>(lease_harness->sut.get())->requestGrant(id); };
         return h;
     };
 }
