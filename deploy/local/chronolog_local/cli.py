@@ -1,6 +1,4 @@
 import argparse
-import contextlib
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -13,19 +11,9 @@ import sys
 import time
 import getpass
 
-from .registry import (KEYS, ROLES, atomic, binary, directory, find, free_ports, home,
+from .registry import (KEYS, ROLES, atomic, binary, control, directory, find, free_ports, home,
                        leases, load, lock, name_check, probe, status)
 from .supervisor import configs, detach
-
-
-@contextlib.contextmanager
-def control(path):
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        os.close(fd)
 
 
 def create(args):
@@ -81,7 +69,20 @@ def create(args):
         return folder, record
 
 
+def remap_unbooted(folder, record, args):
+    if record.get('booted') or args.port_base or getattr(args, '_bind_attempt', 0) >= 2:
+        return False
+    args._bind_attempt = getattr(args, '_bind_attempt', 0) + 1
+    port = 61000 + secrets.randbelow((65535 - 61000 - 7) // 8) * 8
+    host = record['endpoints']['catalog'].rsplit(':', 1)[0]
+    record['endpoints'] = {key: f'{host}:{port + offset}' for offset, key in enumerate(KEYS)}
+    atomic(folder / 'instance.json', record)
+    return True
+
+
 def up(args):
+    if not hasattr(args, '_boot_deadline'):
+        args._boot_deadline = time.monotonic() + 30
     try:
         folder, record = find(args.name)
     except ValueError:
@@ -96,15 +97,25 @@ def up(args):
             if args.bin_dir:
                 record['bin_dir'] = str(Path(args.bin_dir).resolve())
                 atomic(folder / 'instance.json', record)
-            free_ports(record['endpoints'])
+            while True:
+                try:
+                    free_ports(record['endpoints'])
+                    break
+                except ValueError:
+                    if not remap_unbooted(folder, record, args):
+                        raise
+            (folder / 'run/status.json').unlink(missing_ok=True)
             detach(folder)
-    deadline = time.monotonic() + 30
+    deadline = args._boot_deadline
     while time.monotonic() < deadline:
         current = status(folder)
         if current['state'] == 'ready':
             return current
         if current.get('error'):
             break
+        if current['state'] == 'stopped' and (folder / 'run/status.json').exists():
+            if load(folder / 'run/status.json').get('error'):
+                break
         time.sleep(0.05)
     logs = []
     for role in ROLES:
@@ -113,6 +124,18 @@ def up(args):
             logs.append(role + ':\n' + '\n'.join(path.read_text(errors='replace').splitlines()[-40:]))
     # status() deliberately ignores stale status; retain startup errors for this invocation only.
     last = load(folder / 'run/status.json') if (folder / 'run/status.json').exists() else {}
+    if 'cannot listen on' in '\n'.join(logs) and not record.get('booted'):
+        while time.monotonic() < deadline and status(folder)['state'] != 'stopped':
+            time.sleep(0.05)
+        if time.monotonic() < deadline:
+            with control(folder / 'run/control.lock'):
+                record = load(folder / 'instance.json')
+                if status(folder)['state'] == 'stopped' and remap_unbooted(folder, record, args):
+                    retry = True
+                else:
+                    retry = False
+            if retry:
+                return up(args)
     raise ValueError(last.get('error', '30 s readiness deadline') + '\n' + '\n'.join(logs))
 
 
@@ -126,7 +149,14 @@ def down(args):
             holders = [item for item in leases(folder) if item['pid'] != os.getpid()]
             if holders and not args.force:
                 raise ValueError('foreign attach leases: ' + json.dumps(holders))
-            os.kill(current['supervisor_pid'], signal.SIGTERM)
+            deadline = time.monotonic() + 30
+            while not current.get('supervisor_pid') and current['state'] != 'stopped':
+                if time.monotonic() >= deadline:
+                    raise ValueError('supervisor has not published its starting status')
+                time.sleep(0.05)
+                current = status(folder)
+            if current['state'] != 'stopped':
+                os.kill(current['supervisor_pid'], signal.SIGTERM)
     keeper = configs(record)['keeper'].get('shutdown_confirm_timeout_secs', 150)
     grapher = configs(record)['grapher'].get('drain_timeout_ms', 5000) / 1000
     deadline = time.monotonic() + keeper + grapher + 40

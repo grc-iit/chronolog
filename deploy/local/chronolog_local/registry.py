@@ -1,4 +1,5 @@
 import ctypes
+import contextlib
 import fcntl
 import json
 import os
@@ -126,7 +127,32 @@ def probe(record):
     return 'rpc'
 
 
+CONTROL_LOCKS = {}
+
+
+@contextlib.contextmanager
+def control(path):
+    key = str(Path(path).resolve())
+    if key in CONTROL_LOCKS:
+        yield
+        return
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        CONTROL_LOCKS[key] = fd
+        yield
+    finally:
+        CONTROL_LOCKS.pop(key, None)
+        os.close(fd)
+
+
 def status(folder, probing=False):
+    # Serialize the brief discovery SH lock with a supervisor's first EX acquisition.
+    with control(folder / 'run/control.lock'):
+        return locked_status(folder, probing)
+
+
+def locked_status(folder, probing=False):
     record = load(folder / 'instance.json')
     fd = lock(folder / 'run/supervisor.lock', exclusive=False)
     if fd is not None:
@@ -162,6 +188,10 @@ def find(name):
             record = load(folder / 'instance.json')
             if record['id'] == name:
                 return folder, record
+    for path in (root / 'external').glob('*.json'):
+        record = load(path)
+        if record['id'] == name:
+            return None, record
     raise ValueError(f'no instance {name}; start one with: chronolog up {name} --bin-dir <directory>')
 
 

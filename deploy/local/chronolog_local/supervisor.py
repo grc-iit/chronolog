@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 
-from .registry import ROLES, atomic, binary, boot_id, clock_status, free_ports, leases, load, lock, probe
+from .registry import CONTROL_LOCKS, ROLES, atomic, binary, boot_id, clock_status, control, free_ports, leases, load, lock, probe
 
 READY = {'visor': 'catalog ready', 'keeper': 'journal ready',
          'grapher': 'grapher registered', 'player': 'player ready'}
@@ -197,6 +197,11 @@ class Supervisor:
             self.start('player')
             self.wait_ready(('player',), deadline)
             self.state['probe'] = probe(self.record)
+            for role in ROLES:
+                if self.children[role].poll() is not None:
+                    raise RuntimeError(f'{role} exited during readiness probe')
+            self.record['booted'] = True
+            atomic(self.folder / 'instance.json', self.record)
             self.state.update(state='ready', ready_ns=time.time_ns())
             self.publish()
             while not self.stopping:
@@ -258,9 +263,11 @@ def detach(folder):
                 os.close(int(inherited.name))
             except OSError:
                 pass
-    fd = lock(folder / 'run/supervisor.lock')
-    if fd is None:
-        os._exit(0)
+    CONTROL_LOCKS.clear()
+    with control(folder / 'run/control.lock'):
+        fd = lock(folder / 'run/supervisor.lock')
+        if fd is None:
+            os._exit(0)
     try:
         Supervisor(folder, load(folder / 'instance.json')).run()
     finally:
