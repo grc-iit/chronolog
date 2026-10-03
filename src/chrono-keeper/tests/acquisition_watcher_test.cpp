@@ -156,8 +156,25 @@ protected:
 
     void startWatcher()
     {
-        watcher_ = std::make_unique<keeper::AcquisitionWatcher>(journal_, "self", [this] { ++fences_; });
+        watcher_ = std::make_unique<keeper::AcquisitionWatcher>(journal_,
+                                                                "self",
+                                                                [this]
+                                                                {
+                                                                    {
+                                                                        std::lock_guard lock(fence_mutex_);
+                                                                        ++fences_;
+                                                                    }
+                                                                    fence_cv_.notify_all();
+                                                                });
         watcher_->start(channel_);
+    }
+
+    bool waitForFence()
+    {
+        // The hook follows advance so its W10.6 heartbeat carries the applied revision.
+        // waitApplied can return before that hook runs.
+        std::unique_lock lock(fence_mutex_);
+        return fence_cv_.wait_for(lock, 5s, [this] { return fences_.load() >= 1; });
     }
 
     AppendResult append(uint64_t sequence)
@@ -187,6 +204,8 @@ protected:
     std::unique_ptr<grpc::Server> server_;
     std::shared_ptr<grpc::Channel> channel_;
     std::atomic<int> fences_{0};
+    std::mutex fence_mutex_;
+    std::condition_variable fence_cv_;
     std::unique_ptr<keeper::AcquisitionWatcher> watcher_;
 };
 
@@ -203,7 +222,7 @@ TEST_F(AcquisitionWatcherTest, AppendAcceptedBetweenAcquiredAndReleased)
     cluster_.push(Update(6, iv1::ACQUISITION_STATE_RELEASED));
     ASSERT_TRUE(watcher_->waitApplied(6, 5s));
     EXPECT_EQ(append(2).status.code(), absl::StatusCode::kFailedPrecondition);
-    EXPECT_GE(fences_.load(), 1);
+    EXPECT_TRUE(waitForFence());
     EXPECT_EQ(watcher_->appliedRevision(), 6u);
 }
 
@@ -218,7 +237,7 @@ TEST_F(AcquisitionWatcherTest, ReconnectSnapshotFencesWriterItNoLongerLists)
     ASSERT_TRUE(watcher_->waitApplied(9, 10s));
     EXPECT_EQ(cluster_.connections(), 2);
     EXPECT_EQ(append(2).status.code(), absl::StatusCode::kFailedPrecondition);
-    EXPECT_GE(fences_.load(), 1);
+    EXPECT_TRUE(waitForFence());
 }
 
 TEST_F(AcquisitionWatcherTest, RegressedSnapshotEndsTheSessionAndAdmissionReopensAfterACurrentSnapshot)
