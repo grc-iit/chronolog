@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <grpcpp/grpcpp.h>
+#include "chronolog/message_limits.h"
 
 namespace chronolog::rpc
 {
@@ -87,6 +88,7 @@ inline std::string visorTarget(const std::string& endpoints)
 inline grpc::ChannelArguments channelArguments()
 {
     grpc::ChannelArguments args;
+    args.SetMaxReceiveMessageSize(kEventStreamReceiveBytes);
     args.SetInt(GRPC_ARG_DNS_MIN_TIME_BETWEEN_RESOLUTIONS_MS, kDnsMinResolveIntervalMs);
     args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, kInitialBackoffMs);
     args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, kMinBackoffMs);
