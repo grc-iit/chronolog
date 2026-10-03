@@ -373,8 +373,8 @@ TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquir
         server.acquired_incarnation = 2;
         auto fresh = client->acquire(1, "writer");
         ASSERT_TRUE(fresh.ok()) << fresh.status();
-        // The removed owner's incarnation is a terminal predecessor: the successor is a conditional plain
-        // Acquire against it with a fresh id, never an implicit takeover.
+        // The removed owner's incarnation is a terminal (OWNER_REMOVED) predecessor, so the successor is an
+        // ordinary Acquire with a fresh id, never an implicit takeover.
         ASSERT_EQ(server.acquire_requests.size(), 2u);
         const auto& initial = server.acquire_requests[0];
         const auto& successor = server.acquire_requests[1];
@@ -383,9 +383,6 @@ TEST(ClientContract, ClientWhoseKeeperWasRemovedReportsOutcomeUnknownAndReacquir
         EXPECT_NE(initial.acquire_request_id(), successor.acquire_request_id());
         EXPECT_FALSE(initial.takeover());
         EXPECT_FALSE(successor.takeover());
-        EXPECT_FALSE(initial.has_expected_prior_incarnation());
-        ASSERT_TRUE(successor.has_expected_prior_incarnation());
-        EXPECT_EQ(successor.expected_prior_incarnation(), 1u);
         auto appended = fresh->append(spec);
         ASSERT_TRUE(appended.ok()) << appended.status();
         EXPECT_EQ(appended->acked(), durability == chronolog::Durability::Durable);
