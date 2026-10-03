@@ -57,5 +57,52 @@ class SettledTest(unittest.TestCase):
             self.scenario.append(self.acquired, retry=False)
 
 
+class CatalogReadTest(unittest.TestCase):
+    def setUp(self):
+        self.scenario = object.__new__(Scenario)
+        self.scenario.internal = 'visor-internal'
+        self.scenario.story = 7
+        self.route = dict(story_id=7, route=dict(epoch=4))
+        self.state = dict(routes=[self.route], members=[dict(process=dict(process_id='keeper-a'),
+                                                          applied_route_revision=4)])
+        self.unavailable = dict(transport=14, error='no leader lease')
+
+    @patch('scenario.time.sleep')
+    def test_read_helpers_retry_a_lapsed_leader_lease(self, sleep):
+        for read, expected in ((self.scenario.state, self.state),
+                               (self.scenario.route, self.route),
+                               (lambda: self.scenario.applied('keeper-a', 4), True)):
+            with self.subTest(read=read):
+                sleep.reset_mock()
+                self.scenario.raw = Mock(side_effect=[self.unavailable,
+                                                     dict(transport=0, response=self.state)])
+                self.assertEqual(read(), expected)
+                self.assertEqual(self.scenario.raw.call_count, 2)
+                for call in self.scenario.raw.call_args_list:
+                    self.assertEqual(call.args, ('ListMembers', None, 'visor-internal'))
+                sleep.assert_called_once_with(.1)
+
+    @patch('scenario.time.sleep')
+    def test_item_unavailable_uses_the_same_retry_path(self, sleep):
+        self.scenario.raw = Mock(side_effect=[dict(transport=0, response=dict(status=dict(code=14))),
+                                             dict(transport=0, response=self.state)])
+        self.assertEqual(self.scenario.state(), self.state)
+        self.assertEqual(self.scenario.raw.call_count, 2)
+
+    def test_non_retryable_catalog_failure_is_not_hidden(self):
+        self.scenario.raw = Mock(return_value=dict(transport=7, error='permission denied'))
+        with self.assertRaisesRegex(AssertionError, 'permission denied'):
+            self.scenario.state()
+        self.scenario.raw.assert_called_once()
+
+    @patch('scenario.time.sleep')
+    @patch('scenario.time.monotonic', side_effect=[0, 0, 30])
+    def test_catalog_retry_keeps_the_existing_wait_bound(self, monotonic, sleep):
+        self.scenario.raw = Mock(return_value=self.unavailable)
+        with self.assertRaisesRegex(RuntimeError, 'ListMembers stayed UNAVAILABLE for 30s'):
+            self.scenario.state()
+        self.scenario.raw.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
