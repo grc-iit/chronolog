@@ -66,6 +66,7 @@ struct JournalHarness
     std::function<Hlc()> evictionFloor;
     // Apply the Visor tombstone of story 1, as the route stream or the Catalog reconciliation delivers it.
     std::function<void()> tombstone;
+    std::function<void(bool)> forceCapacity;
 };
 AppendItem Item(uint64_t sequence = 1)
 {

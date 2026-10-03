@@ -162,7 +162,8 @@ enum class AppendRejection : uint32_t
     KeeperNotInRoute = 9,
     StoryTombstoned = 10,
     FencedExpired = 11,
-    FencedOwnerRemoved = 12
+    FencedOwnerRemoved = 12,
+    Capacity = 13
 };
 struct AppendResult
 {

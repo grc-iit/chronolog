@@ -358,6 +358,37 @@ TEST(ContextApi, OnePendingOperationAndRedrive)
     EXPECT_EQ(peer.appends.size(), 4u);
 }
 
+TEST(ContextApi, CapacityRefusalKeepsSessionReadyAndStoresRejectedOutcome)
+{
+    Peer peer;
+    peer.append_code = absl::StatusCode::kResourceExhausted;
+    peer.reason = chronolog::AppendRejection::Capacity;
+    auto client = ctx::ContextClient::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    auto session = client->open(ref(), {"agent", "slot"}, writable());
+    ASSERT_TRUE(session.ok());
+    auto refused = (*session)->remember(memory("A"));
+    ASSERT_TRUE(refused.ok());
+    EXPECT_EQ(refused->current.outcome, ctx::MemoryOutcome::Rejected);
+    EXPECT_EQ(refused->state, ctx::SessionState::Ready);
+    EXPECT_EQ(chronolog::client::rejectionOf(refused->current.status), chronolog::AppendRejection::Capacity);
+    ASSERT_EQ(peer.appends.size(), 1u);
+    peer.append_code = absl::StatusCode::kOk;
+    peer.reason = chronolog::AppendRejection::Unspecified;
+    auto stored = (*session)->remember(memory("A"));
+    ASSERT_TRUE(stored.ok());
+    EXPECT_EQ(stored->current.outcome, ctx::MemoryOutcome::Rejected);
+    EXPECT_EQ(stored->state, ctx::SessionState::Ready);
+    EXPECT_EQ(peer.appends.size(), 1u);
+    auto admitted = (*session)->remember(memory("B"));
+    ASSERT_TRUE(admitted.ok());
+    EXPECT_EQ(admitted->current.outcome, ctx::MemoryOutcome::Durable);
+    EXPECT_EQ(admitted->state, ctx::SessionState::Ready);
+    ASSERT_TRUE(admitted->current.receipt);
+    EXPECT_EQ(admitted->current.receipt->event_id.sequence, 1u);
+    EXPECT_EQ(peer.appends.size(), 2u);
+}
+
 TEST(ContextApi, RememberOutcomes)
 {
     for(auto reason: {chronolog::AppendRejection::FencedReleased,

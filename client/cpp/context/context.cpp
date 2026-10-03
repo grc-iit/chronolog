@@ -447,9 +447,10 @@ void drive(Core& core,
             record.state = SessionState::Closed;
             record.recovery_required = true;
         }
-        else if(batch.ok() && (answer.status().code() == absl::StatusCode::kInvalidArgument ||
-                               answer.status().code() == absl::StatusCode::kOutOfRange ||
-                               reason == AppendRejection::SequenceGap || reason == AppendRejection::EarlierItemFailed))
+        else if(batch.ok() &&
+                (answer.status().code() == absl::StatusCode::kInvalidArgument ||
+                 answer.status().code() == absl::StatusCode::kOutOfRange || reason == AppendRejection::SequenceGap ||
+                 reason == AppendRejection::EarlierItemFailed || reason == AppendRejection::Capacity))
         {
             if(previously_uncertain)
             {

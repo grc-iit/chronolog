@@ -38,6 +38,7 @@ Failure classify(const absl::Status& status, bool has_route)
             return Failure::Fenced;
         case AppendRejection::SequenceGap:
         case AppendRejection::EarlierItemFailed:
+        case AppendRejection::Capacity:
             return Failure::Rejected;
         case AppendRejection::NotRegistered:
         case AppendRejection::StaleEpoch:
