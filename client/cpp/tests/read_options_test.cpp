@@ -146,7 +146,9 @@ TEST(ClientRead, MaxEventsIsSentAndPagesCertify)
     {
         EXPECT_EQ(events[i].id.sequence, i + 1);
         if(i)
+        {
             EXPECT_TRUE(chronolog::ReplayLess(events[i - 1], events[i]));
+        }
     }
     auto requests = peer.requests();
     ASSERT_EQ(requests.size(), 2u);
