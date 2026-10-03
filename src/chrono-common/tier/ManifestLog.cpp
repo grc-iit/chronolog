@@ -1,5 +1,5 @@
-#include "chrono-grapher/tier/ManifestLog.h"
-#include "chrono-grapher/tier/FileIO.h"
+#include "tier/ManifestLog.h"
+#include "tier/FileIO.h"
 #include <absl/crc/crc32c.h>
 #include <absl/log/check.h>
 #include <absl/log/log.h>

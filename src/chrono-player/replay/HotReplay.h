@@ -4,7 +4,7 @@
 #include <functional>
 #include <memory>
 #include "chrono-player/replay/HotSource.h"
-#include "chrono-grapher/tier/FileTierStore.h"
+#include "tier/FileTierStore.h"
 #include "chronolog/replay.h"
 
 namespace chronolog::player

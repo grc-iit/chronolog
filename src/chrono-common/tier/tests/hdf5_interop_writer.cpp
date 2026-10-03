@@ -1,4 +1,4 @@
-#include "chrono-grapher/tier/FileTierStore.h"
+#include "tier/FileTierStore.h"
 #include <iostream>
 
 int main(int argc, char** argv)

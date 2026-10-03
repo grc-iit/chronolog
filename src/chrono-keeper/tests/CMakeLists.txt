@@ -12,7 +12,6 @@ add_executable(chronolog_keeper_tests
     "${CMAKE_SOURCE_DIR}/tests/contract/archive/keeper_archive_adapter_test.cpp"
     ram_journal_contract.cpp
     ram_journal_test.cpp
-    route_read_test.cpp
     route_watcher_test.cpp
     system_clock_contract.cpp)
 target_include_directories(chronolog_keeper_tests PRIVATE

@@ -6,7 +6,6 @@ add_library(chronolog_keeper_lib STATIC
     "${KEEPER_DIR}/KeeperConfig.cpp"
     "${KEEPER_DIR}/adapter/ArchiveService.cpp"
     "${KEEPER_DIR}/adapter/Convert.cpp"
-    "${KEEPER_DIR}/adapter/RouteRead.cpp"
     "${KEEPER_DIR}/adapter/JournalService.cpp"
     "${KEEPER_DIR}/membership/AcquisitionWatcher.cpp"
     "${KEEPER_DIR}/membership/ConfigMembership.cpp"

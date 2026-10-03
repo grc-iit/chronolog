@@ -1,6 +1,6 @@
 #pragma once
 
-#include "chrono-grapher/tier/FileTierStore.h"
+#include "tier/FileTierStore.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include <chrono>
 #include <condition_variable>

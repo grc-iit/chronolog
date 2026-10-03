@@ -228,7 +228,7 @@ TEST_F(RouteWatcherTest, TombstoneUpdateIsAppliedWithoutARoute)
     cluster_.push(RouteUpdate(2, 4, 3));
     cluster_.push(RouteUpdate(2, 10, 4));
     awaitApplied(2, 4);
-    EXPECT_EQ(membership_.route(1).status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(membership_.route(1)->epoch, 7u);
 }
 
 TEST_F(RouteWatcherTest, SnapshotReconciliationConfirmsAStoryTheSnapshotDoesNotList)

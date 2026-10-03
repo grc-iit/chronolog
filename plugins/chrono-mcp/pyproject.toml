@@ -10,6 +10,9 @@ requires-python = ">=3.12"
 license = "BSD-2-Clause"
 dependencies = ["chronolog>=4.0.0,<5", "mcp>=2.2,<3"]
 
+[project.optional-dependencies]
+local = ["chronolog-local>=4.0.0,<5"]
+
 [project.scripts]
 chronolog-mcp = "chronomcp.server:main"
 
