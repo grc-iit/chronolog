@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <set>
 #include <thread>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "adapter/WorkerPool.h"
 #include "catalog/InMemoryMetadataStore.h"
 #include "catalog/LeaseAuthority.h"
+#include "catalog/SqliteMetadataStore.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include "membership/StaticRouteMembership.h"
 
@@ -399,5 +401,72 @@ TEST_F(catalog_adapter, RenewBatchPreservesPerEntryResults)
     EXPECT_EQ(call(&v1::Catalog::Stub::RenewAcquisitions, request, &response).error_code(),
               grpc::StatusCode::INVALID_ARGUMENT);
     EXPECT_EQ(store_->snapshotAcquisitions()->revision, revision);
+}
+} // namespace chronolog::visor
+
+namespace chronolog::visor
+{
+TEST_F(catalog_adapter, AcquirePreferenceResultMatchesAssignedKeeperAndRoute)
+{
+    const auto story = makeStory();
+    auto acquire_with = [&](const std::string& identity, std::optional<std::string> hint)
+    {
+        v1::AcquireRequest request;
+        request.set_story_id(story);
+        request.set_writer_identity(identity);
+        request.set_acquire_request_id(newAcquireRequestId());
+        if(hint)
+            request.set_preferred_keeper_process_id(*hint);
+        v1::AcquireResponse response;
+        EXPECT_TRUE(call(&v1::Catalog::Stub::Acquire, request, &response).ok());
+        EXPECT_EQ(response.status().code(), 0);
+        return response;
+    };
+    auto routed = [](const v1::AcquireResponse& r)
+    {
+        for(const auto& k: r.route().keepers())
+            if(k.process_id() == r.assigned_keeper().process_id())
+                return k.endpoint() == r.assigned_keeper().endpoint();
+        return false;
+    };
+    // writer_id 1 maps to keeper-b by modulo.
+    const auto honored = acquire_with("w1", "keeper-a");
+    EXPECT_EQ(honored.keeper_preference(), v1::KEEPER_PREFERENCE_RESULT_HONORED);
+    EXPECT_EQ(honored.assigned_keeper().process_id(), "keeper-a");
+    EXPECT_TRUE(routed(honored));
+    const auto stale = acquire_with("w2", "keeper-z");
+    EXPECT_EQ(stale.keeper_preference(), v1::KEEPER_PREFERENCE_RESULT_NOT_IN_ROUTE);
+    EXPECT_EQ(stale.assigned_keeper().process_id(), stale.route().keepers(stale.writer_id() % 2).process_id());
+    EXPECT_TRUE(routed(stale));
+    const auto absent = acquire_with("w3", std::nullopt);
+    EXPECT_FALSE(absent.has_keeper_preference());
+    EXPECT_TRUE(routed(absent));
+    ASSERT_EQ(release(honored).status().code(), 0);
+    const auto retained = acquire_with("w1", "keeper-b");
+    EXPECT_EQ(retained.keeper_preference(), v1::KEEPER_PREFERENCE_RESULT_RETAINED);
+    EXPECT_EQ(retained.assigned_keeper().process_id(), "keeper-a");
+    EXPECT_TRUE(routed(retained));
+}
+
+TEST(PreferredKeeperEmptyRoute, RefusesWithoutAGrant)
+{
+    InMemoryMetadataStore memory(Topology{{}, "grapher:50053", "player:50054"});
+    testing::TempDir dir;
+    auto sqlite =
+            SqliteMetadataStore::open((dir.path() / "catalog").string(), Topology{{}, "grapher:50053", "player:50054"});
+    ASSERT_TRUE(sqlite.ok()) << sqlite.status();
+    for(MetadataStore* store: {static_cast<MetadataStore*>(&memory), static_cast<MetadataStore*>(sqlite->get())})
+    {
+        ASSERT_TRUE(store->createChronicle("c").ok());
+        const auto story = store->createStory("c", "s");
+        ASSERT_TRUE(story.ok());
+        AcquireOptions options;
+        options.preferred_keeper_process_id = "keeper-a";
+        const auto refused = store->acquire(story->id, "w", options);
+        EXPECT_EQ(refused.status().code(), absl::StatusCode::kFailedPrecondition);
+        auto snapshot = dynamic_cast<AcquisitionLedger*>(store)->snapshotAcquisitions();
+        ASSERT_TRUE(snapshot.ok());
+        EXPECT_TRUE(snapshot->active.empty());
+    }
 }
 } // namespace chronolog::visor

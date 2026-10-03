@@ -1,4 +1,5 @@
 #include "catalog/InMemoryMetadataStore.h"
+#include "catalog/KeeperChoice.h"
 
 #include <algorithm>
 #include <optional>
@@ -316,9 +317,16 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
     if(writer == writers_.end())
         writer = writers_.emplace(identity, ++last_writer_id_).first;
     const auto writer_id = writer->second;
-    auto keeper = topology_.assignKeeper(writer_id, story->second.epoch);
-    if(!keeper.ok())
-        return keeper.status();
+    const auto prior_row = acquisitions_.find({id, writer_id});
+    auto choice = chooseKeeper(topology_.keepers,
+                               writer_id,
+                               prior_row != acquisitions_.end()
+                                       ? std::optional<std::string>(prior_row->second.assigned_keeper.process_id)
+                                       : std::nullopt,
+                               options.preferred_keeper_process_id);
+    if(!choice.ok())
+        return choice.status();
+    const KeeperRef* keeper = &choice->keeper;
     auto& row = acquisitions_[{id, writer_id}];
     if(row.incarnation == UINT64_MAX)
         return absl::ResourceExhaustedError("incarnation overflow");
@@ -345,7 +353,8 @@ absl::StatusOr<Acquisition> InMemoryMetadataStore::acquire(StoryId id, std::stri
                     row.incarnation,
                     topology_.routeFor(story->second.epoch, id),
                     *keeper,
-                    {*duration, *duration}};
+                    {*duration, *duration},
+                    choice->preference};
     grants_[options.acquire_request_id] = {inputs, out};
     notify({row.revision, id, writer_id, row.incarnation, *keeper, AcquisitionState::Acquired, *duration});
     auto lease = leases_.sample(

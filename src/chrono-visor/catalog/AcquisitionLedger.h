@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -66,6 +67,17 @@ public:
     virtual void setObserver(AcquisitionObserver* observer) = 0;
     virtual absl::StatusOr<Acquisition> requestGrant(const std::string& request_id) const = 0;
 };
+
+// Observational per-Keeper count of the committed active assigned rows (RFC-G section 9). It makes no admission,
+// assignment or fence decision.
+inline std::map<std::string, uint64_t> activeAcquisitionsPerKeeper(const AcquisitionSnapshot& snapshot)
+{
+    std::map<std::string, uint64_t> counts;
+    for(const auto& row: snapshot.active)
+        if(row.state == AcquisitionState::Acquired)
+            ++counts[row.assigned_keeper.process_id];
+    return counts;
+}
 
 // Name validation shared by every MetadataStore implementation.
 inline bool validName(const std::string& name)
