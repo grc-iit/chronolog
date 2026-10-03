@@ -236,6 +236,10 @@ TEST(Pubsub, ValidationDeadlineAndCallbackStop)
     client::Position wrong{first->hlc, first->event_id};
     EXPECT_TRUE(absl::IsInvalidArgument(
             bus.subscribe("another", callback, {.start = pubsub::Start::Saved, .position = wrong}).status()));
+    // Prepare the topic and Latest probe before the subscription deadline starts.
+    auto prepared = bus.subscribe("idle", callback, {.deadline = std::chrono::system_clock::now() + 5s});
+    ASSERT_TRUE(prepared.ok()) << prepared.status();
+    (*prepared)->stop();
     auto short_lived = bus.subscribe(
             "idle",
             callback,
