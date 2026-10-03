@@ -13,5 +13,9 @@ if(Python3_Interpreter_FOUND)
             set_tests_properties(plugin.mcp.${suite} PROPERTIES TIMEOUT 90
                 ENVIRONMENT "PYTHONPATH=${PROJECT_BINARY_DIR}/client/python/binding/package:${CMAKE_CURRENT_SOURCE_DIR}/src")
         endforeach()
+        add_test(NAME plugin.mcp.local2_b COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR}
+            "${Python_EXECUTABLE}" -m pytest -q "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_local2_b.py")
+        set_tests_properties(plugin.mcp.local2_b PROPERTIES TIMEOUT 150
+            ENVIRONMENT "CHRONOLOG_BIN_DIR=${PROJECT_BINARY_DIR};PYTHONPATH=${PROJECT_BINARY_DIR}/client/python/binding/package:${CMAKE_CURRENT_SOURCE_DIR}/src:${PROJECT_SOURCE_DIR}/deploy/local")
     endif()
 endif()

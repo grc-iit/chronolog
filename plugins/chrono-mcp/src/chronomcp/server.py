@@ -1,4 +1,4 @@
-"""chrono-mcp: the ten Context tools over the native Context API (RFC-F section 7)."""
+"""chrono-mcp: twelve instance and Context tools over the native Context API (RFC-F section 7)."""
 import argparse
 import asyncio
 import base64
@@ -21,6 +21,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 import chronolog as cl
 
+from .instances import Instances
+
 from .store import (CheckpointStore, Launcher, Unavailable, compact, hlc_json, position_of, position_values, token,
                     untoken)
 
@@ -34,7 +36,9 @@ def _threaded(fn):
     async def run(*args, **kwargs):
         try:
             return await asyncio.to_thread(fn, *args, **kwargs)
-        except (ValueError, TypeError, cl.Error) as error:
+        except Unavailable as error:
+            return compact(_unavailable(error))
+        except (ValueError, TypeError, OSError, cl.Error) as error:
             raise ToolError(f"{type(error).__name__}: {error}") from error
     return run
 
@@ -151,17 +155,43 @@ class _Session:
 class _State:
     def __init__(self, args):
         self.args = args
+        self.contexts = self.launcher = self.store = None
+        self.instances = Instances(args)
+        self.sessions = {}
+        self.lock = threading.RLock()
+        self.active_calls = 0
+        self.stop = threading.Event()
+        self.idle = None
+        if args.idle_close_s > 0:
+            self.idle = threading.Thread(target=self._idle_loop, daemon=True)
+            self.idle.start()
+
+        record = self.instances.startup()
+        if record is not None:
+            try:
+                self.bind(record)
+            except BaseException:
+                if self.launcher is not None:
+                    self.launcher.release()
+                self.instances.detach()
+                self.stop.set()
+                raise
+
+    def bind(self, record):
+        self.args.catalog = record['endpoints']['catalog']
+        self.args.player = record['endpoints'].get('player')
         self.contexts = cl.connect_context(cl.ContextOptions(
-            args.catalog, args.player, timeout=args.timeout,
-            max_checkpoint_payload_bytes=args.max_checkpoint_payload_bytes), timeout=args.timeout)
-        self.launcher = Launcher(args.identity, args.session_id, args.host_id, args.lock_dir, args.catalog,
-                                 getattr(args, "legacy_lock_dir", None))
+            self.args.catalog, self.args.player, timeout=self.args.timeout,
+            max_checkpoint_payload_bytes=self.args.max_checkpoint_payload_bytes), timeout=self.args.timeout)
+        self.launcher = Launcher(self.args.identity, self.args.session_id, self.args.host_id, self.args.lock_dir, self.args.catalog,
+                                 getattr(self.args, "legacy_lock_dir", None),
+                                 instance_id=record["id"] if record["name"] not in ("explicit", "legacy") else None)
         self.store = None
         self.store_error = None
-        if args.identity is not None:
-            self.store = CheckpointStore(self.contexts, self.launcher, args.state_chronicle,
-                                         args.max_checkpoint_payload_bytes, args.checkpoint_lookup_max_read_calls,
-                                         args.timeout)
+        if self.args.identity is not None:
+            self.store = CheckpointStore(self.contexts, self.launcher, self.args.state_chronicle,
+                                         self.args.max_checkpoint_payload_bytes, self.args.checkpoint_lookup_max_read_calls,
+                                         self.args.timeout)
             try:
                 self.store.start()
             except cl.Error as error:
@@ -169,13 +199,20 @@ class _State:
                 self.store.verdict = f"checkpoint store unavailable at start ({error})"
             except Unavailable as error:
                 self.store.state, self.store.verdict = error.state, error.verdict
-        self.sessions = {}
-        self.lock = threading.RLock()
-        self.stop = threading.Event()
-        self.idle = None
-        if args.idle_close_s > 0:
-            self.idle = threading.Thread(target=self._idle_loop, daemon=True)
-            self.idle.start()
+
+    def detach(self):
+        with self.lock:
+            for session in self.sessions.values():
+                if not session.closed_verdict:
+                    _, persisted = self.close_session(session, "instance detached; open it again")
+                    if persisted is not None and persisted['stored'] != 'durable':
+                        raise ValueError("session close record failed; instance remains attached")
+            if self.store is not None:
+                self.store.close()
+            if self.launcher is not None:
+                self.launcher.release()
+            self.instances.detach()
+            self.contexts = self.launcher = self.store = None
 
     # Sessions.
 
@@ -223,18 +260,18 @@ class _State:
             with self.lock:
                 idle = [s for s in self.sessions.values()
                         if s.writable and not s.closed_verdict and now - s.last_used > limit]
-            for s in idle:
-                try:
-                    self.close_session(s, f"session closed after {limit} s idle; open it again")
-                except cl.Error:
-                    pass
-            if self.store is not None and not self.writable_count() and now - self.store.last_used > limit:
-                self.store.close()
+                for s in idle:
+                    try:
+                        self.close_session(s, f"session closed after {limit} s idle; open it again")
+                    except cl.Error:
+                        pass
+                if self.store is not None and not self.writable_count() and now - self.store.last_used > limit:
+                    self.store.close()
 
     def shutdown(self):
         self.stop.set()
         with self.lock:
-            live = [s for s in self.sessions.values() if s.writable and not s.closed_verdict]
+            live = [s for s in self.sessions.values() if not s.closed_verdict]
         for s in live:
             try:
                 self.close_session(s, "server stopped")
@@ -242,7 +279,9 @@ class _State:
                 pass
         if self.store is not None:
             self.store.close()
-        self.launcher.release()
+        if self.launcher is not None:
+            self.launcher.release()
+        self.instances.detach()
 
 
 def _payload(content, content_type):
@@ -319,8 +358,94 @@ def create_server(args):
         "interpreting absence, use context_reconcile for uncertain old writes and commit processed follow tokens "
         "through context_checkpoint."))
 
+    def threaded(fn):
+        @wraps(fn)
+        def locked(*positional, **keywords):
+            state = shared["state"]
+            if fn.__name__.startswith('instance_'):
+                with state.lock:
+                    if fn.__name__ == 'instance_control' and state.active_calls:
+                        raise ValueError('context tools are running; retry instance control after they finish')
+                    return fn(*positional, **keywords)
+            with state.lock:
+                state.active_calls += 1
+            try:
+                return fn(*positional, **keywords)
+            finally:
+                with state.lock:
+                    state.active_calls -= 1
+        return _threaded(locked)
+
     def st():
-        return shared["state"]
+        state = shared["state"]
+        if state.contexts is None:
+            raise Unavailable('no instance bound; use instance_control action=up name=default create=true',
+                              'unbound', 'instance_control up')
+        return state
+
+    @server.tool()
+    @threaded
+    def instance_list(probe: bool = False) -> str:
+        """Discover local registered instances and this server's binding. probe=false reads registry metadata;
+        probe=true checks endpoints. Returns owner, paths, tiers, policy, clock and attach holders when available.
+        External records may omit fields. No credentials are returned."""
+        state = shared["state"]
+        records = state.instances.listing(probe)
+        return compact(_result(f"{len(records)} instances", True, instances=records,
+                               bound_instance_id=None if state.instances.record is None else state.instances.record['id']))
+
+    @server.tool()
+    @threaded
+    def instance_control(action: str, name: str = 'default', create: bool = False,
+                         on_last_detach: str | None = None, idle_grace_s: float | None = None,
+                         force: bool = False) -> str:
+        """up boots and binds a local instance, creating it only with create=true; attach binds a ready instance.
+        Rebinding is refused while writable sessions are open. detach closes sessions and drops this server's lease.
+        down closes this server's sessions and requests ordered stop; foreign leases require force=true.
+        on_last_detach=keep|stop and idle_grace_s configure creation. Binaries come from CHRONOLOG_BIN_DIR or PATH."""
+        state = shared["state"]
+        if action not in ('up', 'attach', 'detach', 'down'):
+            raise ValueError('action must be up, attach, detach or down')
+        if on_last_detach not in (None, 'keep', 'stop'):
+            raise ValueError('on_last_detach must be keep or stop')
+        if idle_grace_s is not None and (not math.isfinite(idle_grace_s) or idle_grace_s < 0):
+            raise ValueError('idle_grace_s must be finite and nonnegative')
+        if action in ('up', 'attach'):
+            current = state.instances.record
+            try:
+                _, target = state.instances.selected(name)
+            except ValueError:
+                target = None
+            same = current is not None and target is not None and current['id'] == target['id']
+            if state.writable_count() and not same:
+                return compact(_result('rebind refused: close writable sessions with context_close first', True,
+                                       changed=False, instance=state.instances.status()))
+            if action == 'up':
+                state.instances.up(name, create, on_last_detach, idle_grace_s)
+            if not same:
+                # Validate the destination before closing the current connection.
+                _, target = state.instances.selected(name)
+                if target['state'] != 'ready':
+                    raise ValueError(f'instance {name} is not ready; use instance_control action=up')
+                state.detach()
+                record = state.instances.attach(name)
+                try:
+                    state.bind(record)
+                except BaseException:
+                    if state.launcher is not None:
+                        state.launcher.release()
+                    state.instances.detach()
+                    state.contexts = state.launcher = state.store = None
+                    raise
+        else:
+            if action == 'down':
+                _, target = state.instances.selected(name)
+                if state.instances.record is not None and target['id'] == state.instances.record['id']:
+                    state.detach()
+                state.instances.down(name, force)
+            else:
+                state.detach()
+        return compact(_result(f'instance {action} complete', True, changed=True, instance=state.instances.status()))
 
     def base():
         return args.identity or "anonymous"
@@ -353,7 +478,7 @@ def create_server(args):
                 "next_action": _next_action(status.state) if s.writable else None}
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_open(name: str | None = None, ref_token: str | None = None, agent: str = "self",
                      create: bool = False, access: str = "read_write", resume: bool = False,
                      checkpoint_id: str | None = None) -> str:
@@ -455,7 +580,7 @@ def create_server(args):
                                checkpoint_id=s.store.last_id if s.store else None, **info))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_remember(session_handle: str, operation_id: str, content: str | dict,
                          content_type: str | None = None, attributes: dict[str, str] | None = None,
                          trace_id: str | None = None, span_id: str | None = None, durability: str = "durable",
@@ -534,7 +659,7 @@ def create_server(args):
         return projected, count, total
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_recall(session_handle: str, cursor: str | None = None, start: str | None = None,
                        end: str | None = None, max_events: int = DEFAULT_EVENTS, max_json_bytes: int = json_default,
                        view: str = "compact", max_read_calls: int = 32,
@@ -593,7 +718,7 @@ def create_server(args):
         return compact(out)
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_latest(session_handle: str, n: int = 10, before: str | None = None, max_read_calls: int = 32,
                        max_json_bytes: int = json_default, view: str = "compact",
                        until: int | str | None = None) -> str:
@@ -632,7 +757,7 @@ def create_server(args):
                                limited=limited, view=view, omitted=OMITTED if view == "compact" else []))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_follow(subscriptions: list[dict], timeout_s: float = 5.0, max_events: int = DEFAULT_EVENTS,
                        max_json_bytes: int = json_default, view: str = "compact") -> str:
         """Wait for new events on one or more contexts under one shared deadline. Each subscription is
@@ -697,7 +822,7 @@ def create_server(args):
                                omitted=OMITTED if view == "compact" else []))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_reconcile(session_handle: str | None = None, operation_ids: list[str] | None = None,
                           takeover: bool = False, max_read_calls: int = 32) -> str:
         """Recover uncertain writes after an error, a timeout, a fence or a restart: acquires a successor writer,
@@ -751,7 +876,7 @@ def create_server(args):
             omitted_operation_ids_may_duplicate=result.omitted_operation_ids_may_duplicate))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_checkpoint(session_handle: str | None = None, processed: list[str] | None = None) -> str:
         """Durably persist session state for one handle or every writable handle, after acknowledging processed
         follow tokens whose effects you have committed. stored=durable only after the checkpoint is Durable; the
@@ -783,7 +908,7 @@ def create_server(args):
                                acknowledged=acknowledged, sessions=[x.handle for x in writable]))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_close(session_handle: str) -> str:
         """Close a session: release its writer and durably record the close of that exact incarnation. Closing
         neither destroys the context nor stops the stack."""
@@ -799,7 +924,7 @@ def create_server(args):
                                close_record=persisted))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_list(chronicle: str | None = None) -> str:
         """List contexts in a chronicle (default: the launcher's). Metadata only: no acquisitions and no claim that
         any event history is complete."""
@@ -810,7 +935,7 @@ def create_server(args):
                                          for r in refs]))
 
     @server.tool()
-    @_threaded
+    @threaded
     def context_status(session_handle: str | None = None, agent: str | None = None) -> str:
         """Session states, writer stamps, causal floors, unresolved and permanently UNKNOWN operation ids, the
         checkpoint store and the retry window. Operation ids older than the retained window can be new again."""
@@ -832,7 +957,7 @@ def create_server(args):
                                launcher={"identity": args.identity, "session_id": args.session_id,
                                          "host_id": args.host_id, "slot_locked_here": s.launcher.held,
                                          "chronicle": args.chronicle},
-                               sessions=sessions, checkpoint_store=store,
+                               sessions=sessions, checkpoint_store=store, instance=s.instances.status(),
                                retry_window={"max_completed_operations": 10000,
                                              "note": "an operation_id outside the retained window can be new again"},
                                capabilities={"recall": "certified pages with local HLC-group cuts",
@@ -843,7 +968,7 @@ def create_server(args):
 
 def main():
     parser = argparse.ArgumentParser(description="ChronoLog Context tools over MCP")
-    parser.add_argument("--catalog", default=os.getenv("CHRONOLOG_CATALOG", "127.0.0.1:50051"))
+    parser.add_argument("--catalog", default=os.getenv("CHRONOLOG_CATALOG"))
     parser.add_argument("--player", default=os.getenv("CHRONOLOG_PLAYER"))
     parser.add_argument("--chronicle", default=os.getenv("CHRONOLOG_CHRONICLE", "chronolog"),
                         help="the launcher's chronicle that context names resolve in")

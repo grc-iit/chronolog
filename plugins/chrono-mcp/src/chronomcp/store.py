@@ -98,7 +98,7 @@ def catalog_key(catalog):
 class Launcher:
     """The stable base slot, the fresh run session id and the host-local locks held for the launch."""
 
-    def __init__(self, base, session_id, host_id, lock_dir, catalog, legacy_lock_dir=None):
+    def __init__(self, base, session_id, host_id, lock_dir, catalog, legacy_lock_dir=None, instance_id=None):
         self.base, self.session_id, self.host_id = base, session_id, host_id
         self.lock_dir = pathlib.Path(lock_dir)
         self.held = False
@@ -108,14 +108,17 @@ class Launcher:
         self.lock_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         legacy_dir = pathlib.Path(legacy_lock_dir or lock_dir)
         legacy_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        key = hashlib.sha256(f"catalog:{catalog_key(catalog)}\n{base}".encode()).hexdigest()[:32]
+        scope = f"instance:{instance_id}" if instance_id else f"catalog:{catalog_key(catalog)}"
+        key = hashlib.sha256(f"{scope}\n{base}".encode()).hexdigest()[:32]
         legacy_key = hashlib.sha256(f"{catalog}\n{base}".encode()).hexdigest()[:32]
         self.slot_path = self.lock_dir / f"slot-{key}.lock"
         legacy_path = legacy_dir / f"slot-{legacy_key}.lock"
         self.hints_path = legacy_dir / f"slot-{legacy_key}.json"
         # Retain the prior provenance while holding both lock keys for the migration release.
         self.lock_id = f"flock:{legacy_path}"
-        paths = [self.slot_path, legacy_path, self.lock_dir / f"slot-{legacy_key}.lock",
+        catalog_slot = self.lock_dir / ("slot-" + hashlib.sha256(
+            f"catalog:{catalog_key(catalog)}\n{base}".encode()).hexdigest()[:32] + ".lock")
+        paths = [self.slot_path, catalog_slot, legacy_path, self.lock_dir / f"slot-{legacy_key}.lock",
                  self.lock_dir / f"session-{hashlib.sha256(session_id.encode()).hexdigest()[:32]}.lock"]
         for path in dict.fromkeys(paths):
             handle = self._lock(path)

@@ -8,7 +8,7 @@ version = "4.0.0"
 description = "ChronoLog Context tools for agents over MCP"
 requires-python = ">=3.12"
 license = "BSD-2-Clause"
-dependencies = ["chronolog>=4.0.0,<5", "mcp>=2.2,<3"]
+dependencies = ["chronolog-local>=4.0.0,<5", "chronolog>=4.0.0,<5", "mcp>=2.2,<3"]
 
 [project.scripts]
 chronolog-mcp = "chronomcp.server:main"

@@ -1,6 +1,6 @@
 # ChronoLog MCP server
 
-`chronolog-mcp` gives agents ChronoLog contexts as durable, time-ordered memory through ten tools over the ChronoLog
+`chronolog-mcp` gives agents ChronoLog contexts as durable, time-ordered memory through twelve tools over the ChronoLog
 Context API. A context is one story in the launcher's chronicle. Results are bounded JSON that lead with a one-line
 `verdict`, then `answer_complete`, `has_more` and `next_cursor`; ids and nanoseconds are decimal strings, and cursors,
 `at` bounds, follow tokens, ref tokens and checkpoint ids are opaque strings.
@@ -17,9 +17,9 @@ codex plugin marketplace add grc-iit/ChronoLog         # or a local checkout pat
 codex plugin add chronolog@chronolog
 ```
 
-The server reads its settings from the environment: `CHRONOLOG_CATALOG` (default `127.0.0.1:50051`),
+The server reads its settings from the environment: `CHRONOLOG_CATALOG` (explicit endpoint override),
 `CHRONOLOG_PLAYER`, `CHRONOLOG_CHRONICLE`, `CHRONOLOG_MCP_IDENTITY` (the stable slot writable tools need),
-`CHRONOLOG_HOME`, `CHRONOLOG_MCP_SESSION_ID`, `CHRONOLOG_MCP_HOST_ID`, `CHRONOLOG_MCP_LOCK_DIR` and `CHRONOLOG_MCP_STATE_CHRONICLE`.
+`CHRONOLOG_HOME`, `CHRONOLOG_INSTANCE`, `CHRONOLOG_AUTOSTART`, `CHRONOLOG_BIN_DIR`, `CHRONOLOG_MCP_SESSION_ID`, `CHRONOLOG_MCP_HOST_ID`, `CHRONOLOG_MCP_LOCK_DIR` and `CHRONOLOG_MCP_STATE_CHRONICLE`.
 Harness configurations should pass `CHRONOLOG_HOME` consistently and forward the settings above and `UV_FIND_LINKS`.
 
 Until `chronolog` and `chronolog-mcp` are published on PyPI, point uv at the wheels a source checkout builds
@@ -56,6 +56,22 @@ release the server also holds the previous raw-endpoint lock and keeps its acqui
 when using the default directory it also holds that lock in the previous runtime/cache directory. A second launcher of the same slot
 on the same host serves reads only. `--host-id` (default: the hostname) and the lock identify the owner in every
 acquisition record. `--transport http` serves streamable HTTP on `--host`/`--port`.
+
+Local discovery uses the explicit Catalog first, then `CHRONOLOG_INSTANCE`, then a ready `default`. With
+`CHRONOLOG_AUTOSTART=1`, the selected instance is created or booted by the LOCAL-1 detached supervisor.
+The final fallback probes the legacy loopback demo. If nothing resolves, the server starts unbound and context
+tools return a verdict directing the agent to `instance_control` with `action="up", create=true`.
+Local creation requires installed service binaries on PATH or `CHRONOLOG_BIN_DIR`; install `chronolog-local`
+alongside this server. Its wheel can be built with `python -m build --wheel deploy/local`.
+
+`instance_list(probe=false)` reads registered instance metadata and marks this server's binding.
+`instance_control(action, name="default", create=false, on_last_detach, idle_grace_s, force=false)` boots,
+attaches, detaches or stops an instance. Creation policy defaults to keep with a 300 s idle grace; use
+`on_last_detach="stop"` for an ephemeral instance. The server holds its own managed-instance lease, even when
+launched through `chronolog run`. Detach closes sessions and persists writable close records before dropping
+the lease. Rebinding requires closing writable sessions first. Down respects foreign leases unless forced.
+`context_status` includes the current instance's endpoints, tiers, attach count and clock status.
+Registry instances use their id for slot locks and also hold normalized and raw Catalog locks for migration.
 
 ## Tools
 

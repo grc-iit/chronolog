@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.grc-iit/chronolog-mcp",
   "title": "ChronoLog MCP",
-  "description": "Durable agent memory on ChronoLog contexts: remember, recall, follow and reconcile with explicit completeness.",
+  "description": "Twelve tools for local instances and durable agent memory with explicit completeness.",
   "version": "4.0.0",
   "repository": {
     "url": "https://github.com/grc-iit/ChronoLog",
@@ -25,8 +25,7 @@
         },
         {
           "name": "CHRONOLOG_CATALOG",
-          "description": "Public ChronoLog Catalog endpoint",
-          "default": "127.0.0.1:50051"
+          "description": "Public ChronoLog Catalog endpoint"
         },
         {
           "name": "CHRONOLOG_PLAYER",
@@ -57,6 +56,18 @@
           "name": "CHRONOLOG_MCP_STATE_CHRONICLE",
           "description": "Chronicle holding the _checkpoints stories",
           "default": "agent-state"
+        },
+        {
+          "name": "CHRONOLOG_INSTANCE",
+          "description": "Registered instance name or id"
+        },
+        {
+          "name": "CHRONOLOG_AUTOSTART",
+          "description": "Set to 1 to create or boot the selected local instance"
+        },
+        {
+          "name": "CHRONOLOG_BIN_DIR",
+          "description": "Service binary directory for local instance creation"
         }
       ]
     }
@@ -73,7 +84,9 @@
         "context_checkpoint",
         "context_close",
         "context_list",
-        "context_status"
+        "context_status",
+        "instance_list",
+        "instance_control"
       ]
     }
   }
