@@ -81,7 +81,7 @@ target_include_directories(chronolog_dynamic_membership_tests PRIVATE tests "${P
 target_link_libraries(chronolog_dynamic_membership_tests PRIVATE chronolog_visor_lib chronolog_warnings GTest::gtest_main)
 gtest_discover_tests(chronolog_dynamic_membership_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 120)
 
-add_executable(chronolog_dynamic_cluster_tests tests/dynamic_cluster_test.cpp)
-target_include_directories(chronolog_dynamic_cluster_tests PRIVATE tests)
+add_executable(chronolog_dynamic_cluster_tests tests/dynamic_cluster_test.cpp tests/floor_test.cpp)
+target_include_directories(chronolog_dynamic_cluster_tests PRIVATE tests "${PROJECT_SOURCE_DIR}/tests/contract")
 target_link_libraries(chronolog_dynamic_cluster_tests PRIVATE chronolog_visor_lib chronolog_keeper_lib chronolog_warnings GTest::gtest_main)
 gtest_discover_tests(chronolog_dynamic_cluster_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 45 RESOURCE_LOCK visor_raft_ports)
