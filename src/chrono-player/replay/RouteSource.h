@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <vector>
 #include "chrono-player/replay/HotSource.h"
 

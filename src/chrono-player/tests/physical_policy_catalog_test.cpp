@@ -127,9 +127,17 @@ TEST(PhysicalPolicyCatalog, UnmarkedArchiveHeartbeatPermanentlyPreventsPhysicalC
     auto server = builder.BuildAndStart();
     ASSERT_NE(server, nullptr);
     auto channel = grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials());
+    std::mutex policy_mutex;
+    std::condition_variable policy_changed;
     auto routes = std::make_shared<ClusterClient>(channel,
                                                   Process{"player", "instance", "player:50054", ProcessRole::Player},
                                                   2s);
+    routes->onRoute(
+            [&](const Route&)
+            {
+                std::lock_guard lock(policy_mutex);
+                policy_changed.notify_all();
+            });
     auto source = std::make_shared<CatalogSource>(routes);
     auto complete = [&]()
     {
@@ -178,6 +186,10 @@ TEST(PhysicalPolicyCatalog, UnmarkedArchiveHeartbeatPermanentlyPreventsPhysicalC
         EXPECT_EQ(response.status().code(), 0);
     }
     EXPECT_FALSE(store->membershipRouteUpdate(story->id)->physical_policy());
+    {
+        std::unique_lock lock(policy_mutex);
+        ASSERT_TRUE(policy_changed.wait_for(lock, 2s, [&] { return !routes->physicalPolicy(story->id); }));
+    }
     EXPECT_FALSE(complete());
     ASSERT_TRUE(store->registerStaticPolicy("keeper-a", 1).ok());
     EXPECT_FALSE(complete());

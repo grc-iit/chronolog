@@ -42,7 +42,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       const Predecessor* predecessor,
                                       std::atomic<size_t>& retained,
                                       bool policy,
-                                      bool tail) const
+                                      bool tail,
+                                      std::chrono::system_clock::time_point deadline) const
 {
     KeeperFetch out;
     out.frontier.process_id = keeper.process_id;
@@ -55,7 +56,6 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         out.frontier.instance = predecessor->instance;
     }
 
-    const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto scan = range.axis == Range::Axis::Physical ? physicalWindow(range, policy) : range;
     if(predecessor)
     {
@@ -150,108 +150,135 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysical(StoryId story, const Ran
 absl::StatusOr<HotFetch>
 KeeperHotSource::fetchImpl(StoryId story, const Range& range, bool policy, const TailStarts* starts) const
 {
+    const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto state = routes_->routeState(story);
     if(!state.ok())
         return state.status();
-    HotFetch out;
-    out.route_epoch = state->route.epoch;
-    out.archived_below = state->archived_below;
-    out.abandoned = state->abandoned;
-    out.physical_policy = policy && routes_->physicalPolicy(story);
-    std::atomic<size_t> retained{0};
-    // A Tail round gives every source its own start and its own budget.
-    const bool tail = starts != nullptr;
-    auto startOf = [&](const SourceId& id)
+    for(int attempt = 0; attempt < 2; ++attempt)
     {
-        if(tail)
-            if(auto it = starts->find(id); it != starts->end())
-                return std::max(it->second, range.start);
-        return range.start;
-    };
-    auto useRetained = [&](const SourceId& id, Epoch epoch, const Predecessor* predecessor)
-    {
-        if(!tail)
-            return false;
-        const auto it = starts->retained.find(id);
-        if(it == starts->retained.end() || it->second.epoch != epoch ||
-           (predecessor && it->second.instance != predecessor->instance))
-            return false;
-        auto frontier = it->second;
-        if(predecessor)
-            frontier.own_cut = predecessor->own_cut;
-        out.keepers.push_back({std::move(frontier), {}});
-        return true;
-    };
-    std::vector<std::future<KeeperFetch>> pending;
-    for(const auto& keeper: state->route.keepers)
-    {
-        if(useRetained({keeper.process_id, 0}, state->route.epoch, nullptr))
-            continue;
-        Range own = range;
-        own.start = startOf({keeper.process_id, 0});
-        pending.push_back(std::async(std::launch::async,
-                                     [&, keeper, own]
-                                     {
-                                         std::atomic<size_t> mine{0};
-                                         return fetchOne(keeper,
-                                                         story,
-                                                         own,
-                                                         state->route.epoch,
-                                                         nullptr,
-                                                         tail ? mine : retained,
-                                                         out.physical_policy,
-                                                         tail);
-                                     }));
-    }
-    for(const auto& p: state->predecessors)
-    {
-        if(useRetained({p.keeper.process_id, p.epoch}, p.epoch, &p))
-            continue;
-        Range own = range;
-        if(range.axis == Range::Axis::Hlc)
+        HotFetch out;
+        out.route_epoch = state->route.epoch;
+        out.archived_below = state->archived_below;
+        out.abandoned = state->abandoned;
+        out.physical_policy = policy && routes_->physicalPolicy(story);
+        std::atomic<size_t> retained{0};
+        // A Tail round gives every source its own start and its own budget.
+        const bool tail = starts != nullptr;
+        auto startOf = [&](const SourceId& id)
         {
-            own.start = startOf({p.keeper.process_id, p.epoch});
-            if(own.start >= p.own_cut)
+            if(tail)
+                if(auto it = starts->find(id); it != starts->end())
+                    return std::max(it->second, range.start);
+            return range.start;
+        };
+        auto useRetained = [&](const SourceId& id, Epoch epoch, const Predecessor* predecessor)
+        {
+            if(!tail)
+                return false;
+            const auto it = starts->retained.find(id);
+            if(it == starts->retained.end() || it->second.epoch != epoch ||
+               (predecessor && it->second.instance != predecessor->instance))
+                return false;
+            auto frontier = it->second;
+            if(predecessor)
+                frontier.own_cut = predecessor->own_cut;
+            out.keepers.push_back({std::move(frontier), {}});
+            return true;
+        };
+        std::vector<std::future<KeeperFetch>> pending;
+        for(const auto& keeper: state->route.keepers)
+        {
+            if(useRetained({keeper.process_id, 0}, state->route.epoch, nullptr))
                 continue;
-            own.end = std::min(range.end, p.own_cut);
+            Range own = range;
+            own.start = startOf({keeper.process_id, 0});
+            pending.push_back(std::async(std::launch::async,
+                                         [&, keeper, own]
+                                         {
+                                             std::atomic<size_t> mine{0};
+                                             return fetchOne(keeper,
+                                                             story,
+                                                             own,
+                                                             state->route.epoch,
+                                                             nullptr,
+                                                             tail ? mine : retained,
+                                                             out.physical_policy,
+                                                             tail,
+                                                             deadline);
+                                         }));
         }
-        else if(out.physical_policy)
+        for(const auto& p: state->predecessors)
         {
-            int64_t bound = std::max(p.own_cut.physical_ns, p.own_physical_ceiling_ns);
-            int64_t skew = std::max<int64_t>(0, routes_->skewLimitNs());
-            bound = bound > std::numeric_limits<int64_t>::max() - skew ? std::numeric_limits<int64_t>::max()
-                                                                       : bound + skew;
-            if(range.start.physical_ns >= bound)
+            if(useRetained({p.keeper.process_id, p.epoch}, p.epoch, &p))
                 continue;
+            Range own = range;
+            if(range.axis == Range::Axis::Hlc)
+            {
+                own.start = startOf({p.keeper.process_id, p.epoch});
+                if(own.start >= p.own_cut)
+                    continue;
+                own.end = std::min(range.end, p.own_cut);
+            }
+            else if(out.physical_policy)
+            {
+                int64_t bound = std::max(p.own_cut.physical_ns, p.own_physical_ceiling_ns);
+                int64_t skew = std::max<int64_t>(0, routes_->skewLimitNs());
+                bound = bound > std::numeric_limits<int64_t>::max() - skew ? std::numeric_limits<int64_t>::max()
+                                                                           : bound + skew;
+                if(range.start.physical_ns >= bound)
+                    continue;
+            }
+            pending.push_back(std::async(std::launch::async,
+                                         [&, p, own]
+                                         {
+                                             std::atomic<size_t> mine{0};
+                                             return fetchOne(p.keeper,
+                                                             story,
+                                                             own,
+                                                             p.epoch,
+                                                             &p,
+                                                             tail ? mine : retained,
+                                                             out.physical_policy,
+                                                             tail,
+                                                             deadline);
+                                         }));
         }
-        pending.push_back(std::async(std::launch::async,
-                                     [&, p, own]
-                                     {
-                                         std::atomic<size_t> mine{0};
-                                         return fetchOne(p.keeper,
-                                                         story,
-                                                         own,
-                                                         p.epoch,
-                                                         &p,
-                                                         tail ? mine : retained,
-                                                         out.physical_policy,
-                                                         tail);
-                                     }));
-    }
-    for(auto& f: pending)
-    {
-        auto answer = f.get();
-        if(answer.frontier.truncated)
+        for(auto& f: pending)
         {
-            answer.frontier.truncated_at = answer.events.empty() ? range.start : answer.events.back().hlc;
+            auto answer = f.get();
+            if(answer.frontier.truncated)
+            {
+                answer.frontier.truncated_at = answer.events.empty() ? range.start : answer.events.back().hlc;
+            }
+            if(answer.frontier.predecessor && range.axis == Range::Axis::Hlc)
+                std::erase_if(answer.events, [&](const Event& e) { return e.hlc >= answer.frontier.own_cut; });
+            out.keepers.push_back(std::move(answer));
         }
-        if(answer.frontier.predecessor && range.axis == Range::Axis::Hlc)
-            std::erase_if(answer.events, [&](const Event& e) { return e.hlc >= answer.frontier.own_cut; });
-        out.keepers.push_back(std::move(answer));
+        if(writers_)
+            out.writers = writers_->writers(story);
+        const bool stale = std::any_of(out.keepers.begin(),
+                                       out.keepers.end(),
+                                       [](const auto& k)
+                                       {
+                                           return !k.frontier.predecessor && !k.frontier.answered &&
+                                                  (k.frontier.status == absl::StatusCode::kFailedPrecondition ||
+                                                   (k.frontier.status == absl::StatusCode::kOk &&
+                                                    k.frontier.epoch != k.frontier.expected_epoch));
+                                       });
+        if(!tail && attempt == 0 && stale && std::chrono::system_clock::now() < deadline)
+        {
+            auto next = routes_->routeStateAfter(story, state->route.epoch, deadline);
+            if(!next.ok())
+                return next.status();
+            if(next->route.epoch > state->route.epoch)
+            {
+                state = std::move(next);
+                continue;
+            }
+        }
+        return out;
     }
-    if(writers_)
-        out.writers = writers_->writers(story);
-    return out;
+    return absl::InternalError("route retry exhausted");
 }
 
 } // namespace chronolog::player
