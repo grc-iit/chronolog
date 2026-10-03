@@ -212,6 +212,9 @@ void chrono_ldms::send(chrono_ldms_story& st, std::vector<std::unique_ptr<Sample
         auto result = st.writer->appendBatch(specs, deadline());
         if(!result.ok())
         {
+            // Release the abandoned incarnation before re-acquiring the same identity; when that reply is lost the
+            // SDK retries it on the next acquire instead of meeting HELD (RFC-G section 7).
+            (void)st.writer->release(deadline());
             st.writer.reset();
             st.id.reset();
             setError("append " + st.story + ": " + result.status().ToString());
@@ -230,6 +233,9 @@ void chrono_ldms::send(chrono_ldms_story& st, std::vector<std::unique_ptr<Sample
                              (item.ok() ? std::string("not acked") : item.status().ToString()));
                 }
             }
+        // A fenced Writer never admits again; the next batch re-acquires through the SDK's own-prior recovery.
+        if(st.writer && st.writer->lease().termination_cause)
+            st.writer.reset();
     }
     appended.fetch_add(okCount);
     queued.fetch_sub(group.size());
