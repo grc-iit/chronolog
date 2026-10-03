@@ -7,6 +7,8 @@ import sys
 import tempfile
 import time
 
+from sdk_wheel import prepare_sdk
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chronolog_local.registry import free_ports
 
@@ -15,6 +17,7 @@ def main():
     wheels, cli, visor = sys.argv[1:]
     with tempfile.TemporaryDirectory(prefix='chronolog-external-') as scratch:
         root = Path(scratch)
+        wheel = prepare_sdk(root / 'sdk-wheels', Path(wheels))
         env = dict(os.environ, CHRONOLOG_HOME=str(root / 'registry'))
         env.pop('PYTHONPATH', None)
 
@@ -26,7 +29,6 @@ def main():
 
         call([sys.executable, '-m', 'venv', root / 'venv'])
         python = root / 'venv/bin/python'
-        wheel = next(Path(wheels).glob('chronolog-*.whl'))
         call([python, '-m', 'pip', 'install', '--no-index', '--no-deps', wheel])
         base = None
         for _ in range(3):
