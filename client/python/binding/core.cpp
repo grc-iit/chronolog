@@ -391,6 +391,7 @@ namespace
 using binding::pack;
 using Client = Held<sdk::Client>;
 using Writer = Held<sdk::Writer>;
+using LaneWriter = Held<sdk::LaneWriter>;
 using ReadStream = Held<sdk::ReadStream>;
 using TailStream = Held<sdk::TailStream>;
 
@@ -414,6 +415,45 @@ AcquireOptions acquireOptions(nb::handle h)
     if(!id.is_none())
         o.acquire_request_id = text(id);
     return o;
+}
+template <class W>
+void appends(nb::class_<Held<W>>& cls)
+{
+    cls.def(
+               "append",
+               [](Held<W>& w, nb::handle item, std::optional<double> timeout)
+               {
+                   auto s = spec(item);
+                   auto d = deadline(timeout);
+                   auto native = w.shared();
+                   return pack(unwrap(call([&] { return native->append(s, d); })));
+               },
+               "item"_a,
+               "timeout"_a = nb::none())
+            .def(
+                    "append_batch",
+                    [](Held<W>& w, nb::list items, std::optional<double> timeout)
+                    {
+                        std::vector<sdk::AppendSpec> specs;
+                        for(auto h: items) specs.push_back(spec(h));
+                        auto d = deadline(timeout);
+                        auto native = w.shared();
+                        auto results = unwrap(call([&] { return native->appendBatch(specs, d); }));
+                        nb::list out;
+                        for(auto& r: results) out.append(r.ok() ? pack(*r) : error(r.status()));
+                        return out;
+                    },
+                    "items"_a,
+                    "timeout"_a = nb::none())
+            .def(
+                    "release",
+                    [](Held<W>& w, std::optional<double> timeout)
+                    {
+                        auto d = deadline(timeout);
+                        auto native = w.shared();
+                        return unwrap(call([&] { return native->release(d); }));
+                    },
+                    "timeout"_a = nb::none());
 }
 template <class S>
 void stream(nb::module_& m, const char* name)
@@ -458,44 +498,13 @@ NB_MODULE(_core, m)
 {
     stream<sdk::ReadStream>(m, "ReadStream");
     stream<sdk::TailStream>(m, "TailStream");
-    nb::class_<Writer>(m, "Writer")
-            .def("acquisition", [](Writer& w) { return pack(w->acquisition()); })
-            .def("lease", [](Writer& w) { return pack(w->lease()); })
-            .def(
-                    "append",
-                    [](Writer& w, nb::handle item, std::optional<double> timeout)
-                    {
-                        auto s = spec(item);
-                        auto d = deadline(timeout);
-                        auto native = w.shared();
-                        return pack(unwrap(call([&] { return native->append(s, d); })));
-                    },
-                    "item"_a,
-                    "timeout"_a = nb::none())
-            .def(
-                    "append_batch",
-                    [](Writer& w, nb::list items, std::optional<double> timeout)
-                    {
-                        std::vector<sdk::AppendSpec> specs;
-                        for(auto h: items) specs.push_back(spec(h));
-                        auto d = deadline(timeout);
-                        auto native = w.shared();
-                        auto results = unwrap(call([&] { return native->appendBatch(specs, d); }));
-                        nb::list out;
-                        for(auto& r: results) out.append(r.ok() ? pack(*r) : error(r.status()));
-                        return out;
-                    },
-                    "items"_a,
-                    "timeout"_a = nb::none())
-            .def(
-                    "release",
-                    [](Writer& w, std::optional<double> timeout)
-                    {
-                        auto d = deadline(timeout);
-                        auto native = w.shared();
-                        return unwrap(call([&] { return native->release(d); }));
-                    },
-                    "timeout"_a = nb::none());
+    nb::class_<Writer> writer(m, "Writer");
+    writer.def("acquisition", [](Writer& w) { return pack(w->acquisition()); })
+            .def("lease", [](Writer& w) { return pack(w->lease()); });
+    appends(writer);
+    nb::class_<LaneWriter> lanes(m, "LaneWriter");
+    lanes.def("lanes", [](LaneWriter& w) { return w->lanes(); });
+    appends(lanes);
     nb::class_<Client>(m, "Client")
             .def(
                     "create_chronicle",
@@ -602,6 +611,32 @@ NB_MODULE(_core, m)
                     },
                     "id"_a,
                     "identity"_a,
+                    "options"_a = nb::none(),
+                    "timeout"_a = nb::none())
+            .def(
+                    "acquire_lanes",
+                    [](Client& c,
+                       nb::handle id,
+                       const std::string& identity,
+                       nb::handle lanes,
+                       nb::handle slice_ns,
+                       nb::handle options,
+                       std::optional<double> t)
+                    {
+                        auto story = u64(id);
+                        auto count = u64(lanes);
+                        auto slice = i64(slice_ns);
+                        auto o = acquireOptions(options);
+                        auto d = deadline(t);
+                        auto native = c.shared();
+                        auto writer = unwrap(call(
+                                [&] { return native->acquireLanes(story, identity, count, slice, std::move(o), d); }));
+                        return new LaneWriter(std::make_shared<sdk::LaneWriter>(std::move(writer)));
+                    },
+                    "id"_a,
+                    "identity"_a,
+                    "lanes"_a,
+                    "slice_ns"_a,
                     "options"_a = nb::none(),
                     "timeout"_a = nb::none())
             .def("new_acquire_request_id", [](Client& c) { return unwrap(c->newAcquireRequestId()); })

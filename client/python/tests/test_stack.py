@@ -140,3 +140,31 @@ def test_physical_read_discovers_route_and_out_of_range_consumes_sequence(stack)
         events = list(stream)
         assert len(events) == 1 and events[0].id == result.event_id
         assert not stream.completion.complete
+
+
+def test_lane_writer_spreads_alternating_slices_and_reads_back_once(stack):
+    client, _, story = stack
+    slice_ns = 1_000_000_000
+    first = time.time_ns() // slice_ns * slice_ns - 3 * slice_ns
+    readings = [cl.TimeReading(first + k * slice_ns + slice_ns // 2) for k in range(6)]
+    with client.acquire_lanes(story, "lanes", 2, slice_ns, timeout=5) as lanes:
+        assert 1 <= lanes.lanes <= 2
+        results = [lanes.append(f"e{k}".encode(), physical=readings[k], timeout=3) for k in range(3)]
+        results += lanes.append_batch([cl.AppendSpec(cl.Envelope(f"e{k}".encode()), physical=readings[k])
+                                       for k in range(3, 6)], timeout=3)
+        assert all(isinstance(r, cl.AppendResult) and r.acked for r in results)
+        assert len({r.event_id.writer_id for r in results}) == lanes.lanes
+        end = max(r.hlc for r in results)
+        end = cl.Hlc(end.physical_ns, end.logical + 1)
+        deadline = time.monotonic() + 15
+        while True:
+            reader = client.read(story, end=end, timeout=3)
+            events = list(reader)
+            if reader.completion.complete:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.1)
+    assert len(events) == 6 and {e.id for e in events} == {r.event_id for r in results}
+    assert sorted(e.envelope.payload for e in events) == [f"e{k}".encode() for k in range(6)]
+    with pytest.raises(cl.FailedPrecondition):
+        lanes.append(b"released", timeout=3)
