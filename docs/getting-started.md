@@ -347,8 +347,11 @@ codex plugin marketplace add /path/to/ChronoLog && codex plugin add chronolog@ch
 The plugin starts `chronolog run --up default -- chronolog-mcp`, which starts or attaches to the `default` instance
 and holds a lease for the MCP process. Set `CHRONOLOG_MCP_IDENTITY` (a stable agent identity such as `team/planner`)
 and `CHRONOLOG_CHRONICLE` for sessions that write. Closing a session drops its lease and leaves the services running.
+A session that exits without `context_close` leaves its identity slot open: the next session with that identity
+reads normally, and its `context_open` verdict asks it to call `context_reconcile` before writing.
 
-Clio-coder declares the same server in its user `mcp.yaml`:
+Clio-coder declares the same server in its user `mcp.yaml`, which lives in the config directory that
+`clio-coder paths` prints (`~/.config/clio-coder/mcp.yaml` by default):
 
 ```yaml
 version: 1
@@ -357,10 +360,18 @@ servers:
     command: /absolute/prefix/bin/chronolog
     args: [run, --up, default, --, /absolute/prefix/bin/chronolog-mcp]
     env:
-      CHRONOLOG_HOME: /absolute/prefix/state
       CHRONOLOG_MCP_IDENTITY: clio/main
       CHRONOLOG_CHRONICLE: agent-memory
     actionClass: execute
+```
+
+Clio-coder passes only `PATH`, `HOME`, the `XDG_*_HOME` variables and the locale to an MCP server, so this server uses
+the same `default` instance as `chronolog up` and the Claude Code and Codex plugin. A `CHRONOLOG_HOME` exported in
+the shell does not reach it; if you use one, add it under `env`. `clio-coder mcp list` shows the parsed declaration,
+and a headless turn reaches the tools through Clio's gateway:
+
+```sh
+clio-coder run --autonomy yolo --timeout 600 "list the chronolog server's tools, then remember 'hello' in context demo"
 ```
 
 Check both `verdict` and `answer_complete` in a tool result before trusting an answer.
