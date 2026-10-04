@@ -10,7 +10,8 @@ foreach(gate readiness restart_keeps_endpoints single_supervisor ordered_stop su
     set_tests_properties(local.${gate} PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 240 LABELS "integration;local")
 endforeach()
 
-foreach(gate tier_add_refuses_a_root_of_another_file_system_type status_survives_a_hung_tier)
+foreach(gate tier_add_refuses_a_root_of_another_file_system_type status_survives_a_hung_tier
+        status_reports_the_graphers_tier_view)
     add_test(NAME local.${gate}
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/tiers.py" ${gate}

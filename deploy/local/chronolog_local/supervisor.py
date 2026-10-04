@@ -9,7 +9,7 @@ import time
 
 from .registry import CONTROL_LOCKS, ROLES, atomic, binary, boot_id, clock_status, control, free_ports, leases, load, lock, probe
 
-from .tiers import TierProbe, probe_tier, tier_config_keys
+from .tiers import GRAPHER_STATUS, TierProbe, grapher_views, has_tier_table, probe_tier, tier_config_keys
 
 READY = {'visor': 'catalog ready', 'keeper': 'journal ready',
          'grapher': 'grapher registered', 'player': 'player ready'}
@@ -32,9 +32,11 @@ def configs(record):
     # The Grapher and the Player read the same tier table (RFC-I 3.1). An instance created before tier markers
     # existed has no deployment id and keeps a plain archive root. migrate_enabled stays at the Grapher's default,
     # false, until every host that reads the archive runs a Player that follows migrate_v1 (I13.13).
-    if 'deployment_id' in record and all('tier_uuid' in tier for tier in record['tiers']):
+    if has_tier_table(record):
         for role in ('grapher', 'player'):
             result[role].update(tier_config_keys(record))
+        # The Grapher publishes its own view of every tier there; status and `tier ls` report it (I13.15).
+        result['grapher']['tier_status_file'] = GRAPHER_STATUS
     defaults = {role: dict(config) for role, config in result.items()}
     for role, config in result.items():
         config.update(record['overrides'].get(role, {}))
@@ -94,7 +96,11 @@ class Supervisor:
         if 'deployment_id' in latest:
             self.record['deployment_id'] = latest['deployment_id']
         self.state['tiers'] = []
-        for tier in self.record['tiers']:
+        grapher = self.children.get('grapher')
+        views, self.state['tier_migration'] = grapher_views(self.folder, self.record,
+            grapher is not None and grapher.poll() is None and
+            self.state['services'].get('grapher', {}).get('state') == 'ready')
+        for tier, view in zip(self.record['tiers'], views):
             key = (tier['name'], tier.get('tier_uuid'))
             if key not in self.tier_probes:
                 self.tier_probes[key] = TierProbe(tier, self.record.get('deployment_id'),
@@ -109,7 +115,7 @@ class Supervisor:
                          st_dev=result['st_dev'], f_fsid=result['f_fsid'])))
                 self.remounts.add(remount)
             self.state['tiers'].append(dict(tier, **result,
-                usage_scope='filesystem', budget_bytes=tier.get('budget_bytes', 0)))
+                usage_scope='filesystem', budget_bytes=tier.get('budget_bytes', 0), grapher=view))
         atomic(self.folder / 'run/status.json', self.state)
         return holders
 
@@ -120,6 +126,9 @@ class Supervisor:
         out = path.open('ab')
         self.offsets[role] = out.tell()
         parent = os.getpid()
+        if role == 'grapher':
+            # The file has no time in it: one left by an earlier Grapher must not pass for this one's view.
+            (self.folder / GRAPHER_STATUS).unlink(missing_ok=True)
 
         def death_signal():
             libc = ctypes.CDLL(None, use_errno=True)
