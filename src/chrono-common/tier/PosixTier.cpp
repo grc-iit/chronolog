@@ -132,7 +132,7 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
         epoch = ++epoch_;
         directory_.reset();
     }
-    auto future = submit(
+    return run(
             [self, epoch, completion]() -> absl::Status
             {
                 auto directory = std::make_shared<TierDirectory>(
@@ -148,20 +148,8 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
                     return absl::UnavailableError("abandoned tier probe");
                 self->directory_ = std::move(directory);
                 return absl::OkStatus();
-            });
-    if(future.wait_for(timeout.count() > 0 ? std::min(timeout, timeout_) : timeout_) != std::future_status::ready)
-    {
-        expire();
-        return absl::UnavailableError("tier probe deadline expired");
-    }
-    try
-    {
-        return future.get();
-    }
-    catch(const std::exception& error)
-    {
-        return absl::UnavailableError(error.what());
-    }
+            },
+            timeout);
 }
 std::shared_ptr<TierDirectory> PosixTier::directory() const
 {

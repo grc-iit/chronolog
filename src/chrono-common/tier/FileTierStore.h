@@ -116,7 +116,19 @@ public:
                                 size_t threads = 2,
                                 std::chrono::milliseconds timeout = std::chrono::milliseconds(1000));
     absl::Status probeTiers(std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) const;
-    absl::StatusOr<size_t> migrateOnce(const std::string& destination);
+    absl::StatusOr<size_t> migrateOnce(const std::string& destination,
+                                       std::optional<uint32_t> source_rank = std::nullopt,
+                                       int64_t before_end_ns = INT64_MAX,
+                                       uint64_t max_bytes = UINT64_MAX);
+    struct TierUsage
+    {
+        bool available{};
+        uint64_t used_bytes{}, total_bytes{}, free_bytes{};
+    };
+    absl::StatusOr<TierUsage> tierUsage(const std::string& name) const;
+    std::map<StoryId, size_t> pendingTierDeletions() const;
+    bool migrationStopped() const;
+    absl::Status cleanupMigrations();
     absl::Status sweepTiers();
     absl::Status writeTierReplicas();
     absl::Status awaitTierUnlinksForTesting(std::chrono::milliseconds timeout);
@@ -158,7 +170,6 @@ private:
     bool migrationEligible(const ManifestIndex& index,
                            const ManifestRecord& record,
                            const std::shared_ptr<Claim>& own = {}) const;
-    absl::Status cleanupMigrations();
     void queueTierSweeps();
     std::map<std::pair<std::string, StoryId>, std::future<absl::Status>> tier_sweeps_;
     std::set<std::pair<std::string, StoryId>> tier_swept_;

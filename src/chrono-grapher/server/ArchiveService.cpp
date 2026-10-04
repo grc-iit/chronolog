@@ -77,7 +77,8 @@ bool HasPublishedFiles(const FileTierStore& store, StoryId story)
 ArchiveService::ArchiveService(FileTierStore& store,
                                std::string instance,
                                TransferLimits limits,
-                               CompactionSettings compaction)
+                               CompactionSettings compaction,
+                               MigrationSettings migration)
     : store_(store)
     , instance_(std::move(instance))
     , limits_(limits)
@@ -86,6 +87,13 @@ ArchiveService::ArchiveService(FileTierStore& store,
                                          std::max<uint32_t>(1, limits.concurrent_transfers)))
     , destroyer_(std::make_unique<WorkerPool>(1, 1))
 {
+    if(!migration.tiers.empty())
+    {
+        probe_interval_ = std::chrono::milliseconds(migration.probe_interval_ms);
+        migration_ = std::make_unique<MigrationWorker>(store_, std::move(migration));
+        migrator_ = std::make_unique<WorkerPool>(1, 1);
+        migrator_->submit([this] { migrateLoop(); });
+    }
     // A restart resumes the deletion of every tombstoned story that still has Published files, from the manifest
     // alone, without asking the Catalog (I13.11).
     if(const auto stories = store_.tombstonedStories(); stories.ok())
@@ -361,8 +369,14 @@ void ArchiveService::destroyLoop()
         ++revision_;
         changed_.notify_all();
     };
+    size_t requeued = 0;
     while(true)
     {
+        if(requeued >= destroy_queue_.size() && requeued)
+        {
+            changed_.wait_until(lock, next_unlink_retry, [&] { return draining_; });
+            requeued = 0;
+        }
         changed_.wait_until(lock, next_unlink_retry, [&] { return draining_ || !destroy_queue_.empty(); });
         if(draining_)
             return;
@@ -407,7 +421,9 @@ void ArchiveService::destroyLoop()
             continue;
         }
         destroy_queue_.push_back(story);
-        changed_.wait_until(lock, next_unlink_retry, [&] { return draining_; });
+        ++requeued;
+        if(destroy_queue_.size() == 1)
+            changed_.wait_until(lock, next_unlink_retry, [&] { return draining_ || destroy_queue_.size() > 1; });
     }
 }
 
@@ -479,6 +495,21 @@ void ArchiveService::compactLoop()
     }
 }
 
+void ArchiveService::migrateLoop()
+{
+    CHRONOLOG_ASSERT_WORKER_THREAD();
+    std::unique_lock lock(mutex_);
+    while(!draining_)
+    {
+        lock.unlock();
+        const auto result = migration_->pass();
+        if(!result.ok() && !absl::IsCancelled(result))
+            LOG(WARNING) << "tier worker pass failed: " << result;
+        lock.lock();
+        changed_.wait_for(lock, probe_interval_, [&] { return draining_; });
+    }
+}
+
 void ArchiveService::shutdown()
 {
     {
@@ -489,7 +520,11 @@ void ArchiveService::shutdown()
     if(compactor_)
         store_.stopCompaction();
     // Joined here so no deletion or compaction is still touching the store when the caller releases it.
+    if(migration_)
+        migration_->stop();
     destroyer_->stop();
+    if(migrator_)
+        migrator_->stop();
     if(compactor_)
         compactor_->stop();
 }

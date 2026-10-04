@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tier/FileTierStore.h"
+#include "chrono-grapher/server/MigrationWorker.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include <chrono>
 #include <condition_variable>
@@ -32,7 +33,8 @@ public:
     ArchiveService(FileTierStore& store,
                    std::string instance,
                    TransferLimits limits = {},
-                   CompactionSettings compaction = {});
+                   CompactionSettings compaction = {},
+                   MigrationSettings migration = {});
     ~ArchiveService() override;
     grpc::Status TransferChunk(grpc::ServerContext*,
                                grpc::ServerReader<internal::v1::TransferChunkRequest>*,
@@ -53,6 +55,7 @@ public:
 private:
     void destroyLoop();
     void compactLoop();
+    void migrateLoop();
     bool eraseFiles(StoryId story);
     struct Receipts
     {
@@ -74,5 +77,8 @@ private:
     std::unique_ptr<WorkerPool> pool_;
     std::unique_ptr<WorkerPool> destroyer_;
     std::unique_ptr<WorkerPool> compactor_;
+    std::unique_ptr<WorkerPool> migrator_;
+    std::unique_ptr<MigrationWorker> migration_;
+    std::chrono::milliseconds probe_interval_{};
 };
 } // namespace chronolog::grapher

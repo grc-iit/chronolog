@@ -59,7 +59,16 @@ int main(int argc, char** argv)
         codec = std::make_shared<chronolog::ProtoChunkCodec>();
     else
         codec = std::make_shared<chronolog::HDF5ChunkCodec>();
-    auto store = chronolog::FileTierStore::Open(config->archive_root, config->manifest_writer, {}, codec);
+    auto store = chronolog::FileTierStore::Open(config->archive_root,
+                                                config->manifest_writer,
+                                                {},
+                                                codec,
+                                                {},
+                                                {},
+                                                0,
+                                                {},
+                                                {},
+                                                config->tierChain());
     if(!store.ok())
     {
         LOG(ERROR) << store.status();
@@ -74,7 +83,11 @@ int main(int argc, char** argv)
     if(config->compaction.enabled)
         LOG(INFO) << "archive compaction enabled min_files=" << config->compaction.policy.min_files
                   << " max_files=" << config->compaction.policy.max_files;
-    chronolog::grapher::ArchiveService archive(**store, instance, config->limits, config->compaction);
+    chronolog::grapher::ArchiveService archive(**store,
+                                               instance,
+                                               config->limits,
+                                               config->compaction,
+                                               config->migration);
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     chronolog::rpc::applyServerPolicy(builder);
