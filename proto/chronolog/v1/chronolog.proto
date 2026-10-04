@@ -78,17 +78,19 @@ service Replay
     // Half-open range; exactly one final Completion, then EOF on normal success.
     // Read: whole-request INVALID_ARGUMENT for malformed input or an unset range,
     // UNAVAILABLE for service failure, UNIMPLEMENTED before port, FAILED_PRECONDITION
-    // for unknown or tombstoned stories. Failed Keepers or LOST archive windows yield
+    // for unknown or tombstoned stories, RESOURCE_EXHAUSTED for a prefix above
+    // prefix_max_scopes (I6.15). Failed Keepers or LOST archive windows yield
     // complete=false with SOURCE_FAILED in Completion.
     rpc Read(ReadRequest) returns (stream ReadResponse);
     // Exclusive resume; final Completion on orderly termination is always false.
     // Tail: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE for
     // service failure, UNIMPLEMENTED before port, FAILED_PRECONDITION for unknown
-    // or tombstoned stories. LOST archive windows terminate with SOURCE_FAILED.
+    // or tombstoned stories, RESOURCE_EXHAUSTED for a prefix above prefix_max_scopes
+    // (I6.15). LOST archive windows terminate with SOURCE_FAILED.
     rpc Tail(TailRequest) returns (stream TailResponse);
     // Await (I6.20): unary; the answer enum carries the certificate. Whole-request INVALID_ARGUMENT
     // for malformed input, FAILED_PRECONDITION for an unknown or tombstoned story, UNAVAILABLE for
-    // service failure, UNIMPLEMENTED before port.
+    // service failure, UNIMPLEMENTED before port, RESOURCE_EXHAUSTED past the Player's stream cap (I6.20).
     rpc Await(AwaitRequest) returns (AwaitResponse);
 }
 // UNSPECIFIED means DURABLE in a request and is never an achieved durability level.
@@ -338,7 +340,7 @@ message ListStoriesByPrefixRequest
 {
     // I9.3: path prefix, `<chronicle name>/<story name>` segments.
     string prefix = 1;
-    // I9.3: most stories to return; more matches return none and set limit_exceeded.
+    // I9.3: most stories to return, 1 to 65536; zero or above the range is INVALID_ARGUMENT; more matches return none and set limit_exceeded.
     uint32 limit = 2;
 }
 message ListStoriesByPrefixResponse
@@ -585,7 +587,7 @@ message PhysicalRange
     // end ns; interpreted according to the message invariants above.
     int64 end_ns = 2;
 }
-// I6.17: a conjunction of equality terms over the indexed fields of I3.9; an unset predicate matches every event.
+// I6.17: a conjunction of equality terms over the indexed fields of I3.9; an unset predicate matches every event; at most 256 values in total, else INVALID_ARGUMENT.
 message Predicate
 {
     // I6.17: the event kind is any member; empty means no kind term.
@@ -720,9 +722,11 @@ message Completion
     repeated WriterFrontier laggards = 3;
     // I6.15: Catalog revision R at which a prefix Read resolved its story set; unset for any other Read.
     optional uint64 catalog_revision = 5;
-    // I6.18: c of a newest-first Read cut by max_events, so [c, e) is complete on its own; unset for an oldest-first Read.
+    // I6.18: c of a newest-first Read cut by max_events: [claim_start, claim_end) is complete on its own, and a
+    // continuation reads [start, claim_start). Unset for an oldest-first Read and for a newest-first Read that
+    // was not cut.
     Hlc claim_start = 6;
-    // I6.18: e of a newest-first Read, at or below every source's sealed frontier; unset for an oldest-first Read.
+    // I6.18: e of every newest-first Read; frontier carries the same value. Unset for an oldest-first Read.
     Hlc claim_end = 7;
 }
 // Fields are selected by the documented union; unset unions are invalid.
@@ -860,7 +864,7 @@ message AwaitRequest
     EventId ref = 1;
     // I6.20: hlc of ref when the caller has one, held or carried by a link; absent selects the writer-status path.
     Hlc hlc = 2;
-    // I6.20: wait bound in nanoseconds, capped at await_max_wait_ms; zero returns the first answer at once.
+    // I6.20: wait bound in nanoseconds, capped at await_max_wait_ms and the request deadline; zero returns the first answer at once; negative is INVALID_ARGUMENT.
     int64 wait_bound_ns = 3;
 }
 message AwaitResponse

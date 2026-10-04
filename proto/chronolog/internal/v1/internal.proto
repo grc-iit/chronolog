@@ -569,16 +569,14 @@ message AcquireCommand
     repeated AcquisitionFenceObservation fence_observations = 7;
     optional chronolog.v1.KeeperPreferenceResult keeper_preference = 8;
 }
-// I6.16: the creation floor pair is resolved once at proposal; replicas never recompute it.
+// I6.16: createStory in dynamic mode. Apply computes the creation floor pair from the applied Catalog state
+// (the maximum C and the maximum CP over every ceiling pair ever granted) in the same transaction that
+// creates the story, and refuses with FAILED_PRECONDITION while a registered Keeper has no ceiling.
+// The command never carries the floor: a value read at proposal can miss a ceiling granted before commit.
 message CreateStoryCommand
 {
     // I6.16: the validated public request, properties included (I9.2).
     chronolog.v1.CreateStoryRequest request = 1;
-    // I6.16: dynamic mode only, CF_C, the maximum C over every ceiling pair ever granted to any Keeper instance; absent in static mode.
-    // The story's first RouteUpdate carries it as ordering_cut and lists every Keeper in observe_floor.
-    chronolog.v1.Hlc creation_floor = 2;
-    // I6.16: dynamic mode only, CF_P, the maximum CP over the same pairs; the story's first RouteUpdate carries it as physical_floor_ns.
-    int64 creation_floor_physical_ns = 3;
 }
 message DestroyStoryCommand
 {
@@ -603,7 +601,7 @@ message CatalogCommand
         DestroyStoryCommand destroy_story_with_leases = 11;
         DestroyChronicleCommand destroy_chronicle_with_leases = 12;
         MembershipCommand membership = 8;
-        // I6.16: createStory with the dynamic-mode creation floor; create_story stays so existing logs still apply.
+        // I6.16: createStory whose apply computes the dynamic-mode creation floor; create_story stays so existing logs apply as they did.
         CreateStoryCommand create_story_with_floor = 13;
   chronolog.v1.CreateChronicleRequest create_chronicle = 1;
   chronolog.v1.DestroyChronicleRequest destroy_chronicle = 2;
