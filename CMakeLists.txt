@@ -130,7 +130,6 @@ else()
     message(STATUS "tests/contract has no sources yet, skipping chronolog_contract_tests")
 endif()
 
-add_subdirectory(tools/stub_server)
 add_test(NAME build.no_legacy_transport
     COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NoLegacyTransportCheck.cmake)
 set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gate")

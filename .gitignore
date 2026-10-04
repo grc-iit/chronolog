@@ -102,13 +102,6 @@ GEMINI.md
 .github/prompts/
 
 # --------------------------
-# Docusaurus (docs/)
-# --------------------------
-docs/node_modules/
-docs/.docusaurus/
-docs/build/
-
-# --------------------------
 # Local dev (never commit)
 # --------------------------
 .local/
