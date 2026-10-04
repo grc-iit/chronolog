@@ -26,6 +26,14 @@ struct KeeperContents
 // and an unconfirmed event at HLC {150,0} below the archive boundary 200.
 // Every event lies in [100,300). setFrontiers controls each registered writer;
 // failSource/truncateSource simulate Keeper failures; finishTail terminates tail.
+enum class ArchiveFault
+{
+    Missing,
+    Undecodable,
+    ChecksumMismatch,
+    TierUnavailable,
+    Hang
+};
 struct ReplayHarness
 {
     std::unique_ptr<Replay> sut;
@@ -54,6 +62,11 @@ struct ReplayHarness
     std::function<Hlc()> lastPollStart;
     std::function<Hlc(const std::string&)> lastSourceStart;
     std::function<void(Hlc, Hlc)> abandonRange;
+    // I6.14. Archives one effective Published window of story 1 covering [100, 200) that the Keepers no longer hold,
+    // then makes its file unreadable at its effective location in the named way. The record stays effective
+    // Published: the harness writes no Lost and no Deleted record. Hang blocks the file's read until the harness is
+    // destroyed, so the implementation's own deadline has to end the Read.
+    std::function<void(ArchiveFault)> failArchiveFile;
 };
 Range Query() { return {Range::Axis::Hlc, {100, 0}, {300, 0}}; }
 struct Collected
@@ -508,6 +521,68 @@ TEST_P(ReplayContract, LostWindowBelowWatermarkIsSourceFailed)
     ASSERT_EQ(result->completions.size(), 1u);
     EXPECT_FALSE(result->completions[0].complete);
     EXPECT_EQ(result->completions[0].reason, IncompleteReason::SourceFailed);
+}
+// I6.14: an effective Published archive file in the range that cannot be read where the manifest resolves it ends a
+// Read complete=false with SOURCE_FAILED on either axis, and a Tail delivers nothing at or above the file's start.
+TEST_P(ReplayContract, UnreadableArchiveFileIsSourceFailed)
+{
+    const std::pair<ArchiveFault, const char*> faults[] = {{ArchiveFault::Missing, "missing"},
+                                                           {ArchiveFault::Undecodable, "undecodable"},
+                                                           {ArchiveFault::ChecksumMismatch, "checksum mismatch"},
+                                                           {ArchiveFault::TierUnavailable, "unavailable tier"},
+                                                           {ArchiveFault::Hang, "hang"}};
+    for(const auto& [fault, name]: faults)
+    {
+        SCOPED_TRACE(name);
+        auto fresh = GetParam()();
+        ASSERT_NE(fresh, nullptr);
+        ASSERT_TRUE(fresh->failArchiveFile);
+        ASSERT_TRUE(fresh->setFrontiers);
+        fresh->setFrontiers({{2, 3, {300, 0}}, {4, 3, {300, 0}}});
+        fresh->failArchiveFile(fault);
+        auto stream = fresh->sut->read(1, Query());
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        auto result = Collect(**stream);
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->completions.size(), 1u);
+        EXPECT_FALSE(result->completions[0].complete);
+        EXPECT_EQ(result->completions[0].reason, IncompleteReason::SourceFailed);
+    }
+    {
+        SCOPED_TRACE("physical axis");
+        auto fresh = GetParam()();
+        ASSERT_NE(fresh, nullptr);
+        ASSERT_TRUE(fresh->failArchiveFile);
+        ASSERT_TRUE(fresh->physicalState);
+        fresh->physicalState(true, 300, 0);
+        fresh->failArchiveFile(ArchiveFault::Missing);
+        auto range = Query();
+        range.axis = Range::Axis::Physical;
+        auto stream = fresh->sut->read(1, range);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        auto result = Collect(**stream);
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->completions.size(), 1u);
+        EXPECT_FALSE(result->completions[0].complete);
+        EXPECT_EQ(result->completions[0].reason, IncompleteReason::SourceFailed);
+    }
+    {
+        SCOPED_TRACE("Tail");
+        auto fresh = GetParam()();
+        ASSERT_NE(fresh, nullptr);
+        ASSERT_TRUE(fresh->failArchiveFile);
+        fresh->failArchiveFile(ArchiveFault::Missing);
+        auto tail = fresh->sut->tail(1, StoryStart());
+        ASSERT_TRUE(tail.ok()) << tail.status();
+        TailPull pull(**tail);
+        ASSERT_TRUE(pull.ended());
+        EXPECT_TRUE(pull.status().ok()) << pull.status();
+        for(const auto& event: pull.get(0)) EXPECT_LT(event.hlc, (Hlc{100, 0}));
+        auto completions = pull.completions();
+        ASSERT_EQ(completions.size(), 1u);
+        EXPECT_FALSE(completions[0].complete);
+        EXPECT_EQ(completions[0].reason, IncompleteReason::SourceFailed);
+    }
 }
 // I6.13: a Tail delivers an event only below the lowest sealed frontier of the sources it consults.
 TEST_P(ReplayContract, TailDeliversAnEventThatBecomesVisibleBelowItsCursor)
