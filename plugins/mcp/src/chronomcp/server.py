@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import base64
+import fcntl
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -17,8 +18,10 @@ import threading
 import time
 import uuid
 
+import anyio
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.stdio import stdio_server
 
 import chronolog as cl
 
@@ -357,7 +360,9 @@ def create_server(args):
             yield state
         finally:
             shared.pop("state", None)
-            await asyncio.to_thread(state.shutdown)
+            # A signal cancels serving; closing every session must still finish (RFC-F clean close).
+            with anyio.CancelScope(shield=True):
+                await anyio.to_thread.run_sync(state.shutdown)
 
     server = MCPServer("chronolog", lifespan=lifespan, instructions=(
         "ChronoLog contexts are durable, time-ordered memories. Keep operation ids stable, read verdict before "
@@ -972,6 +977,49 @@ def create_server(args):
     return server
 
 
+class _StdinLines:
+    """stdin lines over a non-blocking descriptor: anyio's file reader holds a worker thread in readline that a
+    signal cannot interrupt, so a signalled server could never exit while its client keeps stdin open."""
+
+    def __init__(self):
+        self.fd = fcntl.fcntl(0, fcntl.F_DUPFD_CLOEXEC, 3)
+        null = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(null, 0)
+        os.close(null)
+        os.set_blocking(self.fd, False)
+
+    async def __aiter__(self):
+        pending = b""
+        while True:
+            await anyio.wait_readable(self.fd)
+            try:
+                chunk = os.read(self.fd, 1 << 16)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                if pending:
+                    yield pending.decode("utf-8", errors="replace")
+                return
+            *lines, pending = (pending + chunk).split(b"\n")
+            for line in lines:
+                yield line.decode("utf-8", errors="replace")
+
+
+async def serve_stdio(server):
+    """Serves until stdin ends or SIGTERM or SIGINT arrives; either way the lifespan closes every session."""
+    async with anyio.create_task_group() as group:
+        async def stop_on_signal():
+            with anyio.open_signal_receiver(signal.SIGTERM, signal.SIGINT) as signals:
+                async for _ in signals:
+                    group.cancel_scope.cancel()
+
+        group.start_soon(stop_on_signal)
+        lowlevel = server._lowlevel_server  # what MCPServer.run_stdio_async serves, fed the stdin above
+        async with stdio_server(stdin=_StdinLines()) as (read, write):
+            await lowlevel.run(read, write, lowlevel.create_initialization_options())
+        group.cancel_scope.cancel()
+
+
 def main():
     parser = argparse.ArgumentParser(description="ChronoLog Context tools over MCP")
     parser.add_argument("--catalog", default=os.getenv("CHRONOLOG_CATALOG"))
@@ -1005,14 +1053,15 @@ def main():
             os.getenv("XDG_RUNTIME_DIR") or os.path.expanduser("~/.cache"), "chronolog-mcp")
     server = create_server(args)
 
+    if args.transport != "http":
+        anyio.run(serve_stdio, server)
+        return
+
     def stop(*_):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, stop)
     try:
-        if args.transport == "http":
-            server.run(transport="streamable-http", host=args.host, port=args.port)
-        else:
-            server.run(transport="stdio")
+        server.run(transport="streamable-http", host=args.host, port=args.port)
     except KeyboardInterrupt:
         pass
 
