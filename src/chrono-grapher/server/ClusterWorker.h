@@ -8,7 +8,7 @@
 
 #include <absl/status/statusor.h>
 
-#include "chrono-grapher/server/VisorClockAudit.h"
+#include "rpc/VisorClockAudit.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/types.h"
 

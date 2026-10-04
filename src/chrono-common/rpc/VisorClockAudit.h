@@ -14,18 +14,20 @@
 #include "chronolog/internal/v1/internal.pb.h"
 #include "clock/ClockAudit.h"
 
-namespace chronolog::player
+namespace chronolog
 {
 
-// Observational audit of the Player's physical clock against the Visor readings on its Register and
-// Heartbeat replies (B45 Part 1, I8.3). Nothing here changes ClockStatus or any Read or Tail result.
+// Observational audit of a process's physical clock against the Visor readings on its Register and
+// Heartbeat replies (B45 Part 1, I8.3). Nothing here changes ClockStatus or anything the process serves.
 class VisorClockAudit
 {
 public:
     using Monotonic = std::function<int64_t()>;
 
-    // monotonic defaults to steady_clock; tests inject both clocks.
-    VisorClockAudit(std::string identity,
+    // role names the process kind in log lines ("grapher", "player"). monotonic defaults to steady_clock; tests
+    // inject both clocks.
+    VisorClockAudit(std::string role,
+                    std::string identity,
                     std::shared_ptr<const Clock> physical,
                     Monotonic monotonic = {},
                     ClockAuditOptions options = {});
@@ -64,6 +66,7 @@ private:
     void log(const ClockAuditTransition& transition, int64_t now_ns);
     bool admit(const std::string& replica, ClockAuditTransition::Kind kind, int64_t now_ns, uint64_t& suppressed);
 
+    std::string role_;
     std::string identity_;
     std::shared_ptr<const Clock> physical_;
     Monotonic monotonic_;
@@ -79,4 +82,4 @@ private:
     std::map<std::pair<std::string, ClockAuditTransition::Kind>, Limit> limits_;
 };
 
-} // namespace chronolog::player
+} // namespace chronolog

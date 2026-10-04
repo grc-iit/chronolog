@@ -1,5 +1,5 @@
 #include "chrono-grapher/server/MigrationWorker.h"
-#include "chrono-grapher/server/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "tier/FileIO.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>

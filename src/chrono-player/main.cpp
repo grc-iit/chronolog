@@ -98,8 +98,9 @@ int main(int argc, char** argv)
                 self,
                 std::chrono::milliseconds(config->keeper_deadline_ms),
                 lookup,
-                std::make_shared<player::VisorClockAudit>(self.id + "/" + self.instance,
-                                                          std::make_shared<KernelClock>()));
+                std::make_shared<VisorClockAudit>("player",
+                                                  self.id + "/" + self.instance,
+                                                  std::make_shared<KernelClock>()));
         cluster->onRoute(
                 [writers](const Route& route)
                 {

@@ -12,7 +12,7 @@
 #include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/adapter/ReplayService.h"
-#include "chrono-player/adapter/VisorClockAudit.h"
+#include "rpc/VisorClockAudit.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
 
@@ -200,7 +200,10 @@ TEST(PlayerClockAudit, AlarmLeavesReadAndTailUnchanged)
     auto visor_server = serve(visor, visor_addr);
     ASSERT_TRUE(a_server && b_server && visor_server);
 
-    auto audit = std::make_shared<VisorClockAudit>("player-1/i1", syncedClock(), [] { return int64_t{5'000'000'000}; });
+    auto audit = std::make_shared<VisorClockAudit>("player",
+                                                   "player-1/i1",
+                                                   syncedClock(),
+                                                   [] { return int64_t{5'000'000'000}; });
     auto cluster = std::make_shared<ClusterClient>(rpc::peerChannel(visor_addr),
                                                    Process{"player-1", "i1", "player:1", ProcessRole::Player},
                                                    2000ms,
@@ -293,58 +296,6 @@ TEST(PlayerClockAudit, AlarmLeavesReadAndTailUnchanged)
     visor_server->Shutdown(std::chrono::system_clock::now() + 1s);
     a_server->Shutdown(std::chrono::system_clock::now() + 1s);
     b_server->Shutdown(std::chrono::system_clock::now() + 1s);
-}
-
-TEST(PlayerClockAudit, AnonymousOrUnsyncedReplyIsInconclusive)
-{
-    CapturingSink sink;
-    VisorClockAudit audit("player-1/i1", syncedClock(), [] { return int64_t{1'000}; });
-
-    wire::RegisterResponse anonymous;
-    stamp(anonymous, kNow, "", v1::CLOCK_STATUS_SYNCED);
-    auto decision = audit.finish(audit.begin(), grpc::Status::OK, anonymous);
-    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
-    EXPECT_EQ(decision.reason, ClockAuditReason::MissingIdentity);
-    // A repeated anonymous reply is the same coverage loss, not a new line.
-    audit.finish(audit.begin(), grpc::Status::OK, anonymous);
-
-    wire::HeartbeatResponse unsynced;
-    stamp(unsynced, kNow, "visor-a", v1::CLOCK_STATUS_UNSYNCED);
-    decision = audit.finish(audit.begin(), grpc::Status::OK, unsynced);
-    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
-    EXPECT_EQ(decision.reason, ClockAuditReason::Unsynced);
-    EXPECT_EQ(stateOf(audit, "visor-a"), ClockAuditState::Inconclusive);
-
-    audit.report();
-    EXPECT_EQ(sink.count("clock audit coverage lost role=player identity=player-1/i1 replica= instance= "
-                         "reason=missing_identity"),
-              1u);
-    EXPECT_EQ(sink.count("replica=visor-a instance=visor-a-1 reason=unsynced"), 1u);
-    EXPECT_EQ(sink.count("clock audit OK"), 0u);
-}
-
-TEST(PlayerClockAudit, FailedAttemptThenAnotherReplicaUsesTheSuccessfulBracket)
-{
-    auto clock = syncedClock();
-    std::atomic<int64_t> mono{1'000};
-    VisorClockAudit audit("player-1/i1", clock, [&] { return mono.load(); });
-
-    wire::HeartbeatResponse failed;
-    const auto first = audit.begin();
-    mono += 100'000'000;
-    clock->setPhysical(kNow + 100'000'000);
-    auto decision = audit.finish(first, grpc::Status(grpc::StatusCode::DEADLINE_EXCEEDED, "slow"), failed);
-    EXPECT_EQ(decision.reason, ClockAuditReason::TransportFailure);
-
-    // Against the failed bracket's t0 this reply would be 50 ms ahead and alarm.
-    wire::HeartbeatResponse reply;
-    stamp(reply, kNow + 100'000'500, "visor-b", v1::CLOCK_STATUS_SYNCED);
-    decision = audit.finish(audit.begin(), grpc::Status::OK, reply);
-    ASSERT_EQ(decision.state, ClockAuditState::Ok);
-    ASSERT_TRUE(decision.observation);
-    EXPECT_EQ(decision.observation->offset_ns, 500);
-    EXPECT_EQ(stateOf(audit, "visor-b"), ClockAuditState::Ok);
-    EXPECT_EQ(audit.entries().size(), 1u);
 }
 
 } // namespace

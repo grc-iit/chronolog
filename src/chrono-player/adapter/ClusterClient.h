@@ -9,7 +9,7 @@
 #include <set>
 #include <string>
 #include <thread>
-#include "chrono-player/adapter/VisorClockAudit.h"
+#include "rpc/VisorClockAudit.h"
 #include "chrono-player/replay/RouteSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 

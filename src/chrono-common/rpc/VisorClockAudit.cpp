@@ -1,9 +1,9 @@
-#include "chrono-player/adapter/VisorClockAudit.h"
+#include "rpc/VisorClockAudit.h"
 
 #include <absl/log/log.h>
 #include <chrono>
 
-namespace chronolog::player
+namespace chronolog
 {
 namespace
 {
@@ -73,11 +73,13 @@ const char* reasonName(ClockAuditReason reason)
 }
 } // namespace
 
-VisorClockAudit::VisorClockAudit(std::string identity,
+VisorClockAudit::VisorClockAudit(std::string role,
+                                 std::string identity,
                                  std::shared_ptr<const Clock> physical,
                                  Monotonic monotonic,
                                  ClockAuditOptions options)
-    : identity_(std::move(identity))
+    : role_(std::move(role))
+    , identity_(std::move(identity))
     , physical_(std::move(physical))
     , monotonic_(monotonic ? std::move(monotonic) : Monotonic(steadyNs))
     , audit_(options)
@@ -181,27 +183,27 @@ void VisorClockAudit::log(const ClockAuditTransition& transition, int64_t now_ns
         case ClockAuditTransition::Kind::ToAlarm:
         {
             const auto& o = *decision.observation;
-            LOG(WARNING) << "clock audit ALARM role=player identity=" << identity_ << " replica=" << key.replica_id
-                         << " instance=" << key.instance << " offset_ns=" << o.offset_ns
-                         << " local_bound_ns=" << o.local_bound_ns << " visor_bound_ns=" << o.visor_bound_ns
-                         << " rtt_ns=" << o.rtt_ns << " threshold_ns=" << o.threshold_ns
-                         << " suppressed=" << suppressed;
+            LOG(WARNING) << "clock audit ALARM role=" << role_ << " identity=" << identity_
+                         << " replica=" << key.replica_id << " instance=" << key.instance
+                         << " offset_ns=" << o.offset_ns << " local_bound_ns=" << o.local_bound_ns
+                         << " visor_bound_ns=" << o.visor_bound_ns << " rtt_ns=" << o.rtt_ns
+                         << " threshold_ns=" << o.threshold_ns << " suppressed=" << suppressed;
             break;
         }
         case ClockAuditTransition::Kind::ToOk:
         {
             const auto& o = *decision.observation;
-            LOG(INFO) << "clock audit OK role=player identity=" << identity_ << " replica=" << key.replica_id
+            LOG(INFO) << "clock audit OK role=" << role_ << " identity=" << identity_ << " replica=" << key.replica_id
                       << " instance=" << key.instance << " offset_ns=" << o.offset_ns
                       << " threshold_ns=" << o.threshold_ns << " suppressed=" << suppressed;
             break;
         }
         case ClockAuditTransition::Kind::CoverageLost:
-            LOG(WARNING) << "clock audit coverage lost role=player identity=" << identity_
+            LOG(WARNING) << "clock audit coverage lost role=" << role_ << " identity=" << identity_
                          << " replica=" << key.replica_id << " instance=" << key.instance
                          << " reason=" << reasonName(decision.reason) << " suppressed=" << suppressed;
             break;
     }
 }
 
-} // namespace chronolog::player
+} // namespace chronolog
