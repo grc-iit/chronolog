@@ -18,6 +18,8 @@ std::mutex hdf5_mutex;
 constexpr std::size_t MaxBytes = 256 * 1024 * 1024;
 constexpr std::size_t MaxEvents = 65536;
 constexpr std::size_t MaxAttributes = 1024 * 1024;
+// I3.9 allows 16 links per event.
+constexpr std::size_t MaxLinks = 16 * MaxEvents;
 
 struct ReadOnlyImage
 {
@@ -89,6 +91,23 @@ struct Attribute
     char* value;
 };
 
+// Written only for an event that has a kind or an actor, so a chunk without them has the pre-I3.9 layout.
+struct EventFields
+{
+    uint64_t event_index;
+    hvl_t kind, actor;
+};
+// Written only when some event has links; rows follow event order, then link order.
+struct LinkRow
+{
+    uint64_t event_index;
+    uint64_t story_id, writer_id, incarnation, sequence;
+    int64_t hlc_physical_ns;
+    uint32_t hlc_logical;
+    uint8_t has_hlc;
+    hvl_t type;
+};
+
 hid_t EventType()
 {
     Handle type(H5Tcreate(H5T_COMPOUND, sizeof(Row)), H5Tclose);
@@ -120,6 +139,33 @@ hid_t AttributeType()
     Check(H5Tinsert(type, "event_index", HOFFSET(Attribute, event_index), H5T_NATIVE_UINT64));
     Check(H5Tinsert(type, "key", HOFFSET(Attribute, key), string));
     Check(H5Tinsert(type, "value", HOFFSET(Attribute, value), string));
+    return H5Tcopy(type);
+}
+
+hid_t EventFieldsType()
+{
+    Handle type(H5Tcreate(H5T_COMPOUND, sizeof(EventFields)), H5Tclose);
+    Handle bytes(H5Tvlen_create(H5T_NATIVE_UCHAR), H5Tclose);
+    Check(H5Tinsert(type, "event_index", HOFFSET(EventFields, event_index), H5T_NATIVE_UINT64));
+    Check(H5Tinsert(type, "kind", HOFFSET(EventFields, kind), bytes));
+    Check(H5Tinsert(type, "actor", HOFFSET(EventFields, actor), bytes));
+    return H5Tcopy(type);
+}
+hid_t LinkType()
+{
+    Handle type(H5Tcreate(H5T_COMPOUND, sizeof(LinkRow)), H5Tclose);
+    Handle bytes(H5Tvlen_create(H5T_NATIVE_UCHAR), H5Tclose);
+#define FIELD(name, kind) Check(H5Tinsert(type, #name, HOFFSET(LinkRow, name), kind))
+    FIELD(event_index, H5T_NATIVE_UINT64);
+    FIELD(story_id, H5T_NATIVE_UINT64);
+    FIELD(writer_id, H5T_NATIVE_UINT64);
+    FIELD(incarnation, H5T_NATIVE_UINT64);
+    FIELD(sequence, H5T_NATIVE_UINT64);
+    FIELD(hlc_physical_ns, H5T_NATIVE_INT64);
+    FIELD(hlc_logical, H5T_NATIVE_UINT32);
+    FIELD(has_hlc, H5T_NATIVE_UINT8);
+    FIELD(type, bytes);
+#undef FIELD
     return H5Tcopy(type);
 }
 
@@ -169,6 +215,13 @@ std::string String(const hvl_t& value)
         throw std::runtime_error("invalid HDF5 byte field");
     return {static_cast<const char*>(value.p), value.len};
 }
+bool Exists(hid_t group, const char* name)
+{
+    const htri_t found = H5Lexists(group, name, H5P_DEFAULT);
+    if(found < 0)
+        throw std::runtime_error("HDF5 link lookup failed");
+    return found > 0;
+}
 void Scalar(hid_t group, const char* name, hid_t type, const void* value)
 {
     Handle space(H5Screate(H5S_SCALAR), H5Sclose);
@@ -186,15 +239,17 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
 {
     if(events.size() > MaxEvents)
         return absl::InvalidArgumentError("too many chunk events");
-    std::size_t total = 0, attributes = 0;
+    std::size_t total = 0, attributes = 0, links = 0;
     for(const auto& event: events)
     {
         total += event.envelope.content_type.size() + event.envelope.payload.size() + event.envelope.trace_id.size() +
-                 event.envelope.span_id.size();
+                 event.envelope.span_id.size() + event.envelope.kind.size() + event.envelope.actor.size();
         attributes += event.envelope.attributes.size();
+        links += event.envelope.links.size();
+        for(const auto& link: event.envelope.links) total += link.type.size();
         for(const auto& [key, value]: event.envelope.attributes) total += 2 * (key.size() + value.size()) + 2;
-        if(total > MaxBytes || attributes > MaxAttributes)
-            return absl::InvalidArgumentError("chunk byte or attribute limit exceeded");
+        if(total > MaxBytes || attributes > MaxAttributes || links > MaxLinks)
+            return absl::InvalidArgumentError("chunk byte, attribute or link limit exceeded");
     }
     std::lock_guard lock(hdf5_mutex);
     try
@@ -215,6 +270,8 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
             std::vector<Row> rows;
             std::vector<std::pair<std::string, std::string>> strings;
             std::vector<Attribute> attrs;
+            std::vector<EventFields> fields;
+            std::vector<LinkRow> link_rows;
             strings.reserve(attributes);
             for(const auto& event: events)
             {
@@ -224,6 +281,18 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
                     auto& pair = strings.emplace_back(Escape(key), Escape(value));
                     attrs.push_back({rows.size(), pair.first.data(), pair.second.data()});
                 }
+                if(!envelope.kind.empty() || !envelope.actor.empty())
+                    fields.push_back({rows.size(), Bytes(envelope.kind), Bytes(envelope.actor)});
+                for(const auto& link: envelope.links)
+                    link_rows.push_back({rows.size(),
+                                         link.target.story_id,
+                                         link.target.writer_id,
+                                         link.target.incarnation,
+                                         link.target.sequence,
+                                         link.target_hlc ? link.target_hlc->physical_ns : 0,
+                                         link.target_hlc ? link.target_hlc->logical : 0,
+                                         static_cast<uint8_t>(link.target_hlc.has_value()),
+                                         Bytes(link.type)});
                 rows.push_back({event.id.story_id,
                                 event.id.writer_id,
                                 event.id.incarnation,
@@ -244,6 +313,16 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
             Handle attr_type(AttributeType(), H5Tclose);
             Dataset(group, "events.vlen_bytes", type, rows.size(), rows.data());
             Dataset(group, "attributes", attr_type, attrs.size(), attrs.data());
+            if(!fields.empty())
+            {
+                Handle fields_type(EventFieldsType(), H5Tclose);
+                Dataset(group, "event_fields", fields_type, fields.size(), fields.data());
+            }
+            if(!link_rows.empty())
+            {
+                Handle link_type(LinkType(), H5Tclose);
+                Dataset(group, "links", link_type, link_rows.size(), link_rows.data());
+            }
         }
         file.close();
         return absl::OkStatus();
@@ -443,6 +522,49 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::decode(std::span<unsigned cha
                                            throw std::runtime_error("invalid HDF5 attribute index or duplicate key");
                                    }
                                });
+        // A chunk written before I3.9, or without these fields, lacks the datasets and decodes with them empty.
+        if(Exists(group, "event_fields"))
+        {
+            Handle fields_type(EventFieldsType(), H5Tclose);
+            ReadDataset<EventFields>(group,
+                                     "event_fields",
+                                     fields_type,
+                                     MaxEvents,
+                                     budget,
+                                     [&](const auto& rows)
+                                     {
+                                         for(const auto& row: rows)
+                                         {
+                                             if(row.event_index >= events.size())
+                                                 throw std::runtime_error("invalid HDF5 event field index");
+                                             events[row.event_index].envelope.kind = String(row.kind);
+                                             events[row.event_index].envelope.actor = String(row.actor);
+                                         }
+                                     });
+        }
+        if(Exists(group, "links"))
+        {
+            Handle link_type(LinkType(), H5Tclose);
+            ReadDataset<LinkRow>(group,
+                                 "links",
+                                 link_type,
+                                 MaxLinks,
+                                 budget,
+                                 [&](const auto& rows)
+                                 {
+                                     for(const auto& row: rows)
+                                     {
+                                         if(row.event_index >= events.size() || row.has_hlc > 1)
+                                             throw std::runtime_error("invalid HDF5 link index or flag");
+                                         Link link;
+                                         link.type = String(row.type);
+                                         link.target = {row.story_id, row.writer_id, row.incarnation, row.sequence};
+                                         if(row.has_hlc)
+                                             link.target_hlc = Hlc{row.hlc_physical_ns, row.hlc_logical};
+                                         events[row.event_index].envelope.links.push_back(std::move(link));
+                                     }
+                                 });
+        }
         return events;
     }
     catch(const std::exception& error)

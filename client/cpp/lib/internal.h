@@ -56,6 +56,22 @@ inline v1::Envelope encode(const Envelope& e)
     p.set_trace_id(e.trace_id);
     p.set_span_id(e.span_id);
     for(const auto& [k, v]: e.attributes) (*p.mutable_attributes())[k] = v;
+    p.set_kind(e.kind);
+    p.set_actor(e.actor);
+    for(const auto& link: e.links)
+    {
+        auto* l = p.add_links();
+        l->set_type(link.type);
+        l->mutable_target()->set_story_id(link.target.story_id);
+        l->mutable_target()->set_writer_id(link.target.writer_id);
+        l->mutable_target()->set_incarnation(link.target.incarnation);
+        l->mutable_target()->set_sequence(link.target.sequence);
+        if(link.target_hlc)
+        {
+            l->mutable_target_hlc()->set_physical_ns(link.target_hlc->physical_ns);
+            l->mutable_target_hlc()->set_logical(link.target_hlc->logical);
+        }
+    }
     return p;
 }
 inline Event decode(const v1::Event& p)
@@ -76,8 +92,20 @@ inline Event decode(const v1::Event& p)
                   p.envelope().payload(),
                   p.envelope().trace_id(),
                   p.envelope().span_id(),
+                  {},
+                  p.envelope().kind(),
+                  p.envelope().actor(),
                   {}};
     for(const auto& [k, v]: p.envelope().attributes()) e.envelope.attributes[k] = v;
+    for(const auto& link: p.envelope().links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = decode(link.target());
+        if(link.has_target_hlc())
+            l.target_hlc = decode(link.target_hlc());
+        e.envelope.links.push_back(std::move(l));
+    }
     return e;
 }
 inline Completion decode(const v1::Completion& p)
@@ -97,7 +125,9 @@ inline bool same(const AppendSpec& a, const AppendSpec& b)
                                                a.physical->status == b.physical->status));
     return physicalSame && a.durability == b.durability && a.envelope.content_type == b.envelope.content_type &&
            a.envelope.payload == b.envelope.payload && a.envelope.trace_id == b.envelope.trace_id &&
-           a.envelope.span_id == b.envelope.span_id && a.envelope.attributes == b.envelope.attributes;
+           a.envelope.span_id == b.envelope.span_id && a.envelope.attributes == b.envelope.attributes &&
+           a.envelope.kind == b.envelope.kind && a.envelope.actor == b.envelope.actor &&
+           a.envelope.links == b.envelope.links;
 }
 inline bool retryable(const absl::Status& s)
 {

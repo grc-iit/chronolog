@@ -43,6 +43,22 @@ v1::Event Encode(const Event& event)
     envelope->set_trace_id(event.envelope.trace_id);
     envelope->set_span_id(event.envelope.span_id);
     for(const auto& [key, value]: event.envelope.attributes) (*envelope->mutable_attributes())[key] = value;
+    envelope->set_kind(event.envelope.kind);
+    envelope->set_actor(event.envelope.actor);
+    for(const auto& link: event.envelope.links)
+    {
+        auto* l = envelope->add_links();
+        l->set_type(link.type);
+        l->mutable_target()->set_story_id(link.target.story_id);
+        l->mutable_target()->set_writer_id(link.target.writer_id);
+        l->mutable_target()->set_incarnation(link.target.incarnation);
+        l->mutable_target()->set_sequence(link.target.sequence);
+        if(link.target_hlc)
+        {
+            l->mutable_target_hlc()->set_physical_ns(link.target_hlc->physical_ns);
+            l->mutable_target_hlc()->set_logical(link.target_hlc->logical);
+        }
+    }
     result.set_durability(static_cast<v1::Durability>(event.durability));
     return result;
 }
@@ -76,6 +92,20 @@ absl::StatusOr<Event> Decode(v1::Event& event)
     result.envelope.trace_id = std::move(*envelope.mutable_trace_id());
     result.envelope.span_id = std::move(*envelope.mutable_span_id());
     for(auto& [key, value]: *envelope.mutable_attributes()) result.envelope.attributes[key] = std::move(value);
+    result.envelope.kind = std::move(*envelope.mutable_kind());
+    result.envelope.actor = std::move(*envelope.mutable_actor());
+    for(const auto& link: envelope.links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = {link.target().story_id(),
+                    link.target().writer_id(),
+                    link.target().incarnation(),
+                    link.target().sequence()};
+        if(link.has_target_hlc())
+            l.target_hlc = Hlc{link.target_hlc().physical_ns(), link.target_hlc().logical()};
+        result.envelope.links.push_back(std::move(l));
+    }
     result.durability = static_cast<Durability>(event.durability());
     return result;
 }

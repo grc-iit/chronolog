@@ -180,6 +180,44 @@ TEST(WalJournal, TornTailRecoveryPreservesDurableEvents)
     EXPECT_TRUE((*next)[0].status.ok());
 }
 
+TEST(WalJournal, PreChangeSegmentReplaysWithKindActorAndLinksEmpty)
+{
+    WalRig rig;
+    auto appended = rig.current->append(batch({1, 2}), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE((*appended)[1].status.ok());
+    rig.journal.reset();
+    // A record as written before I3.9: an Event whose envelope has no field 6, 7 or 8, so its bytes carry none.
+    v1::Event old;
+    old.mutable_id()->set_story_id(1);
+    old.mutable_id()->set_writer_id(2);
+    old.mutable_id()->set_incarnation(3);
+    old.mutable_id()->set_sequence(3);
+    old.mutable_hlc()->set_physical_ns((*appended)[1].hlc.physical_ns);
+    old.mutable_hlc()->set_logical((*appended)[1].hlc.logical + 1);
+    old.mutable_physical()->set_physical_ns(100);
+    old.mutable_physical()->set_status(v1::CLOCK_STATUS_SYNCED);
+    old.mutable_physical()->set_uncertainty_ns(1);
+    old.mutable_envelope()->set_payload("pre-change");
+    old.mutable_envelope()->set_content_type("text/plain");
+    (*old.mutable_envelope()->mutable_attributes())["gen_ai.agent.id"] = "agent";
+    old.set_durability(v1::DURABILITY_DURABLE);
+    const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+    const auto bytes = wal::frame("E" + old.SerializeAsString());
+    std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+    rig.reopen();
+    auto events = rig.current->read(1, all());
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 3u);
+    const auto& replayed = (*events)[2];
+    EXPECT_EQ(replayed.id.sequence, 3u);
+    EXPECT_EQ(replayed.envelope.payload, "pre-change");
+    EXPECT_EQ(replayed.envelope.attributes.at("gen_ai.agent.id"), "agent");
+    EXPECT_TRUE(replayed.envelope.kind.empty());
+    EXPECT_TRUE(replayed.envelope.actor.empty());
+    EXPECT_TRUE(replayed.envelope.links.empty());
+}
+
 // The window lines of the one writer in a "v4" checkpoint, by sequence.
 std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::string& text, size_t* declared = nullptr)
 {
@@ -488,7 +526,8 @@ TEST(WalJournal, WalReserveRefusesBeforeTheWalFails)
     free->store(1ull << 20);
     uint64_t next = 2;
     std::optional<AppendResult> refused;
-    for(const auto until = std::chrono::steady_clock::now() + 10s; !refused && std::chrono::steady_clock::now() < until;)
+    for(const auto until = std::chrono::steady_clock::now() + 10s;
+        !refused && std::chrono::steady_clock::now() < until;)
     {
         auto result = rig.current->append(batch({next}), Durability::Durable);
         ASSERT_TRUE(result.ok());
@@ -510,7 +549,8 @@ TEST(WalJournal, WalReserveRefusesBeforeTheWalFails)
     EXPECT_EQ(duplicate->front().hlc, admitted->front().hlc);
     free->store(1ull << 30);
     std::optional<AppendResult> resumed;
-    for(const auto until = std::chrono::steady_clock::now() + 10s; !resumed && std::chrono::steady_clock::now() < until;)
+    for(const auto until = std::chrono::steady_clock::now() + 10s;
+        !resumed && std::chrono::steady_clock::now() < until;)
     {
         auto result = rig.current->append(batch({next}), Durability::Durable);
         ASSERT_TRUE(result.ok());

@@ -29,7 +29,10 @@ Chunk Make(StoryId story, size_t index)
                           std::string(1024, static_cast<char>('a' + i)),
                           std::string(16, 't'),
                           std::string(8, 's'),
-                          {{"host", "dragon"}, {"rank", std::to_string(i)}}};
+                          {{"host", "dragon"}, {"rank", std::to_string(i)}},
+                          {},
+                          {},
+                          {}};
         chunk.events.push_back(std::move(event));
     }
     return chunk;

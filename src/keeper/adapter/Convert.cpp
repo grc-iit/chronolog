@@ -103,6 +103,16 @@ v1::Envelope toProto(const Envelope& envelope)
     out.set_trace_id(envelope.trace_id);
     out.set_span_id(envelope.span_id);
     for(const auto& [key, value]: envelope.attributes) (*out.mutable_attributes())[key] = value;
+    out.set_kind(envelope.kind);
+    out.set_actor(envelope.actor);
+    for(const auto& link: envelope.links)
+    {
+        auto* l = out.add_links();
+        l->set_type(link.type);
+        *l->mutable_target() = toProto(link.target);
+        if(link.target_hlc)
+            *l->mutable_target_hlc() = convert::toProto(*link.target_hlc);
+    }
     return out;
 }
 
@@ -223,6 +233,21 @@ Envelope fromProto(const v1::Envelope& envelope)
     out.trace_id = envelope.trace_id();
     out.span_id = envelope.span_id();
     for(const auto& [key, value]: envelope.attributes()) out.attributes[key] = value;
+    out.kind = envelope.kind();
+    out.actor = envelope.actor();
+    out.links.reserve(envelope.links().size());
+    for(const auto& link: envelope.links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = {link.target().story_id(),
+                    link.target().writer_id(),
+                    link.target().incarnation(),
+                    link.target().sequence()};
+        if(link.has_target_hlc())
+            l.target_hlc = fromProto(link.target_hlc());
+        out.links.push_back(std::move(l));
+    }
     return out;
 }
 

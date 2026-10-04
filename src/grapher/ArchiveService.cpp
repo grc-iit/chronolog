@@ -51,6 +51,20 @@ absl::StatusOr<Event> Decode(const v1::Event& input)
     event.envelope.trace_id = input.envelope().trace_id();
     event.envelope.span_id = input.envelope().span_id();
     for(const auto& [key, value]: input.envelope().attributes()) event.envelope.attributes[key] = value;
+    event.envelope.kind = input.envelope().kind();
+    event.envelope.actor = input.envelope().actor();
+    for(const auto& link: input.envelope().links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = {link.target().story_id(),
+                    link.target().writer_id(),
+                    link.target().incarnation(),
+                    link.target().sequence()};
+        if(link.has_target_hlc())
+            l.target_hlc = Hlc{link.target_hlc().physical_ns(), link.target_hlc().logical()};
+        event.envelope.links.push_back(std::move(l));
+    }
     return event;
 }
 

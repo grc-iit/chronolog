@@ -28,7 +28,7 @@ int Create(const std::filesystem::path& root)
             event.id = {1, 2, 3, file * EventsPerFile + i + 1};
             event.hlc = {start + static_cast<int64_t>(i), 0};
             event.physical = {static_cast<int64_t>(file * 1'000'000 + i * 10), 2, ClockStatus::Synced};
-            event.envelope = {"application/octet-stream", std::string(1024, 'x'), {}, {}, {}};
+            event.envelope = {"application/octet-stream", std::string(1024, 'x'), {}, {}, {}, {}, {}, {}};
             chunk.events.push_back(std::move(event));
         }
         auto published = (*store)->publish(std::move(chunk));
