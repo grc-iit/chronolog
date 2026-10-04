@@ -41,6 +41,10 @@ public:
     void stop() { executor_.reset(); }
     std::shared_ptr<TierDirectory> directory() const;
     bool current(const std::shared_ptr<TierDirectory>& directory) const;
+    // Probe ordinals (I13.15): a slow-tier LOST verdict repeats only under a probe that started after the first
+    // verdict and verified the root. probesStarted counts every probe that got past the one-outstanding rule.
+    uint64_t probesStarted() const;
+    uint64_t lastVerifiedProbe() const;
     void unavailable();
     void expire()
     {
@@ -106,6 +110,7 @@ private:
     std::atomic<bool> probing_{};
     mutable std::mutex mutex_;
     uint64_t epoch_{};
+    uint64_t probes_started_{}, last_verified_probe_{};
     std::shared_ptr<TierDirectory> directory_;
 };
 } // namespace chronolog

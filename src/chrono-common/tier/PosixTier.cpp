@@ -126,21 +126,27 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
                                                self->probing_ = false;
                                                delete value;
                                            });
-    uint64_t started;
+    uint64_t started, ordinal;
     std::shared_ptr<TierDirectory> held;
     {
         std::lock_guard lock(mutex_);
         started = epoch_;
         held = directory_;
+        ordinal = ++probes_started_;
     }
     // An availability epoch lasts until a probe or an operation fails. A probe of a root that still verifies through
     // the epoch's own descriptor keeps the epoch, so readers and a migration in flight never see an available tier
     // go away for the length of a probe (I13.15).
     return run(
-            [self, started, held, completion]() -> absl::Status
+            [self, started, ordinal, held, completion]() -> absl::Status
             {
                 if(held && self->verify(*held).ok())
+                {
+                    std::lock_guard lock(self->mutex_);
+                    if(self->directory_ == held)
+                        self->last_verified_probe_ = std::max(self->last_verified_probe_, ordinal);
                     return absl::OkStatus();
+                }
                 auto directory = std::make_shared<TierDirectory>(
                         ::open(self->config.root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW),
                         0);
@@ -152,6 +158,8 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
                     return absl::UnavailableError("abandoned tier probe");
                 directory->epoch = ++self->epoch_;
                 self->directory_ = status.ok() ? std::move(directory) : nullptr;
+                if(status.ok())
+                    self->last_verified_probe_ = std::max(self->last_verified_probe_, ordinal);
                 return status;
             },
             timeout);
@@ -160,6 +168,16 @@ std::shared_ptr<TierDirectory> PosixTier::directory() const
 {
     std::lock_guard lock(mutex_);
     return directory_;
+}
+uint64_t PosixTier::probesStarted() const
+{
+    std::lock_guard lock(mutex_);
+    return probes_started_;
+}
+uint64_t PosixTier::lastVerifiedProbe() const
+{
+    std::lock_guard lock(mutex_);
+    return last_verified_probe_;
 }
 bool PosixTier::current(const std::shared_ptr<TierDirectory>& directory) const
 {
