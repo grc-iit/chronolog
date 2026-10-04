@@ -1,6 +1,7 @@
 #include "../../../tests/contract/tier_store_contract_test.cpp"
 #include "tier/FileTierStore.h"
 #include <absl/crc/crc32c.h>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <filesystem>
@@ -3667,7 +3668,366 @@ TierConfig MakeLocalTier(const fs::path& root)
     return {"local", "posix", root, 0, "local-uuid"};
 }
 
+// A blocking fault seam for tier executor operations: every tier step waits until release().
+struct TierHang
+{
+    std::shared_ptr<std::promise<void>> released = std::make_shared<std::promise<void>>();
+    std::shared_future<void> gate = released->get_future().share();
+    std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> left = std::make_shared<std::atomic<int>>(0);
+    FileTierStore::Hooks hooks() const
+    {
+        FileTierStore::Hooks hooks;
+        hooks.tier_step = [gate = gate, entered = entered, left = left](std::string_view)
+        {
+            ++*entered;
+            gate.wait();
+            ++*left;
+            return absl::OkStatus();
+        };
+        return hooks;
+    }
+    bool waitEntered(int count) const
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while(entered->load() < count && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return entered->load() >= count;
+    }
+    // Releases every blocked operation and waits until each one left the seam.
+    bool release() const
+    {
+        released->set_value();
+        return settled();
+    }
+    bool settled() const
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while(left->load() < entered->load() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return left->load() == entered->load();
+    }
+};
 } // namespace
+
+// I13.14 (RFC-I 3.4, O2): a fresh reader applies a writer's log before its snapshot, a polling reader the snapshot
+// before the log, and manifest compaction moves lines from one to the other. The effective location is the slowest
+// rank any line names, whatever the order.
+TEST(ManifestLog, MultiHopLocationIsOrderIndependentAcrossSnapshotCompaction)
+{
+    auto directory = TestDirectory();
+    std::string file;
+    {
+        auto store = OpenStore(*directory, {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        file = PublishWindows(**store, 1).at(0).file;
+    }
+    auto log = ManifestLog::Open(*directory, "primary");
+    ASSERT_TRUE(log.ok()) << log.status();
+    const auto hop = [&file](std::string tier, uint32_t rank)
+    {
+        MigrationLocation location;
+        location.writer = "primary";
+        location.file = file;
+        location.tier = tier;
+        location.tier_uuid = "uuid-" + tier;
+        location.token = "token-" + tier;
+        location.story_id = 1;
+        location.rank = rank;
+        location.checksum = {10, 20};
+        return location;
+    };
+    const auto resolved = [&file](ManifestLog& reader, bool fresh) -> std::string
+    {
+        if(fresh)
+        {
+            auto index = reader.load();
+            EXPECT_TRUE(index.ok()) << index.status();
+            return index.ok() && index->locations.contains(file) ? index->locations.at(file).tier : "local";
+        }
+        auto index = reader.sync();
+        EXPECT_TRUE(index.ok()) << index.status();
+        return index.ok() && (*index)->locations.contains(file) ? (*index)->locations.at(file).tier : "local";
+    };
+    // Three polling readers that first sync at different points of the history.
+    auto before = ManifestLog::OpenReadOnly(*directory);
+    EXPECT_EQ(resolved(*before, false), "local");
+    ASSERT_TRUE((*log)->appendMigration(hop("nfs", 1)).ok());
+    auto between = ManifestLog::OpenReadOnly(*directory);
+    EXPECT_EQ(resolved(*between, false), "nfs");
+    // The first hop moves into the snapshot; the second hop is the only line in the log.
+    ASSERT_TRUE((*log)->sync().ok());
+    ASSERT_TRUE((*log)->compact().ok());
+    ASSERT_TRUE((*log)->appendMigration(hop("s3", 2)).ok());
+    auto after = ManifestLog::OpenReadOnly(*directory);
+    for(auto* reader: {before.get(), between.get(), after.get()}) EXPECT_EQ(resolved(*reader, false), "s3");
+    EXPECT_EQ(resolved(*ManifestLog::OpenReadOnly(*directory), true), "s3");
+    ASSERT_TRUE((*log)->sync().ok());
+    EXPECT_EQ((*log)->location(file).value().tier, "s3");
+    // Reversed arrangement: the slower hop is in the snapshot and a line of the faster rank follows it in the log
+    // (a retried append of the first hop). The file never moves back to a faster tier.
+    ASSERT_TRUE((*log)->sync().ok());
+    ASSERT_TRUE((*log)->compact().ok());
+    ASSERT_TRUE((*log)->appendMigration(hop("nfs", 1)).ok());
+    for(auto* reader: {before.get(), between.get(), after.get()}) EXPECT_EQ(resolved(*reader, false), "s3");
+    EXPECT_EQ(resolved(*ManifestLog::OpenReadOnly(*directory), true), "s3");
+    auto reopened = ManifestLog::OpenReadOnly(*directory);
+    EXPECT_EQ(resolved(*reopened, false), "s3");
+    ASSERT_TRUE((*log)->sync().ok());
+    EXPECT_EQ((*log)->location(file).value().tier, "s3");
+    EXPECT_EQ((*log)->location(file).value().rank, 2u);
+    // Everything in the snapshot.
+    ASSERT_TRUE((*log)->compact().ok());
+    for(auto* reader: {before.get(), between.get(), after.get(), reopened.get()})
+        EXPECT_EQ(resolved(*reader, false), "s3");
+    EXPECT_EQ(resolved(*ManifestLog::OpenReadOnly(*directory), true), "s3");
+}
+
+// I13.14 (RFC-I 3.4, O10): a Keeper resending a window whose holder migrated is compared against the holder at its
+// effective location. While that tier is unavailable the transfer is UNAVAILABLE and writes nothing, so the one
+// receipt settles when the tier returns.
+TEST(FileTierStore, PublishDuplicateOfAMigratedWindowSettles)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    MigrateAll(**store);
+    ASSERT_EQ(Migrated(**store).size(), 1u);
+    ASSERT_FALSE(fs::exists(*directory / "local" / records[0].file));
+    const auto manifest = Bytes(*directory / "local/manifest/primary.log");
+    const auto settled = (*store)->publish(Rich(0));
+    ASSERT_TRUE(settled.ok()) << settled.status();
+    EXPECT_EQ(settled->file, records[0].file);
+    EXPECT_EQ(settled->state, ManifestState::Published);
+    // A resend with other events for the same window is refused against the migrated holder.
+    auto other = Rich(0);
+    other.events.front().envelope.payload = "different";
+    EXPECT_EQ((*store)->publish(other).status().code(), absl::StatusCode::kUnavailable);
+    // The tier goes away: the duplicate cannot be compared, nothing is written, the Keeper keeps its chunk.
+    fs::rename(tier.root, tier.root.string() + "-away");
+    EXPECT_FALSE((*store)->probeTiers().ok());
+    EXPECT_EQ((*store)->publish(Rich(0)).status().code(), absl::StatusCode::kUnavailable);
+    // It returns: the same transfer settles on the migrated holder.
+    fs::rename(tier.root.string() + "-away", tier.root);
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    const auto again = (*store)->publish(Rich(0));
+    ASSERT_TRUE(again.ok()) << again.status();
+    EXPECT_EQ(again->file, records[0].file);
+    EXPECT_FALSE(fs::exists(*directory / "local" / records[0].file));
+    EXPECT_EQ(Bytes(*directory / "local/manifest/primary.log"), manifest);
+    EXPECT_EQ(Effective(**store).size(), 1u);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{150, 0}));
+}
+
+// I13.15 (RFC-I 3.5, O4): a probe that has not answered keeps the tier unavailable and starts no second probe, so a
+// dead server costs one probe thread per tier. The marker is a FIFO without a writer: opening it blocks as a hard
+// mount does.
+TEST(FileTierStore, AtMostOneProbePerTier)
+{
+    auto directory = TestDirectory();
+    const auto config = MakeSlowTier(*directory / "slow");
+    const auto marker = config.root / ".chronolog-tier.json";
+    const auto identity = Bytes(marker);
+    fs::rename(marker, config.root / "marker.saved");
+    ASSERT_EQ(::mkfifo(marker.c_str(), 0600), 0);
+    auto tier = std::make_shared<PosixTier>(config, "test", 2, std::chrono::milliseconds(100));
+    EXPECT_FALSE(tier->probe().ok());
+    EXPECT_EQ(tier->directory(), nullptr);
+    for(int i = 0; i < 8; ++i)
+    {
+        const auto status = tier->probe();
+        EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
+        EXPECT_NE(status.message().find("already outstanding"), std::string::npos) << status;
+        EXPECT_EQ(tier->directory(), nullptr);
+    }
+    EXPECT_EQ(tier->probesStarted(), 1u);
+    // Two workers and one of them lost to the probe: the executor still runs work, which a second hung probe would
+    // have made impossible.
+    EXPECT_TRUE(tier->run([] { return absl::OkStatus(); }).ok());
+    // The server answers: the one outstanding probe returns, and it does not start an epoch it was abandoned in.
+    {
+        tier_detail::Fd writer(::open(marker.c_str(), O_WRONLY | O_CLOEXEC));
+        ASSERT_GE(writer.get(), 0);
+        fs::rename(config.root / "marker.saved", marker);
+        ASSERT_TRUE(tier_detail::WriteAll(writer.get(), identity).ok());
+    }
+    absl::Status status;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    do {
+        status = tier->probe();
+    } while(!status.ok() && status.message().find("already outstanding") != std::string::npos &&
+            std::chrono::steady_clock::now() < deadline);
+    EXPECT_TRUE(status.ok()) << status;
+    EXPECT_NE(tier->directory(), nullptr);
+    EXPECT_EQ(tier->probesStarted(), 2u);
+    tier->stop();
+}
+
+// I13.15 (RFC-I 3.5, O4): workers abandoned on a hung tier are capped at the tier's thread count. At the cap new work
+// fails at once, never runs, and the tier stays unavailable until one abandoned worker returns.
+TEST(FileTierStore, AbandonedWorkersAreCapped)
+{
+    auto directory = TestDirectory();
+    const auto config = MakeSlowTier(*directory / "slow");
+    auto tier = std::make_shared<PosixTier>(config, "test", 2, std::chrono::milliseconds(50));
+    ASSERT_TRUE(tier->probe().ok());
+    std::array<std::promise<void>, 2> release;
+    auto entered = std::make_shared<std::atomic<int>>(0);
+    auto left = std::make_shared<std::atomic<int>>(0);
+    for(auto& promise: release)
+    {
+        const auto status = tier->run([gate = promise.get_future().share(), entered, left]
+        {
+            ++*entered;
+            gate.wait();
+            ++*left;
+            return absl::OkStatus();
+        });
+        EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
+        // The first hang ends the epoch; a probe of the healthy root starts the next while one worker remains.
+        if(&promise == &release.front())
+        {
+            EXPECT_EQ(tier->directory(), nullptr);
+            EXPECT_TRUE(tier->probe().ok());
+        }
+    }
+    ASSERT_EQ(entered->load(), 2);
+    // At the cap: nothing more is started, and the healthy root cannot become available.
+    auto extra = std::make_shared<std::atomic<int>>(0);
+    for(int i = 0; i < 8; ++i)
+    {
+        const auto status = tier->run([extra]
+        {
+            ++*extra;
+            return absl::OkStatus();
+        });
+        EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
+        EXPECT_NE(status.message().find("tier executor is full"), std::string::npos) << status;
+        EXPECT_FALSE(tier->probe().ok());
+        EXPECT_EQ(tier->directory(), nullptr);
+    }
+    EXPECT_EQ(extra->load(), 0);
+    EXPECT_EQ(entered->load(), 2);
+    // One abandoned worker returns: the tier takes work again.
+    release[0].set_value();
+    absl::Status status;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    do {
+        status = tier->probe();
+    } while(!status.ok() && std::chrono::steady_clock::now() < deadline);
+    EXPECT_TRUE(status.ok()) << status;
+    EXPECT_NE(tier->directory(), nullptr);
+    EXPECT_TRUE(tier->run([extra]
+    {
+        ++*extra;
+        return absl::OkStatus();
+    }).ok());
+    EXPECT_EQ(extra->load(), 1);
+    release[1].set_value();
+    while(left->load() < 2 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    EXPECT_EQ(left->load(), 2);
+    tier->stop();
+}
+
+// I13.15 (RFC-I 3.5, O4): nothing at Open, destroy, compaction or shutdown waits on a slow tier. Every tier
+// operation hangs in the executor seam and tier_io_timeout is an hour, so a path that awaited the tier would never
+// return; the test ends only because none does.
+TEST(FileTierStore, HungTierDoesNotBlockOpenDestroyCompactionOrShutdown)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    const auto hour = std::chrono::milliseconds(3600 * 1000);
+    std::vector<ManifestRecord> migrated;
+    {
+        auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 2);
+        AttachTier(**store, *directory / "local", tier);
+        MigrateAll(**store);
+        migrated = Migrated(**store);
+        ASSERT_EQ(migrated.size(), 2u);
+        PublishWindows(**store, 3, 2);
+        ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    }
+    MakeLocalTier(*directory / "local");
+    TierHang hang;
+    const auto open = [&]
+    {
+        return FileTierStore::Open(*directory / "local",
+                                   "primary",
+                                   {{1, {100, 0}}},
+                                   std::make_shared<ProtoChunkCodec>(),
+                                   {},
+                                   {},
+                                   2,
+                                   {},
+                                   hang.hooks(),
+                                   TierChain{"test", {tier}, 2, hour});
+    };
+    auto store = open();
+    ASSERT_TRUE(store.ok()) << store.status();
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    // Destroy of a migrated file: the Deleted record is durable at once and its unlink hangs on the tier.
+    EXPECT_FALSE((*store)->eraseFile(migrated[0].file).ok());
+    ASSERT_TRUE(hang.waitEntered(1));
+    EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Deleted);
+    EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
+    EXPECT_FALSE((*store)->retryDeletedFiles().ok());
+    EXPECT_TRUE(fs::exists(tier.root / migrated[0].file));
+    // Local reads and compaction proceed beside the hung operation.
+    const auto local = Effective(**store).back();
+    ASSERT_FALSE((*store)->location(local.file).value().has_value());
+    auto read = (*store)->readRecord(local, kAll);
+    ASSERT_TRUE(read.ok()) << read.status();
+    EXPECT_TRUE(SameEvents(*read, Rich(4).events));
+    auto compacted = (*store)->compactOnce(Eager());
+    ASSERT_TRUE(compacted.ok()) << compacted.status();
+    EXPECT_EQ(compacted->inputs, 3u);
+    // Shutdown with the tier worker still inside the seam.
+    store->reset();
+    EXPECT_EQ(hang.left->load(), 0);
+    // Open with a pending slow-tier unlink, then the hung tier again: Open, the destroy of the story and its tier
+    // sweep all return.
+    store = open();
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Deleted);
+    EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Published);
+    EXPECT_FALSE((*store)->retryDeletedFiles().ok());
+    ASSERT_TRUE((*store)->tombstone(1).ok());
+    // The destroy worker erases every remaining file: each Deleted record is durable at once, and each unlink is
+    // queued behind the hung tier because an erase covers every tier.
+    for(const auto& record: Effective(**store))
+        if(record.state == ManifestState::Published || record.state == ManifestState::Empty)
+            (void)(*store)->eraseFile(record.file);
+    for(const auto& record: Effective(**store)) EXPECT_EQ(record.state, ManifestState::Deleted) << record.file;
+    EXPECT_FALSE((*store)->retryDeletedFiles().ok());
+    EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
+    EXPECT_GE((*store)->pendingTierDeletions()[1], 1u);
+    EXPECT_TRUE(fs::exists(tier.root / migrated[0].file));
+    EXPECT_TRUE(fs::exists(tier.root / migrated[1].file));
+    EXPECT_EQ(hang.left->load(), 0);
+    // The tier answers: the destroy worker's retries complete every pending deletion and the tier sweep.
+    ASSERT_TRUE(hang.release());
+    absl::Status drained;
+    bool pending = true;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    do {
+        drained = (*store)->awaitTierUnlinksForTesting(std::chrono::seconds(5));
+        pending = (*store)->hasPendingUnlinks(1).value();
+    } while((!drained.ok() || pending) && std::chrono::steady_clock::now() < deadline);
+    EXPECT_TRUE(drained.ok()) << drained;
+    EXPECT_FALSE(pending);
+    EXPECT_FALSE(fs::exists(tier.root / migrated[0].file));
+    EXPECT_FALSE(fs::exists(tier.root / migrated[1].file));
+    store->reset();
+    EXPECT_TRUE(hang.settled());
+}
 
 // I13.15 (RFC-I 3.5, F1, O3c, O3d): a slow-tier file is recorded Lost only by its owner, when it is missing or
 // corrupt through the epoch's descriptor with the marker intact, and only when the verdict repeats in a later pass
