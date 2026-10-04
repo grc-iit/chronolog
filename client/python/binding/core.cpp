@@ -183,8 +183,8 @@ nb::object pack(const Link& l)
 {
     return value("Link",
                  fields("type"_a = l.type,
-                        "target"_a = pack(l.target),
-                        "target_hlc"_a = maybe(l.target_hlc, [](const Hlc& h) { return pack(h); })));
+                        "target"_a = binding::pack(l.target),
+                        "target_hlc"_a = maybe(l.target_hlc, [](const Hlc& h) { return binding::pack(h); })));
 }
 nb::object pack(const Envelope& e)
 {
