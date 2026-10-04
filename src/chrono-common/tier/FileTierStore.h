@@ -68,7 +68,9 @@ public:
                  LoadFile load_file = {},
                  size_t read_threads = 0,
                  DecodeFile decode_file = {},
-                 std::chrono::milliseconds archive_read_timeout = std::chrono::milliseconds(30000));
+                 std::chrono::milliseconds archive_read_timeout = std::chrono::milliseconds(30000),
+                 TierChain chain = {},
+                 Hooks hooks = {});
     absl::Status refreshNow() const;
     absl::Status registerStory(StoryId story, std::optional<Hlc> anchor = std::nullopt);
     absl::StatusOr<ManifestRecord> publish(Chunk chunk) override;
@@ -103,7 +105,7 @@ public:
                                 std::vector<TierConfig> tiers,
                                 size_t threads = 2,
                                 std::chrono::milliseconds timeout = std::chrono::milliseconds(1000));
-    absl::Status probeTiers();
+    absl::Status probeTiers(std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) const;
     absl::StatusOr<size_t> migrateOnce(const std::string& destination);
     absl::Status sweepTiers();
     absl::Status writeTierReplicas();
@@ -126,8 +128,11 @@ private:
     absl::StatusOr<std::vector<Event>> validate(const ManifestRecord& record,
                                                 std::optional<FileChecksum> checksum = std::nullopt) const;
     bool retired(const ManifestIndex& index, const ManifestRecord& record) const;
-    absl::StatusOr<std::vector<Event>>
-    afterVanished(const ManifestRecord& record, absl::Status failure, Range range, size_t max_events) const;
+    absl::StatusOr<std::vector<Event>> afterVanished(const ManifestRecord& record,
+                                                     absl::Status failure,
+                                                     Range range,
+                                                     size_t max_events,
+                                                     uint32_t planned_rank) const;
     std::optional<ManifestRecord> successor(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::StatusOr<ChunkBytes> loadForRead(const std::filesystem::path& file) const;
     bool effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const;

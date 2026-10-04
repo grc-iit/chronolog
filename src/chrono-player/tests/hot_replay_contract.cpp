@@ -4,6 +4,10 @@
 #include <map>
 #include <mutex>
 #include <filesystem>
+#include <fstream>
+#include <future>
+#include <nlohmann/json.hpp>
+#include <sys/vfs.h>
 #include <unistd.h>
 #include "replay_contract_test.cpp"
 #include "chrono-player/replay/HotReplay.h"
@@ -269,7 +273,13 @@ struct ArchiveWindow
 {
     std::filesystem::path root =
             std::filesystem::temp_directory_path() / ("replay-contract-" + std::to_string(::getpid()));
-    ~ArchiveWindow() { std::filesystem::remove_all(root); }
+    std::shared_ptr<std::promise<void>> release;
+    ~ArchiveWindow()
+    {
+        if(release)
+            release->set_value();
+        std::filesystem::remove_all(root);
+    }
 };
 
 std::unique_ptr<ReplayHarness> makeHarness()
@@ -321,6 +331,89 @@ std::unique_ptr<ReplayHarness> makeHarness()
                 std::shared_ptr<FileTierStore>(archive->release(), [window](FileTierStore* store) { delete store; });
         src->requireArchive();
         harness->sut = std::make_unique<HotReplay>(src, lost_options);
+    };
+    h->failArchiveFile = [src, harness = h.get(), options](ArchiveFault fault)
+    {
+        auto window = std::make_shared<ArchiveWindow>();
+        std::filesystem::remove_all(window->root);
+        auto opened = FileTierStore::Open(window->root, "writer", {{1, {100, 0}}});
+        ASSERT_TRUE(opened.ok()) << opened.status();
+        auto writer = *std::move(opened);
+        auto e = ev(2, 2, 120);
+        e.physical = {120, 0, ClockStatus::Synced};
+        Chunk chunk{"fault", 1, {100, 0}, {200, 0}, {e}, false};
+        chunk.physical_policy = true;
+        auto record = writer->publish(chunk);
+        ASSERT_TRUE(record.ok()) << record.status();
+        TierChain chain;
+        FileTierStore::Hooks hooks;
+        if(fault == ArchiveFault::TierUnavailable || fault == ArchiveFault::Hang)
+        {
+            chain = {"test",
+                     {{"local", "posix", window->root, 0, "local-uuid"},
+                      {"slow", "posix", window->root / "slow", 1, "slow-uuid"}},
+                     2,
+                     std::chrono::milliseconds(20)};
+            for(const auto& tier: chain.tiers)
+            {
+                std::filesystem::create_directories(tier.root);
+                struct statfs info
+                {
+                };
+                ASSERT_EQ(::statfs(tier.root.c_str(), &info), 0);
+                std::ofstream(tier.root / ".chronolog-tier.json") << nlohmann::json{{"deployment_id", "test"},
+                                                                                    {"name", tier.name},
+                                                                                    {"rank", tier.rank},
+                                                                                    {"kind", "posix"},
+                                                                                    {"tier_uuid", tier.tier_uuid},
+                                                                                    {"f_type", info.f_type}};
+            }
+            std::ofstream(window->root / "manifest/writer.validated") << "{\"writer\":\"writer\",\"through\":0}";
+            ASSERT_TRUE(writer->configureTiers("test", {chain.tiers[1]}).ok());
+            ASSERT_TRUE(writer->probeTiers().ok());
+            auto migrated = writer->migrateOnce("slow");
+            ASSERT_TRUE(migrated.ok()) << migrated.status();
+            ASSERT_EQ(*migrated, 1u);
+            if(fault == ArchiveFault::Hang)
+            {
+                window->release = std::make_shared<std::promise<void>>();
+                auto gate = window->release->get_future().share();
+                hooks.tier_step = [gate](std::string_view)
+                {
+                    gate.wait();
+                    return absl::UnavailableError("released hang");
+                };
+            }
+        }
+        auto archive = FileTierStore::OpenReadOnly(window->root,
+                                                   std::chrono::hours(1),
+                                                   {},
+                                                   0,
+                                                   {},
+                                                   std::chrono::seconds(30),
+                                                   chain,
+                                                   hooks);
+        ASSERT_TRUE(archive.ok()) << archive.status();
+        if(fault == ArchiveFault::TierUnavailable)
+            std::filesystem::remove(window->root / "slow/.chronolog-tier.json");
+        if(!chain.tiers.empty())
+        {
+            EXPECT_EQ((*archive)->probeTiers().ok(), fault != ArchiveFault::TierUnavailable);
+        }
+        if(fault == ArchiveFault::Missing)
+            std::filesystem::remove(window->root / record->file);
+        if(fault == ArchiveFault::Undecodable)
+            std::ofstream(window->root / record->file, std::ios::trunc) << "not an archive";
+        if(fault == ArchiveFault::ChecksumMismatch)
+        {
+            chunk.events.front().envelope.payload = "changed";
+            ASSERT_TRUE(HDF5ChunkCodec().writeChunk(window->root / record->file, chunk).ok());
+        }
+        auto failed_options = options;
+        failed_options.archive =
+                std::shared_ptr<FileTierStore>(archive->release(), [window](FileTierStore* store) { delete store; });
+        src->requireArchive();
+        harness->sut = std::make_unique<HotReplay>(src, failed_options);
     };
     return h;
 }

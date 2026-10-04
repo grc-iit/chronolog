@@ -147,7 +147,11 @@ int main(int argc, char** argv)
                                                    {},
                                                    0,
                                                    {},
-                                                   std::chrono::milliseconds(cfg.archive_read_timeout_ms));
+                                                   std::chrono::milliseconds(cfg.archive_read_timeout_ms),
+                                                   TierChain{cfg.deployment_id,
+                                                             cfg.tiers,
+                                                             cfg.slow_tier_io_threads,
+                                                             std::chrono::milliseconds(cfg.tier_io_timeout_ms)});
         if(!archive.ok())
         {
             LOG(ERROR) << "chrono_player: cannot open archive: " << archive.status().message();
@@ -155,6 +159,23 @@ int main(int argc, char** argv)
         }
         replay_options.archive = std::shared_ptr<FileTierStore>(*std::move(archive));
     }
+    std::mutex probe_mutex;
+    std::condition_variable_any probe_changed;
+    std::jthread probes;
+    if(replay_options.archive && cfg.tiers.size() > 1)
+        probes = std::jthread(
+                [&, archive = replay_options.archive](std::stop_token stop)
+                {
+                    while(!stop.stop_requested())
+                    {
+                        (void)archive->probeTiers(std::chrono::milliseconds(cfg.tier_probe_timeout_ms));
+                        std::unique_lock lock(probe_mutex);
+                        probe_changed.wait_for(lock,
+                                               stop,
+                                               std::chrono::milliseconds(cfg.tier_probe_interval_ms),
+                                               [] { return false; });
+                    }
+                });
     auto replay = std::make_shared<player::HotReplay>(source, replay_options);
     player::ReplayService service(replay, catalog);
 

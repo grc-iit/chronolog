@@ -71,7 +71,13 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "manifest_poll_ms",
                                                 "archive_read_timeout_ms",
                                                 "log_level",
-                                                "static_routes"};
+                                                "static_routes",
+                                                "deployment_id",
+                                                "tiers",
+                                                "tier_io_timeout_ms",
+                                                "tier_probe_interval_ms",
+                                                "tier_probe_timeout_ms",
+                                                "slow_tier_io_threads"};
     if(!json.is_object())
         return absl::InvalidArgumentError("configuration must be a JSON object");
     for(const auto& [key, value]: json.items())
@@ -104,6 +110,45 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         num("manifest_poll_ms", cfg.manifest_poll_ms);
         num("archive_read_timeout_ms", cfg.archive_read_timeout_ms);
         str("log_level", cfg.log_level);
+        str("deployment_id", cfg.deployment_id);
+        num("tier_io_timeout_ms", cfg.tier_io_timeout_ms);
+        num("tier_probe_interval_ms", cfg.tier_probe_interval_ms);
+        num("tier_probe_timeout_ms", cfg.tier_probe_timeout_ms);
+        num("slow_tier_io_threads", cfg.slow_tier_io_threads);
+        if(json.contains("tiers"))
+        {
+            if(!json.at("tiers").is_array())
+                return absl::InvalidArgumentError("tiers must be an array");
+            cfg.tiers.clear();
+            for(const auto& item: json.at("tiers"))
+            {
+                static const std::set<std::string> keys = {"name",
+                                                           "kind",
+                                                           "root",
+                                                           "rank",
+                                                           "tier_uuid",
+                                                           "f_type",
+                                                           "st_dev",
+                                                           "f_fsid",
+                                                           "budget_bytes",
+                                                           "min_free_fraction",
+                                                           "high_watermark",
+                                                           "low_watermark"};
+                if(!item.is_object())
+                    return absl::InvalidArgumentError("tier must be an object");
+                for(const auto& [key, value]: item.items())
+                    if(!keys.contains(key))
+                        return absl::InvalidArgumentError("unknown tier key " + key);
+                cfg.tiers.push_back({item.at("name").get<std::string>(),
+                                     item.at("kind").get<std::string>(),
+                                     item.at("root").get<std::string>(),
+                                     item.at("rank").get<uint32_t>(),
+                                     item.at("tier_uuid").get<std::string>()});
+                (void)item.at("f_type").get<int64_t>();
+                (void)item.at("st_dev").get<uint64_t>();
+                (void)item.at("f_fsid").get<std::array<int32_t, 2>>();
+            }
+        }
         if(json.contains("keeper_internal"))
             cfg.keeper_internal = json.at("keeper_internal").get<std::map<std::string, std::string>>();
         if(json.contains("static_routes"))
@@ -152,6 +197,7 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"visor_internal", &cfg.visor_internal},
                             {"keeper_internal_suffix", &cfg.keeper_internal_suffix},
                             {"archive_root", &cfg.archive_root},
+                            {"deployment_id", &cfg.deployment_id},
                             {"log_level", &cfg.log_level}})
         if(auto v = env(key))
             *field = *v;
@@ -161,7 +207,11 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"tail_max_bytes", &cfg.tail_max_bytes},
                             {"tail_poll_ms", &cfg.tail_poll_ms},
                             {"manifest_poll_ms", &cfg.manifest_poll_ms},
-                            {"archive_read_timeout_ms", &cfg.archive_read_timeout_ms}})
+                            {"archive_read_timeout_ms", &cfg.archive_read_timeout_ms},
+                            {"tier_io_timeout_ms", &cfg.tier_io_timeout_ms},
+                            {"tier_probe_interval_ms", &cfg.tier_probe_interval_ms},
+                            {"tier_probe_timeout_ms", &cfg.tier_probe_timeout_ms},
+                            {"slow_tier_io_threads", &cfg.slow_tier_io_threads}})
     {
         if(auto v = env(key))
         {
@@ -178,6 +228,14 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
             return parsed.status();
         cfg.keeper_internal = std::move(*parsed);
     }
+    if(auto v = env("tiers"))
+    {
+        auto table = nlohmann::json::parse(*v, nullptr, false);
+        if(table.is_discarded())
+            return absl::InvalidArgumentError("environment tiers is not valid JSON");
+        if(auto status = applyJson(nlohmann::json{{"tiers", table}}, cfg); !status.ok())
+            return status;
+    }
     if(auto valid = cfg.validate(); !valid.ok())
         return valid;
     return cfg;
@@ -192,6 +250,30 @@ absl::Status PlayerConfig::validate() const
         return absl::InvalidArgumentError(
                 "tail_max_bytes, read_max_events, batch_size, tail_poll_ms, "
                 "keeper_deadline_ms, manifest_poll_ms and archive_read_timeout_ms must be positive");
+    if(!tier_io_timeout_ms || !tier_probe_interval_ms || !tier_probe_timeout_ms || !slow_tier_io_threads ||
+       slow_tier_io_threads > 8)
+        return absl::InvalidArgumentError(
+                "tier timeouts and interval must be positive; slow_tier_io_threads must be 1..8");
+    if(!tiers.empty())
+    {
+        if(deployment_id.empty())
+            return absl::InvalidArgumentError("tiers require deployment_id");
+        if(tiers.front().name != "local" || tiers.front().rank != 0 ||
+           tiers.front().root.lexically_normal() != std::filesystem::path(archive_root).lexically_normal())
+            return absl::InvalidArgumentError("rank 0 must be local at archive_root");
+        std::set<std::string> names;
+        uint32_t previous = 0;
+        for(size_t i = 0; i < tiers.size(); ++i)
+        {
+            const auto& tier = tiers[i];
+            if(tier.kind != "posix")
+                return absl::InvalidArgumentError("Player supports posix tiers only; s3 is unsupported");
+            if(tier.name.empty() || tier.root.empty() || tier.tier_uuid.empty() || !names.insert(tier.name).second ||
+               (i && tier.rank <= previous))
+                return absl::InvalidArgumentError("tier names must be unique and ranks strictly increasing from 0");
+            previous = tier.rank;
+        }
+    }
     if(log_level != "info" && log_level != "warning" && log_level != "error")
         return absl::InvalidArgumentError("log_level must be info, warning or error");
     if(!static_routes && visor_internal.empty())
