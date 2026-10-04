@@ -78,7 +78,8 @@ ArchiveService::ArchiveService(FileTierStore& store,
                                std::string instance,
                                TransferLimits limits,
                                CompactionSettings compaction,
-                               MigrationSettings migration)
+                               MigrationSettings migration,
+                               ScrubSettings scrub)
     : store_(store)
     , instance_(std::move(instance))
     , limits_(limits)
@@ -86,7 +87,13 @@ ArchiveService::ArchiveService(FileTierStore& store,
     , pool_(std::make_unique<WorkerPool>(std::max<uint32_t>(1, limits.concurrent_transfers),
                                          std::max<uint32_t>(1, limits.concurrent_transfers)))
     , destroyer_(std::make_unique<WorkerPool>(1, 1))
+    , scrub_(scrub)
 {
+    if(scrub_.interval.count() > 0)
+    {
+        scrubber_ = std::make_unique<WorkerPool>(1, 1);
+        scrubber_->submit([this] { scrubLoop(); });
+    }
     if(!migration.tiers.empty())
     {
         probe_interval_ = std::chrono::milliseconds(migration.probe_interval_ms);
@@ -510,6 +517,27 @@ void ArchiveService::migrateLoop()
     }
 }
 
+// One pass at a time on its own worker (M11.7). A pass that fails keeps the previous mark, so the next Open
+// validates what this pass did not cover.
+void ArchiveService::scrubLoop()
+{
+    CHRONOLOG_ASSERT_WORKER_THREAD();
+    std::unique_lock lock(mutex_);
+    while(!draining_)
+    {
+        lock.unlock();
+        const auto result = store_.scrubOnce(scrub_.io_bytes_per_sec, scrub_.slow_tiers);
+        if(!result.ok() && !absl::IsCancelled(result.status()))
+            LOG_EVERY_N_SEC(WARNING, 60) << "archive scrub pass failed: " << result.status();
+        else if(result.ok())
+            LOG(INFO) << "archive scrub validated=" << result->validated << " skipped=" << result->skipped
+                      << " lost=" << result->lost << " rolled_back=" << result->rolled_back
+                      << " slow_failed=" << result->slow_failed << " through=" << result->through;
+        lock.lock();
+        changed_.wait_for(lock, scrub_.interval, [&] { return draining_; });
+    }
+}
+
 void ArchiveService::shutdown()
 {
     {
@@ -522,9 +550,13 @@ void ArchiveService::shutdown()
     // Joined here so no deletion or compaction is still touching the store when the caller releases it.
     if(migration_)
         migration_->stop();
+    if(scrubber_)
+        store_.stopScrub();
     destroyer_->stop();
     if(migrator_)
         migrator_->stop();
+    if(scrubber_)
+        scrubber_->stop();
     if(compactor_)
         compactor_->stop();
 }

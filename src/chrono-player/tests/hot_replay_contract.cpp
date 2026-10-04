@@ -368,7 +368,7 @@ std::unique_ptr<ReplayHarness> makeHarness()
                                                                                     {"tier_uuid", tier.tier_uuid},
                                                                                     {"f_type", info.f_type}};
             }
-            std::ofstream(window->root / "manifest/writer.validated") << "{\"writer\":\"writer\",\"through\":0}";
+            ASSERT_TRUE(writer->scrubOnce(0).ok());
             ASSERT_TRUE(writer->configureTiers("test", {chain.tiers[1]}).ok());
             ASSERT_TRUE(writer->probeTiers().ok());
             auto migrated = writer->migrateOnce("slow");

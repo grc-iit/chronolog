@@ -7,6 +7,9 @@
 #include <fstream>
 #include <future>
 #include <limits>
+#include <map>
+#include <mutex>
+#include <optional>
 #include <nlohmann/json.hpp>
 #include <set>
 #include <sstream>
@@ -2864,7 +2867,10 @@ TierConfig MakeSlowTier(const fs::path& root)
 }
 void AttachTier(FileTierStore& store, const fs::path& local, const TierConfig& tier, std::string writer = "primary")
 {
-    std::ofstream(local / "manifest" / (writer + ".validated")) << "{\"writer\":\"" << writer << "\",\"through\":0}";
+    // Migration moves only files the scrubber's mark covers (I13.13, I13.17).
+    (void)local;
+    (void)writer;
+    ASSERT_TRUE(store.scrubOnce(0).ok());
     ASSERT_TRUE(store.configureTiers("test", {tier}).ok());
     ASSERT_TRUE(store.probeTiers().ok());
 }
@@ -3120,6 +3126,503 @@ TEST(FileTierStore, AProbeOfAnAvailableTierKeepsItsEpoch)
     EXPECT_GT(second->epoch, first->epoch);
     EXPECT_FALSE(tier->current(first));
     tier->stop();
+}
+
+namespace
+{
+// Counts the chunk files a store loads, by file name; the validation of Open and of the scrubber goes through it.
+struct LoadCounter
+{
+    std::shared_ptr<std::mutex> mutex = std::make_shared<std::mutex>();
+    std::shared_ptr<std::map<std::string, int>> loads = std::make_shared<std::map<std::string, int>>();
+    FileTierStore::LoadFile hook() const
+    {
+        return [mutex = mutex, loads = loads](const fs::path& path)
+        {
+            {
+                std::lock_guard lock(*mutex);
+                ++(*loads)[path.filename().string()];
+            }
+            return LoadChunkFile(path);
+        };
+    }
+    int of(const ManifestRecord& record) const
+    {
+        std::lock_guard lock(*mutex);
+        const auto found = loads->find(fs::path(record.file).filename().string());
+        return found == loads->end() ? 0 : found->second;
+    }
+    int total() const
+    {
+        std::lock_guard lock(*mutex);
+        int sum = 0;
+        for(const auto& [file, count]: *loads) sum += count;
+        return sum;
+    }
+};
+
+void Corrupt(const fs::path& file)
+{
+    std::ofstream corrupt(file, std::ios::binary);
+    corrupt << '\x80';
+}
+
+uint64_t SeqOf(const fs::path& root, const std::string& file)
+{
+    auto reader = ManifestLog::OpenReadOnly(root);
+    auto index = reader->sync();
+    EXPECT_TRUE(index.ok()) << index.status();
+    if(!index.ok())
+        return 0;
+    const auto found = (*index)->record_sequences.find(file);
+    return found == (*index)->record_sequences.end() ? 0 : found->second;
+}
+
+ManifestState StateOf(FileTierStore& store, const std::string& file)
+{
+    for(const auto& record: Effective(store))
+        if(record.file == file)
+            return record.state;
+    ADD_FAILURE() << "no effective record for " << file;
+    return ManifestState::Failed;
+}
+} // namespace
+
+TEST(FileTierStore, OpenValidatesOnlyRecordsAboveTheValidatedMark)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto covered = PublishWindows(**store, 3);
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->validated, 3u);
+    EXPECT_EQ(scrubbed->through, 3u);
+    EXPECT_TRUE(scrubbed->marked);
+    EXPECT_EQ(ManifestLog::ValidatedMark(*directory, "primary"), std::optional<uint64_t>(3));
+    const auto above = PublishWindows(**store, 1, 3);
+    store->reset();
+    LoadCounter counter;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", counter.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    for(const auto& record: covered) EXPECT_EQ(counter.of(record), 0) << record.file;
+    EXPECT_EQ(counter.of(above[0]), 1);
+    store->reset();
+    // A covered file that goes bad stays Published at Open and fails its read; one above the mark is Lost at Open.
+    Corrupt(*directory / covered[0].file);
+    Corrupt(*directory / above[0].file);
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(StateOf(**store, covered[0].file), ManifestState::Published);
+    EXPECT_EQ(StateOf(**store, above[0].file), ManifestState::Lost);
+    EXPECT_FALSE((*store)->read(1, kAll).ok());
+    // A store without a mark recovers as it always did: every effective record is read.
+    auto unmarked = TestDirectory();
+    auto plain = OpenStore(*unmarked / "plain");
+    ASSERT_TRUE(plain.ok());
+    const auto records = PublishWindows(**plain, 2);
+    plain->reset();
+    LoadCounter all;
+    plain = OpenStore(*unmarked / "plain", {}, std::make_shared<HDF5ChunkCodec>(), "primary", all.hook());
+    ASSERT_TRUE(plain.ok());
+    for(const auto& record: records) EXPECT_EQ(all.of(record), 1) << record.file;
+}
+
+TEST(FileTierStore, ValidatedMarkSurvivesManifestCompaction)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto covered = PublishWindows(**store, 3);
+    ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    // The snapshot takes every line and the log is truncated; the seq rides in the lines and the mark outside them.
+    ASSERT_TRUE((*store)->compact().ok());
+    EXPECT_EQ(fs::file_size(*directory / "manifest/primary.log"), 0u);
+    store->reset();
+    LoadCounter counter;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", counter.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(counter.total(), 0);
+    for(const auto& record: covered) EXPECT_EQ(SeqOf(*directory, record.file), 1u + (&record - covered.data()));
+    const auto above = PublishWindows(**store, 1, 3);
+    EXPECT_EQ(SeqOf(*directory, above[0].file), 4u);
+    store->reset();
+    LoadCounter after;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", after.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(after.total(), 1);
+    EXPECT_EQ(after.of(above[0]), 1);
+}
+
+TEST(FileTierStore, RecordsPublishedDuringAScrubAreNotCovered)
+{
+    auto directory = TestDirectory();
+    FileTierStore* sut = nullptr;
+    std::optional<ManifestRecord> during;
+    FileTierStore::Hooks hooks;
+    hooks.scrub_step = [&](std::string_view)
+    {
+        if(!during)
+        {
+            auto record = sut->publish(Rich(2));
+            EXPECT_TRUE(record.ok()) << record.status();
+            if(record.ok())
+                during = *record;
+        }
+        return absl::OkStatus();
+    };
+    auto store = OpenStore(*directory, hooks);
+    ASSERT_TRUE(store.ok());
+    sut = store->get();
+    const auto before = PublishWindows(**store, 2);
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    ASSERT_TRUE(during.has_value());
+    EXPECT_EQ(scrubbed->through, 2u);
+    EXPECT_EQ(SeqOf(*directory, during->file), 3u);
+    store->reset();
+    LoadCounter counter;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", counter.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    for(const auto& record: before) EXPECT_EQ(counter.of(record), 0);
+    EXPECT_EQ(counter.of(*during), 1);
+}
+
+TEST(FileTierStore, SeqIsNeverReusedAfterATornTail)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 2);
+    ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    ASSERT_EQ(ManifestLog::ValidatedMark(*directory, "primary"), std::optional<uint64_t>(2));
+    store->reset();
+    // The line that carried seq 2 was visible and is lost with the tail; the mark already covers seq 2.
+    const auto log = *directory / "manifest/primary.log";
+    auto text = Bytes(log);
+    const auto last = text.rfind("\"seq\":2");
+    ASSERT_NE(last, std::string::npos);
+    const auto line = text.rfind('\n', last);
+    ASSERT_NE(line, std::string::npos);
+    fs::resize_file(log, line + 1 + (last - line) / 2);
+    LoadCounter counter;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", counter.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    // Its file is adopted as an orphan under a new seq above the mark, so this Open and any later one validate it.
+    EXPECT_EQ(SeqOf(*directory, records[1].file), 3u);
+    EXPECT_GE(counter.of(records[1]), 1);
+    EXPECT_EQ(SeqOf(*directory, PublishWindows(**store, 1, 2)[0].file), 4u);
+    store->reset();
+    LoadCounter again;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", again.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ(again.of(records[0]), 0);
+    EXPECT_EQ(again.of(records[1]), 1);
+}
+
+TEST(FileTierStore, OpenValidatesInputsOfAnUnreferencedOutputBeforeRemovingIt)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("switch"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    // The output is linked and no switch names it; the mark covers every input.
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    const auto outputs = CompactionFiles(*directory);
+    ASSERT_EQ(outputs.size(), 1u);
+    store->reset();
+    Corrupt(*directory / inputs[1].file);
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    // Removing the output needs inputs validated by this Open: the bad input is found and the output stays.
+    EXPECT_TRUE(fs::exists(*directory / "1" / outputs[0]));
+    EXPECT_EQ(StateOf(**store, inputs[1].file), ManifestState::Lost);
+    EXPECT_EQ(StateOf(**store, inputs[0].file), ManifestState::Published);
+}
+
+TEST(FileTierStore, OpenValidatesACommittedOutputBeforeUnlinkingItsInputs)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory, CrashAt("cleanup"));
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    const auto before = (*store)->read(1, kAll).value();
+    EXPECT_FALSE((*store)->compactOnce(Eager()).ok());
+    const auto committed = Effective(**store);
+    ASSERT_EQ(committed.size(), 1u);
+    // The scrubber covers the output while its inputs still await cleanup.
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->through, 5u);
+    store->reset();
+    Corrupt(*directory / committed[0].file);
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    (void)(*store)->retryDeletedFiles();
+    // The mark covered the output, yet Open read it before any input could be unlinked and rolled the switch back.
+    for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file)) << input.file;
+    EXPECT_EQ(Effective(**store).size(), 4u);
+    EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    EXPECT_FALSE((*store)->incomplete(1, kAll).value());
+}
+
+TEST(FileTierStore, ScrubberMarksMissingAndCorruptWindowsLostWithoutLoweringWatermark)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 3);
+    const auto w = (*store)->contiguousWatermark(1).value();
+    fs::remove(*directory / records[0].file);
+    Corrupt(*directory / records[1].file);
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->lost, 2u);
+    EXPECT_EQ(scrubbed->validated, 1u);
+    EXPECT_TRUE(scrubbed->marked);
+    EXPECT_EQ(StateOf(**store, records[0].file), ManifestState::Lost);
+    EXPECT_EQ(StateOf(**store, records[1].file), ManifestState::Lost);
+    EXPECT_EQ(StateOf(**store, records[2].file), ManifestState::Published);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+    EXPECT_TRUE((*store)->incomplete(1, kAll).value());
+    store->reset();
+    store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok()) << store.status();
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+    EXPECT_TRUE((*store)->incomplete(1, kAll).value());
+}
+
+namespace
+{
+// A store whose unlinks fail until `allow` is set, so a committed switch keeps its inputs pending.
+absl::StatusOr<std::unique_ptr<FileTierStore>> OpenWithHeldUnlinks(const fs::path& root,
+                                                                   std::shared_ptr<std::atomic<bool>> allow,
+                                                                   std::function<void(const fs::path&)> before = {})
+{
+    return FileTierStore::Open(
+            root,
+            "primary",
+            {{1, {100, 0}}},
+            std::make_shared<HDF5ChunkCodec>(),
+            [allow, before](const fs::path& path)
+            {
+                if(before)
+                    before(path);
+                if(!allow->load())
+                {
+                    errno = EBUSY;
+                    return -1;
+                }
+                return ::unlink(path.c_str());
+            },
+            {},
+            2);
+}
+} // namespace
+
+TEST(FileTierStore, ScrubberRollbackWithdrawsPendingInputUnlinks)
+{
+    auto directory = TestDirectory();
+    auto allow = std::make_shared<std::atomic<bool>>(false);
+    auto store = OpenWithHeldUnlinks(*directory, allow);
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    const auto before = (*store)->read(1, kAll).value();
+    // The switch commits; the inputs cannot be unlinked yet and stay pending.
+    (void)(*store)->compactOnce(Eager());
+    const auto committed = Effective(**store);
+    ASSERT_EQ(committed.size(), 1u);
+    for(const auto& input: inputs) ASSERT_TRUE(fs::exists(*directory / input.file));
+    EXPECT_TRUE((*store)->hasPendingUnlinks(1).value());
+    Corrupt(*directory / committed[0].file);
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->rolled_back, 1u);
+    EXPECT_EQ(scrubbed->lost, 0u);
+    // Unlinks work again: only the rolled back output goes, the inputs were withdrawn.
+    *allow = true;
+    EXPECT_TRUE((*store)->retryDeletedFiles().ok());
+    for(const auto& input: inputs) EXPECT_TRUE(fs::exists(*directory / input.file)) << input.file;
+    EXPECT_FALSE(fs::exists(*directory / committed[0].file));
+    EXPECT_EQ(Effective(**store).size(), 4u);
+    EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    EXPECT_FALSE((*store)->hasPendingUnlinks(1).value());
+}
+
+// Opus O6(d): an unlinker that copied the pending set before the rollback must not unlink a withdrawn input.
+TEST(FileTierStore, RollbackBetweenPendingCopyAndUnlinkKeepsTheInputs)
+{
+    auto directory = TestDirectory();
+    auto allow = std::make_shared<std::atomic<bool>>(false);
+    FileTierStore* sut = nullptr;
+    std::string erased;
+    bool rolled = false;
+    // retryDeletedFiles has copied the pending set and reaches its first unlink, of the erased file, which sorts
+    // before every input; the scrubber rolls the switch back at that moment.
+    auto store = OpenWithHeldUnlinks(*directory,
+                                     allow,
+                                     [&](const fs::path& path)
+                                     {
+                                         if(!allow->load() || rolled || path.filename() != fs::path(erased).filename())
+                                             return;
+                                         rolled = true;
+                                         const auto scrubbed = sut->scrubOnce(0);
+                                         EXPECT_TRUE(scrubbed.ok()) << scrubbed.status();
+                                         if(scrubbed.ok())
+                                         {
+                                             EXPECT_EQ(scrubbed->rolled_back, 1u);
+                                         }
+                                     });
+    ASSERT_TRUE(store.ok());
+    sut = store->get();
+    const auto first = PublishWindows(**store, 1);
+    const auto inputs = PublishWindows(**store, 4, 1);
+    erased = first[0].file;
+    for(const auto& input: inputs) ASSERT_LT(erased, input.file);
+    // Erased first, so the compaction run starts at the next window and the erased file stays pending.
+    (void)(*store)->eraseFile(erased);
+    ASSERT_TRUE(fs::exists(*directory / erased));
+    (void)(*store)->compactOnce(Eager());
+    std::string output;
+    for(const auto& record: Effective(**store))
+        if(record.state == ManifestState::Published)
+        {
+            ASSERT_TRUE(output.empty()) << "one output replaces the four inputs";
+            output = record.file;
+        }
+    ASSERT_FALSE(output.empty());
+    for(const auto& input: inputs)
+    {
+        ASSERT_NE(output, input.file);
+        ASSERT_TRUE(fs::exists(*directory / input.file));
+    }
+    Corrupt(*directory / output);
+    *allow = true;
+    (void)(*store)->retryDeletedFiles();
+    EXPECT_TRUE(rolled);
+    for(const auto& input: inputs)
+    {
+        EXPECT_TRUE(fs::exists(*directory / input.file)) << input.file;
+        EXPECT_EQ(StateOf(**store, input.file), ManifestState::Published);
+    }
+    EXPECT_FALSE(fs::exists(*directory / erased));
+    auto events = (*store)->read(1, kAll);
+    ASSERT_TRUE(events.ok()) << events.status();
+    EXPECT_EQ(events->size(), 8u);
+}
+
+TEST(FileTierStore, ScrubberDuringMigrationOrCompactionCleanupWritesNoLost)
+{
+    for(const bool migrate: {false, true})
+    {
+        SCOPED_TRACE(migrate);
+        auto directory = TestDirectory();
+        const auto tier = MakeSlowTier(*directory / "slow");
+        FileTierStore* sut = nullptr;
+        bool moved = false;
+        FileTierStore::Hooks hooks;
+        // The pass has planned every file; they are compacted away, or the first one migrates, before it reads them.
+        hooks.scrub_step = [&](std::string_view)
+        {
+            if(std::exchange(moved, true))
+                return absl::OkStatus();
+            if(migrate)
+            {
+                auto migrated = sut->migrateOnce("slow");
+                EXPECT_TRUE(migrated.ok()) << migrated.status();
+                EXPECT_EQ(migrated.ok() ? *migrated : 0, 1u);
+            }
+            else
+            {
+                auto compacted = sut->compactOnce(Eager());
+                EXPECT_TRUE(compacted.ok()) << compacted.status();
+                EXPECT_EQ(compacted.ok() ? compacted->inputs : 0, 3u);
+            }
+            return absl::OkStatus();
+        };
+        auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        const auto records = PublishWindows(**store, 3);
+        const auto before = (*store)->read(1, kAll).value();
+        AttachTier(**store, *directory / "local", tier);
+        store->reset();
+        store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok()) << store.status();
+        sut = store->get();
+        ASSERT_TRUE((*store)->configureTiers("test", {tier}).ok());
+        ASSERT_TRUE((*store)->probeTiers().ok());
+        const auto scrubbed = (*store)->scrubOnce(0);
+        ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+        EXPECT_TRUE(moved);
+        EXPECT_EQ(scrubbed->lost, 0u);
+        EXPECT_EQ(scrubbed->rolled_back, 0u);
+        EXPECT_TRUE(scrubbed->marked);
+        for(const auto& record: Effective(**store)) EXPECT_EQ(record.state, ManifestState::Published);
+        EXPECT_EQ(Bytes(*directory / "local/manifest/primary.log").find("\"state\":4"), std::string::npos);
+        EXPECT_TRUE(SameEvents((*store)->read(1, kAll).value(), before));
+    }
+}
+
+TEST(FileTierStore, PeerOpenDuringMigrationWritesNoLost)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    // The owner's mark is withdrawn so the peer's recovery reads the file; the migration lands while it does.
+    fs::remove(*directory / "local/manifest/primary.validated");
+    std::atomic<int> migrations{0};
+    auto load = [&](const fs::path& path) -> absl::StatusOr<ChunkBytes>
+    {
+        if(path.filename() == fs::path(records[0].file).filename() && migrations++ == 0)
+        {
+            std::ofstream(*directory / "local/manifest/primary.validated") << R"({"writer":"primary","through":1})";
+            auto migrated = (*store)->migrateOnce("slow");
+            EXPECT_TRUE(migrated.ok()) << migrated.status();
+            EXPECT_EQ(migrated.ok() ? *migrated : 0, 1u);
+        }
+        return LoadChunkFile(path);
+    };
+    auto peer = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>(), "secondary", load);
+    ASSERT_TRUE(peer.ok()) << peer.status();
+    EXPECT_EQ(migrations.load(), 1);
+    EXPECT_FALSE(fs::exists(*directory / "local" / records[0].file));
+    const auto effective = Effective(**peer);
+    ASSERT_EQ(effective.size(), 1u);
+    EXPECT_EQ(effective[0].state, ManifestState::Published);
+    EXPECT_EQ(Bytes(*directory / "local/manifest/secondary.log").find("\"state\":4"), std::string::npos);
+    EXPECT_TRUE((*store)->location(records[0].file).value().has_value());
+}
+
+TEST(FileTierStore, FileCorruptedAfterItsMarkIsFoundByTheScrubberAndFailsARead)
+{
+    auto directory = TestDirectory();
+    auto store = OpenStore(*directory);
+    ASSERT_TRUE(store.ok());
+    const auto records = PublishWindows(**store, 2);
+    const auto w = (*store)->contiguousWatermark(1).value();
+    ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    ASSERT_TRUE((*store)->compact().ok());
+    store->reset();
+    Corrupt(*directory / records[1].file);
+    LoadCounter counter;
+    store = OpenStore(*directory, {}, std::make_shared<HDF5ChunkCodec>(), "primary", counter.hook());
+    ASSERT_TRUE(store.ok()) << store.status();
+    // Open trusted the mark: nothing was read and the record is still Published. The read fails all the same, which
+    // the Player reports SOURCE_FAILED (I6.14).
+    EXPECT_EQ(counter.total(), 0);
+    EXPECT_EQ(StateOf(**store, records[1].file), ManifestState::Published);
+    EXPECT_EQ((*store)->read(1, kAll).status().code(), absl::StatusCode::kUnavailable);
+    const auto scrubbed = (*store)->scrubOnce(0);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->lost, 1u);
+    EXPECT_EQ(scrubbed->validated, 1u);
+    EXPECT_EQ(StateOf(**store, records[1].file), ManifestState::Lost);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+    EXPECT_TRUE((*store)->incomplete(1, kAll).value());
 }
 
 TEST(ManifestLog, ForeignMigrateLineFailsTheRefreshClosed)

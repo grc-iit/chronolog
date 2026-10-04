@@ -61,7 +61,8 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
     for(const auto& [key, value]: input.items())
         if(!strings.contains(key) && !numbers.contains(key) && !compaction.contains(key) &&
            key != "insecure_bind_all" && key != "compact_enabled" && key != "hard_stop_reserve_bytes" &&
-           key != "tiers" && key != "migrate_enabled")
+           key != "tiers" && key != "migrate_enabled" && key != "scrub_interval_s" && key != "scrub_io_bytes_per_sec" &&
+           key != "scrub_slow_tiers")
             return absl::InvalidArgumentError("unknown grapher configuration key " + key);
     auto env = [](std::string key) -> const char*
     {
@@ -112,6 +113,36 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
             }
             if(number > (uint64_t{1} << 40) || (number == 0 && key != "compact_min_age_secs"))
                 return absl::InvalidArgumentError("number out of range for " + key);
+        }
+        uint64_t scrub_interval = static_cast<uint64_t>(config.scrub.interval.count());
+        for(const auto& [key, field]: {std::pair<const char*, uint64_t*>{"scrub_interval_s", &scrub_interval},
+                                       {"scrub_io_bytes_per_sec", &config.scrub.io_bytes_per_sec}})
+        {
+            if(input.contains(key))
+            {
+                if(!input.at(key).is_number_integer() || input.at(key) < 0)
+                    return absl::InvalidArgumentError(std::string("invalid number for ") + key);
+                *field = input.at(key).get<uint64_t>();
+            }
+            if(const auto* value = env(key))
+            {
+                const std::string text(value);
+                const auto parsed = std::from_chars(text.data(), text.data() + text.size(), *field);
+                if(parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
+                    return absl::InvalidArgumentError(std::string("invalid environment number for ") + key);
+            }
+        }
+        if(scrub_interval > 366 * 86400)
+            return absl::InvalidArgumentError("scrub_interval_s out of range");
+        config.scrub.interval = std::chrono::seconds(scrub_interval);
+        if(input.contains("scrub_slow_tiers"))
+            config.scrub.slow_tiers = input.at("scrub_slow_tiers").get<bool>();
+        if(const auto* value = env("scrub_slow_tiers"))
+        {
+            const std::string text(value);
+            if(text != "true" && text != "false" && text != "1" && text != "0")
+                return absl::InvalidArgumentError("invalid scrub_slow_tiers boolean");
+            config.scrub.slow_tiers = text == "true" || text == "1";
         }
         if(input.contains("hard_stop_reserve_bytes"))
         {
@@ -262,6 +293,11 @@ absl::Status GrapherConfig::validate() const
        policy.small_file_bytes == 0 || policy.max_span_ns <= 0 || policy.max_span_ns > int64_t{86400} * 1000000000 ||
        policy.io_bytes_per_sec == 0 || policy.io_burst_bytes == 0)
         return absl::InvalidArgumentError("grapher compaction limits out of range");
+    // Migration moves only files a validated mark covers (I13.13), and only the scrubber writes marks (I13.17).
+    if(migration.enabled && scrub.interval.count() == 0)
+        return absl::InvalidArgumentError("migrate_enabled requires a nonzero scrub_interval_s");
+    if(scrub.io_bytes_per_sec == 0)
+        return absl::InvalidArgumentError("scrub_io_bytes_per_sec must be positive");
     if(!migration.tiers.empty())
     {
         if(deployment_id.empty())

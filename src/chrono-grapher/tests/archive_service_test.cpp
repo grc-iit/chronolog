@@ -792,6 +792,44 @@ TEST(GrapherConfigTest, HardStopReserveDefaultsToTheWalReserveAndZeroDisables)
     std::filesystem::remove_all(root);
 }
 
+// I13.17: the scrub worker's first pass writes the validated mark that bounds the next Open.
+TEST(ArchiveService, TheScrubWorkerWritesTheValidatedMark)
+{
+    const auto root = FreshRoot();
+    auto store = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    for(int i = 0; i < 3; ++i) ASSERT_TRUE((*store)->publish(SmallWindow(i)).ok());
+    {
+        ScrubSettings scrub;
+        scrub.interval = std::chrono::seconds(3600);
+        ArchiveService service(**store, "test-instance", {}, {}, {}, scrub);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while(!ManifestLog::ValidatedMark(root, "test-writer") && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        service.shutdown();
+    }
+    EXPECT_EQ(ManifestLog::ValidatedMark(root, "test-writer"), std::optional<uint64_t>(3));
+    store->reset();
+    std::filesystem::remove_all(root);
+}
+
+TEST(GrapherConfigTest, ScrubKnobsDefaultToAnHourlyPassAndMigrationNeedsTheScrubber)
+{
+    auto loaded = GrapherConfig::load(std::nullopt);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_EQ(loaded->scrub.interval, std::chrono::seconds(3600));
+    EXPECT_EQ(loaded->scrub.io_bytes_per_sec, 4u * 1024 * 1024);
+    EXPECT_FALSE(loaded->scrub.slow_tiers);
+    loaded->scrub.interval = std::chrono::seconds(0);
+    EXPECT_TRUE(loaded->validate().ok()) << "the scrubber may be off while nothing migrates";
+    loaded->migration.enabled = true;
+    EXPECT_FALSE(loaded->validate().ok());
+    loaded->scrub.interval = std::chrono::seconds(60);
+    EXPECT_TRUE(loaded->validate().ok());
+    loaded->scrub.io_bytes_per_sec = 0;
+    EXPECT_FALSE(loaded->validate().ok());
+}
+
 TEST(GrapherConfigTest, CompactionIsEnabledByDefaultAndItsKnobsAreValidated)
 {
     auto loaded = GrapherConfig::load(std::nullopt);

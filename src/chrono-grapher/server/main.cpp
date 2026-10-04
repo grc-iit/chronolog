@@ -87,7 +87,8 @@ int main(int argc, char** argv)
                                                instance,
                                                config->limits,
                                                config->compaction,
-                                               config->migration);
+                                               config->migration,
+                                               config->scrub);
     grpc::ServerBuilder builder;
     builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
     chronolog::rpc::applyServerPolicy(builder);

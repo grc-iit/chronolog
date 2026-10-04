@@ -41,6 +41,8 @@ struct CompactionSwitch
     std::optional<PhysicalBounds> bounds;
     Hlc w_floor;
     std::optional<FileChecksum> checksum;
+    // The output's seq (I13.17); zero on a line written before sequences existed.
+    uint64_t seq{};
 };
 // Compaction outputs carry a reserved name that ordinary orphan adoption cannot parse; the name encodes the
 // writer and the output window so recovery can judge an unreferenced output without its switch line.
@@ -66,7 +68,10 @@ struct ManifestIndex
     std::map<std::pair<std::string, uint32_t>, MigrationLocation> migration_ranks;
     std::vector<ManifestRecord> records;
     std::map<std::string, FileChecksum> checksums;
+    // I13.17: the seq of the line that made each file effective (zero for a line without one), and the highest seq
+    // each writer assigned.
     std::map<std::string, uint64_t> record_sequences;
+    std::map<std::string, uint64_t> writer_sequences;
     std::map<std::string, FilePhysicalBounds> physical_bounds;
     std::map<StoryId, Hlc> watermarks;
     std::set<StoryId> tombstoned;
@@ -118,6 +123,13 @@ public:
     absl::StatusOr<const ManifestIndex*> sync() const;
     const ManifestIndex* current() const { return &cache_; }
     absl::Status compact();
+    // I13.17. Every own line that makes a file effective carries a seq above every seq this writer ever assigned and
+    // above its validated mark. durableSequence is the highest own seq known to be fsync'd by this incarnation.
+    uint64_t durableSequence() const;
+    // The writer's validated mark `manifest/<writer>.validated`, {writer, through}: nullopt when absent or unreadable.
+    static std::optional<uint64_t> ValidatedMark(const std::filesystem::path& root, const std::string& writer);
+    // Replaces the own mark by temporary, fsync, rename and directory fsync.
+    absl::Status writeValidatedMark(uint64_t through);
     std::filesystem::path logPath() const;
     std::filesystem::path snapshotPath() const;
 
@@ -140,6 +152,11 @@ private:
     absl::Status advance() const;
     absl::Status applyLine(const std::string& writer, const std::string& line, ManifestIndex& index) const;
     absl::Status appendFramed(std::string_view key, const std::string& body);
+    // Called with mutex_ held before the first seq is assigned: reads every own line and the own mark.
+    absl::Status primeSequence();
+    bool sequence_primed_{};
+    uint64_t next_seq_{};
+    uint64_t durable_seq_{};
     int sync(int fd) const { return sync_ ? sync_(fd) : ::fsync(fd); }
     std::filesystem::path directory_;
     std::string writer_;

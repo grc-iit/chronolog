@@ -135,7 +135,7 @@ TEST_F(ColdReplay, MigratedArchiveAndReaderPlannedBeforeMigrationReturnIdentical
                                                                             {"tier_uuid", tier.tier_uuid},
                                                                             {"f_type", info.f_type}};
     }
-    std::ofstream(root / "manifest/writer.validated") << "{\"writer\":\"writer\",\"through\":0}";
+    ASSERT_TRUE(writer->scrubOnce(0).ok());
     ASSERT_TRUE(writer->configureTiers("test", {chain.tiers[1]}).ok());
     ASSERT_TRUE(writer->probeTiers().ok());
     auto entered = std::make_shared<std::promise<void>>();

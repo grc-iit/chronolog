@@ -27,6 +27,15 @@ struct CompactionSettings
     CompactionPolicy policy;
 };
 
+// The scrubber of I13.17: one pass validates every own effective file on `local` and replaces the validated mark that
+// bounds the next Open. interval zero disables it, and with it migration, which moves only files a mark covers.
+struct ScrubSettings
+{
+    std::chrono::seconds interval{0};
+    uint64_t io_bytes_per_sec = 4 * 1024 * 1024;
+    bool slow_tiers = false;
+};
+
 class ArchiveService final: public internal::v1::Archive::Service
 {
 public:
@@ -34,7 +43,8 @@ public:
                    std::string instance,
                    TransferLimits limits = {},
                    CompactionSettings compaction = {},
-                   MigrationSettings migration = {});
+                   MigrationSettings migration = {},
+                   ScrubSettings scrub = {});
     ~ArchiveService() override;
     grpc::Status TransferChunk(grpc::ServerContext*,
                                grpc::ServerReader<internal::v1::TransferChunkRequest>*,
@@ -56,6 +66,7 @@ private:
     void destroyLoop();
     void compactLoop();
     void migrateLoop();
+    void scrubLoop();
     bool eraseFiles(StoryId story);
     struct Receipts
     {
@@ -78,6 +89,8 @@ private:
     std::unique_ptr<WorkerPool> destroyer_;
     std::unique_ptr<WorkerPool> compactor_;
     std::unique_ptr<WorkerPool> migrator_;
+    std::unique_ptr<WorkerPool> scrubber_;
+    const ScrubSettings scrub_;
     std::unique_ptr<MigrationWorker> migration_;
     std::chrono::milliseconds probe_interval_{};
 };

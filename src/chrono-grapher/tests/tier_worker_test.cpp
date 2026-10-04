@@ -86,7 +86,9 @@ struct Archive
         if(!published.ok())
             throw std::runtime_error(std::string(published.status().message()));
         record = *published;
-        std::ofstream(local / "manifest/writer.validated") << R"({"writer":"writer","through":0})";
+        // Migration moves only files the scrubber's mark covers (I13.13, I13.17).
+        if(auto scrubbed = store->scrubOnce(0); !scrubbed.ok())
+            throw std::runtime_error(std::string(scrubbed.status().message()));
     }
     GrapherConfig load()
     {

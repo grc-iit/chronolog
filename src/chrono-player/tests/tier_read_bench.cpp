@@ -115,7 +115,8 @@ int main(int argc, char** argv)
     }
     if(!measure(root, chain, "local"))
         return 1;
-    std::ofstream(root / "manifest/tier-bench.validated") << "{\"writer\":\"tier-bench\",\"through\":0}";
+    if(!writer->scrubOnce(0).ok())
+        return 1;
     if(!writer->configureTiers(chain.deployment_id, {chain.tiers[1]}).ok() || !writer->probeTiers().ok())
         return 1;
     auto migrated = writer->migrateOnce("slow");

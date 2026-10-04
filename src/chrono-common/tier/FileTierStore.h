@@ -34,6 +34,14 @@ struct CompactionResult
     size_t inputs{};
     std::string output;
 };
+// One scrubber pass (I13.17). `through` is the highest durable own seq when the pass started; `marked` says the
+// validated mark now names it.
+struct ScrubResult
+{
+    size_t validated{}, skipped{}, lost{}, rolled_back{}, slow_failed{};
+    uint64_t through{};
+    bool marked{};
+};
 class FileTierStore final: public TierStore
 {
 public:
@@ -50,6 +58,8 @@ public:
         std::function<absl::Status(int)> migration_step;
         std::function<absl::Status(std::string_view)> tier_step;
         std::function<absl::Status(std::string_view)> compaction_step;
+        // Runs before the scrubber looks at each planned file; a non-OK result ends the pass without a mark.
+        std::function<absl::Status(std::string_view)> scrub_step;
     };
     static absl::StatusOr<std::unique_ptr<FileTierStore>>
     Open(std::filesystem::path root,
@@ -101,6 +111,13 @@ public:
     absl::StatusOr<CompactionResult> compactOnce(const CompactionPolicy& policy);
     // Wakes and stops a job waiting for I/O budget or a publish, and every later job of this store, for shutdown.
     void stopCompaction();
+    // Validates every own effective Published file on `local` (on slow tiers too when slow_tiers is set, where a
+    // failure is only reported), reading at most io_bytes_per_sec (zero is unpaced), then replaces the own validated
+    // mark. A missing or corrupt file becomes Lost, or its own compaction output is rolled back, under the store
+    // mutex after a manifest re-sync; a file claimed, superseded, Deleted or moved since the pass planned it is
+    // skipped and does not hold the mark back.
+    absl::StatusOr<ScrubResult> scrubOnce(uint64_t io_bytes_per_sec, bool slow_tiers = false);
+    void stopScrub();
     // I13.16: `local` keeps hard_stop_reserve_bytes free. Below it publish of a new window and compaction output are
     // refused RESOURCE_EXHAUSTED; a duplicate transfer still settles, and manifest appends, tombstones, destroy and
     // migration continue inside the reserve. Zero disables. free_bytes replaces statvfs of the root, for tests.
@@ -159,7 +176,7 @@ private:
     std::optional<ManifestRecord> successor(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::StatusOr<ChunkBytes> loadForRead(const std::filesystem::path& file) const;
     bool effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const;
-    absl::Status rollbackOrLose(ManifestRecord record, Hlc w);
+    absl::Status rollbackOrLose(ManifestRecord record, Hlc w, bool running = false);
     void queueCommittedCleanup(const std::set<std::string>& on_disk);
     void sweepTombstoned();
     struct Claim
@@ -254,6 +271,9 @@ private:
     std::condition_variable admission_changed_;
     size_t publishing_{};
     bool stop_compaction_{};
+    std::mutex scrub_mutex_;
+    std::condition_variable scrub_changed_;
+    bool stop_scrub_{};
     double io_tokens_{};
     std::chrono::steady_clock::time_point io_refilled_{};
 };

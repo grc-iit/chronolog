@@ -23,6 +23,13 @@ struct GrapherConfig
     TransferLimits limits;
     // I13.16: free bytes `local` keeps; below it new windows and compaction outputs are refused. Zero disables.
     uint64_t hard_stop_reserve_bytes = 268435456;
+    // I13.17: scrub_interval_s 0 disables the scrubber; migrate_enabled needs it running.
+    ScrubSettings scrub = []
+    {
+        ScrubSettings hourly;
+        hourly.interval = std::chrono::seconds(3600);
+        return hourly;
+    }();
     CompactionSettings compaction = []
     {
         CompactionSettings enabled;

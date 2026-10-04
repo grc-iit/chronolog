@@ -32,7 +32,8 @@ bool SafeWriter(const std::string& writer)
 
 Json Encode(const ManifestRecord& record,
             std::optional<PhysicalBounds> bounds,
-            std::optional<FileChecksum> checksum = std::nullopt)
+            std::optional<FileChecksum> checksum = std::nullopt,
+            uint64_t seq = 0)
 {
     Json json = {{"chunk", record.chunk_id},
                  {"writer", record.manifest_writer},
@@ -53,6 +54,8 @@ Json Encode(const ManifestRecord& record,
         json["bytes"] = checksum->bytes;
         json["crc32c"] = checksum->crc32c;
     }
+    if(seq)
+        json["seq"] = seq;
     return json;
 }
 
@@ -240,6 +243,7 @@ CompactionSwitch DecodeSwitch(const std::string& writer, const Json& json)
     change.output = Decode(output);
     change.bounds = DecodeBounds(output, change.output.state);
     change.checksum = DecodeChecksum(output);
+    change.seq = output.value("seq", uint64_t{0});
     if(change.writer != writer || change.output.manifest_writer != writer || !change.story_id ||
        change.output.story_id != change.story_id || change.output.state != ManifestState::Published ||
        change.output.exempt || change.output.chunk_id != change.op || change.op.empty() || change.op.size() > 64)
@@ -311,6 +315,9 @@ void ApplySwitch(CompactionSwitch change, ManifestIndex& index)
         floor->second = std::max(floor->second, change.w_floor);
     index.by_story[story].push_back(index.records.size());
     index.records.push_back(change.output);
+    index.record_sequences[change.output.file] = change.seq;
+    auto& highest = index.writer_sequences[change.writer];
+    highest = std::max(highest, change.seq);
     ++index.revisions[story];
     index.switches.emplace(change.output.file, std::move(change));
 }
@@ -579,7 +586,73 @@ absl::Status ManifestLog::appendLine(std::string line)
         status = tier_detail::IoError("fsync manifest");
     if(!status.ok())
         failed_ = true;
+    else if(sequence_primed_)
+        durable_seq_ = next_seq_;
     return status;
+}
+
+absl::Status ManifestLog::primeSequence()
+{
+    if(sequence_primed_)
+        return absl::OkStatus();
+    auto status = synced_ ? advance() : rebuild();
+    if(!status.ok())
+        return status;
+    synced_ = true;
+    next_seq_ = 0;
+    if(const auto own = cache_.writer_sequences.find(writer_); own != cache_.writer_sequences.end())
+        next_seq_ = own->second;
+    // A seq at or below the mark is never assigned again, even when the line that carried it was lost to a torn
+    // tail: the mark may already cover it.
+    if(const auto mark = ValidatedMark(directory_.parent_path(), writer_))
+        next_seq_ = std::max(next_seq_, *mark);
+    sequence_primed_ = true;
+    return absl::OkStatus();
+}
+
+uint64_t ManifestLog::durableSequence() const
+{
+    std::lock_guard lock(mutex_);
+    return durable_seq_;
+}
+
+std::optional<uint64_t> ManifestLog::ValidatedMark(const std::filesystem::path& root, const std::string& writer)
+{
+    std::ifstream file(root / "manifest" / (writer + ".validated"));
+    if(!file)
+        return std::nullopt;
+    try
+    {
+        Json mark;
+        file >> mark;
+        if(mark.at("writer").get<std::string>() != writer || !mark.at("through").is_number_unsigned())
+            return std::nullopt;
+        return mark.at("through").get<uint64_t>();
+    }
+    catch(const std::exception&)
+    {
+        return std::nullopt;
+    }
+}
+
+absl::Status ManifestLog::writeValidatedMark(uint64_t through)
+{
+    std::lock_guard lock(mutex_);
+    if(failed_.load())
+        return absl::UnavailableError("manifest log failed; the validated mark stays");
+    const auto path = directory_ / (writer_ + ".validated");
+    const auto temporary = path.string() + ".tmp";
+    tier_detail::Fd mark(::open(temporary.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0644));
+    if(mark.get() < 0)
+        return tier_detail::IoError("open validated mark");
+    auto status = tier_detail::WriteAll(mark.get(), Json{{"writer", writer_}, {"through", through}}.dump() + '\n');
+    if(!status.ok())
+        return status;
+    if(::fsync(mark.get()) != 0)
+        return tier_detail::IoError("fsync validated mark");
+    if(::rename(temporary.c_str(), path.c_str()) != 0)
+        return tier_detail::IoError("rename validated mark");
+    return tier_detail::SyncDirectory(directory_);
 }
 
 void ManifestLog::setSync(std::function<int(int)> sync)
@@ -592,7 +665,12 @@ absl::Status ManifestLog::syncOwn()
 {
     std::lock_guard lock(mutex_);
     if(sync(fd_) == 0)
+    {
+        // Every own line read at open, and every seq assigned since, is durable from here on.
+        if(primeSequence().ok())
+            durable_seq_ = next_seq_;
         return absl::OkStatus();
+    }
     failed_ = true;
     return tier_detail::IoError("fsync manifest");
 }
@@ -621,14 +699,23 @@ absl::Status ManifestLog::appendSwitch(const CompactionSwitch& change)
                               {"physical_policy", input.physical_policy}});
         auto output = change.output;
         output.manifest_writer = writer_;
+        std::lock_guard lock(mutex_);
+        if(auto primed = primeSequence(); !primed.ok())
+            return primed;
+        // The seq is consumed even when the append fails: a line that may be visible never lends it to another.
+        const auto seq = ++next_seq_;
         const Json body = {{"op", change.op},
                            {"writer", writer_},
                            {"story", change.story_id},
                            {"inputs", std::move(inputs)},
-                           {"output", Encode(output, change.bounds, change.checksum)},
+                           {"output", Encode(output, change.bounds, change.checksum, seq)},
                            {"w_floor", EncodeHlc(change.w_floor)}};
         (void)DecodeSwitch(writer_, body);
-        return appendFramed("compact_v1", body.dump());
+        const auto line = Frame("compact_v1", body.dump());
+        std::string_view parsed_key, parsed_body;
+        if(Unframe(line, parsed_key, parsed_body) != Framing::Framed)
+            return absl::InternalError("compaction line does not frame");
+        return appendLine(line);
     }
     catch(const std::exception& error)
     {
@@ -651,7 +738,14 @@ ManifestLog::append(ManifestRecord record, std::optional<PhysicalBounds> bounds,
     record.manifest_writer = writer_;
     try
     {
-        const auto json = Encode(record, bounds, checksum);
+        uint64_t seq = 0;
+        if(record.state == ManifestState::Published || record.state == ManifestState::Empty)
+        {
+            if(auto primed = primeSequence(); !primed.ok())
+                return primed;
+            seq = ++next_seq_;
+        }
+        const auto json = Encode(record, bounds, checksum, seq);
         (void)Decode(json);
         (void)DecodeBounds(json, record.state);
         return appendLine(json.dump());
@@ -739,7 +833,14 @@ absl::Status ManifestLog::applyLine(const std::string& writer, const std::string
         auto record = Decode(json);
         if(record.manifest_writer != writer)
             return absl::UnavailableError("foreign writer in manifest");
-        index.record_sequences[record.file] = json.value("seq", uint64_t{0});
+        // Only a line that makes the file effective names its seq; a later Lost or Deleted line keeps it.
+        if(record.state == ManifestState::Published || record.state == ManifestState::Empty)
+        {
+            const auto seq = json.value("seq", uint64_t{0});
+            index.record_sequences[record.file] = seq;
+            auto& highest = index.writer_sequences[writer];
+            highest = std::max(highest, seq);
+        }
         const auto bounds = DecodeBounds(json, record.state);
         if(const auto checksum = DecodeChecksum(json))
             index.checksums[record.file] = *checksum;

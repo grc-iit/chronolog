@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='tier2g-restart-') as scratch:
         path = root / name
         path.mkdir()
         tiers.append(add_marker(dict(name=name, kind='posix', root=str(path), rank=rank), 'restart'))
-    # The integration test owns the marker, as the TIER-2 tests do; no scrubber is invoked.
+    # The Grapher's own scrubber writes the validated mark that makes the seeded file eligible (I13.17).
     config = dict(deployment_id='restart', tiers=tiers, archive_root=str(root / 'local'),
                   manifest_writer='writer', archive_codec='proto', migrate_enabled=True,
                   tier_status_file=str(root / 'status.json'), tier_probe_interval_ms=100)
@@ -41,7 +41,6 @@ with tempfile.TemporaryDirectory(prefix='tier2g-restart-') as scratch:
     source = root / 'config.json'
     source.write_text(json.dumps(config))
     subprocess.run([driver, 'seed', str(source)], check=True, timeout=20)
-    (root / 'local/manifest/writer.validated').write_text('{"writer":"writer","through":0}')
     watcher = libc.inotify_init1(os.O_CLOEXEC | os.O_NONBLOCK)
     if watcher < 0 or libc.inotify_add_watch(watcher, os.fsencode(root), 0x80) < 0:
         raise OSError(ctypes.get_errno(), 'inotify setup')
