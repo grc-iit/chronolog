@@ -44,6 +44,9 @@ public:
     grpc::ServerUnaryReactor* ListStories(grpc::CallbackServerContext* context,
                                           const v1::ListStoriesRequest* request,
                                           v1::ListStoriesResponse* response) override;
+    grpc::ServerUnaryReactor* ListStoriesByPrefix(grpc::CallbackServerContext* context,
+                                                  const v1::ListStoriesByPrefixRequest* request,
+                                                  v1::ListStoriesByPrefixResponse* response) override;
     grpc::ServerUnaryReactor* DestroyStory(grpc::CallbackServerContext* context,
                                            const v1::DestroyStoryRequest* request,
                                            v1::DestroyStoryResponse* response) override;

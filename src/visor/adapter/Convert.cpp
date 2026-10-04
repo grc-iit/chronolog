@@ -17,6 +17,7 @@ v1::Chronicle toProto(const Chronicle& chronicle)
     v1::Chronicle out;
     out.set_name(chronicle.name);
     out.set_tombstoned(chronicle.tombstoned);
+    setProperties(chronicle.properties, &out);
     return out;
 }
 
@@ -28,6 +29,7 @@ v1::Story toProto(const Story& story)
     out.set_name(story.name);
     out.set_epoch(story.epoch);
     out.set_tombstoned(story.tombstoned);
+    setProperties(story.properties, &out);
     return out;
 }
 

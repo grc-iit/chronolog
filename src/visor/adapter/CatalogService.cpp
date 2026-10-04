@@ -106,7 +106,7 @@ grpc::ServerUnaryReactor* CatalogService::CreateChronicle(grpc::CallbackServerCo
                         }
                         if(request->name().empty())
                             return invalid("name is required");
-                        auto result = store_.createChronicle(request->name());
+                        auto result = store_.createChronicle(request->name(), convert::propertiesOf(*request));
                         if(result.ok())
                             *response->mutable_chronicle() = convert::toProto(*result);
                         return finish(result.status(), response);
@@ -190,7 +190,8 @@ grpc::ServerUnaryReactor* CatalogService::CreateStory(grpc::CallbackServerContex
                         }
                         if(request->chronicle().empty() || request->name().empty())
                             return invalid("chronicle and name are required");
-                        auto result = store_.createStory(request->chronicle(), request->name());
+                        const auto properties = convert::propertiesOf(*request);
+                        auto result = store_.createStory(request->chronicle(), request->name(), properties);
                         if(result.ok())
                         {
                             if(!raft_ && !membership_ && !dynamic_cast<const SqliteMetadataStore*>(&store_))
@@ -249,6 +250,34 @@ grpc::ServerUnaryReactor* CatalogService::ListStories(grpc::CallbackServerContex
                             for(const auto& story: *result)
                                 if(auto status = fillStory(story, response->add_stories()); !status.ok())
                                     return finish(status, response);
+                        return finish(result.status(), response);
+                    });
+}
+
+grpc::ServerUnaryReactor* CatalogService::ListStoriesByPrefix(grpc::CallbackServerContext* context,
+                                                              const v1::ListStoriesByPrefixRequest* request,
+                                                              v1::ListStoriesByPrefixResponse* response)
+{
+    return dispatch(context,
+                    [this, context, request, response]()
+                    {
+                        if(raft_ && !raft_->leaderLease())
+                        {
+                            return forward(context,
+                                           [&](auto& stub, auto& ctx)
+                                           { return stub.ListStoriesByPrefix(&ctx, *request, response); });
+                        }
+                        auto result = store_.listStoriesByPrefix(request->prefix(), request->limit());
+                        if(absl::IsInvalidArgument(result.status()))
+                            return invalid("prefix must be whole segments and limit 1 to 65536");
+                        if(result.ok())
+                        {
+                            response->set_revision(result->revision);
+                            response->set_limit_exceeded(result->limit_exceeded);
+                            for(const auto& story: result->stories)
+                                if(auto status = fillStory(story, response->add_stories()); !status.ok())
+                                    return finish(status, response);
+                        }
                         return finish(result.status(), response);
                     });
 }

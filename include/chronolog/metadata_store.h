@@ -20,16 +20,18 @@ public:
     virtual ~MetadataStore() = default;
 
     /**
-     * Create a named chronicle.
-     * Preconditions: Name is nonempty and valid.
+     * Create a named chronicle with optional properties.
+     * Preconditions: Name is nonempty and valid; it has no `/` and no segment beginning with `@` (I3.11).
+     * Properties are set here and immutable (I9.2); retention_ns zero or unset reads back unset.
      * Postconditions: New live chronicle is durable; Old identities stay tombstoned; a reused name creates a new identity.
-     * Status codes: OK; INVALID_ARGUMENT for invalid name; ALREADY_EXISTS for a live name; FAILED_PRECONDITION
-     * for tombstoned name; UNAVAILABLE for storage failure.
+     * Status codes: OK; INVALID_ARGUMENT for invalid name or properties; ALREADY_EXISTS for a live name;
+     * FAILED_PRECONDITION for tombstoned name; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; safe concurrently.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: ChronicleAndStoryCrud,
-     * ChronicleTombstonePermanence.
+     * ChronicleTombstonePermanence, ReservedSegmentsAreRefused, ChronicleAndStoryPropertiesAreStoredAndInert.
      */
-    virtual absl::StatusOr<Chronicle> createChronicle(std::string name) = 0;
+    virtual absl::StatusOr<Chronicle> createChronicle(std::string name, Properties properties) = 0;
+    absl::StatusOr<Chronicle> createChronicle(std::string name) { return createChronicle(std::move(name), {}); }
 
     /**
      * Retrieve live or tombstoned chronicle metadata.
@@ -69,16 +71,22 @@ public:
     virtual absl::Status destroyChronicle(std::string name) = 0;
 
     /**
-     * Assign a uint64 story id to a chronicle/name pair.
-     * Preconditions: Parent chronicle exists and is live; story name valid.
+     * Assign a uint64 story id to a chronicle/name pair, with optional properties.
+     * Preconditions: Parent chronicle exists and is live; story name valid, without a leading or trailing `/`, an
+     * empty segment or a segment beginning with `@` (I3.11); properties as for createChronicle (I9.2).
      * Postconditions: Distinct name pairs have distinct ids; Old ids cannot resurrect; reused names receive fresh ids.
-     * Status codes: OK; INVALID_ARGUMENT for invalid names; NOT_FOUND for unknown chronicle; ALREADY_EXISTS for
-     * live story; FAILED_PRECONDITION for tombstones; UNAVAILABLE for storage failure.
+     * Status codes: OK; INVALID_ARGUMENT for invalid names or properties; NOT_FOUND for unknown chronicle;
+     * ALREADY_EXISTS for live story; FAILED_PRECONDITION for tombstones; UNAVAILABLE for storage failure.
      * Thread safety: Linearizable; safe concurrently.
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: AssignedIdsDoNotAliasConcatenatedNames,
-     * StoryTombstonePermanence.
+     * StoryTombstonePermanence, NameRulesMakeStoryPathsUnique, ReservedSegmentsAreRefused,
+     * ChronicleAndStoryPropertiesAreStoredAndInert.
      */
-    virtual absl::StatusOr<Story> createStory(std::string chronicle, std::string name) = 0;
+    virtual absl::StatusOr<Story> createStory(std::string chronicle, std::string name, Properties properties) = 0;
+    absl::StatusOr<Story> createStory(std::string chronicle, std::string name)
+    {
+        return createStory(std::move(chronicle), std::move(name), {});
+    }
 
     /**
      * Retrieve live or tombstoned story metadata by id.
@@ -101,6 +109,20 @@ public:
      * Invariant tests: tests/contract/metadata_store_contract_test.cpp: ChronicleAndStoryCrud.
      */
     virtual absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const = 0;
+
+    /**
+     * List the live stories whose path `<chronicle name>/<story name>` equals the prefix or lies below it by whole
+     * path segments, in one linearizable read (I9.3).
+     * Preconditions: Prefix is one or more whole segments without a leading or trailing `/` or an empty segment;
+     * limit is 1 to 65536.
+     * Postconditions: Returns the Catalog revision R of that read. A tombstoned story is absent. A story with a
+     * segment beginning with `@` is present only when the prefix names that segment (I3.11). When more than
+     * `limit` stories match, limit_exceeded is set and no story is returned.
+     * Status codes: OK; INVALID_ARGUMENT for a malformed prefix or limit; UNAVAILABLE for storage failure.
+     * Thread safety: Linearizable; safe concurrently.
+     * Invariant tests: tests/contract/metadata_store_contract_test.cpp: ListByPrefixIsOneRevisionAndSegmentExact.
+     */
+    virtual absl::StatusOr<StoriesByPrefix> listStoriesByPrefix(std::string prefix, uint32_t limit) const = 0;
 
     /**
      * Permanently tombstone a story after materializing its due acquisition set.

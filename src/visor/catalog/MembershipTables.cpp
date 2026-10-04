@@ -1,5 +1,6 @@
 #include "visor/catalog/SqliteMetadataStore.h"
 #include "visor/adapter/Convert.h"
+#include <algorithm>
 #include <set>
 #include <absl/log/log.h>
 #include <stdexcept>
@@ -447,7 +448,31 @@ try
 }
 MEMBERSHIP_CATCH
 
-absl::Status SqliteMetadataStore::seedMembershipStory(StoryId id)
+absl::StatusOr<SqliteMetadataStore::CreationFloor> SqliteMetadataStore::creationFloor()
+try
+{
+    std::lock_guard lock(mutex_);
+    Query ungranted(db_,
+                    "SELECT process_id FROM membership_members m WHERE role=?1 AND instance<>'' AND NOT EXISTS "
+                    "(SELECT 1 FROM membership_instances i WHERE i.process_id=m.process_id AND i.granted=1) "
+                    "ORDER BY process_id LIMIT 1");
+    ungranted.number(1, wire::PROCESS_ROLE_KEEPER);
+    if(ungranted.next())
+        return absl::FailedPreconditionError("Keeper " + ungranted.bytes(0) + " has never been granted a ceiling");
+    CreationFloor floor;
+    Query granted(db_, "SELECT value FROM membership_instances WHERE granted=1");
+    while(granted.next())
+    {
+        const auto instance = granted.message<wire::InstanceState>(0);
+        floor.ordering_cut =
+                std::max(floor.ordering_cut, Hlc{instance.ceiling().physical_ns(), instance.ceiling().logical()});
+        floor.physical_floor_ns = std::max(floor.physical_floor_ns, instance.physical_ceiling_ns());
+    }
+    return floor;
+}
+MEMBERSHIP_CATCH
+
+absl::Status SqliteMetadataStore::seedMembershipStory(StoryId id, const CreationFloor* floor)
 try
 {
     auto story = getStory(id);
@@ -495,6 +520,13 @@ try
             m->mutable_process()->set_role(wire::PROCESS_ROLE_KEEPER);
         }
         route.set_physical_policy(physical);
+    }
+    if(floor)
+    {
+        route.mutable_ordering_cut()->set_physical_ns(floor->ordering_cut.physical_ns);
+        route.mutable_ordering_cut()->set_logical(floor->ordering_cut.logical);
+        route.set_physical_floor_ns(floor->physical_floor_ns);
+        for(const auto& k: route.route().keepers()) route.add_observe_floor(k.process_id());
     }
     *state.add_routes() = route;
     if(route.revision() > state.route_history_floor())

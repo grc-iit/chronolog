@@ -123,6 +123,11 @@ std::unique_ptr<JournalHarness> MakeWal(uint32_t window_us)
         state.route = *rig->membership->route(1);
         rig->current->applyRoute(1, state, false, 1, [] {});
     };
+    h->enableDynamicBeforeRoute = [rig](Hlc c, int64_t cp)
+    {
+        rig->current->enableDynamic("instance");
+        rig->current->extendCeiling(c, cp);
+    };
     h->ceilingWaiting = [rig] { return rig->current->ceilingWaiters() != 0; };
     h->extendCeiling = [rig](Hlc c, int64_t cp) { rig->current->extendCeiling(c, cp); };
     h->applyRoute = [rig](RouteState state, bool observe, uint64_t revision)

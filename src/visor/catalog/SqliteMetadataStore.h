@@ -44,13 +44,19 @@ public:
     SqliteMetadataStore(const SqliteMetadataStore&) = delete;
     SqliteMetadataStore& operator=(const SqliteMetadataStore&) = delete;
 
-    absl::StatusOr<Chronicle> createChronicle(std::string name) override;
+    using MetadataStore::createChronicle;
+    using MetadataStore::createStory;
+    absl::StatusOr<Chronicle> createChronicle(std::string name, Properties properties) override;
     absl::StatusOr<Chronicle> getChronicle(std::string name) const override;
     absl::StatusOr<std::vector<Chronicle>> listChronicles() const override;
     absl::Status destroyChronicle(std::string name) override;
-    absl::StatusOr<Story> createStory(std::string chronicle, std::string name) override;
+    absl::StatusOr<Story> createStory(std::string chronicle, std::string name, Properties properties) override;
+    // I6.16, dynamic mode: createStory whose first RouteUpdate carries the creation floor computed from the Catalog
+    // state this transaction reads. FAILED_PRECONDITION while a registered Keeper has never been granted a ceiling.
+    absl::StatusOr<Story> createStoryAtFloor(std::string chronicle, std::string name, Properties properties);
     absl::StatusOr<Story> getStory(StoryId id) const override;
     absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const override;
+    absl::StatusOr<StoriesByPrefix> listStoriesByPrefix(std::string prefix, uint32_t limit) const override;
     absl::Status destroyStory(StoryId id) override;
     // Waits for the previous owner's fence when the writer moves to another Keeper (I6.11(d)), then commits.
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
@@ -169,7 +175,15 @@ private:
     void notify(const AcquisitionChange& change);
     std::atomic<uint64_t> snapshot_generation_{};
     absl::Status initializeMembership();
-    absl::Status seedMembershipStory(StoryId id);
+    struct CreationFloor
+    {
+        Hlc ordering_cut;
+        int64_t physical_floor_ns{};
+    };
+    absl::StatusOr<CreationFloor> creationFloor();
+    absl::StatusOr<Story>
+    createStoryImpl(std::string chronicle, std::string name, Properties properties, bool at_floor);
+    absl::Status seedMembershipStory(StoryId id, const CreationFloor* floor = nullptr);
     uint64_t routeMutationRevision();
     // Inside the destroy transaction: one fresh acquisition revision, then a tombstoned RouteUpdate per story
     // in membership_history (W10.17). Under Raft apply the command's own revision is the fresh one.
