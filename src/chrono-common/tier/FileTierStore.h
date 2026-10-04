@@ -57,6 +57,9 @@ public:
         std::function<int(int)> manifest_sync;
         std::function<absl::Status(int)> migration_step;
         std::function<absl::Status(std::string_view)> tier_step;
+        // Replaces the result of one slow-tier system call of the scrubber's LOST verdict ("lost-open",
+        // "lost-marker") with the returned errno; zero runs the real call.
+        std::function<int(std::string_view)> tier_errno;
         std::function<absl::Status(std::string_view)> compaction_step;
         // Runs before the scrubber looks at each planned file; a non-OK result ends the pass without a mark.
         std::function<absl::Status(std::string_view)> scrub_step;
@@ -116,7 +119,16 @@ public:
     // mark. A missing or corrupt file becomes Lost, or its own compaction output is rolled back, under the store
     // mutex after a manifest re-sync; a file claimed, superseded, Deleted or moved since the pass planned it is
     // skipped and does not hold the mark back.
-    absl::StatusOr<ScrubResult> scrubOnce(uint64_t io_bytes_per_sec, bool slow_tiers = false);
+    // A slow-tier file (I13.15) is recorded Lost only by its owner, only when it is missing or corrupt through the
+    // availability epoch's descriptor with the marker re-read through the same descriptor afterwards, a manifest
+    // re-sync still resolves it to that tier, and the same verdict repeats in a later pass at least
+    // slow_verdict_interval after the first, under a probe that started after the first verdict. Any other failure
+    // (ESTALE, EIO, a timeout, a marker that no longer verifies) ends the epoch, withdraws a pending verdict and is
+    // only reported in slow_failed.
+    absl::StatusOr<ScrubResult>
+    scrubOnce(uint64_t io_bytes_per_sec,
+              bool slow_tiers = false,
+              std::chrono::milliseconds slow_verdict_interval = std::chrono::milliseconds(0));
     void stopScrub();
     // I13.16: `local` keeps hard_stop_reserve_bytes free. Below it publish of a new window and compaction output are
     // refused RESOURCE_EXHAUSTED; a duplicate transfer still settles, and manifest appends, tombstones, destroy and
@@ -167,6 +179,8 @@ private:
     absl::StatusOr<std::set<std::string>> recover();
     absl::StatusOr<std::vector<Event>> validate(const ManifestRecord& record,
                                                 std::optional<FileChecksum> checksum = std::nullopt) const;
+    absl::StatusOr<std::vector<Event>>
+    validateBytes(const ManifestRecord& record, ChunkBytes& bytes, std::optional<FileChecksum> checksum) const;
     bool retired(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::StatusOr<std::vector<Event>> afterVanished(const ManifestRecord& record,
                                                      absl::Status failure,
@@ -248,6 +262,14 @@ private:
     std::map<std::string, std::future<absl::Status>> tier_unlinks_;
     std::map<std::string, std::chrono::steady_clock::time_point> tier_unlink_deadlines_;
     std::map<std::string, std::shared_ptr<std::vector<std::future<absl::Status>>>> unlink_results_;
+    // First LOST verdicts of slow-tier files awaiting their repeat (I13.15), under mutex_.
+    struct SlowVerdict
+    {
+        std::string tier_uuid;
+        uint64_t probes{};
+        std::chrono::steady_clock::time_point at;
+    };
+    std::map<std::string, SlowVerdict> slow_verdicts_;
     std::string deployment_;
     mutable std::mutex reserve_mutex_;
     uint64_t hard_stop_reserve_{};

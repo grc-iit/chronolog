@@ -89,6 +89,9 @@ ArchiveService::ArchiveService(FileTierStore& store,
     , destroyer_(std::make_unique<WorkerPool>(1, 1))
     , scrub_(scrub)
 {
+    // Set before the scrub worker starts: it reads the interval for the slow-tier LOST verdict (I13.15).
+    if(!migration.tiers.empty())
+        probe_interval_ = std::chrono::milliseconds(migration.probe_interval_ms);
     if(scrub_.interval.count() > 0)
     {
         scrubber_ = std::make_unique<WorkerPool>(1, 1);
@@ -96,7 +99,6 @@ ArchiveService::ArchiveService(FileTierStore& store,
     }
     if(!migration.tiers.empty())
     {
-        probe_interval_ = std::chrono::milliseconds(migration.probe_interval_ms);
         migration_ = std::make_unique<MigrationWorker>(store_, std::move(migration));
         migrator_ = std::make_unique<WorkerPool>(1, 1);
         migrator_->submit([this] { migrateLoop(); });
@@ -526,7 +528,7 @@ void ArchiveService::scrubLoop()
     while(!draining_)
     {
         lock.unlock();
-        const auto result = store_.scrubOnce(scrub_.io_bytes_per_sec, scrub_.slow_tiers);
+        const auto result = store_.scrubOnce(scrub_.io_bytes_per_sec, scrub_.slow_tiers, probe_interval_);
         if(!result.ok() && !absl::IsCancelled(result.status()))
             LOG_EVERY_N_SEC(WARNING, 60) << "archive scrub pass failed: " << result.status();
         else if(result.ok())

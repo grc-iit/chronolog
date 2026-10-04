@@ -603,9 +603,16 @@ absl::StatusOr<std::vector<Event>> FileTierStore::validate(const ManifestRecord&
     auto bytes = loadResolvedFile(record.file);
     if(!bytes.ok())
         return bytes.status();
-    if(auto status = VerifyChecksum(*bytes, checksum ? checksum : log_->checksum(record.file)); !status.ok())
+    return validateBytes(record, *bytes, checksum);
+}
+
+absl::StatusOr<std::vector<Event>> FileTierStore::validateBytes(const ManifestRecord& record,
+                                                                ChunkBytes& bytes,
+                                                                std::optional<FileChecksum> checksum) const
+{
+    if(auto status = VerifyChecksum(bytes, checksum ? checksum : log_->checksum(record.file)); !status.ok())
         return status;
-    auto events = decode_file_(root_ / record.file, *bytes);
+    auto events = decode_file_(root_ / record.file, bytes);
     if(!events.ok())
         return events.status();
     if(events->size() != record.event_count)
@@ -1199,7 +1206,9 @@ void FileTierStore::stopScrub()
 
 // One pass (I13.17). Validation runs outside the store mutex; a verdict is recorded only under it, after a manifest
 // re-sync showed the record still effective at `local` and unclaimed.
-absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec, bool slow_tiers)
+absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
+                                                     bool slow_tiers,
+                                                     std::chrono::milliseconds slow_verdict_interval)
 {
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
@@ -1276,16 +1285,152 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec, 
             next = std::max(next, std::chrono::steady_clock::now()) +
                    std::chrono::nanoseconds(static_cast<int64_t>(1e9 * static_cast<double>(bytes) /
                                                                  static_cast<double>(io_bytes_per_sec)));
+        if(slow)
+        {
+            // I13.15: evidence is taken through the availability epoch's descriptor on the tier's executor; the
+            // verdict is recorded under the store mutex, and only when it repeats under a later probe.
+            const auto forget = [this, &record]
+            {
+                std::lock_guard lock(mutex_);
+                slow_verdicts_.erase(record.file);
+            };
+            const auto reported = [&result, &record]
+            {
+                ++result.slow_failed;
+                LOG_EVERY_N_SEC(WARNING, 60) << "archive scrub cannot validate slow-tier file " << record.file;
+            };
+            const auto planned = log_->location(record.file);
+            std::shared_ptr<PosixTier> tier;
+            if(planned)
+            {
+                std::lock_guard lock(tier_table_mutex_);
+                const auto found = tiers_.find(planned->tier);
+                if(found != tiers_.end() && found->second->config.rank == planned->rank &&
+                   found->second->config.tier_uuid == planned->tier_uuid)
+                    tier = found->second;
+            }
+            const auto directory = tier ? tier->directory() : nullptr;
+            if(!directory)
+            {
+                forget();
+                reported();
+                continue;
+            }
+            // Read before the evidence: the repeat counts only under a probe that verified the root before it.
+            const auto verified = tier->lastVerifiedProbe();
+            struct Evidence
+            {
+                bool missing{};
+                ChunkBytes bytes;
+            };
+            auto evidence = tier->run(
+                    [tier, directory, file = record.file, hook = hooks_.tier_errno]() -> absl::StatusOr<Evidence>
+                    {
+                        Evidence found;
+                        int injected = hook ? hook("lost-open") : 0;
+                        tier_detail::Fd fd(injected ? -1
+                                                    : ::openat(directory->fd.get(),
+                                                               file.c_str(),
+                                                               O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
+                        if(injected)
+                            errno = injected;
+                        if(fd.get() < 0)
+                        {
+                            // Only ENOENT through the epoch's descriptor is a miss; ESTALE, EIO and every other
+                            // failure end the epoch and are never evidence of loss.
+                            if(errno != ENOENT)
+                            {
+                                auto status = tier_detail::IoError("open slow-tier file");
+                                tier->unavailable();
+                                return status;
+                            }
+                            found.missing = true;
+                        }
+                        else
+                        {
+                            auto data = PosixTier::read(directory->fd.get(), file, true);
+                            if(!data.ok())
+                            {
+                                tier->unavailable();
+                                return data.status();
+                            }
+                            found.bytes = ChunkBytes{std::make_unique<unsigned char[]>(data->size()), data->size()};
+                            std::copy(data->begin(), data->end(), found.bytes.data.get());
+                        }
+                        // The marker re-read through the same descriptor proves the root was not wiped or replaced.
+                        injected = hook ? hook("lost-marker") : 0;
+                        auto status = injected ? absl::UnavailableError(std::strerror(injected))
+                                               : tier->verify(*directory);
+                        if(!status.ok())
+                        {
+                            tier->unavailable();
+                            return status;
+                        }
+                        return found;
+                    });
+            if(!evidence.ok())
+            {
+                forget();
+                reported();
+                continue;
+            }
+            if(!evidence->missing && validateBytes(record, evidence->bytes, std::nullopt).ok())
+            {
+                forget();
+                ++result.validated;
+                continue;
+            }
+            std::lock_guard lock(mutex_);
+            auto index = log_->sync();
+            if(!index.ok())
+                return index.status();
+            if(log_->failed())
+                return absl::UnavailableError("manifest log failed; the scrubber stops until the writer reopens");
+            const auto resolved = (*index)->locations.find(record.file);
+            if(!current(**index, record) || resolved == (*index)->locations.end() ||
+               resolved->second.tier != planned->tier || resolved->second.rank != planned->rank ||
+               resolved->second.tier_uuid != planned->tier_uuid)
+            {
+                slow_verdicts_.erase(record.file);
+                ++result.skipped;
+                continue;
+            }
+            // The epoch ended while the evidence was taken: the tier is unavailable, which is never a miss.
+            if(!tier->current(directory))
+            {
+                slow_verdicts_.erase(record.file);
+                reported();
+                continue;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const auto first = slow_verdicts_.find(record.file);
+            if(first == slow_verdicts_.end() || first->second.tier_uuid != planned->tier_uuid)
+            {
+                slow_verdicts_[record.file] = {planned->tier_uuid, tier->probesStarted(), now};
+                reported();
+                continue;
+            }
+            if(verified <= first->second.probes || now - first->second.at < slow_verdict_interval)
+            {
+                reported();
+                continue;
+            }
+            const bool own_output = (*index)->switches.contains(record.file);
+            auto status = rollbackOrLose(record, watermark(**index, record.story_id), true);
+            if(!status.ok())
+                return status;
+            slow_verdicts_.erase(record.file);
+            if(own_output && log_->current()->rolled_back.contains(record.file))
+                ++result.rolled_back;
+            else
+                ++result.lost;
+            LOG(WARNING) << "archive scrub found slow-tier file " << record.file << " missing or corrupt on tier "
+                         << planned->tier << " twice under separate probes";
+            continue;
+        }
         if(validate(record).ok())
         {
             ++result.validated;
-            continue;
-        }
-        if(slow)
-        {
-            // A slow-tier verdict needs the two probes of I13.15; this pass only reports it.
-            ++result.slow_failed;
-            LOG_EVERY_N_SEC(WARNING, 60) << "archive scrub cannot validate slow-tier file " << record.file;
             continue;
         }
         std::lock_guard lock(mutex_);

@@ -3625,6 +3625,255 @@ TEST(FileTierStore, FileCorruptedAfterItsMarkIsFoundByTheScrubberAndFailsARead)
     EXPECT_TRUE((*store)->incomplete(1, kAll).value());
 }
 
+namespace
+{
+// The files of story 1 a migrate_v1 line names.
+std::vector<ManifestRecord> Migrated(FileTierStore& store)
+{
+    std::vector<ManifestRecord> moved;
+    for(const auto& record: Effective(store))
+        if(auto location = store.location(record.file); location.ok() && location->has_value())
+            moved.push_back(record);
+    return moved;
+}
+
+// migrateOnce moves one file per call; this drains every eligible file to the tier.
+void MigrateAll(FileTierStore& store)
+{
+    for(;;)
+    {
+        auto moved = store.migrateOnce("slow");
+        ASSERT_TRUE(moved.ok()) << moved.status();
+        if(!*moved)
+            return;
+    }
+}
+
+// The `local` marker a store opened with a deployment id or a Player's tier table requires.
+TierConfig MakeLocalTier(const fs::path& root)
+{
+    fs::create_directories(root);
+    struct statfs info
+    {
+    };
+    EXPECT_EQ(::statfs(root.c_str(), &info), 0);
+    nlohmann::json marker{{"deployment_id", "test"},
+                          {"name", "local"},
+                          {"rank", 0},
+                          {"kind", "posix"},
+                          {"tier_uuid", "local-uuid"},
+                          {"f_type", info.f_type}};
+    std::ofstream(root / ".chronolog-tier.json") << marker.dump();
+    return {"local", "posix", root, 0, "local-uuid"};
+}
+
+} // namespace
+
+// I13.15 (RFC-I 3.5, F1, O3c, O3d): a slow-tier file is recorded Lost only by its owner, when it is missing or
+// corrupt through the epoch's descriptor with the marker intact, and only when the verdict repeats in a later pass
+// under a probe that started after the first.
+TEST(FileTierStore, SlowTierFileIsLostOnlyOnASecondVerdictUnderAFreshProbe)
+{
+    for(const bool corrupt: {false, true})
+    {
+        SCOPED_TRACE(corrupt);
+        auto directory = TestDirectory();
+        const auto tier = MakeSlowTier(*directory / "slow");
+        auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 2);
+        AttachTier(**store, *directory / "local", tier);
+        MigrateAll(**store);
+        const auto migrated = Migrated(**store);
+        ASSERT_EQ(migrated.size(), 2u);
+        const auto w = (*store)->contiguousWatermark(1).value();
+        auto intact = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(intact.ok()) << intact.status();
+        EXPECT_EQ(intact->validated, 2u);
+        EXPECT_EQ(intact->slow_failed, 0u);
+        if(corrupt)
+            Corrupt(tier.root / migrated[1].file);
+        else
+            fs::remove(tier.root / migrated[1].file);
+        // Neither a peer Grapher nor a Player records anything for another writer's slow-tier file.
+        {
+            auto peer = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>(), "peer");
+            ASSERT_TRUE(peer.ok()) << peer.status();
+            ASSERT_TRUE((*peer)->configureTiers("test", {tier}).ok());
+            for(int pass = 0; pass < 3; ++pass)
+            {
+                ASSERT_TRUE((*peer)->probeTiers().ok());
+                auto scrubbed = (*peer)->scrubOnce(0, true);
+                ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+                EXPECT_EQ(scrubbed->lost, 0u);
+            }
+            TierChain chain{"test", {MakeLocalTier(*directory / "local"), tier}};
+            auto player = FileTierStore::OpenReadOnly(*directory / "local",
+                                                      std::chrono::milliseconds(1),
+                                                      {},
+                                                      0,
+                                                      {},
+                                                      std::chrono::milliseconds(30000),
+                                                      chain);
+            ASSERT_TRUE(player.ok()) << player.status();
+            ASSERT_TRUE((*player)->probeTiers().ok());
+            EXPECT_FALSE((*player)->readRecord(migrated[1], kAll).ok());
+            EXPECT_FALSE((*player)->scrubOnce(0, true).ok());
+        }
+        EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Published);
+        // First verdict: reported, nothing recorded, and it does not repeat without a later probe.
+        for(int pass = 0; pass < 3; ++pass)
+        {
+            auto scrubbed = (*store)->scrubOnce(0, true);
+            ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+            EXPECT_EQ(scrubbed->lost, 0u);
+            EXPECT_EQ(scrubbed->slow_failed, 1u);
+            EXPECT_EQ(scrubbed->validated, 1u);
+            EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Published);
+        }
+        // A later probe, but the verdict interval has not passed.
+        ASSERT_TRUE((*store)->probeTiers().ok());
+        auto early = (*store)->scrubOnce(0, true, std::chrono::hours(1));
+        ASSERT_TRUE(early.ok()) << early.status();
+        EXPECT_EQ(early->lost, 0u);
+        EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Published);
+        // Second verdict under the later probe.
+        auto second = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(second.ok()) << second.status();
+        EXPECT_EQ(second->lost, 1u);
+        EXPECT_EQ(second->slow_failed, 0u);
+        EXPECT_EQ(second->validated, 1u);
+        EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Lost);
+        EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Published);
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), w);
+        EXPECT_TRUE((*store)->incomplete(1, kAll).value());
+        // The verdict survives a restart and is not repeated.
+        store->reset();
+        store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok()) << store.status();
+        EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Lost);
+        ASSERT_TRUE((*store)->configureTiers("test", {tier}).ok());
+        ASSERT_TRUE((*store)->probeTiers().ok());
+        auto after = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(after.ok()) << after.status();
+        EXPECT_EQ(after->lost, 0u);
+        EXPECT_EQ(after->slow_failed, 0u);
+    }
+}
+
+// I13.15 (O3c): one miss between two probes (automount expiry, a remount) is not a loss, and a miss after the file
+// was seen intact again starts over as a first verdict.
+TEST(FileTierStore, TransientMissIsNotLost)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    auto store = OpenStore(*directory / "local", {}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    MigrateAll(**store);
+    const auto migrated = Migrated(**store);
+    ASSERT_EQ(migrated.size(), 1u);
+    const auto file = tier.root / migrated[0].file;
+    const auto away = fs::path(file.string() + ".away");
+    for(int round = 0; round < 3; ++round)
+    {
+        SCOPED_TRACE(round);
+        fs::rename(file, away);
+        auto missed = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(missed.ok()) << missed.status();
+        EXPECT_EQ(missed->slow_failed, 1u);
+        EXPECT_EQ(missed->lost, 0u);
+        fs::rename(away, file);
+        ASSERT_TRUE((*store)->probeTiers().ok());
+        auto seen = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(seen.ok()) << seen.status();
+        EXPECT_EQ(seen->validated, 1u);
+        EXPECT_EQ(seen->lost, 0u);
+        ASSERT_TRUE((*store)->probeTiers().ok());
+    }
+    EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Published);
+    auto read = (*store)->readRecord(migrated[0], kAll);
+    ASSERT_TRUE(read.ok()) << read.status();
+    EXPECT_TRUE(SameEvents(*read, Rich(0).events));
+}
+
+// I13.15 (F1): the marker probe succeeds, the file read returns ENOENT and the marker re-read through the same
+// descriptor fails. That is an unavailable tier, in every pass, never a miss.
+TEST(FileTierStore, ProbeOkThenMissThenProbeFailWritesNoLost)
+{
+    auto directory = TestDirectory();
+    const auto tier = MakeSlowTier(*directory / "slow");
+    auto fail = std::make_shared<std::atomic<bool>>(false);
+    FileTierStore::Hooks hooks;
+    hooks.tier_errno = [fail](std::string_view step)
+    { return !fail->load() ? 0 : step == "lost-open" ? ENOENT : step == "lost-marker" ? EIO : 0; };
+    auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok());
+    PublishWindows(**store, 1);
+    AttachTier(**store, *directory / "local", tier);
+    MigrateAll(**store);
+    const auto migrated = Migrated(**store);
+    ASSERT_EQ(migrated.size(), 1u);
+    const auto manifest = Bytes(*directory / "local/manifest/primary.log");
+    *fail = true;
+    for(int pass = 0; pass < 4; ++pass)
+    {
+        SCOPED_TRACE(pass);
+        ASSERT_TRUE((*store)->probeTiers().ok());
+        auto scrubbed = (*store)->scrubOnce(0, true);
+        ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+        EXPECT_EQ(scrubbed->lost, 0u);
+        EXPECT_EQ(scrubbed->slow_failed, 1u);
+        // The failed marker re-read ended the epoch.
+        EXPECT_FALSE((*store)->tierUsage("slow").value().available);
+    }
+    EXPECT_EQ(Bytes(*directory / "local/manifest/primary.log"), manifest);
+    *fail = false;
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    auto scrubbed = (*store)->scrubOnce(0, true);
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->validated, 1u);
+    EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Published);
+}
+
+// I13.15: ESTALE and EIO at the open mark the tier unavailable and never count as missing, however often they
+// repeat under separate probes.
+TEST(FileTierStore, EstaleIsNeverMissing)
+{
+    for(const int error: {ESTALE, EIO})
+    {
+        SCOPED_TRACE(error);
+        auto directory = TestDirectory();
+        const auto tier = MakeSlowTier(*directory / "slow");
+        auto fail = std::make_shared<std::atomic<bool>>(false);
+        FileTierStore::Hooks hooks;
+        hooks.tier_errno = [fail, error](std::string_view step)
+        { return fail->load() && step == "lost-open" ? error : 0; };
+        auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
+        ASSERT_TRUE(store.ok());
+        PublishWindows(**store, 1);
+        AttachTier(**store, *directory / "local", tier);
+        MigrateAll(**store);
+        const auto migrated = Migrated(**store);
+        ASSERT_EQ(migrated.size(), 1u);
+        // The file is really gone as well: the errno alone decides.
+        fs::rename(tier.root / migrated[0].file, tier.root / (migrated[0].file + ".away"));
+        *fail = true;
+        for(int pass = 0; pass < 4; ++pass)
+        {
+            SCOPED_TRACE(pass);
+            ASSERT_TRUE((*store)->probeTiers().ok());
+            auto scrubbed = (*store)->scrubOnce(0, true);
+            ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+            EXPECT_EQ(scrubbed->lost, 0u);
+            EXPECT_EQ(scrubbed->slow_failed, 1u);
+            EXPECT_FALSE((*store)->tierUsage("slow").value().available);
+        }
+        EXPECT_EQ(StateOf(**store, migrated[0].file), ManifestState::Published);
+    }
+}
+
 TEST(ManifestLog, ForeignMigrateLineFailsTheRefreshClosed)
 {
     auto directory = TestDirectory();
