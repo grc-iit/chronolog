@@ -386,12 +386,29 @@ std::unique_ptr<ReplayHarness> makeHarness()
                 };
             }
         }
+        FileTierStore::LoadFile load;
+        std::chrono::milliseconds read_timeout = std::chrono::seconds(30);
+        if(fault == ArchiveFault::LocalHang)
+        {
+            // The per-file load hook holds this file on `local`, where the Read's deadline is the archive read timeout,
+            // 20 ms here like the slow tier's.
+            window->release = std::make_shared<std::promise<void>>();
+            load = [gate = window->release->get_future().share(),
+                    held = std::filesystem::path(record->file).filename()](const std::filesystem::path& path)
+            {
+                if(path.filename() != held)
+                    return LoadChunkFile(path);
+                gate.wait();
+                return absl::StatusOr<ChunkBytes>(absl::UnavailableError("released hang"));
+            };
+            read_timeout = std::chrono::milliseconds(20);
+        }
         auto archive = FileTierStore::OpenReadOnly(window->root,
                                                    std::chrono::hours(1),
-                                                   {},
+                                                   load,
                                                    0,
                                                    {},
-                                                   std::chrono::seconds(30),
+                                                   read_timeout,
                                                    chain,
                                                    hooks);
         ASSERT_TRUE(archive.ok()) << archive.status();

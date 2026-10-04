@@ -33,7 +33,8 @@ enum class ArchiveFault
     Undecodable,
     ChecksumMismatch,
     TierUnavailable,
-    Hang
+    Hang,
+    LocalHang
 };
 enum class ArchiveRetirement
 {
@@ -70,8 +71,9 @@ struct ReplayHarness
     std::function<void(Hlc, Hlc)> abandonRange;
     // I6.14. Archives one effective Published window of story 1 covering [100, 200) that the Keepers no longer hold,
     // then makes its file unreadable at its effective location in the named way. The record stays effective
-    // Published: the harness writes no Lost and no Deleted record. Hang blocks the file's read until the harness is
-    // destroyed, so the implementation's own deadline has to end the Read.
+    // Published: the harness writes no Lost and no Deleted record. Hang blocks the file's read on a slow tier and
+    // LocalHang blocks it on `local`, each until the harness is destroyed, so the implementation's own deadline has to
+    // end the Read.
     std::function<void(ArchiveFault)> failArchiveFile;
     // I6.14. Archives effective Published windows of story 1 covering [100, 200) that hold the returned events, none of
     // which a Keeper holds. After the Read planned them and before it loads the first one, every window is retired and
@@ -544,7 +546,8 @@ TEST_P(ReplayContract, UnreadableArchiveFileIsSourceFailed)
                                                            {ArchiveFault::Undecodable, "undecodable"},
                                                            {ArchiveFault::ChecksumMismatch, "checksum mismatch"},
                                                            {ArchiveFault::TierUnavailable, "unavailable tier"},
-                                                           {ArchiveFault::Hang, "hang"}};
+                                                           {ArchiveFault::Hang, "hang on a slow tier"},
+                                                           {ArchiveFault::LocalHang, "hang on local"}};
     for(const auto& [fault, name]: faults)
     {
         SCOPED_TRACE(name);
