@@ -128,7 +128,8 @@ int main(int argc, char** argv)
             config->wal_segment_bytes,
             config->group_commit_window_us,
             config->wal_reserve_bytes,
-            {}};
+            {},
+            config->deployment_id};
     std::unique_ptr<WalJournal> owned_journal;
     try
     {
