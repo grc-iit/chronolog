@@ -114,22 +114,42 @@ Where it lives:
 
 ## Stop 3: Clio-coder with shared memory
 
-Two Clio-coder sessions share one ChronoLog context through `chronolog-mcp`. The first session remembers three facts.
-The second is a fresh process with no conversation history; it recalls the facts, complete, with the same event ids the
-first session's receipts carried. Point the script at a model endpoint, then run it:
+Two Clio-coder sessions share one ChronoLog context through `chronolog-mcp`. The first session opens the context
+`clio-memory` and remembers three facts under the operation ids `clio-memory-1` to `clio-memory-3`. The second is a
+fresh process with no conversation history. It opens the same context and recalls. The script then checks that the
+recall has `answer_complete` true and returns the same three event ids and texts as the first session's durable
+receipts.
+
+The script takes no arguments. It needs `chronolog`, `chronolog-mcp`, `clio-coder` and `python3` on `PATH`, and two
+environment variables select the model server, which must speak the OpenAI-compatible API:
 
 ```sh
-export CLIO_PROVIDER_URL=<URL of your model endpoint>
-export CLIO_MODEL=<model name your endpoint serves>
+export CLIO_PROVIDER_URL=<URL of your model endpoint>   # default http://mini:8080/v1
+export CLIO_MODEL=<model name your endpoint serves>      # default qwopus3.8v2-27b-dense-q4km
 bash deploy/demo/clio_memory.sh
 ```
+
+Set both unless your endpoint is the default. The script writes a Clio-coder home with `settings.yaml` and the
+`mcp.yaml` block from getting-started.md, and an `XDG_STATE_HOME`, under a temp dir in `$TMPDIR` (default `/tmp`).
+Neither your Clio-coder config nor your default instance is touched, and the WAL and archive directories above are not
+used. Each session is `clio-coder run --no-delegate --autonomy yolo` and is killed after 660 seconds, which a slow model
+can use. The first session starts the instance through `chronolog run --up default -- chronolog-mcp`. The script stops
+it with `chronolog down` and removes the temp dir. It prints nothing but the verdict:
+
+```
+PASS clio-memory
+```
+
+A failure prints `FAIL <reason>` instead, such as `FAIL session 2 recall answer_complete is False` or the last lines of
+a session's stderr, and the exit status is 1.
 
 What you just saw: the memory belongs to the instance, not to the agent process. A second agent, or the same agent
 tomorrow, reads what the first one stored, and the Completion in each page tells it whether the answer is whole.
 
-Where it lives: `plugins/mcp` is the server both sessions launch. The `mcp.yaml` block that registers it with
-Clio-coder is in [getting-started.md](getting-started.md#agents-claude-code-codex-and-clio-coder). The Context API and
-the Keeper and Player paths underneath are the ones from stop 1.
+Where it lives: `deploy/demo/clio_memory.sh` is the script, and its `check` function holds the assertions. `plugins/mcp`
+is the server both sessions launch. The `mcp.yaml` block that registers it with Clio-coder is in
+[getting-started.md](getting-started.md#agents-claude-code-codex-and-clio-coder). The Context API and the Keeper and
+Player paths underneath are the ones from stop 1.
 
 ## Next
 
