@@ -401,8 +401,13 @@ FileTierStore::OpenReadOnly(std::filesystem::path root,
                             LoadFile load_file,
                             size_t read_threads,
                             DecodeFile decode_file,
-                            std::chrono::milliseconds archive_read_timeout)
+                            std::chrono::milliseconds archive_read_timeout,
+                            TierChain chain,
+                            Hooks hooks)
 {
+    if(!chain.tiers.empty() &&
+       (chain.deployment_id.empty() || !chain.io_threads || chain.io_threads > 8 || chain.io_timeout.count() <= 0))
+        return absl::InvalidArgumentError("invalid read-only tier configuration");
     if(archive_read_timeout.count() <= 0)
         return absl::InvalidArgumentError("archive read timeout must be positive");
     if(manifest_poll.count() <= 0)
@@ -424,6 +429,28 @@ FileTierStore::OpenReadOnly(std::filesystem::path root,
                                                                   std::move(load_file),
                                                                   *threads,
                                                                   std::move(decode_file)));
+    store->hooks_ = std::move(hooks);
+    if(!chain.tiers.empty())
+    {
+        const auto& local = chain.tiers.front();
+        if(local.name != "local" || local.rank != 0 || local.root.lexically_normal() != store->root_.lexically_normal())
+            return absl::InvalidArgumentError("read-only local tier must equal archive root");
+        auto tier = std::make_shared<PosixTier>(local, chain.deployment_id, chain.io_threads, chain.io_timeout);
+        if(auto status = tier->probe(); !status.ok())
+            return status;
+        chain.tiers.erase(chain.tiers.begin());
+    }
+    if(!chain.deployment_id.empty())
+    {
+        auto status = store->configureTiers(std::move(chain.deployment_id),
+                                            std::move(chain.tiers),
+                                            chain.io_threads,
+                                            chain.io_timeout);
+        if(!status.ok())
+            return status;
+    }
+    else if(!chain.tiers.empty())
+        return absl::InvalidArgumentError("tier table requires deployment_id");
     store->read_only_ = true;
     store->manifest_poll_ = manifest_poll;
     store->archive_read_timeout_ = archive_read_timeout;
@@ -623,10 +650,14 @@ bool FileTierStore::effectivePublished(const ManifestIndex& index, const Manifes
 // A record that vanished after it was planned: retention erased it (no events), compaction replaced it (exactly the
 // events the record held, read from the output masked to its window), or it is a real source failure. A successor
 // is a compaction output that is never compacted again, so this follows at most one more manifest transition.
-absl::StatusOr<std::vector<Event>>
-FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure, Range range, size_t max_events) const
+absl::StatusOr<std::vector<Event>> FileTierStore::afterVanished(const ManifestRecord& record,
+                                                                absl::Status failure,
+                                                                Range range,
+                                                                size_t max_events,
+                                                                uint32_t planned_rank) const
 {
-    for(int attempt = 0; attempt < 2 && ArchiveFileVanished(failure); ++attempt)
+    std::string attempted_file = record.file;
+    for(int attempt = 0; attempt < 2; ++attempt)
     {
         std::optional<ManifestRecord> next;
         {
@@ -646,7 +677,8 @@ FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure,
             if(index->tombstoned.contains(record.story_id))
                 return failure;
             next = successor(*index, record);
-            if(!next && index->locations.contains(record.file))
+            const auto found = index->locations.find(record.file);
+            if(!next && found != index->locations.end() && found->second.rank > planned_rank)
                 next = record;
             if(!next)
                 return retired(*index, record) ? absl::StatusOr<std::vector<Event>>(std::vector<Event>{}) : failure;
@@ -654,6 +686,12 @@ FileTierStore::afterVanished(const ManifestRecord& record, absl::Status failure,
                 return std::vector<Event>{};
             if(next->state != ManifestState::Published)
                 return failure;
+            const auto moved = index->locations.find(next->file);
+            const auto rank = moved == index->locations.end() ? 0 : moved->second.rank;
+            if(next->file == attempted_file && rank <= planned_rank)
+                return failure;
+            attempted_file = next->file;
+            planned_rank = rank;
         }
         auto bytes = loadForRead(root_ / next->file);
         if(!bytes.ok())
@@ -1187,6 +1225,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
 {
     using Result = absl::StatusOr<std::vector<Event>>;
     std::vector<Result> results(records.size());
+    std::vector<uint32_t> planned_ranks(records.size());
     if(records.empty())
         return results;
     ArchiveReaderPool* readers;
@@ -1228,6 +1267,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
             {
                 if(auto migration = log_->location(records[index].file))
                 {
+                    planned_ranks[index] = migration->rank;
                     std::shared_ptr<PosixTier> tier;
                     {
                         std::lock_guard lock(tier_table_mutex_);
@@ -1243,8 +1283,14 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
                         continue;
                     }
                     const auto deadline = std::chrono::steady_clock::now() + tier->timeout();
-                    auto ready = tier->submit([tier, directory, file = records[index].file]
-                                              { return LoadTierBytes(tier, directory, file); });
+                    auto ready = tier->submit(
+                            [tier, directory, file = records[index].file, hook = hooks_.tier_step]() -> Loaded
+                            {
+                                if(hook)
+                                    if(auto status = hook("read"); !status.ok())
+                                        return status;
+                                return LoadTierBytes(tier, directory, file);
+                            });
                     pending.push_back({index, std::move(ready), deadline, tier});
                     continue;
                 }
@@ -1278,7 +1324,7 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
             }
             auto bytes = ready.get();
             results[index] = bytes.ok() ? decodeRecord(records[index], range, max_events, *std::move(bytes))
-                                        : afterVanished(records[index], bytes.status(), range, max_events);
+                                        : Result(bytes.status());
         }
         catch(const std::exception& error)
         {
@@ -1286,6 +1332,10 @@ FileTierStore::readRecords(std::span<const ManifestRecord> records, Range range,
         }
         fill();
     }
+    for(size_t index = 0; index < records.size(); ++index)
+        if(!results[index].ok())
+            results[index] =
+                    afterVanished(records[index], results[index].status(), range, max_events, planned_ranks[index]);
     return results;
 }
 
@@ -2160,7 +2210,7 @@ absl::Status FileTierStore::configureTiers(std::string deployment,
     return absl::OkStatus();
 }
 
-absl::Status FileTierStore::probeTiers()
+absl::Status FileTierStore::probeTiers(std::chrono::milliseconds timeout) const
 {
     std::vector<std::shared_ptr<PosixTier>> tiers;
     {
@@ -2168,7 +2218,7 @@ absl::Status FileTierStore::probeTiers()
         for(const auto& [name, tier]: tiers_) tiers.push_back(tier);
     }
     absl::Status result;
-    for(const auto& tier: tiers) result.Update(tier->probe());
+    for(const auto& tier: tiers) result.Update(tier->probe(timeout));
     return result;
 }
 

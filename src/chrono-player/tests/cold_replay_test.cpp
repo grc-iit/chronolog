@@ -3,6 +3,8 @@
 #include <future>
 #include <fstream>
 #include <sstream>
+#include <nlohmann/json.hpp>
+#include <sys/vfs.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -110,6 +112,109 @@ protected:
     std::vector<Event> events;
     std::optional<Completion> completion;
 };
+
+TEST_F(ColdReplay, MigratedArchiveAndReaderPlannedBeforeMigrationReturnIdenticalEvents)
+{
+    publish(120);
+    publish(220, 200, 300);
+    TierChain chain{"test",
+                    {{"local", "posix", root, 0, "local-uuid"}, {"slow", "posix", root / "slow", 1, "slow-uuid"}},
+                    2,
+                    std::chrono::milliseconds(100)};
+    for(const auto& tier: chain.tiers)
+    {
+        std::filesystem::create_directories(tier.root);
+        struct statfs info
+        {
+        };
+        ASSERT_EQ(::statfs(tier.root.c_str(), &info), 0);
+        std::ofstream(tier.root / ".chronolog-tier.json") << nlohmann::json{{"deployment_id", "test"},
+                                                                            {"name", tier.name},
+                                                                            {"rank", tier.rank},
+                                                                            {"kind", "posix"},
+                                                                            {"tier_uuid", tier.tier_uuid},
+                                                                            {"f_type", info.f_type}};
+    }
+    std::ofstream(root / "manifest/writer.validated") << "{\"writer\":\"writer\",\"through\":0}";
+    ASSERT_TRUE(writer->configureTiers("test", {chain.tiers[1]}).ok());
+    ASSERT_TRUE(writer->probeTiers().ok());
+    auto entered = std::make_shared<std::promise<void>>();
+    auto started = entered->get_future();
+    auto release = std::make_shared<std::promise<void>>();
+    auto gate = release->get_future().share();
+    auto planned = FileTierStore::OpenReadOnly(
+            root,
+            std::chrono::hours(1),
+            [gate, entered](const std::filesystem::path& file)
+            {
+                entered->set_value();
+                gate.wait();
+                return LoadChunkFile(file);
+            },
+            2,
+            {},
+            std::chrono::seconds(30),
+            chain);
+    ASSERT_TRUE(planned.ok()) << planned.status();
+    ASSERT_TRUE((*planned)->probeTiers().ok());
+    auto records = writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    auto pending = std::async(
+            std::launch::async,
+            [&] { return (*planned)->readRecord(records->front(), {Range::Axis::Hlc, {100, 0}, {300, 0}}); });
+    EXPECT_EQ(started.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    auto migrated = writer->migrateOnce("slow");
+    release->set_value();
+    ASSERT_TRUE(migrated.ok()) << migrated.status();
+    EXPECT_EQ(*migrated, 1u);
+    auto old = pending.get();
+    ASSERT_TRUE(old.ok()) << old.status();
+    ASSERT_EQ(old->size(), 1u);
+    EXPECT_EQ(old->front().id, event(120).id);
+    auto fresh = FileTierStore::OpenReadOnly(root, std::chrono::hours(1), {}, 0, {}, std::chrono::seconds(30), chain);
+    ASSERT_TRUE(fresh.ok()) << fresh.status();
+    ASSERT_TRUE((*fresh)->probeTiers().ok());
+    archive = std::shared_ptr<FileTierStore>(*std::move(fresh));
+    options.archive = archive;
+    source->response.archived_below = {300, 0};
+    read();
+    ASSERT_TRUE(completion);
+    EXPECT_TRUE(completion->complete);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].id, event(120).id);
+    EXPECT_EQ(events[1].id, event(220).id);
+
+    auto hang_entered = std::make_shared<std::promise<void>>();
+    auto hang_started = hang_entered->get_future();
+    auto hang_release = std::make_shared<std::promise<void>>();
+    auto hang_gate = hang_release->get_future().share();
+    FileTierStore::Hooks hooks;
+    hooks.tier_step = [hang_entered, hang_gate](std::string_view)
+    {
+        hang_entered->set_value();
+        hang_gate.wait();
+        return absl::UnavailableError("released slow tier hang");
+    };
+    auto hanging =
+            FileTierStore::OpenReadOnly(root, std::chrono::hours(1), {}, 2, {}, std::chrono::seconds(30), chain, hooks);
+    ASSERT_TRUE(hanging.ok());
+    ASSERT_TRUE((*hanging)->probeTiers().ok());
+    auto blocked = std::async(
+            std::launch::async,
+            [&] { return (*hanging)->readRecord(records->front(), {Range::Axis::Hlc, {100, 0}, {300, 0}}); });
+    EXPECT_EQ(hang_started.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    auto local = (*hanging)->readRecord(records->back(), {Range::Axis::Hlc, {200, 0}, {300, 0}});
+    hang_release->set_value();
+    ASSERT_TRUE(local.ok()) << local.status();
+    ASSERT_EQ(local->size(), 1u);
+    EXPECT_EQ(local->front().id, event(220).id);
+    EXPECT_TRUE(absl::IsUnavailable(blocked.get().status()));
+    auto manifest = (*hanging)->manifest(1);
+    ASSERT_TRUE(manifest.ok());
+    EXPECT_TRUE(std::none_of(manifest->begin(),
+                             manifest->end(),
+                             [](const auto& record) { return record.state == ManifestState::Lost; }));
+}
 
 TEST_F(ColdReplay, HungArchiveReadEndsSourceFailedWhileAnotherStoryReadsKeeperOnly)
 {

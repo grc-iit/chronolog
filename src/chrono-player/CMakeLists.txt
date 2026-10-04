@@ -72,3 +72,6 @@ if(CHRONOLOG_BUILD_BENCH)
     add_executable(chrono_player_compacted_read_bench tests/compacted_read_bench.cpp)
     target_link_libraries(chrono_player_compacted_read_bench PRIVATE chrono_player_replay chronolog_warnings)
 endif()
+
+add_executable(chrono_player_tier_read_bench EXCLUDE_FROM_ALL tests/tier_read_bench.cpp)
+target_link_libraries(chrono_player_tier_read_bench PRIVATE chrono_player_lib chronolog_warnings)

@@ -51,7 +51,10 @@ public:
     /**
      * Read a per-story manifest snapshot by value.
      * Preconditions: Known story.
-     * Postconditions: Includes all writer logs; ignores torn records; deletion supersedes that file publication; missing/corrupt persisted windows are recorded Lost.
+     * Postconditions: Includes all writer logs; ignores torn records; deletion supersedes that file publication;
+     * missing or corrupt persisted windows are recorded Lost by recovery for records above their writer's validated
+     * mark and by the scrubber otherwise; a read of a missing or corrupt window that is not yet recorded fails
+     * UNAVAILABLE (I13.17).
      * Status codes: OK; NOT_FOUND for unknown story; UNAVAILABLE for manifest I/O failure.
      * Thread safety: Coherent snapshot; safe concurrently; no borrowed containers.
      * Invariant tests: tests/contract/tier_store_contract_test.cpp: DeletedFileSupersedesPublishedRecord,

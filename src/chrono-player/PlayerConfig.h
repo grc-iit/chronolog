@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include "chronolog/types.h"
+#include "tier/PosixTier.h"
 
 namespace chronolog::player
 {
@@ -40,6 +41,13 @@ struct PlayerConfig
     std::string log_level = "info";
     // One Route for every story, replacing registration with the Visor.
     std::optional<Route> static_routes;
+
+    std::string deployment_id;
+    std::vector<TierConfig> tiers;
+    uint32_t tier_io_timeout_ms = 1000;
+    uint32_t tier_probe_interval_ms = 10000;
+    uint32_t tier_probe_timeout_ms = 1000;
+    uint32_t slow_tier_io_threads = 2;
 
     using Getenv = std::function<const char*(const char*)>;
 
