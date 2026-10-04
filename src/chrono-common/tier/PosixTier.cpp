@@ -1,5 +1,6 @@
 #include "tier/PosixTier.h"
 #include <absl/log/log.h>
+#include <algorithm>
 #include <dirent.h>
 #include <nlohmann/json.hpp>
 #include <sys/vfs.h>
@@ -148,12 +149,19 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
                 self->directory_ = std::move(directory);
                 return absl::OkStatus();
             });
-    if(future.wait_for(timeout.count() > 0 ? timeout : timeout_) != std::future_status::ready)
+    if(future.wait_for(timeout.count() > 0 ? std::min(timeout, timeout_) : timeout_) != std::future_status::ready)
     {
         expire();
         return absl::UnavailableError("tier probe deadline expired");
     }
-    return future.get();
+    try
+    {
+        return future.get();
+    }
+    catch(const std::exception& error)
+    {
+        return absl::UnavailableError(error.what());
+    }
 }
 std::shared_ptr<TierDirectory> PosixTier::directory() const
 {
