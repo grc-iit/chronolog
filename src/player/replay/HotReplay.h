@@ -22,6 +22,12 @@ struct HotReplayOptions
     std::function<absl::Status(StoryId)> story_live;
 };
 
+class ProgressReplayStream: public ReplayStream
+{
+public:
+    virtual std::optional<Hlc> progress() const = 0;
+};
+
 class HotReplay final: public Replay
 {
 public:
@@ -30,6 +36,7 @@ public:
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range, size_t max_events) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position) const override;
+    absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position, bool progress) const;
 
 private:
     std::shared_ptr<const HotSource> source_;

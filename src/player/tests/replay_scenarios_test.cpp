@@ -92,6 +92,28 @@ public:
         return grpc::Status::OK;
     }
 };
+class TailRounds final: public HotSource
+{
+public:
+    std::vector<HotFetch> rounds;
+    mutable size_t round{};
+    absl::StatusOr<HotFetch> fetch(StoryId, const Range&) const override
+    {
+        if(round >= rounds.size())
+            return absl::InternalError("unexpected Tail round");
+        return rounds[round++];
+    }
+};
+
+HotFetch tailRound(Hlc seal, std::vector<Event> events = {}, bool closed = false)
+{
+    HotFetch fetch;
+    fetch.route_epoch = 7;
+    fetch.keepers = {{{"a", 7, seal, true, false, {}}, std::move(events)}};
+    fetch.closed = closed;
+    return fetch;
+}
+
 class ReplayContract: public ::testing::Test
 {
 protected:
@@ -224,6 +246,82 @@ protected:
         FAIL() << "unbounded stream";
     }
 };
+TEST_F(ReplayContract, TailProgressIsOptInAndAdvancesTheResumePosition)
+{
+    for(bool progress: {false, true})
+    {
+        auto rounds = std::make_shared<TailRounds>();
+        rounds->rounds = {tailRound({200, 0}),
+                          tailRound({200, 0}),
+                          tailRound({300, 0}, {event(250)}),
+                          tailRound({400, 0}, {}, true)};
+        HotReplay replay(rounds);
+        auto stream = replay.tail(1, event(100), progress);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        auto* tail = dynamic_cast<ProgressReplayStream*>(stream->get());
+        ASSERT_NE(tail, nullptr);
+        if(progress)
+        {
+            auto batch = (*stream)->next();
+            ASSERT_TRUE(batch.ok());
+            ASSERT_TRUE(*batch);
+            EXPECT_TRUE((**batch).events.empty());
+            EXPECT_FALSE((**batch).completion);
+            ASSERT_TRUE(tail->progress());
+            EXPECT_EQ(*tail->progress(), (Hlc{200, 0}));
+        }
+        auto batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok()) << batch.status();
+        ASSERT_TRUE(*batch);
+        ASSERT_EQ((**batch).events.size(), 1u);
+        EXPECT_EQ((**batch).events[0].id, event(250).id);
+        EXPECT_FALSE(tail->progress());
+        if(progress)
+        {
+            batch = (*stream)->next();
+            ASSERT_TRUE(batch.ok());
+            ASSERT_TRUE(*batch);
+            EXPECT_TRUE((**batch).events.empty());
+            EXPECT_FALSE((**batch).completion);
+            ASSERT_TRUE(tail->progress());
+            EXPECT_EQ(*tail->progress(), (Hlc{400, 0}));
+        }
+        batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok());
+        ASSERT_TRUE(*batch);
+        ASSERT_TRUE((**batch).completion);
+        EXPECT_FALSE((**batch).completion->complete);
+        EXPECT_EQ((**batch).completion->frontier, (Hlc{400, 0}));
+        EXPECT_FALSE(tail->progress());
+        auto eof = (*stream)->next();
+        ASSERT_TRUE(eof.ok());
+        EXPECT_FALSE(*eof);
+        EXPECT_EQ(rounds->round, 4u);
+    }
+}
+
+TEST_F(ReplayContract, TailResumesAtEveryEventFromAnIdlessPosition)
+{
+    for(EventId id: {EventId{}, EventId{1, 0, 0, 0}})
+    {
+        auto rounds = std::make_shared<TailRounds>();
+        rounds->rounds = {tailRound({300, 0}, {event(199), event(200, 4), event(200, 2), event(201)}, true)};
+        HotReplay replay(rounds);
+        Event position;
+        position.hlc = {200, 0};
+        position.id = id;
+        auto stream = replay.tail(1, position);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        auto batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok());
+        ASSERT_TRUE(*batch);
+        ASSERT_EQ((**batch).events.size(), 3u);
+        EXPECT_EQ((**batch).events[0].id, event(200, 2).id);
+        EXPECT_EQ((**batch).events[1].id, event(200, 4).id);
+        EXPECT_EQ((**batch).events[2].id, event(201).id);
+    }
+}
+
 TEST_F(ReplayContract, UndrainedPredecessorIsASource)
 {
     useRealPredecessor();

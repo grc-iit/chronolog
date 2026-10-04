@@ -1,6 +1,7 @@
 #include "player/adapter/ReplayService.h"
 #include <condition_variable>
 #include <thread>
+#include <type_traits>
 #include "player/adapter/Convert.h"
 #include "player/replay/HotReplay.h"
 
@@ -138,6 +139,18 @@ private:
             if(!write())
                 return false;
         }
+        if constexpr(std::is_same_v<Resp, v1::TailResponse>)
+        {
+            auto* tail = dynamic_cast<ProgressReplayStream*>(stream_.get());
+            if(tail)
+                if(auto progress = tail->progress())
+                {
+                    response_.Clear();
+                    *response_.mutable_progress()->mutable_position()->mutable_hlc() = convert::toProto(*progress);
+                    if(!write())
+                        return false;
+                }
+        }
         if(batch.completion)
         {
             *response_.mutable_completion() = convert::toProto(*batch.completion);
@@ -259,8 +272,12 @@ grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackSe
     if(!position.ok())
         return new FailedReactor<v1::TailResponse>(convert::toGrpc(position.status()));
     return open<v1::TailResponse>(story,
-                                  [replay = replay_, story, position = *position]
-                                  { return replay->tail(story, position); });
+                                  [replay = replay_, story, position = *position, progress = request->progress()]
+                                  {
+                                      if(auto* hot = dynamic_cast<const HotReplay*>(replay.get()))
+                                          return hot->tail(story, position, progress);
+                                      return replay->tail(story, position);
+                                  });
 }
 
 } // namespace chronolog::player
