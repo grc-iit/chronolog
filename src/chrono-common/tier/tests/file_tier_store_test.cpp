@@ -3093,6 +3093,34 @@ TEST(FileTierStore, EmptyMountPointIsUnavailableNeverLost)
     EXPECT_TRUE((*store)->location(records[0].file).value().has_value());
 }
 
+// I13.15: an availability epoch ends when a probe or an operation fails, never because a probe ran. A reader or a
+// migration that holds the epoch's descriptor stays current across probes of a healthy root.
+TEST(FileTierStore, AProbeOfAnAvailableTierKeepsItsEpoch)
+{
+    auto directory = TestDirectory();
+    const auto config = MakeSlowTier(*directory / "slow");
+    auto tier = std::make_shared<PosixTier>(config, "test", 2, std::chrono::milliseconds(1000));
+    ASSERT_TRUE(tier->probe().ok());
+    const auto first = tier->directory();
+    ASSERT_NE(first, nullptr);
+    ASSERT_TRUE(tier->probe().ok());
+    EXPECT_TRUE(tier->current(first));
+    // The root is replaced by an empty directory: the epoch ends and nothing is available.
+    fs::rename(config.root, config.root.string() + "-away");
+    fs::create_directory(config.root);
+    EXPECT_FALSE(tier->probe().ok());
+    EXPECT_FALSE(tier->current(first));
+    EXPECT_EQ(tier->directory(), nullptr);
+    fs::remove(config.root);
+    fs::rename(config.root.string() + "-away", config.root);
+    ASSERT_TRUE(tier->probe().ok());
+    const auto second = tier->directory();
+    ASSERT_NE(second, nullptr);
+    EXPECT_GT(second->epoch, first->epoch);
+    EXPECT_FALSE(tier->current(first));
+    tier->stop();
+}
+
 TEST(ManifestLog, ForeignMigrateLineFailsTheRefreshClosed)
 {
     auto directory = TestDirectory();

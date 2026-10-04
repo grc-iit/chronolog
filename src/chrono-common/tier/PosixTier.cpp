@@ -126,28 +126,33 @@ absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
                                                self->probing_ = false;
                                                delete value;
                                            });
-    uint64_t epoch;
+    uint64_t started;
+    std::shared_ptr<TierDirectory> held;
     {
         std::lock_guard lock(mutex_);
-        epoch = ++epoch_;
-        directory_.reset();
+        started = epoch_;
+        held = directory_;
     }
+    // An availability epoch lasts until a probe or an operation fails. A probe of a root that still verifies through
+    // the epoch's own descriptor keeps the epoch, so readers and a migration in flight never see an available tier
+    // go away for the length of a probe (I13.15).
     return run(
-            [self, epoch, completion]() -> absl::Status
+            [self, started, held, completion]() -> absl::Status
             {
+                if(held && self->verify(*held).ok())
+                    return absl::OkStatus();
                 auto directory = std::make_shared<TierDirectory>(
                         ::open(self->config.root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW),
-                        epoch);
-                if(directory->fd.get() < 0)
-                    return tier_detail::IoError("open tier root");
-                auto status = self->verify(*directory);
-                if(!status.ok())
-                    return status;
+                        0);
+                auto status =
+                        directory->fd.get() < 0 ? tier_detail::IoError("open tier root") : self->verify(*directory);
                 std::lock_guard lock(self->mutex_);
-                if(self->epoch_ != epoch)
+                // An expiry or a failed operation ended the epoch this probe started in; the next probe decides.
+                if(self->epoch_ != started)
                     return absl::UnavailableError("abandoned tier probe");
-                self->directory_ = std::move(directory);
-                return absl::OkStatus();
+                directory->epoch = ++self->epoch_;
+                self->directory_ = status.ok() ? std::move(directory) : nullptr;
+                return status;
             },
             timeout);
 }
