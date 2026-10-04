@@ -5,14 +5,17 @@
 #include <absl/crc/crc32c.h>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <chrono>
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
 #include <atomic>
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <thread>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 namespace chronolog::grapher
@@ -21,25 +24,69 @@ namespace
 {
 namespace wire = internal::v1;
 
+// A tier root with the marker that Open and the probe check (I13.15).
+TierConfig MarkTier(const std::filesystem::path& root, const std::string& name, uint32_t rank)
+{
+    std::filesystem::create_directories(root);
+    struct statfs info
+    {
+    };
+    if(::statfs(root.c_str(), &info) != 0)
+        throw std::runtime_error("statfs failed");
+    const nlohmann::json marker{{"deployment_id", "test"},
+                                {"name", name},
+                                {"rank", rank},
+                                {"kind", "posix"},
+                                {"tier_uuid", name + "-uuid"},
+                                {"f_type", info.f_type}};
+    std::ofstream(root / ".chronolog-tier.json") << marker.dump();
+    return {name, "posix", root, rank, name + "-uuid"};
+}
+
 struct Server
 {
-    std::filesystem::path root;
+    std::filesystem::path root, slow;
     std::unique_ptr<FileTierStore> store;
     std::unique_ptr<ArchiveService> service;
     std::unique_ptr<grpc::Server> server;
     std::unique_ptr<wire::Archive::Stub> stub;
+    // with_slow_tier configures a slow tier beside the root and runs the Grapher's tier worker over it.
     explicit Server(std::shared_ptr<const ChunkCodec> codec = std::make_shared<HDF5ChunkCodec>(),
-                    FileTierStore::Unlink unlink = {})
+                    FileTierStore::Unlink unlink = {},
+                    FileTierStore::Hooks hooks = {},
+                    bool with_slow_tier = false)
     {
         root = std::filesystem::temp_directory_path() /
                ("chronolog_archive_" + std::to_string(::getpid()) + "_" +
                 ::testing::UnitTest::GetInstance()->current_test_info()->name());
+        slow = root.string() + "_slow";
         std::filesystem::remove_all(root);
-        auto opened = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}}, std::move(codec), std::move(unlink));
+        std::filesystem::remove_all(slow);
+        TierChain chain;
+        MigrationSettings migration;
+        if(with_slow_tier)
+        {
+            chain = {"test", {MarkTier(slow, "slow", 1)}};
+            migration.tiers = {{MarkTier(root, "local", 0)}, {chain.tiers.front()}};
+        }
+        auto opened = FileTierStore::Open(root,
+                                          "test-writer",
+                                          {{1, {100, 0}}},
+                                          std::move(codec),
+                                          std::move(unlink),
+                                          {},
+                                          0,
+                                          {},
+                                          std::move(hooks),
+                                          std::move(chain));
         if(!opened.ok())
             throw std::runtime_error(std::string(opened.status().message()));
         store = *std::move(opened);
-        service = std::make_unique<ArchiveService>(*store, "test-instance", TransferLimits{4096, 2048, 2});
+        service = std::make_unique<ArchiveService>(*store,
+                                                   "test-instance",
+                                                   TransferLimits{4096, 2048, 2},
+                                                   CompactionSettings{},
+                                                   std::move(migration));
         grpc::ServerBuilder builder;
         chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
@@ -58,6 +105,7 @@ struct Server
         server->Wait();
         store.reset();
         std::filesystem::remove_all(root);
+        std::filesystem::remove_all(slow);
     }
 };
 
@@ -770,6 +818,67 @@ TEST(ArchiveTransferTest, DestroyFreesSpaceAtTheHardStop)
     ASSERT_TRUE(freed_status.ok()) << freed_status.error_message();
     EXPECT_NE(freed.receipt(), 0u);
     EXPECT_EQ(server.store->manifest(2)->front().state, ManifestState::Published);
+}
+
+// Every slow-tier operation blocks in the executor seam until the struct goes out of scope.
+struct TierHang
+{
+    std::shared_ptr<std::promise<void>> released = std::make_shared<std::promise<void>>();
+    std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> left = std::make_shared<std::atomic<int>>(0);
+    FileTierStore::Hooks hooks() const
+    {
+        FileTierStore::Hooks hooks;
+        hooks.tier_step = [gate = released->get_future().share(), entered = entered, left = left](std::string_view)
+        {
+            ++*entered;
+            gate.wait();
+            ++*left;
+            return absl::OkStatus();
+        };
+        return hooks;
+    }
+    ~TierHang() { released->set_value(); }
+};
+
+// I13.15, I13.16: a story whose files never left `local` is erased from `local` while the Grapher's slow tier hangs,
+// so a full `local` admits new windows again before that tier answers. The story's sweep on the hung tier stays owed.
+TEST(ArchiveTransferTest, DestroyFreesLocalSpaceWhileASlowTierHangs)
+{
+    TierHang hang;
+    Server server(std::make_shared<HDF5ChunkCodec>(), {}, hang.hooks(), true);
+    ASSERT_TRUE(Send(server, {Frame()}).first.ok());
+    const auto file = server.store->manifest(1)->front().file;
+    ASSERT_FALSE(server.store->location(file).value().has_value()) << "the file never left local";
+    const auto entry = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while(hang.entered->load() == 0 && std::chrono::steady_clock::now() < entry)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_GT(hang.entered->load(), 0) << "the tier worker reached the slow tier";
+    const uint64_t reserve = 1024 * 1024;
+    const auto used = BytesUnder(server.root);
+    const uint64_t capacity = used + reserve - 1;
+    server.store->setHardStopReserve(reserve,
+                                     [capacity, root = server.root]
+                                     {
+                                         const auto held = BytesUnder(root);
+                                         return capacity > held ? capacity - held : uint64_t{0};
+                                     });
+    auto [status, receipt] = Send(server, {Frame(2)});
+    EXPECT_EQ(status.error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED) << status.error_message();
+    EXPECT_EQ(receipt.receipt(), 0u);
+    server.service->tombstone(1);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while(BytesUnder(server.root) >= used && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_LT(BytesUnder(server.root), used) << "the erased chunk outweighs the tombstone and Deleted lines";
+    EXPECT_FALSE(std::filesystem::exists(server.root / file));
+    EXPECT_EQ(server.store->manifest(1)->front().state, ManifestState::Deleted);
+    auto [freed_status, freed] = Send(server, {Frame(2)});
+    ASSERT_TRUE(freed_status.ok()) << freed_status.error_message();
+    EXPECT_NE(freed.receipt(), 0u);
+    EXPECT_EQ(server.store->manifest(2)->front().state, ManifestState::Published);
+    EXPECT_TRUE(server.store->hasPendingUnlinks(1).value()) << "the hung tier has not swept the story";
+    EXPECT_EQ(hang.left->load(), 0) << "the slow tier stayed hung throughout";
 }
 
 TEST(GrapherConfigTest, HardStopReserveDefaultsToTheWalReserveAndZeroDisables)
