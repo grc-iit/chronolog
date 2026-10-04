@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import base64
 import concurrent.futures
 import importlib
@@ -15,9 +16,12 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(os.environ['CHRONOLOG_CLUSTER_OUT'])
-from topology import TABLE
+from topology import Lab
 import chronolog as cl
-ARCHIVE = Path('/mnt/nfs/chronolog-sprint/archive')
+# Set by main() from --config; tests that import Scenario pass explicit endpoints instead.
+LAB = None
+TABLE = []
+ARCHIVE = None
 sys.path.insert(0, str(ROOT / 'tests/smoke/python'))
 from smoke import Smoke, hlc_key
 
@@ -101,8 +105,8 @@ class Scenario(Smoke):
 
     def __init__(self, stubs, catalogs=None, visor=None):
         cl.__path__.append(str(Path(stubs) / 'chronolog'))
-        super().__init__(stubs, visor or TABLE[0]['ip'] + ':50051', 10, 'docker', 'cluster', [])
-        self.sdk = cl.connect(catalogs or ','.join(r['ip'] + ':50051' for r in TABLE),
+        super().__init__(stubs, visor or LAB.endpoint(TABLE[0], 'catalog'), 10, 'docker', 'cluster', [])
+        self.sdk = cl.connect(catalogs or ','.join(LAB.endpoint(r, 'catalog') for r in TABLE),
                               timeout=10, max_retries=500, retry_backoff=.02)
         self.sdk_writers = {}
         self.sdk_sequences = {}
@@ -160,7 +164,7 @@ class Scenario(Smoke):
         while time.monotonic() < deadline:
             for row in TABLE:
                 try:
-                    return getattr(self.rpc.CatalogStub(self.connect(row['ip'] + ':50051')), method)(
+                    return getattr(self.rpc.CatalogStub(self.connect(LAB.endpoint(row, 'catalog'))), method)(
                         request, timeout=min(3, max(.1, deadline - time.monotonic())))
                 except self.grpc.RpcError as error:
                     if error.code() != self.grpc.StatusCode.UNAVAILABLE:
@@ -195,7 +199,7 @@ class Scenario(Smoke):
         from chronolog.internal.v1 import internal_pb2 as ipb, internal_pb2_grpc as irpc
         for row in TABLE:
             try:
-                result = irpc.ClusterStub(self.connect(row['ip'] + ':50061')).ListMembers(
+                result = irpc.ClusterStub(self.connect(LAB.endpoint(row, 'internal'))).ListMembers(
                     ipb.ListMembersRequest(), timeout=3)
                 if result.status.code == 0:
                     return result
@@ -219,7 +223,7 @@ class Scenario(Smoke):
 
     def agent(self, row, slot, op, **options):
         return json.loads(control('agent', dict(node=row['node'], slot=slot, op=op,
-            catalogs=[r['ip'] + ':50051' for r in TABLE], **options)))
+            catalogs=[LAB.endpoint(r, 'catalog') for r in TABLE], **options)))
 
     def agent_append(self, row, slot, count):
         response = self.agent(row, slot, 'append', count=count)
@@ -238,7 +242,7 @@ class Scenario(Smoke):
     def every_player(self, story):
         expected = sorted(self.expected[story], key=lambda e: (e[4], e[5], e[1], e[2], e[3]))
         for row in TABLE:
-            self.replay = self.rpc.ReplayStub(self.connect(row['ip'] + ':50054'))
+            self.replay = self.rpc.ReplayStub(self.connect(LAB.endpoint(row, 'player')))
             self.read_complete(self.request(story), expected)
 
     def a7(self):
@@ -253,7 +257,7 @@ class Scenario(Smoke):
         self.expected[story] = []
         acquisitions, latency = {}, []
         for index, row in enumerate(TABLE):
-            for slot, preferred in (('local', row['keeper']), ('remote', TABLE[(index + 1) % 3]['keeper'])):
+            for slot, preferred in (('local', row['keeper']), ('remote', TABLE[(index + 1) % len(TABLE)]['keeper'])):
                 result = self.agent(row, slot, 'acquire', story=story,
                     identity=chronicle + '-' + row['node'] + '-' + slot, preferred=preferred)
                 assert result['assigned'] == preferred, result
@@ -281,7 +285,7 @@ class Scenario(Smoke):
             for row in TABLE:
                 self.agent_append(row, 'local', 10)
             self.every_player(story)
-            _, metadata = self.rpc.CatalogStub(self.connect(next(r['ip'] for r in TABLE if r != killed) + ':50051')).GetStory.with_call(
+            _, metadata = self.rpc.CatalogStub(self.connect(LAB.endpoint(next(r for r in TABLE if r != killed), 'catalog'))).GetStory.with_call(
                 self.pb.GetStoryRequest(story_id=story), timeout=10)
             replacement = int(dict(metadata.initial_metadata())['chronolog-raft-leader'])
             assert replacement in [r['replica'] for r in TABLE if r != killed], replacement
@@ -300,7 +304,7 @@ class Scenario(Smoke):
             removed = self.wait_membership(lambda m: any(r.story_id == story and
                 failed['keeper'] not in [k.process_id for k in r.route.keepers] for r in m.routes))
             for row in TABLE:
-                self.replay = self.rpc.ReplayStub(self.connect(row['ip'] + ':50054'))
+                self.replay = self.rpc.ReplayStub(self.connect(LAB.endpoint(row, 'player')))
                 _, completion = self.read(self.request(story))
                 assert not completion.complete and completion.reason in (
                     self.pb.INCOMPLETE_REASON_SOURCE_FAILED, self.pb.INCOMPLETE_REASON_LAGGING_WRITERS), completion
@@ -330,10 +334,10 @@ class Scenario(Smoke):
             if i.instance == x.process.instance) for x in m.members))
         # Rejoin is explicit after dynamic removal; registration alone cannot change a committed Route.
         from chronolog.internal.v1 import internal_pb2 as ipb, internal_pb2_grpc as irpc
-        joined = irpc.ClusterStub(self.connect(TABLE[1]['ip'] + ':50061')).JoinKeeper(
+        joined = irpc.ClusterStub(self.connect(LAB.endpoint(TABLE[1], 'internal'))).JoinKeeper(
             ipb.JoinKeeperRequest(process_id=failed['keeper']), timeout=10)
         assert joined.status.code == 0, joined
-        self.wait_membership(lambda m: any(r.story_id == story and len(r.route.keepers) == 3 for r in m.routes))
+        self.wait_membership(lambda m: any(r.story_id == story and len(r.route.keepers) == len(TABLE) for r in m.routes))
         for row in (failed, survivor):
             self.agent_append(row, 'local', 10)
         self.every_player(story)
@@ -356,10 +360,10 @@ class Scenario(Smoke):
                 acquired = self.acquire(story, identity, lease_ns=self.MAX_LEASE_NS, preferred=row['keeper'])
                 assert acquired.status.code == 0, acquired.status
                 assert acquired.lease.duration_ns == self.MAX_LEASE_NS, acquired.lease
-                assert acquired.route.grapher == [r['ip'] + ':50053' for r in TABLE if r['grapher']][story % 2]
+                assert acquired.route.grapher == LAB.grapher_endpoints()[story % 2]
                 self.writers[story].append((identity, acquired))
                 self.sequences[(story, identity)] = 0
-            assert len({a.assigned_keeper.process_id for _, a in self.writers[story]}) == 3
+            assert len({a.assigned_keeper.process_id for _, a in self.writers[story]}) == len(TABLE)
         assert len({a.route.grapher for writers in self.writers.values() for _, a in writers}) == 2
         control('probe', ' '.join(map(str, self.stories)))
         time.sleep(.3)
@@ -446,9 +450,10 @@ class Scenario(Smoke):
             if writer == 'grapher-b' and chunk in published:
                 samples.append(max(0, int(timestamp) - published[chunk]) / 1e6)
         assert samples, 'no NFS latency samples'
+        probe = LAB.graphers['grapher-b']['node']
         result = dict(samples=len(samples), median_ms=statistics.median(samples), max_ms=max(samples),
                       build='dev Debug', commit=os.environ.get('CHRONOLOG_CLUSTER_COMMIT', 'unknown'),
-                      publisher='blade grapher-b', reader='blade Player FileTierStore merged manifest probe',
+                      publisher=f'{probe} grapher-b', reader=f'{probe} Player FileTierStore merged manifest probe',
                       poll_ms=200, archive=str(ARCHIVE))
         (OUT/'latency.json').write_text(json.dumps(result, indent=2)+'\n')
         print('PASS latency ' + json.dumps(result), flush=True)
@@ -466,10 +471,11 @@ class Scenario(Smoke):
         previous = control('transfer-log', '')
         self.append_all(200)
         deadline = time.monotonic() + 20
+        started = r'archive_transfer_start chunk=(\S+) grapher=' + re.escape(LAB.grapher_endpoints()[0])
         while time.monotonic() < deadline:
             current = control('transfer-log', '')
-            attempts = re.findall(r'archive_transfer_start chunk=(\S+) grapher=100.101.232.95:50053', current)
-            old = set(re.findall(r'archive_transfer_start chunk=(\S+) grapher=100.101.232.95:50053', previous))
+            attempts = re.findall(started, current)
+            old = set(re.findall(started, previous))
             if any(chunk not in old for chunk in attempts):
                 break
             time.sleep(.1)
@@ -506,6 +512,11 @@ class Scenario(Smoke):
 
 
 def main():
+    global LAB, TABLE, ARCHIVE
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', required=True)
+    LAB = Lab(parser.parse_args().config)
+    TABLE, ARCHIVE = LAB.table, Path(LAB.archive)
     stubs = OUT / 'stubs'
     scenario = Scenario(stubs)
     try:
