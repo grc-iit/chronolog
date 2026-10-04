@@ -361,7 +361,7 @@ New knobs introduced by this design. Values marked TBD MUST be set by the slice 
 | acquisition_evidence_batch | Visor | 256 | RFC-G G2, `AcquisitionLeaseConfig` |
 | chunk checksum algorithm | Keeper to Grapher | CRC32C | W10.4 |
 | manifest fsync per append | Grapher | on; every manifest line is fsync'd before it counts | I13.1, I13.11, I13.12, `src/chrono-common/tier/ManifestLog.cpp` |
-| tail_max_bytes | Player | TBD until measured; implementation starts at 67108864 | `src/chrono-player/PlayerConfig.h`, RFC-D P1.2 |
+| tail_max_bytes | Player | 67108864, the payload bytes one Tail buffers, shared evenly among its sources; no measurement is recorded for the value | I6.13, `src/chrono-player/PlayerConfig.h`, RFC-D P1.2 |
 | compact_enabled | Grapher | true since f642d9f8, after the Player gates over compacted outputs landed in 87b86780; a deployment whose archive root has a Player or Grapher that cannot read compact_v1 MUST set it false | I13.12, `src/chrono-grapher/server/GrapherConfig.h` |
 | compact_scan_interval_secs | Grapher | 60 | I13.12 |
 | compact_min_files | Grapher | 32 | I13.12 |
