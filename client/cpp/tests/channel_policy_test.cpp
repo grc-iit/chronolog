@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -194,7 +196,34 @@ public:
         std::lock_guard lock(sockets_mutex_);
         slow_handshake_ = true;
         release_bytes_.reset();
+        dropped_ = downstreams_;
         for(int fd: sockets_) ::shutdown(fd, SHUT_RDWR);
+    }
+    // True once the client has closed every connection delayHandshakes dropped, so its next call cannot be written to
+    // a transport it has not yet seen die. A dropped socket reaches TIME_WAIT when the client's FIN follows ours.
+    bool waitDroppedClosed(std::chrono::milliseconds bound)
+    {
+        const auto until = std::chrono::steady_clock::now() + bound;
+        for(;;)
+        {
+            bool closed = true;
+            {
+                std::lock_guard lock(sockets_mutex_);
+                for(int fd: dropped_)
+                {
+                    tcp_info info{};
+                    socklen_t length = sizeof(info);
+                    if(::getsockopt(fd, IPPROTO_TCP, TCP_INFO, &info, &length) == 0 &&
+                       info.tcpi_state != TCP_TIME_WAIT && info.tcpi_state != TCP_CLOSE)
+                        closed = false;
+                }
+            }
+            if(closed)
+                return true;
+            if(std::chrono::steady_clock::now() >= until)
+                return false;
+            std::this_thread::sleep_for(5ms);
+        }
     }
     int delayedHandshakes() const { return delayed_handshakes_; }
 
@@ -223,6 +252,7 @@ private:
                 std::lock_guard lock(sockets_mutex_);
                 sockets_.push_back(downstream);
                 sockets_.push_back(upstream);
+                downstreams_.push_back(downstream);
             }
             pumps_.emplace_back([this, downstream, upstream, born] { pump(downstream, upstream, born, false); });
             pumps_.emplace_back([this, downstream, upstream, born] { pump(upstream, downstream, born, true); });
@@ -269,6 +299,8 @@ private:
     std::thread acceptor_;
     std::vector<std::thread> pumps_;
     std::vector<int> sockets_;
+    // Client-side connections, and those delayHandshakes last dropped.
+    std::vector<int> downstreams_, dropped_;
     std::mutex sockets_mutex_;
     std::condition_variable bytes_cv_;
     bool slow_handshake_{};
@@ -355,6 +387,9 @@ TEST(ClientChannelPolicy, FirstCallWaitsForASlowHandshakeWithinItsDeadline)
         auto client = sdk::Client::Connect(options);
         ASSERT_TRUE(client.ok()) << client.status();
         hop.delayHandshakes();
+        // The Acquire must start after the client saw the drop; one written to the dying transport ends UNAVAILABLE
+        // (Stream removed) before any reconnect, which is the SDK's correct uncertain outcome, not this case.
+        ASSERT_TRUE(hop.waitDroppedClosed(5s));
         auto writer = client->acquire(1, "writer", std::chrono::system_clock::now() + 10s);
         EXPECT_TRUE(writer.ok()) << writer.status();
         EXPECT_GT(hop.delayedHandshakes(), 0);
