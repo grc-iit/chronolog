@@ -144,7 +144,7 @@ Clio-coder and the container stack.
 - [docs/getting-started.md](docs/getting-started.md): build, run a node, use the SDKs, connect agents, containers.
 - [docs/architecture.md](docs/architecture.md): the services, the life of an event, Completion, tiers, failover.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building and testing, module rules, code style, commits.
-- [ARCHITECTURE.md](ARCHITECTURE.md): the specification. Every rule has an id and a test that enforces it.
+- [ARCHITECTURE.md](ARCHITECTURE.md): the specification. Every rule has an id, and its Gate names the test that enforces it.
 
 ## License and acknowledgment
 
