@@ -9,12 +9,23 @@
 #include <set>
 #include <string>
 #include <thread>
-#include "rpc/VisorClockAudit.h"
+#include "clock/VisorClockAudit.h"
 #include "chrono-player/replay/RouteSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
 namespace chronolog::player
 {
+
+// Records a Register or Heartbeat attempt in the clock audit. The reply's reading is kept as received, so a
+// malformed one stays inconclusive and an unspecified status reads as Unavailable (W10.15).
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::RegisterResponse& response);
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::HeartbeatResponse& response);
 
 // Registers once and follows WatchRoutes. Cached routes remain usable across a reconnect;
 // FetchHot's expected epoch prevents a stale route from claiming completeness (I6.11).

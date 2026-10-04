@@ -12,7 +12,6 @@
 #include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/adapter/ReplayService.h"
-#include "rpc/VisorClockAudit.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
 
@@ -296,6 +295,34 @@ TEST(PlayerClockAudit, AlarmLeavesReadAndTailUnchanged)
     visor_server->Shutdown(std::chrono::system_clock::now() + 1s);
     a_server->Shutdown(std::chrono::system_clock::now() + 1s);
     b_server->Shutdown(std::chrono::system_clock::now() + 1s);
+}
+
+TEST(PlayerClockAudit, AnonymousOrUnsyncedReplyIsInconclusive)
+{
+    CapturingSink sink;
+    VisorClockAudit audit("player", "player-1/i1", syncedClock(), [] { return int64_t{1'000}; });
+
+    wire::RegisterResponse anonymous;
+    stamp(anonymous, kNow, "", v1::CLOCK_STATUS_SYNCED);
+    auto decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, anonymous);
+    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
+    EXPECT_EQ(decision.reason, ClockAuditReason::MissingIdentity);
+    // A repeated anonymous reply is the same coverage loss, not a new line.
+    auditVisorReply(audit, audit.begin(), grpc::Status::OK, anonymous);
+
+    wire::HeartbeatResponse unsynced;
+    stamp(unsynced, kNow, "visor-a", v1::CLOCK_STATUS_UNSYNCED);
+    decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, unsynced);
+    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
+    EXPECT_EQ(decision.reason, ClockAuditReason::Unsynced);
+    EXPECT_EQ(stateOf(audit, "visor-a"), ClockAuditState::Inconclusive);
+
+    audit.report();
+    EXPECT_EQ(sink.count("clock audit coverage lost role=player identity=player-1/i1 replica= instance= "
+                         "reason=missing_identity"),
+              1u);
+    EXPECT_EQ(sink.count("replica=visor-a instance=visor-a-1 reason=unsynced"), 1u);
+    EXPECT_EQ(sink.count("clock audit OK"), 0u);
 }
 
 } // namespace

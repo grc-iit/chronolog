@@ -18,7 +18,7 @@ add_library(chrono_player_lib STATIC
     replay/KeeperHotSource.cpp
     replay/WriterDirectory.cpp)
 target_link_libraries(chrono_player_lib
-    PUBLIC chrono_player_replay chronolog_common_clock chronolog_common_rpc chronolog_common_visor_clock_audit chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json
+    PUBLIC chrono_player_replay chronolog_common_clock chronolog_common_rpc chronolog_internal_proto chronolog_proto nlohmann_json::nlohmann_json
     PRIVATE chronolog_warnings absl::log)
 
 add_executable(chrono_player main.cpp)

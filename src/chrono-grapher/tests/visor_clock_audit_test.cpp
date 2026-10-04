@@ -1,6 +1,5 @@
 // B45 Part 1 gates for the Grapher: the clock audit on Register and Heartbeat is observational.
 #include "chrono-grapher/server/ClusterWorker.h"
-#include "rpc/VisorClockAudit.h"
 #include "clock/FakeClock.h"
 #include "rpc/Channel.h"
 
@@ -168,6 +167,59 @@ TEST(GrapherClockAudit, AlarmIsLoggedOnceWhileTheGrapherKeepsHeartbeating)
     const auto entries = audit.entries();
     ASSERT_EQ(entries.size(), 1u);
     EXPECT_GE(entries[0].violations, 1u);
+}
+
+TEST(GrapherClockAudit, AnonymousUnsyncedOrSteppedReplyIsInconclusive)
+{
+    CapturingSink sink;
+    auto clock = syncedClock();
+    std::atomic<int64_t> mono{1'000};
+    VisorClockAudit audit("grapher", "grapher-1/i1", clock, [&] { return mono.load(); });
+
+    wire::HeartbeatResponse anonymous;
+    stamp(anonymous, kNow, "", v1::CLOCK_STATUS_SYNCED);
+    auto decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, anonymous);
+    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
+    EXPECT_EQ(decision.reason, ClockAuditReason::MissingIdentity);
+    EXPECT_TRUE(audit.entries().empty());
+    // A repeated anonymous reply is the same coverage loss, not a new line.
+    auditVisorReply(audit, audit.begin(), grpc::Status::OK, anonymous);
+
+    wire::RegisterResponse unsynced;
+    stamp(unsynced, kNow, "visor-a", v1::CLOCK_STATUS_UNSYNCED);
+    decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, unsynced);
+    EXPECT_EQ(decision.state, ClockAuditState::Inconclusive);
+    EXPECT_EQ(decision.reason, ClockAuditReason::Unsynced);
+    EXPECT_EQ(stateOf(audit, "visor-a"), ClockAuditState::Inconclusive);
+
+    wire::HeartbeatResponse unspecified;
+    stamp(unspecified, kNow, "visor-a", v1::CLOCK_STATUS_UNSPECIFIED);
+    decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, unspecified);
+    EXPECT_EQ(decision.reason, ClockAuditReason::Unavailable);
+
+    // A Synced status without its bound is malformed, never a zero bound.
+    wire::HeartbeatResponse unbounded;
+    stamp(unbounded, kNow, "visor-a", v1::CLOCK_STATUS_SYNCED);
+    unbounded.mutable_physical()->clear_uncertainty_ns();
+    decision = auditVisorReply(audit, audit.begin(), grpc::Status::OK, unbounded);
+    EXPECT_EQ(decision.reason, ClockAuditReason::MissingBound);
+
+    // The local clock steps one second inside the bracket while the monotonic clock stands still.
+    wire::HeartbeatResponse synced;
+    stamp(synced, kNow, "visor-a", v1::CLOCK_STATUS_SYNCED);
+    const auto bracket = audit.begin();
+    clock->setPhysical(kNow + 1'000'000'000);
+    decision = auditVisorReply(audit, bracket, grpc::Status::OK, synced);
+    EXPECT_EQ(decision.reason, ClockAuditReason::Discontinuity);
+    EXPECT_EQ(stateOf(audit, "visor-a"), ClockAuditState::Inconclusive);
+
+    audit.report();
+    EXPECT_EQ(sink.count("clock audit coverage lost role=grapher identity=grapher-1/i1 replica= instance= "
+                         "reason=missing_identity"),
+              1u);
+    EXPECT_EQ(sink.count("replica=visor-a instance=visor-a-1 reason=unsynced"), 1u);
+    EXPECT_EQ(sink.count("clock audit OK"), 0u);
+    EXPECT_EQ(sink.count("clock audit ALARM"), 0u);
 }
 
 } // namespace

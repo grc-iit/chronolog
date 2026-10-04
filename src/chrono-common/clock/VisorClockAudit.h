@@ -4,21 +4,20 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <grpcpp/support/status.h>
-
 #include "chronolog/clock.h"
-#include "chronolog/internal/v1/internal.pb.h"
 #include "clock/ClockAudit.h"
 
 namespace chronolog
 {
 
 // Observational audit of a process's physical clock against the Visor readings on its Register and
-// Heartbeat replies (B45 Part 1, I8.3). Nothing here changes ClockStatus or anything the process serves.
+// Heartbeat replies (B45 Part 1, I8.3). Nothing here changes ClockStatus or anything the process serves. Each
+// service's adapter reads the reply off the wire and calls record().
 class VisorClockAudit
 {
 public:
@@ -40,18 +39,13 @@ public:
     // Opens the bracket of one RPC attempt.
     Bracket begin() const;
 
-    // Closes the bracket and records the attempt's reply.
-    template <class Response>
-    ClockAuditDecision finish(const Bracket& bracket, const grpc::Status& status, const Response& response)
-    {
-        return record(bracket,
-                      status.ok(),
-                      status.ok() && response.has_physical() ? &response.physical() : nullptr,
-                      response.clock_responder());
-    }
+    // Closes the bracket and records the attempt: replied is false on a transport failure, visor is the reply's
+    // physical reading as received, responder the replica that generated it.
+    ClockAuditDecision
+    record(const Bracket& bracket, bool replied, std::optional<TimeReading> visor, ClockResponderKey responder);
 
     // Drops replicas outside the Visor membership; an empty list (static Visor) keeps every entry.
-    void retain(const google::protobuf::RepeatedPtrField<std::string>& replicas);
+    void retain(const std::vector<std::string>& replicas);
 
     // Logs pending transitions and stale coverage on the calling worker thread.
     void report();
@@ -59,10 +53,6 @@ public:
     std::vector<ClockAuditEntry> entries() const;
 
 private:
-    ClockAuditDecision record(const Bracket& bracket,
-                              bool replied,
-                              const v1::TimeReading* visor,
-                              const internal::v1::ClockResponder& responder);
     void log(const ClockAuditTransition& transition, int64_t now_ns);
     bool admit(const std::string& replica, ClockAuditTransition::Kind kind, int64_t now_ns, uint64_t& suppressed);
 

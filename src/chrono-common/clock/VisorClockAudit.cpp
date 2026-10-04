@@ -1,4 +1,4 @@
-#include "rpc/VisorClockAudit.h"
+#include "clock/VisorClockAudit.h"
 
 #include <absl/log/log.h>
 #include <chrono>
@@ -23,19 +23,6 @@ TimeReading readPhysical(const Clock& clock)
 {
     auto reading = clock.now();
     return reading.ok() ? *reading : TimeReading{};
-}
-
-// Keeps every status and bound combination as received so a malformed reading stays inconclusive.
-TimeReading fromWire(const v1::TimeReading& wire)
-{
-    TimeReading reading;
-    reading.physical_ns = wire.physical_ns();
-    if(wire.has_uncertainty_ns())
-        reading.uncertainty_ns = wire.uncertainty_ns();
-    reading.status = wire.status() == v1::CLOCK_STATUS_SYNCED     ? ClockStatus::Synced
-                     : wire.status() == v1::CLOCK_STATUS_UNSYNCED ? ClockStatus::Unsynced
-                                                                  : ClockStatus::Unavailable;
-    return reading;
 }
 
 const char* reasonName(ClockAuditReason reason)
@@ -95,8 +82,8 @@ VisorClockAudit::Bracket VisorClockAudit::begin() const
 
 ClockAuditDecision VisorClockAudit::record(const Bracket& bracket,
                                            bool replied,
-                                           const v1::TimeReading* visor,
-                                           const internal::v1::ClockResponder& responder)
+                                           std::optional<TimeReading> visor,
+                                           ClockResponderKey responder)
 {
     ClockAuditSample sample;
     sample.m1_ns = monotonic_();
@@ -104,9 +91,8 @@ ClockAuditDecision VisorClockAudit::record(const Bracket& bracket,
     sample.t0 = bracket.t0;
     sample.m0_ns = bracket.m0_ns;
     sample.replied = replied;
-    if(visor)
-        sample.visor = fromWire(*visor);
-    sample.responder = {responder.replica_id(), responder.instance()};
+    sample.visor = std::move(visor);
+    sample.responder = std::move(responder);
     const auto elapsed = sample.m1_ns > sample.m0_ns ? static_cast<uint64_t>(sample.m1_ns - sample.m0_ns) : 0;
     sample.discontinuity = physicalStepDetected(sample.t0,
                                                 sample.t1,
@@ -130,10 +116,10 @@ ClockAuditDecision VisorClockAudit::record(const Bracket& bracket,
     return result.decision;
 }
 
-void VisorClockAudit::retain(const google::protobuf::RepeatedPtrField<std::string>& replicas)
+void VisorClockAudit::retain(const std::vector<std::string>& replicas)
 {
     if(!replicas.empty())
-        audit_.retainReplicas({replicas.begin(), replicas.end()});
+        audit_.retainReplicas(replicas);
 }
 
 void VisorClockAudit::report()
