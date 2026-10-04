@@ -20,6 +20,8 @@ struct GrapherConfig
     uint32_t rpc_timeout_ms = 2000;
     uint32_t drain_timeout_ms = 5000;
     TransferLimits limits;
+    // I13.16: free bytes `local` keeps; below it new windows and compaction outputs are refused. Zero disables.
+    uint64_t hard_stop_reserve_bytes = 268435456;
     CompactionSettings compaction = []
     {
         CompactionSettings enabled;

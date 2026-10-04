@@ -65,6 +65,7 @@ int main(int argc, char** argv)
         LOG(ERROR) << store.status();
         return 1;
     }
+    (*store)->setHardStopReserve(config->hard_stop_reserve_bytes);
     std::random_device random;
     std::ostringstream identifier;
     identifier << std::hex << std::setfill('0');

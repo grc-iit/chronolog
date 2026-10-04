@@ -99,6 +99,16 @@ public:
     absl::StatusOr<CompactionResult> compactOnce(const CompactionPolicy& policy);
     // Wakes and stops a job waiting for I/O budget or a publish, and every later job of this store, for shutdown.
     void stopCompaction();
+    // I13.16: `local` keeps hard_stop_reserve_bytes free. Below it publish of a new window and compaction output are
+    // refused RESOURCE_EXHAUSTED; a duplicate transfer still settles, and manifest appends, tombstones, destroy and
+    // migration continue inside the reserve. Zero disables. free_bytes replaces statvfs of the root, for tests.
+    using FreeBytes = std::function<absl::StatusOr<uint64_t>()>;
+    void setHardStopReserve(uint64_t bytes, FreeBytes free_bytes = {});
+    absl::Status hardStop() const;
+    // The smallest reserve that still lets a full `local` drain: twice this writer's manifest log and snapshot (a
+    // manifest compaction writes a whole snapshot temporary) plus one migration pass of lines.
+    absl::StatusOr<uint64_t> hardStopReserveBound() const;
+    uint64_t hardStopReserve() const;
     absl::Status configureTiers(std::string deployment,
                                 std::vector<TierConfig> tiers,
                                 size_t threads = 2,
@@ -205,6 +215,9 @@ private:
     std::map<std::string, std::chrono::steady_clock::time_point> tier_unlink_deadlines_;
     std::map<std::string, std::shared_ptr<std::vector<std::future<absl::Status>>>> unlink_results_;
     std::string deployment_;
+    mutable std::mutex reserve_mutex_;
+    uint64_t hard_stop_reserve_{};
+    FreeBytes free_bytes_;
     bool migration_stopped_{};
     uint64_t deletion_generation_{};
     size_t deletion_applied_{};

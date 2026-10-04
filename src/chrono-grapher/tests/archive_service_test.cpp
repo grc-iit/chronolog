@@ -673,6 +673,125 @@ TEST(ArchiveTransferTest, DestroyWaitsForCompactionCleanup)
     std::filesystem::remove_all(root);
 }
 
+// Bytes of every file under the archive root, which stands in for a file system of a fixed size.
+uint64_t BytesUnder(const std::filesystem::path& root)
+{
+    uint64_t bytes = 0;
+    std::error_code error;
+    for(std::filesystem::recursive_directory_iterator it(root, error), end; !error && it != end; it.increment(error))
+    {
+        std::error_code ignored;
+        if(it->is_regular_file(ignored))
+            if(const auto size = it->file_size(ignored); !ignored)
+                bytes += size;
+    }
+    return bytes;
+}
+
+// I13.16: below hard_stop_reserve_bytes a new window is refused before any file is written, the Keeper sees a failed
+// send and keeps its chunk, and the same transfer settles once the reserve is restored. Compaction output is refused
+// the same way.
+TEST(ArchiveTransferTest, HardStopRefusesNewWindowsAsASendFailure)
+{
+    Server server;
+    server.store->setHardStopReserve(4096, [] { return uint64_t{4095}; });
+    auto [status, receipt] = Send(server, {Frame()});
+    EXPECT_EQ(status.error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED) << status.error_message();
+    EXPECT_EQ(receipt.receipt(), 0u);
+    EXPECT_TRUE(server.store->manifest(1)->empty());
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{100, 0}));
+    EXPECT_TRUE(!std::filesystem::exists(server.root / "1") || std::filesystem::is_empty(server.root / "1"));
+    server.store->setHardStopReserve(4096, [] { return uint64_t{4096}; });
+    auto [retry_status, retry] = Send(server, {Frame()});
+    ASSERT_TRUE(retry_status.ok()) << retry_status.error_message();
+    EXPECT_EQ(retry.receipt(), 2u);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+    for(int i = 2; i < 5; ++i) ASSERT_TRUE(server.store->publish(SmallWindow(i)).ok());
+    server.store->setHardStopReserve(4096, [] { return uint64_t{0}; });
+    EXPECT_EQ(server.store->compactOnce(EagerCompaction().policy).status().code(),
+              absl::StatusCode::kResourceExhausted);
+    EXPECT_EQ(server.store->manifest(1)->size(), 4u) << "a refused compaction leaves every input effective";
+    server.store->setHardStopReserve(4096, [] { return uint64_t{4096}; });
+    auto compacted = server.store->compactOnce(EagerCompaction().policy);
+    ASSERT_TRUE(compacted.ok()) << compacted.status();
+    EXPECT_GE(compacted->inputs, 2u);
+}
+
+// The holder path of publish writes no file, so a Keeper resending a settled window still gets its receipt.
+TEST(ArchiveTransferTest, HardStopStillSettlesADuplicateTransfer)
+{
+    Server server;
+    auto [status, receipt] = Send(server, {Frame()});
+    ASSERT_TRUE(status.ok()) << status.error_message();
+    server.store->setHardStopReserve(4096, [] { return uint64_t{0}; });
+    auto [again_status, again] = Send(server, {Frame()});
+    ASSERT_TRUE(again_status.ok()) << again_status.error_message();
+    EXPECT_EQ(again.status().code(), 0);
+    EXPECT_EQ(again.chunk_id(), "chunk-1");
+    EXPECT_GT(again.receipt(), receipt.receipt());
+    auto next = Frame();
+    next.mutable_identity()->set_chunk_id("chunk-2");
+    next.mutable_identity()->mutable_start()->set_physical_ns(200);
+    next.mutable_identity()->mutable_end()->set_physical_ns(300);
+    // An Empty window writes a file too, so it is a new window like any other.
+    next.set_data(wire::ChunkPayload().SerializeAsString());
+    next.set_total_bytes(0);
+    next.set_checksum(Crc(""));
+    auto [next_status, refused] = Send(server, {next});
+    EXPECT_EQ(next_status.error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED) << next_status.error_message();
+    EXPECT_EQ(refused.receipt(), 0u);
+    EXPECT_EQ(server.store->manifest(1)->size(), 1u);
+    EXPECT_EQ(server.store->contiguousWatermark(1).value(), (Hlc{200, 0}));
+}
+
+// Tombstones, Deleted records and unlinks continue inside the reserve, so destroying a story is how a full `local`
+// admits new windows again without a restart.
+TEST(ArchiveTransferTest, DestroyFreesSpaceAtTheHardStop)
+{
+    Server server;
+    ASSERT_TRUE(Send(server, {Frame()}).first.ok());
+    const uint64_t reserve = 1024 * 1024;
+    const auto used = BytesUnder(server.root);
+    // A file system that holds what the archive holds now and has one byte less than the reserve free.
+    const uint64_t capacity = used + reserve - 1;
+    server.store->setHardStopReserve(reserve,
+                                     [capacity, root = server.root]
+                                     {
+                                         const auto held = BytesUnder(root);
+                                         return capacity > held ? capacity - held : uint64_t{0};
+                                     });
+    auto [status, receipt] = Send(server, {Frame(2)});
+    EXPECT_EQ(status.error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED) << status.error_message();
+    EXPECT_EQ(receipt.receipt(), 0u);
+    server.service->tombstone(1);
+    ASSERT_TRUE(server.service->waitDestroyed(1, std::chrono::seconds(5)));
+    EXPECT_LT(BytesUnder(server.root), used) << "the erased chunk outweighs the tombstone and Deleted lines";
+    auto [freed_status, freed] = Send(server, {Frame(2)});
+    ASSERT_TRUE(freed_status.ok()) << freed_status.error_message();
+    EXPECT_NE(freed.receipt(), 0u);
+    EXPECT_EQ(server.store->manifest(2)->front().state, ManifestState::Published);
+}
+
+TEST(GrapherConfigTest, HardStopReserveDefaultsToTheWalReserveAndZeroDisables)
+{
+    auto loaded = GrapherConfig::load(std::nullopt);
+    ASSERT_TRUE(loaded.ok());
+    EXPECT_EQ(loaded->hard_stop_reserve_bytes, 268435456u);
+    const auto root = FreshRoot();
+    auto store = FileTierStore::Open(root, "test-writer", {{1, {100, 0}}});
+    ASSERT_TRUE(store.ok());
+    (*store)->setHardStopReserve(0, [] { return uint64_t{0}; });
+    EXPECT_TRUE((*store)->publish(SmallWindow(0)).ok());
+    // The bound grows with the own manifest and the own effective files (RFC-I 3.7).
+    const auto one = (*store)->hardStopReserveBound();
+    ASSERT_TRUE(one.ok());
+    EXPECT_GT(*one, 0u);
+    ASSERT_TRUE((*store)->publish(SmallWindow(1)).ok());
+    EXPECT_GT((*store)->hardStopReserveBound().value(), *one);
+    store->reset();
+    std::filesystem::remove_all(root);
+}
+
 TEST(GrapherConfigTest, CompactionIsEnabledByDefaultAndItsKnobsAreValidated)
 {
     auto loaded = GrapherConfig::load(std::nullopt);

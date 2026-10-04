@@ -52,7 +52,7 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
             {"compact_io_burst_bytes", policy.io_burst_bytes}};
     for(const auto& [key, value]: input.items())
         if(!strings.contains(key) && !numbers.contains(key) && !compaction.contains(key) &&
-           key != "insecure_bind_all" && key != "compact_enabled")
+           key != "insecure_bind_all" && key != "compact_enabled" && key != "hard_stop_reserve_bytes")
             return absl::InvalidArgumentError("unknown grapher configuration key " + key);
     auto env = [](std::string key) -> const char*
     {
@@ -103,6 +103,19 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
             }
             if(number > (uint64_t{1} << 40) || (number == 0 && key != "compact_min_age_secs"))
                 return absl::InvalidArgumentError("number out of range for " + key);
+        }
+        if(input.contains("hard_stop_reserve_bytes"))
+        {
+            if(!input.at("hard_stop_reserve_bytes").is_number_integer() || input.at("hard_stop_reserve_bytes") < 0)
+                return absl::InvalidArgumentError("invalid number for hard_stop_reserve_bytes");
+            config.hard_stop_reserve_bytes = input.at("hard_stop_reserve_bytes").get<uint64_t>();
+        }
+        if(const auto* value = env("hard_stop_reserve_bytes"))
+        {
+            const std::string text(value);
+            const auto parsed = std::from_chars(text.data(), text.data() + text.size(), config.hard_stop_reserve_bytes);
+            if(parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
+                return absl::InvalidArgumentError("invalid environment number for hard_stop_reserve_bytes");
         }
         if(input.contains("compact_enabled"))
             config.compaction.enabled = input.at("compact_enabled").get<bool>();

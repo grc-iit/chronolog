@@ -1,3 +1,4 @@
+#include <sys/statvfs.h>
 #include <absl/log/log.h>
 #include "tier/FileTierStore.h"
 #include <absl/crc/crc32c.h>
@@ -1017,6 +1018,9 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             return absl::UnavailableError("chunk rotation already published");
         return *holder;
     }
+    // The holder path above writes no file, so a duplicate transfer settles at the hard stop (I13.16).
+    if(auto stop = hardStop(); !stop.ok())
+        return stop;
     const auto directory = root_ / std::to_string(chunk.story_id);
     std::error_code error;
     std::filesystem::create_directories(directory, error);
@@ -1060,6 +1064,76 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
     if(auto index = refresh(); index.ok())
         (void)watermark(**index, chunk.story_id);
     return record;
+}
+
+void FileTierStore::setHardStopReserve(uint64_t bytes, FreeBytes free_bytes)
+{
+    std::lock_guard lock(reserve_mutex_);
+    hard_stop_reserve_ = bytes;
+    free_bytes_ = std::move(free_bytes);
+}
+
+uint64_t FileTierStore::hardStopReserve() const
+{
+    std::lock_guard lock(reserve_mutex_);
+    return hard_stop_reserve_;
+}
+
+absl::Status FileTierStore::hardStop() const
+{
+    uint64_t reserve = 0;
+    FreeBytes free_bytes;
+    {
+        std::lock_guard lock(reserve_mutex_);
+        reserve = hard_stop_reserve_;
+        free_bytes = free_bytes_;
+    }
+    if(reserve == 0)
+        return absl::OkStatus();
+    absl::StatusOr<uint64_t> free = uint64_t{0};
+    if(free_bytes)
+        free = free_bytes();
+    else
+    {
+        struct statvfs fs
+        {
+        };
+        if(::statvfs(root_.c_str(), &fs) != 0)
+            return tier_detail::IoError("statvfs archive root");
+        free = static_cast<uint64_t>(fs.f_bavail) * fs.f_frsize;
+    }
+    if(!free.ok())
+        return free.status();
+    if(*free < reserve)
+        return absl::ResourceExhaustedError("local tier at its hard stop reserve: " + std::to_string(*free) +
+                                            " bytes free, hard_stop_reserve_bytes " + std::to_string(reserve));
+    return absl::OkStatus();
+}
+
+absl::StatusOr<uint64_t> FileTierStore::hardStopReserveBound() const
+{
+    if(read_only_)
+        return absl::FailedPreconditionError("read-only tier store");
+    // One migrate_v1 line names a writer, a file, a tier, a uuid, a token and a checksum inside a framed line.
+    constexpr uint64_t kMigrationLineBytes = 512;
+    uint64_t manifest = 0, own = 0;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        for(const auto& record: (*index)->records)
+            own += record.manifest_writer == writer_ &&
+                   (record.state == ManifestState::Published || record.state == ManifestState::Empty);
+        for(const auto& path: {log_->logPath(), log_->snapshotPath()})
+        {
+            std::error_code error;
+            const auto size = std::filesystem::file_size(path, error);
+            if(!error)
+                manifest += size;
+        }
+    }
+    return 2 * manifest + own * kMigrationLineBytes;
 }
 
 absl::StatusOr<std::vector<Event>> FileTierStore::read(StoryId story, Range range) const
@@ -1873,6 +1947,8 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         std::atomic<StoryId>& story;
         ~Active() { story = 0; }
     } active{compacting_};
+    if(auto stop = hardStop(); !stop.ok())
+        return stop;
     // Files this job created, removed on every abort before the switch. A step hook that stops the job models a
     // crash and leaves them for recovery.
     struct Created
@@ -1926,7 +2002,9 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         return tier_detail::IoError("fsync compaction output");
     // The codec writes by path. A tombstone sweep may have unlinked the temporary while this job waited, and the
     // codec then wrote a new file that this fsync and checksum never covered; stop before linking it.
-    struct stat opened{}, named{};
+    struct stat opened
+    {
+    }, named{};
     if(::fstat(fd.get(), &opened) != 0 || ::stat(temporary.c_str(), &named) != 0 || opened.st_ino != named.st_ino ||
        opened.st_dev != named.st_dev)
     {

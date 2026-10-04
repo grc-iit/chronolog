@@ -464,6 +464,11 @@ void ArchiveService::compactLoop()
         const auto cleanup = store_.retryDeletedFiles();
         if(!cleanup.ok())
             LOG_EVERY_N_SEC(ERROR, 10) << "archive cleanup before compaction failed: " << cleanup;
+        // A reserve below what a manifest compaction and a migration pass need could not drain a full `local`.
+        if(const auto reserve = store_.hardStopReserve())
+            if(const auto bound = store_.hardStopReserveBound(); bound.ok() && reserve < *bound)
+                LOG_EVERY_N_SEC(WARNING, 60) << "hard_stop_reserve_bytes " << reserve << " is below the " << *bound
+                                             << " bytes the manifest and one migration pass need";
         const auto result = store_.compactOnce(compaction_.policy);
         if(!result.ok() && !absl::IsCancelled(result.status()))
             LOG_EVERY_N_SEC(WARNING, 60) << "archive compaction skipped: " << result.status();
