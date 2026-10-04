@@ -347,8 +347,8 @@ codex plugin marketplace add /path/to/ChronoLog && codex plugin add chronolog@ch
 The plugin starts `chronolog run --up default -- chronolog-mcp`, which starts or attaches to the `default` instance
 and holds a lease for the MCP process. Set `CHRONOLOG_MCP_IDENTITY` (a stable agent identity such as `team/planner`)
 and `CHRONOLOG_CHRONICLE` for sessions that write. Closing a session drops its lease and leaves the services running.
-A session that exits without `context_close` leaves its identity slot open: the next session with that identity
-reads normally, and its `context_open` verdict asks it to call `context_reconcile` before writing.
+A session that ends cleanly (stdin EOF, SIGTERM, SIGINT) closes its contexts. Only a server killed with SIGKILL
+leaves the next `context_open` asking for `context_reconcile` before writing.
 
 Clio-coder declares the same server in its user `mcp.yaml`, which lives in the config directory that
 `clio-coder paths` prints (`~/.config/clio-coder/mcp.yaml` by default):
@@ -373,6 +373,9 @@ and a headless turn reaches the tools through Clio's gateway:
 ```sh
 clio-coder run --autonomy yolo --timeout 600 "list the chronolog server's tools, then remember 'hello' in context demo"
 ```
+
+`deploy/demo/clio_memory.sh` runs this end to end against a scratch config: one session remembers three facts, a fresh
+session recalls them, and the script prints `PASS clio-memory` when both agree.
 
 Check both `verdict` and `answer_complete` in a tool result before trusting an answer.
 
