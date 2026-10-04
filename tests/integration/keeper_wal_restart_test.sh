@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keeper crash gate (I5.6, I12 Keeper crash, I12.1): SIGKILL a Keeper whose retained chunks are unsettled,
+# Keeper crash gate (I5.6, I6.8, I12 Keeper crash, I12.1): SIGKILL a Keeper whose retained chunks are unsettled,
 # restart it on the same WAL, and prove replay, HLC resumption and delivery to the archive on a real stack.
 set -eu
 visor=$1 keeper=$2 grapher=$3 player=$4 driver=$5
@@ -79,6 +79,8 @@ done
 grep -q 'archive_transfer_start' "$scratch/keeper.log" || { echo "FAIL no sealed chunk reached the transfer stage"; dump; exit 1; }
 grep -o 'archive_transfer_start chunk=[^ ]*' "$scratch/keeper.log" | sed 's/.*chunk=//' | sort -u > "$out/chunks"
 step frontier "$driver" frontier "$keeper_internal" "$out"
+# I6.8: a complete Read before the kill is the reference for the same Read after the restart.
+step stable-before "$driver" stable-before "$catalog" "$out"
 kill -KILL "${pid_of[keeper]}"
 wait "${pid_of[keeper]}" 2>/dev/null || true
 unset 'pid_of[keeper]'
@@ -88,6 +90,7 @@ step resume "$driver" after "$out"
 step hot "$driver" hot "$keeper_internal" "$out"
 start grapher grapher2 "$grapher" 'grapher ready' || { echo "FAIL grapher restart"; dump; exit 1; }
 step verify "$driver" verify "$catalog" "$keeper_internal" "$out"
+step stable-after "$driver" stable-after "$catalog" "$out"
 while read -r chunk; do
     grep -q "archive_published chunk=$chunk " "$scratch/grapher2.log" || { echo "FAIL chunk $chunk was not resent to the archive"; dump; exit 1; }
 done < "$out/chunks"

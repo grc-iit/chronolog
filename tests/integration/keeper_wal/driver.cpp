@@ -345,6 +345,94 @@ int verify(const char* catalog, const char* keeper, const char* out, const char*
     fail("no complete read: " + why);
 }
 
+// I6.8 across a real Keeper SIGKILL: one complete Read of [0, last) before the kill and the same Read after the
+// restart must hold the same DURABLE events (ids, HLCs, payloads). ACCEPTED events may vanish.
+std::vector<Event> completeRead(const char* catalog, const char* out, const char* what)
+{
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    const auto story = loadStory(out);
+    Hlc last{};
+    for(const auto& row: loadRows(path(out, "events.tsv"))) last = std::max(last, row.hlc);
+    std::string why = "read never opened";
+    const auto deadline = std::chrono::steady_clock::now() + 60s;
+    while(std::chrono::steady_clock::now() < deadline)
+    {
+        auto read = client->read(story, {Hlc{}, last});
+        if(read.ok())
+        {
+            std::vector<Event> events;
+            bool complete = false, errored = false;
+            for(size_t pull = 0; pull < 256; ++pull)
+            {
+                auto item = read->next();
+                if(!item.ok())
+                {
+                    errored = true;
+                    why = std::string(item.status().message());
+                    break;
+                }
+                if(!*item)
+                    break;
+                if((**item).completion)
+                    complete = (**item).completion->complete;
+                for(auto& event: (**item).events) events.push_back(std::move(event));
+            }
+            if(!errored && complete)
+                return events;
+            if(!errored)
+                why = "read was not complete";
+        }
+        else
+            why = std::string(read.status().message());
+        std::this_thread::sleep_for(200ms);
+    }
+    fail(std::string(what) + ": " + why);
+}
+
+struct Stable
+{
+    Hlc hlc;
+    std::string payload;
+    bool operator==(const Stable&) const = default;
+};
+
+int stableBefore(const char* catalog, const char* out)
+{
+    const auto events = completeRead(catalog, out, "no complete read before the kill");
+    std::ofstream lines(path(out, "stable.tsv"));
+    size_t durable_events = 0;
+    for(const auto& event: events)
+        if(event.durability == Durability::Durable)
+        {
+            ++durable_events;
+            lines << event.id.story_id << ' ' << event.id.writer_id << ' ' << event.id.incarnation << ' '
+                  << event.id.sequence << ' ' << event.hlc.physical_ns << ' ' << event.hlc.logical << " 2 2 "
+                  << event.envelope.payload << '\n';
+        }
+    if(!durable_events)
+        fail("the complete read before the kill held no DURABLE event");
+    std::cout << "stable-before durable=" << durable_events << " read=" << events.size() << '\n';
+    return 0;
+}
+
+int stableAfter(const char* catalog, const char* out)
+{
+    std::map<EventId, Stable> before, after;
+    for(const auto& row: loadRows(path(out, "stable.tsv"))) before[row.id] = {row.hlc, row.payload};
+    if(before.empty())
+        fail("no recorded read from before the kill");
+    for(const auto& event: completeRead(catalog, out, "no complete read after the restart"))
+        if(event.durability == Durability::Durable)
+            after[event.id] = {event.hlc, event.envelope.payload};
+    if(before != after)
+        fail("the DURABLE events of a complete read changed across the Keeper crash: before=" +
+             std::to_string(before.size()) + " after=" + std::to_string(after.size()));
+    std::cout << "stable-after durable=" << after.size() << '\n';
+    return 0;
+}
+
 int after(const char* out)
 {
     const auto post = loadHlc(path(out, "post"));
@@ -560,6 +648,10 @@ int main(int argc, char** argv)
         return hot(argv[2], argv[3]);
     if(command == "verify" && (argc == 5 || argc == 6))
         return verify(argv[2], argv[3], argv[4], argc == 6 ? argv[5] : nullptr);
+    if(command == "stable-before" && argc == 4)
+        return stableBefore(argv[2], argv[3]);
+    if(command == "stable-after" && argc == 4)
+        return stableAfter(argv[2], argv[3]);
     if(command == "after" && argc == 3)
         return after(argv[2]);
     std::cerr << "usage: driver write|frontier|append|hot|verify|after ...\n";
