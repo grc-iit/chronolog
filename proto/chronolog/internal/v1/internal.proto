@@ -69,15 +69,16 @@ message ChunkIdentity
 // data is a serialized ChunkPayload sliced into bounded frames; offsets gapless.
 // Every frame repeats identical identity/total_bytes/checksum/algorithm.
 // Unspecified algorithm defaults to CHECKSUM_ALGORITHM_CRC32C via absl/crc/crc32c.h. CHECKSUM_ALGORITHM_CRC32C is
-// exactly four bytes, unsigned big-endian; CHECKSUM_ALGORITHM_SHA256 is 32 bytes. Both cover all
-// concatenated data. final must match byte count and stream EOF.
+// exactly four bytes, unsigned big-endian, and covers all concatenated data. CHECKSUM_ALGORITHM_SHA256 is
+// reserved: no sender implements it and the Grapher refuses it with INVALID_ARGUMENT (W10.4).
+// final must match byte count and stream EOF.
 enum ChecksumAlgorithm
 {
     // Means CHECKSUM_ALGORITHM_CRC32C, never unchecked.
     CHECKSUM_ALGORITHM_UNSPECIFIED = 0;
     // Castagnoli CRC via absl::ComputeCrc32c: four unsigned big-endian bytes.
     CHECKSUM_ALGORITHM_CRC32C = 1;
-    // SHA-256 digest, 32 bytes.
+    // Reserved, not implemented: the Grapher refuses it (W10.4).
     CHECKSUM_ALGORITHM_SHA256 = 2;
 }
 message ChunkFrame
