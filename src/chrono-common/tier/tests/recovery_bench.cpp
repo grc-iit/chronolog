@@ -1,6 +1,8 @@
 #include "tier/FileTierStore.h"
+#include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <vector>
 
 // Prints, never asserts (RFC-I 2.6 (d), I13.17): seeds an archive with one writer's chunk files, times
 // FileTierStore::Open over it, and runs one unpaced scrubber pass that leaves the validated mark.
@@ -39,7 +41,7 @@ int main(int argc, char** argv)
 {
     if(argc < 4)
     {
-        std::cerr << "usage: chronolog_archive_recovery_bench seed|open|scrub <archive-root> <writer> [files]\n";
+        std::cerr << "usage: chronolog_archive_recovery_bench seed|open|scrub <archive-root> <writer> [files] [first file index]\n";
         return 2;
     }
     const std::string mode = argv[1], root = argv[2], writer = argv[3];
@@ -72,13 +74,32 @@ int main(int argc, char** argv)
     }
     if(mode != "seed" || argc < 5)
         return 2;
-    const size_t files = std::stoul(argv[4]);
+    // A first index above zero adds files to an archive an earlier seed left, after whatever pause the caller chose.
+    const size_t files = std::stoul(argv[4]), first = argc > 5 ? std::stoul(argv[5]) : 0;
+    // The median publish of the first and of the last 400 files shows whether a publish costs more as the manifest grows.
+    std::vector<double> each;
+    each.reserve(files);
     for(size_t index = 0; index < files; ++index)
-        if(auto published = (*store)->publish(Make(index)); !published.ok())
+    {
+        const auto chunk = Make(first + index);
+        const auto before = Clock::now();
+        if(auto published = (*store)->publish(chunk); !published.ok())
         {
             std::cerr << published.status() << '\n';
             return 1;
         }
-    std::cout << "seeded files=" << files << " seed_ms=" << Ms(Clock::now() - opened) << '\n';
+        each.push_back(Ms(Clock::now() - before));
+    }
+    const auto median = [&](size_t from, size_t to)
+    {
+        std::vector<double> window(each.begin() + static_cast<std::ptrdiff_t>(from),
+                                   each.begin() + static_cast<std::ptrdiff_t>(to));
+        std::nth_element(window.begin(), window.begin() + static_cast<std::ptrdiff_t>(window.size() / 2), window.end());
+        return window.empty() ? 0.0 : window[window.size() / 2];
+    };
+    const size_t edge = std::min<size_t>(400, files);
+    std::cout << "seeded files=" << files << " seed_ms=" << Ms(Clock::now() - opened)
+              << " first_publish_median_ms=" << median(0, edge)
+              << " last_publish_median_ms=" << median(files - edge, files) << '\n';
     return 0;
 }
