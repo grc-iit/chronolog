@@ -9,7 +9,7 @@
 #include <absl/log/log.h>
 #include "adapter/Convert.h"
 #include "rpc/Channel.h"
-#include "adapter/WorkerPool.h"
+#include "adapter/SubmitCall.h"
 #include "clock/SystemClock.h"
 #include "raft/RaftMetadataStore.h"
 

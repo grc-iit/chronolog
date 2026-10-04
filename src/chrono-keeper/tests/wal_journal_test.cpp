@@ -423,7 +423,7 @@ TEST(WalJournal, SettlingRotatesOnlyWhenTheWholeActiveSegmentCanBeFreed)
 TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)
 {
     WalRig rig;
-    keeper::WorkerPool pool(1, 8);
+    WorkerPool pool(1, 8);
     keeper::JournalService service(*rig.current, pool);
     grpc::ServerBuilder builder;
     int port = 0;

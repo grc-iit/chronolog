@@ -395,7 +395,7 @@ TEST(KeeperChunks, FetchHotReportsEvictedBelow)
     rig.deliver(chunk);
     rig.report(chunk.end);
     rig.archive->releaseTail(1);
-    keeper::WorkerPool pool(1, 8);
+    WorkerPool pool(1, 8);
     keeper::ArchiveService service(*rig.wal.current, rig.membership, pool);
     grpc::ServerBuilder builder;
     chronolog::rpc::applyServerPolicy(builder);

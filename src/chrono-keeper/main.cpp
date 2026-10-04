@@ -27,7 +27,7 @@
 #include "membership/RouteWatcher.h"
 #include "runtime/ClusterClient.h"
 #include "rpc/Channel.h"
-#include "runtime/WorkerPool.h"
+#include "worker/WorkerPool.h"
 
 namespace
 {
@@ -158,7 +158,7 @@ int main(int argc, char** argv)
             },
             config->static_writers.empty());
 
-    keeper::WorkerPool pool(config->effectiveWorkerThreads(), kMaxQueuedRequests);
+    WorkerPool pool(config->effectiveWorkerThreads(), kMaxQueuedRequests);
     keeper::JournalService journal_service(journal, pool);
     keeper::ArchiveService archive_service(journal, *membership, pool);
 

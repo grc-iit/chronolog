@@ -1,7 +1,7 @@
 #include "rpc/Channel.h"
 #include "chrono-grapher/server/ArchiveService.h"
 #include "chrono-grapher/server/GrapherConfig.h"
-#include "chrono-grapher/server/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include <absl/crc/crc32c.h>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>

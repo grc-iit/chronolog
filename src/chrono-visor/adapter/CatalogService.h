@@ -2,7 +2,7 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "chronolog/metadata_store.h"
 #include "chronolog/membership.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"

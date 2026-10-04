@@ -1,6 +1,6 @@
 #include "TestSupport.h"
 #include "adapter/ClusterService.h"
-#include "adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "dynamic/MembershipState.h"
 #include "raft/RaftMetadataStore.h"
 #include "clock/FakeClock.h"

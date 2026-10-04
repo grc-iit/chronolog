@@ -5,11 +5,55 @@
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
+#include <optional>
+#include <utility>
 
 #include "rpc/Channel.h"
 
 namespace chronolog::grapher
 {
+namespace
+{
+template <class Response>
+ClockAuditDecision auditReply(VisorClockAudit& audit,
+                              const VisorClockAudit::Bracket& bracket,
+                              const grpc::Status& status,
+                              const Response& response)
+{
+    std::optional<TimeReading> visor;
+    if(status.ok() && response.has_physical())
+    {
+        const auto& wire = response.physical();
+        visor.emplace();
+        visor->physical_ns = wire.physical_ns();
+        if(wire.has_uncertainty_ns())
+            visor->uncertainty_ns = wire.uncertainty_ns();
+        visor->status = wire.status() == v1::CLOCK_STATUS_SYNCED     ? ClockStatus::Synced
+                        : wire.status() == v1::CLOCK_STATUS_UNSYNCED ? ClockStatus::Unsynced
+                                                                     : ClockStatus::Unavailable;
+    }
+    return audit.record(bracket,
+                        status.ok(),
+                        std::move(visor),
+                        {response.clock_responder().replica_id(), response.clock_responder().instance()});
+}
+} // namespace
+
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::RegisterResponse& response)
+{
+    return auditReply(audit, bracket, status, response);
+}
+
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::HeartbeatResponse& response)
+{
+    return auditReply(audit, bracket, status, response);
+}
 
 void runClusterWorker(std::stop_token stop,
                       internal::v1::Cluster::StubInterface& stub,
@@ -36,11 +80,11 @@ void runClusterWorker(std::stop_token stop,
             internal::v1::RegisterResponse response;
             const auto bracket = audit.begin();
             const auto status = stub.Register(&context, request, &response);
-            audit.finish(bracket, status, response);
+            auditVisorReply(audit, bracket, status, response);
             registered = status.ok() && response.status().code() == 0;
             if(registered)
             {
-                audit.retain(response.visor_replicas());
+                audit.retain({response.visor_replicas().begin(), response.visor_replicas().end()});
                 LOG(INFO) << "grapher registered "
                           << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
                                                                                    options.process_start)
@@ -71,7 +115,7 @@ void runClusterWorker(std::stop_token stop,
             internal::v1::HeartbeatResponse response;
             const auto bracket = audit.begin();
             const auto status = stub.Heartbeat(&context, request, &response);
-            audit.finish(bracket, status, response);
+            auditVisorReply(audit, bracket, status, response);
             registered = status.ok() && response.status().code() == 0;
             if(!registered && !stop.stop_requested())
                 LOG_EVERY_N_SEC(WARNING, 5) << "grapher heartbeat failed";

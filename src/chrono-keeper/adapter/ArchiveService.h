@@ -6,7 +6,7 @@
 #include "chronolog/membership.h"
 #include "chronolog/message_limits.h"
 #include "journal/RamJournal.h"
-#include "runtime/WorkerPool.h"
+#include "worker/WorkerPool.h"
 
 namespace chronolog::keeper
 {

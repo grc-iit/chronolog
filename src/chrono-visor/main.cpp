@@ -26,7 +26,7 @@
 #include "VisorConfig.h"
 #include "adapter/CatalogService.h"
 #include "adapter/ClusterService.h"
-#include "adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "catalog/AcquisitionFeed.h"
 #include "catalog/SqliteMetadataStore.h"
 #include "raft/RaftMetadataStore.h"
@@ -189,7 +189,7 @@ int main(int argc, char** argv)
     chronolog::visor::AcquisitionFeed feed;
     ledger.setObserver(&feed);
 
-    chronolog::visor::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
+    chronolog::WorkerPool pool(config->worker_threads, kMaxQueuedRequests);
     chronolog::visor::CatalogService catalog(catalog_store, pool, raft, &membership);
     chronolog::KernelClock clock;
     chronolog::visor::ClusterService cluster(membership,
