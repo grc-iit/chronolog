@@ -39,6 +39,19 @@ DurableState::DurableState(const std::string& path, RaftConfig config)
     sql("INSERT INTO bounds SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM bounds)");
 }
 DurableState::~DurableState() { sqlite3_close(db_); }
+std::string DurableState::pragmaValue(const std::string& name) const
+{
+    std::lock_guard lock(mutex_);
+    sqlite3_stmt* statement = nullptr;
+    if(sqlite3_prepare_v2(db_, ("PRAGMA " + name).c_str(), -1, &statement, nullptr) != SQLITE_OK)
+        throw std::runtime_error(sqlite3_errmsg(db_));
+    std::string value;
+    if(sqlite3_step(statement) == SQLITE_ROW)
+        if(const auto* text = sqlite3_column_text(statement, 0))
+            value = reinterpret_cast<const char*>(text);
+    sqlite3_finalize(statement);
+    return value;
+}
 void DurableState::sql(const std::string& query) const
 {
     if(sqlite3_exec(db_, query.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)

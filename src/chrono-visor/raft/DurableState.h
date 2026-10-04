@@ -34,6 +34,8 @@ public:
     void system_exit(int code) override;
     nuraft::ptr<nuraft::buffer> get(const std::string& key) const;
     void put(const std::string& key, const nuraft::buffer& value);
+    // The value this store's own connection reports for a PRAGMA; `synchronous` is per connection.
+    std::string pragmaValue(const std::string& name) const;
 
 private:
     void sql(const std::string& query) const;

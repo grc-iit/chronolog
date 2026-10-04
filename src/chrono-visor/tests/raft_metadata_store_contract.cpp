@@ -273,6 +273,16 @@ TEST(RaftStorageTest, PolicyDowngradeHistorySurvivesReplayAndSnapshot)
     EXPECT_EQ((*opened)->membershipRouteChanges(cursor)->SerializeAsString(), expected);
 }
 
+// The Raft log and state are durable only with an fsync per commit: WAL journal and synchronous=FULL on the
+// store's own connection (audit C2).
+TEST(RaftStorageTest, DurableStateJournalIsWalAndSynchronousIsFull)
+{
+    testing::TempDir dir;
+    DurableState log((dir.path() / "raft").string(), RaftConfig{});
+    EXPECT_EQ(log.pragmaValue("journal_mode"), "wal");
+    EXPECT_EQ(log.pragmaValue("synchronous"), "2");
+}
+
 TEST(RaftStorageTest, DurableLogTruncationPackingAndCompactionSurviveReopen)
 {
     testing::TempDir dir;
