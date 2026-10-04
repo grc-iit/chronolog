@@ -302,7 +302,7 @@ def configure(stack):
                     seal_interval_ms=100, archive_visibility_delay_secs=1, watermark_resend_timeout_secs=1,
                     shutdown_confirm_timeout_secs=1, worker_threads=4, heartbeat_interval_ms=100,
                     append_ceiling_wait_ms=100, retention_cap_mb=32, wal_max_bytes=67108864,
-                    wal_segment_bytes=8388608, **liveness_timeouts))
+                    wal_segment_bytes=8388608))
     for i, endpoint in enumerate(graphers):
         role = 'grapher-' + ('a' if i == 0 else 'b')
         stack.write(role, 'dragon' if i == 0 else 'blade', dict(process_id=role, manifest_writer=role,
