@@ -28,6 +28,7 @@ namespace
 using namespace std::chrono_literals;
 using testing::twoKeeperTopology;
 
+constexpr int kInvalidArgument = 3;
 constexpr int kNotFound = 5;
 constexpr int kAlreadyExists = 6;
 constexpr int kFailedPrecondition = 9;
@@ -284,6 +285,143 @@ TEST_F(catalog_adapter, ListsAndEpochCompareAndSet)
     EXPECT_EQ(epoch.epoch(), 2u);
     EXPECT_TRUE(call(&v1::Catalog::Stub::CompareAndSetEpoch, cas, &epoch).ok());
     EXPECT_EQ(epoch.status().code(), kFailedPrecondition);
+}
+
+TEST_F(catalog_adapter, NameRulesAndPropertiesAreItemResultsAndRoundTrip)
+{
+    auto createChronicle = [&](const std::string& name)
+    {
+        v1::CreateChronicleRequest request;
+        request.set_name(name);
+        v1::CreateChronicleResponse response;
+        EXPECT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, request, &response).ok()) << name;
+        return response;
+    };
+    auto createStory = [&](const std::string& name, v1::CreateStoryRequest request = {})
+    {
+        request.set_chronicle("c");
+        request.set_name(name);
+        v1::CreateStoryResponse response;
+        EXPECT_TRUE(call(&v1::Catalog::Stub::CreateStory, request, &response).ok()) << name;
+        return response;
+    };
+    for(const char* bad: {"a/b", "@x", "/a"}) EXPECT_EQ(createChronicle(bad).status().code(), kInvalidArgument) << bad;
+    ASSERT_EQ(createChronicle("c").status().code(), 0);
+    for(const char* bad: {"/x", "x/", "x//y", "@x", "x/@y"})
+        EXPECT_EQ(createStory(bad).status().code(), kInvalidArgument) << bad;
+
+    v1::CreateStoryRequest properties;
+    properties.set_tier_policy("cold");
+    properties.set_retention_ns(7'000'000'000);
+    properties.set_granularity(v1::GRANULARITY_US);
+    const auto kept = createStory("a/b", properties);
+    ASSERT_EQ(kept.status().code(), 0);
+    EXPECT_EQ(kept.story().tier_policy(), "cold");
+    EXPECT_EQ(kept.story().retention_ns(), 7'000'000'000);
+    EXPECT_EQ(kept.story().granularity(), v1::GRANULARITY_US);
+    v1::CreateStoryRequest negative;
+    negative.set_retention_ns(-1);
+    EXPECT_EQ(createStory("neg", negative).status().code(), kInvalidArgument);
+    v1::CreateStoryRequest zero;
+    zero.set_retention_ns(0);
+    const auto none = createStory("none", zero);
+    ASSERT_EQ(none.status().code(), 0);
+    EXPECT_FALSE(none.story().has_tier_policy());
+    EXPECT_FALSE(none.story().has_retention_ns());
+    EXPECT_EQ(none.story().granularity(), v1::GRANULARITY_UNSPECIFIED);
+
+    v1::GetStoryRequest get;
+    get.set_story_id(kept.story().story_id());
+    v1::GetStoryResponse fetched;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::GetStory, get, &fetched).ok());
+    EXPECT_EQ(fetched.story().tier_policy(), "cold");
+    EXPECT_EQ(fetched.story().granularity(), v1::GRANULARITY_US);
+
+    v1::CreateChronicleRequest chronicle;
+    chronicle.set_name("p");
+    chronicle.set_retention_ns(9);
+    chronicle.set_granularity(v1::GRANULARITY_S);
+    v1::CreateChronicleResponse created;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, chronicle, &created).ok());
+    EXPECT_EQ(created.chronicle().retention_ns(), 9);
+    v1::ListChroniclesResponse listed;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::ListChronicles, v1::ListChroniclesRequest(), &listed).ok());
+    ASSERT_EQ(listed.chronicles_size(), 2);
+    EXPECT_FALSE(listed.chronicles(0).has_retention_ns());
+    EXPECT_EQ(listed.chronicles(1).retention_ns(), 9);
+    EXPECT_EQ(listed.chronicles(1).granularity(), v1::GRANULARITY_S);
+}
+
+TEST_F(catalog_adapter, ListStoriesByPrefixReturnsOneRevisionAndRefusesOverLimit)
+{
+    v1::CreateChronicleRequest chronicle;
+    chronicle.set_name("c");
+    v1::CreateChronicleResponse created_chronicle;
+    ASSERT_TRUE(call(&v1::Catalog::Stub::CreateChronicle, chronicle, &created_chronicle).ok());
+    std::set<StoryId> expected;
+    for(const char* name: {"a", "a/b", "ab"})
+    {
+        v1::CreateStoryRequest story;
+        story.set_chronicle("c");
+        story.set_name(name);
+        story.set_tier_policy(name);
+        v1::CreateStoryResponse created;
+        ASSERT_TRUE(call(&v1::Catalog::Stub::CreateStory, story, &created).ok());
+        ASSERT_EQ(created.status().code(), 0);
+        if(std::string(name) != "ab")
+            expected.insert(created.story().story_id());
+    }
+    auto list = [&](const std::string& prefix, uint32_t limit)
+    {
+        v1::ListStoriesByPrefixRequest request;
+        request.set_prefix(prefix);
+        request.set_limit(limit);
+        v1::ListStoriesByPrefixResponse response;
+        const auto status = call(&v1::Catalog::Stub::ListStoriesByPrefix, request, &response);
+        return std::make_pair(status, response);
+    };
+
+    const auto [status, response] = list("c/a", 10);
+    ASSERT_TRUE(status.ok());
+    EXPECT_EQ(response.status().code(), 0);
+    EXPECT_FALSE(response.limit_exceeded());
+    std::set<StoryId> got;
+    for(const auto& story: response.stories())
+    {
+        got.insert(story.story_id());
+        EXPECT_FALSE(story.tombstoned());
+        EXPECT_TRUE(story.has_route());
+        EXPECT_EQ(story.tier_policy(), story.name());
+    }
+    EXPECT_EQ(got, expected);
+
+    // Over the limit: none returned and the flag set, still an OK RPC at a revision.
+    const auto [over_status, over] = list("c/a", 1);
+    ASSERT_TRUE(over_status.ok());
+    EXPECT_TRUE(over.limit_exceeded());
+    EXPECT_EQ(over.stories_size(), 0);
+    const auto [empty_status, empty] = list("c/none", 1);
+    ASSERT_TRUE(empty_status.ok());
+    EXPECT_FALSE(empty.limit_exceeded());
+    EXPECT_EQ(empty.stories_size(), 0);
+
+    // The revision is the Catalog counter: an Acquire and Release advance it.
+    const StoryId story = *expected.begin();
+    const auto acquired = acquire(story, "writer");
+    ASSERT_EQ(acquired.status().code(), 0);
+    ASSERT_EQ(release(acquired).status().code(), 0);
+    const auto [later_status, later] = list("c/a", 10);
+    ASSERT_TRUE(later_status.ok());
+    EXPECT_GT(later.revision(), response.revision());
+
+    // Malformed requests fail the whole request.
+    for(const auto& [prefix, limit]: std::vector<std::pair<std::string, uint32_t>>{{"", 10},
+                                                                                   {"/c", 10},
+                                                                                   {"c/", 10},
+                                                                                   {"c//a", 10},
+                                                                                   {"c", 0},
+                                                                                   {"c", 65537}})
+        EXPECT_EQ(list(prefix, limit).first.error_code(), grpc::StatusCode::INVALID_ARGUMENT) << prefix << limit;
 }
 
 TEST_F(catalog_adapter, ConcurrentAcquiresGetDistinctWriterIds)

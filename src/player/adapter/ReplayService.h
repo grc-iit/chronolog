@@ -27,7 +27,7 @@ public:
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
-    tail(StoryId story, Event position, const EventPredicate& predicate = {}) const;
+    tail(StoryId story, Event position, const EventPredicate& predicate = {}, bool progress = false) const;
 
     // Drains: refuses new calls and cancels open streams, so tails finish with a
     // complete=false Completion.

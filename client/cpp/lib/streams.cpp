@@ -31,6 +31,8 @@ absl::StatusOr<StreamItem> decode(const Response& response, detail::State& state
 }
 bool after(const Event& event, const Position& p)
 {
+    if(p.id == EventId{} || (p.id.writer_id == 0 && p.id.incarnation == 0 && p.id.sequence == 0))
+        return event.hlc >= p.hlc;
     Event previous;
     previous.hlc = p.hlc;
     previous.id = p.id;
@@ -264,9 +266,11 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
         {
             v1::TailRequest request;
             request.set_story_id(story);
+            request.set_progress(true);
             auto p = position.value_or(Position{{}, {story, 0, 0, 0}});
             detail::encode(p.hlc, request.mutable_from()->mutable_hlc());
-            detail::encode(p.id, request.mutable_from()->mutable_id());
+            if(p.id != EventId{})
+                detail::encode(p.id, request.mutable_from()->mutable_id());
             stream = replay->Tail(context.get(), request);
         }
         v1::TailResponse response;
@@ -289,6 +293,14 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
                 return status;
             }
             backoff(std::min(end, std::chrono::system_clock::now() + state->options.retry.backoff));
+            continue;
+        }
+        if(response.has_progress())
+        {
+            const auto& progress = response.progress().position();
+            const Hlc frontier = detail::decode(progress.hlc());
+            if(!position || frontier > position->hlc)
+                position = Position{frontier, {}};
             continue;
         }
         auto item = client::decode(response, *state);

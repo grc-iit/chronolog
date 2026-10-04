@@ -34,7 +34,21 @@ void requireStorage(const absl::Status& s)
     if(s.code() == absl::StatusCode::kUnavailable || s.code() == absl::StatusCode::kInternal)
         throw std::runtime_error(std::string(s.message()));
 }
-Story story(const v1::Story& s) { return {s.story_id(), s.chronicle(), s.name(), s.epoch(), s.tombstoned()}; }
+Story story(const v1::Story& s)
+{
+    return {s.story_id(), s.chronicle(), s.name(), s.epoch(), s.tombstoned(), convert::propertiesOf(s)};
+}
+std::string createStory(SqliteMetadataStore& store, const v1::CreateStoryRequest& q, bool at_floor)
+{
+    v1::CreateStoryResponse r;
+    auto value = at_floor ? store.createStoryAtFloor(q.chronicle(), q.name(), convert::propertiesOf(q))
+                          : store.createStory(q.chronicle(), q.name(), convert::propertiesOf(q));
+    requireStorage(value.status());
+    *r.mutable_status() = convert::toProto(value.status());
+    if(value.ok())
+        *r.mutable_story() = convert::toProto(*value);
+    return r.SerializeAsString();
+}
 std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogCommand& c)
 {
     switch(c.mutation_case())
@@ -45,7 +59,7 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
         {
             const auto& q = c.create_chronicle();
             v1::CreateChronicleResponse r;
-            auto value = store.createChronicle(q.name());
+            auto value = store.createChronicle(q.name(), convert::propertiesOf(q));
             requireStorage(value.status());
             *r.mutable_status() = convert::toProto(value.status());
             if(value.ok())
@@ -62,18 +76,9 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
             return r.SerializeAsString();
         }
         case internal::v1::CatalogCommand::kCreateStory:
-        {
-            const auto& q = c.create_story();
-            v1::CreateStoryResponse r;
-            auto value = store.createStory(q.chronicle(), q.name());
-            requireStorage(value.status());
-            *r.mutable_status() = convert::toProto(value.status());
-            if(value.ok())
-            {
-                *r.mutable_story() = convert::toProto(*value);
-            }
-            return r.SerializeAsString();
-        }
+            return createStory(store, c.create_story(), false);
+        case internal::v1::CatalogCommand::kCreateStoryWithFloor:
+            return createStory(store, c.create_story_with_floor().request(), true);
         case internal::v1::CatalogCommand::kDestroyStory:
         {
             const auto& q = c.destroy_story();
@@ -589,11 +594,12 @@ absl::StatusOr<AcquisitionSnapshot> RaftMetadataStore::snapshotAcquisitions() co
     return store_->snapshotAcquisitions();
 }
 void RaftMetadataStore::setObserver(AcquisitionObserver* observer) { store_->setObserver(observer); }
-absl::StatusOr<Chronicle> RaftMetadataStore::createChronicle(std::string name)
+absl::StatusOr<Chronicle> RaftMetadataStore::createChronicle(std::string name, Properties properties)
 {
     internal::v1::CatalogCommand c;
     auto* q = c.mutable_create_chronicle();
     q->set_name(name);
+    convert::setProperties(properties, q);
     auto result = propose(c);
     if(!result.ok())
         return result.status();
@@ -603,7 +609,7 @@ absl::StatusOr<Chronicle> RaftMetadataStore::createChronicle(std::string name)
     auto st = status(r.status());
     if(!st.ok())
         return st;
-    return Chronicle{r.chronicle().name(), r.chronicle().tombstoned()};
+    return Chronicle{r.chronicle().name(), r.chronicle().tombstoned(), convert::propertiesOf(r.chronicle())};
 }
 absl::Status RaftMetadataStore::destroyChronicle(std::string name)
 {
@@ -637,12 +643,13 @@ absl::Status RaftMetadataStore::destroyChronicle(std::string name)
         return absl::InternalError("invalid apply response");
     return status(r.status());
 }
-absl::StatusOr<Story> RaftMetadataStore::createStory(std::string chronicle, std::string name)
+absl::StatusOr<Story> RaftMetadataStore::createStory(std::string chronicle, std::string name, Properties properties)
 {
     internal::v1::CatalogCommand c;
-    auto* q = c.mutable_create_story();
+    auto* q = c.mutable_create_story_with_floor()->mutable_request();
     q->set_chronicle(chronicle);
     q->set_name(name);
+    convert::setProperties(properties, q);
     auto result = propose(c);
     if(!result.ok())
         return result.status();
@@ -916,6 +923,16 @@ absl::StatusOr<std::vector<Story>> RaftMetadataStore::listStories(std::string ch
         return absl::UnavailableError("no leader lease");
     auto term = server_->get_term();
     auto result = store_->listStories(chronicle);
+    if(!leaderLease() || term != server_->get_term())
+        return absl::UnavailableError("leader lease expired during read");
+    return result;
+}
+absl::StatusOr<StoriesByPrefix> RaftMetadataStore::listStoriesByPrefix(std::string prefix, uint32_t limit) const
+{
+    if(!leaderLease())
+        return absl::UnavailableError("no leader lease");
+    auto term = server_->get_term();
+    auto result = store_->listStoriesByPrefix(std::move(prefix), limit);
     if(!leaderLease() || term != server_->get_term())
         return absl::UnavailableError("leader lease expired during read");
     return result;

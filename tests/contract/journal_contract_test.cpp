@@ -57,6 +57,8 @@ struct JournalHarness
     // Inspect durable segment identities without changing WAL state.
     std::function<std::set<std::string>()> walSegments;
     std::function<void(Hlc, int64_t)> enableDynamic;
+    // Dynamic mode with a ceiling and no Route applied yet, as a Keeper is before the first RouteUpdate of a story.
+    std::function<void(Hlc, int64_t)> enableDynamicBeforeRoute;
     std::function<void(Hlc, int64_t)> extendCeiling;
     std::function<bool()> ceilingWaiting;
     std::function<void(RouteState, bool, uint64_t)> applyRoute;
@@ -1549,6 +1551,33 @@ TEST_P(JournalContract, NewMemberAcceptanceClockCoversTheStoryPhysicalFloor)
     ASSERT_TRUE(result->front().status.ok()) << result->front().status;
     EXPECT_GE(h->acceptanceClock(), added.physical_floor);
     EXPECT_GT(result->front().hlc, added.ordering_cut);
+}
+TEST_P(JournalContract, NewStoryObservesTheCreationFloorBeforeItsFirstAppend)
+{
+    const Hlc floor_c{5'000'000'000, 0};
+    const int64_t floor_p = 4'000'000'000;
+    h->enableDynamicBeforeRoute(floor_c, 100'000'000'000);
+    RouteState first;
+    first.route = {1, {{"self", "self:1"}}, "grapher:1", "player:1"};
+    first.ordering_cut = floor_c;
+    first.physical_floor = floor_p;
+    h->applyRoute(first, true, 11);
+    auto result = h->sut->append(Batch({Item()}, 1), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+    h->setPhysical(2'000'000'000);
+    result = h->sut->append(Batch({Item()}, 1), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(absl::IsUnavailable(result->front().status));
+    EXPECT_GE(h->acceptanceClock(), floor_p);
+    EXPECT_EQ(eventCount(), 0u);
+    h->extendCeiling({6'000'000'000, 0}, 100'000'000'000);
+    auto item = Item();
+    item.physical.physical_ns = floor_p;
+    result = h->sut->append(Batch({item}, 1), Durability::Accepted);
+    ASSERT_TRUE(result.ok());
+    ASSERT_TRUE(result->front().status.ok()) << result->front().status;
+    EXPECT_GT(result->front().hlc, floor_c);
 }
 TEST_P(JournalContract, UnlistedKeeperRejectsAppend)
 {

@@ -34,15 +34,17 @@ size_t InMemoryMetadataStore::findChronicle(const std::string& name) const
     return found;
 }
 
-absl::StatusOr<Chronicle> InMemoryMetadataStore::createChronicle(std::string name)
+absl::StatusOr<Chronicle> InMemoryMetadataStore::createChronicle(std::string name, Properties properties)
 {
-    if(!validName(name))
+    if(!validNewChronicleName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
+    if(auto checked = checkProperties(properties); !checked.ok())
+        return checked;
     std::lock_guard lock(mutex_);
     const size_t existing = findChronicle(name);
     if(existing != kNoChronicle && !chronicles_[existing].tombstoned)
         return absl::AlreadyExistsError("chronicle exists");
-    chronicles_.push_back(Chronicle{std::move(name), false});
+    chronicles_.push_back(Chronicle{std::move(name), false, std::move(properties)});
     return chronicles_.back();
 }
 
@@ -175,10 +177,12 @@ absl::Status InMemoryMetadataStore::destroy(const std::vector<StoryId>& stories,
     return absl::OkStatus();
 }
 
-absl::StatusOr<Story> InMemoryMetadataStore::createStory(std::string chronicle, std::string name)
+absl::StatusOr<Story> InMemoryMetadataStore::createStory(std::string chronicle, std::string name, Properties properties)
 {
-    if(!validName(chronicle) || !validName(name))
+    if(!validName(chronicle) || !validNewStoryName(name))
         return absl::InvalidArgumentError("invalid chronicle or story name");
+    if(auto checked = checkProperties(properties); !checked.ok())
+        return checked;
     std::lock_guard lock(mutex_);
     const size_t parent = findChronicle(chronicle);
     if(parent == kNoChronicle)
@@ -188,7 +192,7 @@ absl::StatusOr<Story> InMemoryMetadataStore::createStory(std::string chronicle, 
     for(const auto& [id, story]: stories_)
         if(parent_.at(id) == parent && story.name == name && !story.tombstoned)
             return absl::AlreadyExistsError("story exists");
-    Story created{++last_story_id_, std::move(chronicle), std::move(name), kInitialEpoch, false};
+    Story created{++last_story_id_, std::move(chronicle), std::move(name), kInitialEpoch, false, std::move(properties)};
     stories_.emplace(created.id, created);
     parent_.emplace(created.id, parent);
     return created;
@@ -215,6 +219,28 @@ absl::StatusOr<std::vector<Story>> InMemoryMetadataStore::listStories(std::strin
     for(const auto& [id, story]: stories_)
         if(parent_.at(id) == parent)
             out.push_back(story);
+    return out;
+}
+
+absl::StatusOr<StoriesByPrefix> InMemoryMetadataStore::listStoriesByPrefix(std::string prefix, uint32_t limit) const
+{
+    if(!validPrefix(prefix) || limit < 1 || limit > 65536)
+        return absl::InvalidArgumentError("invalid prefix or limit");
+    std::lock_guard lock(mutex_);
+    StoriesByPrefix out;
+    out.revision = revision_;
+    for(const auto& [id, story]: stories_)
+    {
+        if(story.tombstoned || !underPrefix(story.chronicle, story.name, prefix))
+            continue;
+        if(out.stories.size() == limit)
+        {
+            out.limit_exceeded = true;
+            out.stories.clear();
+            break;
+        }
+        out.stories.push_back(story);
+    }
     return out;
 }
 

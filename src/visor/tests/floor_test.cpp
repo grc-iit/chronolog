@@ -8,6 +8,7 @@
 #include <chrono>
 #include <map>
 #include <optional>
+#include <set>
 #include <thread>
 #include <string_view>
 #include <sys/socket.h>
@@ -139,6 +140,57 @@ protected:
         wire::MembershipCommand q;
         (abandon ? q.mutable_abandon() : q.mutable_drain())->set_process_id(id);
         ASSERT_EQ(call<wire::MembershipResponse>(q).status().code(), 0);
+    }
+    wire::ExtendCeilingResponse extend(const std::string& id, int64_t wanted, int64_t realtime)
+    {
+        wire::MembershipCommand q;
+        auto* e = q.mutable_extend();
+        e->set_process_id(id);
+        e->set_instance(id);
+        e->set_applied_route_revision(10000);
+        e->set_realtime_ns(realtime);
+        e->mutable_wanted_hlc()->set_physical_ns(wanted);
+        auto granted = call<wire::ExtendCeilingResponse>(q);
+        EXPECT_EQ(granted.status().code(), 0);
+        return granted;
+    }
+    // The createStory command the Raft store proposes in dynamic mode; it never carries the floor (I6.16).
+    static wire::CatalogCommand storyProposal(const std::string& name)
+    {
+        wire::CatalogCommand c;
+        auto* q = c.mutable_create_story_with_floor()->mutable_request();
+        q->set_chronicle("c");
+        q->set_name(name);
+        return c;
+    }
+    absl::StatusOr<StoryId> commit(const wire::CatalogCommand& proposal)
+    {
+        if(raft)
+        {
+            auto result = raft->propose(proposal);
+            if(!result.ok())
+                return result.status();
+            v1::CreateStoryResponse response;
+            if(!response.ParseFromString(*result))
+                return absl::InternalError("bad response");
+            if(response.status().code())
+                return absl::Status(static_cast<absl::StatusCode>(response.status().code()),
+                                    response.status().message());
+            return response.story().story_id();
+        }
+        const auto& q = proposal.create_story_with_floor().request();
+        absl::StatusOr<Story> story = absl::InternalError("not applied");
+        auto result = applied->applyRaft(applied->appliedIndex().value_or(0) + 1,
+                                         [&]
+                                         {
+                                             story = applied->createStoryAtFloor(q.chronicle(), q.name(), {});
+                                             return std::string();
+                                         });
+        if(!result.ok())
+            return result.status();
+        if(!story.ok())
+            return story.status();
+        return story->id;
     }
 };
 #include "membership_floor_contract_test.inc"

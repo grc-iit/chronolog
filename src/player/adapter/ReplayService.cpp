@@ -1,6 +1,7 @@
 #include "player/adapter/ReplayService.h"
 #include <condition_variable>
 #include <thread>
+#include <type_traits>
 #include "player/adapter/Convert.h"
 #include "player/replay/HotReplay.h"
 
@@ -138,6 +139,18 @@ private:
             if(!write())
                 return false;
         }
+        if constexpr(std::is_same_v<Resp, v1::TailResponse>)
+        {
+            auto* tail = dynamic_cast<ProgressReplayStream*>(stream_.get());
+            if(tail)
+                if(auto progress = tail->progress())
+                {
+                    response_.Clear();
+                    *response_.mutable_progress()->mutable_position()->mutable_hlc() = convert::toProto(*progress);
+                    if(!write())
+                        return false;
+                }
+        }
         if(batch.completion)
         {
             *response_.mutable_completion() = convert::toProto(*batch.completion);
@@ -243,10 +256,10 @@ ReplayService::read(StoryId story, Range range, size_t max_events, const EventPr
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>>
-ReplayService::tail(StoryId story, Event position, const EventPredicate& predicate) const
+ReplayService::tail(StoryId story, Event position, const EventPredicate& predicate, bool progress) const
 {
     if(const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get()))
-        return bounded->tail(story, std::move(position), predicate);
+        return bounded->tail(story, std::move(position), predicate, progress);
     if(!predicate.empty())
         return absl::UnimplementedError("replay does not support predicates");
     return replay_->tail(story, std::move(position));
@@ -278,9 +291,10 @@ grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackSe
     auto predicate = convert::fromProto(request->predicate());
     if(auto valid = predicate.validate(); !valid.ok())
         return new FailedReactor<v1::TailResponse>(convert::toGrpc(valid));
-    return open<v1::TailResponse>(story,
-                                  [this, story, position = *position, predicate = std::move(predicate)]
-                                  { return tail(story, position, predicate); });
+    return open<v1::TailResponse>(
+            story,
+            [this, story, position = *position, predicate = std::move(predicate), progress = request->progress()]
+            { return tail(story, position, predicate, progress); });
 }
 
 } // namespace chronolog::player

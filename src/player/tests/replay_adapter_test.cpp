@@ -783,6 +783,44 @@ TEST_F(replay_adapter, TailWithoutPositionIsInvalidArgument)
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::INVALID_ARGUMENT);
 }
 
+TEST_F(replay_adapter, TailProgressCarriesAnIdlessPositionAndResumesAtTheFrontier)
+{
+    auto request = tailFrom(protoEvent(4, 3, 160));
+    request.set_progress(true);
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), request);
+    v1::TailResponse response;
+    ASSERT_TRUE(reader->Read(&response));
+    ASSERT_TRUE(response.has_progress());
+    EXPECT_EQ(response.progress().position().hlc().physical_ns(), 200);
+    EXPECT_FALSE(response.progress().position().has_id());
+    *request.mutable_from() = response.progress().position();
+    ctx->TryCancel();
+    while(reader->Read(&response)) {}
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);
+    a_.add(protoEvent(2, 4, 200));
+    b_.add(protoEvent(4, 4, 200));
+    a_.seal(300);
+    b_.seal(300);
+    for(bool zero_id: {false, true})
+    {
+        if(zero_id)
+            request.mutable_from()->mutable_id();
+        auto reconnect = context();
+        auto resumed = stub_->Tail(reconnect.get(), request);
+        ASSERT_TRUE(resumed->Read(&response));
+        ASSERT_TRUE(response.has_batch());
+        ASSERT_EQ(response.batch().events_size(), 2);
+        EXPECT_EQ(response.batch().events(0).id().writer_id(), 2u);
+        EXPECT_EQ(response.batch().events(1).id().writer_id(), 4u);
+        EXPECT_EQ(response.batch().events(0).hlc().physical_ns(), 200);
+        EXPECT_EQ(response.batch().events(1).hlc().physical_ns(), 200);
+        reconnect->TryCancel();
+        while(resumed->Read(&response)) {}
+        EXPECT_EQ(resumed->Finish().error_code(), grpc::StatusCode::CANCELLED);
+    }
+}
+
 TEST_F(replay_adapter, TailResumesExclusivelyAndFollowsNewEvents)
 {
     auto ctx = context();

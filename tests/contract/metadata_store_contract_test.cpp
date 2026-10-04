@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <map>
 #include <optional>
 // Reusable suite: include this .cpp in the implementation instantiation TU,
 // provide the documented fresh harness factory, then INSTANTIATE_TEST_SUITE_P.
@@ -791,5 +792,185 @@ TEST_P(MetadataStoreContract, StaticDestroyRequiresConfirmedSupersessionFence)
     EXPECT_EQ(causeOf(*h, *first), AcquisitionTerminationCause::Superseded);
     EXPECT_EQ(causeOf(*h, *second), AcquisitionTerminationCause::Released);
 }
+namespace
+{
+std::vector<std::string> pathsUnder(MetadataStore& store, const std::string& prefix, uint32_t limit = 100)
+{
+    auto listed = store.listStoriesByPrefix(prefix, limit);
+    std::vector<std::string> paths;
+    if(!listed.ok())
+        return {"<" + std::string(listed.status().message()) + ">"};
+    for(const auto& story: listed->stories) paths.push_back(story.chronicle + "/" + story.name);
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+} // namespace
+
+TEST_P(MetadataStoreContract, NameRulesMakeStoryPathsUnique)
+{
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle("a/b").status()));
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle("/a").status()));
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle("a/").status()));
+    for(const char* bad: {"/x", "x/", "x//y", "/", "//"})
+        EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createStory("c", bad).status())) << bad;
+    ASSERT_TRUE(h->sut->createChronicle("a").ok());
+    ASSERT_TRUE(h->sut->createChronicle("ab").ok());
+    auto nested = h->sut->createStory("a", "b/c");
+    ASSERT_TRUE(nested.ok()) << nested.status();
+    ASSERT_TRUE(h->sut->createStory("ab", "c").ok());
+    EXPECT_TRUE(absl::IsAlreadyExists(h->sut->createStory("a", "b/c").status()));
+    // The first segment of a path is always the chronicle, so each path names one story.
+    EXPECT_EQ(pathsUnder(*h->sut, "a/b/c"), (std::vector<std::string>{"a/b/c"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "ab/c"), (std::vector<std::string>{"ab/c"}));
+    // Refusals create nothing, and "c/s" from SetUp is untouched.
+    auto stories = h->sut->listStories("c");
+    ASSERT_TRUE(stories.ok());
+    EXPECT_EQ(stories->size(), 1u);
+    EXPECT_EQ(h->sut->listChronicles()->size(), 3u);
+}
+
+TEST_P(MetadataStoreContract, ReservedSegmentsAreRefused)
+{
+    for(const char* bad: {"@x", "@"})
+        EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle(bad).status())) << bad;
+    for(const char* bad: {"@x", "x/@y", "@x/y", "x/y/@"})
+        EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createStory("c", bad).status())) << bad;
+    // An `@` anywhere but the start of a segment is an ordinary character.
+    ASSERT_TRUE(h->sut->createChronicle("a@b").ok());
+    ASSERT_TRUE(h->sut->createStory("c", "x@").ok());
+    ASSERT_TRUE(h->sut->createStory("c", "x/y@z").ok());
+    EXPECT_EQ(h->sut->listStories("c")->size(), 3u);
+    EXPECT_EQ(h->sut->listChronicles()->size(), 2u);
+    // A prefix may name a reserved segment: it is not refused as malformed, it simply matches nothing.
+    EXPECT_EQ(pathsUnder(*h->sut, "c/@x"), (std::vector<std::string>{}));
+}
+
+TEST_P(MetadataStoreContract, ChronicleAndStoryPropertiesAreStoredAndInert)
+{
+    Properties full;
+    full.tier_policy = "archive-after-7d";
+    full.retention_ns = 5'000'000'000;
+    full.granularity = Granularity::Ms;
+    Properties zero_retention;
+    zero_retention.retention_ns = 0;
+    Properties negative;
+    negative.retention_ns = -1;
+    Properties unknown_granularity;
+    unknown_granularity.granularity = static_cast<Granularity>(99);
+
+    ASSERT_TRUE(h->sut->createChronicle("kept", full).ok());
+    ASSERT_TRUE(h->sut->createChronicle("zero", zero_retention).ok());
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle("neg", negative).status()));
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createChronicle("neg", unknown_granularity).status()));
+    EXPECT_TRUE(absl::IsNotFound(h->sut->getChronicle("neg").status()));
+    auto kept = h->sut->createStory("kept", "s", full);
+    ASSERT_TRUE(kept.ok()) << kept.status();
+    ASSERT_TRUE(h->sut->createStory("kept", "zero", zero_retention).ok());
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createStory("kept", "neg", negative).status()));
+    EXPECT_TRUE(absl::IsInvalidArgument(h->sut->createStory("kept", "neg", unknown_granularity).status()));
+    ASSERT_TRUE(h->sut->createStory("kept", "plain").ok());
+
+    // Inert: the stored properties change no behavior of the story that carries them.
+    auto grant = h->sut->acquire(kept->id, "writer");
+    ASSERT_TRUE(grant.ok()) << grant.status();
+    ASSERT_TRUE(h->sut->release(kept->id, grant->writer_id, grant->incarnation).ok());
+    // Immutable: a second create of a live name is refused and leaves the first row as it was.
+    Properties other;
+    other.tier_policy = "other";
+    EXPECT_TRUE(absl::IsAlreadyExists(h->sut->createChronicle("kept", other).status()));
+    EXPECT_TRUE(absl::IsAlreadyExists(h->sut->createStory("kept", "s", other).status()));
+
+    auto check = [&]
+    {
+        auto chronicle = h->sut->getChronicle("kept");
+        ASSERT_TRUE(chronicle.ok());
+        EXPECT_EQ(chronicle->properties, full);
+        EXPECT_EQ(h->sut->getChronicle("zero")->properties, Properties{});
+        auto listed = h->sut->listChronicles();
+        ASSERT_TRUE(listed.ok());
+        for(const auto& c: *listed)
+        {
+            if(c.name == "kept")
+                EXPECT_EQ(c.properties, full);
+            else
+                EXPECT_EQ(c.properties, Properties{}) << c.name;
+        }
+        auto story = h->sut->getStory(kept->id);
+        ASSERT_TRUE(story.ok());
+        EXPECT_EQ(story->properties, full);
+        auto stories = h->sut->listStories("kept");
+        ASSERT_TRUE(stories.ok());
+        ASSERT_EQ(stories->size(), 3u);
+        for(const auto& s: *stories) EXPECT_EQ(s.properties, s.name == "s" ? full : Properties{}) << s.name;
+        auto prefixed = h->sut->listStoriesByPrefix("kept/s", 10);
+        ASSERT_TRUE(prefixed.ok());
+        ASSERT_EQ(prefixed->stories.size(), 1u);
+        EXPECT_EQ(prefixed->stories.front().properties, full);
+    };
+    check();
+    ASSERT_TRUE(h->restart);
+    h->restart();
+    check();
+}
+
+TEST_P(MetadataStoreContract, ListByPrefixIsOneRevisionAndSegmentExact)
+{
+    for(uint32_t bad_limit: {0u, 65537u})
+        EXPECT_TRUE(absl::IsInvalidArgument(h->sut->listStoriesByPrefix("c", bad_limit).status())) << bad_limit;
+    for(const char* bad: {"", "/", "/c", "c/", "c//s", "//"})
+        EXPECT_TRUE(absl::IsInvalidArgument(h->sut->listStoriesByPrefix(bad, 10).status())) << bad;
+    EXPECT_TRUE(h->sut->listStoriesByPrefix("c", 65536).ok());
+
+    ASSERT_TRUE(h->sut->createChronicle("p").ok());
+    ASSERT_TRUE(h->sut->createChronicle("pq").ok());
+    std::map<std::string, StoryId> ids;
+    for(const auto& path: {"p/a", "p/a/b", "p/a/b/c", "p/ab", "pq/a"})
+    {
+        const std::string text = path;
+        const auto slash = text.find('/');
+        auto created = h->sut->createStory(text.substr(0, slash), text.substr(slash + 1));
+        ASSERT_TRUE(created.ok()) << text << " " << created.status();
+        ids[text] = created->id;
+    }
+    using Paths = std::vector<std::string>;
+    // Whole segments only: `p` does not match `pq/a` and `p/a` does not match `p/ab`.
+    EXPECT_EQ(pathsUnder(*h->sut, "p"), (Paths{"p/a", "p/a/b", "p/a/b/c", "p/ab"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a"), (Paths{"p/a", "p/a/b", "p/a/b/c"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a/b"), (Paths{"p/a/b", "p/a/b/c"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a/b/c"), (Paths{"p/a/b/c"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "pq"), (Paths{"pq/a"}));
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a/b/c/d"), (Paths{}));
+    EXPECT_EQ(pathsUnder(*h->sut, "none"), (Paths{}));
+
+    // More than limit matches returns none of them and says so; exactly limit returns all.
+    auto over = h->sut->listStoriesByPrefix("p", 3);
+    ASSERT_TRUE(over.ok());
+    EXPECT_TRUE(over->limit_exceeded);
+    EXPECT_TRUE(over->stories.empty());
+    auto exact = h->sut->listStoriesByPrefix("p", 4);
+    ASSERT_TRUE(exact.ok());
+    EXPECT_FALSE(exact->limit_exceeded);
+    EXPECT_EQ(exact->stories.size(), 4u);
+    for(const auto& story: exact->stories) EXPECT_EQ(ids.at(story.chronicle + "/" + story.name), story.id);
+
+    // The result carries the Catalog revision of the read, which never regresses and advances with the counter.
+    const uint64_t before = exact->revision;
+    auto grant = h->sut->acquire(ids.at("p/a"), "writer");
+    ASSERT_TRUE(grant.ok()) << grant.status();
+    auto released = h->sut->release(ids.at("p/a"), grant->writer_id, grant->incarnation);
+    ASSERT_TRUE(released.ok());
+    auto after = h->sut->listStoriesByPrefix("p", 100);
+    ASSERT_TRUE(after.ok());
+    EXPECT_GT(after->revision, before);
+    EXPECT_GE(after->revision, released->revision);
+
+    // A tombstoned story leaves the result and its parents keep theirs.
+    ASSERT_TRUE(h->sut->destroyStory(ids.at("p/a/b/c")).ok());
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a/b/c"), (Paths{}));
+    EXPECT_EQ(pathsUnder(*h->sut, "p/a"), (Paths{"p/a", "p/a/b"}));
+    ASSERT_TRUE(h->sut->destroyChronicle("pq").ok());
+    EXPECT_EQ(pathsUnder(*h->sut, "pq"), (Paths{}));
+}
+
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MetadataStoreContract);
 } // namespace chronolog::contract

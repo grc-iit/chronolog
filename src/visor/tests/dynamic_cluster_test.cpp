@@ -793,6 +793,10 @@ TEST_F(DynamicClusterBeforeFirstStoryTest, WatchRoutesDeliversPolicyDowngradeAtS
         rpc::withTimeout(context, 4s);
         ASSERT_TRUE(stubs[selected]->Register(&context, request, &response).ok());
         ASSERT_EQ(response.status().code(), 0);
+        if(std::string(id) != "grapher")
+        {
+            ASSERT_EQ((KeeperDriver{*stubs[selected], id, "instance"}.ExtendCeiling().status().code()), 0);
+        }
     }
     ASSERT_TRUE(stores[selected]->createChronicle("c").ok());
     auto story = stores[selected]->createStory("c", "s");
@@ -847,6 +851,7 @@ TEST_F(DynamicClusterBeforeFirstStoryTest, FailureDetectionIgnoresConfiguredKeep
     ASSERT_LT(selected, 3u);
     KeeperDriver a{*stubs[selected], "keeper-a", "a1"};
     ASSERT_EQ(a.Register().status().code(), 0);
+    ASSERT_EQ(a.ExtendCeiling().status().code(), 0);
     const auto until = std::chrono::steady_clock::now() + 3500ms;
     while(std::chrono::steady_clock::now() < until)
     {
@@ -903,6 +908,19 @@ TEST_F(DynamicRouteWakeTest, EveryReplicaReceivesRoutesWithoutPeriodicTick)
         wire::RegisterResponse response;
         ASSERT_TRUE(response.ParseFromString(*result));
         ASSERT_EQ(response.status().code(), 0);
+        if(std::string(id) == "grapher")
+            continue;
+        wire::CatalogCommand extension;
+        auto* extend = extension.mutable_membership()->mutable_extend();
+        extend->set_process_id(id);
+        extend->set_instance("instance");
+        extend->set_realtime_ns(100);
+        extend->mutable_wanted_hlc()->set_physical_ns(100);
+        result = stores[selected]->propose(extension);
+        ASSERT_TRUE(result.ok()) << result.status();
+        wire::ExtendCeilingResponse granted;
+        ASSERT_TRUE(granted.ParseFromString(*result));
+        ASSERT_EQ(granted.status().code(), 0);
     }
     ASSERT_TRUE(stores[selected]->createChronicle("wake").ok());
     auto barrier = stores[selected]->createStory("wake", "barrier");
