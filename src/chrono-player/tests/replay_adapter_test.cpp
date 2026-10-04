@@ -10,10 +10,12 @@
 #include <mutex>
 #include <thread>
 #include "rpc/Channel.h"
+#include "chrono-player/adapter/EventConvert.h"
 #include "chrono-player/adapter/ReplayService.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-player/replay/KeeperHotSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
+#include <google/protobuf/descriptor.h>
 
 namespace chronolog::player
 {
@@ -1118,5 +1120,53 @@ TEST_F(replay_adapter, ReadRecoversCorrectEpochAfterKeeperRefusesSupersededRoute
     EXPECT_EQ(a_.accepted_epoch, 8u);
     service.shutdown();
     server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
+
+namespace
+{
+// Every field of `message` and of its set submessages is present, so a field added to the proto without a value here
+// fails instead of leaving encodedSize unchecked for it.
+void expectEveryFieldSet(const google::protobuf::Message& message)
+{
+    const auto* descriptor = message.GetDescriptor();
+    const auto* reflection = message.GetReflection();
+    for(int i = 0; i < descriptor->field_count(); ++i)
+    {
+        const auto* field = descriptor->field(i);
+        if(field->is_repeated())
+        {
+            EXPECT_GT(reflection->FieldSize(message, field), 0) << field->full_name();
+            continue;
+        }
+        EXPECT_TRUE(reflection->HasField(message, field)) << field->full_name();
+        if(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE && reflection->HasField(message, field))
+            expectEveryFieldSet(reflection->GetMessage(message, field));
+    }
+}
+} // namespace
+
+TEST(EventEncodedSize, MatchesTheEncodedMessageAcrossLengthBoundaries)
+{
+    EXPECT_EQ(convert::encodedSize(Event{}), convert::toProto(Event{}).ByteSizeLong());
+    Event full;
+    full.id = {UINT64_MAX, 1ULL << 35, 300, 127};
+    full.physical = {-1, 0, ClockStatus::Synced};
+    full.hlc = {INT64_MAX, UINT32_MAX};
+    full.envelope.content_type = "application/json";
+    full.envelope.trace_id = std::string(16, '\x01');
+    full.envelope.span_id = std::string(8, '\x02');
+    full.envelope.attributes = {{"", ""}, {"gen_ai.agent", std::string(200, 'a')}, {"k", std::string(20000, 'v')}};
+    full.durability = Durability::Durable;
+    full.envelope.payload = "x";
+    expectEveryFieldSet(convert::toProto(full));
+    for(const size_t payload: {0, 1, 100, 127, 128, 16000, 16383, 16384, 2097000, 2097151, 2097152, 3 << 20})
+    {
+        full.envelope.payload.assign(payload, 'p');
+        EXPECT_EQ(convert::encodedSize(full), convert::toProto(full).ByteSizeLong()) << payload;
+        Event bare;
+        bare.envelope.payload = full.envelope.payload;
+        bare.physical.status = ClockStatus::Unsynced;
+        EXPECT_EQ(convert::encodedSize(bare), convert::toProto(bare).ByteSizeLong()) << payload;
+    }
 }
 } // namespace chronolog::player

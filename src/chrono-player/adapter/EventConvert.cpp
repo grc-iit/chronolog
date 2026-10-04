@@ -1,5 +1,7 @@
 #include "chrono-player/adapter/EventConvert.h"
 
+#include <google/protobuf/io/coded_stream.h>
+
 namespace chronolog::player::convert
 {
 namespace
@@ -56,6 +58,26 @@ v1::Durability toProto(Durability durability)
     }
 }
 
+using google::protobuf::io::CodedOutputStream;
+
+size_t tagSize(int field) { return CodedOutputStream::VarintSize32(static_cast<uint32_t>(field) << 3); }
+
+// An implicit-presence scalar is written only when it is not zero.
+size_t scalarSize(int field, uint64_t value) { return value ? tagSize(field) + CodedOutputStream::VarintSize64(value) : 0; }
+
+size_t enumSize(int field, int value)
+{
+    return value ? tagSize(field) + CodedOutputStream::VarintSize32SignExtended(value) : 0;
+}
+
+size_t lengthDelimitedSize(int field, size_t size)
+{
+    return tagSize(field) + CodedOutputStream::VarintSize64(size) + size;
+}
+
+// A string or bytes field is written only when it is not empty.
+size_t bytesSize(int field, size_t size) { return size ? lengthDelimitedSize(field, size) : 0; }
+
 } // namespace
 
 Hlc fromProto(const v1::Hlc& hlc) { return Hlc{hlc.physical_ns(), hlc.logical()}; }
@@ -108,6 +130,37 @@ v1::Event toProto(const Event& event)
     for(const auto& [key, value]: event.envelope.attributes) (*envelope->mutable_attributes())[key] = value;
     out.set_durability(toProto(event.durability));
     return out;
+}
+
+size_t encodedSize(const Event& event)
+{
+    const size_t id = scalarSize(v1::EventId::kStoryIdFieldNumber, event.id.story_id) +
+                      scalarSize(v1::EventId::kWriterIdFieldNumber, event.id.writer_id) +
+                      scalarSize(v1::EventId::kIncarnationFieldNumber, event.id.incarnation) +
+                      scalarSize(v1::EventId::kSequenceFieldNumber, event.id.sequence);
+    size_t physical =
+            scalarSize(v1::TimeReading::kPhysicalNsFieldNumber, static_cast<uint64_t>(event.physical.physical_ns)) +
+            enumSize(v1::TimeReading::kStatusFieldNumber, toProto(event.physical.status));
+    // Explicit presence: a set bound is written even when it is zero.
+    if(event.physical.uncertainty_ns)
+        physical += tagSize(v1::TimeReading::kUncertaintyNsFieldNumber) +
+                    CodedOutputStream::VarintSize64(*event.physical.uncertainty_ns);
+    const size_t hlc = scalarSize(v1::Hlc::kPhysicalNsFieldNumber, static_cast<uint64_t>(event.hlc.physical_ns)) +
+                       scalarSize(v1::Hlc::kLogicalFieldNumber, event.hlc.logical);
+    size_t envelope = bytesSize(v1::Envelope::kContentTypeFieldNumber, event.envelope.content_type.size()) +
+                      bytesSize(v1::Envelope::kPayloadFieldNumber, event.envelope.payload.size()) +
+                      bytesSize(v1::Envelope::kTraceIdFieldNumber, event.envelope.trace_id.size()) +
+                      bytesSize(v1::Envelope::kSpanIdFieldNumber, event.envelope.span_id.size());
+    // A map entry always carries its key (field 1) and value (field 2), empty or not.
+    for(const auto& [key, value]: event.envelope.attributes)
+        envelope += lengthDelimitedSize(v1::Envelope::kAttributesFieldNumber,
+                                        lengthDelimitedSize(1, key.size()) + lengthDelimitedSize(2, value.size()));
+    // toProto sets every submessage, so each is written whatever its size.
+    return lengthDelimitedSize(v1::Event::kIdFieldNumber, id) +
+           lengthDelimitedSize(v1::Event::kPhysicalFieldNumber, physical) +
+           lengthDelimitedSize(v1::Event::kHlcFieldNumber, hlc) +
+           lengthDelimitedSize(v1::Event::kEnvelopeFieldNumber, envelope) +
+           enumSize(v1::Event::kDurabilityFieldNumber, toProto(event.durability));
 }
 
 } // namespace chronolog::player::convert

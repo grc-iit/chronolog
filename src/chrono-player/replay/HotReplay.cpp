@@ -301,7 +301,7 @@ public:
                 if(seen_.contains(e.id))
                     continue;
             }
-            const size_t event_bytes = convert::toProto(e).ByteSizeLong();
+            const size_t event_bytes = convert::encodedSize(e);
             if(!batch.events.empty() && bytes + event_bytes > kEventBatchBytes)
             {
                 pending_ = std::move(e);
@@ -724,7 +724,7 @@ private:
         size_t bytes = 0;
         while(pending_pos_ < pending_.size() && batch.events.size() < std::max<size_t>(options_.batch_size, 1))
         {
-            const size_t event_bytes = convert::toProto(pending_[pending_pos_]).ByteSizeLong();
+            const size_t event_bytes = convert::encodedSize(pending_[pending_pos_]);
             if(!batch.events.empty() && bytes + event_bytes > kEventBatchBytes)
                 break;
             bytes += event_bytes;
