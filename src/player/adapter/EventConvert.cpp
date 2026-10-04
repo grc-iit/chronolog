@@ -83,6 +83,28 @@ size_t lengthDelimitedSize(int field, size_t size)
 // A string or bytes field is written only when it is not empty.
 size_t bytesSize(int field, size_t size) { return size ? lengthDelimitedSize(field, size) : 0; }
 
+size_t eventIdSize(const EventId& id)
+{
+    return scalarSize(v1::EventId::kStoryIdFieldNumber, id.story_id) +
+           scalarSize(v1::EventId::kWriterIdFieldNumber, id.writer_id) +
+           scalarSize(v1::EventId::kIncarnationFieldNumber, id.incarnation) +
+           scalarSize(v1::EventId::kSequenceFieldNumber, id.sequence);
+}
+
+size_t hlcSize(const Hlc& hlc)
+{
+    return scalarSize(v1::Hlc::kPhysicalNsFieldNumber, static_cast<uint64_t>(hlc.physical_ns)) +
+           scalarSize(v1::Hlc::kLogicalFieldNumber, hlc.logical);
+}
+
+// toProto sets a link's target whatever its size, and its target_hlc only when the writer supplied one.
+size_t linkSize(const Link& link)
+{
+    return bytesSize(v1::Link::kTypeFieldNumber, link.type.size()) +
+           lengthDelimitedSize(v1::Link::kTargetFieldNumber, eventIdSize(link.target)) +
+           (link.target_hlc ? lengthDelimitedSize(v1::Link::kTargetHlcFieldNumber, hlcSize(*link.target_hlc)) : 0);
+}
+
 } // namespace
 
 Hlc fromProto(const v1::Hlc& hlc) { return Hlc{hlc.physical_ns(), hlc.logical()}; }
@@ -116,6 +138,8 @@ Event read(M&& event)
         out.envelope.trace_id = event.envelope().trace_id();
         out.envelope.span_id = event.envelope().span_id();
         for(const auto& [key, value]: event.envelope().attributes()) out.envelope.attributes.emplace(key, value);
+        out.envelope.kind = event.envelope().kind();
+        out.envelope.actor = event.envelope().actor();
     }
     else
     {
@@ -125,6 +149,21 @@ Event read(M&& event)
         out.envelope.trace_id = std::move(*envelope->mutable_trace_id());
         out.envelope.span_id = std::move(*envelope->mutable_span_id());
         for(auto& [key, value]: *envelope->mutable_attributes()) out.envelope.attributes.emplace(key, std::move(value));
+        out.envelope.kind = std::move(*envelope->mutable_kind());
+        out.envelope.actor = std::move(*envelope->mutable_actor());
+    }
+    out.envelope.links.reserve(event.envelope().links().size());
+    for(const auto& link: event.envelope().links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = {link.target().story_id(),
+                    link.target().writer_id(),
+                    link.target().incarnation(),
+                    link.target().sequence()};
+        if(link.has_target_hlc())
+            l.target_hlc = convert::fromProto(link.target_hlc());
+        out.envelope.links.push_back(std::move(l));
     }
     out.durability = fromProto(event.durability());
     return out;
@@ -162,6 +201,21 @@ void write(E&& event, v1::Event& out)
         else
             (*envelope->mutable_attributes())[key] = std::move(value);
     }
+    envelope->set_kind(std::forward<E>(event).envelope.kind);
+    envelope->set_actor(std::forward<E>(event).envelope.actor);
+    envelope->clear_links();
+    for(const auto& link: event.envelope.links)
+    {
+        auto* l = envelope->add_links();
+        l->set_type(link.type);
+        auto* target = l->mutable_target();
+        target->set_story_id(link.target.story_id);
+        target->set_writer_id(link.target.writer_id);
+        target->set_incarnation(link.target.incarnation);
+        target->set_sequence(link.target.sequence);
+        if(link.target_hlc)
+            *l->mutable_target_hlc() = convert::toProto(*link.target_hlc);
+    }
     out.set_durability(toProto(event.durability));
 }
 
@@ -182,10 +236,7 @@ void toProto(Event&& event, v1::Event& out) { write(std::move(event), out); }
 
 size_t encodedSize(const Event& event)
 {
-    const size_t id = scalarSize(v1::EventId::kStoryIdFieldNumber, event.id.story_id) +
-                      scalarSize(v1::EventId::kWriterIdFieldNumber, event.id.writer_id) +
-                      scalarSize(v1::EventId::kIncarnationFieldNumber, event.id.incarnation) +
-                      scalarSize(v1::EventId::kSequenceFieldNumber, event.id.sequence);
+    const size_t id = eventIdSize(event.id);
     size_t physical =
             scalarSize(v1::TimeReading::kPhysicalNsFieldNumber, static_cast<uint64_t>(event.physical.physical_ns)) +
             enumSize(v1::TimeReading::kStatusFieldNumber, toProto(event.physical.status));
@@ -193,12 +244,15 @@ size_t encodedSize(const Event& event)
     if(event.physical.uncertainty_ns)
         physical += tagSize(v1::TimeReading::kUncertaintyNsFieldNumber) +
                     CodedOutputStream::VarintSize64(*event.physical.uncertainty_ns);
-    const size_t hlc = scalarSize(v1::Hlc::kPhysicalNsFieldNumber, static_cast<uint64_t>(event.hlc.physical_ns)) +
-                       scalarSize(v1::Hlc::kLogicalFieldNumber, event.hlc.logical);
+    const size_t hlc = hlcSize(event.hlc);
     size_t envelope = bytesSize(v1::Envelope::kContentTypeFieldNumber, event.envelope.content_type.size()) +
                       bytesSize(v1::Envelope::kPayloadFieldNumber, event.envelope.payload.size()) +
                       bytesSize(v1::Envelope::kTraceIdFieldNumber, event.envelope.trace_id.size()) +
-                      bytesSize(v1::Envelope::kSpanIdFieldNumber, event.envelope.span_id.size());
+                      bytesSize(v1::Envelope::kSpanIdFieldNumber, event.envelope.span_id.size()) +
+                      bytesSize(v1::Envelope::kKindFieldNumber, event.envelope.kind.size()) +
+                      bytesSize(v1::Envelope::kActorFieldNumber, event.envelope.actor.size());
+    for(const auto& link: event.envelope.links)
+        envelope += lengthDelimitedSize(v1::Envelope::kLinksFieldNumber, linkSize(link));
     // A map entry always carries its key (field 1) and value (field 2), empty or not.
     for(const auto& [key, value]: event.envelope.attributes)
         envelope += lengthDelimitedSize(v1::Envelope::kAttributesFieldNumber,

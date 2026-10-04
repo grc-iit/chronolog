@@ -188,11 +188,17 @@ bool SameEvent(const Event& a, const Event& b)
                     a.envelope.payload,
                     a.envelope.trace_id,
                     a.envelope.span_id,
-                    a.envelope.attributes) == std::tie(b.envelope.content_type,
-                                                       b.envelope.payload,
-                                                       b.envelope.trace_id,
-                                                       b.envelope.span_id,
-                                                       b.envelope.attributes);
+                    a.envelope.attributes,
+                    a.envelope.kind,
+                    a.envelope.actor,
+                    a.envelope.links) == std::tie(b.envelope.content_type,
+                                                  b.envelope.payload,
+                                                  b.envelope.trace_id,
+                                                  b.envelope.span_id,
+                                                  b.envelope.attributes,
+                                                  b.envelope.kind,
+                                                  b.envelope.actor,
+                                                  b.envelope.links);
 }
 
 absl::Status ValidRange(const Range& range)
@@ -494,10 +500,10 @@ namespace
 {
 std::string ViewKey(const ManifestRecord& record)
 {
-    return record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
-                                         std::to_string(record.start.physical_ns) + ":" +
-                                         std::to_string(record.start.logical)
-                               : record.file;
+    return record.file.empty()
+                   ? record.manifest_writer + ":" + record.chunk_id + ":" + std::to_string(record.start.physical_ns) +
+                             ":" + std::to_string(record.start.logical)
+                   : record.file;
 }
 // A larger batch of new records rebuilds the view, which sorts once instead of inserting one by one.
 constexpr size_t IncrementalViewRecords = 64;
@@ -910,7 +916,8 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
             const auto current = effective(**refreshed, record.story_id);
             if(!std::any_of(current.begin(),
                             current.end(),
-                            [&](const auto& entry) { return entry.file == record.file && entry.state == record.state; }))
+                            [&](const auto& entry)
+                            { return entry.file == record.file && entry.state == record.state; }))
                 return absl::OkStatus();
         }
         failed.insert(record.file);
@@ -1300,7 +1307,8 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             }
             if(const auto replaced = view.superseded.find(stem); !holder && replaced != view.superseded.end())
             {
-                if(const auto* entry = inView(view, replaced->second); entry && entry->state == ManifestState::Published)
+                if(const auto* entry = inView(view, replaced->second);
+                   entry && entry->state == ManifestState::Published)
                     holder = *entry;
                 if(!holder)
                     return absl::UnavailableError("chunk rotation was compacted into a file that is not published");
@@ -1422,9 +1430,8 @@ void FileTierStore::stopScrub()
 
 // One pass (I13.17). Validation runs outside the store mutex; a verdict is recorded only under it, after a manifest
 // re-sync showed the record still effective at `local` and unclaimed.
-absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
-                                                     bool slow_tiers,
-                                                     std::chrono::milliseconds slow_verdict_interval)
+absl::StatusOr<ScrubResult>
+FileTierStore::scrubOnce(uint64_t io_bytes_per_sec, bool slow_tiers, std::chrono::milliseconds slow_verdict_interval)
 {
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
@@ -1576,8 +1583,8 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
                         }
                         // The marker re-read through the same descriptor proves the root was not wiped or replaced.
                         injected = hook ? hook("lost-marker") : 0;
-                        auto status = injected ? absl::UnavailableError(std::strerror(injected))
-                                               : tier->verify(*directory);
+                        auto status =
+                                injected ? absl::UnavailableError(std::strerror(injected)) : tier->verify(*directory);
                         if(!status.ok())
                         {
                             tier->unavailable();

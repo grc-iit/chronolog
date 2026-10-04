@@ -1,4 +1,5 @@
 #include "internal.h"
+#include <algorithm>
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
@@ -43,6 +44,11 @@ normalize(const Memory& memory, const AgentIdentity& identity, const std::string
     for(const auto& [key, value]: spec.envelope.attributes)
         if(!utf8(key) || !utf8(value))
             return absl::InvalidArgumentError("attributes must be UTF-8");
+    if(!utf8(spec.envelope.kind) || !utf8(spec.envelope.actor) ||
+       std::any_of(spec.envelope.links.begin(),
+                   spec.envelope.links.end(),
+                   [](const auto& link) { return !utf8(link.type); }))
+        return absl::InvalidArgumentError("kind, actor and link types must be UTF-8");
     for(const auto& [key, value]: std::map<std::string, std::string>{{"gen_ai.agent.id", identity.agent_id},
                                                                      {"gen_ai.conversation.id", conversation},
                                                                      {"chronolog.operation.id", memory.operation_id}})
@@ -63,13 +69,29 @@ std::string digest(const client::AppendSpec& spec)
         physical = Json::array({spec.physical->physical_ns,
                                 spec.physical->uncertainty_ns ? Json(*spec.physical->uncertainty_ns) : Json(),
                                 static_cast<int>(spec.physical->status)});
-    auto bytes = Json::to_cbor(Json::array({spec.envelope.content_type,
-                                            binary(spec.envelope.payload),
-                                            binary(spec.envelope.trace_id),
-                                            binary(spec.envelope.span_id),
-                                            spec.envelope.attributes,
-                                            static_cast<int>(spec.durability),
-                                            physical}));
+    auto fields = Json::array({spec.envelope.content_type,
+                               binary(spec.envelope.payload),
+                               binary(spec.envelope.trace_id),
+                               binary(spec.envelope.span_id),
+                               spec.envelope.attributes,
+                               static_cast<int>(spec.durability),
+                               physical});
+    // Appended only when set, so the digest of a checkpointed operation without them stays valid.
+    if(!spec.envelope.kind.empty() || !spec.envelope.actor.empty() || !spec.envelope.links.empty())
+    {
+        Json links = Json::array();
+        for(const auto& link: spec.envelope.links)
+            links.push_back(
+                    Json::array({link.type,
+                                 link.target.story_id,
+                                 link.target.writer_id,
+                                 link.target.incarnation,
+                                 link.target.sequence,
+                                 link.target_hlc ? Json::array({link.target_hlc->physical_ns, link.target_hlc->logical})
+                                                 : Json()}));
+        fields.push_back(Json::array({spec.envelope.kind, spec.envelope.actor, links}));
+    }
+    auto bytes = Json::to_cbor(fields);
     unsigned char result[EVP_MAX_MD_SIZE];
     unsigned int size = 0;
     if(EVP_Digest(bytes.data(), bytes.size(), result, &size, EVP_sha256(), nullptr) != 1)
@@ -123,6 +145,8 @@ size_t rawBytes(const Envelope& e)
 {
     size_t bytes = e.payload.size() + e.content_type.size() + e.trace_id.size() + e.span_id.size();
     for(const auto& [key, value]: e.attributes) bytes += key.size() + value.size();
+    bytes += e.kind.size() + e.actor.size();
+    for(const auto& link: e.links) bytes += link.type.size();
     return bytes;
 }
 bool validPosition(const Position& p, StoryId story, bool sentinel)

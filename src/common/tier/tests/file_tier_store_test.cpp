@@ -1966,7 +1966,10 @@ TEST(HDF5ChunkCodec, LosslessEveryEventField)
                       std::string("a\0\xffz", 4),
                       std::string("\0", 1) + std::string(15, '\xff'),
                       std::string(8, '\0'),
-                      {{"", ""}, {"host", "dragon"}, {std::string("a\0b", 3), "back\\slash"}}};
+                      {{"", ""}, {"host", "dragon"}, {std::string("a\0b", 3), "back\\slash"}},
+                      "decision",
+                      std::string("agent\0x", 7),
+                      {{"caused-by", {1, 2, 3, 4}, Hlc{5, 6}}, {std::string("a\0b", 3), {7, 8, 9, 10}, std::nullopt}}};
     auto second = event;
     second.id.sequence++;
     second.physical = {-999, std::nullopt, ClockStatus::Unavailable};
@@ -1999,6 +2002,9 @@ TEST(HDF5ChunkCodec, LosslessEveryEventField)
         EXPECT_EQ(actual.envelope.trace_id, expected.envelope.trace_id);
         EXPECT_EQ(actual.envelope.span_id, expected.envelope.span_id);
         EXPECT_EQ(actual.envelope.attributes, expected.envelope.attributes);
+        EXPECT_EQ(actual.envelope.kind, expected.envelope.kind);
+        EXPECT_EQ(actual.envelope.actor, expected.envelope.actor);
+        EXPECT_EQ(actual.envelope.links, expected.envelope.links);
     }
 }
 
@@ -4191,13 +4197,14 @@ TEST(FileTierStore, AbandonedWorkersAreCapped)
     auto left = std::make_shared<std::atomic<int>>(0);
     for(auto& promise: release)
     {
-        const auto status = tier->run([gate = promise.get_future().share(), entered, left]
-        {
-            ++*entered;
-            gate.wait();
-            ++*left;
-            return absl::OkStatus();
-        });
+        const auto status = tier->run(
+                [gate = promise.get_future().share(), entered, left]
+                {
+                    ++*entered;
+                    gate.wait();
+                    ++*left;
+                    return absl::OkStatus();
+                });
         EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
         // The first hang ends the epoch; a probe of the healthy root starts the next while one worker remains.
         if(&promise == &release.front())
@@ -4211,11 +4218,12 @@ TEST(FileTierStore, AbandonedWorkersAreCapped)
     auto extra = std::make_shared<std::atomic<int>>(0);
     for(int i = 0; i < 8; ++i)
     {
-        const auto status = tier->run([extra]
-        {
-            ++*extra;
-            return absl::OkStatus();
-        });
+        const auto status = tier->run(
+                [extra]
+                {
+                    ++*extra;
+                    return absl::OkStatus();
+                });
         EXPECT_EQ(status.code(), absl::StatusCode::kUnavailable);
         EXPECT_NE(status.message().find("tier executor is full"), std::string::npos) << status;
         EXPECT_FALSE(tier->probe().ok());
@@ -4232,11 +4240,13 @@ TEST(FileTierStore, AbandonedWorkersAreCapped)
     } while(!status.ok() && std::chrono::steady_clock::now() < deadline);
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_NE(tier->directory(), nullptr);
-    EXPECT_TRUE(tier->run([extra]
-    {
-        ++*extra;
-        return absl::OkStatus();
-    }).ok());
+    EXPECT_TRUE(tier->run(
+                            [extra]
+                            {
+                                ++*extra;
+                                return absl::OkStatus();
+                            })
+                        .ok());
     EXPECT_EQ(extra->load(), 1);
     release[1].set_value();
     while(left->load() < 2 && std::chrono::steady_clock::now() < deadline)
@@ -4530,8 +4540,9 @@ TEST(FileTierStore, ProbeOkThenMissThenProbeFailWritesNoLost)
     const auto tier = MakeSlowTier(*directory / "slow");
     auto fail = std::make_shared<std::atomic<bool>>(false);
     FileTierStore::Hooks hooks;
-    hooks.tier_errno = [fail](std::string_view step)
-    { return !fail->load() ? 0 : step == "lost-open" ? ENOENT : step == "lost-marker" ? EIO : 0; };
+    hooks.tier_errno = [fail](std::string_view step) {
+        return !fail->load() ? 0 : step == "lost-open" ? ENOENT : step == "lost-marker" ? EIO : 0;
+    };
     auto store = OpenStore(*directory / "local", hooks, std::make_shared<ProtoChunkCodec>());
     ASSERT_TRUE(store.ok());
     PublishWindows(**store, 1);

@@ -90,6 +90,15 @@ struct Route
     std::string player;
     auto operator<=>(const Route&) const = default;
 };
+// I3.9, I3.10: a plain reference to another event; acceptance never depends on the target.
+struct Link
+{
+    std::string type;
+    EventId target;
+    // Hlc of the target when the writer knows it.
+    std::optional<Hlc> target_hlc;
+    auto operator<=>(const Link&) const = default;
+};
 struct Envelope
 {
     std::string content_type;
@@ -103,6 +112,15 @@ struct Envelope
     // Optional binary W3C span id: empty or exactly 8 bytes.
     std::string span_id;
     std::map<std::string, std::string> attributes;
+
+    // I3.9: optional, at most 64 bytes; the Keeper gives it no meaning.
+    std::string kind{};
+
+    // I3.9, S14.6: optional, at most 256 bytes; a claim by the writer, not an authenticated identity.
+    std::string actor{};
+
+    // I3.9: optional, at most 16 per event.
+    std::vector<Link> links{};
 };
 struct Event
 {
