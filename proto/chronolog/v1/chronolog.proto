@@ -501,7 +501,7 @@ message HlcRange
     // end; interpreted according to the message invariants above.
     Hlc end = 2;
 }
-// OPEN (M6): physical-axis queries never claim completeness in v1.
+// Physical-axis queries are complete only under I6.10.
 message PhysicalRange
 {
     // start ns; interpreted according to the message invariants above.
@@ -520,7 +520,7 @@ message ReadRequest
     {
         // HLC ordering range; supports completeness.
         HlcRange hlc = 2;
-        // Writer physical time ns; always incomplete in v1.
+        // Writer physical time ns; complete under I6.10.
         PhysicalRange physical = 3;
     }
     // Zero preserves read_max_events; HLC tie groups can exceed this soft target.
