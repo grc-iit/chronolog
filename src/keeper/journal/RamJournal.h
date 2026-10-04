@@ -121,6 +121,17 @@ public:
     void eraseEvents(StoryId story, Range range, bool advance_floor = false);
     Hlc evictionFloor(StoryId story) const;
 
+    struct WriterStatus
+    {
+        bool known{};
+        uint64_t next_sequence{};
+        Hlc last_hlc{}, sealed_frontier{};
+        bool released{};
+        AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
+        std::optional<AppendResult> recorded;
+    };
+    absl::StatusOr<WriterStatus> writerStatus(EventId id) const;
+
     struct WriterKey
     {
         StoryId story_id{};
@@ -152,6 +163,7 @@ protected:
     {
         done(std::move(results));
     }
+    virtual absl::Status persistWriters() { return absl::OkStatus(); }
     virtual void persist(const Event&, std::function<void(absl::Status)>);
     // Bracket the items of one append batch on the calling thread, so a journal can hand their records to its
     // commit loop together and a batch never straddles two groups.
@@ -174,7 +186,7 @@ protected:
         AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
         std::vector<AppendResult> window;
     };
-    // Body of the WAL writers record: "v4 <count>" then one block per writer. Window lines are formatted once and
+    // Body of the WAL writers record: "v5 <count>" then one block per writer. Window lines are formatted once and
     // cached per writer, so the cost of a checkpoint follows what changed since the last one, not the dedupe window.
     std::string checkpointText() const;
     void restoreWriter(const WriterCheckpoint& checkpoint);

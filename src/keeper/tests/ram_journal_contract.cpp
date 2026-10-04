@@ -22,6 +22,19 @@ std::unique_ptr<JournalHarness> MakeRam()
     h->causal_skew_limit_ns = kSkewLimitNs;
     h->supports_durable = false;
     h->setPhysical = [rig](int64_t ns) { rig->clock->setPhysical(ns); };
+    h->writerStatus = [rig](EventId id) -> absl::StatusOr<CheckpointStatus>
+    {
+        auto status = rig->journal->writerStatus(id);
+        if(!status.ok())
+            return status.status();
+        return CheckpointStatus{status->known,
+                                status->released,
+                                status->next_sequence,
+                                status->last_hlc,
+                                status->termination_cause,
+                                status->recorded};
+    };
+    h->evictEvents = [rig] { rig->journal->eraseEvents(1, All()); };
     h->supersedeIncarnation = [rig] { (void)rig->journal->registerWriter(1, 2, 4); };
     h->unassignWriter = [rig] { rig->journal->unassignWriter(1, 2); };
     h->releaseIncarnation = [rig] { rig->journal->releaseWriter(1, 2, 3); };

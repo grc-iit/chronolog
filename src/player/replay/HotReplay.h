@@ -35,6 +35,8 @@ public:
 
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range, size_t max_events) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    readAwait(StoryId id, Range range, std::chrono::system_clock::time_point deadline) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position) const override;
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position, bool progress) const;
 
