@@ -86,6 +86,9 @@ def tier_add(args):
                for tier in record['tiers']):
             raise ValueError('tier name and rank must be unique')
         root = Path(args.root).expanduser().absolute()
+        if folder.resolve().is_relative_to(root.resolve()):
+            # The Grapher refuses a tier_status_file under a slow tier root (I13.15); the instance folder holds it.
+            raise ValueError('tier root must not contain the instance folder')
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if any(os.path.samefile(root, tier['root']) for tier in record['tiers']):
             raise ValueError('tier root is already configured')

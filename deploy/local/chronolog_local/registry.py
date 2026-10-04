@@ -168,6 +168,13 @@ def locked_status(folder, probing=False):
         current['state'] = 'starting'
     elif time.time_ns() - current.get('updated_ns', 0) > 10_000_000_000:
         current['state'] = 'unresponsive'
+    if current.get('state') in ('starting', 'unresponsive'):
+        # No live supervisor stands behind the published Grapher tier view.
+        unknown = {'known': False, 'reason': 'supervisor status is ' + current['state']}
+        if 'tier_migration' in current:
+            current['tier_migration'] = dict(unknown)
+        current['tiers'] = [dict(tier, grapher=dict(unknown)) if 'grapher' in tier else tier
+                            for tier in current.get('tiers', record['tiers'])]
     if probing:
         try:
             current['probe'] = probe(record)

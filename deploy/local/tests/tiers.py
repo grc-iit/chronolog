@@ -11,7 +11,8 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chronolog_local.registry import atomic, load, lock
 from chronolog_local.supervisor import Supervisor, configs
-from chronolog_local.tiers import MARKER, add_marker, filesystem, probe_tier, tier_config_keys
+from chronolog_local.tiers import (GRAPHER_STATUS, MARKER, add_marker, filesystem, grapher_views, probe_tier,
+                                   tier_config_keys)
 
 
 def require(condition, message):
@@ -96,9 +97,28 @@ def main():
                             generated['tiers'][0]['root'] == generated['archive_root'],
                             'the Grapher and the Player get the tier table')
                     require('migrate_enabled' not in generated, 'migration stays at its default, off')
+                generated = configs(current)
+                require(generated['grapher']['tier_status_file'] == GRAPHER_STATUS == 'run/grapher-tiers.json' and
+                        'tier_status_file' not in generated['player'],
+                        'only the Grapher gets the status file, under the instance folder')
+                current['overrides'] = {'grapher': {'tier_status_file': str(target / 'status.json')}}
+                try:
+                    configs(current)
+                except ValueError as refusal:
+                    require('fixed by instance.json' in str(refusal), 'the status file path is not an override')
+                else:
+                    require(False, 'an override moved the status file')
+                current['overrides'] = {}
+                error = call('tier', 'add', 'test', 'outer', str(root), '--rank', '2', '--kind', 'slow', ok=False)
+                require('must not contain the instance folder' in error and not (root / MARKER).exists(),
+                        'a tier root above the instance folder is refused before any marker')
                 legacy = {key: value for key, value in current.items() if key != 'deployment_id'}
-                require(all('tiers' not in configs(legacy)[role] for role in ('grapher', 'player')),
+                require(all('tiers' not in configs(legacy)[role] for role in ('grapher', 'player')) and
+                        'tier_status_file' not in configs(legacy)['grapher'],
                         'an instance without a deployment id keeps a plain archive root')
+                views, migration = grapher_views(folder, legacy, True)
+                require(not migration['known'] and migration['reason'] == 'no tier table' and
+                        all(not view['known'] for view in views), 'no tier table, no Grapher view')
         elif gate == 'status_survives_a_hung_tier':
             call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow')
             marker_before = (root / 'slow' / MARKER).read_bytes()
@@ -137,6 +157,91 @@ def main():
                 output.close()
                 if process.returncode:
                     print((root / 'worker.log').read_text(), file=sys.stderr)
+        elif gate == 'status_reports_the_graphers_tier_view':
+            slow_root = root / 'slow'
+            call('tier', 'add', 'test', 'nfs', str(slow_root), '--rank', '1', '--kind', 'slow')
+            status_file = folder / GRAPHER_STATUS
+            status_file.parent.mkdir(parents=True, exist_ok=True)
+            # What an earlier Grapher left behind must not pass for the next one's view.
+            status_file.write_text(json.dumps({'writer': 'old', 'migrate_enabled': True, 'migration_stopped': False,
+                'pending_tier_deletions': {}, 'tiers': [
+                    {'name': 'local', 'rank': 0, 'available': True, 'used_bytes': 1, 'budget_bytes': 0, 'above_high': False},
+                    {'name': 'nfs', 'rank': 1, 'available': True, 'used_bytes': 1, 'budget_bytes': 0, 'above_high': False}]}))
+
+            def wait_for(condition, message):
+                deadline = time.monotonic() + 30
+                while True:
+                    current = call('status', 'test', timeout=5)
+                    if condition(current):
+                        return current
+                    require(time.monotonic() < deadline, message + ': ' + json.dumps(current.get('tiers')))
+                    time.sleep(0.05)
+
+            def view(current, name):
+                return next(tier for tier in current['tiers'] if tier['name'] == name)['grapher']
+
+            try:
+                require(call('up', 'test')['state'] == 'ready', 'the stack boots with a slow tier')
+                require(load(folder / 'config/grapher.json')['tier_status_file'] == GRAPHER_STATUS,
+                        'the booted Grapher was given the status file')
+                current = wait_for(lambda c: c.get('tier_migration', {}).get('writer') == 'grapher-1',
+                                   'status carries the running Grapher view')
+                require(current['state'] == 'ready', 'ready with the Grapher view')
+                require(current['tier_migration'] == {'known': True, 'writer': 'grapher-1', 'migrate_enabled': False,
+                        'migration_stopped': False, 'pending_tier_deletions': {}}, 'migration view of an idle Grapher')
+                for name in ('local', 'nfs'):
+                    seen = view(current, name)
+                    require(seen['known'] and seen['available'] is True and seen['above_high'] is False and
+                            seen['migrate_enabled'] is False and seen['migration_stopped'] is False and
+                            isinstance(seen['used_bytes'], int) and seen['budget_bytes'] == 0,
+                            'the Grapher sees ' + name)
+                listed = call('tier', 'ls', 'test', timeout=5)
+                require([tier['name'] for tier in listed] == ['local', 'nfs'] and
+                        all(tier['grapher']['known'] and tier['grapher']['available'] for tier in listed) and
+                        all('available' in tier for tier in listed),
+                        'tier ls carries the Grapher view next to the launcher probe')
+                # The Grapher rewrites its file only when its content changes, so damage stays until then.
+                status_file.write_text('{"tiers": [')
+                current = wait_for(lambda c: not c['tier_migration']['known'], 'a garbage file is unknown')
+                require(current['state'] == 'ready' and current['tier_migration']['reason'] == 'unparsable' and
+                        all(tier['grapher'] == {'known': False, 'reason': 'unparsable'} for tier in current['tiers']) and
+                        'error' not in current,
+                        'a garbage file is unknown, not an error and not healthy')
+                status_file.write_text(json.dumps({'writer': 'grapher-1', 'migrate_enabled': False,
+                    'migration_stopped': False, 'pending_tier_deletions': {},
+                    'tiers': [{'name': 'local', 'rank': 0, 'available': 'yes'}]}))
+                wait_for(lambda c: c['tier_migration'] == {'known': False, 'reason': 'unparsable'},
+                         'a file of another shape is unknown')
+                status_file.unlink()
+                current = wait_for(lambda c: c['tier_migration'].get('reason') == 'absent', 'an absent file is unknown')
+                require(current['state'] == 'ready' and
+                        all(tier['grapher'] == {'known': False, 'reason': 'absent'} for tier in current['tiers']) and
+                        not any(tier['grapher']['known'] for tier in call('tier', 'ls', 'test', timeout=5)),
+                        'an absent file is unknown in status and tier ls')
+                # The slow tier loses its marker: the Grapher's next probe changes its view and rewrites the file.
+                marker = (slow_root / MARKER).read_bytes()
+                (slow_root / MARKER).unlink()
+                current = wait_for(lambda c: view(c, 'nfs').get('available') is False,
+                                   'the Grapher reports the slow tier unavailable')
+                require(view(current, 'local')['known'] and view(current, 'local')['available'] is True and
+                        current['tier_migration']['known'], 'local stays available in the Grapher view')
+                (slow_root / MARKER).write_bytes(marker)
+                wait_for(lambda c: view(c, 'nfs').get('available') is True and
+                         next(tier for tier in c['tiers'] if tier['name'] == 'nfs')['available'],
+                         'the Grapher and the launcher both see the slow tier again')
+                grapher_pid = call('status', 'test', timeout=5)['services']['grapher']['pid']
+                os.kill(grapher_pid, 9)
+                wait_for(lambda c: c['services']['grapher']['pid'] != grapher_pid and
+                         c['tier_migration'].get('writer') == 'grapher-1',
+                         'a restarted Grapher publishes its own view')
+            finally:
+                stopped = call('down', 'test', '--force')
+            require(stopped['state'] == 'stopped' and 'tier_migration' not in stopped and
+                    all('grapher' not in tier for tier in stopped['tiers']),
+                    'a stopped instance reports no Grapher view')
+            views, migration = grapher_views(folder, load(folder / 'instance.json'), False)
+            require(migration == {'known': False, 'reason': 'grapher not running'} and
+                    all(not seen['known'] for seen in views), 'no running Grapher, no view')
         print('PASS local.' + gate)
 
 

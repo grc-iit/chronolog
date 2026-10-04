@@ -9,6 +9,10 @@ import time
 
 MARKER = '.chronolog-tier.json'
 IDENTITY = ('deployment_id', 'name', 'rank', 'kind', 'tier_uuid', 'f_type')
+# The Grapher's tier view (its tier_status_file), relative to the instance folder, which is every service's working
+# directory. It lives with the supervisor's own status, never under a tier root (I13.15).
+GRAPHER_STATUS = 'run/grapher-tiers.json'
+GRAPHER_STATUS_LIMIT = 1 << 20
 
 
 class StatFS(ctypes.Structure):
@@ -85,6 +89,10 @@ def initialize_local(record):
     record['tiers'][0] = add_marker(local, record['deployment_id'])
 
 
+def has_tier_table(record):
+    return 'deployment_id' in record and all('tier_uuid' in tier for tier in record['tiers'])
+
+
 def tier_config_keys(record):
     return {'deployment_id': record['deployment_id'],
             'tiers': [{key: tier[key] for key in ('name', 'kind', 'root', 'rank', 'tier_uuid',
@@ -147,3 +155,58 @@ class TierProbe:
                 args=(self.operation, self.tier, self.deployment_id, self.replies))
             self.thread.start()
         return dict(self.result)
+
+
+def read_grapher_status(path):
+    """The Grapher's status file as (status, None), or (None, reason). The file carries no time: the Grapher rewrites
+    it only when its content changes, so the caller decides whether a live Grapher stands behind it."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None, 'absent'
+    except OSError:
+        return None, 'unreadable'
+    try:
+        with os.fdopen(fd, 'rb') as source:
+            data = source.read(GRAPHER_STATUS_LIMIT + 1)
+        value = json.loads(data) if len(data) <= GRAPHER_STATUS_LIMIT else None
+    except (OSError, ValueError):
+        return None, 'unparsable'
+    shape = {'name': str, 'rank': int, 'available': bool, 'used_bytes': int, 'budget_bytes': int, 'above_high': bool}
+    if not (isinstance(value, dict) and isinstance(value.get('tiers'), list) and
+            isinstance(value.get('writer'), str) and
+            type(value.get('migrate_enabled')) is bool and type(value.get('migration_stopped')) is bool and
+            isinstance(value.get('pending_tier_deletions'), dict) and
+            all(isinstance(tier, dict) and all(type(tier.get(key)) is kind for key, kind in shape.items())
+                for tier in value['tiers'])):
+        return None, 'unparsable'
+    return value, None
+
+
+def grapher_views(folder, record, running):
+    """(per-tier views in the order of record['tiers'], migration view). Anything short of a well-formed file
+    written by the running Grapher is reported as unknown, never as available."""
+    if not has_tier_table(record):
+        status, reason = None, 'no tier table'
+    elif not running:
+        status, reason = None, 'grapher not running'
+    else:
+        status, reason = read_grapher_status(Path(folder) / GRAPHER_STATUS)
+    if status is None:
+        unknown = {'known': False, 'reason': reason}
+        return [dict(unknown) for _ in record['tiers']], dict(unknown)
+    seen = {tier['name']: tier for tier in status['tiers']}
+    views = []
+    for tier in record['tiers']:
+        entry = seen.get(tier['name'])
+        if entry is None or entry['rank'] != tier.get('rank', 0):
+            # A tier added after the Grapher read its configuration.
+            views.append({'known': False, 'reason': 'not in the Grapher tier table'})
+        else:
+            views.append({'known': True, 'available': entry['available'], 'used_bytes': entry['used_bytes'],
+                          'budget_bytes': entry['budget_bytes'], 'above_high': entry['above_high'],
+                          'migrate_enabled': status['migrate_enabled'],
+                          'migration_stopped': status['migration_stopped']})
+    return views, {'known': True, 'writer': status['writer'], 'migrate_enabled': status['migrate_enabled'],
+                   'migration_stopped': status['migration_stopped'],
+                   'pending_tier_deletions': status['pending_tier_deletions']}
