@@ -289,9 +289,9 @@ cmd_bundle() {
     cp -r "$root/deploy/grafana/." "$out/deploy/grafana/"
     cp "$here/chronolog-demo" "$out/deploy/demo/"
     cp "$here/registry.py" "$out/deploy/demo/"
-    mkdir -p "$out/deploy/local/chronolog_local"
-    cp "$root/deploy/local/chronolog" "$out/deploy/local/"
-    cp "$root/deploy/local/chronolog_local/"*.py "$out/deploy/local/chronolog_local/"
+    mkdir -p "$out/launcher/chronolog_local"
+    cp "$root/launcher/chronolog" "$out/launcher/"
+    cp "$root/launcher/chronolog_local/"*.py "$out/launcher/chronolog_local/"
     if [ -f "$here/tour.py" ]; then cp "$here/tour.py" "$out/deploy/demo/"; fi
     if [ -d "$root/skills/chronolog" ]; then cp -r "$root/skills/chronolog" "$out/skills/"; fi
     chmod +x "$out/deploy/demo/chronolog-demo"

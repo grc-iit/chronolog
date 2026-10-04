@@ -1,4 +1,4 @@
-// Clock skew probe for tests/end-to-end/clock-skew/clock_skew_harness.sh (section 8).
+// Clock skew probe for tests/integration/visor/clock_skew_harness.sh (section 8).
 //
 // The probe reads Cluster.ReadClock the way a Cristian client does and checks the estimate against the injected
 // skew. Its local time comes from the SDK ChronoClock over an injected TimeSource, so the skew is applied through

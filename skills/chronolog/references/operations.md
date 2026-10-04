@@ -14,7 +14,7 @@ bash tests/smoke/build_artifacts.sh                  # wheels, viz assets, TypeS
 
 Presets: `dev` (debug), `release`, `python` (the wheel's own build directory), `tsan` and `asan` (instrumented dependency triplets in `triplets/`).
 
-Server binaries: `build/dev/src/chrono-visor/chrono_visor`, `.../chrono-keeper/chrono_keeper`, `.../chrono-grapher/server/chrono_grapher`, `.../chrono-player/chrono_player`. Each takes `--config <file.json>`; in containers the entrypoint builds the config from `CHRONOLOG_*` environment variables and `CHRONOLOG_ROLE`.
+Server binaries: `build/dev/src/visor/chrono_visor`, `build/dev/src/keeper/chrono_keeper`, `build/dev/src/grapher/chrono_grapher`, `build/dev/src/player/chrono_player`. Each takes `--config <file.json>`; in containers the entrypoint builds the config from `CHRONOLOG_*` environment variables and `CHRONOLOG_ROLE`.
 
 Container-only build (no host toolchain; slow the first time): `deploy/containers/builder.Containerfile` prebuilds the vcpkg dependencies and `deploy/containers/runtime.Containerfile` builds a release runtime image from it. The demo kit uses the faster `runtime-local.Containerfile`, which packages binaries built natively.
 
@@ -34,11 +34,11 @@ Advertised endpoints matter: a Keeper advertises one address, and clients connec
 
 ## Several machines
 
-`deploy/cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `deploy/cluster/run_dragon.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts.
+`tools/lab-cluster/` runs the services natively across hosts over SSH: one Visor, two Graphers, two Keepers, a Player, and the archive on a shared NFS mount. `tools/lab-cluster/run.sh --preflight-only` checks prerequisites (prebuilt binaries, passwordless SSH to the other hosts, the NFS mount, an empty archive directory) before a full run. Role configs are the JSON files beside it; edit addresses for your hosts.
 
 ## Dynamic membership
 
-Default is static membership: a fixed Keeper list, every story at epoch 1. For high availability set `membership_mode` to dynamic and give each of three Visors a `raft` block (its server id, Raft endpoint and the peer list). The Catalog then commits through NuRaft with an fsynced log; any replica serves reads and watches, followers forward writes to the leader. Keepers, Graphers and Players take the Visor address as a comma-separated list of replicas and fail over between them. Operate the cluster with `chronolog_admin <visor-internal-endpoint> list|drain|join|abandon [process_id]`. `tests/integration/dynamic/` holds a working three-replica setup and seven failover scenarios (Visor leader kill, Keeper partition, successor admitted above the cut, predecessor drain, transition budget, join with a stale Player, abandonment); its ctest `dynamic_failover_integration` runs them on one host, and `tests/integration/dynamic/run.py --homelab` runs them across machines. `src/chrono-visor/VisorConfig.cpp` lists every configuration key.
+Default is static membership: a fixed Keeper list, every story at epoch 1. For high availability set `membership_mode` to dynamic and give each of three Visors a `raft` block (its server id, Raft endpoint and the peer list). The Catalog then commits through NuRaft with an fsynced log; any replica serves reads and watches, followers forward writes to the leader. Keepers, Graphers and Players take the Visor address as a comma-separated list of replicas and fail over between them. Operate the cluster with `chronolog_admin <visor-internal-endpoint> list|drain|join|abandon [process_id]`. `tests/integration/dynamic/` holds a working three-replica setup and seven failover scenarios (Visor leader kill, Keeper partition, successor admitted above the cut, predecessor drain, transition budget, join with a stale Player, abandonment); its ctest `visor.dynamic_failover` runs them on one host, and `tests/integration/dynamic/run.py --homelab` runs them across machines. `src/visor/VisorConfig.cpp` lists every configuration key.
 
 ## Health and debugging
 
@@ -51,4 +51,4 @@ Default is static membership: a fixed Keeper list, every story at epoch 1. For h
 
 ## Tests
 
-`ctest --preset dev` runs everything that does not need containers, including the contract suites every implementation must pass. `tests/smoke/run_dragon.sh` brings the full stack up under Docker and Podman and runs the Python, MCP, TypeScript and plugin suites against it (`ENGINES=docker` or `ENGINES=podman` to pick one; `SKIP_NATIVE_BUILD=1 SKIP_BINDING_BUILD=1` to reuse artifacts from `build_artifacts.sh`).
+`ctest --preset dev` runs everything that does not need containers, including the contract suites every implementation must pass. `tests/smoke/run.sh` brings the full stack up under Docker and Podman and runs the Python, MCP, TypeScript and plugin suites against it (`ENGINES=docker` or `ENGINES=podman` to pick one; `SKIP_NATIVE_BUILD=1 SKIP_BINDING_BUILD=1` to reuse artifacts from `build_artifacts.sh`).

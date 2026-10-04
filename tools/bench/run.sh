@@ -34,10 +34,10 @@ walbase=${BENCH_WAL_DIR:-$HOME/chronolog-sprint/bench/tmp}
 mkdir -p "$walbase"
 scratch=$(mktemp -d "$walbase/run.XXXXXX")
 
-visor=$binaries/src/chrono-visor/chrono_visor
-keeper=${BENCH_KEEPER:-$binaries/src/chrono-keeper/chrono_keeper}
-grapher=$binaries/src/chrono-grapher/server/chrono_grapher
-player=$binaries/src/chrono-player/chrono_player
+visor=$binaries/src/visor/chrono_visor
+keeper=${BENCH_KEEPER:-$binaries/src/keeper/chrono_keeper}
+grapher=$binaries/src/grapher/chrono_grapher
+player=$binaries/src/player/chrono_player
 micro=$binaries/tools/bench/chronolog_bench_micro
 load=$binaries/tools/bench/chronolog_bench_load
 

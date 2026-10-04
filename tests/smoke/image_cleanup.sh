@@ -1,4 +1,4 @@
-# Sourced by run_dragon.sh. Removes the images a smoke run superseded, for one engine at a time.
+# Sourced by run.sh. Removes the images a smoke run superseded, for one engine at a time.
 #
 # smoke_images_snapshot ENGINE REF... records the image id each REF names before the run builds it.
 # smoke_images_cleanup ENGINE REF... then removes an image only when it is dangling, no container

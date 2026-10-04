@@ -93,7 +93,7 @@ inline bool retryable(const absl::Status& s)
 {
     return s.code() == absl::StatusCode::kUnavailable || s.code() == absl::StatusCode::kDeadlineExceeded;
 }
-// Same channel policy as src/chrono-common/rpc/Channel.h, kept as its own copy because the SDK cannot
+// Same channel policy as src/common/rpc/Channel.h, kept as its own copy because the SDK cannot
 // include src/. A lookup that fails or a peer that returns on a new address is re-resolved within a second
 // instead of the 30 s gRPC default, reconnects are bounded, and keepalive notices a vanished peer.
 inline grpc::ChannelArguments channelPolicy(const ClientOptions& options)

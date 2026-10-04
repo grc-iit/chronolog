@@ -165,12 +165,12 @@ class Local:
 
 
 class Lab(Local):
-    # Hosts, addresses, endpoint blocks and the archive come from the deploy/cluster lab file's dynamic section.
+    # Hosts, addresses, endpoint blocks and the archive come from the tools/lab-cluster lab file's dynamic section.
     def __init__(self, args):
         super().__init__(args)
-        spec = importlib.util.spec_from_file_location('cluster', ROOT / 'deploy/cluster/cluster.py')
+        spec = importlib.util.spec_from_file_location('cluster', ROOT / 'tools/lab-cluster/cluster.py')
         module = importlib.util.module_from_spec(spec)
-        sys.path.insert(0, str(ROOT / 'deploy/cluster'))
+        sys.path.insert(0, str(ROOT / 'tools/lab-cluster'))
         spec.loader.exec_module(module)
         self.lab = module.Lab(args.config)
         self.dynamic = self.lab.data['dynamic']
@@ -336,12 +336,12 @@ def main():
     parser = argparse.ArgumentParser()
     for role in ('rpc', 'visor', 'keeper', 'grapher', 'player'):
         parser.add_argument('--' + role, required=True)
-    parser.add_argument('--config', help='deploy/cluster lab file; runs the scenario across its hosts')
-    parser.add_argument('--homelab', action='store_true', help='--config deploy/cluster/homelab.json')
+    parser.add_argument('--config', help='tools/lab-cluster lab file; runs the scenario across its hosts')
+    parser.add_argument('--homelab', action='store_true', help='--config tools/lab-cluster/homelab.json')
     parser.add_argument('--scenario', choices=('failover', 'physical-claim'), default='failover')
     args = parser.parse_args()
     if args.homelab:
-        args.config = args.config or str(ROOT / 'deploy/cluster/homelab.json')
+        args.config = args.config or str(ROOT / 'tools/lab-cluster/homelab.json')
     if args.config and args.scenario != 'failover':
         parser.error('--config runs the failover scenario only')
     def interrupted(signum, frame):

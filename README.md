@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/static/logos/chronolog_logo.svg" alt="ChronoLog logo" width="40%">
+  <img src=".github/assets/chronolog_logo.svg" alt="ChronoLog logo" width="40%">
 </p>
 
 <h1 align="center">ChronoLog</h1>
@@ -28,7 +28,7 @@ published. What is in the tree today:
 | Destroy | Tombstones propagate to every Keeper and Grapher; archive files are erased, Empty windows included. |
 | Archive | Per-writer manifest logs, compaction on by default, CRC32C and length per file, archive reads with a deadline. |
 | One node | `chronolog` launcher: `up`, `down`, `ls`, `status`, `run`, `doctor`, `tier add`, `tier ls`; crash restart. |
-| Clients | C++ SDK, Python and TypeScript bindings, the Context API for agents, `chrono-mcp` with twelve tools, a Claude Code and Codex plugin with the `chronolog` skill. |
+| Clients | C++ SDK, Python and TypeScript bindings, the Context API for agents, `chronolog-mcp` with twelve tools, a Claude Code and Codex plugin with the `chronolog` skill. |
 | Capacity | `APPEND_REJECTION_CAPACITY` is in the contract and the SDKs; the Keeper admission cap and WAL reserve that use it are not built yet. |
 | Tier chain | Migration to slower tiers (NFS, parallel file systems) exists in the tier library with its crash gates, but the Grapher and Player do not use it yet. S3 is deferred. |
 | Plugins | kvs, pubsub, sql, mcp, stream, viz, ldms. |
@@ -80,7 +80,7 @@ builds into `build/<preset>`.
 
 ## One node with agents
 
-The `chronolog` launcher (`deploy/local`) runs the Visor, a Keeper, the Grapher and the Player as local processes,
+The `chronolog` launcher (`launcher/`) runs the Visor, a Keeper, the Grapher and the Player as local processes,
 without containers, and lets agents find a running instance or start their own. Install the stripped servers, the
 launcher and the MCP server into a user-owned prefix:
 
@@ -93,8 +93,8 @@ python3 -m venv build/tools
 build/tools/bin/python -m pip install build 'scikit-build-core>=1.1' 'nanobind>=3.1' hatchling
 mkdir -p "$prefix/wheels"
 build/tools/bin/python -m build --wheel --no-isolation -Ccmake.build-type=Release --outdir "$prefix/wheels" client/python
-python3 deploy/local/build_wheel.py "$prefix/wheels"
-build/tools/bin/python -m build --wheel --no-isolation --outdir "$prefix/wheels" plugins/chrono-mcp
+python3 launcher/build_wheel.py "$prefix/wheels"
+build/tools/bin/python -m build --wheel --no-isolation --outdir "$prefix/wheels" plugins/mcp
 python3 -m venv "$prefix"
 "$prefix/bin/python" -m pip install --find-links "$prefix/wheels" "$prefix"/wheels/chronolog-*.whl \
   "$prefix"/wheels/chronolog_local-*.whl 'chronolog-mcp[local]==4.0.0'
@@ -394,12 +394,12 @@ cut; `follow` waits on several contexts at once; and `reconcile` recovers writes
 crash or fence, reporting each operation LANDED, ABSENT or UNKNOWN. Checkpoints carry the processed position and
 ownership so a restarted agent resumes without duplicating or silently dropping memories.
 
-`chrono-mcp` exposes that layer to any MCP client as twelve tools: `instance_list`, `instance_control`, `context_open`, `context_remember`,
+`chronolog-mcp` exposes that layer to any MCP client as twelve tools: `instance_list`, `instance_control`, `context_open`, `context_remember`,
 `context_recall`, `context_latest`, `context_follow`, `context_reconcile`, `context_checkpoint`, `context_close`,
-`context_list` and `context_status` ([plugins/chrono-mcp/README.md](plugins/chrono-mcp/README.md)).
+`context_list` and `context_status` ([plugins/mcp/README.md](plugins/mcp/README.md)).
 
 The repository root is a plugin marketplace for Claude Code and Codex. Its one plugin, `chronolog`, installs the
-`chronolog` skill (`skills/chronolog`) and the chrono-mcp server, launched as `chronolog run --up default --
+`chronolog` skill (`skills/chronolog`) and the chronolog-mcp server, launched as `chronolog run --up default --
 chronolog-mcp` when the launcher is installed and as `uvx chronolog-mcp==4.0.0` against an existing deployment
 otherwise (until publication, point `UV_FIND_LINKS` at locally built wheels). `instance_list` discovers instances and
 `instance_control` attaches, creates, detaches or stops them. `context_recall` takes `since` and an exclusive `until`
@@ -408,13 +408,13 @@ as int64 nanoseconds or RFC 3339; they bound acceptance (HLC) time, not the writ
 
 ## Plugins
 
-- **chrono-kvs**: a versioned key-value store with put, get, get as of an HLC, and history.
-- **chrono-pubsub**: topics with at-least-once delivery and resumable consumers whose positions live in kvs.
-- **chrono-sql**: append-only typed tables with a small SELECT that reports its Completion.
-- **chrono-mcp**: twelve tools for Context memory and explicit local instance control over MCP.
-- **chrono-stream**: host metrics into ChronoLog and a resumable exporter to InfluxDB with Grafana dashboards.
-- **chrono-viz**: a Grafana datasource for ChronoLog with completeness notices and live tail.
-- **chrono-ldms**: an LDMS store plugin that bridges sampler data into ChronoLog through a non-blocking queue.
+- **kvs** (`plugins/kvs`): a versioned key-value store with put, get, get as of an HLC, and history.
+- **pubsub** (`plugins/pubsub`): topics with at-least-once delivery and resumable consumers whose positions live in kvs.
+- **sql** (`plugins/sql`): append-only typed tables with a small SELECT that reports its Completion.
+- **mcp** (`plugins/mcp`): twelve tools for Context memory and explicit local instance control over MCP.
+- **stream** (`plugins/stream`): host metrics into ChronoLog and a resumable exporter to InfluxDB with Grafana dashboards.
+- **viz** (`plugins/viz`): a Grafana datasource for ChronoLog with completeness notices and live tail.
+- **ldms** (`plugins/ldms`): an LDMS store plugin that bridges sampler data into ChronoLog through a non-blocking queue.
 
 ## Tests
 
@@ -427,7 +427,7 @@ cmake --preset tsan && cmake --build --preset tsan && ctest --preset tsan
 `ctest --preset dev` runs the six contract suites, the component and adapter suites, and the integration tests that
 start real services on loopback ports. Every test that starts service processes holds the ctest resource lock
 `chronolog_stack`, so they run one at a time while unit tests run in parallel ([tests/README.md](tests/README.md)). The `python` preset adds the Python binding and MCP plugin suites.
-`tests/smoke/run_dragon.sh` is the full container smoke: it stages the native binaries into the runtime image, brings
+`tests/smoke/run.sh` is the full container smoke: it stages the native binaries into the runtime image, brings
 the compose stack up and runs the Python, MCP, TypeScript and plugin suites and the demo tour against it, under
 Docker and then Podman (`ENGINES=podman` picks one). It serializes on a host lock file under `~/chronolog-sprint/`.
 
@@ -436,7 +436,7 @@ Docker and then Podman (`ENGINES=podman` picks one). It serializes on a host loc
 ChronoLog is distributed under the [BSD 2-Clause License](LICENSE).
 
 <p align="center">
-  <img src="website/public/images/logos/grc-logo.png" alt="Gnosis Research Center" width="60">
+  <img src=".github/assets/grc-logo.png" alt="Gnosis Research Center" width="60">
 </p>
 
 <p align="center">
@@ -446,6 +446,6 @@ ChronoLog is distributed under the [BSD 2-Clause License](LICENSE).
 
 <p align="center">
   <strong>Sponsored by:</strong><br>
-  <a href="https://www.nsf.gov"><img src="docs/static/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100"></a><br>
+  <a href="https://www.nsf.gov"><img src=".github/assets/nsf-logo.png" alt="National Science Foundation" width="100"></a><br>
   National Science Foundation (NSF CSSI-2104013)
 </p>
