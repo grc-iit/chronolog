@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chronolog/predicate.h"
 #include "chronolog/types.h"
 
 namespace chronolog
@@ -87,6 +88,18 @@ public:
     virtual absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range) const = 0;
 
     /**
+     * Open a replay stream over a half-open range, keeping only the events a predicate matches (I6.17).
+     * Preconditions: As read without a predicate.
+     * Postconditions: A predicate only removes events: the range, order, sources consulted and Completion rules are
+     * those of read without one, applied to the matching events. An empty predicate matches every event.
+     * Status codes: As read without a predicate; INVALID_ARGUMENT for a malformed or oversized predicate.
+     * Thread safety: As read without a predicate.
+     * Invariant tests: tests/contract/replay_contract_test.cpp: PredicatesOnlyRemoveEvents.
+     */
+    virtual absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId id, Range range, const EventPredicate& predicate) const = 0;
+
+    /**
      * Open a live subscription exclusively after the supplied position.
      * Preconditions: Known story; position EventId refers to that story.
      * Postconditions: Resumes in total order; never claims completeness; orderly end includes false Completion.
@@ -97,6 +110,18 @@ public:
      * TailResumesExclusivelyAfterPosition.
      */
     virtual absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position) const = 0;
+
+    /**
+     * Open a live subscription exclusively after the supplied position, delivering only matching events (I6.17).
+     * Preconditions: As tail without a predicate.
+     * Postconditions: A predicate only removes events: the frontier and every delivery rule are those of tail without
+     * one, applied to the matching events.
+     * Status codes: As tail without a predicate; INVALID_ARGUMENT for a malformed or oversized predicate.
+     * Thread safety: As tail without a predicate.
+     * Invariant tests: tests/contract/replay_contract_test.cpp: PredicatesOnlyRemoveEvents.
+     */
+    virtual absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(StoryId id, Event position, const EventPredicate& predicate) const = 0;
 };
 
 } // namespace chronolog

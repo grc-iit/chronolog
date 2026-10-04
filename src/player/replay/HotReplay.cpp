@@ -808,6 +808,12 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::read(StoryId id, Range range, const EventPredicate& predicate) const
+{
+    return read(id, range, 0, predicate);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
 HotReplay::read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const
 {
     if(auto valid = predicate.validate(); !valid.ok())
