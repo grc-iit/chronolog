@@ -54,6 +54,11 @@ public:
             e->mutable_id()->set_incarnation(1);
             e->mutable_id()->set_sequence(p);
             e->mutable_hlc()->set_physical_ns(p);
+            if(unspecified_with_bound)
+            {
+                e->mutable_physical()->set_status(wire::CLOCK_STATUS_UNSPECIFIED);
+                e->mutable_physical()->set_uncertainty_ns(1);
+            }
         }
         writer->Write(batch);
         wire::ReadResponse final;
@@ -75,7 +80,7 @@ public:
     std::string endpoint;
     std::unique_ptr<grpc::Server> server;
     std::atomic<int> reads{}, discovered{};
-    bool stuck{}, incomplete{};
+    bool stuck{}, incomplete{}, unspecified_with_bound{};
 };
 TEST(ClientPhysicalRead, DiscoversPlayerSplitsAndDeduplicatesIntervals)
 {
@@ -148,5 +153,30 @@ TEST(ClientPhysicalRead, AggregateNeedsEveryLeafComplete)
     ASSERT_TRUE(completion);
     EXPECT_FALSE(completion->complete);
     EXPECT_EQ(completion->reason, chronolog::IncompleteReason::LaggingWriters);
+}
+// W10.15: "CLOCK_STATUS_UNSPECIFIED on the wire maps to Unavailable in every adapter, never to Synced; the proto
+// comment states it." The SDK's event conversion reads it as Unavailable even when the reading carries a bound.
+TEST(ClientEventConvert, UnspecifiedClockStatusIsUnavailable)
+{
+    PhysicalServer server;
+    server.unspecified_with_bound = true;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok());
+    auto read = client->readPhysical(1, {0, 5});
+    ASSERT_TRUE(read.ok());
+    size_t events = 0;
+    for(size_t i = 0; i < 20; ++i)
+    {
+        auto item = read->next();
+        ASSERT_TRUE(item.ok());
+        if(!*item)
+            break;
+        for(const auto& e: (**item).events)
+        {
+            ++events;
+            EXPECT_EQ(e.physical.status, chronolog::ClockStatus::Unavailable) << e.id.sequence;
+        }
+    }
+    EXPECT_EQ(events, 2u);
 }
 } // namespace
