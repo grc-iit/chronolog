@@ -54,7 +54,12 @@ class Local:
         self.services = {}
         # Configured roles the scenario starts itself rather than at boot.
         self.later = set()
-        self.nodes = {'dragon': '127.0.0.1'}
+        self.nodes = {'local': '127.0.0.1'}
+        self.grapher = self.player = None
+
+    def host(self, endpoint):
+        address = endpoint.rsplit(':', 1)[0]
+        return next(node for node, known in self.nodes.items() if known == address)
 
     def write(self, role, node, config):
         path = self.folder / (role + '.json')
@@ -159,42 +164,51 @@ class Local:
         raise StartupError('no free 5-port blocks in 200 random draws')
 
 
-class Homelab(Local):
+class Lab(Local):
+    # Hosts, addresses, endpoint blocks and the archive come from the tools/lab-cluster lab file's dynamic section.
     def __init__(self, args):
         super().__init__(args)
         spec = importlib.util.spec_from_file_location('cluster', ROOT / 'tools/lab-cluster/cluster.py')
         module = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(ROOT / 'tools/lab-cluster'))
         spec.loader.exec_module(module)
-        self.cluster = module.Cluster()
-        self.nodes = module.NODES
-        self.archive = '/mnt/nfs/chronolog-sprint/' + self.tag + '/archive'
-        module.PORTS = {'dragon': [50051, 50061, 50057, 50056, 50066, 50058, 50053],
-                        'blade': [50051, 50061, 50057, 50053, 50054],
-                        'mini': [50052, 50062, 50056, 50055, 50065, 50066]}
-        self.cluster.preflight()
-        self.homes = {node: self.cluster.run(node, 'printf %s "$HOME"').decode() for node in self.nodes}
-        for node in ('dragon', 'blade'):
-            self.cluster.run(node, 'mountpoint -q /mnt/nfs && mkdir -p ' + shlex.quote(self.archive))
-        for node in self.nodes:
-            (self.folder / (node + '-hardware.log')).write_bytes(
-                self.cluster.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
+        self.lab = module.Lab(args.config)
+        self.dynamic = self.lab.data['dynamic']
+        self.cluster = module.Cluster(self.lab)
+        self.nodes = self.lab.nodes
+        self.archive = str(Path(self.lab.archive).parent / self.tag / 'archive')
+        self.grapher = self.endpoint(self.dynamic['grapher'])
+        self.player = self.endpoint(self.dynamic['player'])
+        self.homes = self.cluster.resolve()
+
+    def endpoint(self, placed):
+        return self.nodes[placed['host']] + ':' + str(placed['port'])
+
+    def archive_nodes(self):
+        return {node for node, _, config in self.services.values() if 'archive_root' in config}
 
     def ports(self):
-        return [[self.nodes[node] + ':' + str(port) for port in ports] for node, ports in (
-            ('dragon', [50051, 50061, 50057, 50056, 50066]),
-            ('dragon', [50056, 50066, 50058, 50051, 50061]),
-            ('blade', [50051, 50061, 50057, 50053, 50054]),
-            ('mini', [50052, 50062, 50056, 50055, 50065]),
-            ('mini', [50055, 50065, 50066, 50052, 50062]),
-            ('dragon', [50053, 50054, 50055, 50056, 50057]))]
+        return [[self.nodes[block['host']] + ':' + str(port) for port in block['ports']]
+                for block in self.dynamic['blocks']]
 
     def write(self, role, node, config):
         super().write(role, node, config)
-        remote = self.homes[node] + '/chronolog-sprint/run/' + self.tag
+        remote = self.homes[node] + '/run/' + self.tag
         config = json.loads(json.dumps(config).replace(str(self.folder), remote))
         self.services[role] = (node, Path(remote) / (role + '.json'), config)
 
     def stage(self):
+        listening = {}
+        for node, _, config in self.services.values():
+            for endpoint in endpoints(config):
+                port = int(endpoint.rsplit(':', 1)[1])
+                if port not in listening.setdefault(node, []):
+                    listening[node].append(port)
+        self.cluster.preflight(listening)
+        for node in self.archive_nodes():
+            self.cluster.run(node, self.lab.archive_ready(node) + ' && mkdir -p ' + shlex.quote(self.archive))
+        for node in self.nodes:
+            (self.folder / (node + '-hardware.log')).write_bytes(self.cluster.run(node, self.lab.hardware(node)))
         for node in self.nodes:
             buffer = io.BytesIO()
             with tarfile.open(fileobj=buffer, mode='w') as tar:
@@ -212,8 +226,8 @@ class Homelab(Local):
                 for kind in binaries:
                     tar.add(getattr(self.args, kind), arcname=f'bin/{self.tag}/chrono_{kind}')
                 tar.add(HERE / 'proxy.py', arcname=f'run/{self.tag}/proxy.py')
-            self.cluster.run(node, 'mkdir -p ~/chronolog-sprint && cd ~/chronolog-sprint && tar xf -',
-                             60, buffer.getvalue())
+            home = shlex.quote(self.homes[node])
+            self.cluster.run(node, f'mkdir -p {home} && cd {home} && tar xf -', 60, buffer.getvalue())
 
     def launch(self, role):
         node, path, config = self.services[role]
@@ -221,7 +235,7 @@ class Homelab(Local):
         if kind == 'proxy':
             command = ['python3', str(path.parent / 'proxy.py'), config['listen'], json.dumps(config['targets']), config['blocked']]
         else:
-            command = [self.homes[node] + f'/chronolog-sprint/bin/{self.tag}/chrono_{kind}', '--config', str(path)]
+            command = [self.homes[node] + f'/bin/{self.tag}/chrono_{kind}', '--config', str(path)]
         if kind == 'keeper':
             command = ['env', 'grpc_proxy=http://' + self.services['proxy-' + role][2]['listen'],
                        'no_grpc_proxy=', 'no_proxy=', *command]
@@ -263,12 +277,13 @@ class Homelab(Local):
             except Exception:
                 pass
         self.cluster.close()
+        archives = self.archive_nodes()
         for node in self.nodes:
-            paths = [f'~/chronolog-sprint/bin/{self.tag}', f'~/chronolog-sprint/run/{self.tag}']
-            if node in ('dragon', 'blade'):
-                paths.append('/mnt/nfs/chronolog-sprint/' + self.tag)
+            paths = [f'{self.homes[node]}/bin/{self.tag}', f'{self.homes[node]}/run/{self.tag}']
+            if node in archives:
+                paths.append(str(Path(self.archive).parent))
             try:
-                self.cluster.run(node, 'rm -rf ' + ' '.join(paths), 30)
+                self.cluster.run(node, 'rm -rf ' + shlex.join(paths), 30)
             except Exception:
                 pass
 
@@ -282,22 +297,18 @@ def configure(stack, new_keeper=False):
     keepers = [dict(process_id='keeper-' + str(i + 1), endpoint=p[0]) for i, p in enumerate(ports[3:5])]
     internal = ','.join(peers[i]['internal_endpoint'] for i in (2, 0, 1))
     catalog = ','.join(peers[i]['catalog_endpoint'] for i in (2, 0, 1))
-    graphers = [ports[5][0]]
-    player = ports[5][1]
-    if isinstance(stack, Homelab):
-        graphers += [stack.nodes['blade'] + ':50053']
-        player = stack.nodes['blade'] + ':50054'
+    graphers = [ports[5][0]] + ([stack.grapher] if stack.grapher else [])
+    player = stack.player or ports[5][1]
     for i, peer in enumerate(peers):
         role = 'visor-' + str(i + 1)
-        node = 'blade' if isinstance(stack, Homelab) and i == 2 else 'dragon'
-        stack.write(role, node, dict(membership_mode='dynamic', listen=peer['catalog_endpoint'],
+        stack.write(role, stack.host(peer['catalog_endpoint']), dict(membership_mode='dynamic', listen=peer['catalog_endpoint'],
                     internal_listen=peer['internal_endpoint'], db_path=str(stack.folder / (role + '.sqlite')),
                     keepers=keepers, graphers=graphers, player=player, **liveness_timeouts, worker_threads=4,
                     raft=dict(server_id=i + 1, raft_endpoint=peer['raft_endpoint'], peers=peers,
                               election_lower_ms=300 if i == 2 else 1200, election_upper_ms=400 if i == 2 else 1600)))
     for i, p in enumerate(ports[3:5] + ports[6:7]):
         role = 'keeper-' + str(i + 1)
-        node = 'mini' if isinstance(stack, Homelab) else 'dragon'
+        node = stack.host(p[0])
         stack.write('proxy-' + role, node, dict(listen=p[2], targets=[peer['internal_endpoint'] for peer in peers],
                                               blocked=str(stack.folder / (role + '.blocked'))))
         stack.write(role, node, dict(process_id=role, listen=p[0], internal_listen=p[1], self_endpoint=p[0],
@@ -308,10 +319,10 @@ def configure(stack, new_keeper=False):
                     wal_segment_bytes=8388608))
     for i, endpoint in enumerate(graphers):
         role = 'grapher-' + ('a' if i == 0 else 'b')
-        stack.write(role, 'dragon' if i == 0 else 'blade', dict(process_id=role, manifest_writer=role,
+        stack.write(role, stack.host(endpoint), dict(process_id=role, manifest_writer=role,
                     internal_listen=endpoint, self_endpoint=endpoint, visor_internal=internal,
                     archive_root=stack.archive, heartbeat_interval_ms=200))
-    stack.write('player', 'blade' if isinstance(stack, Homelab) else 'dragon',
+    stack.write('player', stack.host(player),
                 dict(listen=player, advertise=player, visor=catalog,
                      visor_internal=internal, archive_root=stack.archive,
                      keeper_internal={'keeper-' + str(i + 1): p[1] for i, p in enumerate(ports[3:5] + ports[6:7])},
@@ -325,11 +336,14 @@ def main():
     parser = argparse.ArgumentParser()
     for role in ('rpc', 'visor', 'keeper', 'grapher', 'player'):
         parser.add_argument('--' + role, required=True)
-    parser.add_argument('--homelab', action='store_true')
+    parser.add_argument('--config', help='tools/lab-cluster lab file; runs the scenario across its hosts')
+    parser.add_argument('--homelab', action='store_true', help='--config tools/lab-cluster/homelab.json')
     parser.add_argument('--scenario', choices=('failover', 'physical-claim'), default='failover')
     args = parser.parse_args()
-    if args.homelab and args.scenario != 'failover':
-        parser.error('--homelab runs the failover scenario only')
+    if args.homelab:
+        args.config = args.config or str(ROOT / 'tools/lab-cluster/homelab.json')
+    if args.config and args.scenario != 'failover':
+        parser.error('--config runs the failover scenario only')
     def interrupted(signum, frame):
         raise RuntimeError('driver interrupted by signal ' + str(signum))
     signal.signal(signal.SIGTERM, interrupted)
@@ -338,9 +352,9 @@ def main():
     try:
         for attempt in range(1, STARTUP_ATTEMPTS + 1):
             try:
-                stack = Homelab(args) if args.homelab else Local(args)
+                stack = Lab(args) if args.config else Local(args)
                 peers = configure(stack, new_keeper=args.scenario == 'physical-claim')
-                if args.homelab:
+                if args.config:
                     stack.stage()
                 for role in stack.services:
                     if role not in stack.later:
@@ -353,7 +367,7 @@ def main():
                     stack.close()
                     print('Logs ' + str(stack.folder), flush=True)
                     stack = None
-                if args.homelab or attempt == STARTUP_ATTEMPTS:
+                if args.config or attempt == STARTUP_ATTEMPTS:
                     print('FAIL startup: ' + str(error), flush=True)
                     return 1
         if args.scenario == 'physical-claim':

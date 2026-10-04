@@ -126,6 +126,21 @@ TEST(KeeperConfig, WalRotationAndShutdownSettings)
     EXPECT_FALSE(KeeperConfig::load(std::nullopt, Env({{"CHRONOLOG_KEEPER_WAL_SEGMENT_BYTES", "0"}})).ok());
 }
 
+TEST(KeeperConfig, DeploymentIdIsEmptyByDefaultAndComesFromFileOrEnvironment)
+{
+    auto defaults = KeeperConfig::load(std::nullopt, Env({}));
+    ASSERT_TRUE(defaults.ok());
+    EXPECT_TRUE(defaults->deployment_id.empty());
+    auto path = WriteFile(R"({"deployment_id":"from-file"})");
+    auto file = KeeperConfig::load(path, Env({}));
+    auto overridden = KeeperConfig::load(path, Env({{"CHRONOLOG_KEEPER_DEPLOYMENT_ID", "from-env"}}));
+    std::filesystem::remove(path);
+    ASSERT_TRUE(file.ok());
+    EXPECT_EQ(file->deployment_id, "from-file");
+    ASSERT_TRUE(overridden.ok());
+    EXPECT_EQ(overridden->deployment_id, "from-env");
+}
+
 TEST(KeeperConfig, GroupCommitWindowDefaultsToAdaptiveAndIsBounded)
 {
     auto defaults = KeeperConfig::load(std::nullopt, Env({}));

@@ -65,6 +65,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "causal_floor_skew_limit_ns",
                                                 "dedupe_window",
                                                 "wal_dir",
+                                                "deployment_id",
                                                 "group_commit_max_bytes",
                                                 "group_commit_window_us",
                                                 "reserve_ahead_ms",
@@ -131,6 +132,7 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                 field = json.at(key).get<std::string>();
         };
         str("wal_dir", cfg.wal_dir);
+        str("deployment_id", cfg.deployment_id);
         str("listen", cfg.listen);
         str("internal_listen", cfg.internal_listen);
         str("process_id", cfg.process_id);
@@ -256,7 +258,8 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
                             {"log_level", &cfg.log_level},
                             {"self_endpoint", &cfg.self_endpoint},
                             {"visor_internal", &cfg.visor_internal},
-                            {"wal_dir", &cfg.wal_dir}})
+                            {"wal_dir", &cfg.wal_dir},
+                            {"deployment_id", &cfg.deployment_id}})
         if(auto v = env(key))
             *field = *v;
     if(auto v = env("payload_max_bytes"))

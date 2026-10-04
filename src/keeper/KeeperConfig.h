@@ -48,6 +48,9 @@ struct KeeperConfig
     int64_t causal_floor_skew_limit_ns = 60'000'000'000;
     size_t dedupe_window = 65536;
     std::string wal_dir = "wal";
+    // The launcher's deployment id. The WAL is stamped with it and refuses another deployment's id; empty
+    // disables the check.
+    std::string deployment_id;
     size_t group_commit_max_bytes = 4u << 20;
     // I5.10 group-commit window in microseconds, at most 10000. Zero commits each group as soon as the
     // WAL committer is free; nonzero holds a group open that long after its first record.

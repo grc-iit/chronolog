@@ -11,7 +11,8 @@ ctest --preset dev -N              # list without running
 
 Every ctest is named `<component>.<name>`: `common.`, `keeper.`, `visor.`, `grapher.`, `player.`, `contract.`, `build.`,
 `sdk.`, `context.`, `python.`, `typescript.`, `launcher.`, `integration.`, one prefix per plugin (`kvs.`, `pubsub.`,
-`sql.`, `stream.`, `viz.`, `ldms.`, `mcp.`) and `bench.`. A gtest case registers as `<component>.<Suite>.<Case>`.
+`sql.`, `stream.`, `viz.`, `ldms.`, `mcp.`), `lab-cluster.` and `bench.`.
+A gtest case registers as `<component>.<Suite>.<Case>`.
 
 ## Where tests live
 

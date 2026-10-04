@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+"""Multi-node lab harness: stages native services on three hosts over SSH and runs scenario.py.
+
+Usage:
+  cluster.py --config LAB.json --plan            print the resolved placement and service configs, touch nothing
+  cluster.py --config LAB.json --preflight-only  take the locks, check archive mounts and service-port reachability
+  cluster.py --config LAB.json                   full run; logs and results under build/cluster/<tag>
+
+LAB.json (lab.example.json is a generic three-node lab, homelab.json the sprint homelab) names every host
+(name, address, optional ssh target, optional NFS mount and archive path), the driver host whose commands run
+locally, the two Grapher hosts (grapher-a, grapher-b), the remote work directory, the service ports and the
+optional per-host lock commands. Each host runs a Visor replica, a Keeper and a Player; the first host's Player
+is the Visors' default. A lock command runs on its host, must block until the lock is held, and keeps it until
+the driver exits. driver_env lists environment variables the driver requires, for a lock the caller holds.
+Prerequisites: build/dev binaries, the Python SDK python_package target, passwordless ssh to every other host,
+systemd user scopes on every host, and the shared archive mounted on every host.
+"""
+import argparse
 import io
 import json
 import os
@@ -14,13 +31,15 @@ import threading
 import time
 import uuid
 
-from topology import NODES, TABLE, PORTS, ARCHIVE, configs
+from topology import Lab
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'build/cluster'
 
 
 class Cluster:
-    def __init__(self):
+    def __init__(self, lab):
+        self.lab = lab
+        self.work = {}
         self.tag = 'cl-a7-' + uuid.uuid4().hex[:10]
         global OUT
         OUT = OUT / self.tag
@@ -39,9 +58,9 @@ class Cluster:
         if unit:
             scoped += ['--unit', unit]
         scoped += ['timeout', '-k', '5', str(seconds), 'bash', '-c', command]
-        if node == 'dragon':
+        if node == self.lab.driver:
             return scoped
-        return ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', node, shlex.join(scoped)]
+        return ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', self.lab.ssh(node), shlex.join(scoped)]
 
     def run(self, node, command, seconds=30, data=None):
         result = subprocess.run(self.command(node, command, seconds), input=data, capture_output=True,
@@ -85,42 +104,51 @@ class Cluster:
                 time.sleep(.2)
         raise RuntimeError(f'health timeout {endpoint}')
 
-    def preflight(self):
-        for row in TABLE:
+    def resolve(self):
+        if not self.work:
+            self.work = {node: self.run(node, 'printf %s ' + self.lab.workdir_shell()).decode()
+                         for node in self.lab.nodes}
+        return self.work
+
+    def preflight(self, ports=None):
+        ports = ports or self.lab.ports
+        nodes = self.lab.nodes
+        for row in self.lab.table:
             node = row['node']
             try:
-                self.run(node, 'test -d /data/chronolog-sprint' if node == 'mini' else
-                         'test -d /mnt/nfs && mountpoint -q /mnt/nfs', 10)
+                self.run(node, self.lab.archive_ready(node), 10)
             except Exception as error:
                 raise RuntimeError(f'shared archive parent unavailable on {node}') from error
         server = 'import socket,time; ports=PORTS; sockets=[]\nfor p in ports:\n s=socket.socket(); s.bind(("IP",p)); s.listen(); sockets.append(s)\ntime.sleep(90)'
         try:
-            for node, ports in PORTS.items():
-                code = server.replace('PORTS', repr(ports)).replace('IP', NODES[node])
+            for node, listed in ports.items():
+                code = server.replace('PORTS', repr(listed)).replace('IP', nodes[node])
                 self.launch('probe-' + node, node, 'exec python3 -c ' + shlex.quote(code), 90)
             time.sleep(2)
-            for source in NODES:
-                for target, ports in PORTS.items():
+            for source in nodes:
+                for target, listed in ports.items():
                     if source == target:
                         continue
-                    for port in ports:
-                        code = f'import socket; socket.create_connection(({NODES[target]!r},{port}),timeout=3).close()'
+                    for port in listed:
+                        code = f'import socket; socket.create_connection(({nodes[target]!r},{port}),timeout=3).close()'
                         try:
                             self.run(source, 'exec python3 -c ' + shlex.quote(code), 6)
                         except Exception as error:
                             raise RuntimeError(f'reachability {source}->{target}:{port}: {error}') from error
             print('PASS reachability every pair on service ports', flush=True)
         finally:
-            for node in NODES:
+            for node in nodes:
                 self.stop('probe-' + node)
 
     def acquire_locks(self):
-        if os.environ.get('RBUILD_HELD') != 'build':
-            raise RuntimeError('run through rbuild with the dragon build lock')
-        for node in ('mini', 'blade'):
+        for name, value in self.lab.driver_env.items():
+            if os.environ.get(name) != value:
+                raise RuntimeError(f'the driver on {self.lab.driver} requires {name}={value}')
+        for lock in self.lab.locks:
+            node = lock['host']
             unit = f'{self.tag}-build-lock-{node}.scope'
             process = subprocess.Popen(self.command(node,
-                'exec 9>~/chronolog-sprint/build.lock; flock 9; echo LOCKED; cat >/dev/null', 900, unit),
+                lock['command'] + '; echo LOCKED; cat >/dev/null', 900, unit),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
             self.build_locks.append((node, unit, process))
             for _ in range(26):
@@ -131,23 +159,27 @@ class Cluster:
                 print(f'Waiting for {node} build lock', flush=True)
             else:
                 raise RuntimeError(f'build lock unavailable on {node} within the run bound')
-        print('PASS build locks held on dragon mini blade', flush=True)
+        if self.lab.driver_env or self.lab.locks:
+            held = [self.lab.driver] if self.lab.driver_env else []
+            print('PASS build locks held on ' + ' '.join(held + [lock['host'] for lock in self.lab.locks]), flush=True)
 
     def stage(self):
-        homes = {node: self.run(node, 'printf %s "$HOME"').decode() for node in NODES}
-        for role, (node, config) in configs(homes, self.tag).items():
-            self.services[role] = (node, f'chronolog-sprint/run/{self.tag}', json.dumps(config))
-        for node in NODES:
+        lab, work = self.lab, self.resolve()
+        probe = lab.graphers['grapher-b']['node']
+        for role, (node, config) in lab.configs(work, self.tag).items():
+            self.services[role] = (node, f'{work[node]}/run/{self.tag}', json.dumps(config))
+        for node in lab.nodes:
             name = 'stage-' + node
             unit = f'{self.tag}-{name}.scope'
             log = open(OUT / f'{name}.transport.log', 'ab')
+            home = shlex.quote(work[node])
             receiver = subprocess.Popen(self.command(node,
-                'mkdir -p ~/chronolog-sprint/bin && cd ~/chronolog-sprint && tar xf -', 60, unit),
+                f'mkdir -p {home}/bin && cd {home} && tar xf -', 60, unit),
                 stdin=subprocess.PIPE, stdout=log, stderr=log)
             self.processes[name] = (node, unit, receiver, log)
             try:
                 with tarfile.open(fileobj=receiver.stdin, mode='w|') as tar:
-                    if node == 'blade':
+                    if node == probe:
                         tar.add(ROOT / 'build/dev/tools/lab-cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
                     tar.add(ROOT / 'tools/lab-cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
                     tar.add(ROOT / 'build/python/client/python/binding/package/chronolog',
@@ -180,51 +212,52 @@ class Cluster:
                     except BrokenPipeError:
                         pass
                 self.stop(name)
-        for node in NODES:
-            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
-                     f'python3 -m venv ~/chronolog-sprint/build/cluster/{self.tag}/venv && '
-                     f'~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/pip install '
-                     '-r requirements.txt >pip.log 2>&1', 120)
-            (OUT / f'{node}-hardware.log').write_bytes(self.run(node, 'hostname; uname -a; lscpu; findmnt /mnt/nfs || true'))
-        for node in NODES:
-            self.launch('sdk-agent-' + node, node, f'cd ~/chronolog-sprint/run/{self.tag} && '
-                f'exec env PYTHONPATH=sdk ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python '
+        for node in lab.nodes:
+            self.run(node, f'cd {self.folder(node)} && python3 -m venv {self.venv(node)} && '
+                     f'{self.venv(node)}/bin/pip install -r requirements.txt >pip.log 2>&1', 120)
+            (OUT / f'{node}-hardware.log').write_bytes(self.run(node, lab.hardware(node)))
+        for node in lab.nodes:
+            self.launch('sdk-agent-' + node, node, f'cd {self.folder(node)} && '
+                f'exec env PYTHONPATH=sdk {self.venv(node)}/bin/python '
                 'agent.py --serve >>sdk-agent.log 2>&1', 820)
-            self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
+            self.run(node, f'cd {self.folder(node)} && '
                 'for attempt in $(seq 1 300); do test ! -S agent.sock || exit 0; sleep .1; done; '
                 'cat sdk-agent.log >&2; exit 1', 35)
-        for row in TABLE:
-            if not row['grapher']:
-                continue
-            node = row['node']
-            self.run(node, 'test -d /mnt/nfs && mountpoint -q /mnt/nfs && '
-                     'mkdir -p /mnt/nfs/chronolog-sprint/archive && '
-                     'test -z "$(ls -A /mnt/nfs/chronolog-sprint/archive)"')
+        for row in lab.graphers.values():
+            archive = shlex.quote(row['archive'])
+            self.run(row['node'], f'{lab.archive_ready(row["node"])} && mkdir -p {archive} && '
+                     f'test -z "$(ls -A {archive})"')
         self.archive_owned = True
-        marker = f'{ARCHIVE}/{self.tag}.probe'
-        self.run('dragon', f'printf %s {self.tag} >{marker}', 10)
-        for row in TABLE:
-            self.run(row['node'], f'test "$(cat {row["archive"]}/{self.tag}.probe)" = {self.tag}', 10)
-        self.run('dragon', f'rm {marker}', 10)
-        (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services, 'topology': TABLE}, indent=2))
+        marker = shlex.quote(f'{lab.archive}/{self.tag}.probe')
+        self.run(lab.driver, f'printf %s {self.tag} >{marker}', 10)
+        for row in lab.table:
+            self.run(row['node'], f'test "$(cat {shlex.quote(row["archive"] + "/" + self.tag + ".probe")})" = {self.tag}', 10)
+        self.run(lab.driver, f'rm {marker}', 10)
+        (OUT / 'deployment.json').write_text(json.dumps({'tag': self.tag, 'services': self.services, 'topology': lab.table}, indent=2))
+
+    def folder(self, node):
+        return shlex.quote(f'{self.work[node]}/run/{self.tag}')
+
+    def venv(self, node):
+        return shlex.quote(f'{self.work[node]}/build/cluster/{self.tag}/venv')
 
     def start(self, role):
         node, folder, _ = self.services[role]
         binary = 'chrono_' + role.split('-')[0]
-        command = (f'cd ~/{folder} && exec ~/chronolog-sprint/bin/{binary} '
+        command = (f'cd {shlex.quote(folder)} && exec {shlex.quote(self.work[node] + "/bin/" + binary)} '
                    f'--config {role}.json >>{role}.log 2>&1')
         self.launch(role, node, command)
         cfg = json.loads(self.services[role][2])
         self.ready(cfg.get('listen', cfg.get('internal_listen')))
 
     def control(self, request):
-        roles = {'chrono-keeper': [r['keeper'] for r in TABLE], 'chrono-grapher': ['grapher-a', 'grapher-b']}
+        roles = {'chrono-keeper': [r['keeper'] for r in self.lab.table], 'chrono-grapher': list(self.lab.graphers)}
         op, service = request
         if op == 'agent':
             node = service['node']
             data = json.dumps(service).encode()
-            return self.run(node, f'cd ~/chronolog-sprint/run/{self.tag} && '
-                            f'exec env PYTHONPATH=sdk ~/chronolog-sprint/build/cluster/{self.tag}/venv/bin/python agent.py', 90, data).decode()
+            return self.run(node, f'cd {self.folder(node)} && '
+                            f'exec env PYTHONPATH=sdk {self.venv(node)}/bin/python agent.py', 90, data).decode()
         if op in ('pause', 'resume'):
             node, unit, _, _ = self.processes[service]
             sig = 'SIGSTOP' if op == 'pause' else 'SIGCONT'
@@ -232,15 +265,19 @@ class Cluster:
             return ''
         if op == 'transfer-log':
             self.collect()
-            return ''.join((OUT / (keeper + '.log')).read_text() for keeper in (r['keeper'] for r in TABLE))
+            return ''.join((OUT / (keeper + '.log')).read_text() for keeper in (r['keeper'] for r in self.lab.table))
+        # The probe shares grapher-b's host so publish and visibility timestamps come from one monotonic clock.
+        probe = self.lab.graphers['grapher-b']
         if op == 'probe':
-            node, folder, _ = self.services['player-2']
-            self.launch('manifest-probe', node, f'cd ~/{folder} && exec ~/chronolog-sprint/bin/cluster_manifest_probe {ARCHIVE} {service} >>manifest-probe.log 2>&1', 600)
+            node, folder, _ = self.services[probe['player']]
+            self.launch('manifest-probe', node, f'cd {shlex.quote(folder)} && exec '
+                        f'{shlex.quote(self.work[node] + "/bin/cluster_manifest_probe")} {shlex.quote(probe["archive"])} '
+                        f'{service} >>manifest-probe.log 2>&1', 600)
             return ''
         if op == 'snapshot':
             self.collect()
-            node, folder, _ = self.services['player-2']
-            (OUT / 'manifest-probe.log').write_bytes(self.run(node, f'cat ~/{folder}/manifest-probe.log', 10))
+            node, folder, _ = self.services[probe['player']]
+            (OUT / 'manifest-probe.log').write_bytes(self.run(node, f'cat {shlex.quote(folder)}/manifest-probe.log', 10))
             return ''
         selected = roles.get(service, [service])
         if op == 'kill':
@@ -279,21 +316,23 @@ class Cluster:
         self.thread.start()
 
     def collect(self):
-        for row in TABLE:
+        if not self.work:
+            return
+        for row in self.lab.table:
             try:
-                data = self.run(row['node'], f'cat ~/chronolog-sprint/run/{self.tag}/agent-results.jsonl', 10)
+                data = self.run(row['node'], f'cat {self.folder(row["node"])}/agent-results.jsonl', 10)
                 (OUT / (row['node'] + '-agent.jsonl')).write_bytes(data)
             except Exception:
                 pass
-        for node in NODES:
+        for node in self.lab.nodes:
             try:
-                data = self.run(node, f'cat ~/chronolog-sprint/run/{self.tag}/sdk-agent.log', 10)
+                data = self.run(node, f'cat {self.folder(node)}/sdk-agent.log', 10)
                 (OUT / (node + '-sdk-agent.log')).write_bytes(data)
             except Exception:
                 pass
         for role, (node, folder, _) in self.services.items():
             try:
-                data = self.run(node, f'cat ~/{folder}/{role}.log', 10)
+                data = self.run(node, f'cat {shlex.quote(folder)}/{role}.log', 10)
                 (OUT / f'{role}.log').write_bytes(data)
             except Exception:
                 pass
@@ -312,9 +351,10 @@ class Cluster:
                 self.stop(name)
             self.collect()
             if self.archive_owned:
+                retained = f'{self.lab.archive}-{self.tag}'
                 try:
-                    self.run('dragon', f'mv {ARCHIVE} /mnt/nfs/chronolog-sprint/archive-{self.tag}', 15)
-                    print(f'Archive retained at /mnt/nfs/chronolog-sprint/archive-{self.tag}', flush=True)
+                    self.run(self.lab.driver, f'mv {shlex.quote(self.lab.archive)} {shlex.quote(retained)}', 15)
+                    print(f'Archive retained at {retained}', flush=True)
                 except Exception as error:
                     print(f'FAIL preserve archive {error}', flush=True)
         finally:
@@ -332,7 +372,16 @@ class Cluster:
 
 
 def main():
-    cluster = Cluster()
+    parser = argparse.ArgumentParser(description='Multi-node lab harness; see the module docstring.')
+    parser.add_argument('--config', required=True, help='lab description JSON')
+    parser.add_argument('--plan', action='store_true', help='print the resolved placement and exit')
+    parser.add_argument('--preflight-only', action='store_true')
+    args = parser.parse_args()
+    lab = Lab(args.config)
+    if args.plan:
+        print(json.dumps(lab.plan(), indent=2))
+        return 0
+    cluster = Cluster(lab)
     def interrupted(signum, frame):
         raise RuntimeError(f'driver interrupted by signal {signum}')
     signal.signal(signal.SIGTERM, interrupted)
@@ -343,7 +392,7 @@ def main():
         (OUT / 'stubs').mkdir(exist_ok=True)
         cluster.acquire_locks()
         cluster.preflight()
-        if '--preflight-only' in sys.argv:
+        if args.preflight_only:
             return 0
         python = ROOT / 'build/smoke-venv/bin/python'
         if not python.exists():
@@ -369,7 +418,8 @@ def main():
                 cluster.start(role)
         cluster.serve()
         print(f'Logs {OUT}', flush=True)
-        subprocess.run([str(python), str(ROOT / 'tools/lab-cluster/scenario.py')], timeout=400, check=True,
+        subprocess.run([str(python), str(ROOT / 'tools/lab-cluster/scenario.py'), '--config', str(lab.path)],
+                       timeout=400, check=True,
                        env={**os.environ, 'CHRONOLOG_CLUSTER_SOCKET': cluster.socket_path,
                             'PYTHONPATH': str(sdk_package)})
         return 0

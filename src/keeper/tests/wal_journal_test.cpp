@@ -689,3 +689,85 @@ TEST(WalJournal, RecoveredInstanceAndFirstEventSurviveRotation)
     EXPECT_EQ(*rig.current->firstEvent(1), first);
 }
 } // namespace chronolog
+
+namespace chronolog::test
+{
+namespace
+{
+std::map<std::string, std::string> walFiles(const std::string& directory)
+{
+    std::map<std::string, std::string> files;
+    for(const auto& entry: std::filesystem::directory_iterator(directory))
+    {
+        std::ifstream stream(entry.path(), std::ios::binary);
+        std::ostringstream bytes;
+        bytes << stream.rdbuf();
+        files[entry.path().filename().string()] = bytes.str();
+    }
+    return files;
+}
+
+std::string refusal(WalRig& rig)
+{
+    try
+    {
+        rig.reopen();
+    }
+    catch(const std::runtime_error& error)
+    {
+        return error.what();
+    }
+    return {};
+}
+} // namespace
+
+TEST(WalJournal, WalStampedByAnotherDeploymentRefusesAndLeavesFilesUntouched)
+{
+    WalRig rig;
+    rig.config.deployment_id = "deployment-a";
+    rig.reopen();
+    auto appended = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok());
+    rig.journal.reset();
+    const auto before = walFiles(rig.control->directory);
+    ASSERT_EQ(before.at("deployment"), "deployment-a");
+
+    rig.config.deployment_id = "deployment-b";
+    const auto message = refusal(rig);
+    EXPECT_NE(message.find("deployment-a"), std::string::npos) << message;
+    EXPECT_NE(message.find("deployment-b"), std::string::npos) << message;
+    EXPECT_NE(message.find(std::filesystem::absolute(rig.control->directory).string()), std::string::npos) << message;
+    EXPECT_EQ(walFiles(rig.control->directory), before);
+
+    rig.config.deployment_id = "deployment-a";
+    rig.reopen();
+    auto events = rig.current->read(1, all());
+    ASSERT_TRUE(events.ok());
+    ASSERT_EQ(events->size(), 1u);
+    EXPECT_EQ(events->front().envelope.payload, "event 1");
+}
+
+TEST(WalJournal, UnstampedWalIsAdoptedAndStampedOnFirstUse)
+{
+    WalRig rig;
+    auto appended = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok());
+    rig.journal.reset();
+    ASSERT_FALSE(walFiles(rig.control->directory).contains("deployment"));
+
+    rig.config.deployment_id = "deployment-a";
+    rig.reopen();
+    auto events = rig.current->read(1, all());
+    ASSERT_TRUE(events.ok());
+    EXPECT_EQ(events->size(), 1u);
+    rig.journal.reset();
+    const auto stamped = walFiles(rig.control->directory);
+    EXPECT_EQ(stamped.at("deployment"), "deployment-a");
+    EXPECT_FALSE(stamped.contains("deployment.tmp"));
+
+    rig.config.deployment_id = "deployment-b";
+    EXPECT_NE(refusal(rig).find("belongs to deployment 'deployment-a'"), std::string::npos);
+}
+} // namespace chronolog::test

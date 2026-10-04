@@ -25,6 +25,7 @@ namespace fs = std::filesystem;
 namespace
 {
 constexpr auto kReserveSampleInterval = std::chrono::milliseconds(100);
+constexpr char kDeploymentFile[] = "deployment";
 
 absl::StatusOr<uint64_t> availableBytes(const std::string& dir)
 {
@@ -68,10 +69,12 @@ WalJournal::WalJournal(std::shared_ptr<Clock> clock,
     {
         if(::flock(lock_fd_, LOCK_EX | LOCK_NB) != 0)
             throw std::runtime_error("WAL directory is already in use");
+        checkDeployment();
         segment_ = recover() - 1;
         if(auto status = rotate(); !status.ok())
             throw std::runtime_error(std::string(status.message()));
         truncate();
+        stampDeployment();
         for(auto path = fs::absolute(config_.wal_dir); !path.empty(); path = path.parent_path())
         {
             syncDirectory(path);
@@ -108,6 +111,51 @@ WalJournal::~WalJournal()
     committer_.join();
     sink_.reset();
     ::close(lock_fd_);
+}
+
+void WalJournal::checkDeployment() const
+{
+    if(config_.deployment_id.empty())
+        return;
+    const auto path = fs::path(config_.wal_dir) / kDeploymentFile;
+    const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if(fd < 0 && errno == ENOENT)
+        return;
+    if(fd < 0)
+        throw std::runtime_error("cannot read WAL deployment stamp " + path.string() + ": " + std::strerror(errno));
+    std::string stamp;
+    char buffer[256];
+    for(ssize_t got; (got = ::read(fd, buffer, sizeof(buffer))) != 0;)
+    {
+        if(got > 0)
+            stamp.append(buffer, static_cast<size_t>(got));
+        else if(errno != EINTR)
+        {
+            const int error = errno;
+            ::close(fd);
+            throw std::runtime_error("cannot read WAL deployment stamp " + path.string() + ": " + std::strerror(error));
+        }
+    }
+    ::close(fd);
+    if(stamp != config_.deployment_id)
+        throw std::runtime_error("WAL directory " + fs::absolute(config_.wal_dir).string() +
+                                 " belongs to deployment '" + stamp + "', not to this Keeper's deployment '" +
+                                 config_.deployment_id + "'; refusing to start and leaving the WAL untouched");
+}
+
+void WalJournal::stampDeployment() const
+{
+    if(config_.deployment_id.empty() || fs::exists(fs::path(config_.wal_dir) / kDeploymentFile))
+        return;
+    const auto temporary = fs::path(config_.wal_dir) / (std::string(kDeploymentFile) + ".tmp");
+    const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if(fd < 0)
+        throw std::runtime_error("cannot stamp WAL deployment: " + std::string(std::strerror(errno)));
+    const auto& id = config_.deployment_id;
+    const bool synced = ::write(fd, id.data(), id.size()) == static_cast<ssize_t>(id.size()) && ::fsync(fd) == 0;
+    ::close(fd);
+    if(!synced || ::rename(temporary.c_str(), (fs::path(config_.wal_dir) / kDeploymentFile).c_str()) != 0)
+        throw std::runtime_error("cannot stamp WAL deployment: " + std::string(std::strerror(errno)));
 }
 
 uint64_t WalJournal::recover()

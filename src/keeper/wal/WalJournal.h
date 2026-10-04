@@ -30,6 +30,9 @@ struct WalJournalConfig
     uint64_t wal_reserve_bytes{256ull << 20};
     // Free bytes available to the Keeper on the file system holding a directory; statvfs when unset.
     std::function<absl::StatusOr<uint64_t>(const std::string& dir)> free_bytes;
+    // The deployment this WAL belongs to. A WAL stamped with another deployment refuses to open and is left
+    // untouched; an unstamped WAL is adopted and stamped. Empty disables the check.
+    std::string deployment_id;
 };
 
 class WalJournal: public RamJournal
@@ -94,6 +97,8 @@ private:
     void commit();
     // Committer only: samples the WAL file system's free bytes at most every kReserveSampleInterval.
     void sampleReserve();
+    void checkDeployment() const;
+    void stampDeployment() const;
     uint64_t recover();
     absl::Status rotate();
     void truncate();
