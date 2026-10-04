@@ -90,8 +90,15 @@ def main():
                 require(tier_config_keys(current)['deployment_id'] == record['deployment_id'],
                         'future config emitter carries deployment id')
                 for role in ('grapher', 'player'):
-                    require('tiers' not in configs(current)[role] and
-                            'deployment_id' not in configs(current)[role], 'service keys remain unused')
+                    generated = configs(current)[role]
+                    require(generated['tiers'] == tier_config_keys(current)['tiers'] and
+                            generated['deployment_id'] == record['deployment_id'] and
+                            generated['tiers'][0]['root'] == generated['archive_root'],
+                            'the Grapher and the Player get the tier table')
+                    require('migrate_enabled' not in generated, 'migration stays at its default, off')
+                legacy = {key: value for key, value in current.items() if key != 'deployment_id'}
+                require(all('tiers' not in configs(legacy)[role] for role in ('grapher', 'player')),
+                        'an instance without a deployment id keeps a plain archive root')
         elif gate == 'status_survives_a_hung_tier':
             call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow')
             marker_before = (root / 'slow' / MARKER).read_bytes()

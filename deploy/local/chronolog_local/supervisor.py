@@ -9,7 +9,7 @@ import time
 
 from .registry import CONTROL_LOCKS, ROLES, atomic, binary, boot_id, clock_status, control, free_ports, leases, load, lock, probe
 
-from .tiers import TierProbe, probe_tier
+from .tiers import TierProbe, probe_tier, tier_config_keys
 
 READY = {'visor': 'catalog ready', 'keeper': 'journal ready',
          'grapher': 'grapher registered', 'player': 'player ready'}
@@ -29,6 +29,12 @@ def configs(record):
                         process_id='grapher-1', manifest_writer='grapher-1', archive_root=record['tiers'][0]['root']),
         'player': dict(common, listen=e['player'], advertise=e['player'], visor=e['catalog'],
                        keeper_internal={'keeper-1': e['keeper_internal']}, archive_root=record['tiers'][0]['root'])}
+    # The Grapher and the Player read the same tier table (RFC-I 3.1). An instance created before tier markers
+    # existed has no deployment id and keeps a plain archive root. migrate_enabled stays at the Grapher's default,
+    # false, until every host that reads the archive runs a Player that follows migrate_v1 (I13.13).
+    if 'deployment_id' in record and all('tier_uuid' in tier for tier in record['tiers']):
+        for role in ('grapher', 'player'):
+            result[role].update(tier_config_keys(record))
     defaults = {role: dict(config) for role, config in result.items()}
     for role, config in result.items():
         config.update(record['overrides'].get(role, {}))
