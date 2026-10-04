@@ -136,6 +136,53 @@ TEST(KeeperRetention, CapacityEvictionKeepsChunkRetainedUntilDurable)
     EXPECT_EQ(rig.events(), 1u);
     EXPECT_EQ(rig.archive->chunks().size(), 1u);
 }
+// I13.16: unsettled chunks above admission_cap_mb refuse new appends CAPACITY and stay retained; admission resumes only
+// once settlement brings them below admission_resume_mb.
+TEST(KeeperRetention, AdmissionCapRefusesNewAppendsAndKeepsRetainedChunks)
+{
+    ArchiveRig rig;
+    rig.config.admission_cap_mb = 2;
+    rig.config.admission_resume_mb = 1;
+    rig.reset();
+    for(uint64_t sequence = 1; sequence <= 3; ++sequence)
+    {
+        const int64_t second = static_cast<int64_t>(sequence - 1) * 1'000'000'000;
+        rig.append(sequence, second + 100'000'000, 768u << 10);
+        rig.wal.clock->setPhysical(second + 1'000'000'000);
+        ASSERT_TRUE(rig.archive->seal().ok());
+        EXPECT_EQ(rig.archive->admissionRefused(), sequence == 3) << sequence;
+    }
+    EXPECT_GT(rig.archive->unsettledBytes(), 2u << 20);
+    auto attempt = [&](uint64_t sequence)
+    {
+        AppendItem item;
+        item.writer_id = 2;
+        item.incarnation = 3;
+        item.sequence = sequence;
+        item.envelope.payload = "after the cap";
+        auto result = rig.wal.current->append({1, 7, {item}}, Durability::Durable);
+        EXPECT_TRUE(result.ok());
+        return result.ok() ? result->front() : AppendResult{};
+    };
+    auto refused = attempt(4);
+    EXPECT_EQ(refused.status.code(), absl::StatusCode::kResourceExhausted);
+    EXPECT_EQ(refused.rejection, AppendRejection::Capacity);
+    EXPECT_TRUE(attempt(3).status.ok());
+    const auto chunks = rig.archive->chunks();
+    ASSERT_EQ(chunks.size(), 3u);
+    EXPECT_EQ(rig.events(), 3u);
+    rig.deliver(chunks[0], "g1", 1);
+    rig.report(chunks[0].end, "g1", 1);
+    EXPECT_TRUE(rig.archive->admissionRefused());
+    EXPECT_EQ(attempt(4).rejection, AppendRejection::Capacity);
+    rig.deliver(chunks[1], "g1", 2);
+    rig.report(chunks[1].end, "g1", 2);
+    EXPECT_FALSE(rig.archive->admissionRefused());
+    EXPECT_LT(rig.archive->unsettledBytes(), 1u << 20);
+    auto admitted = attempt(4);
+    EXPECT_TRUE(admitted.status.ok()) << admitted.status;
+    EXPECT_EQ(admitted.id.sequence, 4u);
+}
 TEST(KeeperRetention, MarkSendFailedKeepsChunkReadableAndResendable)
 {
     ArchiveRig rig;

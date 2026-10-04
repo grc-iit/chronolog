@@ -472,6 +472,58 @@ TEST(WalJournal, DurableRpcDoesNotOccupyTheWorkerDuringFsync)
     server->Shutdown(std::chrono::system_clock::now() + 2s);
 }
 
+
+// I13.16: below wal_reserve_bytes of free space new appends are refused CAPACITY before the WAL can fail for space, and
+// admission resumes once the committer samples the reserve restored, with no append to wake it.
+TEST(WalJournal, WalReserveRefusesBeforeTheWalFails)
+{
+    WalRig rig;
+    auto free = std::make_shared<std::atomic<uint64_t>>(1ull << 30);
+    rig.config.wal_reserve_bytes = 64ull << 20;
+    rig.config.free_bytes = [free](const std::string&) -> absl::StatusOr<uint64_t> { return free->load(); };
+    rig.reopen();
+    auto admitted = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(admitted.ok());
+    ASSERT_TRUE(admitted->front().status.ok()) << admitted->front().status;
+    free->store(1ull << 20);
+    uint64_t next = 2;
+    std::optional<AppendResult> refused;
+    for(const auto until = std::chrono::steady_clock::now() + 10s; !refused && std::chrono::steady_clock::now() < until;)
+    {
+        auto result = rig.current->append(batch({next}), Durability::Durable);
+        ASSERT_TRUE(result.ok());
+        if(result->front().rejection == AppendRejection::Capacity)
+            refused = result->front();
+        else
+        {
+            ASSERT_TRUE(result->front().status.ok()) << result->front().status;
+            ++next;
+            std::this_thread::sleep_for(10ms);
+        }
+    }
+    ASSERT_TRUE(refused);
+    EXPECT_EQ(refused->status.code(), absl::StatusCode::kResourceExhausted);
+    EXPECT_EQ(refused->achieved, Durability::Unspecified);
+    auto duplicate = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(duplicate.ok());
+    EXPECT_EQ(duplicate->front().status, admitted->front().status);
+    EXPECT_EQ(duplicate->front().hlc, admitted->front().hlc);
+    free->store(1ull << 30);
+    std::optional<AppendResult> resumed;
+    for(const auto until = std::chrono::steady_clock::now() + 10s; !resumed && std::chrono::steady_clock::now() < until;)
+    {
+        auto result = rig.current->append(batch({next}), Durability::Durable);
+        ASSERT_TRUE(result.ok());
+        if(result->front().rejection == AppendRejection::Capacity)
+            std::this_thread::sleep_for(10ms);
+        else
+            resumed = result->front();
+    }
+    ASSERT_TRUE(resumed);
+    EXPECT_TRUE(resumed->status.ok()) << resumed->status;
+    EXPECT_EQ(resumed->achieved, Durability::Durable);
+    EXPECT_EQ(resumed->id.sequence, next);
+}
 } // namespace
 } // namespace chronolog::test
 

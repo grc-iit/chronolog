@@ -65,6 +65,11 @@ struct KeeperConfig
     uint32_t watermark_resend_timeout_secs = 300;
     uint32_t archive_visibility_delay_secs = 10;
     uint64_t retention_cap_mb = 4096;
+    // I13.16: refuse new appends with CAPACITY above admission_cap_mb of unsettled chunks, admit again below
+    // admission_resume_mb, and refuse while the WAL file system has fewer than wal_reserve_bytes free. Zero disables.
+    uint64_t admission_cap_mb = 4096;
+    uint64_t admission_resume_mb = 3072;
+    uint64_t wal_reserve_bytes = 256ull << 20;
     // Zero selects std::thread::hardware_concurrency().
     uint32_t worker_threads = 0;
     uint32_t heartbeat_interval_ms = 5000;

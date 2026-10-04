@@ -14,6 +14,8 @@ namespace
 {
 Range range(const Chunk& chunk) { return {Range::Axis::Hlc, chunk.start, chunk.end}; }
 
+uint64_t mebibytes(uint64_t mb) { return mb > UINT64_MAX / (1u << 20) ? UINT64_MAX : mb * (1u << 20); }
+
 template <class T>
 WatermarkReport report(const T& proto)
 {
@@ -44,7 +46,8 @@ KeeperArchive::KeeperArchive(WalJournal& journal,
 {
     if(config_.story_chunk_duration_secs == 0 || config_.seal_interval_ms == 0 || config_.chunk_max_bytes == 0 ||
        config_.chunk_max_bytes > (64u << 20) || config_.chunk_max_events == 0 || config_.chunk_max_events > 65536 ||
-       config_.frame_bytes == 0 || config_.frame_bytes > (4u << 20))
+       config_.frame_bytes == 0 || config_.frame_bytes > (4u << 20) ||
+       (config_.admission_cap_mb != 0 && config_.admission_resume_mb > config_.admission_cap_mb))
         throw std::invalid_argument("invalid Keeper archive configuration");
     for(const auto& seal: journal_.sealedChunks())
     {
@@ -69,13 +72,17 @@ KeeperArchive::KeeperArchive(WalJournal& journal,
         state.settled = state.delivered = seal.settled;
         state.settled_at = state.activity = now_();
         chunks_[chunk.id] = std::move(state);
+        unsettled_bytes_ += bytes;
     }
+    admitLocked();
     journal_.onDrop([this](StoryId story) { freeDropped(story); });
 }
 KeeperArchive::~KeeperArchive()
 {
     journal_.onDrop(nullptr);
     stop();
+    if(admission_refused_)
+        journal_.setAdmissionCapacityReached(false);
 }
 
 Hlc KeeperArchive::align(Hlc hlc) const
@@ -107,7 +114,11 @@ absl::Status KeeperArchive::addChunk(Chunk chunk, size_t bytes)
         journal_.eraseEvents(state.chunk.story_id, range(state.chunk));
     }
     else
+    {
         chunks_[state.chunk.id] = std::move(state);
+        unsettled_bytes_ += bytes;
+        admitLocked();
+    }
     cv_.notify_all();
     return absl::OkStatus();
 }
@@ -218,6 +229,38 @@ void KeeperArchive::settleLocked(State& state)
               << " end=" << state.chunk.end.physical_ns << ':' << state.chunk.end.logical;
     state.settled = true;
     state.settled_at = now_();
+    unsettled_bytes_ -= std::min(unsettled_bytes_, static_cast<uint64_t>(state.bytes));
+    admitLocked();
+}
+
+void KeeperArchive::admitLocked()
+{
+    if(config_.admission_cap_mb == 0)
+        return;
+    const bool refuse = admission_refused_ ? unsettled_bytes_ >= mebibytes(config_.admission_resume_mb)
+                                           : unsettled_bytes_ > mebibytes(config_.admission_cap_mb);
+    if(refuse == admission_refused_)
+        return;
+    admission_refused_ = refuse;
+    journal_.setAdmissionCapacityReached(refuse);
+    if(refuse)
+        LOG(WARNING) << "admission_capacity_reached unsettled_bytes=" << unsettled_bytes_
+                     << " admission_cap_mb=" << config_.admission_cap_mb << ", refusing new appends with CAPACITY";
+    else
+        LOG(INFO) << "admission_capacity_resumed unsettled_bytes=" << unsettled_bytes_
+                  << " admission_resume_mb=" << config_.admission_resume_mb;
+}
+
+uint64_t KeeperArchive::unsettledBytes() const
+{
+    std::lock_guard lock(mu_);
+    return unsettled_bytes_;
+}
+
+bool KeeperArchive::admissionRefused() const
+{
+    std::lock_guard lock(mu_);
+    return admission_refused_;
 }
 
 bool KeeperArchive::safe(const State& state) const
@@ -288,8 +331,11 @@ void KeeperArchive::freeDropped(StoryId story_id)
         }
         (void)journal_.recordSettled(it->first);
         journal_.eraseEvents(story_id, range(it->second.chunk), true);
+        if(!it->second.settled)
+            unsettled_bytes_ -= std::min(unsettled_bytes_, static_cast<uint64_t>(it->second.bytes));
         it = chunks_.erase(it);
     }
+    admitLocked();
     cv_.notify_all();
 }
 

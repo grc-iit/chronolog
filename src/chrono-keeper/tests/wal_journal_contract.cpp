@@ -1,5 +1,6 @@
 #include "membership/AcquisitionWatcher.h"
 #include "../../../tests/contract/journal_contract_test.cpp"
+#include "../../../tests/contract/journal_capacity_contract_test.inc"
 #include "wal_harness.h"
 #include "archive/KeeperArchive.h"
 #include "membership/ConfigMembership.h"
@@ -129,6 +130,7 @@ std::unique_ptr<JournalHarness> MakeWal(uint32_t window_us)
     h->acceptanceClock = [rig] { return rig->clock->acceptanceClock(); };
     h->retiredDrained = [rig] { return rig->current->retiredDrained(1); };
     h->tombstone = [rig] { EXPECT_TRUE(rig->current->dropStory(1, true).ok()); };
+    h->forceCapacity = [rig](bool reached) { rig->current->setAdmissionCapacityReached(reached); };
     h->sut = std::move(rig->journal);
     return h;
 }

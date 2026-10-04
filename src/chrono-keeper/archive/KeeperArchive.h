@@ -27,6 +27,10 @@ struct KeeperArchiveConfig
     uint64_t retention_cap_mb{4096};
     uint32_t chunk_max_events{65536};
     uint32_t shutdown_confirm_timeout_secs{150};
+    // I13.16: new appends are refused CAPACITY once retained unsettled chunk bytes exceed admission_cap_mb, and admitted
+    // again below admission_resume_mb. Zero disables the cap.
+    uint64_t admission_cap_mb{4096};
+    uint64_t admission_resume_mb{3072};
 };
 
 class KeeperArchive
@@ -53,6 +57,9 @@ public:
     void sweep();
     std::vector<Chunk> chunks() const;
     Hlc knownWatermark(StoryId story) const;
+    // Encoded bytes of the sealed chunks no Grapher has settled yet.
+    uint64_t unsettledBytes() const;
+    bool admissionRefused() const;
 
 private:
     struct State
@@ -86,6 +93,8 @@ private:
     std::shared_ptr<grpc::Channel> archiveChannel(const std::string& endpoint);
     void collectLocked();
     void settleLocked(State& state);
+    // Moves the journal's capacity refusal across the admission_cap_mb and admission_resume_mb thresholds.
+    void admitLocked();
     bool safe(const State& state) const;
     void resolvePendingRoutes();
     void refreshSubscriptions();
@@ -109,5 +118,7 @@ private:
     std::jthread sealer_, shipper_;
     bool cap_warned_{};
     bool draining_{};
+    uint64_t unsettled_bytes_{};
+    bool admission_refused_{};
 };
 } // namespace chronolog::keeper

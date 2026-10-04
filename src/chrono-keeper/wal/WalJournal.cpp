@@ -8,8 +8,10 @@
 #include <limits>
 #include <stdexcept>
 #include <sstream>
+#include <cstring>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 #include <absl/crc/crc32c.h>
@@ -22,6 +24,16 @@ namespace chronolog
 namespace fs = std::filesystem;
 namespace
 {
+constexpr auto kReserveSampleInterval = std::chrono::milliseconds(100);
+
+absl::StatusOr<uint64_t> availableBytes(const std::string& dir)
+{
+    struct statvfs stats{};
+    if(::statvfs(dir.c_str(), &stats) != 0)
+        return absl::UnavailableError(std::string("statvfs failed: ") + std::strerror(errno));
+    return static_cast<uint64_t>(stats.f_bavail) * stats.f_frsize;
+}
+
 void syncDirectory(const fs::path& path)
 {
     const int fd = ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -66,6 +78,7 @@ WalJournal::WalJournal(std::shared_ptr<Clock> clock,
             if(path == path.root_path())
                 break;
         }
+        sampleReserve();
         committer_ = std::thread([this] { commit(); });
         (void)reserveFrontier(clock_->tick());
     }
@@ -292,14 +305,43 @@ Hlc WalJournal::reserveFrontier(Hlc frontier) const
     return std::min(frontier, reservation_);
 }
 
+void WalJournal::sampleReserve()
+{
+    if(config_.wal_reserve_bytes == 0)
+        return;
+    const auto now = std::chrono::steady_clock::now();
+    if(now < next_reserve_sample_)
+        return;
+    next_reserve_sample_ = now + kReserveSampleInterval;
+    auto free = config_.free_bytes ? config_.free_bytes(config_.wal_dir) : availableBytes(config_.wal_dir);
+    if(!free.ok())
+    {
+        LOG_EVERY_N_SEC(WARNING, 60) << "WAL reserve not sampled, admission unchanged: " << free.status();
+        return;
+    }
+    const bool low = *free < config_.wal_reserve_bytes;
+    if(low == reserve_low_.exchange(low))
+        return;
+    if(low)
+        LOG(WARNING) << "wal_reserve_low free_bytes=" << *free << " wal_reserve_bytes=" << config_.wal_reserve_bytes
+                     << ", refusing new appends with CAPACITY";
+    else
+        LOG(INFO) << "wal_reserve_restored free_bytes=" << *free << " wal_reserve_bytes=" << config_.wal_reserve_bytes;
+}
+
 void WalJournal::commit()
 {
     for(;;)
     {
+        sampleReserve();
         std::vector<Write> group;
         {
             std::unique_lock lock(queue_mu_);
-            queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+            // With a reserve the committer also wakes to sample it, so admission resumes without a new append.
+            if(config_.wal_reserve_bytes == 0)
+                queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+            else if(!queue_cv_.wait_until(lock, next_reserve_sample_, [this] { return stopping_ || !queue_.empty(); }))
+                continue;
             if(queue_.empty() && stopping_)
                 return;
             if(config_.group_commit_window_us != 0)

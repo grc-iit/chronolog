@@ -82,6 +82,9 @@ public:
     bool retiredDrained(StoryId story) const;
     bool neverHeldEvent(StoryId story) const;
     void setAdmissionReady(bool ready) { admission_ready_.store(ready); }
+    // I13.16: while set, every item that would create a new event is refused RESOURCE_EXHAUSTED with rejection
+    // CAPACITY. The Keeper archive sets it from its retained unsettled chunk bytes.
+    void setAdmissionCapacityReached(bool reached) { capacity_reached_.store(reached); }
     absl::StatusOr<std::vector<Event>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::vector<Frontier>> frontier(StoryId id) const override;
     absl::StatusOr<Hlc> keeperFrontier(StoryId id) const override;
@@ -139,6 +142,8 @@ public:
     std::vector<WriterKey> drainAdmissionEvidence();
 
 protected:
+    // Sampled once per append request.
+    virtual bool capacityReached() const { return capacity_reached_.load(); }
     virtual bool supportsDurable() const { return false; }
     virtual bool durableAvailable() const { return true; }
     virtual void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results)
@@ -303,6 +308,7 @@ private:
                                           Durability durability,
                                           int64_t now_ns,
                                           const std::optional<Route>& route,
+                                          bool capacity_reached,
                                           std::set<std::pair<uint64_t, uint64_t>>& poisoned,
                                           std::function<void(AppendResult)> done);
     // Ticks F first, then waits out every in-flight assignment by taking each writer lock in turn.
@@ -323,6 +329,7 @@ private:
     RamJournalConfig config_;
     std::function<absl::Status(StoryId)> resolve_route_;
     std::atomic<bool> admission_ready_{true};
+    std::atomic<bool> capacity_reached_{false};
     std::atomic<int64_t> causal_skew_limit_ns_;
     std::atomic<bool> catalog_policy_ready_;
     mutable std::array<Shard, kShards> shards_;

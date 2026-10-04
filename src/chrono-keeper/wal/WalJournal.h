@@ -25,6 +25,11 @@ struct WalJournalConfig
     // Zero commits whatever is queued as soon as the committer is free; nonzero holds a group open
     // until this long after its first record or until group_commit_max_bytes is queued (I5.10).
     uint32_t group_commit_window_us{0};
+    // I13.16: new appends are refused CAPACITY while the WAL file system has fewer free bytes than this, so the WAL
+    // never fails for space. The committer samples it; zero disables the reserve.
+    uint64_t wal_reserve_bytes{256ull << 20};
+    // Free bytes available to the Keeper on the file system holding a directory; statvfs when unset.
+    std::function<absl::StatusOr<uint64_t>(const std::string& dir)> free_bytes;
 };
 
 class WalJournal: public RamJournal
@@ -63,6 +68,7 @@ public:
     std::set<StoryId> droppedStories() const;
 
 protected:
+    bool capacityReached() const override { return reserve_low_.load() || RamJournal::capacityReached(); }
     bool supportsDurable() const override { return true; }
     bool durableAvailable() const override { return !failed_.load(); }
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
@@ -86,6 +92,8 @@ private:
     static thread_local std::vector<Write> collected_;
     absl::Status persistRecord(std::string payload);
     void commit();
+    // Committer only: samples the WAL file system's free bytes at most every kReserveSampleInterval.
+    void sampleReserve();
     uint64_t recover();
     absl::Status rotate();
     void truncate();
@@ -128,6 +136,8 @@ private:
     bool stopping_{};
     absl::Status failure_;
     std::atomic<bool> failed_{false};
+    std::atomic<bool> reserve_low_{false};
+    std::chrono::steady_clock::time_point next_reserve_sample_{};
     std::atomic<uint64_t> synced_groups_{0};
     std::atomic<uint64_t> synced_records_{0};
     std::thread committer_;

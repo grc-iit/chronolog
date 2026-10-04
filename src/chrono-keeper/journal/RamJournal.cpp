@@ -156,6 +156,7 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
                                                   Durability durability,
                                                   int64_t now_ns,
                                                   const std::optional<Route>& route,
+                                                  bool capacity_reached,
                                                   std::set<std::pair<uint64_t, uint64_t>>& poisoned,
                                                   std::function<void(AppendResult)> done)
 {
@@ -275,6 +276,12 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         }
         return result;
     }
+    // I13.16: after the dedupe lookup, so a retry of an admitted event keeps its result, and before the gap check, so
+    // a later item of the same writer is refused CAPACITY too. Nothing is consumed: the sequence stays next.
+    if(capacity_reached)
+        return fail(absl::ResourceExhaustedError("keeper admission capacity reached; retry later"),
+                    false,
+                    AppendRejection::Capacity);
     if(item.sequence > writer->next_sequence)
     {
         poisoned.insert(key);
@@ -602,6 +609,8 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
 
     // Resolve on the calling worker before admission. Validation under the gate reads only the cache.
     auto resolved = resolveRoute(batch.story_id);
+    // Decided once per request, so a capacity change never half admits a batch (I13.16).
+    const bool capacity_reached = capacityReached();
     std::vector<AppendResult> results;
     results.reserve(batch.items.size());
     struct BatchState
@@ -692,6 +701,7 @@ void RamJournal::appendAsync(const AppendBatch& batch, Durability durability, Ap
                                durability,
                                reading->physical_ns,
                                route,
+                               capacity_reached,
                                poisoned,
                                [state, i](AppendResult r) { state->finish(i, std::move(r)); });
             if(!result || result->status != Clock::wouldExceedCeiling())

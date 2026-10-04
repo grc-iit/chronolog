@@ -126,7 +126,9 @@ int main(int argc, char** argv)
             static_cast<uint32_t>((PhysicalPolicy{}.hlc_lead_ns - PhysicalPolicy{}.skew_limit_ns) / 1'000'000),
             config->wal_max_bytes,
             config->wal_segment_bytes,
-            config->group_commit_window_us};
+            config->group_commit_window_us,
+            config->wal_reserve_bytes,
+            {}};
     std::unique_ptr<WalJournal> owned_journal;
     try
     {
@@ -233,7 +235,9 @@ int main(int argc, char** argv)
                                                config->archive_visibility_delay_secs,
                                                config->retention_cap_mb,
                                                config->chunk_max_events,
-                                               config->shutdown_confirm_timeout_secs};
+                                               config->shutdown_confirm_timeout_secs,
+                                               config->admission_cap_mb,
+                                               config->admission_resume_mb};
     keeper::KeeperArchive archive(journal, *membership, config->process_id, archive_config);
     archive.start();
 

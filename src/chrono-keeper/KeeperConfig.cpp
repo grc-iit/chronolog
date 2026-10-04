@@ -79,6 +79,9 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                 "watermark_resend_timeout_secs",
                                                 "archive_visibility_delay_secs",
                                                 "retention_cap_mb",
+                                                "admission_cap_mb",
+                                                "admission_resume_mb",
+                                                "wal_reserve_bytes",
 
                                                 "worker_threads",
                                                 "heartbeat_interval_ms",
@@ -111,6 +114,9 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                                                                   {"watermark_resend_timeout_secs", UINT32_MAX},
                                                                   {"archive_visibility_delay_secs", UINT32_MAX},
                                                                   {"retention_cap_mb", UINT64_MAX},
+                                                                  {"admission_cap_mb", UINT64_MAX},
+                                                                  {"admission_resume_mb", UINT64_MAX},
+                                                                  {"wal_reserve_bytes", UINT64_MAX},
                                                                   {"worker_threads", UINT32_MAX},
                                                                   {"heartbeat_interval_ms", UINT32_MAX},
                                                                   {"append_ceiling_wait_ms", UINT32_MAX}};
@@ -168,6 +174,11 @@ absl::Status applyJson(const nlohmann::json& json, KeeperConfig& cfg)
                     json.at("archive_visibility_delay_secs").get<decltype(cfg.archive_visibility_delay_secs)>();
         if(json.contains("retention_cap_mb"))
             cfg.retention_cap_mb = json.at("retention_cap_mb").get<decltype(cfg.retention_cap_mb)>();
+        for(auto [key, field]: {std::pair<const char*, uint64_t*>{"admission_cap_mb", &cfg.admission_cap_mb},
+                                {"admission_resume_mb", &cfg.admission_resume_mb},
+                                {"wal_reserve_bytes", &cfg.wal_reserve_bytes}})
+            if(json.contains(key))
+                *field = json.at(key).get<uint64_t>();
         if(json.contains("worker_threads"))
             cfg.worker_threads = json.at("worker_threads").get<uint32_t>();
         if(json.contains("append_ceiling_wait_ms"))
@@ -260,7 +271,10 @@ KeeperConfig::load(const std::optional<std::string>& path, const Getenv& getenv,
                             {"group_commit_max_bytes", &cfg.group_commit_max_bytes},
                             {"chunk_max_bytes", &cfg.chunk_max_bytes},
                             {"frame_bytes", &cfg.frame_bytes},
-                            {"retention_cap_mb", &cfg.retention_cap_mb}})
+                            {"retention_cap_mb", &cfg.retention_cap_mb},
+                            {"admission_cap_mb", &cfg.admission_cap_mb},
+                            {"admission_resume_mb", &cfg.admission_resume_mb},
+                            {"wal_reserve_bytes", &cfg.wal_reserve_bytes}})
     {
         if(auto v = env(key))
         {
@@ -370,6 +384,8 @@ absl::Status KeeperConfig::validate() const
        chunk_max_bytes > (64u << 20) || chunk_max_events == 0 || chunk_max_events > 65536 || frame_bytes == 0 ||
        frame_bytes > (4u << 20))
         return absl::InvalidArgumentError("invalid archive chunk, frame or timer configuration");
+    if(admission_cap_mb != 0 && admission_resume_mb > admission_cap_mb)
+        return absl::InvalidArgumentError("admission_resume_mb must not exceed admission_cap_mb");
     if(log_level != "info" && log_level != "warning" && log_level != "error")
         return absl::InvalidArgumentError("log_level must be info, warning or error");
     for(const auto& writer: static_writers)

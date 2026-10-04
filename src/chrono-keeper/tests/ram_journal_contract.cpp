@@ -1,5 +1,6 @@
 #include "membership/AcquisitionWatcher.h"
 #include "../../../tests/contract/journal_contract_test.cpp"
+#include "../../../tests/contract/journal_capacity_contract_test.inc"
 #include "ram_harness.h"
 
 namespace chronolog::contract
@@ -90,6 +91,7 @@ std::unique_ptr<JournalHarness> MakeRam()
     h->acceptanceClock = [rig] { return rig->clock->acceptanceClock(); };
     h->retiredDrained = [rig] { return rig->journal->retiredDrained(1); };
     h->tombstone = [rig] { (void)rig->journal->dropStory(1, true); };
+    h->forceCapacity = [rig](bool reached) { rig->journal->setAdmissionCapacityReached(reached); };
     h->sut = rig->release();
     return h;
 }
