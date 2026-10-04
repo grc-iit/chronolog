@@ -160,7 +160,7 @@ Invariants:
 - I8.3 A Synced reading MUST have a finite bound; an Unsynced or Unavailable reading MUST NOT. Gate: `ClockContract.UnsyncedAndUnavailableHaveNoFiniteBound`.
 - I8.4 The HLC logical counter MUST reset to 0 when physical advances and MUST increment otherwise. Gate: `ClockContract.StandardHlcLogicalTick`.
 - I8.5 The Keeper MUST assign hlc = max(local physical, last assigned, client causal_floor) with tick. Gate: `JournalContract.KeeperAssignsHlcAboveCausalFloor`.
-- I8.6 A causal_floor far in the future MUST NOT be accepted blindly. The Keeper MUST reject an item whose causal_floor.physical_ns exceeds local physical by more than a configured skew limit (default TBD) with INVALID_ARGUMENT. Gate: `JournalContract.AbsurdCausalFloorIsRejected`.
+- I8.6 A causal_floor far in the future MUST NOT be accepted blindly. The Keeper MUST reject an item whose causal_floor.physical_ns exceeds local physical by more than the Catalog policy's skew limit S (60000000000 ns by default, section 13) with INVALID_ARGUMENT. Gate: `JournalContract.AbsurdCausalFloorIsRejected`.
 - End-to-end gate kept after the port: `tests/end-to-end/clock-skew/clock_skew_harness.sh` (origin/visor-clock-exchange), asserting that the absolute error of the measured offset is at most the reported uncertainty plus 2 ms slack (`kSlackNs = 2'000'000` in `tests/integration/visor/clock_skew_probe.cpp:31`; the harness runs as ctest `visor.clock_skew`).
 
 - I8.7 `Hlc.physical_ns` is CLOCK_REALTIME on the Keeper. HLC tolerates steps by construction (I8.1) and this keeps hlc comparable to the writer's physical field. Gate: `ClockContract.HlcMonotonicUnderBackwardPhysicalStep`.
