@@ -54,16 +54,6 @@ Failure classify(const absl::Status& status, bool has_route)
         return has_route ? Failure::Route : Failure::Fenced;
     return Failure::Pending;
 }
-bool same(const AppendSpec& a, const AppendSpec& b)
-{
-    const bool physicalSame = a.physical.has_value() == b.physical.has_value() &&
-                              (!a.physical || (a.physical->physical_ns == b.physical->physical_ns &&
-                                               a.physical->uncertainty_ns == b.physical->uncertainty_ns &&
-                                               a.physical->status == b.physical->status));
-    return physicalSame && a.durability == b.durability && a.envelope.content_type == b.envelope.content_type &&
-           a.envelope.payload == b.envelope.payload && a.envelope.trace_id == b.envelope.trace_id &&
-           a.envelope.span_id == b.envelope.span_id && a.envelope.attributes == b.envelope.attributes;
-}
 std::optional<AcquisitionTerminationCause> causeOf(AppendRejection reason)
 {
     switch(reason)
@@ -226,7 +216,7 @@ absl::StatusOr<BatchResult> Writer::Impl::append(std::span<const AppendSpec> spe
     if(pending)
     {
         if(pending->specs.size() != specs.size() ||
-           !std::equal(specs.begin(), specs.end(), pending->specs.begin(), same))
+           !std::equal(specs.begin(), specs.end(), pending->specs.begin(), detail::same))
             return absl::FailedPreconditionError("retry uncertain append with identical specifications first");
     }
     else

@@ -392,6 +392,35 @@ Client::acquire(StoryId id, const std::string& identity, AcquireOptions options,
     impl->lease = std::move(lease);
     return Writer(std::move(impl));
 }
+absl::StatusOr<LaneWriter> Client::acquireLanes(StoryId id,
+                                                const std::string& identity,
+                                                size_t lanes,
+                                                int64_t slice_ns,
+                                                AcquireOptions options,
+                                                Deadline deadline)
+{
+    if(!lanes || slice_ns <= 0 || !options.acquire_request_id.empty())
+        return absl::InvalidArgumentError("invalid lane count, slice or acquire request id");
+    const auto end = impl_->state->deadline(deadline);
+    auto current = route(id, end);
+    if(!current.ok())
+        return current.status();
+    const size_t k = std::min(lanes, current->keepers.size());
+    std::vector<Writer> writers;
+    for(size_t i = 0; i < k; ++i)
+    {
+        auto lane = options;
+        lane.preferred_keeper_process_id = current->keepers[i].process_id;
+        auto writer = acquire(id, identity + "/lane" + std::to_string(i), std::move(lane), end);
+        if(!writer.ok())
+        {
+            for(auto& acquired: writers) (void)acquired.release();
+            return writer.status();
+        }
+        writers.push_back(std::move(*writer));
+    }
+    return LaneWriter(std::make_unique<LaneWriter::Impl>(impl_->state, std::move(writers), slice_ns));
+}
 #undef CATALOG_CALL
 absl::StatusOr<ReadStream> Client::read(StoryId id, HlcRange range, Deadline deadline)
 {
