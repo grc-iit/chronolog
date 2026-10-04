@@ -2063,7 +2063,13 @@ absl::Status FileTierStore::unlinkDeletedFile(const std::string& file)
             return absl::AbortedError("unlink no longer Deleted or superseded");
         if(!(*index)->tombstoned.contains(story) && ArchiveFileWriter(file) != std::optional<std::string>(writer_))
             return absl::FailedPreconditionError("cannot unlink another writer's file");
-        for(const auto& [name, tier]: tiers_) targets.push_back(tier);
+        // I13.14: the effective tier and every faster slow tier an earlier migrate_v1 line named; a file that never
+        // left `local` has no slow-tier work. Orphans of abandoned attempts on slower tiers are sweepTiers' work.
+        for(auto it = (*index)->migration_ranks.lower_bound({file, 0});
+            it != (*index)->migration_ranks.end() && it->first.first == file;
+            ++it)
+            if(auto tier = tiers_.find(it->second.tier); tier != tiers_.end())
+                targets.push_back(tier->second);
         auto work = tier_unlinks_.find(file);
         if(work != tier_unlinks_.end())
         {

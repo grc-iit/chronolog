@@ -2914,7 +2914,10 @@ namespace chronolog
 {
 namespace
 {
-TierConfig MakeSlowTier(const fs::path& root)
+TierConfig MakeSlowTier(const fs::path& root,
+                        const std::string& name = "slow",
+                        uint32_t rank = 1,
+                        const std::string& uuid = "tier-uuid")
 {
     fs::create_directories(root);
     struct statfs info
@@ -2922,13 +2925,13 @@ TierConfig MakeSlowTier(const fs::path& root)
     };
     EXPECT_EQ(::statfs(root.c_str(), &info), 0);
     nlohmann::json marker{{"deployment_id", "test"},
-                          {"name", "slow"},
-                          {"rank", 1},
+                          {"name", name},
+                          {"rank", rank},
                           {"kind", "posix"},
-                          {"tier_uuid", "tier-uuid"},
+                          {"tier_uuid", uuid},
                           {"f_type", info.f_type}};
     std::ofstream(root / ".chronolog-tier.json") << marker.dump();
-    return {"slow", "posix", root, 1, "tier-uuid"};
+    return {name, "posix", root, rank, uuid};
 }
 void AttachTier(FileTierStore& store, const fs::path& local, const TierConfig& tier, std::string writer = "primary")
 {
@@ -4064,8 +4067,8 @@ TEST(FileTierStore, HungTierDoesNotBlockOpenDestroyCompactionOrShutdown)
     EXPECT_EQ(StateOf(**store, migrated[1].file), ManifestState::Published);
     EXPECT_FALSE((*store)->retryDeletedFiles().ok());
     ASSERT_TRUE((*store)->tombstone(1).ok());
-    // The destroy worker erases every remaining file: each Deleted record is durable at once, and each unlink is
-    // queued behind the hung tier because an erase covers every tier.
+    // The destroy worker erases every remaining file: each Deleted record is durable at once, the migrated file's
+    // unlink queues behind the hung tier and a file that never left `local` is unlinked at once (I13.14).
     for(const auto& record: Effective(**store))
         if(record.state == ManifestState::Published || record.state == ManifestState::Empty)
             (void)(*store)->eraseFile(record.file);
@@ -4089,6 +4092,58 @@ TEST(FileTierStore, HungTierDoesNotBlockOpenDestroyCompactionOrShutdown)
     EXPECT_FALSE(pending);
     EXPECT_FALSE(fs::exists(tier.root / migrated[0].file));
     EXPECT_FALSE(fs::exists(tier.root / migrated[1].file));
+    store->reset();
+    EXPECT_TRUE(hang.settled());
+}
+
+// I13.14, I13.15, I13.16: an erase targets the file's effective location and the faster tiers a stale copy may
+// remain on, so a file that never left `local` is unlinked in its erase call while one slow tier hangs and another is
+// unavailable, and a copy an abandoned attempt left on the unavailable tier is the sweep's once that tier returns.
+TEST(FileTierStore, LocalEraseDoesNotWaitOnAHungOrUnavailableSlowTier)
+{
+    auto directory = TestDirectory();
+    const auto local = *directory / "local";
+    const auto slow = MakeSlowTier(*directory / "slow");
+    // A root without its marker is unavailable (I13.15).
+    fs::create_directories(*directory / "cold");
+    const TierConfig cold{"cold", "posix", *directory / "cold", 2, "cold-uuid"};
+    TierHang hang;
+    auto store = OpenStore(local, hang.hooks(), std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok()) << store.status();
+    const auto records = PublishWindows(**store, 2);
+    ASSERT_TRUE((*store)->scrubOnce(0).ok());
+    ASSERT_TRUE((*store)->configureTiers("test", {slow, cold}, 2, std::chrono::hours(1)).ok());
+    EXPECT_FALSE((*store)->probeTiers().ok());
+    auto migrated = (*store)->migrateOnce("slow");
+    ASSERT_TRUE(migrated.ok()) << migrated.status();
+    ASSERT_EQ(*migrated, 1u);
+    const auto moved = Migrated(**store);
+    ASSERT_EQ(moved.size(), 1u);
+    const auto kept = moved[0].file == records[0].file ? records[1] : records[0];
+    ASSERT_FALSE((*store)->location(kept.file).value().has_value());
+    fs::create_directories((cold.root / kept.file).parent_path());
+    fs::copy_file(local / kept.file, cold.root / kept.file);
+    // The migrated file's erase waits on its own tier, which hangs.
+    EXPECT_FALSE((*store)->eraseFile(moved[0].file).ok());
+    ASSERT_TRUE(hang.waitEntered(1));
+    EXPECT_TRUE(fs::exists(slow.root / moved[0].file));
+    // The local-only file is unlinked in its erase call with no slow-tier work.
+    auto erased = (*store)->eraseFile(kept.file);
+    EXPECT_TRUE(erased.ok()) << erased;
+    EXPECT_FALSE(fs::exists(local / kept.file));
+    EXPECT_EQ(StateOf(**store, kept.file), ManifestState::Deleted);
+    EXPECT_EQ(hang.entered->load(), 1);
+    ASSERT_TRUE(hang.release());
+    auto drained = (*store)->awaitTierUnlinksForTesting(std::chrono::seconds(5));
+    EXPECT_TRUE(drained.ok()) << drained;
+    EXPECT_FALSE((*store)->hasPendingUnlinks(1).value());
+    EXPECT_FALSE(fs::exists(slow.root / moved[0].file));
+    EXPECT_TRUE(fs::exists(cold.root / kept.file));
+    MakeSlowTier(cold.root, cold.name, cold.rank, cold.tier_uuid);
+    ASSERT_TRUE((*store)->probeTiers().ok());
+    auto swept = (*store)->sweepTiers();
+    EXPECT_TRUE(swept.ok()) << swept;
+    EXPECT_FALSE(fs::exists(cold.root / kept.file));
     store->reset();
     EXPECT_TRUE(hang.settled());
 }
