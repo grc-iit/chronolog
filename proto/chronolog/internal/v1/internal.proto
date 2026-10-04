@@ -349,7 +349,7 @@ message WriterStatusResponse
     {
         // I6.22: the sequence was accepted with this hlc.
         chronolog.v1.Hlc recorded_hlc = 6;
-        // I6.22: the sequence was consumed by the OUT_OF_RANGE rejection of I8.9.
+        // I6.22: the sequence was consumed by this recorded rejection (I8.9).
         chronolog.v1.ItemStatus recorded_rejection = 7;
     }
     // I6.22: Keeper-level sealed frontier F, the certificate of answer (2) in I6.20.
@@ -569,14 +569,16 @@ message AcquireCommand
     repeated AcquisitionFenceObservation fence_observations = 7;
     optional chronolog.v1.KeeperPreferenceResult keeper_preference = 8;
 }
-// I6.16: the creation floor is resolved once at proposal; replicas never recompute it.
+// I6.16: the creation floor pair is resolved once at proposal; replicas never recompute it.
 message CreateStoryCommand
 {
     // I6.16: the validated public request, properties included (I9.2).
     chronolog.v1.CreateStoryRequest request = 1;
-    // I6.16: dynamic mode only, the highest ceiling ever granted to any Keeper; absent in static mode.
+    // I6.16: dynamic mode only, CF_C, the maximum C over every ceiling pair ever granted to any Keeper instance; absent in static mode.
     // The story's first RouteUpdate carries it as ordering_cut and lists every Keeper in observe_floor.
     chronolog.v1.Hlc creation_floor = 2;
+    // I6.16: dynamic mode only, CF_P, the maximum CP over the same pairs; the story's first RouteUpdate carries it as physical_floor_ns.
+    int64 creation_floor_physical_ns = 3;
 }
 message DestroyStoryCommand
 {

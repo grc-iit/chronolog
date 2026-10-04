@@ -594,8 +594,10 @@ message Predicate
     repeated string actors = 2;
     // I6.17: each term requires an attribute key equal to a value.
     repeated AttributeTerm attributes = 3;
-    // I6.17: each term requires a link with the given type and target.
+    // I6.17: each term requires a link with the given target EventId and optionally type.
     repeated LinkTerm links = 4;
+    // I6.17, I6.19: the event EventId is any member; empty means no id term.
+    repeated EventId event_ids = 5;
 }
 // I6.17: attribute key equal to value.
 message AttributeTerm
@@ -605,10 +607,10 @@ message AttributeTerm
     // I6.17: required attribute value.
     string value = 2;
 }
-// I6.17: a link given by its type and its target EventId.
+// I6.17: a link given by its target EventId and optionally its type; the hlc a link carries is ignored.
 message LinkTerm
 {
-    // I6.17: link type.
+    // I6.17: link type; empty matches any type.
     string type = 1;
     // I6.17: link target EventId.
     EventId target = 2;
@@ -718,9 +720,9 @@ message Completion
     repeated WriterFrontier laggards = 3;
     // I6.15: Catalog revision R at which a prefix Read resolved its story set; unset for any other Read.
     optional uint64 catalog_revision = 5;
-    // I6.18: c of a newest-first Read, the hlc of its oldest returned event or start; unset for an oldest-first Read.
+    // I6.18: c of a newest-first Read cut by max_events, so [c, e) is complete on its own; unset for an oldest-first Read.
     Hlc claim_start = 6;
-    // I6.18: e of a newest-first Read, fixed at or below every source's sealed frontier; unset for an oldest-first Read.
+    // I6.18: e of a newest-first Read, at or below every source's sealed frontier; unset for an oldest-first Read.
     Hlc claim_end = 7;
 }
 // Fields are selected by the documented union; unset unions are invalid.
@@ -844,7 +846,7 @@ enum AwaitAnswer
     AWAIT_ANSWER_VISIBLE = 1;
     // I6.20 (2): not visible and cannot have an hlc below the response frontier.
     AWAIT_ANSWER_ABSENT = 2;
-    // I6.20 (3): the sequence was consumed by an OUT_OF_RANGE rejection (I8.9); the event never exists.
+    // I6.20 (3): the Keeper recorded a rejection that consumed the sequence (I8.9); the event never exists.
     AWAIT_ANSWER_SEQUENCE_CONSUMED = 3;
     // I6.20 (4): the writer's incarnation is fenced without having accepted that sequence.
     AWAIT_ANSWER_WILL_NEVER_EXIST = 4;
