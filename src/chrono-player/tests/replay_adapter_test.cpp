@@ -16,6 +16,7 @@
 #include "chrono-player/replay/KeeperHotSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/util/message_differencer.h>
 
 namespace chronolog::player
 {
@@ -1148,7 +1149,8 @@ void expectEveryFieldSet(const google::protobuf::Message& message)
             continue;
         }
         EXPECT_TRUE(reflection->HasField(message, field)) << field->full_name();
-        if(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE && reflection->HasField(message, field))
+        if(field->cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE &&
+           reflection->HasField(message, field))
             expectEveryFieldSet(reflection->GetMessage(message, field));
     }
 }
@@ -1176,6 +1178,34 @@ TEST(EventEncodedSize, MatchesTheEncodedMessageAcrossLengthBoundaries)
         bare.envelope.payload = full.envelope.payload;
         bare.physical.status = ClockStatus::Unsynced;
         EXPECT_EQ(convert::encodedSize(bare), convert::toProto(bare).ByteSizeLong()) << payload;
+    }
+}
+
+// The read path moves events through the converters and reuses response messages; the result equals a fresh copy.
+TEST(EventConvert, MovingConversionsMatchCopies)
+{
+    using google::protobuf::util::MessageDifferencer;
+    Event full;
+    full.id = {7, 8, 9, 10};
+    full.physical = {-5, 40, ClockStatus::Synced};
+    full.hlc = {11, 12};
+    full.envelope = {"text/plain",
+                     std::string(5000, 'p'),
+                     std::string(16, '\x01'),
+                     std::string(8, '\x02'),
+                     {{"a", "1"}}};
+    full.durability = Durability::Durable;
+    Event bare;
+    bare.envelope.payload = "b";
+    bare.physical.status = ClockStatus::Unsynced;
+    for(const Event& event: {full, bare})
+    {
+        v1::Event out = convert::toProto(full);
+        convert::toProto(Event(event), out);
+        EXPECT_TRUE(MessageDifferencer::Equals(out, convert::toProto(event))) << out.DebugString();
+        v1::Event wire = convert::toProto(event);
+        EXPECT_TRUE(MessageDifferencer::Equals(convert::toProto(convert::fromProto(std::move(wire))),
+                                               convert::toProto(event)));
     }
 }
 } // namespace chronolog::player

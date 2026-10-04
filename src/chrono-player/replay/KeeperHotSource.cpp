@@ -95,14 +95,14 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
             received = true;
             if(response.has_batch())
             {
-                for(const auto& event: response.batch().events())
+                for(auto& event: *response.mutable_batch()->mutable_events())
                 {
                     if(limited)
                         continue;
                     size_t count = retained.load();
                     while(count < budget && !retained.compare_exchange_weak(count, count + 1)) {}
                     if(count < budget)
-                        out.events.push_back(convert::fromProto(event));
+                        out.events.push_back(convert::fromProto(std::move(event)));
                     else
                         limited = true;
                 }

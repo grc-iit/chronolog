@@ -25,20 +25,15 @@ public:
     void OnDone() override { delete this; }
 };
 
-void fill(v1::ReadResponse& response, const ReplayBatch& batch, bool completion)
+// Fills a response that may hold the previous batch: its event messages and their buffers are reused, and the
+// events are moved in.
+template <class Resp>
+void fillEvents(Resp& response, std::vector<Event>& events)
 {
-    if(completion)
-        *response.mutable_completion() = convert::toProto(*batch.completion);
-    else
-        for(const auto& event: batch.events) *response.mutable_batch()->add_events() = convert::toProto(event);
-}
-
-void fill(v1::TailResponse& response, const ReplayBatch& batch, bool completion)
-{
-    if(completion)
-        *response.mutable_completion() = convert::toProto(*batch.completion);
-    else
-        for(const auto& event: batch.events) *response.mutable_batch()->add_events() = convert::toProto(event);
+    auto* out = response.mutable_batch()->mutable_events();
+    out->Clear();
+    out->Reserve(static_cast<int>(events.size()));
+    for(auto& event: events) convert::toProto(std::move(event), *out->Add());
 }
 
 // One RPC. A worker thread owns the blocking work: the Catalog check, the fan-out to Keepers
@@ -134,30 +129,28 @@ private:
         }
     }
 
-    bool send(const ReplayBatch& batch)
+    // response_ is idle here: write() returns only after OnWriteDone or without starting a write.
+    bool send(ReplayBatch& batch)
     {
         if(!batch.events.empty())
         {
-            Resp response;
-            fill(response, batch, false);
-            if(!write(std::move(response)))
+            fillEvents(response_, batch.events);
+            if(!write())
                 return false;
         }
         if(batch.completion)
         {
-            Resp response;
-            fill(response, batch, true);
-            return write(std::move(response));
+            *response_.mutable_completion() = convert::toProto(*batch.completion);
+            return write();
         }
         return true;
     }
 
-    bool write(Resp response)
+    bool write()
     {
         std::unique_lock lk(mu_);
         if(cancelled_)
             return false;
-        response_ = std::move(response);
         writing_ = true;
         this->StartWrite(&response_);
         cv_.wait(lk, [&] { return !writing_; });
