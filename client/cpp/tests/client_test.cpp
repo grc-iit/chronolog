@@ -206,6 +206,24 @@ public:
         {
             std::lock_guard lock(mutex);
             resumes.push_back(r->from());
+            progress_flags.push_back(r->progress());
+        }
+        if(progress_tail)
+        {
+            if(call == 1)
+            {
+                wire::TailResponse progress;
+                progress.mutable_progress()->mutable_position()->mutable_hlc()->set_physical_ns(2000);
+                stream->Write(progress);
+                return {grpc::StatusCode::UNAVAILABLE, "disconnected after progress"};
+            }
+            auto response = eventResponse<wire::TailResponse>(1);
+            response.mutable_batch()->mutable_events(0)->mutable_hlc()->set_physical_ns(2000);
+            stream->Write(response);
+            response.Clear();
+            response.mutable_completion();
+            stream->Write(response);
+            return grpc::Status::OK;
         }
         if(refuse_tail)
             return {grpc::StatusCode::UNAVAILABLE, "refused"};
@@ -249,6 +267,8 @@ public:
     std::vector<wire::AppendItem> seen;
     std::vector<wire::AcquireRequest> acquire_requests;
     std::vector<wire::Position> resumes;
+    std::vector<bool> progress_flags;
+    bool progress_tail{};
     std::atomic<int> tails{}, acquisitions{};
     std::atomic<bool> lose_response{}, capacity{};
     bool stale{}, reorder{}, block_tail{}, refuse_tail{};
@@ -570,6 +590,29 @@ TEST(ClientContract, ClientResumesTailAfterStreamError)
     ASSERT_TRUE(written.ok());
     EXPECT_EQ(server.seen.back().causal_floor().physical_ns(), (**second).events[0].hlc.physical_ns);
 }
+TEST(ClientContract, TailProgressAdvancesTheResumePositionWithoutAnId)
+{
+    Server server;
+    server.progress_tail = true;
+    auto client = sdk::Client::Connect(server.options());
+    ASSERT_TRUE(client.ok());
+    auto tail = client->tail(1);
+    ASSERT_TRUE(tail.ok());
+    auto batch = tail->next();
+    ASSERT_TRUE(batch.ok()) << batch.status();
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 1u);
+    EXPECT_EQ((**batch).events[0].hlc.physical_ns, 2000);
+    auto completion = tail->next();
+    ASSERT_TRUE(completion.ok());
+    ASSERT_TRUE(*completion);
+    EXPECT_TRUE((**completion).completion);
+    ASSERT_EQ(server.resumes.size(), 2u);
+    EXPECT_EQ(server.resumes[1].hlc().physical_ns(), 2000);
+    EXPECT_FALSE(server.resumes[1].has_id());
+    EXPECT_EQ(server.progress_flags, (std::vector<bool>{true, true}));
+}
+
 TEST(ClientContract, CancelUnblocksPullAndShortDeadlineIsHonored)
 {
     Server server;

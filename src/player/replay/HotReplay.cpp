@@ -449,7 +449,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
 // only grows. Each source answers a round from where its last answer ended and everything that answer covers is final
 // (I6.11(a), (e)), so it is kept per source and instance until T passes it; a poll where any source did not answer, or a
 // source restarted, moves nothing.
-class TailStream final: public ReplayStream
+class TailStream final: public ProgressReplayStream
 {
     struct Source
     {
@@ -463,12 +463,17 @@ class TailStream final: public ReplayStream
     };
 
 public:
-    TailStream(std::shared_ptr<const HotSource> source, StoryId story, Event position, HotReplayOptions options)
+    TailStream(std::shared_ptr<const HotSource> source,
+               StoryId story,
+               Event position,
+               HotReplayOptions options,
+               bool progress)
         : source_(std::move(source))
         , story_(story)
         , options_(std::move(options))
         , position_(std::move(position))
         , frontier_(position_.hlc)
+        , progress_enabled_(progress)
     {
         options_.batch_size = std::max<size_t>(options_.batch_size, 1);
         options_.read_max_events = std::max<size_t>(options_.read_max_events, 2);
@@ -487,12 +492,19 @@ public:
     absl::StatusOr<std::optional<ReplayBatch>> next() override
     {
         std::unique_lock lk(mu_);
+        emitted_progress_.reset();
         for(;;)
         {
             if(cancelled_.load())
                 return finish();
             if(pending_pos_ < pending_.size())
                 return takeBatch();
+            if(pending_progress_)
+            {
+                emitted_progress_ = pending_progress_;
+                pending_progress_.reset();
+                return std::optional<ReplayBatch>(ReplayBatch{});
+            }
             if(suspect_)
             {
                 // Only the Catalog says a story is destroyed; a Keeper's refusal or an archive tombstone is evidence.
@@ -543,7 +555,16 @@ public:
         cv_.notify_all();
     }
 
+    std::optional<Hlc> progress() const override { return emitted_progress_; }
+
 private:
+    bool afterPosition(const Event& event) const
+    {
+        if(position_.id.writer_id == 0 && position_.id.incarnation == 0 && position_.id.sequence == 0)
+            return event.hlc >= position_.hlc;
+        return ReplayLess(position_, event);
+    }
+
     static bool answered(const KeeperFrontier& f, Epoch route_epoch)
     {
         return f.answered && f.epoch == (f.expected_epoch ? f.expected_epoch : route_epoch);
@@ -590,7 +611,7 @@ private:
             if(e.hlc < from)
                 continue;
             last = std::max(last, e.hlc);
-            if(ReplayLess(position_, e))
+            if(afterPosition(e))
                 fresh.push_back(std::move(e));
         }
         // A truncated answer ends at the last event it returned, which may share its hlc with events it cut off.
@@ -689,8 +710,7 @@ private:
             fail(IncompleteReason::SourceFailed);
             return false;
         }
-        std::erase_if(cold,
-                      [&](const Event& e) { return e.hlc < frontier_ || e.hlc >= bound || !ReplayLess(position_, e); });
+        std::erase_if(cold, [&](const Event& e) { return e.hlc < frontier_ || e.hlc >= bound || !afterPosition(e); });
         std::vector<std::vector<Event>> inputs;
         inputs.push_back(std::move(cold));
         for(auto it = sources_.begin(); it != sources_.end();)
@@ -707,11 +727,16 @@ private:
             it = held.empty() && !asked.contains(it->first) ? sources_.erase(it) : std::next(it);
         }
         auto events = mergeReplay(std::move(inputs));
+        const bool advanced = bound > frontier_;
         frontier_ = bound;
         if(reachedAbandoned(fetch.abandoned))
             fail(IncompleteReason::SourceFailed);
         if(events.empty())
+        {
+            if(progress_enabled_ && advanced)
+                pending_progress_ = frontier_;
             return false;
+        }
         pending_ = std::move(events);
         pending_pos_ = 0;
         return true;
@@ -760,6 +785,9 @@ private:
     std::condition_variable cv_;
     // Every event below this has been delivered or precedes the position.
     Hlc frontier_;
+    const bool progress_enabled_;
+    std::optional<Hlc> pending_progress_;
+    std::optional<Hlc> emitted_progress_;
     std::map<SourceId, Source> sources_;
     std::vector<Event> pending_;
     size_t pending_pos_{};
@@ -1037,9 +1065,16 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position) const
 {
+    return tail(id, std::move(position), false);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position, bool progress) const
+{
+    if(position.id == EventId{})
+        position.id.story_id = id;
     if(position.id.story_id != id)
         return absl::InvalidArgumentError("position belongs to a different story");
-    auto stream = std::make_unique<TailStream>(source_, id, std::move(position), options_);
+    auto stream = std::make_unique<TailStream>(source_, id, std::move(position), options_, progress);
     if(auto opened = stream->open(); !opened.ok())
         return opened;
     return std::unique_ptr<ReplayStream>(std::move(stream));
