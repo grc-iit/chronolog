@@ -211,4 +211,38 @@ TEST(ArchiveTransferTest, PhysicalFilterCountsOnlyIntervalMatches)
     EXPECT_EQ(fetched.events.size(), 1u);
     EXPECT_TRUE(fetched.trailer.truncated());
 }
+
+TEST(ArchiveTransferTest, FetchHotPredicateCountsOnlyMatches)
+{
+    test::AdapterRig rig;
+    std::vector<AppendItem> items;
+    for(uint64_t s = 1; s <= 5; ++s)
+    {
+        items.push_back(Item(s));
+        items.back().envelope.kind = s % 2 ? "a" : "b";
+    }
+    ASSERT_TRUE(rig.rig.journal->append({1, 7, items}, Durability::Accepted).ok());
+    auto request = AllRequest(2);
+    request.mutable_predicate()->add_kinds("a");
+    auto fetched = FetchAll(*rig.archive, request);
+    ASSERT_TRUE(fetched.status.ok());
+    ASSERT_EQ(fetched.events.size(), 2u);
+    EXPECT_EQ(fetched.events[0].id().sequence(), 1u);
+    EXPECT_EQ(fetched.events[1].id().sequence(), 3u);
+    EXPECT_TRUE(fetched.trailer.truncated());
+    request.set_max_events(3);
+    fetched = FetchAll(*rig.archive, request);
+    ASSERT_TRUE(fetched.status.ok());
+    EXPECT_EQ(fetched.events.size(), 3u);
+    EXPECT_FALSE(fetched.trailer.truncated());
+    EXPECT_GT(fetched.trailer.sealed_frontier().physical_ns(), 0);
+}
+
+TEST(ArchiveTransferTest, FetchHotMalformedPredicateIsInvalidArgument)
+{
+    test::AdapterRig rig;
+    auto request = AllRequest();
+    request.mutable_predicate()->add_attributes()->set_value("v");
+    EXPECT_EQ(FetchAll(*rig.archive, request).status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
 } // namespace chronolog

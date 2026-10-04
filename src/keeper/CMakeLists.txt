@@ -19,7 +19,8 @@ add_library(chronolog_keeper_lib STATIC
     wal/WalJournal.cpp)
 target_include_directories(chronolog_keeper_lib PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>")
 target_link_libraries(chronolog_keeper_lib
-    PUBLIC chronolog_common_clock chronolog_contracts chronolog_common_rpc chronolog_common_worker chronolog_internal_proto
+    PUBLIC chronolog_common_clock chronolog_common_predicate chronolog_contracts chronolog_common_rpc chronolog_common_worker
+           chronolog_internal_proto
            chronolog_proto
            nlohmann_json::nlohmann_json Threads::Threads
     PRIVATE chronolog_warnings absl::crc32c absl::log)

@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include "common/predicate/Predicate.h"
 #include "player/adapter/StoryCatalog.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
@@ -23,7 +24,10 @@ public:
     grpc::ServerWriteReactor<v1::ReadResponse>* Read(grpc::CallbackServerContext*, const v1::ReadRequest*) override;
     grpc::ServerWriteReactor<v1::TailResponse>* Tail(grpc::CallbackServerContext*, const v1::TailRequest*) override;
 
-    absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId story, Range range, size_t max_events) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(StoryId story, Event position, const EventPredicate& predicate = {}) const;
 
     // Drains: refuses new calls and cancels open streams, so tails finish with a
     // complete=false Completion.

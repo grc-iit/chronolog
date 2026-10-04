@@ -221,6 +221,47 @@ void write(E&& event, v1::Event& out)
 
 } // namespace
 
+EventPredicate fromProto(const v1::Predicate& predicate)
+{
+    auto id = [](const v1::EventId& in)
+    { return EventId{in.story_id(), in.writer_id(), in.incarnation(), in.sequence()}; };
+    EventPredicate out;
+    out.kinds.assign(predicate.kinds().begin(), predicate.kinds().end());
+    out.actors.assign(predicate.actors().begin(), predicate.actors().end());
+    for(const auto& term: predicate.attributes()) out.attributes.push_back({term.key(), term.value()});
+    for(const auto& term: predicate.links()) out.links.push_back({term.type(), id(term.target())});
+    for(const auto& event_id: predicate.event_ids()) out.event_ids.push_back(id(event_id));
+    return out;
+}
+
+v1::Predicate toProto(const EventPredicate& predicate)
+{
+    auto id = [](const EventId& in, v1::EventId* out)
+    {
+        out->set_story_id(in.story_id);
+        out->set_writer_id(in.writer_id);
+        out->set_incarnation(in.incarnation);
+        out->set_sequence(in.sequence);
+    };
+    v1::Predicate out;
+    for(const auto& kind: predicate.kinds) out.add_kinds(kind);
+    for(const auto& actor: predicate.actors) out.add_actors(actor);
+    for(const auto& term: predicate.attributes)
+    {
+        auto* t = out.add_attributes();
+        t->set_key(term.key);
+        t->set_value(term.value);
+    }
+    for(const auto& term: predicate.links)
+    {
+        auto* t = out.add_links();
+        t->set_type(term.type);
+        id(term.target, t->mutable_target());
+    }
+    for(const auto& event_id: predicate.event_ids) id(event_id, out.add_event_ids());
+    return out;
+}
+
 Event fromProto(const v1::Event& event) { return read(event); }
 
 Event fromProto(v1::Event&& event) { return read(std::move(event)); }
