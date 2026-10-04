@@ -1,5 +1,6 @@
 #include "../../../tests/contract/tier_store_contract_test.cpp"
 #include "tier/FileTierStore.h"
+#include "chronolog/v1/chronolog.pb.h"
 #include <absl/crc/crc32c.h>
 #include <array>
 #include <atomic>
@@ -417,6 +418,39 @@ TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
     EXPECT_TRUE(absl::IsUnavailable(reading.get().status()));
     EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
     EXPECT_TRUE(absl::IsUnavailable((*store)->readRecord(*erased, contract::WholeArchive()).status()));
+}
+
+// W10.15: "CLOCK_STATUS_UNSPECIFIED on the wire maps to Unavailable in every adapter, never to Synced; the proto
+// comment states it." An archive chunk record that carries it decodes as Unavailable, with or without a bound.
+TEST(ProtoChunkCodec, UnspecifiedClockStatusIsUnavailable)
+{
+    std::string bytes;
+    for(const uint64_t sequence: {1, 2})
+    {
+        v1::Event event;
+        event.mutable_id()->set_story_id(1);
+        event.mutable_id()->set_writer_id(2);
+        event.mutable_id()->set_incarnation(3);
+        event.mutable_id()->set_sequence(sequence);
+        event.mutable_hlc()->set_physical_ns(100 + static_cast<int64_t>(sequence));
+        event.mutable_physical()->set_physical_ns(100);
+        if(sequence == 2)
+            event.mutable_physical()->set_uncertainty_ns(5);
+        event.mutable_physical()->set_status(v1::CLOCK_STATUS_UNSPECIFIED);
+        event.set_durability(v1::DURABILITY_DURABLE);
+        const auto record = event.SerializeAsString();
+        auto length = static_cast<uint32_t>(record.size());
+        do {
+            bytes.push_back(static_cast<char>((length & 0x7f) | (length > 0x7f ? 0x80 : 0)));
+            length >>= 7;
+        } while(length != 0);
+        bytes += record;
+    }
+    std::vector<unsigned char> chunk(bytes.begin(), bytes.end());
+    auto events = ProtoChunkCodec().decode(chunk);
+    ASSERT_TRUE(events.ok()) << events.status();
+    ASSERT_EQ(events->size(), 2u);
+    for(const auto& event: *events) EXPECT_EQ(event.physical.status, ClockStatus::Unavailable) << event.id.sequence;
 }
 
 TEST(ChunkCodec, OnlyEnoentAndEstaleMeanTheFileVanished)

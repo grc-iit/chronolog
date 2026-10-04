@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <map>
+#include <tuple>
 #include <mutex>
 #include <filesystem>
 #include <fstream>
@@ -385,12 +386,29 @@ std::unique_ptr<ReplayHarness> makeHarness()
                 };
             }
         }
+        FileTierStore::LoadFile load;
+        std::chrono::milliseconds read_timeout = std::chrono::seconds(30);
+        if(fault == ArchiveFault::LocalHang)
+        {
+            // The per-file load hook holds this file on `local`, where the Read's deadline is the archive read timeout,
+            // 20 ms here like the slow tier's.
+            window->release = std::make_shared<std::promise<void>>();
+            load = [gate = window->release->get_future().share(),
+                    held = std::filesystem::path(record->file).filename()](const std::filesystem::path& path)
+            {
+                if(path.filename() != held)
+                    return LoadChunkFile(path);
+                gate.wait();
+                return absl::StatusOr<ChunkBytes>(absl::UnavailableError("released hang"));
+            };
+            read_timeout = std::chrono::milliseconds(20);
+        }
         auto archive = FileTierStore::OpenReadOnly(window->root,
                                                    std::chrono::hours(1),
-                                                   {},
+                                                   load,
                                                    0,
                                                    {},
-                                                   std::chrono::seconds(30),
+                                                   read_timeout,
                                                    chain,
                                                    hooks);
         ASSERT_TRUE(archive.ok()) << archive.status();
@@ -414,6 +432,63 @@ std::unique_ptr<ReplayHarness> makeHarness()
                 std::shared_ptr<FileTierStore>(archive->release(), [window](FileTierStore* store) { delete store; });
         src->requireArchive();
         harness->sut = std::make_unique<HotReplay>(src, failed_options);
+    };
+    h->retireArchiveFile = [src, harness = h.get(), options](ArchiveRetirement retirement)
+    {
+        std::vector<Event> archived;
+        [&]
+        {
+            auto window = std::make_shared<ArchiveWindow>();
+            std::filesystem::remove_all(window->root);
+            auto opened = FileTierStore::Open(window->root, "writer", {{1, {100, 0}}});
+            ASSERT_TRUE(opened.ok()) << opened.status();
+            std::shared_ptr<FileTierStore> writer = *std::move(opened);
+            // Writer 8 has no Keeper, so its events reach a Read only from the archive.
+            std::vector<std::string> files;
+            for(const auto& [sequence, start, end]: {std::tuple{1, 100, 150}, std::tuple{2, 150, 200}})
+            {
+                auto e = ev(8, sequence, start + 10);
+                e.physical = {start + 10, 0, ClockStatus::Synced};
+                Chunk chunk{"retired-" + std::to_string(sequence), 1, {start, 0}, {end, 0}, {e}, false};
+                chunk.physical_policy = true;
+                auto record = writer->publish(chunk);
+                ASSERT_TRUE(record.ok()) << record.status();
+                files.push_back(record->file);
+                archived.push_back(e);
+            }
+            auto retired = std::make_shared<std::once_flag>();
+            auto load = [writer, root = window->root, files, retired, retirement](const std::filesystem::path& path)
+            {
+                const auto planned = [&](const std::string& file)
+                { return std::filesystem::path(file).filename() == path.filename(); };
+                if(std::any_of(files.begin(), files.end(), planned))
+                    std::call_once(*retired,
+                                   [&]
+                                   {
+                                       if(retirement == ArchiveRetirement::Compacted)
+                                       {
+                                           CompactionPolicy policy;
+                                           policy.min_files = 2;
+                                           policy.min_age = std::chrono::seconds(0);
+                                           auto compacted = writer->compactOnce(policy);
+                                           ASSERT_TRUE(compacted.ok()) << compacted.status();
+                                           EXPECT_EQ(compacted->inputs, 2u);
+                                       }
+                                       else
+                                           for(const auto& file: files) EXPECT_TRUE(writer->eraseFile(file).ok());
+                                       for(const auto& file: files) EXPECT_FALSE(std::filesystem::exists(root / file));
+                                   });
+                return LoadChunkFile(path);
+            };
+            auto archive = FileTierStore::OpenReadOnly(window->root, std::chrono::hours(1), load);
+            ASSERT_TRUE(archive.ok()) << archive.status();
+            auto retired_options = options;
+            retired_options.archive = std::shared_ptr<FileTierStore>(archive->release(),
+                                                                     [window](FileTierStore* store) { delete store; });
+            src->requireArchive();
+            harness->sut = std::make_unique<HotReplay>(src, retired_options);
+        }();
+        return archived;
     };
     return h;
 }

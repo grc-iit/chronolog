@@ -52,6 +52,8 @@ class Local:
         self.processes = {}
         self.groups = {}
         self.services = {}
+        # Configured roles the scenario starts itself rather than at boot.
+        self.later = set()
         self.nodes = {'dragon': '127.0.0.1'}
 
     def write(self, role, node, config):
@@ -147,12 +149,12 @@ class Local:
         for role in list(self.processes):
             self.stop(role)
 
-    def ports(self):
+    def ports(self, count=6):
         free = []
         for block in random.sample(range(4400), 200):
             if all(bindable(10000 + block * 5 + i) for i in range(5)):
                 free.append(block)
-            if len(free) == 6:
+            if len(free) == count:
                 return [[f'127.0.0.1:{10000 + block * 5 + i}' for i in range(5)] for block in free]
         raise StartupError('no free 5-port blocks in 200 random draws')
 
@@ -271,9 +273,10 @@ class Homelab(Local):
                 pass
 
 
-def configure(stack):
+def configure(stack, new_keeper=False):
+    # new_keeper adds keeper-3 outside the Visors' bootstrap Keepers; the scenario starts it and joins it to a Route.
     liveness_timeouts = dict(keeper_failure_timeout_ms=1500, release_fence_timeout_ms=1000)
-    ports = stack.ports()
+    ports = stack.ports(7) if new_keeper else stack.ports()
     peers = [dict(id=i + 1, catalog_endpoint=p[0], internal_endpoint=p[1], raft_endpoint=p[2])
              for i, p in enumerate(ports[:3])]
     keepers = [dict(process_id='keeper-' + str(i + 1), endpoint=p[0]) for i, p in enumerate(ports[3:5])]
@@ -292,7 +295,7 @@ def configure(stack):
                     keepers=keepers, graphers=graphers, player=player, **liveness_timeouts, worker_threads=4,
                     raft=dict(server_id=i + 1, raft_endpoint=peer['raft_endpoint'], peers=peers,
                               election_lower_ms=300 if i == 2 else 1200, election_upper_ms=400 if i == 2 else 1600)))
-    for i, p in enumerate(ports[3:5]):
+    for i, p in enumerate(ports[3:5] + ports[6:7]):
         role = 'keeper-' + str(i + 1)
         node = 'mini' if isinstance(stack, Homelab) else 'dragon'
         stack.write('proxy-' + role, node, dict(listen=p[2], targets=[peer['internal_endpoint'] for peer in peers],
@@ -311,8 +314,10 @@ def configure(stack):
     stack.write('player', 'blade' if isinstance(stack, Homelab) else 'dragon',
                 dict(listen=player, advertise=player, visor=catalog,
                      visor_internal=internal, archive_root=stack.archive,
-                     keeper_internal={k['process_id']: p[1] for k, p in zip(keepers, ports[3:5])},
+                     keeper_internal={'keeper-' + str(i + 1): p[1] for i, p in enumerate(ports[3:5] + ports[6:7])},
                      keeper_deadline_ms=300, manifest_poll_ms=100))
+    if new_keeper:
+        stack.later.add('keeper-3')
     return peers
 
 
@@ -321,7 +326,10 @@ def main():
     for role in ('rpc', 'visor', 'keeper', 'grapher', 'player'):
         parser.add_argument('--' + role, required=True)
     parser.add_argument('--homelab', action='store_true')
+    parser.add_argument('--scenario', choices=('failover', 'physical-claim'), default='failover')
     args = parser.parse_args()
+    if args.homelab and args.scenario != 'failover':
+        parser.error('--homelab runs the failover scenario only')
     def interrupted(signum, frame):
         raise RuntimeError('driver interrupted by signal ' + str(signum))
     signal.signal(signal.SIGTERM, interrupted)
@@ -331,11 +339,12 @@ def main():
         for attempt in range(1, STARTUP_ATTEMPTS + 1):
             try:
                 stack = Homelab(args) if args.homelab else Local(args)
-                peers = configure(stack)
+                peers = configure(stack, new_keeper=args.scenario == 'physical-claim')
                 if args.homelab:
                     stack.stage()
                 for role in stack.services:
-                    stack.start(role)
+                    if role not in stack.later:
+                        stack.start(role)
                 stack.alive()
                 break
             except StartupError as error:
@@ -347,7 +356,10 @@ def main():
                 if args.homelab or attempt == STARTUP_ATTEMPTS:
                     print('FAIL startup: ' + str(error), flush=True)
                     return 1
-        from scenario import Scenario
+        if args.scenario == 'physical-claim':
+            from physical_claim import PhysicalClaim as Scenario
+        else:
+            from scenario import Scenario
         scenario = Scenario(stack, peers, args.rpc)
         try:
             scenario.run()
