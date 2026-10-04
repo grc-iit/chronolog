@@ -54,6 +54,11 @@ public:
         sqlite3_bind_int64(stmt_, index, static_cast<sqlite3_int64>(value));
         return *this;
     }
+    Statement& null(int index)
+    {
+        sqlite3_bind_null(stmt_, index);
+        return *this;
+    }
     // Returns true on a row, false on done, and an error otherwise.
     absl::StatusOr<bool> step()
     {
@@ -65,6 +70,7 @@ public:
         return sqliteError(db_, "step");
     }
     uint64_t column(int index) const { return static_cast<uint64_t>(sqlite3_column_int64(stmt_, index)); }
+    bool isNull(int index) const { return sqlite3_column_type(stmt_, index) == SQLITE_NULL; }
     std::string columnText(int index) const
     {
         const auto* raw = reinterpret_cast<const char*>(sqlite3_column_text(stmt_, index));
@@ -179,12 +185,40 @@ struct ChronicleRow
     Chronicle chronicle;
 };
 
+// I9.2: three columns, tier_policy, retention_ns and granularity, in the order of this list.
+constexpr const char* kPropertyColumns = "tier_policy, retention_ns, granularity";
+
+Properties readProperties(const Statement& s, int first)
+{
+    Properties out;
+    if(!s.isNull(first))
+        out.tier_policy = s.columnText(first);
+    if(!s.isNull(first + 1))
+        out.retention_ns = static_cast<int64_t>(s.column(first + 1));
+    out.granularity = static_cast<Granularity>(s.column(first + 2));
+    return out;
+}
+
+Statement& bindProperties(Statement& s, int first, const Properties& properties)
+{
+    if(properties.tier_policy)
+        s.text(first, *properties.tier_policy);
+    else
+        s.null(first);
+    if(properties.retention_ns)
+        s.integer(first + 1, static_cast<uint64_t>(*properties.retention_ns));
+    else
+        s.null(first + 1);
+    return s.integer(first + 2, static_cast<uint64_t>(properties.granularity));
+}
+
 // The live identity for a name, else the most recently destroyed one.
 absl::StatusOr<std::optional<ChronicleRow>> loadChronicle(sqlite3* db, const std::string& name)
 {
     Statement s(db,
-                "SELECT id, name, tombstoned FROM chronicles WHERE name = ?1"
-                " ORDER BY tombstoned ASC, id DESC LIMIT 1");
+                (std::string("SELECT id, name, tombstoned, ") + kPropertyColumns +
+                 " FROM chronicles WHERE name = ?1 ORDER BY tombstoned ASC, id DESC LIMIT 1")
+                        .c_str());
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     s.text(1, name);
     auto row = s.step();
@@ -192,19 +226,20 @@ absl::StatusOr<std::optional<ChronicleRow>> loadChronicle(sqlite3* db, const std
         return row.status();
     if(!*row)
         return std::optional<ChronicleRow>();
-    return std::optional<ChronicleRow>(ChronicleRow{s.column(0), Chronicle{s.columnText(1), s.column(2) != 0}});
+    return std::optional<ChronicleRow>(
+            ChronicleRow{s.column(0), Chronicle{s.columnText(1), s.column(2) != 0, readProperties(s, 3)}});
 }
 
 Story readStory(const Statement& s)
 {
-    return Story{s.column(0), s.columnText(1), s.columnText(2), s.column(3), s.column(4) != 0};
+    return Story{s.column(0), s.columnText(1), s.columnText(2), s.column(3), s.column(4) != 0, readProperties(s, 5)};
 }
 
-constexpr const char* kStoryColumns = "id, chronicle, name, epoch, tombstoned";
+constexpr const char* kStoryColumns = "id, chronicle, name, epoch, tombstoned, tier_policy, retention_ns, granularity";
 
 absl::StatusOr<std::optional<Story>> loadStory(sqlite3* db, StoryId id)
 {
-    Statement s(db, "SELECT id, chronicle, name, epoch, tombstoned FROM stories WHERE id = ?1");
+    Statement s(db, (std::string("SELECT ") + kStoryColumns + " FROM stories WHERE id = ?1").c_str());
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     s.integer(1, id);
     auto row = s.step();
@@ -400,6 +435,21 @@ absl::Status SqliteMetadataStore::initialize()
             addColumn("releases",
                       "termination_cause",
                       "ALTER TABLE releases ADD COLUMN termination_cause INTEGER NOT NULL DEFAULT 2"));
+    for(const char* table: {"chronicles", "stories"})
+    {
+        CHRONOLOG_RETURN_IF_ERROR(
+                addColumn(table,
+                          "tier_policy",
+                          (std::string("ALTER TABLE ") + table + " ADD COLUMN tier_policy TEXT").c_str()));
+        CHRONOLOG_RETURN_IF_ERROR(
+                addColumn(table,
+                          "retention_ns",
+                          (std::string("ALTER TABLE ") + table + " ADD COLUMN retention_ns INTEGER").c_str()));
+        CHRONOLOG_RETURN_IF_ERROR(addColumn(
+                table,
+                "granularity",
+                (std::string("ALTER TABLE ") + table + " ADD COLUMN granularity INTEGER NOT NULL DEFAULT 0").c_str()));
+    }
     CHRONOLOG_RETURN_IF_ERROR(
             exec(db_,
                  "CREATE INDEX IF NOT EXISTS acquisitions_live ON acquisitions(story_id,writer_id) WHERE released=0"));
@@ -422,10 +472,11 @@ absl::StatusOr<std::string> SqliteMetadataStore::pragmaValue(const std::string& 
     return *row ? s.columnText(0) : std::string();
 }
 
-absl::StatusOr<Chronicle> SqliteMetadataStore::createChronicle(std::string name)
+absl::StatusOr<Chronicle> SqliteMetadataStore::createChronicle(std::string name, Properties properties)
 {
-    if(!validName(name))
+    if(!validNewChronicleName(name))
         return absl::InvalidArgumentError("invalid chronicle name");
+    CHRONOLOG_RETURN_IF_ERROR(checkProperties(properties));
     std::lock_guard lock(mutex_);
     Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
@@ -434,14 +485,17 @@ absl::StatusOr<Chronicle> SqliteMetadataStore::createChronicle(std::string name)
         return existing.status();
     if(*existing && !(*existing)->chronicle.tombstoned)
         return absl::AlreadyExistsError("chronicle exists");
-    Statement insert(db_, "INSERT INTO chronicles(name, tombstoned) VALUES (?1, 0)");
+    Statement insert(db_,
+                     "INSERT INTO chronicles(name, tombstoned, tier_policy, retention_ns, granularity)"
+                     " VALUES (?1, 0, ?2, ?3, ?4)");
     CHRONOLOG_RETURN_IF_ERROR(insert.prepared());
     insert.text(1, name);
+    bindProperties(insert, 2, properties);
     auto done = insert.step();
     if(!done.ok())
         return done.status();
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-    return Chronicle{std::move(name), false};
+    return Chronicle{std::move(name), false, std::move(properties)};
 }
 
 absl::StatusOr<Chronicle> SqliteMetadataStore::getChronicle(std::string name) const
@@ -460,7 +514,8 @@ absl::StatusOr<Chronicle> SqliteMetadataStore::getChronicle(std::string name) co
 absl::StatusOr<std::vector<Chronicle>> SqliteMetadataStore::listChronicles() const
 {
     std::lock_guard lock(mutex_);
-    Statement s(db_, "SELECT name, tombstoned FROM chronicles ORDER BY id");
+    Statement s(db_,
+                (std::string("SELECT name, tombstoned, ") + kPropertyColumns + " FROM chronicles ORDER BY id").c_str());
     CHRONOLOG_RETURN_IF_ERROR(s.prepared());
     std::vector<Chronicle> out;
     while(true)
@@ -470,7 +525,7 @@ absl::StatusOr<std::vector<Chronicle>> SqliteMetadataStore::listChronicles() con
             return row.status();
         if(!*row)
             break;
-        out.push_back(Chronicle{s.columnText(0), s.column(1) != 0});
+        out.push_back(Chronicle{s.columnText(0), s.column(1) != 0, readProperties(s, 2)});
     }
     return out;
 }
@@ -676,10 +731,11 @@ absl::Status SqliteMetadataStore::destroyTransaction(StoryId story,
     return result;
 }
 
-absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, std::string name)
+absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, std::string name, Properties properties)
 {
-    if(!validName(chronicle) || !validName(name))
+    if(!validName(chronicle) || !validNewStoryName(name))
         return absl::InvalidArgumentError("invalid chronicle or story name");
+    CHRONOLOG_RETURN_IF_ERROR(checkProperties(properties));
     std::lock_guard lock(mutex_);
     Transaction txn(db_, [this](bool committed) { finishRouteTransaction(committed); });
     CHRONOLOG_RETURN_IF_ERROR(txn.begun());
@@ -704,16 +760,17 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
     if(!id.ok())
         return id.status();
     Statement insert(db_,
-                     "INSERT INTO stories(id, chronicle_id, chronicle, name, epoch, tombstoned)"
-                     " VALUES (?1, ?2, ?3, ?4, ?5, 0)");
+                     "INSERT INTO stories(id, chronicle_id, chronicle, name, epoch, tombstoned, tier_policy,"
+                     " retention_ns, granularity) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8)");
     CHRONOLOG_RETURN_IF_ERROR(insert.prepared());
     insert.integer(1, *id).integer(2, (*parent)->id).text(3, chronicle).text(4, name).integer(5, kInitialEpoch);
+    bindProperties(insert, 6, properties);
     auto done = insert.step();
     if(!done.ok())
         return done.status();
     CHRONOLOG_RETURN_IF_ERROR(seedMembershipStory(*id));
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
-    return Story{*id, std::move(chronicle), std::move(name), kInitialEpoch, false};
+    return Story{*id, std::move(chronicle), std::move(name), kInitialEpoch, false, std::move(properties)};
 }
 
 absl::StatusOr<Story> SqliteMetadataStore::getStory(StoryId id) const
@@ -750,6 +807,44 @@ absl::StatusOr<std::vector<Story>> SqliteMetadataStore::listStories(std::string 
         if(!*row)
             break;
         out.push_back(readStory(s));
+    }
+    return out;
+}
+
+absl::StatusOr<StoriesByPrefix> SqliteMetadataStore::listStoriesByPrefix(std::string prefix, uint32_t limit) const
+{
+    if(!validPrefix(prefix) || limit < 1 || limit > 65536)
+        return absl::InvalidArgumentError("invalid prefix or limit");
+    std::lock_guard lock(mutex_);
+    StoriesByPrefix out;
+    auto revision = currentCounter(db_, "acquisition_revision");
+    if(!revision.ok())
+        return revision.status();
+    out.revision = *revision;
+    Statement s(db_,
+                (std::string("SELECT ") + kStoryColumns +
+                 " FROM stories WHERE tombstoned = 0 AND (chronicle || '/' || name = ?1 OR"
+                 " substr(chronicle || '/' || name, 1, ?2) = ?3) ORDER BY id")
+                        .c_str());
+    CHRONOLOG_RETURN_IF_ERROR(s.prepared());
+    s.text(1, prefix).integer(2, prefix.size() + 1).text(3, prefix + '/');
+    while(true)
+    {
+        auto row = s.step();
+        if(!row.ok())
+            return row.status();
+        if(!*row)
+            break;
+        Story story = readStory(s);
+        if(!underPrefix(story.chronicle, story.name, prefix))
+            continue;
+        if(out.stories.size() == limit)
+        {
+            out.limit_exceeded = true;
+            out.stories.clear();
+            break;
+        }
+        out.stories.push_back(std::move(story));
     }
     return out;
 }

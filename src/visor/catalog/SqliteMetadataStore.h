@@ -44,13 +44,16 @@ public:
     SqliteMetadataStore(const SqliteMetadataStore&) = delete;
     SqliteMetadataStore& operator=(const SqliteMetadataStore&) = delete;
 
-    absl::StatusOr<Chronicle> createChronicle(std::string name) override;
+    using MetadataStore::createChronicle;
+    using MetadataStore::createStory;
+    absl::StatusOr<Chronicle> createChronicle(std::string name, Properties properties) override;
     absl::StatusOr<Chronicle> getChronicle(std::string name) const override;
     absl::StatusOr<std::vector<Chronicle>> listChronicles() const override;
     absl::Status destroyChronicle(std::string name) override;
-    absl::StatusOr<Story> createStory(std::string chronicle, std::string name) override;
+    absl::StatusOr<Story> createStory(std::string chronicle, std::string name, Properties properties) override;
     absl::StatusOr<Story> getStory(StoryId id) const override;
     absl::StatusOr<std::vector<Story>> listStories(std::string chronicle) const override;
+    absl::StatusOr<StoriesByPrefix> listStoriesByPrefix(std::string prefix, uint32_t limit) const override;
     absl::Status destroyStory(StoryId id) override;
     // Waits for the previous owner's fence when the writer moves to another Keeper (I6.11(d)), then commits.
     absl::StatusOr<Acquisition> acquire(StoryId id, std::string writer_identity) override;
