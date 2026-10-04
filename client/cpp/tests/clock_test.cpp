@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include "chronolog/client/clock.h"
-#include "clock/KernelClock.h"
-#include "clock/tests/ntp_cases.h"
+#include "common/clock/KernelClock.h"
+#include "common/clock/tests/ntp_cases.h"
 using namespace chronolog;
 using namespace chronolog::client;
 TEST(ClientClock, StrictlyIncreasesEvenWhenRawStepsBackward)

@@ -15,12 +15,12 @@ timeout 1800 cmake --build --preset dev --parallel "${CMAKE_BUILD_PARALLEL_LEVEL
 # The wheel's pyproject selects the separate python preset and build/python directory.
 timeout 600 "$venv/bin/python" -m build --wheel --outdir "$logs/wheels" client/python
 timeout 120 "$venv/bin/pip" install --no-deps --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl
-timeout 360 bash plugins/chrono-viz/prepare.sh
+timeout 360 bash plugins/viz/prepare.sh
 timeout 120 build/viz-venv/bin/pip install --no-deps --force-reinstall "$logs"/wheels/chronolog-4.0.0-*.whl
 timeout 300 build/viz-venv/bin/pip install --quiet 'opentelemetry-sdk>=1.39,<2' 'mcp>=2.2,<3'
-timeout 900 bash plugins/chrono-viz/build.sh
+timeout 900 bash plugins/viz/build.sh
 timeout 10 build/viz-venv/bin/python -c 'import chronolog, chronolog_viz'
-timeout 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp
+timeout 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/mcp
 timeout 120 "$venv/bin/pip" install --no-deps --force-reinstall "$logs"/wheels/chronolog_mcp-4.0.0-*.whl
-timeout 480 bash client/typescript/run_dragon.sh
+timeout 480 bash client/typescript/run.sh
 echo 'Smoke artifacts ready'

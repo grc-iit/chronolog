@@ -1,0 +1,181 @@
+#pragma once
+
+#include <chrono>
+#include <condition_variable>
+#include <filesystem>
+#include <mutex>
+#include <stdexcept>
+#include <unistd.h>
+
+#include "keeper/tests/ram_harness.h"
+#include "keeper/wal/Record.h"
+#include "keeper/wal/WalJournal.h"
+
+namespace chronolog::test
+{
+
+struct WalControl
+{
+    WalControl()
+    {
+        std::string pattern = (std::filesystem::temp_directory_path() / "chronolog-wal-XXXXXX").string();
+        if(!::mkdtemp(pattern.data()))
+            throw std::runtime_error("mkdtemp failed");
+        directory = pattern;
+    }
+    ~WalControl() { std::filesystem::remove_all(directory); }
+    void block()
+    {
+        std::lock_guard lock(mu);
+        blocked = true;
+        pending.reset();
+    }
+    void release()
+    {
+        {
+            std::lock_guard lock(mu);
+            blocked = false;
+        }
+        cv.notify_all();
+    }
+    Hlc waitPending()
+    {
+        std::unique_lock lock(mu);
+        if(!cv.wait_for(lock, std::chrono::seconds(5), [this] { return pending.has_value(); }))
+            throw std::runtime_error("WAL did not reach fsync");
+        return *pending;
+    }
+    std::string directory;
+    std::mutex mu;
+    std::condition_variable cv;
+    bool blocked{};
+    bool fail{};
+    size_t syncs{};
+    std::optional<Hlc> pending;
+};
+
+class ControlledSink final: public FileSink
+{
+public:
+    ControlledSink(std::shared_ptr<WalControl> control, const std::string& path)
+        : control_(std::move(control))
+        , sink_(openFileSink(path))
+    {}
+    absl::Status write(std::string_view bytes) override
+    {
+        if(bytes.size() > 8 && bytes[8] == 'E')
+        {
+            auto event = wal::decode(bytes.substr(9));
+            {
+                std::lock_guard lock(control_->mu);
+                control_->pending = event.hlc;
+            }
+            control_->cv.notify_all();
+        }
+        return sink_->write(bytes);
+    }
+    absl::Status sync() override
+    {
+        std::unique_lock lock(control_->mu);
+        ++control_->syncs;
+        if(!control_->cv.wait_for(lock, std::chrono::seconds(10), [this] { return !control_->blocked; }))
+            return absl::UnavailableError("test fsync block timed out");
+        if(control_->fail)
+            return absl::UnavailableError("injected fsync failure");
+        lock.unlock();
+        return sink_->sync();
+    }
+
+private:
+    std::shared_ptr<WalControl> control_;
+    std::unique_ptr<FileSink> sink_;
+};
+
+class ScannedWalJournal final: public WalJournal
+{
+public:
+    using WalJournal::WalJournal;
+    std::function<void()> scanned;
+    std::string checkpoint() const { return checkpointText(); }
+    void onSlotValidated(std::function<void()> hook)
+    {
+        std::lock_guard lock(assignment_mu_);
+        slot_validated_ = std::move(hook);
+    }
+    void onAssignment(std::function<void(Hlc)> hook)
+    {
+        std::lock_guard lock(assignment_mu_);
+        assigned_ = std::move(hook);
+    }
+
+protected:
+    void slotValidated() override
+    {
+        std::function<void()> hook;
+        {
+            std::lock_guard lock(assignment_mu_);
+            hook = slot_validated_;
+        }
+        if(hook)
+            hook();
+    }
+    void assignmentObserved(Hlc hlc) override
+    {
+        std::function<void(Hlc)> hook;
+        {
+            std::lock_guard lock(assignment_mu_);
+            hook = assigned_;
+        }
+        if(hook)
+            hook(hlc);
+    }
+    void writerScanned(WriterKey) const override
+    {
+        if(scanned)
+            scanned();
+    }
+
+private:
+    std::mutex assignment_mu_;
+    std::function<void(Hlc)> assigned_;
+    std::function<void()> slot_validated_;
+};
+
+struct WalRig
+{
+    std::shared_ptr<WalControl> control = std::make_shared<WalControl>();
+    std::shared_ptr<AssignmentClock> clock;
+    std::shared_ptr<FakeMembership> membership = std::make_shared<FakeMembership>();
+    RamJournalConfig ram_config;
+    WalJournalConfig config;
+    ScannedWalJournal* current{};
+    std::unique_ptr<WalJournal> journal;
+
+    explicit WalRig(uint64_t segment_bytes = 64ull << 20, size_t dedupe_window = 65536, uint32_t window_us = 0)
+    {
+        config.wal_segment_bytes = segment_bytes;
+        config.group_commit_window_us = window_us;
+        ram_config.dedupe_window = dedupe_window;
+        ram_config.process_id = "self";
+        ram_config.instance = "instance";
+        ram_config.append_ceiling_wait_ms = 100;
+        ram_config.physical_policy.skew_limit_ns = 1000;
+        config.wal_dir = control->directory;
+        reopen();
+    }
+    WalJournal::SinkFactory factory() const
+    {
+        return [control = control](const std::string& path) { return std::make_unique<ControlledSink>(control, path); };
+    }
+    void reopen()
+    {
+        journal.reset();
+        clock = std::make_shared<AssignmentClock>(100);
+        clock->setStatus(ClockStatus::Synced);
+        journal = std::make_unique<ScannedWalJournal>(clock, membership, ram_config, config, factory());
+        current = static_cast<ScannedWalJournal*>(journal.get());
+        (void)current->registerWriter(1, 2, 3);
+    }
+};
+
+} // namespace chronolog::test

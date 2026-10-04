@@ -11,7 +11,7 @@ def main():
     engine = sys.argv[1] if len(sys.argv) > 1 else 'podman'
     project = 'local5-grapher-' + str(os.getpid())
     demo = root / 'deploy/demo/chronolog-demo'
-    cli = root / 'deploy/local/chronolog'
+    cli = root / 'launcher/chronolog'
     python = root / 'build/smoke-venv/bin/python'
     assert os.environ.get('RBUILD_HELD') == 'stack', 'FAIL demo discovery requires the stack lock'
     with tempfile.TemporaryDirectory(prefix='chronolog-demo-discovery-') as scratch:

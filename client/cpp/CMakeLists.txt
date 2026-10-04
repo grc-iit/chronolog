@@ -39,7 +39,7 @@ include(GoogleTest)
 add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp tests/physical_read_test.cpp
     tests/replay_threading_test.cpp tests/channel_policy_test.cpp tests/floor_test.cpp
     tests/append_rejection_test.cpp tests/read_options_test.cpp tests/lease_test.cpp
-    "${PROJECT_SOURCE_DIR}/tests/contract/client/client_test.cpp")
+    "${PROJECT_SOURCE_DIR}/client/cpp/tests/client_test.cpp")
 target_link_libraries(chronolog_client_tests PRIVATE chronolog::client chronolog_common_clock chronolog_proto chronolog_warnings GTest::gtest_main Threads::Threads)
 gtest_discover_tests(chronolog_client_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "sdk." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)
 add_executable(chronolog_client_acceptance tests/acceptance.cpp)

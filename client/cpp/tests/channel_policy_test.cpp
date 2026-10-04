@@ -1,4 +1,4 @@
-// Port of the half-open hop tests in src/chrono-common/rpc/channel_pool_test.cpp to the SDK's own channel policy
+// Port of the half-open hop tests in src/common/rpc/channel_pool_test.cpp to the SDK's own channel policy
 // (M11.3): a hop that stops forwarding without closing must be noticed by an unanswered ping, after which the
 // SDK reaches the peer that took over behind the hop.
 #include <gtest/gtest.h>

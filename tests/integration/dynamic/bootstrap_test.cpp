@@ -2,9 +2,9 @@
 #include <gtest/gtest.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "TestSupport.h"
-#include "dynamic/MembershipState.h"
-#include "raft/RaftMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/dynamic/MembershipState.h"
+#include "visor/raft/RaftMetadataStore.h"
 
 namespace chronolog::visor
 {
