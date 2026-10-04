@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,20 @@ from chronolog_local.tiers import (GRAPHER_STATUS, MARKER, add_marker, filesyste
 def require(condition, message):
     if not condition:
         raise AssertionError('FAIL ' + message)
+
+
+def grapher_file(written_at_unix_ms, scrub=None, **fields):
+    value = {'writer': 'grapher-1', 'migrate_enabled': False, 'migration_stopped': False,
+             'pending_tier_deletions': {}, 'heartbeat_ms': 1000, 'written_at_unix_ms': written_at_unix_ms,
+             'scrub': scrub or {'enabled': True, 'validated': 7, 'skipped': 1, 'lost': 2, 'rolled_back': 3,
+                                'slow_failed': 4, 'through': 99, 'finished_at_unix_ms': 1700000000123,
+                                'error': 'slow tier timeout'},
+             'tiers': [{'name': 'local', 'rank': 0, 'available': True, 'used_bytes': 5, 'budget_bytes': 0,
+                        'above_high': False},
+                       {'name': 'nfs', 'rank': 1, 'available': True, 'used_bytes': 6, 'budget_bytes': 0,
+                        'above_high': False}]}
+    value.update(fields)
+    return {key: item for key, item in value.items() if item is not None}
 
 
 def worker(folder):
@@ -119,6 +134,42 @@ def main():
                 views, migration = grapher_views(folder, legacy, True)
                 require(not migration['known'] and migration['reason'] == 'no tier table' and
                         all(not view['known'] for view in views), 'no tier table, no Grapher view')
+        elif gate == 'grapher_status_goes_stale_without_a_heartbeat':
+            call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow')
+            current = load(folder / 'instance.json')
+            status_file = folder / GRAPHER_STATUS
+            status_file.parent.mkdir(parents=True, exist_ok=True)
+            now = 1_800_000_000_000
+
+            def seen(value):
+                status_file.write_text(json.dumps(value))
+                return grapher_views(folder, current, True, now)
+
+            for written in (now, now - 3000, now + 3000):
+                views, migration = seen(grapher_file(written))
+                require(migration['known'] and migration['written_at_unix_ms'] == written and
+                        migration['heartbeat_ms'] == 1000 and migration['scrub'] == grapher_file(now)['scrub'] and
+                        all(view['known'] and view['available'] and view['scrub'] == migration['scrub']
+                            for view in views), 'a file within three heartbeats is known at ' + str(written - now))
+            for written in (now - 3001, now + 3001, 0):
+                views, migration = seen(grapher_file(written))
+                require(migration == {'known': False, 'reason': 'stale'} and
+                        all(view == {'known': False, 'reason': 'stale'} for view in views),
+                        'a file beyond three heartbeats is stale at ' + str(written - now))
+            for fields in ({'written_at_unix_ms': None}, {'heartbeat_ms': None}, {'heartbeat_ms': 0},
+                           {'written_at_unix_ms': str(now)}, {'heartbeat_ms': True}):
+                views, migration = seen(grapher_file(now, **fields))
+                require(migration == {'known': False, 'reason': 'no heartbeat'} and
+                        all(not view['known'] for view in views), 'no heartbeat in ' + json.dumps(fields))
+            for scrub in ({'enabled': True}, dict(grapher_file(now)['scrub'], lost='2'),
+                          dict(grapher_file(now)['scrub'], error=None)):
+                views, migration = seen(grapher_file(now, scrub=scrub))
+                require(migration == {'known': False, 'reason': 'unparsable'} and
+                        all(not view['known'] for view in views), 'a bad scrub object is unparsable')
+            views, migration = seen(grapher_file(now, scrub=None) | {'scrub': 'none'})
+            require(migration == {'known': False, 'reason': 'unparsable'}, 'a scrub of another type is unparsable')
+            views, migration = grapher_views(folder, current, True, now + 3001)
+            require(migration['reason'] == 'stale', 'the same bytes go stale as the clock moves')
         elif gate == 'status_survives_a_hung_tier':
             call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow')
             marker_before = (root / 'slow' / MARKER).read_bytes()
@@ -163,10 +214,8 @@ def main():
             status_file = folder / GRAPHER_STATUS
             status_file.parent.mkdir(parents=True, exist_ok=True)
             # What an earlier Grapher left behind must not pass for the next one's view.
-            status_file.write_text(json.dumps({'writer': 'old', 'migrate_enabled': True, 'migration_stopped': False,
-                'pending_tier_deletions': {}, 'tiers': [
-                    {'name': 'local', 'rank': 0, 'available': True, 'used_bytes': 1, 'budget_bytes': 0, 'above_high': False},
-                    {'name': 'nfs', 'rank': 1, 'available': True, 'used_bytes': 1, 'budget_bytes': 0, 'above_high': False}]}))
+            # What an earlier Grapher left behind, however fresh, must not pass for the next one's view.
+            status_file.write_text(json.dumps(grapher_file(time.time_ns() // 1_000_000, writer='old')))
 
             def wait_for(condition, message):
                 deadline = time.monotonic() + 30
@@ -187,37 +236,73 @@ def main():
                 current = wait_for(lambda c: c.get('tier_migration', {}).get('writer') == 'grapher-1',
                                    'status carries the running Grapher view')
                 require(current['state'] == 'ready', 'ready with the Grapher view')
-                require(current['tier_migration'] == {'known': True, 'writer': 'grapher-1', 'migrate_enabled': False,
-                        'migration_stopped': False, 'pending_tier_deletions': {}}, 'migration view of an idle Grapher')
+                migration = current['tier_migration']
+                require({key: value for key, value in migration.items()
+                         if key not in ('written_at_unix_ms', 'heartbeat_ms', 'scrub')} ==
+                        {'known': True, 'writer': 'grapher-1', 'migrate_enabled': False,
+                         'migration_stopped': False, 'pending_tier_deletions': {}} and
+                        migration['heartbeat_ms'] == 10000 and isinstance(migration['written_at_unix_ms'], int) and
+                        all(key in migration['scrub'] for key in ('finished_at_unix_ms', 'validated', 'lost',
+                                                                  'rolled_back', 'slow_failed', 'error')),
+                        'migration view of an idle Grapher: ' + json.dumps(migration))
                 for name in ('local', 'nfs'):
                     seen = view(current, name)
                     require(seen['known'] and seen['available'] is True and seen['above_high'] is False and
                             seen['migrate_enabled'] is False and seen['migration_stopped'] is False and
-                            isinstance(seen['used_bytes'], int) and seen['budget_bytes'] == 0,
-                            'the Grapher sees ' + name)
+                            isinstance(seen['used_bytes'], int) and seen['budget_bytes'] == 0 and
+                            seen['scrub'] == migration['scrub'], 'the Grapher sees ' + name)
                 listed = call('tier', 'ls', 'test', timeout=5)
                 require([tier['name'] for tier in listed] == ['local', 'nfs'] and
                         all(tier['grapher']['known'] and tier['grapher']['available'] for tier in listed) and
                         all('available' in tier for tier in listed),
                         'tier ls carries the Grapher view next to the launcher probe')
-                # The Grapher rewrites its file only when its content changes, so damage stays until then.
-                status_file.write_text('{"tiers": [')
-                current = wait_for(lambda c: not c['tier_migration']['known'], 'a garbage file is unknown')
-                require(current['state'] == 'ready' and current['tier_migration']['reason'] == 'unparsable' and
-                        all(tier['grapher'] == {'known': False, 'reason': 'unparsable'} for tier in current['tiers']) and
-                        'error' not in current,
-                        'a garbage file is unknown, not an error and not healthy')
-                status_file.write_text(json.dumps({'writer': 'grapher-1', 'migrate_enabled': False,
-                    'migration_stopped': False, 'pending_tier_deletions': {},
-                    'tiers': [{'name': 'local', 'rank': 0, 'available': 'yes'}]}))
-                wait_for(lambda c: c['tier_migration'] == {'known': False, 'reason': 'unparsable'},
-                         'a file of another shape is unknown')
-                status_file.unlink()
-                current = wait_for(lambda c: c['tier_migration'].get('reason') == 'absent', 'an absent file is unknown')
-                require(current['state'] == 'ready' and
-                        all(tier['grapher'] == {'known': False, 'reason': 'absent'} for tier in current['tiers']) and
-                        not any(tier['grapher']['known'] for tier in call('tier', 'ls', 'test', timeout=5)),
-                        'an absent file is unknown in status and tier ls')
+                # A stopped Grapher stays the running, ready child but writes nothing, so the file is ours to choose.
+                grapher_pid = current['services']['grapher']['pid']
+                os.kill(grapher_pid, signal.SIGSTOP)
+                try:
+                    # A long heartbeat keeps the fresh file fresh however slowly a loaded host publishes it.
+                    now = time.time_ns() // 1_000_000
+                    status_file.write_text(json.dumps(grapher_file(now, heartbeat_ms=60000)))
+                    current = wait_for(lambda c: c['tier_migration'].get('written_at_unix_ms') == now,
+                                       'a fresh file is known')
+                    scrub = grapher_file(now)['scrub']
+                    require(current['state'] == 'ready' and current['tier_migration']['scrub'] == scrub and
+                            all(view(current, name)['known'] and view(current, name)['scrub'] == scrub
+                                for name in ('local', 'nfs')),
+                            'status shows the scrub pass: ' + json.dumps(current['tier_migration']))
+                    require(all(tier['grapher']['known'] and tier['grapher']['scrub'] == scrub
+                                for tier in call('tier', 'ls', 'test', timeout=5)), 'tier ls shows the scrub pass')
+                    status_file.write_text(json.dumps(grapher_file(now - 180001, heartbeat_ms=60000)))
+                    current = wait_for(lambda c: not c['tier_migration']['known'], 'a stale file is unknown')
+                    require(current['state'] == 'ready' and current['tier_migration']['reason'] == 'stale' and
+                            all(tier['grapher'] == {'known': False, 'reason': 'stale'} for tier in current['tiers']) and
+                            all(tier['grapher'] == {'known': False, 'reason': 'stale'}
+                                for tier in call('tier', 'ls', 'test', timeout=5)),
+                            'a stale file is unknown in status and tier ls')
+                    status_file.write_text(json.dumps(grapher_file(None)))
+                    wait_for(lambda c: c['tier_migration'] == {'known': False, 'reason': 'no heartbeat'},
+                             'a file without a heartbeat is unknown')
+                    status_file.write_text('{"tiers": [')
+                    current = wait_for(lambda c: c['tier_migration'].get('reason') == 'unparsable',
+                                       'a garbage file is unknown')
+                    require(current['state'] == 'ready' and
+                            all(tier['grapher'] == {'known': False, 'reason': 'unparsable'}
+                                for tier in current['tiers']) and 'error' not in current,
+                            'a garbage file is unknown, not an error and not healthy')
+                    status_file.write_text(json.dumps(grapher_file(now, tiers=[
+                        {'name': 'local', 'rank': 0, 'available': 'yes'}])))
+                    wait_for(lambda c: c['tier_migration'] == {'known': False, 'reason': 'unparsable'} and
+                             view(c, 'local') == {'known': False, 'reason': 'unparsable'},
+                             'a file of another shape is unknown')
+                    status_file.unlink()
+                    current = wait_for(lambda c: c['tier_migration'].get('reason') == 'absent',
+                                       'an absent file is unknown')
+                    require(current['state'] == 'ready' and
+                            all(tier['grapher'] == {'known': False, 'reason': 'absent'} for tier in current['tiers']) and
+                            not any(tier['grapher']['known'] for tier in call('tier', 'ls', 'test', timeout=5)),
+                            'an absent file is unknown in status and tier ls')
+                finally:
+                    os.kill(grapher_pid, signal.SIGCONT)
                 # The slow tier loses its marker: the Grapher's next probe changes its view and rewrites the file.
                 marker = (slow_root / MARKER).read_bytes()
                 (slow_root / MARKER).unlink()
