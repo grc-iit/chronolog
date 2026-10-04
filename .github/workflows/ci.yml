@@ -62,12 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compare the disabled and skipped test count to the allowlist
+      - name: Compare the disabled test count to the allowlist
         run: |
           allowed="$(tr -d '[:space:]' < .github/ci/disabled-contract-tests.count)"
           actual="$(.github/ci/count_disabled_tests.sh tests/contract)"
-          echo "disabled or skipped contract tests: actual=$actual allowed=$allowed"
+          echo "disabled contract tests: actual=$actual allowed=$allowed"
           if [ "$actual" -gt "$allowed" ]; then
-            echo "::error::tests/contract has $actual disabled or skipped tests, allowlist is $allowed"
+            echo "::error::tests/contract has $actual disabled tests, allowlist is $allowed"
             exit 1
           fi

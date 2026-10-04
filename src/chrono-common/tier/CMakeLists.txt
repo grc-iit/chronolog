@@ -33,8 +33,13 @@ if(CHRONOLOG_BUILD_BENCH)
 endif()
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
+    # h5py lives in a venv under build/ (audit B2): the system interpreters have none, and the test never skips.
+    set(h5py_venv "${PROJECT_SOURCE_DIR}/build/h5py-venv")
+    add_test(NAME grapher.HDF5InteropEnv
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/hdf5_interop_env.sh" "${h5py_venv}")
+    set_tests_properties(grapher.HDF5InteropEnv PROPERTIES TIMEOUT 300 FIXTURES_SETUP h5py_venv)
     add_test(NAME grapher.HDF5Interop
-        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/hdf5_interop.py"
+        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${h5py_venv}/bin/python" "${CMAKE_CURRENT_SOURCE_DIR}/tests/hdf5_interop.py"
             $<TARGET_FILE:chronolog_hdf5_interop_writer>)
-    set_tests_properties(grapher.HDF5Interop PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+    set_tests_properties(grapher.HDF5Interop PROPERTIES TIMEOUT 30 FIXTURES_REQUIRED h5py_venv)
 endif()

@@ -1226,6 +1226,12 @@ bool RamJournal::dropped(StoryId story) const
     return dropped_.contains(story);
 }
 
+bool RamJournal::dropConfirmed(StoryId story) const
+{
+    std::lock_guard lock(dynamic_mu_);
+    return confirmed_.contains(story);
+}
+
 std::vector<StoryId> RamJournal::droppedUnconfirmed() const
 {
     std::lock_guard lock(dynamic_mu_);

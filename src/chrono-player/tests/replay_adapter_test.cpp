@@ -373,6 +373,15 @@ class replay_adapter_recv: public replay_adapter
     void tune(HotReplayOptions& options) override { options.batch_size = 1024; }
 };
 
+// W10.15: an unspecified wire clock status is Unavailable in the Player's adapter, never Synced.
+TEST(EventConvert, UnspecifiedClockStatusIsUnavailable)
+{
+    v1::Event wire;
+    wire.mutable_physical()->set_status(v1::CLOCK_STATUS_UNSPECIFIED);
+    wire.mutable_physical()->set_uncertainty_ns(5);
+    EXPECT_EQ(convert::fromProto(wire).physical.status, ClockStatus::Unavailable);
+}
+
 TEST_F(replay_adapter_recv, ReadDeliversEightMaximalPayloads)
 {
     std::vector<v1::Event> events;

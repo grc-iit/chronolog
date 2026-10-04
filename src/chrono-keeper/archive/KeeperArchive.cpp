@@ -110,7 +110,9 @@ absl::Status KeeperArchive::addChunk(Chunk chunk, size_t bytes)
     state.activity = now_();
     if(story.dropped)
     {
-        (void)journal_.recordSettled(state.chunk.id);
+        // I13.11: a report alone frees RAM but settles nothing in the WAL; only a known tombstone does.
+        if(journal_.dropConfirmed(state.chunk.story_id))
+            (void)journal_.recordSettled(state.chunk.id);
         journal_.eraseEvents(state.chunk.story_id, range(state.chunk));
     }
     else
@@ -320,6 +322,9 @@ void KeeperArchive::sendFailed(const std::string& id)
 
 void KeeperArchive::freeDropped(StoryId story_id)
 {
+    // I13.11: a Keeper that freed on a report alone pins the story's WAL segments. Its sealed chunks are recorded
+    // settled only when the tombstone itself is known; until then a restart replays and resends them.
+    const bool confirmed = journal_.dropConfirmed(story_id);
     std::lock_guard lock(mu_);
     stories_[story_id].dropped = true;
     for(auto it = chunks_.begin(); it != chunks_.end();)
@@ -329,7 +334,8 @@ void KeeperArchive::freeDropped(StoryId story_id)
             ++it;
             continue;
         }
-        (void)journal_.recordSettled(it->first);
+        if(confirmed)
+            (void)journal_.recordSettled(it->first);
         journal_.eraseEvents(story_id, range(it->second.chunk), true);
         if(!it->second.settled)
             unsettled_bytes_ -= std::min(unsettled_bytes_, static_cast<uint64_t>(it->second.bytes));

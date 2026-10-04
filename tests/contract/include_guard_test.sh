@@ -27,7 +27,7 @@ check 'src/chrono-common/tier/ includes gRPC' "$grpc" "$root/src/chrono-common/t
 check 'src/chrono-common/rpc/ non-test files include protobuf types' \
     "$protobuf" "$root/src/chrono-common/rpc" --exclude-dir=tests --exclude='*_test.cpp'
 
-# M11.2 applies to production sources; cross-service test binaries remain a follow-up.
+# M11.2 binds production sources; a service's own tests may use another service's library as a fixture.
 for service in visor keeper grapher player; do
     others=''
     for peer in visor keeper grapher player; do

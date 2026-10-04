@@ -69,6 +69,8 @@ public:
     // leaves the story unconfirmed until the Catalog answers.
     absl::Status dropStory(StoryId story, bool tombstone);
     bool dropped(StoryId story) const;
+    // True once the tombstone itself is known (a D record exists or was replayed), never on a report alone.
+    bool dropConfirmed(StoryId story) const;
     std::vector<StoryId> droppedUnconfirmed() const;
     // Called once per story, on its first signal, after the tombstone record when one is written.
     void onDrop(std::function<void(StoryId)> listener);
