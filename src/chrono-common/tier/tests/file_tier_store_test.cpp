@@ -3500,7 +3500,8 @@ namespace
 // A store whose unlinks fail until `allow` is set, so a committed switch keeps its inputs pending.
 absl::StatusOr<std::unique_ptr<FileTierStore>> OpenWithHeldUnlinks(const fs::path& root,
                                                                    std::shared_ptr<std::atomic<bool>> allow,
-                                                                   std::function<void(const fs::path&)> before = {})
+                                                                   std::function<void(const fs::path&)> before = {},
+                                                                   FileTierStore::LoadFile load = {})
 {
     return FileTierStore::Open(
             root,
@@ -3518,7 +3519,7 @@ absl::StatusOr<std::unique_ptr<FileTierStore>> OpenWithHeldUnlinks(const fs::pat
                 }
                 return ::unlink(path.c_str());
             },
-            {},
+            std::move(load),
             2);
 }
 } // namespace
@@ -3612,6 +3613,175 @@ TEST(FileTierStore, RollbackBetweenPendingCopyAndUnlinkKeepsTheInputs)
     auto events = (*store)->read(1, kAll);
     ASSERT_TRUE(events.ok()) << events.status();
     EXPECT_EQ(events->size(), 8u);
+}
+
+namespace
+{
+// Holds the scrubber inside the validation of a rollback's inputs: the load of the last input returns only once
+// release() runs, so the test acts between that validation and the scrubber's re-check.
+struct HeldInputLoad
+{
+    std::shared_ptr<std::atomic<int>> remaining = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::set<std::string>> inputs = std::make_shared<std::set<std::string>>();
+    std::shared_ptr<std::promise<void>> entered = std::make_shared<std::promise<void>>();
+    std::shared_ptr<std::promise<void>> freed = std::make_shared<std::promise<void>>();
+    std::shared_ptr<std::once_flag> once = std::make_shared<std::once_flag>();
+    std::shared_future<void> released = freed->get_future().share();
+    FileTierStore::LoadFile hook() const
+    {
+        return [remaining = remaining, inputs = inputs, entered = entered, released = released](const fs::path& path)
+        {
+            const bool last =
+                    remaining->load() > 0 && inputs->contains(path.filename().string()) && remaining->fetch_sub(1) == 1;
+            auto bytes = LoadChunkFile(path);
+            if(last)
+            {
+                entered->set_value();
+                released.wait_for(std::chrono::seconds(60));
+            }
+            return bytes;
+        };
+    }
+    void arm(const std::vector<ManifestRecord>& records)
+    {
+        for(const auto& record: records) inputs->insert(fs::path(record.file).filename().string());
+        remaining->store(static_cast<int>(records.size()));
+    }
+    bool held() { return entered->get_future().wait_for(std::chrono::seconds(60)) == std::future_status::ready; }
+    void release()
+    {
+        std::call_once(*once, [this] { freed->set_value(); });
+    }
+};
+
+size_t RollbackLines(const fs::path& root)
+{
+    std::ifstream log(root / "manifest/primary.log", std::ios::binary);
+    const std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    size_t count = 0;
+    for(auto at = text.find("compact_rollback_v1"); at != std::string::npos;
+        at = text.find("compact_rollback_v1", at + 1))
+        ++count;
+    return count;
+}
+} // namespace
+
+// M11.7, I13.17: the scrubber reads and checksums a rollback's inputs with the store mutex released, so a publish and
+// an erase complete while that validation is held; the rollback still follows.
+TEST(FileTierStore, ScrubberValidatesRollbackInputsWithoutTheStoreMutex)
+{
+    auto directory = TestDirectory();
+    auto allow = std::make_shared<std::atomic<bool>>(false);
+    HeldInputLoad load;
+    auto store = OpenWithHeldUnlinks(*directory, allow, {}, load.hook());
+    ASSERT_TRUE(store.ok());
+    const auto inputs = PublishWindows(**store, 4);
+    (void)(*store)->compactOnce(Eager());
+    const auto committed = Effective(**store);
+    ASSERT_EQ(committed.size(), 1u);
+    Corrupt(*directory / committed[0].file);
+    load.arm(inputs);
+    auto scrub = std::async(std::launch::async, [&] { return (*store)->scrubOnce(0); });
+    std::string published;
+    absl::Status erased = absl::UnknownError("erase did not run");
+    std::future_status writer = std::future_status::timeout;
+    if(load.held())
+    {
+        auto work = std::async(std::launch::async,
+                               [&]
+                               {
+                                   auto record = (*store)->publish(Rich(4));
+                                   if(!record.ok())
+                                       return;
+                                   published = record->file;
+                                   erased = (*store)->eraseFile(published);
+                               });
+        writer = work.wait_for(std::chrono::seconds(60));
+        load.release();
+    }
+    else
+        ADD_FAILURE() << "the scrubber never validated the rollback inputs";
+    load.release();
+    const auto scrubbed = scrub.get();
+    EXPECT_EQ(writer, std::future_status::ready) << "publish and erase waited for the scrubber's input validation";
+    ASSERT_FALSE(published.empty());
+    EXPECT_EQ(StateOf(**store, published), ManifestState::Deleted) << erased;
+    ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+    EXPECT_EQ(scrubbed->rolled_back, 1u);
+    EXPECT_EQ(scrubbed->lost, 0u);
+    EXPECT_TRUE(scrubbed->marked);
+    for(const auto& input: inputs) EXPECT_EQ(StateOf(**store, input.file), ManifestState::Published);
+}
+
+// I13.17: what the scrubber validated without the mutex decides nothing once an input was claimed for unlink or the
+// switch changed before the re-check; no rollback line follows, and a later pass takes the decision.
+TEST(FileTierStore, ScrubberRollbackRechecksAfterValidation)
+{
+    for(const bool claimed: {true, false})
+    {
+        SCOPED_TRACE(claimed ? "an input claimed for unlink" : "the switch rolled back by another pass");
+        auto directory = TestDirectory();
+        auto allow = std::make_shared<std::atomic<bool>>(false);
+        HeldInputLoad load;
+        auto store = OpenWithHeldUnlinks(*directory, allow, {}, load.hook());
+        ASSERT_TRUE(store.ok());
+        const auto inputs = PublishWindows(**store, 4);
+        (void)(*store)->compactOnce(Eager());
+        const auto committed = Effective(**store);
+        ASSERT_EQ(committed.size(), 1u);
+        const auto output = committed[0].file;
+        Corrupt(*directory / output);
+        load.arm(inputs);
+        auto scrub = std::async(std::launch::async, [&] { return (*store)->scrubOnce(0); });
+        absl::StatusOr<ScrubResult> other = absl::UnknownError("no other pass");
+        if(load.held())
+        {
+            auto work = std::async(std::launch::async,
+                                   [&]
+                                   {
+                                       if(claimed)
+                                       {
+                                           *allow = true;
+                                           (void)(*store)->retryDeletedFiles();
+                                       }
+                                       else
+                                           other = (*store)->scrubOnce(0);
+                                   });
+            EXPECT_EQ(work.wait_for(std::chrono::seconds(60)), std::future_status::ready);
+            load.release();
+        }
+        else
+            ADD_FAILURE() << "the scrubber never validated the rollback inputs";
+        load.release();
+        const auto scrubbed = scrub.get();
+        ASSERT_TRUE(scrubbed.ok()) << scrubbed.status();
+        EXPECT_EQ(scrubbed->rolled_back, 0u);
+        EXPECT_EQ(scrubbed->lost, 0u);
+        EXPECT_EQ(scrubbed->skipped, 1u);
+        if(claimed)
+        {
+            for(const auto& input: inputs) EXPECT_FALSE(fs::exists(*directory / input.file)) << input.file;
+            EXPECT_EQ(RollbackLines(*directory), 0u);
+            EXPECT_FALSE(scrubbed->marked);
+            EXPECT_EQ(StateOf(**store, output), ManifestState::Published);
+            // The next pass finds the inputs gone and records the output Lost.
+            const auto next = (*store)->scrubOnce(0);
+            ASSERT_TRUE(next.ok()) << next.status();
+            EXPECT_EQ(next->lost, 1u);
+            EXPECT_EQ(next->rolled_back, 0u);
+            EXPECT_TRUE(next->marked);
+            EXPECT_EQ(StateOf(**store, output), ManifestState::Lost);
+            EXPECT_EQ(RollbackLines(*directory), 0u);
+        }
+        else
+        {
+            ASSERT_TRUE(other.ok()) << other.status();
+            EXPECT_EQ(other->rolled_back, 1u);
+            EXPECT_EQ(RollbackLines(*directory), 1u);
+            EXPECT_TRUE(scrubbed->marked);
+            for(const auto& input: inputs) EXPECT_EQ(StateOf(**store, input.file), ManifestState::Published);
+        }
+    }
 }
 
 TEST(FileTierStore, ScrubberDuringMigrationOrCompactionCleanupWritesNoLost)
