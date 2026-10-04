@@ -46,7 +46,8 @@ service Cluster
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-    // Full snapshots on subscribe/reconnect; epochs are static until M8.
+    // Full snapshots on subscribe/reconnect. Epochs are static in static membership mode and change only under
+    // I4.7 to I4.15 in dynamic mode.
     // WatchRoutes: whole-request INVALID_ARGUMENT for malformed input, UNAVAILABLE
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
@@ -299,9 +300,8 @@ message FetchHotRequest
     // Exactly one range must be selected.
     oneof range
     {
-        // Completeness supports only the HLC axis.
         chronolog.v1.HlcRange hlc = 2;
-        // Physical-time query always remains incomplete in v1.
+        // Physical-axis scan; the source applies the interval test of I6.10 and the Player decides completeness.
         chronolog.v1.PhysicalRange physical = 3;
     }
     // Maximum events to return; zero means server-configured default limit.
