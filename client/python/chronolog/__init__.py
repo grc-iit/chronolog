@@ -396,26 +396,7 @@ def _id(story):
     return story.id if isinstance(story, Story) else story
 
 
-class Writer:
-    def __init__(self, handle):
-        self._handle = handle
-        self.acquisition = handle.acquisition()
-
-    @property
-    def writer_id(self): return self.acquisition.writer_id
-    @property
-    def incarnation(self): return self.acquisition.incarnation
-    @property
-    def story_id(self): return self.acquisition.story_id
-    @property
-    def route(self): return self.acquisition.route
-    @property
-    def assigned_keeper(self): return self.acquisition.assigned_keeper
-
-    def lease(self):
-        """The last Catalog-confirmed grant and the local renewal estimate."""
-        return self._handle.lease()
-
+class _Appender:
     def append(self, payload, *, content_type=None, attributes=None, trace_id=None, span_id=None,
                durability=Durability.DURABLE, physical=None, timeout=None):
         envelope = Envelope(payload, content_type, attributes, trace_id, span_id)
@@ -448,6 +429,36 @@ class Writer:
             if exc is None:
                 raise
         return False
+
+
+class Writer(_Appender):
+    def __init__(self, handle):
+        self._handle = handle
+        self.acquisition = handle.acquisition()
+
+    @property
+    def writer_id(self): return self.acquisition.writer_id
+    @property
+    def incarnation(self): return self.acquisition.incarnation
+    @property
+    def story_id(self): return self.acquisition.story_id
+    @property
+    def route(self): return self.acquisition.route
+    @property
+    def assigned_keeper(self): return self.acquisition.assigned_keeper
+
+    def lease(self):
+        """The last Catalog-confirmed grant and the local renewal estimate."""
+        return self._handle.lease()
+
+
+class LaneWriter(_Appender):
+    """One logical writer spread across Keepers by time. Lane i is a Writer named identity + "/lane" + i; the lane of
+    an append is (physical_ns // slice_ns) % lanes. A spec without a physical reading is stamped once before its
+    first send. release stops every lane and returns whether each reported a release."""
+    def __init__(self, handle):
+        self._handle = handle
+        self.lanes = handle.lanes()
 
 
 class ReadStream:
@@ -511,6 +522,11 @@ class Client:
     def destroy_story(self, story, *, timeout=None): return self._handle.destroy_story(_id(story), timeout)
     def acquire(self, story, identity, *, options=None, timeout=None):
         return Writer(self._handle.acquire(_id(story), identity, options, timeout))
+
+    def acquire_lanes(self, story, identity, lanes, slice_ns, *, options=None, timeout=None):
+        """Acquires min(lanes, route keepers) writers, lane i preferring keeper i. options.acquire_request_id must be
+        None because each lane mints its own."""
+        return LaneWriter(self._handle.acquire_lanes(_id(story), identity, lanes, slice_ns, options, timeout))
 
     def new_acquire_request_id(self):
         """A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls."""
