@@ -2366,8 +2366,12 @@ bool FileTierStore::migrationEligible(const ManifestIndex& index,
 absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination,
                                                   std::optional<uint32_t> source_rank,
                                                   int64_t before_end_ns,
-                                                  uint64_t max_bytes)
+                                                  uint64_t max_bytes,
+                                                  uint64_t* copied_bytes)
 {
+    // Reported whether or not the attempt commits: an aborted copy spent the same I/O.
+    if(copied_bytes)
+        *copied_bytes = 0;
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
     ManifestRecord record;
@@ -2445,17 +2449,11 @@ absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination
             break;
         }
     }
+    // One attempt on one file. Stale copies, leftovers and the manifest replica are the caller's pass to schedule
+    // (cleanupMigrations, sweepTiers, writeTierReplicas): done here they would rewrite the whole manifest snapshot
+    // on every tier for each file moved and for each idle call.
     if(!held)
-    {
-        auto status = cleanupMigrations();
-        if(status.ok())
-            status = sweepTiers();
-        if(status.ok())
-            status = writeTierReplicas();
-        if(!status.ok())
-            return status;
         return size_t{0};
-    }
     const auto step = hooks_.migration_step;
     if(step)
     {
@@ -2487,6 +2485,8 @@ absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination
         return absl::UnavailableError("migration source checksum mismatch");
     const auto temporary = std::to_string(record.story_id) + "/.migrate-" + Hex(writer_) + "." + held->token;
     auto created = std::make_shared<std::atomic<bool>>(false);
+    if(copied_bytes)
+        *copied_bytes = migration.checksum.bytes;
     auto copied = tier->run(
             [tier, directory, held, migration, temporary, bytes = *std::move(bytes), step, created]() -> absl::Status
             {
@@ -2668,9 +2668,6 @@ absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination
     }
     if(!removed.ok())
         return removed;
-    auto replica = writeTierReplicas();
-    if(!replica.ok())
-        return replica;
     return size_t{1};
 }
 

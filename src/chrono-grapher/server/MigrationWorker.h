@@ -17,7 +17,7 @@ struct MigrationSettings
     bool enabled = false;
     uint64_t after_s = 3600;
     uint64_t io_bytes_per_sec = 4 * 1024 * 1024;
-    uint32_t probe_interval_ms = 1000;
+    uint32_t probe_interval_ms = 5000;
     uint32_t probe_timeout_ms = 1000;
     uint32_t io_timeout_ms = 1000;
     uint32_t io_threads = 2;
@@ -39,5 +39,10 @@ private:
     double tokens_{};
     std::chrono::steady_clock::time_point refilled_;
     std::vector<bool> draining_;
+    // Work that follows an event, not the clock: stale copies and leftovers exist after a start, a failed attempt or
+    // a tier's return, and a replica is stale after a migration.
+    std::vector<bool> available_;
+    bool cleanup_due_ = true, sweep_due_ = true, replicas_due_ = true;
+    std::string written_status_;
 };
 } // namespace chronolog::grapher

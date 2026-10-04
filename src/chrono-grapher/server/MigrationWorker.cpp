@@ -24,6 +24,7 @@ MigrationWorker::MigrationWorker(FileTierStore& store, MigrationSettings setting
     , tokens_(settings_.io_bytes_per_sec)
     , refilled_(std::chrono::steady_clock::now())
     , draining_(settings_.tiers.size())
+    , available_(settings_.tiers.size())
 {}
 
 absl::Status MigrationWorker::pass()
@@ -64,28 +65,48 @@ absl::Status MigrationWorker::pass()
                 }
                 if(destination == settings_.tiers.size())
                     break;
-                const auto before = usage->used_bytes;
+                uint64_t copied = 0;
                 auto moved = store_.migrateOnce(settings_.tiers[destination].config.name,
                                                 settings_.tiers[source].config.rank,
                                                 draining_[source] ? INT64_MAX : cutoff,
-                                                static_cast<uint64_t>(tokens_));
-                if(!moved.ok() || !*moved)
+                                                static_cast<uint64_t>(tokens_),
+                                                &copied);
+                tokens_ = std::max(0.0, tokens_ - static_cast<double>(copied));
+                if(!moved.ok())
+                {
+                    // An attempt that stopped part way can leave a temporary, a destination or a stale source.
+                    cleanup_due_ = sweep_due_ = true;
                     break;
+                }
+                if(!*moved)
+                    break;
+                replicas_due_ = true;
                 usage = store_.tierUsage(settings_.tiers[source].config.name);
                 if(!usage.ok() || !usage->available)
                     break;
-                tokens_ = std::max(0.0, tokens_ - static_cast<double>(before - std::min(before, usage->used_bytes)));
                 if(Usage(settings_.tiers[source], *usage) < settings_.tiers[source].low_watermark)
                     draining_[source] = false;
             }
         }
     if(stopped_)
         return absl::CancelledError("migration worker stopped");
-    if(!store_.migrationStopped())
-        (void)store_.cleanupMigrations();
-    (void)store_.sweepTiers();
-    if(!store_.migrationStopped())
-        (void)store_.writeTierReplicas();
+    std::vector<FileTierStore::TierUsage> usages;
+    for(size_t i = 0; i < settings_.tiers.size(); ++i)
+    {
+        auto usage = store_.tierUsage(settings_.tiers[i].config.name);
+        usages.push_back(usage.ok() ? *usage : FileTierStore::TierUsage{});
+        if(usages.back().available && !available_[i])
+            cleanup_due_ = sweep_due_ = replicas_due_ = true;
+        available_[i] = usages.back().available;
+    }
+    if(cleanup_due_ && !store_.migrationStopped() && store_.cleanupMigrations().ok())
+        cleanup_due_ = false;
+    if(sweep_due_ && store_.sweepTiers().ok())
+        sweep_due_ = false;
+    if(replicas_due_ && !store_.migrationStopped() &&
+       std::all_of(available_.begin(), available_.end(), [](bool available) { return available; }) &&
+       store_.writeTierReplicas().ok())
+        replicas_due_ = false;
     if(settings_.status_file.empty())
         return absl::OkStatus();
     nlohmann::json status{{"writer", settings_.writer},
@@ -93,10 +114,10 @@ absl::Status MigrationWorker::pass()
                           {"migration_stopped", store_.migrationStopped()},
                           {"tiers", nlohmann::json::array()},
                           {"pending_tier_deletions", nlohmann::json::object()}};
-    for(const auto& tier: settings_.tiers)
+    for(size_t i = 0; i < settings_.tiers.size(); ++i)
     {
-        auto usage = store_.tierUsage(tier.config.name);
-        const FileTierStore::TierUsage value = usage.ok() ? *usage : FileTierStore::TierUsage{};
+        const auto& tier = settings_.tiers[i];
+        const auto& value = usages[i];
         status["tiers"].push_back({{"name", tier.config.name},
                                    {"rank", tier.config.rank},
                                    {"available", value.available},
@@ -106,29 +127,21 @@ absl::Status MigrationWorker::pass()
     }
     for(const auto& [story, count]: store_.pendingTierDeletions())
         status["pending_tier_deletions"][std::to_string(story)] = count;
-    const auto target = std::filesystem::absolute(settings_.status_file).lexically_normal();
-    auto parent = std::make_unique<tier_detail::Fd>(::open("/", O_DIRECTORY | O_RDONLY | O_CLOEXEC));
-    for(const auto& component: target.parent_path().relative_path())
-    {
-        auto next = std::make_unique<tier_detail::Fd>(
-                ::openat(parent->get(), component.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
-        if(next->get() < 0)
-            return tier_detail::IoError("open tier status parent");
-        parent = std::move(next);
-    }
-    const auto name = target.filename().string();
-    const auto temporary = name + ".tmp";
-    tier_detail::Fd fd(
-            ::openat(parent->get(), temporary.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC | O_NOFOLLOW, 0600));
+    // Rewritten only when it says something new. validate() keeps the path off every slow tier root.
+    auto text = status.dump() + "\n";
+    if(text == written_status_)
+        return absl::OkStatus();
+    const auto temporary = settings_.status_file + ".tmp";
+    tier_detail::Fd fd(::open(temporary.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0644));
     if(fd.get() < 0)
         return tier_detail::IoError("open tier status temporary");
-    auto result = tier_detail::WriteAll(fd.get(), status.dump() + "\n");
+    auto result = tier_detail::WriteAll(fd.get(), text);
     if(result.ok() && ::fsync(fd.get()) != 0)
         result = tier_detail::IoError("sync tier status");
-    if(result.ok() && ::renameat(parent->get(), temporary.c_str(), parent->get(), name.c_str()) != 0)
+    if(result.ok() && ::rename(temporary.c_str(), settings_.status_file.c_str()) != 0)
         result = tier_detail::IoError("rename tier status");
-    if(result.ok() && ::fsync(parent->get()) != 0)
-        result = tier_detail::IoError("sync tier status parent");
+    if(result.ok())
+        written_status_ = std::move(text);
     return result;
 }
 } // namespace chronolog::grapher

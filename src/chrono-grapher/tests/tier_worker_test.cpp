@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <future>
+#include <sys/stat.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 
@@ -165,6 +166,47 @@ TEST(GrapherTiers, WorkerMigratesAndReadsIdenticalEvents)
     EXPECT_EQ(status["writer"], "writer");
     EXPECT_EQ(status["tiers"][1]["available"], true);
     EXPECT_GT(status["tiers"][1]["used_bytes"].get<uint64_t>(), 0u);
+}
+
+// Cleanup, sweeps, the manifest replica and the status file follow events (a start, a migration, a failed attempt, a
+// tier's return), never the probe interval: a pass with nothing to do rewrites no file on any tier.
+TEST(GrapherTiers, AnIdlePassRewritesNeitherTheReplicaNorTheStatusFile)
+{
+    Archive archive;
+    MigrationWorker worker(*archive.store, archive.load().migration);
+    WorkerPool pool(1, 1);
+    const auto pass = [&]
+    {
+        std::promise<absl::Status> result;
+        auto future = result.get_future();
+        if(!pool.submit([&] { result.set_value(worker.pass()); }))
+            return absl::Status(absl::UnavailableError("submit failed"));
+        return future.get();
+    };
+    ASSERT_TRUE(pass().ok());
+    ASSERT_TRUE(archive.store->location(archive.record.file).value().has_value());
+    const std::vector<fs::path> files{archive.slow / "manifest-replica" / "writer.snap",
+                                      archive.local / "manifest" / "writer.snap",
+                                      archive.root / "status.json"};
+    const auto identities = [&]
+    {
+        std::vector<std::tuple<ino_t, time_t, long>> result;
+        for(const auto& file: files)
+        {
+            struct stat info
+            {
+            };
+            EXPECT_EQ(::stat(file.c_str(), &info), 0) << file;
+            result.emplace_back(info.st_ino, info.st_mtim.tv_sec, info.st_mtim.tv_nsec);
+        }
+        return result;
+    };
+    const auto written = identities();
+    ASSERT_TRUE(pass().ok());
+    ASSERT_TRUE(pass().ok());
+    EXPECT_EQ(identities(), written);
+    archive.readable();
+    archive.intact();
 }
 
 TEST(GrapherTiers, UnavailableDestinationKeepsTheLocalFile)

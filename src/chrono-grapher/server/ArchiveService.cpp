@@ -504,7 +504,7 @@ void ArchiveService::migrateLoop()
         lock.unlock();
         const auto result = migration_->pass();
         if(!result.ok() && !absl::IsCancelled(result))
-            LOG(WARNING) << "tier worker pass failed: " << result;
+            LOG_EVERY_N_SEC(WARNING, 60) << "tier worker pass failed: " << result;
         lock.lock();
         changed_.wait_for(lock, probe_interval_, [&] { return draining_; });
     }

@@ -119,7 +119,8 @@ public:
     absl::StatusOr<size_t> migrateOnce(const std::string& destination,
                                        std::optional<uint32_t> source_rank = std::nullopt,
                                        int64_t before_end_ns = INT64_MAX,
-                                       uint64_t max_bytes = UINT64_MAX);
+                                       uint64_t max_bytes = UINT64_MAX,
+                                       uint64_t* copied_bytes = nullptr);
     struct TierUsage
     {
         bool available{};

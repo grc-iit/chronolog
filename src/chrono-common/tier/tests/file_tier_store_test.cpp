@@ -2900,8 +2900,9 @@ TEST(FileTierStore, MigrationCrashAtEveryStepLeavesOneEffectiveCopy)
         EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{150, 0}));
         if(crash == 6)
         {
-            auto recovered = (*store)->migrateOnce("slow");
-            ASSERT_TRUE(recovered.ok()) << recovered.status();
+            // The stale copy of a committed migration is the cleanup pass's work, never a migration attempt's.
+            auto recovered = (*store)->cleanupMigrations();
+            ASSERT_TRUE(recovered.ok()) << recovered;
             EXPECT_FALSE(fs::exists(*directory / "local" / records[0].file));
         }
         else
