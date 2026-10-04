@@ -48,6 +48,7 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
             {"tier_probe_timeout_ms", config.migration.probe_timeout_ms},
             {"tier_io_timeout_ms", config.migration.io_timeout_ms},
             {"slow_tier_io_threads", config.migration.io_threads},
+            {"tier_status_heartbeat_ms", config.migration.status_heartbeat_ms},
             {"compact_scan_interval_secs", static_cast<uint64_t>(config.compaction.scan_interval.count())},
             {"compact_min_files", policy.min_files},
             {"compact_max_files", policy.max_files},
@@ -237,14 +238,18 @@ absl::StatusOr<GrapherConfig> GrapherConfig::load(const std::optional<std::strin
     }
     config.migration.after_s = compaction.at("migrate_after_s");
     config.migration.io_bytes_per_sec = compaction.at("migration_io_bytes_per_sec");
-    for(const auto key:
-        {"tier_probe_interval_ms", "tier_probe_timeout_ms", "tier_io_timeout_ms", "slow_tier_io_threads"})
+    for(const auto key: {"tier_probe_interval_ms",
+                         "tier_probe_timeout_ms",
+                         "tier_io_timeout_ms",
+                         "slow_tier_io_threads",
+                         "tier_status_heartbeat_ms"})
         if(compaction.at(key) > UINT32_MAX)
             return absl::InvalidArgumentError("tier knob out of range");
     config.migration.probe_interval_ms = compaction.at("tier_probe_interval_ms");
     config.migration.probe_timeout_ms = compaction.at("tier_probe_timeout_ms");
     config.migration.io_timeout_ms = compaction.at("tier_io_timeout_ms");
     config.migration.io_threads = compaction.at("slow_tier_io_threads");
+    config.migration.status_heartbeat_ms = compaction.at("tier_status_heartbeat_ms");
     config.migration.writer = config.manifest_writer.empty() ? config.process_id : config.manifest_writer;
     config.heartbeat_interval_ms = numbers.at("heartbeat_interval_ms");
     config.rpc_timeout_ms = numbers.at("rpc_timeout_ms");
@@ -340,6 +345,8 @@ absl::Status GrapherConfig::validate() const
        migration.probe_timeout_ms > 60000 || !migration.io_timeout_ms || migration.io_timeout_ms > 60000 ||
        !migration.io_threads || migration.io_threads > 8 || !migration.io_bytes_per_sec)
         return absl::InvalidArgumentError("invalid tier worker limits");
+    if(!migration.status_file.empty() && !migration.status_heartbeat_ms)
+        return absl::InvalidArgumentError("tier_status_heartbeat_ms must be positive");
     const auto colon = internal_listen.rfind(':');
     if(colon == std::string::npos || colon + 1 == internal_listen.size())
         return absl::InvalidArgumentError("invalid internal_listen");

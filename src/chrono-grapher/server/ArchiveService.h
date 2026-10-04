@@ -93,5 +93,7 @@ private:
     const ScrubSettings scrub_;
     std::unique_ptr<MigrationWorker> migration_;
     std::chrono::milliseconds probe_interval_{};
+    // The tier worker's wait between passes: the probe interval, capped by the status heartbeat.
+    std::chrono::milliseconds status_wait_{};
 };
 } // namespace chronolog::grapher

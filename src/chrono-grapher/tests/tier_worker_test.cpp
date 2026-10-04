@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <future>
+#include <thread>
 #include <sys/stat.h>
 #include <sys/vfs.h>
 #include <unistd.h>
@@ -170,12 +171,16 @@ TEST(GrapherTiers, WorkerMigratesAndReadsIdenticalEvents)
     EXPECT_GT(status["tiers"][1]["used_bytes"].get<uint64_t>(), 0u);
 }
 
-// Cleanup, sweeps, the manifest replica and the status file follow events (a start, a migration, a failed attempt, a
-// tier's return), never the probe interval: a pass with nothing to do rewrites no file on any tier.
+// Cleanup, sweeps and the manifest replica follow events (a start, a migration, a failed attempt, a tier's return),
+// never the probe interval: a pass with nothing to do rewrites no file on any tier. The status file also follows its
+// heartbeat, so a live worker refreshes it once tier_status_heartbeat_ms has passed and never sooner.
 TEST(GrapherTiers, AnIdlePassRewritesNeitherTheReplicaNorTheStatusFile)
 {
     Archive archive;
-    MigrationWorker worker(*archive.store, archive.load().migration);
+    auto settings = archive.load().migration;
+    auto now = std::chrono::steady_clock::now();
+    settings.steady_now = [&] { return now; };
+    MigrationWorker worker(*archive.store, settings);
     WorkerPool pool(1, 1);
     const auto pass = [&]
     {
@@ -205,10 +210,61 @@ TEST(GrapherTiers, AnIdlePassRewritesNeitherTheReplicaNorTheStatusFile)
     };
     const auto written = identities();
     ASSERT_TRUE(pass().ok());
+    now += std::chrono::milliseconds(settings.status_heartbeat_ms - 1);
     ASSERT_TRUE(pass().ok());
     EXPECT_EQ(identities(), written);
+    now += std::chrono::milliseconds(1);
+    ASSERT_TRUE(pass().ok());
+    const auto refreshed = identities();
+    EXPECT_EQ(refreshed[0], written[0]);
+    EXPECT_EQ(refreshed[1], written[1]);
+    EXPECT_NE(refreshed[2], written[2]);
+    Json status;
+    std::ifstream(archive.root / "status.json") >> status;
+    EXPECT_EQ(status["heartbeat_ms"], settings.status_heartbeat_ms);
+    EXPECT_GT(status["written_at_unix_ms"].get<int64_t>(), 0);
+    ASSERT_TRUE(pass().ok());
+    EXPECT_EQ(identities(), refreshed);
     archive.readable();
     archive.intact();
+}
+
+// The scrub loop hands each finished pass to the tier worker, whose status file reports its counts and through.
+TEST(GrapherTiers, StatusFileCarriesTheLastScrubPass)
+{
+    Archive archive;
+    archive.configuration["migrate_enabled"] = false;
+    archive.configuration["tier_probe_interval_ms"] = 50;
+    const auto config = archive.load();
+    // Nothing changes the archive between this pass and the service's, so both report the same.
+    const auto expected = archive.store->scrubOnce(0);
+    ASSERT_TRUE(expected.ok()) << expected.status();
+    ASSERT_GT(expected->through, 0u);
+    ArchiveService service(*archive.store, "instance", {}, {}, config.migration, config.scrub);
+    Json status;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while(std::chrono::steady_clock::now() < deadline)
+    {
+        std::ifstream input(archive.root / "status.json");
+        status = Json::parse(input, nullptr, false);
+        if(status.is_object() && status["scrub"]["finished_at_unix_ms"].get<int64_t>() > 0)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    service.shutdown();
+    ASSERT_TRUE(status.is_object());
+    const auto& scrub = status["scrub"];
+    ASSERT_GT(scrub["finished_at_unix_ms"].get<int64_t>(), 0) << status.dump();
+    EXPECT_EQ(scrub["enabled"], true);
+    EXPECT_EQ(scrub["validated"], expected->validated);
+    EXPECT_EQ(scrub["skipped"], expected->skipped);
+    EXPECT_EQ(scrub["lost"], expected->lost);
+    EXPECT_EQ(scrub["rolled_back"], expected->rolled_back);
+    EXPECT_EQ(scrub["slow_failed"], expected->slow_failed);
+    EXPECT_EQ(scrub["through"], expected->through);
+    EXPECT_EQ(scrub["error"], "");
+    EXPECT_EQ(status["writer"], "writer");
+    EXPECT_EQ(status["migrate_enabled"], false);
 }
 
 TEST(GrapherTiers, UnavailableDestinationKeepsTheLocalFile)
@@ -472,11 +528,15 @@ TEST(GrapherTierConfig, ShapeValidationAndLegacyDefaults)
     bad = valid;
     bad["tier_status_file"] = (archive.slow / "status").string();
     expect_bad(bad);
+    bad = valid;
+    bad["tier_status_heartbeat_ms"] = 0;
+    expect_bad(bad);
     auto legacy = GrapherConfig::load(std::nullopt);
     ASSERT_TRUE(legacy.ok());
     EXPECT_TRUE(legacy->migration.tiers.empty());
     EXPECT_TRUE(legacy->tierChain().deployment_id.empty());
     EXPECT_FALSE(legacy->migration.enabled);
+    EXPECT_EQ(legacy->migration.status_heartbeat_ms, 10000u);
     EXPECT_EQ(legacy->archive_root, "./archive");
 }
 } // namespace
