@@ -55,6 +55,7 @@ class AppendRejection(IntEnum):
     STORY_TOMBSTONED = 10
     FENCED_EXPIRED = 11
     FENCED_OWNER_REMOVED = 12
+    CAPACITY = 13
 
 
 class AcquireRefusalReason(IntEnum):

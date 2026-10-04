@@ -8,7 +8,7 @@ export type StatusCode = 'OK' | 'CANCELLED' | 'UNKNOWN' | 'INVALID_ARGUMENT' | '
 export interface ItemStatus { readonly code: number; readonly message: string }
 export type AppendRejection = 'UNSPECIFIED' | 'FENCED_RELEASED' | 'FENCED_SUPERSEDED' | 'SEQUENCE_GAP' | 'DEDUPE_WINDOW' |
   'EARLIER_ITEM_FAILED' | 'NOT_REGISTERED' | 'STALE_EPOCH' | 'UNASSIGNED_KEEPER' | 'KEEPER_NOT_IN_ROUTE' |
-  'STORY_TOMBSTONED' | 'FENCED_EXPIRED' | 'FENCED_OWNER_REMOVED' | UnknownEnum;
+  'STORY_TOMBSTONED' | 'FENCED_EXPIRED' | 'FENCED_OWNER_REMOVED' | 'CAPACITY' | UnknownEnum;
 export type AcquisitionTerminationCause = 'UNSPECIFIED' | 'EXPIRED' | 'RELEASED' | 'SUPERSEDED' | 'OWNER_REMOVED' | UnknownEnum;
 export interface AcquireRefusal {
   readonly refusalReason: 'UNSPECIFIED' | 'HELD' | 'PRIOR_MISMATCH' | UnknownEnum;

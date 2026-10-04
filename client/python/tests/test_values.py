@@ -109,9 +109,12 @@ def test_typed_rejection_and_refusal_details():
 
 
 def test_unknown_enum_values_keep_their_numbers():
-    status = cl._status(9, "new rejection", rejection=13)
-    assert type(status.rejection) is int and status.rejection == 13
-    assert cl.rejection_of(cl._error(9, "new rejection", 13)) == 13
+    status = cl._status(8, "admission capacity", rejection=13)
+    assert status.rejection is cl.AppendRejection.CAPACITY
+    assert type(cl._error(8, "admission capacity", 13)) is cl.ResourceExhausted
+    status = cl._status(9, "new rejection", rejection=14)
+    assert type(status.rejection) is int and status.rejection == 14
+    assert cl.rejection_of(cl._error(9, "new rejection", 14)) == 14
     for enum in (cl.Durability, cl.IncompleteReason, cl.StatusCode, cl.AppendRejection,
                  cl.AcquireRefusalReason, cl.AcquisitionTerminationCause, cl.KeeperPreferenceResult,
                  cl.Access, cl.SessionState, cl.MemoryOutcome, cl.DeliveryLimit,

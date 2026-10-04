@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 
+import chronolog as cl
 import pytest
 
 from _mcp import Mcp, launcher, operation_ids, unique
@@ -84,3 +85,9 @@ def test_idle_writable_sessions_close_and_record_their_close(tmp_path):
             assert stored["stored"] == "durable"
 
     asyncio.run(asyncio.wait_for(run(), timeout=50))
+
+
+def test_status_names_capacity_and_keeps_unknown_rejections():
+    from chronomcp.server import _status
+    assert _status(cl._status(8, "admission capacity", 13))["rejection"] == "CAPACITY"
+    assert _status(cl._status(9, "new rejection", 14))["rejection"] == "UNKNOWN_14"

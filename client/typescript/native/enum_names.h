@@ -49,7 +49,8 @@ inline std::string rejectionName(chronolog::AppendRejection value)
                                                              "KEEPER_NOT_IN_ROUTE",
                                                              "STORY_TOMBSTONED",
                                                              "FENCED_EXPIRED",
-                                                             "FENCED_OWNER_REMOVED"};
+                                                             "FENCED_OWNER_REMOVED",
+                                                             "CAPACITY"};
     return enumName(value, names);
 }
 inline std::string causeName(chronolog::AcquisitionTerminationCause value)

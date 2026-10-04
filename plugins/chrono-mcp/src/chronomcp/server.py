@@ -5,6 +5,7 @@ import base64
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+from enum import IntEnum
 from functools import wraps
 import math
 import os
@@ -74,15 +75,20 @@ def acceptance_bound(value, name):
     return cl.Hlc(ns, 0)
 
 
+def _name(value):
+    """The member name, or UNKNOWN_<n> for a value newer than this binding, which keeps it as a plain int."""
+    return value.name if isinstance(value, IntEnum) else f"UNKNOWN_{int(value)}"
+
+
 def _status(s):
     if s is None:
         return None
     out = {"code": s.code.name, "message": s.message}
-    if s.rejection is not cl.AppendRejection.UNSPECIFIED:
-        out["rejection"] = s.rejection.name
+    if s.rejection != cl.AppendRejection.UNSPECIFIED:
+        out["rejection"] = _name(s.rejection)
     if s.acquire_refusal is not None:
         r = s.acquire_refusal
-        out["acquire_refusal"] = {"reason": r.refusal_reason.name,
+        out["acquire_refusal"] = {"reason": _name(r.refusal_reason),
                                   "current_incarnation": None if r.current_incarnation is None
                                   else str(r.current_incarnation)}
     return out
