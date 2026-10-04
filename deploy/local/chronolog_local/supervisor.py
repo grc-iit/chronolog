@@ -127,7 +127,7 @@ class Supervisor:
         self.offsets[role] = out.tell()
         parent = os.getpid()
         if role == 'grapher':
-            # The file has no time in it: one left by an earlier Grapher must not pass for this one's view.
+            # A file the previous Grapher wrote within its last heartbeats must not pass for this one's view.
             (self.folder / GRAPHER_STATUS).unlink(missing_ok=True)
 
         def death_signal():

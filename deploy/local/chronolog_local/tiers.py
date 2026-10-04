@@ -157,9 +157,10 @@ class TierProbe:
         return dict(self.result)
 
 
-def read_grapher_status(path):
-    """The Grapher's status file as (status, None), or (None, reason). The file carries no time: the Grapher rewrites
-    it only when its content changes, so the caller decides whether a live Grapher stands behind it."""
+def read_grapher_status(path, now_ms=None):
+    """The Grapher's status file as (status, None), or (None, reason). The Grapher rewrites it at least every
+    heartbeat_ms and stamps written_at_unix_ms, so a file older than three heartbeats by this clock, or stamped as far
+    ahead of it, has no live Grapher behind it."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
@@ -180,18 +181,29 @@ def read_grapher_status(path):
             all(isinstance(tier, dict) and all(type(tier.get(key)) is kind for key, kind in shape.items())
                 for tier in value['tiers'])):
         return None, 'unparsable'
+    written, heartbeat = value.get('written_at_unix_ms'), value.get('heartbeat_ms')
+    if type(written) is not int or type(heartbeat) is not int or heartbeat <= 0:
+        return None, 'no heartbeat'
+    now = time.time_ns() // 1_000_000 if now_ms is None else now_ms
+    if abs(now - written) > 3 * heartbeat:
+        return None, 'stale'
+    scrub = value.get('scrub')
+    counts = ('validated', 'skipped', 'lost', 'rolled_back', 'slow_failed', 'through', 'finished_at_unix_ms')
+    if not (isinstance(scrub, dict) and type(scrub.get('enabled')) is bool and isinstance(scrub.get('error'), str) and
+            all(type(scrub.get(key)) is int for key in counts)):
+        return None, 'unparsable'
     return value, None
 
 
-def grapher_views(folder, record, running):
+def grapher_views(folder, record, running, now_ms=None):
     """(per-tier views in the order of record['tiers'], migration view). Anything short of a well-formed file
-    written by the running Grapher is reported as unknown, never as available."""
+    written by the running Grapher within its last three heartbeats is reported as unknown, never as available."""
     if not has_tier_table(record):
         status, reason = None, 'no tier table'
     elif not running:
         status, reason = None, 'grapher not running'
     else:
-        status, reason = read_grapher_status(Path(folder) / GRAPHER_STATUS)
+        status, reason = read_grapher_status(Path(folder) / GRAPHER_STATUS, now_ms)
     if status is None:
         unknown = {'known': False, 'reason': reason}
         return [dict(unknown) for _ in record['tiers']], dict(unknown)
@@ -206,7 +218,9 @@ def grapher_views(folder, record, running):
             views.append({'known': True, 'available': entry['available'], 'used_bytes': entry['used_bytes'],
                           'budget_bytes': entry['budget_bytes'], 'above_high': entry['above_high'],
                           'migrate_enabled': status['migrate_enabled'],
-                          'migration_stopped': status['migration_stopped']})
+                          'migration_stopped': status['migration_stopped'], 'scrub': dict(status['scrub'])})
     return views, {'known': True, 'writer': status['writer'], 'migrate_enabled': status['migrate_enabled'],
                    'migration_stopped': status['migration_stopped'],
-                   'pending_tier_deletions': status['pending_tier_deletions']}
+                   'pending_tier_deletions': status['pending_tier_deletions'],
+                   'written_at_unix_ms': status['written_at_unix_ms'], 'heartbeat_ms': status['heartbeat_ms'],
+                   'scrub': dict(status['scrub'])}
