@@ -347,7 +347,7 @@ int verify(const char* catalog, const char* keeper, const char* out, const char*
 
 // I6.8 across a real Keeper SIGKILL: one complete Read of [0, last) before the kill and the same Read after the
 // restart must hold the same DURABLE events (ids, HLCs, payloads). ACCEPTED events may vanish.
-std::vector<Event> completeRead(const char* catalog, const char* out, const char* what)
+std::vector<Event> completeRead(const char* catalog, const char* out, const char* what, uint32_t past_last = 0)
 {
     auto client = connect(catalog);
     if(!client.ok())
@@ -355,6 +355,7 @@ std::vector<Event> completeRead(const char* catalog, const char* out, const char
     const auto story = loadStory(out);
     Hlc last{};
     for(const auto& row: loadRows(path(out, "events.tsv"))) last = std::max(last, row.hlc);
+    last.logical += past_last;
     std::string why = "read never opened";
     const auto deadline = std::chrono::steady_clock::now() + 60s;
     while(std::chrono::steady_clock::now() < deadline)
@@ -431,6 +432,113 @@ int stableAfter(const char* catalog, const char* out)
              std::to_string(before.size()) + " after=" + std::to_string(after.size()));
     std::cout << "stable-after durable=" << after.size() << '\n';
     return 0;
+}
+
+// I8.12 on a real stack: one DURABLE event with a bounded Synced reading, read on both axes once it is archived.
+int policyWrite(const char* catalog, const char* out)
+{
+    auto client = connect(catalog);
+    if(!client.ok() || !client->createChronicle("policy-marker").ok())
+        fail("catalog");
+    auto story = client->createStory("policy-marker", "events");
+    if(!story.ok())
+        fail("createStory");
+    std::ofstream(path(out, "story")) << story->id << '\n';
+    auto writer = client->acquire(story->id, "writer");
+    if(!writer.ok())
+        fail("acquire");
+    const int64_t stamp =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+    sdk::AppendSpec spec;
+    spec.envelope.payload = "bounded";
+    spec.physical = TimeReading{stamp, 0, ClockStatus::Synced};
+    auto result = writer->append(spec);
+    if(!result.ok() || !result->acked())
+        fail("bounded append: " + (result.ok() ? std::string("not durable") : std::string(result.status().message())));
+    std::ofstream(path(out, "stamp")) << stamp << '\n';
+    const auto id = result->event_id;
+    std::ofstream(path(out, "events.tsv"))
+            << id.story_id << ' ' << id.writer_id << ' ' << id.incarnation << ' ' << id.sequence << ' '
+            << result->hlc.physical_ns << ' ' << result->hlc.logical << " 2 2 bounded\n";
+    auto released = writer->release();
+    if(!released.ok() || !*released)
+        fail("release");
+    return 0;
+}
+
+// expect "complete": the physical Read of the event's instant becomes complete. expect "unbounded": the story was
+// served by a Keeper without the policy record, so the same Read returns the event and is never complete; it settles
+// on PHYSICAL_AXIS_UNBOUNDED while the HLC Read of the archived event is complete.
+int policyRead(const char* catalog, const char* keeper, const char* out, const std::string& expect)
+{
+    const auto rows = durable(out);
+    if(rows.size() != 1)
+        fail("expected one durable event");
+    const auto story = loadStory(out);
+    int64_t stamp = 0;
+    std::ifstream(path(out, "stamp")) >> stamp;
+    const auto deadline = std::chrono::steady_clock::now() + 90s;
+    Hlc evicted{};
+    while(std::chrono::steady_clock::now() < deadline && !(evicted > rows.front().hlc))
+    {
+        auto snapshot = fetchHot(keeper, story, 1);
+        if(snapshot.ok)
+            evicted = snapshot.evicted;
+        if(!(evicted > rows.front().hlc))
+            std::this_thread::sleep_for(200ms);
+    }
+    if(!(evicted > rows.front().hlc))
+        fail("the event never reached the archive");
+    const auto archived = completeRead(catalog, out, "no complete HLC read of the archived event", 1);
+    std::string why;
+    if(!contains(rows, archived, why))
+        fail("HLC read of the archived event: " + why);
+    auto client = connect(catalog);
+    if(!client.ok())
+        fail("catalog");
+    why = "physical read never opened";
+    while(std::chrono::steady_clock::now() < deadline)
+    {
+        auto read = client->readPhysical(story, {stamp, stamp + 1});
+        std::vector<Event> events;
+        std::optional<Completion> completion;
+        bool errored = !read.ok();
+        for(size_t pull = 0; !errored && pull < 256; ++pull)
+        {
+            auto item = read->next();
+            if(!item.ok())
+            {
+                errored = true;
+                break;
+            }
+            if(!*item)
+                break;
+            if((**item).completion)
+                completion = (**item).completion;
+            for(auto& event: (**item).events) events.push_back(std::move(event));
+        }
+        if(!errored && completion)
+        {
+            const bool held = contains(rows, events, why) && events.size() == 1;
+            if(expect == "unbounded" && completion->complete)
+                fail("a physical Read over an unmarked chunk reported complete");
+            if(held && expect == "complete" && completion->complete)
+            {
+                std::cout << "physical read complete\n";
+                return 0;
+            }
+            if(held && expect == "unbounded" && completion->reason == IncompleteReason::PhysicalAxisUnbounded)
+            {
+                std::cout << "physical read incomplete PHYSICAL_AXIS_UNBOUNDED\n";
+                return 0;
+            }
+            if(held)
+                why = "physical read ended with reason " + std::to_string(static_cast<int>(completion->reason));
+        }
+        std::this_thread::sleep_for(200ms);
+    }
+    fail("physical read (" + expect + "): " + why);
 }
 
 int after(const char* out)
@@ -652,6 +760,10 @@ int main(int argc, char** argv)
         return stableBefore(argv[2], argv[3]);
     if(command == "stable-after" && argc == 4)
         return stableAfter(argv[2], argv[3]);
+    if(command == "policy-write" && argc == 4)
+        return policyWrite(argv[2], argv[3]);
+    if(command == "policy-read" && argc == 6)
+        return policyRead(argv[2], argv[3], argv[4], argv[5]);
     if(command == "after" && argc == 3)
         return after(argv[2]);
     std::cerr << "usage: driver write|frontier|append|hot|verify|after ...\n";
