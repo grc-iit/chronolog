@@ -97,6 +97,11 @@ std::unique_ptr<JournalHarness> MakeRam()
         state.route = *rig->membership->route(1);
         rig->journal->applyRoute(1, state, false, 1, [] {});
     };
+    h->enableDynamicBeforeRoute = [rig](Hlc c, int64_t cp)
+    {
+        rig->journal->enableDynamic("instance");
+        rig->journal->extendCeiling(c, cp);
+    };
     h->ceilingWaiting = [rig] { return rig->journal->ceilingWaiters() != 0; };
     h->extendCeiling = [rig](Hlc c, int64_t cp) { rig->journal->extendCeiling(c, cp); };
     h->applyRoute = [rig](RouteState state, bool observe, uint64_t revision)

@@ -253,10 +253,28 @@ struct Completion
     // None for complete HLC reads; physical reads use PhysicalAxisUnbounded.
     IncompleteReason reason{IncompleteReason::None};
 };
+// I9.2: read-side slot granularity; Unspecified when created without one.
+enum class Granularity : uint32_t
+{
+    Unspecified = 0,
+    Ns = 1,
+    Us = 2,
+    Ms = 3,
+    S = 4
+};
+// I9.2: set at creation, immutable and inert. retention_ns zero or unset means none; negative is invalid.
+struct Properties
+{
+    std::optional<std::string> tier_policy;
+    std::optional<int64_t> retention_ns;
+    Granularity granularity{};
+    bool operator==(const Properties&) const = default;
+};
 struct Chronicle
 {
     std::string name;
     bool tombstoned{};
+    Properties properties{};
 };
 struct Story
 {
@@ -265,6 +283,14 @@ struct Story
     std::string name;
     Epoch epoch{};
     bool tombstoned{};
+    Properties properties{};
+};
+// I9.3: the live stories under a prefix at Catalog revision R; stories is empty when limit_exceeded.
+struct StoriesByPrefix
+{
+    std::vector<Story> stories;
+    uint64_t revision{};
+    bool limit_exceeded{};
 };
 enum class AcquireRefusalReason : uint32_t
 {

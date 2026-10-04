@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <sqlite3.h>
 
 #include "visor/tests/TestSupport.h"
@@ -157,6 +159,62 @@ TEST(sqlite_restart, LiveStoryNamesAreUniquePerChronicle)
     ASSERT_TRUE(store->createStory("c1", "same").ok());
     EXPECT_EQ(store->createStory("c1", "same").status().code(), absl::StatusCode::kAlreadyExists);
     EXPECT_TRUE(store->createStory("c2", "same").ok());
+}
+
+TEST(sqlite_restart, DatabaseWithoutPropertyColumnsOpensAndKeepsLegacyNames)
+{
+    TempDir dir;
+    const auto path = (dir.path() / "catalog.sqlite").string();
+    {
+        auto store = openStore(dir);
+        ASSERT_NE(store, nullptr);
+        ASSERT_TRUE(store->createChronicle("p").ok());
+        ASSERT_TRUE(store->createStory("p", "x").ok());
+    }
+    // A catalog written before I9.2 and I3.11: no property columns, and names the new rules refuse.
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    std::string sql;
+    for(const char* table: {"chronicles", "stories"})
+        for(const char* column: {"tier_policy", "retention_ns", "granularity"})
+            sql += std::string("ALTER TABLE ") + table + " DROP COLUMN " + column + ";";
+    sql += "INSERT INTO chronicles(name, tombstoned) VALUES ('old/chron', 0);"
+           "INSERT INTO stories(id, chronicle_id, chronicle, name, epoch, tombstoned) VALUES"
+           " (900, (SELECT id FROM chronicles WHERE name = 'p'), 'p', '@b/x', 1, 0),"
+           " (901, (SELECT id FROM chronicles WHERE name = 'old/chron'), 'old/chron', '/lead', 1, 0);";
+    char* error = nullptr;
+    ASSERT_EQ(sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error), SQLITE_OK) << (error ? error : "");
+    sqlite3_close(db);
+
+    auto store = openStore(dir);
+    ASSERT_NE(store, nullptr);
+    auto old = store->getChronicle("old/chron");
+    ASSERT_TRUE(old.ok()) << old.status();
+    EXPECT_EQ(old->properties, Properties{});
+    auto lead = store->getStory(901);
+    ASSERT_TRUE(lead.ok()) << lead.status();
+    EXPECT_EQ(lead->name, "/lead");
+    EXPECT_EQ(lead->properties, Properties{});
+    EXPECT_TRUE(absl::IsInvalidArgument(store->createChronicle("old/chron").status()));
+    Properties properties;
+    properties.retention_ns = 3;
+    EXPECT_EQ(store->createStory("p", "y", properties)->properties, properties);
+
+    auto paths = [&](const std::string& prefix)
+    {
+        std::vector<std::string> out;
+        auto listed = store->listStoriesByPrefix(prefix, 10);
+        EXPECT_TRUE(listed.ok()) << listed.status();
+        for(const auto& story: listed->stories) out.push_back(story.chronicle + "/" + story.name);
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+    using Paths = std::vector<std::string>;
+    // A story with a reserved segment is found only by a prefix that names the segment.
+    EXPECT_EQ(paths("p"), (Paths{"p/x", "p/y"}));
+    EXPECT_EQ(paths("p/@b"), (Paths{"p/@b/x"}));
+    EXPECT_EQ(paths("p/@b/x"), (Paths{"p/@b/x"}));
+    EXPECT_EQ(paths("p/x"), (Paths{"p/x"}));
 }
 
 } // namespace
