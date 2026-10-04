@@ -145,12 +145,7 @@ absl::Status RamJournal::registerWriter(StoryId story, uint64_t writer_id, uint6
     if(it != st.slots.end())
     {
         std::lock_guard old_lock(it->second.current->mu);
-        if(!it->second.current->released)
-        {
-            it->second.current->released = true;
-            if(it->second.current->termination_cause == AcquisitionTerminationCause::Unspecified)
-                it->second.current->termination_cause = AcquisitionTerminationCause::Superseded;
-        }
+        it->second.current->supersede();
     }
     auto writer = std::make_shared<Writer>();
     writer->writer_id = writer_id;
@@ -565,8 +560,14 @@ void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
           writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
         writer->window.erase(writer->window.begin());
     auto& slot = story.slots[key.writer_id];
-    if(slot.incarnation <= key.incarnation)
+    if(slot.incarnation > key.incarnation)
+        writer->supersede();
+    else
+    {
+        if(slot.current && slot.incarnation < key.incarnation)
+            slot.current->supersede();
         slot = Slot{key.incarnation, checkpoint.assigned, writer};
+    }
 }
 
 void RamJournal::restore(const Event& event)
@@ -582,8 +583,14 @@ void RamJournal::restore(const Event& event)
         writer->incarnation = event.id.incarnation;
     }
     auto& slot = st.slots[event.id.writer_id];
-    if(slot.incarnation <= event.id.incarnation)
+    if(slot.incarnation > event.id.incarnation)
+        writer->supersede();
+    else
+    {
+        if(slot.current && slot.incarnation < event.id.incarnation)
+            slot.current->supersede();
         slot = Slot{event.id.incarnation, true, writer};
+    }
     auto pos = std::lower_bound(writer->events.begin(),
                                 writer->events.end(),
                                 event.hlc,

@@ -221,7 +221,7 @@ TEST(ClientRead, RouteExposesLiveStoryMetadataAndRejectsInvalidSnapshots)
 TEST(ClientAwait, ReturnsVisibleEventAndRejectsNegativeBound)
 {
     PagePeer peer;
-    auto client = sdk::Client::connect(peer.options());
+    auto client = sdk::Client::Connect(peer.options());
     ASSERT_TRUE(client.ok());
     sdk::EventRef ref{{1, 2, 3, 4}, Hlc{100, 2}};
     auto result = client->await(ref, 0ns);

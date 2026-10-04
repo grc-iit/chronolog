@@ -398,9 +398,13 @@ TEST_F(replay_adapter, AwaitAnswersWithACertificate)
         ASSERT_TRUE(stub_->Await(ctx.get(), request, &answer).ok());
         EXPECT_EQ(answer.answer(), expected);
         if(expected == v1::AWAIT_ANSWER_VISIBLE)
+        {
             EXPECT_EQ(answer.event().id().sequence(), request.ref().sequence());
+        }
         if(expected == v1::AWAIT_ANSWER_ABSENT)
+        {
             EXPECT_TRUE(answer.has_frontier());
+        }
     };
     check(v1::AWAIT_ANSWER_UNKNOWN); // Not acquired.
     a_.writer_status.set_known(true);
@@ -575,7 +579,7 @@ TEST_F(replay_adapter, AwaitReturnsItsCertificateAtTheConfiguredCapAndRejectsTom
     ReplayService service(
             std::make_shared<HotReplay>(source_),
             catalog_,
-            1,
+            256,
             [](EventId, auto) -> absl::StatusOr<iv1::WriterStatusResponse>
             {
                 iv1::WriterStatusResponse status;

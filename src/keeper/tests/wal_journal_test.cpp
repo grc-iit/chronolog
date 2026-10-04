@@ -120,6 +120,23 @@ TEST(WalJournal, AppendRejectionReasonsRejectMalformedCheckpoint)
     }
 }
 
+TEST(WalJournal, WriterStatusRestoresLegacySupersededHeads)
+{
+    WalRig rig;
+    rig.journal.reset();
+    const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+    const auto bytes = wal::frame("Wv4 2\n1 2 3 2 100 1 0 0 1 0\n1 100 1 0 0\n1 2 4 1 0 0 0 1 0 0\n");
+    std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+    rig.reopen();
+    auto status = rig.current->writerStatus({1, 2, 3, 2});
+    ASSERT_TRUE(status.ok());
+    EXPECT_TRUE(status->known);
+    EXPECT_TRUE(status->released);
+    EXPECT_EQ(status->termination_cause, AcquisitionTerminationCause::Superseded);
+    EXPECT_EQ(status->next_sequence, 2u);
+    EXPECT_FALSE(status->recorded);
+}
+
 TEST(WalJournal, TerminationCausesRejectMalformedCheckpoint)
 {
     // Out of range, on an unreleased writer, and missing.

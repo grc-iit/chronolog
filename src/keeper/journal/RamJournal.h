@@ -269,6 +269,15 @@ private:
         Hlc last_hlc;
         bool released{};
         AcquisitionTerminationCause termination_cause{AcquisitionTerminationCause::Unspecified};
+        void supersede()
+        {
+            if(!released)
+            {
+                released = true;
+                if(termination_cause == AcquisitionTerminationCause::Unspecified)
+                    termination_cause = AcquisitionTerminationCause::Superseded;
+            }
+        }
         // Results for recent sequences; back() is next_sequence - 1.
         std::map<uint64_t, AppendResult> window;
         std::map<uint64_t, Pending> pending;
