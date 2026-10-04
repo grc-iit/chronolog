@@ -2,11 +2,7 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    import h5py
-except ImportError:
-    print("h5py unavailable")
-    sys.exit(77)
+import h5py
 
 with tempfile.TemporaryDirectory(prefix="chronolog-hdf5-") as root:
     path = subprocess.check_output([sys.argv[1], root], text=True, timeout=20).strip()
