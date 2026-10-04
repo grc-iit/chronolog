@@ -47,7 +47,7 @@ v1::Event Encode(const Event& event)
     return result;
 }
 
-absl::StatusOr<Event> Decode(const v1::Event& event)
+absl::StatusOr<Event> Decode(v1::Event& event)
 {
     if(!event.has_id() || !event.has_hlc() || !v1::Durability_IsValid(event.durability()) ||
        !v1::ClockStatus_IsValid(event.physical().status()))
@@ -70,11 +70,12 @@ absl::StatusOr<Event> Decode(const v1::Event& event)
             result.physical.status = ClockStatus::Unavailable;
             break;
     }
-    result.envelope.content_type = event.envelope().content_type();
-    result.envelope.payload = event.envelope().payload();
-    result.envelope.trace_id = event.envelope().trace_id();
-    result.envelope.span_id = event.envelope().span_id();
-    for(const auto& [key, value]: event.envelope().attributes()) result.envelope.attributes[key] = value;
+    auto& envelope = *event.mutable_envelope();
+    result.envelope.content_type = std::move(*envelope.mutable_content_type());
+    result.envelope.payload = std::move(*envelope.mutable_payload());
+    result.envelope.trace_id = std::move(*envelope.mutable_trace_id());
+    result.envelope.span_id = std::move(*envelope.mutable_span_id());
+    for(auto& [key, value]: *envelope.mutable_attributes()) result.envelope.attributes[key] = std::move(value);
     result.durability = static_cast<Durability>(event.durability());
     return result;
 }

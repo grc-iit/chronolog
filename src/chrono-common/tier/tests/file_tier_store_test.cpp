@@ -665,6 +665,47 @@ TEST(FileTierStore, BatchReadMatchesSequentialReadRecord)
         }
 }
 
+TEST(FileTierStore, ReadRecordSortsUnorderedDecodeAndFiltersInPlace)
+{
+    auto directory = TestDirectory();
+    auto chunk = contract::Window(100, 200);
+    chunk.events.clear();
+    for(int64_t at: {100, 110, 120, 130, 140, 150})
+    {
+        Event event;
+        event.id = {1, 2, 3, static_cast<uint64_t>(at)};
+        event.hlc = {at, 0};
+        event.envelope.payload = "payload " + std::to_string(at);
+        chunk.events.push_back(event);
+    }
+    auto record = (*Open(*directory))->publish(chunk);
+    ASSERT_TRUE(record.ok());
+    FileTierStore::DecodeFile reversed = [](const fs::path& path, ChunkBytes& bytes)
+    {
+        auto events = DecodeChunkFile(path, bytes);
+        if(events.ok())
+            std::reverse(events->begin(), events->end());
+        return events;
+    };
+    for(const auto& decode: {FileTierStore::DecodeFile{}, reversed})
+    {
+        auto store = FileTierStore::OpenReadOnly(*directory, std::chrono::hours(1), {}, 0, decode);
+        ASSERT_TRUE(store.ok());
+        for(size_t cap: {0u, 1u, 2u, 3u, 99u})
+        {
+            auto events = (*store)->readRecord(*record, {Range::Axis::Hlc, {115, 0}, {145, 0}}, cap);
+            ASSERT_TRUE(events.ok()) << events.status();
+            ASSERT_EQ(events->size(), std::min<size_t>(cap, 3));
+            for(size_t i = 0; i < events->size(); ++i)
+            {
+                const int64_t at = 120 + 10 * static_cast<int64_t>(i);
+                EXPECT_EQ(events->at(i).hlc, (Hlc{at, 0}));
+                EXPECT_EQ(events->at(i).envelope.payload, "payload " + std::to_string(at));
+            }
+        }
+    }
+}
+
 TEST(FileTierStore, BatchReadRunsRecordsConcurrently)
 {
     auto directory = TestDirectory();

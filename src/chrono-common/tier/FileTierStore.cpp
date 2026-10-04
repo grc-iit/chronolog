@@ -2004,8 +2004,10 @@ FileTierStore::decodeRecord(const ManifestRecord& record, Range range, size_t ma
     for(const auto& event: *events)
         if(event.id.story_id != record.story_id || event.hlc < record.start || event.hlc >= record.end)
             return absl::UnavailableError("invalid archived event window");
-    std::stable_sort(events->begin(), events->end(), ReplayLess);
-    std::vector<Event> selected;
+    // Files are written in ReplayLess order, so the sort is normally skipped.
+    if(!std::is_sorted(events->begin(), events->end(), ReplayLess))
+        std::stable_sort(events->begin(), events->end(), ReplayLess);
+    size_t selected = 0;
     for(auto& event: *events)
     {
         bool matches;
@@ -2021,12 +2023,15 @@ FileTierStore::decodeRecord(const ManifestRecord& record, Range range, size_t ma
         }
         if(matches)
         {
-            if(selected.size() == max_events)
+            if(selected == max_events)
                 break;
-            selected.push_back(std::move(event));
+            if(&event != &(*events)[selected])
+                (*events)[selected] = std::move(event);
+            ++selected;
         }
     }
-    return selected;
+    events->erase(events->begin() + static_cast<std::ptrdiff_t>(selected), events->end());
+    return events;
 }
 
 absl::StatusOr<std::vector<ManifestRecord>> FileTierStore::manifest(StoryId story) const
