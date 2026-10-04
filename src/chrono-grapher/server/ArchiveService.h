@@ -18,8 +18,8 @@ struct TransferLimits
     uint32_t concurrent_transfers = 8;
 };
 
-// Background compaction of small archive files (B3). Disabled by default: it may be enabled only once every Player
-// and Grapher reading the archive root understands compact_v1 lines.
+// Background compaction of small archive files (I13.12). GrapherConfig turns it on unless compact_enabled is false;
+// every Player and Grapher reading the archive root must understand compact_v1 lines.
 struct CompactionSettings
 {
     bool enabled = false;

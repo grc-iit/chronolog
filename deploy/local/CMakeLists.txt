@@ -11,6 +11,7 @@ foreach(gate readiness restart_keeps_endpoints single_supervisor ordered_stop su
 endforeach()
 
 foreach(gate tier_add_refuses_a_root_of_another_file_system_type status_survives_a_hung_tier
+        grapher_status_goes_stale_without_a_heartbeat
         status_reports_the_graphers_tier_view)
     add_test(NAME local.${gate}
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"

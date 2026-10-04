@@ -564,8 +564,8 @@ message WriterFrontier
     Hlc frontier = 3;
 }
 // HLC-axis complete for [start,end) iff every Keeper in the story Route answered and its sealed frontier >= end.
-// Read uses exclusive HLC range end as t. OPEN (M6): physical-axis reads
-// MUST return complete=false and INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED until backdating is bounded.
+// Read uses exclusive HLC range end as t. A physical-axis Read is complete under I6.10: the story's physical_policy
+// is set, every selected event has a finite bound, and every Keeper's physical frontier passes the end.
 // Tail never claims completeness. Errors/truncated sources prevent complete=true.
 enum IncompleteReason
 {
@@ -582,9 +582,10 @@ enum IncompleteReason
 }
 message Completion
 {
-    // Reason for incomplete result; physical-axis reason takes precedence.
+    // Reason for an incomplete result; when several apply, the first of SOURCE_FAILED, TRUNCATED,
+    // PHYSICAL_AXIS_UNBOUNDED, LAGGING_WRITERS.
     IncompleteReason reason = 4;
-    // True only for complete HLC Read; always false for Tail and physical Read.
+    // True only for a complete Read on either axis (I6.10 for physical); always false for Tail.
     bool complete = 1;
     // Keeper-sealed exclusive frontier F: all events with HLC < F are visible and no future event can have HLC < F.
     Hlc frontier = 2;
