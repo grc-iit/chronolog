@@ -1,0 +1,26 @@
+{
+  "driver": "node1",
+  "workdir": "~/chronolog-lab",
+  "archive": "/mnt/shared/chronolog/archive",
+  "ports": {"catalog": 50051, "internal": 50061, "raft": 50071, "keeper": 50052,
+            "keeper_internal": 50062, "grapher": 50053, "player": 50054},
+  "hosts": [
+    {"name": "node1", "address": "10.0.0.11", "mount": "/mnt/shared"},
+    {"name": "node2", "address": "10.0.0.12", "mount": "/mnt/shared"},
+    {"name": "node3", "address": "10.0.0.13", "mount": "/mnt/shared", "ssh": "lab@10.0.0.13"}
+  ],
+  "graphers": ["node1", "node2"],
+  "locks": [],
+  "dynamic": {
+    "blocks": [
+      {"host": "node1", "ports": [50051, 50061, 50057, 50056, 50066]},
+      {"host": "node1", "ports": [50056, 50066, 50058, 50051, 50061]},
+      {"host": "node2", "ports": [50051, 50061, 50057, 50053, 50054]},
+      {"host": "node3", "ports": [50052, 50062, 50056, 50055, 50065]},
+      {"host": "node3", "ports": [50055, 50065, 50066, 50052, 50062]},
+      {"host": "node1", "ports": [50053, 50054, 50055, 50056, 50057]}
+    ],
+    "grapher": {"host": "node2", "port": 50053},
+    "player": {"host": "node2", "port": 50054}
+  }
+}

@@ -1,2 +1,0 @@
-add_executable(cluster_manifest_probe manifest_probe.cpp)
-target_link_libraries(cluster_manifest_probe PRIVATE chronolog_common_tier chronolog_warnings)

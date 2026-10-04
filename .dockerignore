@@ -1,7 +1,5 @@
 .git
 .venv
 build
-website
-docs
 **/node_modules
 **/__pycache__

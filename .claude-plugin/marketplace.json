@@ -4,13 +4,13 @@
     "name": "Gnosis Research Center, Illinois Tech"
   },
   "metadata": {
-    "description": "ChronoLog agent tools: the chronolog skill and the chrono-mcp Context server."
+    "description": "ChronoLog agent tools: the chronolog skill and the chronolog-mcp Context server."
   },
   "plugins": [
     {
       "name": "chronolog",
       "source": "./skills",
-      "description": "The chronolog skill and the chrono-mcp server: durable agent memory on ChronoLog contexts with explicit completeness and recovery.",
+      "description": "The chronolog skill and the chronolog-mcp server: durable agent memory on ChronoLog contexts with explicit completeness and recovery.",
       "version": "4.0.0",
       "author": {
         "name": "Gnosis Research Center, Illinois Tech"

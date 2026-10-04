@@ -11,8 +11,8 @@
 #include <unistd.h>
 
 #include "codec.h"
-#include "clock/HlcCore.h"
-#include "wal/FileSink.h"
+#include "common/clock/HlcCore.h"
+#include "keeper/wal/FileSink.h"
 
 namespace
 {

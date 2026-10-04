@@ -14,7 +14,7 @@
 
 namespace chronolog::client::detail
 {
-// The IPv4 list resolution from src/chrono-common/rpc/Channel.h, kept here because the SDK cannot include src/.
+// The IPv4 list resolution from src/common/rpc/Channel.h, kept here because the SDK cannot include src/.
 inline absl::StatusOr<std::string> catalogTarget(const std::string& endpoints)
 {
     if(endpoints.empty())

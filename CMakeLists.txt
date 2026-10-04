@@ -11,6 +11,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(CHRONOLOG_WERROR "Treat warnings in ChronoLog targets as errors" ON)
 option(CHRONOLOG_BUILD_BENCH "Build the benchmark and profiling harness under tools/bench" OFF)
 option(CHRONOLOG_BUILD_VISOR "Build the ChronoVisor catalog service" ON)
+option(CHRONOLOG_BUILD_PLUGINS "Build ChronoLog plugins" ON)
 set(CHRONOLOG_LINK_JOBS 4 CACHE STRING "Concurrent link steps under Ninja; each debug link of a gRPC binary peaks near 3 GB")
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS chronolog_link=${CHRONOLOG_LINK_JOBS})
 set(CMAKE_JOB_POOL_LINK chronolog_link)
@@ -107,129 +108,50 @@ target_link_libraries(chronolog_contracts INTERFACE absl::status absl::statusor 
 
 enable_testing()
 
-file(GLOB CHRONOLOG_CONTRACT_TEST_SOURCES CONFIGURE_DEPENDS
-     "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract/*.cpp")
-if(CHRONOLOG_CONTRACT_TEST_SOURCES)
-    include(GoogleTest)
-    add_executable(chronolog_contract_tests ${CHRONOLOG_CONTRACT_TEST_SOURCES})
-    target_link_libraries(chronolog_contract_tests PRIVATE
-        chronolog_contracts chronolog_proto chronolog_warnings
-        GTest::gtest GTest::gtest_main Threads::Threads)
-    # ThreadSanitizer aborts with "unexpected memory mapping" on kernels whose
-    # mmap_rnd_bits exceeds what it supports. Disabling ASLR avoids that without
-    # changing sysctls, which would need root.
-    if("thread" IN_LIST CHRONOLOG_SANITIZERS)
-        find_program(CHRONOLOG_SETARCH setarch)
-        if(CHRONOLOG_SETARCH)
-            set_property(TARGET chronolog_contract_tests PROPERTY CROSSCOMPILING_EMULATOR
-                "${CHRONOLOG_SETARCH};${CMAKE_HOST_SYSTEM_PROCESSOR};-R")
-        endif()
-    endif()
-    gtest_discover_tests(chronolog_contract_tests DISCOVERY_TIMEOUT 60 DISCOVERY_MODE PRE_TEST)
-else()
-    message(STATUS "tests/contract has no sources yet, skipping chronolog_contract_tests")
-endif()
+include(GoogleTest)
+file(GLOB CHRONOLOG_CONTRACT_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract/*.cpp")
+add_executable(chronolog_contract_tests ${CHRONOLOG_CONTRACT_TEST_SOURCES})
+target_link_libraries(chronolog_contract_tests PRIVATE
+    chronolog_contracts chronolog_proto chronolog_warnings GTest::gtest GTest::gtest_main Threads::Threads)
+gtest_discover_tests(chronolog_contract_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "contract." DISCOVERY_MODE PRE_TEST)
 
-add_subdirectory(tools/stub_server)
 add_test(NAME build.no_legacy_transport
     COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NoLegacyTransportCheck.cmake)
 set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gate")
-# The new components live in their own subdirectories.
-add_subdirectory(src/chrono-common/clock)
-add_subdirectory(src/chrono-common/rpc)
-add_subdirectory(src/chrono-common/worker)
-add_subdirectory(src/chrono-keeper/journal)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-keeper/wal/CMakeLists.txt")
-    add_subdirectory(src/chrono-keeper/wal)
-endif()
-add_subdirectory(src/chrono-keeper/server)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-keeper/archive/CMakeLists.txt")
-    add_subdirectory(src/chrono-keeper/archive)
-endif()
-add_subdirectory(src/chrono-keeper/tests)
-add_subdirectory(src/chrono-player)
-
+add_test(NAME build.disabled_contract_tests
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/.github/ci/count_disabled_tests.sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/contract
+            ${CMAKE_CURRENT_SOURCE_DIR}/.github/ci/disabled-contract-tests.count)
+set_tests_properties(build.disabled_contract_tests PROPERTIES TIMEOUT 30 LABELS "gate")
+add_subdirectory(src/common)
+add_subdirectory(src/keeper)
+add_subdirectory(src/grapher)
+add_subdirectory(src/player)
 if(CHRONOLOG_BUILD_VISOR)
-    add_subdirectory(src/chrono-visor)
+    add_subdirectory(src/visor)
 endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-common/tier/CMakeLists.txt")
-    add_subdirectory(src/chrono-common/tier)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-grapher/server/CMakeLists.txt")
-    add_subdirectory(src/chrono-grapher/server)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/cpp/CMakeLists.txt")
-    add_subdirectory(client/cpp)
-endif()
-
-if(TARGET chronolog_common_tier)
-    add_subdirectory(deploy/cluster)
-endif()
-
-if(TARGET chronolog_visor_lib AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract/acquisition/CMakeLists.txt")
-    add_subdirectory(tests/contract/acquisition)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/contract/proto/CMakeLists.txt")
-    add_subdirectory(tests/contract/proto)
-endif()
-
+add_subdirectory(client/cpp)
+add_subdirectory(client/typescript/test)
 if(CHRONOLOG_BUILD_PYTHON)
     add_subdirectory(client/python/binding)
 endif()
+add_subdirectory(tests/contract/proto)
+add_subdirectory(tools/lab-cluster)
 
-if(TARGET chronolog_client AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/client/typescript/test/CMakeLists.txt")
-    add_subdirectory(client/typescript/test)
+if(CHRONOLOG_BUILD_PLUGINS)
+    add_subdirectory(plugins/mcp)
+    add_subdirectory(plugins/kvs)
+    add_subdirectory(plugins/pubsub)
+    add_subdirectory(plugins/sql)
+    add_subdirectory(plugins/stream)
+    add_subdirectory(plugins/viz)
+    add_subdirectory(plugins/ldms)
 endif()
 
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/chrono-mcp/CMakeLists.txt")
-    add_subdirectory(plugins/chrono-mcp)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
-    add_subdirectory(plugins/chrono-kvs)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_kvs)
-    add_subdirectory(plugins/chrono-pubsub)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
-    add_subdirectory(plugins/chrono-sql)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_kvs)
-    add_subdirectory(plugins/chrono-stream)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
-    add_subdirectory(plugins/chrono-viz)
-endif()
-
-if((NOT DEFINED CHRONOLOG_BUILD_PLUGINS OR CHRONOLOG_BUILD_PLUGINS) AND TARGET chronolog_client)
-    add_subdirectory(plugins/chrono-ldms)
-endif()
-
-if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player)
-    add_subdirectory(tests/integration/dynamic)
-    if(TARGET chronolog_client)
-        add_subdirectory(tests/integration/keeper_wal)
-        add_subdirectory(tests/integration/visor)
-        add_subdirectory(tests/integration/lease)
-    endif()
-    add_test(NAME bind_guard_integration
-        COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/bind_guard_test.sh
-        $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_grapher>)
-    set_tests_properties(bind_guard_integration PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 180 LABELS "integration")
+if(CHRONOLOG_BUILD_VISOR)
+    add_subdirectory(tests/integration)
+    add_subdirectory(launcher)
 endif()
 
 if(CHRONOLOG_BUILD_BENCH)
     add_subdirectory(tools/bench)
-endif()
-
-if(TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_grapher AND TARGET chrono_player AND TARGET chronolog_client)
-    add_subdirectory(deploy/local)
 endif()
