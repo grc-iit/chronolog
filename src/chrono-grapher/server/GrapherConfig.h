@@ -2,6 +2,7 @@
 
 #include "chrono-grapher/server/ArchiveService.h"
 #include <optional>
+#include "chrono-grapher/server/MigrationWorker.h"
 
 namespace chronolog::grapher
 {
@@ -27,6 +28,9 @@ struct GrapherConfig
         return enabled;
     }();
     bool insecure_bind_all = false;
+    std::string deployment_id;
+    MigrationSettings migration;
+    TierChain tierChain() const;
 
     static absl::StatusOr<GrapherConfig> load(const std::optional<std::string>& path, bool allow_bind_all = false);
     absl::Status validate() const;

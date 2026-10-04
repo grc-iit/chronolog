@@ -114,7 +114,7 @@ absl::Status PosixTier::verify(const TierDirectory& directory) const
     }
 }
 
-absl::Status PosixTier::probe()
+absl::Status PosixTier::probe(std::chrono::milliseconds timeout)
 {
     if(probing_.exchange(true))
         return absl::UnavailableError("tier probe already outstanding");
@@ -147,7 +147,8 @@ absl::Status PosixTier::probe()
                     return absl::UnavailableError("abandoned tier probe");
                 self->directory_ = std::move(directory);
                 return absl::OkStatus();
-            });
+            },
+            timeout);
 }
 std::shared_ptr<TierDirectory> PosixTier::directory() const
 {

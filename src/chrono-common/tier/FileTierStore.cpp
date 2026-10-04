@@ -1,3 +1,4 @@
+#include <sys/statvfs.h>
 #include <absl/log/log.h>
 #include "tier/FileTierStore.h"
 #include <absl/crc/crc32c.h>
@@ -1926,7 +1927,9 @@ absl::StatusOr<CompactionResult> FileTierStore::runCompaction(const CompactionPo
         return tier_detail::IoError("fsync compaction output");
     // The codec writes by path. A tombstone sweep may have unlinked the temporary while this job waited, and the
     // codec then wrote a new file that this fsync and checksum never covered; stop before linking it.
-    struct stat opened{}, named{};
+    struct stat opened
+    {
+    }, named{};
     if(::fstat(fd.get(), &opened) != 0 || ::stat(temporary.c_str(), &named) != 0 || opened.st_ino != named.st_ino ||
        opened.st_dev != named.st_dev)
     {
@@ -2082,7 +2085,90 @@ absl::Status FileTierStore::configureTiers(std::string deployment,
     return absl::OkStatus();
 }
 
-absl::Status FileTierStore::probeTiers()
+absl::StatusOr<FileTierStore::TierUsage> FileTierStore::tierUsage(const std::string& name) const
+{
+    TierUsage usage;
+    std::shared_ptr<PosixTier> tier;
+    {
+        std::lock_guard lock(mutex_);
+        auto index = refresh();
+        if(!index.ok())
+            return index.status();
+        for(const auto& [story, positions]: (*index)->by_story)
+            for(const auto& record: effective(**index, story))
+            {
+                if(record.state != ManifestState::Published && record.state != ManifestState::Empty)
+                    continue;
+                auto location = (*index)->locations.find(record.file);
+                const auto holder = location == (*index)->locations.end() ? "local" : location->second.tier;
+                if(holder == name)
+                    if(auto checksum = log_->checksum(record.file))
+                        usage.used_bytes += checksum->bytes;
+            }
+        if(name != "local")
+        {
+            auto found = tiers_.find(name);
+            if(found == tiers_.end())
+                return absl::InvalidArgumentError("unknown tier");
+            tier = found->second;
+        }
+    }
+    struct statvfs fs
+    {
+    };
+    if(!tier)
+    {
+        if(::statvfs(root_.c_str(), &fs) != 0)
+            return tier_detail::IoError("stat local tier capacity");
+    }
+    else
+    {
+        auto directory = tier->directory();
+        if(!directory)
+            return usage;
+        auto capacity = tier->run([tier, directory, hook = hooks_.tier_step]() -> absl::StatusOr<struct statvfs> {
+            if(hook)
+            {
+                auto status = hook("usage");
+                if(!status.ok())
+                    return status;
+            }
+            auto status = tier->verify(*directory);
+            if(!status.ok())
+                return status;
+            struct statvfs fs
+            {
+            };
+            if(::fstatvfs(directory->fd.get(), &fs) != 0)
+                return tier_detail::IoError("stat tier capacity");
+            return fs;
+        });
+        if(!capacity.ok())
+            return usage;
+        fs = *capacity;
+    }
+    usage.available = true;
+    usage.total_bytes = fs.f_blocks * fs.f_frsize;
+    usage.free_bytes = fs.f_bavail * fs.f_frsize;
+    return usage;
+}
+
+std::map<StoryId, size_t> FileTierStore::pendingTierDeletions() const
+{
+    std::lock_guard lock(mutex_);
+    std::map<StoryId, size_t> result;
+    for(const auto& [file, story]: pending_unlinks_) ++result[story];
+    for(const auto& [key, future]: tier_sweeps_) ++result[key.second];
+    return result;
+}
+
+bool FileTierStore::migrationStopped() const
+{
+    std::lock_guard lock(mutex_);
+    return migration_stopped_ || log_->failed();
+}
+
+absl::Status FileTierStore::probeTiers(std::chrono::milliseconds timeout)
 {
     std::vector<std::shared_ptr<PosixTier>> tiers;
     {
@@ -2090,7 +2176,7 @@ absl::Status FileTierStore::probeTiers()
         for(const auto& [name, tier]: tiers_) tiers.push_back(tier);
     }
     absl::Status result;
-    for(const auto& tier: tiers) result.Update(tier->probe());
+    for(const auto& tier: tiers) result.Update(tier->probe(timeout));
     return result;
 }
 
@@ -2152,7 +2238,10 @@ bool FileTierStore::migrationEligible(const ManifestIndex& index,
     return false;
 }
 
-absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination)
+absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination,
+                                                  std::optional<uint32_t> source_rank,
+                                                  int64_t before_end_ns,
+                                                  uint64_t max_bytes)
 {
     if(read_only_)
         return absl::FailedPreconditionError("read-only tier store");
@@ -2188,44 +2277,47 @@ absl::StatusOr<size_t> FileTierStore::migrateOnce(const std::string& destination
         }
         if(validated.value("writer", std::string{}) != writer_ || !validated.contains("through"))
             return size_t{0};
+        std::vector<ManifestRecord> candidates;
         for(const auto& [story, positions]: (*index)->by_story)
+            for(const auto& candidate: effective(**index, story)) candidates.push_back(candidate);
+        std::sort(candidates.begin(),
+                  candidates.end(),
+                  [](const auto& a, const auto& b) { return std::tie(a.start, a.file) < std::tie(b.start, b.file); });
+        for(const auto& candidate: candidates)
         {
-            for(const auto& candidate: effective(**index, story))
+            auto prior = (*index)->locations.find(candidate.file);
+            const auto rank = prior == (*index)->locations.end() ? 0 : prior->second.rank;
+            if((source_rank && rank != *source_rank) || rank >= tier->config.rank ||
+               candidate.end.physical_ns > before_end_ns || !migrationEligible(**index, candidate))
+                continue;
+            const auto checksum = log_->checksum(candidate.file);
+            if(!checksum)
+                continue;
+            if(checksum->bytes > max_bytes)
+                break;
+            source_tier.reset();
+            source_directory.reset();
+            if(prior != (*index)->locations.end())
             {
-                if(!migrationEligible(**index, candidate))
+                auto source = tiers_.find(prior->second.tier);
+                if(source == tiers_.end() || source->second->config.tier_uuid != prior->second.tier_uuid)
                     continue;
-                auto prior = (*index)->locations.find(candidate.file);
-                if(prior != (*index)->locations.end())
-                {
-                    if(prior->second.rank >= tier->config.rank)
-                        continue;
-                    auto source = tiers_.find(prior->second.tier);
-                    if(source == tiers_.end() || source->second->config.tier_uuid != prior->second.tier_uuid)
-                        continue;
-                    source_tier = source->second;
-                    source_directory = source_tier->directory();
-                    if(!source_directory)
-                        continue;
-                }
-                if(prior == (*index)->locations.end())
-                {
-                    source_tier.reset();
-                    source_directory.reset();
-                }
-                record = candidate;
-                held = claim(record.file, story);
-                migration = {writer_,
-                             record.file,
-                             tier->config.name,
-                             tier->config.tier_uuid,
-                             held->token,
-                             story,
-                             tier->config.rank,
-                             {}};
-                break;
+                source_tier = source->second;
+                source_directory = source_tier->directory();
+                if(!source_directory)
+                    continue;
             }
-            if(held)
-                break;
+            record = candidate;
+            held = claim(record.file, record.story_id);
+            migration = {writer_,
+                         record.file,
+                         tier->config.name,
+                         tier->config.tier_uuid,
+                         held->token,
+                         record.story_id,
+                         tier->config.rank,
+                         {}};
+            break;
         }
     }
     if(!held)

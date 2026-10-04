@@ -37,7 +37,7 @@ class PosixTier: public std::enable_shared_from_this<PosixTier>
 {
 public:
     PosixTier(TierConfig config, std::string deployment, size_t threads, std::chrono::milliseconds timeout);
-    absl::Status probe();
+    absl::Status probe(std::chrono::milliseconds timeout = std::chrono::milliseconds(0));
     void stop() { executor_.reset(); }
     std::shared_ptr<TierDirectory> directory() const;
     bool current(const std::shared_ptr<TierDirectory>& directory) const;
@@ -54,12 +54,13 @@ public:
     static absl::StatusOr<std::vector<std::string>> list(int root, const std::string& directory);
     const TierConfig config;
     template <class F>
-    auto submit(F task) -> std::future<decltype(task())>
+    auto submit(F task,
+                std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) -> std::future<decltype(task())>
     {
         using Result = decltype(task());
         auto promise = std::make_shared<std::promise<Result>>();
         auto future = promise->get_future();
-        const auto deadline = std::chrono::steady_clock::now() + timeout_;
+        const auto deadline = std::chrono::steady_clock::now() + (timeout.count() > 0 ? timeout : timeout_);
         if(!executor_->submit(
                    [promise, task = std::optional<F>(std::move(task))]() mutable
                    {
@@ -80,10 +81,10 @@ public:
         return future;
     }
     template <class F>
-    auto run(F task) -> decltype(task())
+    auto run(F task, std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) -> decltype(task())
     {
-        auto future = submit(std::move(task));
-        if(future.wait_for(timeout_) != std::future_status::ready)
+        auto future = submit(std::move(task), timeout);
+        if(future.wait_for(timeout.count() > 0 ? timeout : timeout_) != std::future_status::ready)
         {
             expire();
             return decltype(task())(absl::UnavailableError("tier I/O deadline expired"));
