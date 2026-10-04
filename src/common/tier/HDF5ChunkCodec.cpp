@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <vector>
 #include <sys/stat.h>
 
 namespace chronolog
@@ -253,18 +254,64 @@ absl::Status Write(const std::filesystem::path& path, std::span<const Event> eve
     }
 }
 
+// Variable-length fields decode into blocks that later decodes reuse under hdf5_mutex: a bump pointer replaces a
+// malloc and free per field, and warm blocks take no page faults.
+class VlenArena
+{
+public:
+    void* allocate(std::size_t size)
+    {
+        size = (size + 15) & ~std::size_t{15};
+        while(current_ < blocks_.size() && blocks_[current_].size - used_ < size)
+        {
+            ++current_;
+            used_ = 0;
+        }
+        if(current_ == blocks_.size())
+        {
+            const auto capacity = std::max(size, BlockBytes);
+            blocks_.push_back({std::make_unique_for_overwrite<unsigned char[]>(capacity), capacity});
+        }
+        void* pointer = blocks_[current_].data.get() + used_;
+        used_ += size;
+        return pointer;
+    }
+    // Every pointer handed out is dead after reset; at most RetainedBytes stay allocated for the next decode.
+    void reset()
+    {
+        std::size_t kept = 0, retained = 0;
+        while(kept < blocks_.size() && retained + blocks_[kept].size <= RetainedBytes) retained += blocks_[kept++].size;
+        blocks_.resize(kept);
+        current_ = 0;
+        used_ = 0;
+    }
+
+private:
+    static constexpr std::size_t BlockBytes = 4 * 1024 * 1024;
+    static constexpr std::size_t RetainedBytes = 32 * 1024 * 1024;
+    struct Block
+    {
+        std::unique_ptr<unsigned char[]> data;
+        std::size_t size;
+    };
+    std::vector<Block> blocks_;
+    std::size_t current_ = 0, used_ = 0;
+};
+VlenArena vlen_arena;
+
 struct Budget
 {
     std::size_t remaining = MaxBytes;
+    VlenArena& arena;
     static void* Allocate(std::size_t size, void* context)
     {
         auto& budget = *static_cast<Budget*>(context);
         if(size > budget.remaining)
             return nullptr;
         budget.remaining -= size;
-        return std::malloc(size);
+        return budget.arena.allocate(size);
     }
-    static void Free(void* pointer, void*) { std::free(pointer); }
+    static void Free(void*, void*) {}
 };
 template <class T, class Function>
 void ReadDataset(hid_t group, const char* name, hid_t type, std::size_t limit, Budget& budget, Function consume)
@@ -347,7 +394,11 @@ absl::StatusOr<std::vector<Event>> HDF5ChunkCodec::decode(std::span<unsigned cha
         Handle group(H5Gopen2(input, "chunk", H5P_DEFAULT), H5Gclose);
         Handle type(EventType(), H5Tclose);
         Handle attr_type(AttributeType(), H5Tclose);
-        Budget budget;
+        struct ResetArena
+        {
+            ~ResetArena() { vlen_arena.reset(); }
+        } reset_arena;
+        Budget budget{.arena = vlen_arena};
         std::vector<Event> events;
         ReadDataset<Row>(group,
                          "events.vlen_bytes",
