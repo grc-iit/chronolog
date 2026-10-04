@@ -133,6 +133,10 @@ endif()
 add_test(NAME build.no_legacy_transport
     COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/NoLegacyTransportCheck.cmake)
 set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gate")
+add_test(NAME build.disabled_contract_tests
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/.github/ci/count_disabled_tests.sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/contract
+            ${CMAKE_CURRENT_SOURCE_DIR}/.github/ci/disabled-contract-tests.count)
+set_tests_properties(build.disabled_contract_tests PROPERTIES TIMEOUT 30 LABELS "gate")
 # The new components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-common/rpc)
