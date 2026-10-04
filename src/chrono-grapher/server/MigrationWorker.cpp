@@ -18,14 +18,29 @@ double Usage(const GrapherTier& tier, const FileTierStore::TierUsage& usage)
     return fraction;
 }
 } // namespace
-MigrationWorker::MigrationWorker(FileTierStore& store, MigrationSettings settings)
+MigrationWorker::MigrationWorker(FileTierStore& store, MigrationSettings settings, bool scrub_enabled)
     : store_(store)
     , settings_(std::move(settings))
     , tokens_(settings_.io_bytes_per_sec)
     , refilled_(std::chrono::steady_clock::now())
     , draining_(settings_.tiers.size())
     , available_(settings_.tiers.size())
-{}
+{
+    scrub_.enabled = scrub_enabled;
+}
+
+void MigrationWorker::scrubbed(const absl::StatusOr<ScrubResult>& result, int64_t finished_at_unix_ms)
+{
+    std::lock_guard lock(scrub_mutex_);
+    if(!result.ok())
+    {
+        scrub_.error = result.status().ToString();
+        return;
+    }
+    scrub_.last = *result;
+    scrub_.finished_at_unix_ms = finished_at_unix_ms;
+    scrub_.error.clear();
+}
 
 absl::Status MigrationWorker::pass()
 {
@@ -109,9 +124,25 @@ absl::Status MigrationWorker::pass()
         replicas_due_ = false;
     if(settings_.status_file.empty())
         return absl::OkStatus();
+    ScrubStatus scrub;
+    {
+        std::lock_guard lock(scrub_mutex_);
+        scrub = scrub_;
+    }
     nlohmann::json status{{"writer", settings_.writer},
                           {"migrate_enabled", settings_.enabled},
                           {"migration_stopped", store_.migrationStopped()},
+                          {"heartbeat_ms", settings_.status_heartbeat_ms},
+                          {"scrub",
+                           {{"enabled", scrub.enabled},
+                            {"validated", scrub.last.validated},
+                            {"skipped", scrub.last.skipped},
+                            {"lost", scrub.last.lost},
+                            {"rolled_back", scrub.last.rolled_back},
+                            {"slow_failed", scrub.last.slow_failed},
+                            {"through", scrub.last.through},
+                            {"finished_at_unix_ms", scrub.finished_at_unix_ms},
+                            {"error", scrub.error}}},
                           {"tiers", nlohmann::json::array()},
                           {"pending_tier_deletions", nlohmann::json::object()}};
     for(size_t i = 0; i < settings_.tiers.size(); ++i)
@@ -127,10 +158,16 @@ absl::Status MigrationWorker::pass()
     }
     for(const auto& [story, count]: store_.pendingTierDeletions())
         status["pending_tier_deletions"][std::to_string(story)] = count;
-    // Rewritten only when it says something new. validate() keeps the path off every slow tier root.
-    auto text = status.dump() + "\n";
-    if(text == written_status_)
+    // Rewritten when it says something new, and on the heartbeat so a reader can tell this worker is alive. validate()
+    // keeps the path off every slow tier root.
+    auto content = status.dump();
+    const auto steady = settings_.steady_now ? settings_.steady_now() : std::chrono::steady_clock::now();
+    if(content == written_status_ && steady - written_at_ < std::chrono::milliseconds(settings_.status_heartbeat_ms))
         return absl::OkStatus();
+    status["written_at_unix_ms"] =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+    const auto text = status.dump() + "\n";
     const auto temporary = settings_.status_file + ".tmp";
     tier_detail::Fd fd(::open(temporary.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0644));
     if(fd.get() < 0)
@@ -141,7 +178,10 @@ absl::Status MigrationWorker::pass()
     if(result.ok() && ::rename(temporary.c_str(), settings_.status_file.c_str()) != 0)
         result = tier_detail::IoError("rename tier status");
     if(result.ok())
-        written_status_ = std::move(text);
+    {
+        written_status_ = std::move(content);
+        written_at_ = steady;
+    }
     return result;
 }
 } // namespace chronolog::grapher

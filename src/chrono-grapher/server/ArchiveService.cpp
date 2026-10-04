@@ -89,17 +89,26 @@ ArchiveService::ArchiveService(FileTierStore& store,
     , destroyer_(std::make_unique<WorkerPool>(1, 1))
     , scrub_(scrub)
 {
-    // Set before the scrub worker starts: it reads the interval for the slow-tier LOST verdict (I13.15).
+    // Set before the scrub worker starts: it reads the interval for the slow-tier LOST verdict (I13.15) and hands each
+    // pass to the tier worker's status file.
     if(!migration.tiers.empty())
+    {
         probe_interval_ = std::chrono::milliseconds(migration.probe_interval_ms);
+        if(!migration.status_file.empty())
+            status_wait_ =
+                    std::min<std::chrono::milliseconds>(probe_interval_,
+                                                        std::chrono::milliseconds(migration.status_heartbeat_ms));
+        else
+            status_wait_ = probe_interval_;
+        migration_ = std::make_unique<MigrationWorker>(store_, std::move(migration), scrub_.interval.count() > 0);
+    }
     if(scrub_.interval.count() > 0)
     {
         scrubber_ = std::make_unique<WorkerPool>(1, 1);
         scrubber_->submit([this] { scrubLoop(); });
     }
-    if(!migration.tiers.empty())
+    if(migration_)
     {
-        migration_ = std::make_unique<MigrationWorker>(store_, std::move(migration));
         migrator_ = std::make_unique<WorkerPool>(1, 1);
         migrator_->submit([this] { migrateLoop(); });
     }
@@ -515,7 +524,7 @@ void ArchiveService::migrateLoop()
         if(!result.ok() && !absl::IsCancelled(result))
             LOG_EVERY_N_SEC(WARNING, 60) << "tier worker pass failed: " << result;
         lock.lock();
-        changed_.wait_for(lock, probe_interval_, [&] { return draining_; });
+        changed_.wait_for(lock, status_wait_, [&] { return draining_; });
     }
 }
 
@@ -535,6 +544,11 @@ void ArchiveService::scrubLoop()
             LOG(INFO) << "archive scrub validated=" << result->validated << " skipped=" << result->skipped
                       << " lost=" << result->lost << " rolled_back=" << result->rolled_back
                       << " slow_failed=" << result->slow_failed << " through=" << result->through;
+        if(migration_ && !absl::IsCancelled(result.status()))
+            migration_->scrubbed(result,
+                                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         std::chrono::system_clock::now().time_since_epoch())
+                                         .count());
         lock.lock();
         changed_.wait_for(lock, scrub_.interval, [&] { return draining_; });
     }
