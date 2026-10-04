@@ -45,7 +45,7 @@ struct PlayerConfig
     std::string deployment_id;
     std::vector<TierConfig> tiers;
     uint32_t tier_io_timeout_ms = 1000;
-    // One interval for the supervisor (deploy/local), the Grapher and the Player.
+    // One interval for the supervisor (launcher), the Grapher and the Player.
     uint32_t tier_probe_interval_ms = 5000;
     uint32_t tier_probe_timeout_ms = 1000;
     uint32_t slow_tier_io_threads = 2;

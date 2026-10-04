@@ -67,7 +67,7 @@ def main():
             process.terminate()
             process.wait(timeout=10)
         assert all(row['state'] == 'stopped' for row in states().values()), 'FAIL stopped service must be stopped'
-        print('PASS local.external_liveness: no listener stopped, real RPC ready, reachable wrong RPC degraded, stopped service stopped')
+        print('PASS launcher.external_liveness: no listener stopped, real RPC ready, reachable wrong RPC degraded, stopped service stopped')
 
 
 if __name__ == '__main__':

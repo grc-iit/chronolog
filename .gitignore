@@ -86,7 +86,7 @@ coverage/
 
 # Per-developer agent instruction and rules files — keep local, never commit.
 # Deliberately NOT listed: .mcp.json and .claude-plugin/, which are shipped
-# files of plugins/chrono-mcp.
+# files of plugins/mcp.
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md

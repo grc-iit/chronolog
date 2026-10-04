@@ -8,17 +8,17 @@ add_custom_command(OUTPUT "${descriptor}"
     DEPENDS ${contract_proto_files} protobuf::protoc VERBATIM)
 add_custom_target(proto_contract_descriptor ALL DEPENDS "${descriptor}")
 add_dependencies(proto_contract_check proto_contract_descriptor)
-add_test(NAME ProtoContract.AdditiveCompatibility
-    COMMAND proto_contract_check compat "${PROJECT_SOURCE_DIR}/proto/baseline/chronolog.v1.m1.pb" "${descriptor}")
-add_test(NAME ProtoContract.NamingLint COMMAND proto_contract_check lint "${descriptor}")
-add_test(NAME ProtoContract.InternalAdditiveCompatibility
-    COMMAND proto_contract_check compat "${CMAKE_CURRENT_SOURCE_DIR}/chronolog.internal.v1.baseline.pb"
+add_test(NAME contract.ProtoContract.AdditiveCompatibility
+    COMMAND proto_contract_check compat "${PROJECT_SOURCE_DIR}/proto/baseline/chronolog.v1.pb" "${descriptor}")
+add_test(NAME contract.ProtoContract.NamingLint COMMAND proto_contract_check lint "${descriptor}")
+add_test(NAME contract.ProtoContract.InternalAdditiveCompatibility
+    COMMAND proto_contract_check compat "${PROJECT_SOURCE_DIR}/proto/baseline/chronolog.internal.v1.pb"
         "${descriptor}" chronolog.internal.v1)
 # After an approved internal breaking-change RFC, explicitly regenerate and commit this baseline:
 # cmake --build --preset dev --target proto_contract_update_internal_baseline
 add_custom_target(proto_contract_update_internal_baseline
     COMMAND protobuf::protoc --proto_path=${PROJECT_SOURCE_DIR}/proto --include_imports
-        --descriptor_set_out=${CMAKE_CURRENT_SOURCE_DIR}/chronolog.internal.v1.baseline.pb
+        --descriptor_set_out=${PROJECT_SOURCE_DIR}/proto/baseline/chronolog.internal.v1.pb
         ${PROJECT_SOURCE_DIR}/proto/chronolog/internal/v1/internal.proto
     DEPENDS protobuf::protoc VERBATIM)
 
@@ -47,12 +47,12 @@ function(proto_fixture fixture mode expected diagnostic)
     else()
         set(inputs "${CMAKE_CURRENT_BINARY_DIR}/${fixture}.pb")
     endif()
-    add_test(NAME ProtoContract.Fixture.${fixture}
+    add_test(NAME contract.ProtoContract.Fixture.${fixture}
         COMMAND "${CMAKE_COMMAND}" "-Dchecker=$<TARGET_FILE:proto_contract_check>"
             "-Demulator=${CMAKE_CROSSCOMPILING_EMULATOR}" "-Dmode=${mode}" "-Dinputs=${inputs}"
             "-Dexpected=${expected}" "-Ddiagnostic=${diagnostic}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/check_fixture.cmake")
-    set_tests_properties(ProtoContract.Fixture.${fixture} PROPERTIES TIMEOUT 30)
+    set_tests_properties(contract.ProtoContract.Fixture.${fixture} PROPERTIES TIMEOUT 30)
 endfunction()
 proto_fixture(additive compat 0 "")
 proto_fixture(field_removal compat 1 "removed field")
@@ -70,14 +70,14 @@ proto_fixture(package_same_directory lint 1 "PACKAGE_SAME_DIRECTORY")
 proto_fixture(package_version lint 1 "PACKAGE_VERSION_SUFFIX")
 proto_fixture(package_directory lint 1 "PACKAGE_DIRECTORY_MATCH")
 proto_fixture(package_snake lint 1 "PACKAGE_LOWER_SNAKE_CASE")
-add_test(NAME ContractHeaders.NoGeneratedIncludes
+add_test(NAME contract.ContractHeaders.NoGeneratedIncludes
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/include_guard_test.sh" "${PROJECT_SOURCE_DIR}")
-add_test(NAME SdkBuild.NoInternalProto
+add_test(NAME contract.SdkBuild.NoInternalProto
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/sdk_internal_guard_test.sh" "${PROJECT_SOURCE_DIR}")
-add_test(NAME ContractLogs.NoPayloadInLogs
+add_test(NAME contract.ContractLogs.NoPayloadInLogs
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/contract/log_payload_guard_test.sh" "${PROJECT_SOURCE_DIR}")
-add_test(NAME ProtoContract.WireTimesAreIntegerNanoseconds
+add_test(NAME contract.ProtoContract.WireTimesAreIntegerNanoseconds
     COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/wire_time_guard_test.sh" "${PROJECT_SOURCE_DIR}")
-set_tests_properties(ProtoContract.AdditiveCompatibility ProtoContract.InternalAdditiveCompatibility ProtoContract.NamingLint
-    ContractHeaders.NoGeneratedIncludes SdkBuild.NoInternalProto ContractLogs.NoPayloadInLogs
-    ProtoContract.WireTimesAreIntegerNanoseconds PROPERTIES TIMEOUT 30)
+set_tests_properties(contract.ProtoContract.AdditiveCompatibility contract.ProtoContract.InternalAdditiveCompatibility contract.ProtoContract.NamingLint
+    contract.ContractHeaders.NoGeneratedIncludes contract.SdkBuild.NoInternalProto contract.ContractLogs.NoPayloadInLogs
+    contract.ProtoContract.WireTimesAreIntegerNanoseconds PROPERTIES TIMEOUT 30)

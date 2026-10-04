@@ -1,5 +1,5 @@
 """CAPACITY against a real Keeper (I13.16): this file's stack has no Grapher, so sealed chunks never settle, and its
-Keeper runs with admission_cap_mb=1 and one-second chunks (plugins/chrono-mcp/CMakeLists.txt sets the environment)."""
+Keeper runs with admission_cap_mb=1 and one-second chunks (plugins/mcp/CMakeLists.txt sets the environment)."""
 import asyncio
 import os
 

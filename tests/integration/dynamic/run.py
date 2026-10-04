@@ -162,7 +162,7 @@ class Local:
 class Homelab(Local):
     def __init__(self, args):
         super().__init__(args)
-        spec = importlib.util.spec_from_file_location('cluster', ROOT / 'deploy/cluster/cluster.py')
+        spec = importlib.util.spec_from_file_location('cluster', ROOT / 'tools/lab-cluster/cluster.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.cluster = module.Cluster()

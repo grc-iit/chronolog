@@ -88,7 +88,8 @@ int main(int argc, char** argv)
 {
     if(argc < 3 || argc > 5)
     {
-        std::cerr << "usage: chrono_player_tier_read_bench <local-root> <slow-root> [command run before each read] [reads]\n";
+        std::cerr << "usage: chronolog_player_tier_read_bench <local-root> <slow-root> [command run before each read] "
+                     "[reads]\n";
         return 2;
     }
     const char* before_read = argc >= 4 && *argv[3] ? argv[3] : nullptr;

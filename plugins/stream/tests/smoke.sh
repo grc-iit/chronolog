@@ -15,7 +15,7 @@ export CHRONOLOG_STREAM_HOST="dragon-$engine"
 export CHRONOLOG_STREAM_SAMPLES=0 CHRONOLOG_STREAM_INTERVAL_MS=200
 cleanup() {
     timeout 30 "${compose[@]}" logs --no-color influxdb grafana chrono-stream-collect chrono-stream-export > "build/smoke/$engine-stream-services.log" 2>&1 || true
-    # Only the stream services: the base stack belongs to run_dragon.sh and its later steps.
+    # Only the stream services: the base stack belongs to run.sh and its later steps.
     timeout 60 "${compose[@]}" rm -s -f -v influxdb grafana chrono-stream-collect chrono-stream-export || true
     timeout 30 "${compose[0]}" volume rm -f "${project}_stream-influx" > /dev/null 2>&1 || true
 }

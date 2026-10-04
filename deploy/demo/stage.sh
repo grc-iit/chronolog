@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared by tests/smoke/run_dragon.sh and deploy/demo/chronolog-demo.
+# Shared by tests/smoke/run.sh and deploy/demo/chronolog-demo.
 #   stage.sh targets                  prints the CMake targets the runtime image and the demo CLIs need
 #   stage.sh binaries ROOT            fills ROOT/build/image-stage and ROOT/build/demo-bin from ROOT/build/dev
 #   stage.sh image ENGINE ROOT IMAGE  builds the runtime image from ROOT/build/image-stage

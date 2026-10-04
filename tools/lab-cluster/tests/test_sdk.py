@@ -9,7 +9,7 @@ import uuid
 import chronolog as cl
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / 'deploy/cluster'))
+sys.path.insert(0, str(ROOT / 'tools/lab-cluster'))
 from agent import Agent, main as agent_request
 
 VISOR = os.environ['CHRONOLOG_TEST_VISOR']
@@ -105,7 +105,7 @@ def test_agent_socket_preserves_live_slot(tmp_path):
     story = client.create_story(client.create_chronicle('socket-' + uuid.uuid4().hex), 'events').id
     path = str(tmp_path / 'agent.sock')
     with open(tmp_path / 'server.log', 'w+') as log:
-        server = subprocess.Popen([sys.executable, str(ROOT / 'deploy/cluster/agent.py'), '--serve', path],
+        server = subprocess.Popen([sys.executable, str(ROOT / 'tools/lab-cluster/agent.py'), '--serve', path],
             cwd=tmp_path, stdout=log, stderr=log)
         try:
             for _ in range(100):

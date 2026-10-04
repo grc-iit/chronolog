@@ -276,8 +276,7 @@ def binary(bin_dir, role):
             return str(Path(found).resolve())
         raise ValueError(f'cannot find chrono_{role}; set --bin-dir or CHRONOLOG_BIN_DIR, install beside chronolog, or add to PATH')
     root = Path(selected)
-    candidates = (root / ('chrono_' + role), root / 'src' / ('chrono-' + role) /
-                  ('server' if role == 'grapher' else '') / ('chrono_' + role))
+    candidates = (root / ('chrono_' + role), root / 'src' / role / ('chrono_' + role))
     for path in candidates:
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())

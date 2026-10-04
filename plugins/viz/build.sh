@@ -3,14 +3,14 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 if [ ! -f build/viz-venv/.prepared ]; then
-    bash plugins/chrono-viz/prepare.sh
+    bash plugins/viz/prepare.sh
 fi
 mkdir -p build/viz build/smoke/wheels
 install_node=0
-if [ ! -d build/viz/node_modules ] || ! cmp -s plugins/chrono-viz/grafana/package.json build/viz/package.json; then
+if [ ! -d build/viz/node_modules ] || ! cmp -s plugins/viz/grafana/package.json build/viz/package.json; then
     install_node=1
 fi
-cp plugins/chrono-viz/grafana/* build/viz/
+cp plugins/viz/grafana/* build/viz/
 cd build/viz
 if [ "$install_node" = 1 ]; then
     timeout 480 npm install --no-audit --no-fund
@@ -19,7 +19,7 @@ timeout 120 npm run typecheck
 timeout 180 npm run build
 cp plugin.json logo.svg dist/
 cd "$root"
-timeout 60 build/viz-venv/bin/python -m build --wheel --no-isolation --outdir build/smoke/wheels plugins/chrono-viz/backend
+timeout 60 build/viz-venv/bin/python -m build --wheel --no-isolation --outdir build/smoke/wheels plugins/viz/backend
 if [ "$#" -gt 0 ]; then
     mkdir -p build/viz/sdk/chronolog build/viz/sdk/chronolog-4.0.0.dist-info
     cp client/python/chronolog/*.py build/viz/sdk/chronolog/

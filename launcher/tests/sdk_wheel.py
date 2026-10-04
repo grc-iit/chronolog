@@ -21,7 +21,7 @@ def prepare_sdk(output, lock_dir):
         raise SystemExit(77)
     output.mkdir(parents=True, exist_ok=True)
     lock_dir.mkdir(parents=True, exist_ok=True)
-    project = Path(__file__).resolve().parents[3] / 'client/python'
+    project = Path(__file__).resolve().parents[2] / 'client/python'
     # The SDK backend uses one build/python cache, even when wheel outputs are separate.
     with (lock_dir / 'sdk-build.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

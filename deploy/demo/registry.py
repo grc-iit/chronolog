@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'local'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher'))
 from chronolog_local.cli import external_status, main as chronolog
 from chronolog_local.registry import atomic, control, home, load
 

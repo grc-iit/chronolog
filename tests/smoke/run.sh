@@ -4,12 +4,13 @@
 # brings the compose stack up, runs the Python smoke test and tears the stack down,
 # first under rootless Docker and then under rootless Podman. Nothing is compiled
 # inside a container. Run on dragon from the repository root through rbuild:
-#   RBUILD_LOCK=stack rbuild 'bash tests/smoke/run_dragon.sh'
+#   RBUILD_LOCK=stack rbuild 'bash tests/smoke/run.sh'
 # ENGINES="docker" or ENGINES="podman" limits the run to one engine.
 # SKIP_NATIVE_BUILD=1 reuses build/dev; SKIP_BINDING_BUILD=1 requires build_artifacts.sh outputs.
 # CHRONOLOG_IMAGE_TAG (rbuild sets wt-<worktree>) tags the runtime, viz and MCP images so two trees on one
 # host never replace each other's image. On exit the run removes the images of those tags it superseded
 # (tests/smoke/image_cleanup.sh).
+# CHRONOLOG_STACK_LOCK names the lock file one stack at a time per host holds (default ~/chronolog-sprint/stack.lock).
 set -uo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -22,6 +23,8 @@ override_file=deploy/compose/smoke.override.yaml
 python_override=$logs/python.override.yaml
 cp deploy/compose/demo.override.yaml "$python_override"
 engines=${ENGINES:-"docker podman"}
+stack_lock=${CHRONOLOG_STACK_LOCK:-$HOME/chronolog-sprint/stack.lock}
+mkdir -p "$(dirname "$stack_lock")"
 overall=0
 
 # Binaries to ship, shared with deploy/demo/chronolog-demo.
@@ -37,7 +40,7 @@ source tests/smoke/image_cleanup.sh
 
 if [ -z "${SKIP_NATIVE_BUILD:-}" ]; then
     echo "-- native dev build: ${targets[*]}"
-    { bash plugins/chrono-viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-8}" --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
+    { bash plugins/viz/prepare.sh && cmake --preset dev -DCHRONOLOG_BUILD_PYTHON=ON -DPython_EXECUTABLE="$root/build/viz-venv/bin/python" && cmake --build --preset dev --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-8}" --target "${targets[@]}" chronolog_viz; } > "$logs/native-build.log" 2>&1 \
         || { echo "FAILED native build, tail of $logs/native-build.log:"; tail -40 "$logs/native-build.log"; exit 1; }
 fi
 bash deploy/demo/stage.sh binaries "$root" || exit 1
@@ -66,7 +69,7 @@ else
 fi
 
 if [ "${RBUILD_HELD:-}" != stack ] && [ "${CHRONOLOG_STACK_LOCKED:-0}" != 1 ]; then
-    exec flock "$HOME/chronolog-sprint/stack.lock" env CHRONOLOG_STACK_LOCKED=1 SKIP_NATIVE_BUILD=1 bash "$0" "$@"
+    exec flock "$stack_lock" env CHRONOLOG_STACK_LOCKED=1 SKIP_NATIVE_BUILD=1 bash "$0" "$@"
 fi
 
 run_engine() {
@@ -109,27 +112,27 @@ run_engine() {
         stack_ready=1
         if [ "${CHRONOLOG_SMOKE_STREAM_ONLY:-0}" = 1 ]; then
             for ((stream_run=1; stream_run<=${CHRONOLOG_SMOKE_STREAM_RUNS:-1}; ++stream_run)); do
-                step "chrono-stream pass $stream_run" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || { rc=1; break; }
+                step "stream pass $stream_run" 360 bash plugins/stream/tests/smoke.sh "$engine" "$project" || { rc=1; break; }
                 cp "$logs/$engine-stream-services.log" "$logs/$engine-stream-$stream_run-services.log"
             done
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
             return "$rc"
         fi
         if [ "${CHRONOLOG_SMOKE_VIZ_ONLY:-0}" != 1 ]; then
-            step "chrono-kvs put get get-at history" 45 ./build/dev/plugins/chrono-kvs/chronolog_kvs_example \
+            step "kvs put get get-at history" 45 ./build/dev/plugins/kvs/chronolog_kvs_example \
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
-            step "chrono-pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/chrono-pubsub/chronolog_pubsub_example \
+            step "pubsub publish subscribe saved KVS position" 45 ./build/dev/plugins/pubsub/chronolog_pubsub_example \
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
-            step "chrono-sql typed provenance SQL reads" 45 ./build/dev/plugins/chrono-sql/chronolog_sql_example \
+            step "sql typed provenance SQL reads" 45 ./build/dev/plugins/sql/chronolog_sql_example \
                 127.0.0.1:50051 127.0.0.1:50054 || rc=1
             ldms_container="ldms-smoke-$engine-$(date +%s)"
-            step "chrono-ldms fake ldmsd stores samples" 60 ./build/dev/plugins/chrono-ldms/chronolog_ldms_fake_ldmsd \
+            step "ldms fake ldmsd stores samples" 60 ./build/dev/plugins/ldms/chronolog_ldms_fake_ldmsd \
                 --catalog 127.0.0.1:50051 --player 127.0.0.1:50054 --container "$ldms_container" --producers 3 --samples 20 --stale-every 5 || rc=1
-            step "chrono-ldms read samples back" 60 ./build/dev/plugins/chrono-ldms/chronolog_ldms_example \
+            step "ldms read samples back" 60 ./build/dev/plugins/ldms/chronolog_ldms_example \
                 127.0.0.1:50051 127.0.0.1:50054 "$ldms_container" 60 || rc=1
-            step "chrono-stream collect export InfluxDB query Grafana health" 360 bash plugins/chrono-stream/tests/smoke.sh "$engine" "$project" || rc=1
+            step "stream collect export InfluxDB query Grafana health" 360 bash plugins/stream/tests/smoke.sh "$engine" "$project" || rc=1
         fi
-        step "chrono-viz Replay backend Grafana proxy health and plugin" 480 bash plugins/chrono-viz/smoke.sh "$engine" "$project" || rc=1
+        step "viz Replay backend Grafana proxy health and plugin" 480 bash plugins/viz/smoke.sh "$engine" "$project" || rc=1
         if [ "${CHRONOLOG_SMOKE_PLUGINS_ONLY:-0}" = 1 ]; then
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || rc=1
             return "$rc"
@@ -163,13 +166,13 @@ run_engine() {
                 fi
                 if [ "$rc" -eq 0 ]; then
                     if [ "${SKIP_BINDING_BUILD:-}" != 1 ]; then
-                        step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/chrono-mcp || rc=1
+                        step "MCP plugin wheel" 180 "$venv/bin/python" -m build --wheel --no-isolation --outdir "$logs/wheels" plugins/mcp || rc=1
                         step "install MCP plugin" 180 "$venv/bin/pip" install --force-reinstall --no-deps "$logs"/wheels/chronolog_mcp-4.0.0-*.whl || rc=1
                         step "MCP plugin dependencies" 180 "$venv/bin/pip" install 'mcp>=2.2,<3' || rc=1
                     fi
-                    # test_capacity.py needs a stack of its own (no Grapher, a 1 MiB Keeper cap): ctest plugin.mcp.capacity runs it.
+                    # test_capacity.py needs a stack of its own (no Grapher, a 1 MiB Keeper cap): ctest mcp.capacity runs it.
                     step "MCP plugin pytest" 120 env CHRONOLOG_TEST_VISOR=127.0.0.1:50051 CHRONOLOG_TEST_PLAYER=127.0.0.1:50054 \
-                        "$venv/bin/python" -m pytest -q plugins/chrono-mcp/tests --ignore=plugins/chrono-mcp/tests/test_capacity.py || rc=1
+                        "$venv/bin/python" -m pytest -q plugins/mcp/tests --ignore=plugins/mcp/tests/test_capacity.py || rc=1
                     if [ "$rc" -eq 0 ]; then
                         step "MCP plugin deployment image" 300 "${compose[@]}" -f deploy/compose/mcp.override.yaml build chrono-mcp || rc=1
                         step "MCP plugin container entrypoint" 30 "${compose[@]}" -f deploy/compose/mcp.override.yaml \
@@ -193,7 +196,7 @@ run_engine() {
             step "compose down -v" 120 "${compose[@]}" down -v --timeout 20 || true
             return 1
         fi
-        if [ "${SKIP_BINDING_BUILD:-}" = 1 ] || step "build TypeScript binding" 480 bash client/typescript/run_dragon.sh; then
+        if [ "${SKIP_BINDING_BUILD:-}" = 1 ] || step "build TypeScript binding" 480 bash client/typescript/run.sh; then
             export CHRONOLOG_TYPESCRIPT_PACKAGE="$root/build/typescript/package"
             step "TypeScript binding suite" 180 "${compose[@]}" -f client/typescript/test/compose.yaml \
                 run --rm --no-deps typescript-tests || rc=1
@@ -214,7 +217,7 @@ run_engine() {
 }
 
 if [ "${RBUILD_HELD:-}" != stack ]; then
-    exec 8>"$HOME/chronolog-sprint/stack.lock"
+    exec 8>"$stack_lock"
     echo "-- waiting for shared stack lock"
     flock 8
     export RBUILD_HELD=stack

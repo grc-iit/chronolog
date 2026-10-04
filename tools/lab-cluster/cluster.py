@@ -148,8 +148,8 @@ class Cluster:
             try:
                 with tarfile.open(fileobj=receiver.stdin, mode='w|') as tar:
                     if node == 'blade':
-                        tar.add(ROOT / 'build/dev/deploy/cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
-                    tar.add(ROOT / 'deploy/cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
+                        tar.add(ROOT / 'build/dev/tools/lab-cluster/cluster_manifest_probe', arcname='bin/cluster_manifest_probe')
+                    tar.add(ROOT / 'tools/lab-cluster/agent.py', arcname=f'run/{self.tag}/agent.py')
                     tar.add(ROOT / 'build/python/client/python/binding/package/chronolog',
                             arcname=f'run/{self.tag}/sdk/chronolog')
                     tar.add(OUT / 'stubs', arcname=f'run/{self.tag}/stubs')
@@ -369,7 +369,7 @@ def main():
                 cluster.start(role)
         cluster.serve()
         print(f'Logs {OUT}', flush=True)
-        subprocess.run([str(python), str(ROOT / 'deploy/cluster/scenario.py')], timeout=400, check=True,
+        subprocess.run([str(python), str(ROOT / 'tools/lab-cluster/scenario.py')], timeout=400, check=True,
                        env={**os.environ, 'CHRONOLOG_CLUSTER_SOCKET': cluster.socket_path,
                             'PYTHONPATH': str(sdk_package)})
         return 0

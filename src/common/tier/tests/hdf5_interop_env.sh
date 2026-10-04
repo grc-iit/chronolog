@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares build/h5py-venv, the interpreter grapher.HDF5Interop reads archives with. Idempotent: a prepared venv
+# Prepares build/h5py-venv, the interpreter common.HDF5Interop reads archives with. Idempotent: a prepared venv
 # costs one import. A failure here fails the interop test; it is never a skip.
 set -euo pipefail
 venv=$1

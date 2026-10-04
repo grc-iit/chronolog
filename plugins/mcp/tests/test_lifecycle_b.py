@@ -20,7 +20,7 @@ def local(tmp_path, monkeypatch):
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setenv('CHRONOLOG_INSTANCE', 'default')
     # Make the source launcher available to MCP subprocesses as well as this gate.
-    monkeypatch.setenv('PYTHONPATH', str(root / 'deploy/local') + os.pathsep + os.environ.get('PYTHONPATH', ''))
+    monkeypatch.setenv('PYTHONPATH', str(root / 'launcher') + os.pathsep + os.environ.get('PYTHONPATH', ''))
     yield ['--identity', unique('local-owner'), '--chronicle', unique('local-context'), '--timeout', '5']
     for record in (tmp_path / 'home/instances').glob('*/instance.json'):
         result = subprocess.run([sys.executable, '-m', 'chronolog_local.cli', 'down', record.parent.name, '--force'],

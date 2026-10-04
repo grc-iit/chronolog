@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 HARNESS = ROOT / 'tests/integration/dynamic'
 sys.path.insert(0, str(HARNESS))
 spec = importlib.util.spec_from_file_location('dynamic_run', HARNESS / 'run.py')

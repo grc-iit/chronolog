@@ -26,7 +26,7 @@ print("Backend health:", response.status_code, response.text, flush=True)
 PYTHON
     exit 1
 fi
-timeout 60 build/viz-venv/bin/python plugins/chrono-viz/backend/smoke.py
+timeout 60 build/viz-venv/bin/python plugins/viz/backend/smoke.py
 cleanup
 trap - EXIT
 timeout 10 build/viz-venv/bin/python - <<'PY'

@@ -15,14 +15,14 @@ add_custom_target(chronolog_viz ALL DEPENDS "${PROJECT_SOURCE_DIR}/build/viz/.bu
 if(TARGET _core)
     add_dependencies(chronolog_viz _core)
 endif()
-add_test(NAME plugin.viz.frontend COMMAND timeout 120 npm test
+add_test(NAME viz.frontend COMMAND timeout 120 npm test
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/build/viz")
-set_tests_properties(plugin.viz.frontend PROPERTIES TIMEOUT 130)
+set_tests_properties(viz.frontend PROPERTIES TIMEOUT 130)
 if(TARGET _core AND TARGET chrono_visor AND TARGET chrono_keeper AND TARGET chrono_player)
-    add_test(NAME plugin.viz.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR}
+    add_test(NAME viz.acceptance COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR}
         bash "${CMAKE_CURRENT_SOURCE_DIR}/backend/acceptance.sh"
         $<TARGET_FILE:chrono_visor> $<TARGET_FILE:chrono_keeper> $<TARGET_FILE:chrono_player>
         "${PROJECT_SOURCE_DIR}/build/viz-venv/bin/python"
         "${CMAKE_CURRENT_SOURCE_DIR}/backend/test_stack.py")
-    set_tests_properties(plugin.viz.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 120)
+    set_tests_properties(viz.acceptance PROPERTIES RESOURCE_LOCK chronolog_stack TIMEOUT 120)
 endif()

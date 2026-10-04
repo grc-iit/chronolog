@@ -35,8 +35,8 @@ def main():
             return result.stdout
 
         call([sys.executable, '-m', 'venv', prefix])
-        servers = {'visor': 'src/chrono-visor', 'keeper': 'src/chrono-keeper',
-                   'grapher': 'src/chrono-grapher/server', 'player': 'src/chrono-player'}
+        servers = {'visor': 'src/visor', 'keeper': 'src/keeper',
+                   'grapher': 'src/grapher', 'player': 'src/player'}
         before = {role: (build_dir / folder / ('chrono_' + role)).stat().st_size
                   for role, folder in servers.items()}
         started = time.monotonic()
@@ -101,7 +101,7 @@ def main():
                 stopped = json.loads(call([cli, 'down', '--purge'], timeout=210))
                 assert stopped['state'] == 'stopped', 'FAIL ordered stop'
                 assert not (root / 'state/instances/default').exists(), 'FAIL purge'
-        print('PASS server.install')
+        print('PASS launcher.server_install')
 
 
 if __name__ == '__main__':
