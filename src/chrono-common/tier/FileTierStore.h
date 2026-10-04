@@ -118,7 +118,8 @@ public:
     // failure is only reported), reading at most io_bytes_per_sec (zero is unpaced), then replaces the own validated
     // mark. A missing or corrupt file becomes Lost, or its own compaction output is rolled back, under the store
     // mutex after a manifest re-sync; a file claimed, superseded, Deleted or moved since the pass planned it is
-    // skipped and does not hold the mark back.
+    // skipped and does not hold the mark back. A rollback's inputs are validated without the mutex; when the switch,
+    // an input's claim or its pending unlink changed meanwhile, the file is skipped and the pass writes no mark.
     // A slow-tier file (I13.15) is recorded Lost only by its owner, only when it is missing or corrupt through the
     // availability epoch's descriptor with the marker re-read through the same descriptor afterwards, a manifest
     // re-sync still resolves it to that tier, and the same verdict repeats in a later pass at least
@@ -192,7 +193,20 @@ private:
     std::optional<ManifestRecord> successor(const ManifestIndex& index, const ManifestRecord& record) const;
     absl::StatusOr<ChunkBytes> loadForRead(const std::filesystem::path& file) const;
     bool effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const;
-    absl::Status rollbackOrLose(ManifestRecord record, Hlc w, bool running = false);
+    absl::Status rollbackOrLose(ManifestRecord record, Hlc w);
+    absl::Status rollBack(const ManifestRecord& record, Hlc w, const std::vector<ManifestRecord>& inputs, bool running);
+    absl::Status recordLost(ManifestRecord record, Hlc w);
+    // kSkipped: the record is no longer the one the pass planned. kDeferred: it still is, but its switch, an input's
+    // claim or pending unlink changed while the inputs were validated; the next pass decides.
+    enum class ScrubDecision
+    {
+        kWritten,
+        kSkipped,
+        kDeferred,
+    };
+    absl::StatusOr<ScrubDecision> scrubRollbackOrLose(std::unique_lock<std::mutex>& lock,
+                                                      const ManifestRecord& record,
+                                                      const std::function<bool(const ManifestIndex&)>& planned);
     void queueCommittedCleanup(const std::set<std::string>& on_disk);
     void sweepTombstoned();
     struct Claim

@@ -4,7 +4,7 @@
 #include "chrono-player/adapter/ClusterClient.h"
 #include "chrono-player/replay/HotReplay.h"
 #include "chrono-visor/adapter/ClusterService.h"
-#include "chrono-visor/adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "chrono-visor/catalog/SqliteMetadataStore.h"
 #include "chrono-visor/tests/TestSupport.h"
 
@@ -57,7 +57,7 @@ TEST(PhysicalPolicyCatalog, WatchReportsPolicyDowngradeBeforeLaterTombstone)
     ASSERT_TRUE(barrier.ok());
     visor::StaticRouteMembership membership(visor::testing::twoKeeperTopology(), 1, [](StoryId) { return true; }, 15s);
     visor::AcquisitionFeed feed;
-    visor::WorkerPool pool(2, 64);
+    WorkerPool pool(2, 64);
     visor::ClusterService cluster(membership, *store, *store, feed, nullptr, &pool);
     grpc::ServerBuilder builder;
     int port = 0;
@@ -118,7 +118,7 @@ TEST(PhysicalPolicyCatalog, UnmarkedArchiveHeartbeatPermanentlyPreventsPhysicalC
     ASSERT_TRUE(store->membershipRouteUpdate(story->id)->physical_policy());
     visor::StaticRouteMembership membership(visor::testing::twoKeeperTopology(), 1, [](StoryId) { return true; }, 15s);
     visor::AcquisitionFeed feed;
-    visor::WorkerPool pool(2, 64);
+    WorkerPool pool(2, 64);
     visor::ClusterService cluster(membership, *store, *store, feed, nullptr, &pool);
     grpc::ServerBuilder builder;
     int port = 0;

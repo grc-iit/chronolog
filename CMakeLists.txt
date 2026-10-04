@@ -140,6 +140,7 @@ set_tests_properties(build.disabled_contract_tests PROPERTIES TIMEOUT 30 LABELS 
 # The new components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-common/rpc)
+add_subdirectory(src/chrono-common/worker)
 add_subdirectory(src/chrono-keeper/journal)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-keeper/wal/CMakeLists.txt")
     add_subdirectory(src/chrono-keeper/wal)

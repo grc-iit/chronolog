@@ -1,5 +1,5 @@
 #include "chrono-grapher/server/GrapherConfig.h"
-#include "chrono-grapher/server/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <fstream>

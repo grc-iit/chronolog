@@ -104,8 +104,9 @@ int main(int argc, char** argv)
     }
     const auto visor = chronolog::rpc::peerChannel(config->visor_internal);
     auto stub = chronolog::internal::v1::Cluster::NewStub(visor);
-    chronolog::grapher::VisorClockAudit clock_audit(config->process_id + "/" + instance,
-                                                    std::make_shared<chronolog::KernelClock>());
+    chronolog::VisorClockAudit clock_audit("grapher",
+                                           config->process_id + "/" + instance,
+                                           std::make_shared<chronolog::KernelClock>());
     chronolog::grapher::ClusterWorkerOptions cluster_options;
     cluster_options.process_id = config->process_id;
     cluster_options.instance = instance;

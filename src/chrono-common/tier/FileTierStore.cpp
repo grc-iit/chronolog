@@ -1069,46 +1069,121 @@ absl::StatusOr<std::set<std::string>> FileTierStore::recover()
 
 // An own committed output that fails validation while every input it replaced is still present and valid is rolled
 // back rather than lost: the rollback line restores the inputs. Anything else becomes Lost with W preserved (I13.5).
-absl::Status FileTierStore::rollbackOrLose(ManifestRecord record, Hlc w, bool running)
+// At open nothing unlinks yet, so no input can be claimed.
+absl::Status FileTierStore::rollbackOrLose(ManifestRecord record, Hlc w)
 {
     const auto* index = log_->current();
     const auto change = index->switches.find(record.file);
     if(change != index->switches.end() && change->second.writer == writer_ && !log_->failed())
     {
         const auto inputs = change->second.inputs;
-        // At open nothing unlinks yet. While the store runs, an input another thread already claimed for its unlink
-        // cannot be withdrawn, so the output is Lost instead of rolled back (I13.17).
-        const bool claimed = running && std::any_of(inputs.begin(),
-                                                    inputs.end(),
-                                                    [this](const auto& input)
-                                                    {
-                                                        const auto held = claims_.find(input.file);
-                                                        return held != claims_.end() && !held->second.expired();
-                                                    });
-        const bool intact = !claimed && std::all_of(inputs.begin(),
-                                                    inputs.end(),
-                                                    [this](const auto& input) { return validate(input).ok(); });
-        if(intact)
-        {
-            LOG(WARNING) << "archive rolls back compaction output " << record.file << ": its inputs are intact";
-            // Withdrawn before the line: unlinkDeletedFile grants its claim only to a file that is still pending.
-            if(running)
-                for(const auto& input: inputs) pending_unlinks_.erase(input.file);
-            auto status = log_->rememberWatermark(record.story_id, w);
-            if(status.ok())
-                status = log_->appendRollback(record.story_id, record.file);
-            if(status.ok())
-                status = refresh().status();
-            if(status.ok() && running)
-                pending_unlinks_[record.file] = record.story_id;
-            return status;
-        }
+        if(std::all_of(inputs.begin(), inputs.end(), [this](const auto& input) { return validate(input).ok(); }))
+            return rollBack(record, w, inputs, false);
     }
+    return recordLost(std::move(record), w);
+}
+
+absl::Status
+FileTierStore::rollBack(const ManifestRecord& record, Hlc w, const std::vector<ManifestRecord>& inputs, bool running)
+{
+    LOG(WARNING) << "archive rolls back compaction output " << record.file << ": its inputs are intact";
+    // Withdrawn before the line: unlinkDeletedFile grants its claim only to a file that is still pending.
+    if(running)
+        for(const auto& input: inputs) pending_unlinks_.erase(input.file);
+    auto status = log_->rememberWatermark(record.story_id, w);
+    if(status.ok())
+        status = log_->appendRollback(record.story_id, record.file);
+    if(status.ok())
+        status = refresh().status();
+    if(status.ok() && running)
+        pending_unlinks_[record.file] = record.story_id;
+    return status;
+}
+
+absl::Status FileTierStore::recordLost(ManifestRecord record, Hlc w)
+{
     auto status = log_->rememberWatermark(record.story_id, w);
     if(!status.ok())
         return status;
     record.state = ManifestState::Lost;
     return log_->append(record);
+}
+
+// The scrubber's verdict on a failed own record, entered and left with `lock` held after a manifest re-sync (I13.17).
+// The switch inputs are read and checksummed with the lock released (M11.7); the decision is then taken only if a
+// second re-sync still finds the record as `planned` says, the same switch with the same inputs, and no claim granted
+// or pending unlink changed for any input, so an input claimed for unlink meanwhile is never rolled back over.
+absl::StatusOr<FileTierStore::ScrubDecision>
+FileTierStore::scrubRollbackOrLose(std::unique_lock<std::mutex>& lock,
+                                   const ManifestRecord& record,
+                                   const std::function<bool(const ManifestIndex&)>& planned)
+{
+    const auto* index = log_->current();
+    const auto change = index->switches.find(record.file);
+    if(change == index->switches.end() || change->second.writer != writer_ || log_->failed())
+    {
+        auto status = recordLost(record, watermark(*index, record.story_id));
+        if(!status.ok())
+            return status;
+        return ScrubDecision::kWritten;
+    }
+    struct Held
+    {
+        std::weak_ptr<Claim> claim;
+        std::optional<StoryId> pending;
+    };
+    const auto held = [this](const std::vector<ManifestRecord>& inputs)
+    {
+        std::vector<Held> found;
+        for(const auto& input: inputs)
+        {
+            const auto claim = claims_.find(input.file);
+            const auto pending = pending_unlinks_.find(input.file);
+            found.push_back({claim == claims_.end() ? std::weak_ptr<Claim>() : claim->second,
+                             pending == pending_unlinks_.end() ? std::nullopt : std::optional(pending->second)});
+        }
+        return found;
+    };
+    const auto inputs = change->second.inputs;
+    const auto before = held(inputs);
+    // An input another thread already claimed for its unlink cannot be withdrawn: the output is Lost instead.
+    if(std::any_of(before.begin(), before.end(), [](const auto& input) { return !input.claim.expired(); }))
+    {
+        auto status = recordLost(record, watermark(*index, record.story_id));
+        if(!status.ok())
+            return status;
+        return ScrubDecision::kWritten;
+    }
+    lock.unlock();
+    const bool intact =
+            std::all_of(inputs.begin(), inputs.end(), [this](const auto& input) { return validate(input).ok(); });
+    lock.lock();
+    auto synced = log_->sync();
+    if(!synced.ok())
+        return synced.status();
+    if(log_->failed())
+        return absl::UnavailableError("manifest log failed; the scrubber stops until the writer reopens");
+    if(!planned(**synced))
+        return ScrubDecision::kSkipped;
+    const auto again = (*synced)->switches.find(record.file);
+    // A claim granted since the snapshot is a different control block even if it already expired.
+    const auto same = [](const Held& a, const Held& b)
+    { return a.pending == b.pending && !a.claim.owner_before(b.claim) && !b.claim.owner_before(a.claim); };
+    const auto after = held(inputs);
+    if(again == (*synced)->switches.end() || again->second.writer != writer_ ||
+       (*synced)->rolled_back.contains(record.file) ||
+       !std::equal(again->second.inputs.begin(),
+                   again->second.inputs.end(),
+                   inputs.begin(),
+                   inputs.end(),
+                   [](const auto& a, const auto& b) { return a.file == b.file; }) ||
+       !std::equal(after.begin(), after.end(), before.begin(), before.end(), same))
+        return ScrubDecision::kDeferred;
+    const auto w = watermark(**synced, record.story_id);
+    auto status = intact ? rollBack(record, w, inputs, true) : recordLost(record, w);
+    if(!status.ok())
+        return status;
+    return ScrubDecision::kWritten;
 }
 
 // Superseded inputs are unlinked only once this incarnation has fsynced its own log, so a switch line that is
@@ -1386,6 +1461,7 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
                            [&](const auto& entry) { return entry.file == record.file && entry.state == record.state; });
     };
     auto next = std::chrono::steady_clock::now();
+    bool deferred = false;
     for(const auto& record: plan)
     {
         if(hooks_.scrub_step)
@@ -1521,16 +1597,20 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
                 ++result.validated;
                 continue;
             }
-            std::lock_guard lock(mutex_);
+            std::unique_lock lock(mutex_);
             auto index = log_->sync();
             if(!index.ok())
                 return index.status();
             if(log_->failed())
                 return absl::UnavailableError("manifest log failed; the scrubber stops until the writer reopens");
-            const auto resolved = (*index)->locations.find(record.file);
-            if(!current(**index, record) || resolved == (*index)->locations.end() ||
-               resolved->second.tier != planned->tier || resolved->second.rank != planned->rank ||
-               resolved->second.tier_uuid != planned->tier_uuid)
+            const auto still = [&](const ManifestIndex& now)
+            {
+                const auto resolved = now.locations.find(record.file);
+                return current(now, record) && resolved != now.locations.end() &&
+                       resolved->second.tier == planned->tier && resolved->second.rank == planned->rank &&
+                       resolved->second.tier_uuid == planned->tier_uuid;
+            };
+            if(!still(**index))
             {
                 slow_verdicts_.erase(record.file);
                 ++result.skipped;
@@ -1557,9 +1637,21 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
                 continue;
             }
             const bool own_output = (*index)->switches.contains(record.file);
-            auto status = rollbackOrLose(record, watermark(**index, record.story_id), true);
-            if(!status.ok())
-                return status;
+            auto decision = scrubRollbackOrLose(lock,
+                                                record,
+                                                [&](const ManifestIndex& now)
+                                                { return still(now) && tier->current(directory); });
+            if(!decision.ok())
+                return decision.status();
+            if(*decision != ScrubDecision::kWritten)
+            {
+                // A deferred verdict stays pending for the next pass.
+                if(*decision == ScrubDecision::kSkipped)
+                    slow_verdicts_.erase(record.file);
+                deferred |= *decision == ScrubDecision::kDeferred;
+                ++result.skipped;
+                continue;
+            }
             slow_verdicts_.erase(record.file);
             if(own_output && log_->current()->rolled_back.contains(record.file))
                 ++result.rolled_back;
@@ -1574,21 +1666,29 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
             ++result.validated;
             continue;
         }
-        std::lock_guard lock(mutex_);
+        std::unique_lock lock(mutex_);
         auto index = log_->sync();
         if(!index.ok())
             return index.status();
         if(log_->failed())
             return absl::UnavailableError("manifest log failed; the scrubber stops until the writer reopens");
-        if(!current(**index, record) || (*index)->locations.contains(record.file))
+        const auto still = [&](const ManifestIndex& now)
+        { return current(now, record) && !now.locations.contains(record.file); };
+        if(!still(**index))
         {
             ++result.skipped;
             continue;
         }
         const bool own_output = (*index)->switches.contains(record.file);
-        auto status = rollbackOrLose(record, watermark(**index, record.story_id), true);
-        if(!status.ok())
-            return status;
+        auto decision = scrubRollbackOrLose(lock, record, still);
+        if(!decision.ok())
+            return decision.status();
+        if(*decision != ScrubDecision::kWritten)
+        {
+            deferred |= *decision == ScrubDecision::kDeferred;
+            ++result.skipped;
+            continue;
+        }
         const auto* after = log_->current();
         if(own_output && after->rolled_back.contains(record.file))
             ++result.rolled_back;
@@ -1596,6 +1696,9 @@ absl::StatusOr<ScrubResult> FileTierStore::scrubOnce(uint64_t io_bytes_per_sec,
             ++result.lost;
         LOG(WARNING) << "archive scrub found " << record.file << " missing or corrupt";
     }
+    // A failed file whose verdict was deferred is not validated through `through`.
+    if(deferred)
+        return result;
     auto status = log_->writeValidatedMark(result.through);
     if(!status.ok())
         return status;

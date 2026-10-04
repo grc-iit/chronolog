@@ -31,7 +31,7 @@ struct AcquisitionRig
     WalJournalConfig config;
     std::unique_ptr<WalJournal> journal;
     std::unique_ptr<keeper::AcquisitionWatcher> watcher;
-    keeper::WorkerPool pool{2, 32};
+    WorkerPool pool{2, 32};
     std::unique_ptr<keeper::JournalService> service;
     std::unique_ptr<grpc::Server> server;
     std::shared_ptr<grpc::Channel> channel;

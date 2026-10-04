@@ -15,7 +15,6 @@ add_library(chrono_player_lib STATIC
     adapter/ClusterClient.cpp
     adapter/Convert.cpp
     adapter/ReplayService.cpp
-    adapter/VisorClockAudit.cpp
     replay/KeeperHotSource.cpp
     replay/WriterDirectory.cpp)
 target_link_libraries(chrono_player_lib

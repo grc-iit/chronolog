@@ -12,8 +12,8 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chronolog_local.registry import atomic, load, lock
 from chronolog_local.supervisor import Supervisor, configs
-from chronolog_local.tiers import (GRAPHER_STATUS, MARKER, add_marker, filesystem, grapher_views, probe_tier,
-                                   tier_config_keys)
+from chronolog_local.tiers import (GRAPHER_STATUS, MARKER, TierProbe, add_marker, filesystem, grapher_views,
+                                   probe_tier, tier_config_keys)
 
 
 def require(condition, message):
@@ -69,8 +69,12 @@ def main():
             require((result.returncode == 0) == ok, result.stderr or 'unexpected command success')
             return json.loads(result.stdout) if ok else result.stderr
 
-        record = call('create', 'test', '--tier-io-timeout-ms', '50',
-                      '--tier-probe-interval-ms', '50')
+        timings = {'status_reports_the_graphers_tier_view': [],
+                   'generated_configs_carry_budgets_and_tier_timings': [
+                       '--tier-io-timeout-ms', '700', '--tier-probe-interval-ms', '900', '--budget-bytes', '1234567']}
+        # The booted Grapher and Player read these timings too; the Grapher view gate keeps their defaults.
+        record = call('create', 'test', *timings.get(gate, ['--tier-io-timeout-ms', '50',
+                                                            '--tier-probe-interval-ms', '50']))
         folder = root / 'registry/instances/test'
         local = record['tiers'][0]
         local_marker = load(Path(local['root']) / MARKER)
@@ -134,6 +138,90 @@ def main():
                 views, migration = grapher_views(folder, legacy, True)
                 require(not migration['known'] and migration['reason'] == 'no tier table' and
                         all(not view['known'] for view in views), 'no tier table, no Grapher view')
+        elif gate == 'generated_configs_carry_budgets_and_tier_timings':
+            error = call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow',
+                         '--budget-bytes', '-1', ok=False)
+            require('nonnegative' in error and not (root / 'slow').exists(), 'a negative tier budget is refused')
+            for flag in ('--tier-io-timeout-ms', '--tier-probe-interval-ms'):
+                error = call('create', 'other', flag, '60001', ok=False)
+                require('at most 60000' in error, flag + ' above the Grapher bound is refused')
+            call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow',
+                 '--budget-bytes', '4096')
+            current = load(folder / 'instance.json')
+            generated = configs(current)
+            for role in ('grapher', 'player'):
+                require([tier['budget_bytes'] for tier in generated[role]['tiers']] == [1234567, 4096] and
+                        generated[role]['tier_io_timeout_ms'] == 700 and
+                        generated[role]['tier_probe_interval_ms'] == 900,
+                        role + ' gets the tier budgets and timings: ' + json.dumps(generated[role]))
+            older = dict(current, tiers=[{key: value for key, value in tier.items() if key != 'budget_bytes'}
+                                         for tier in current['tiers']])
+            older.pop('tier_io_timeout_ms')
+            older.pop('tier_probe_interval_ms')
+            require(all(tier['budget_bytes'] == 0 for tier in configs(older)['grapher']['tiers']) and
+                    configs(older)['grapher']['tier_io_timeout_ms'] == 1000 and
+                    configs(older)['player']['tier_probe_interval_ms'] == 5000,
+                    'a record without budgets or timings gets the documented defaults')
+            for key in ('tier_io_timeout_ms', 'tier_probe_interval_ms'):
+                current['overrides'] = {'grapher': {key: 5}}
+                try:
+                    configs(current)
+                except ValueError as refusal:
+                    require('fixed by instance.json' in str(refusal), key + ' is not an override')
+                else:
+                    require(False, 'an override changed ' + key)
+            try:
+                require(call('up', 'test')['state'] == 'ready', 'the Grapher and the Player accept the tier table')
+                for role in ('grapher', 'player'):
+                    require(load(folder / 'config' / (role + '.json'))['tiers'] == generated[role]['tiers'],
+                            'the booted ' + role + ' was given the budgets')
+                deadline = time.monotonic() + 30
+                while True:
+                    tiers = call('status', 'test', timeout=5)['tiers']
+                    if all(tier['grapher'].get('known') for tier in tiers):
+                        break
+                    require(time.monotonic() < deadline, 'the Grapher publishes its view: ' + json.dumps(tiers))
+                    time.sleep(0.05)
+                require([tier['grapher']['budget_bytes'] for tier in tiers] == [1234567, 4096],
+                        'the running Grapher applies the budgets: ' + json.dumps(tiers))
+            finally:
+                call('down', 'test', '--force')
+        elif gate == 'a_probe_in_flight_keeps_the_last_result':
+            now = [0.0]
+            release = threading.Event()
+            calls = []
+
+            def scripted(tier, deployment_id):
+                calls.append(tier['name'])
+                if len(calls) == 2:
+                    release.wait()
+                return {'available': True, 'used_bytes': len(calls)}
+
+            probe = TierProbe(local, None, 1000, 100, scripted, lambda: now[0])
+
+            def settle():
+                probe.thread.join(timeout=30)
+                require(not probe.thread.is_alive(), 'a scripted probe returns')
+                return probe.poll()
+
+            require(probe.poll() == {'available': False, 'used_bytes': None}, 'no probe has completed yet')
+            require(settle() == {'available': True, 'used_bytes': 1}, 'the first probe completes')
+            now[0] = 0.2
+            require(probe.poll() == {'available': True, 'used_bytes': 1} and probe.thread is not None,
+                    'a probe that just started keeps the last result')
+            now[0] = 1.1
+            require(probe.poll() == {'available': True, 'used_bytes': 1}, 'a probe in flight keeps the last result')
+            now[0] = 1.3
+            require(probe.poll() == {'available': False, 'used_bytes': None, 'probe_error': 'tier I/O deadline'},
+                    'a probe past its deadline is unavailable')
+            release.set()
+            now[0] = 1.4
+            require(settle() == {'available': False, 'used_bytes': None, 'probe_error': 'tier I/O deadline'},
+                    'a probe that returns after its deadline stays unavailable')
+            now[0] = 1.6
+            require(probe.poll()['available'] is False and probe.thread is not None,
+                    'the next probe starts from the deadline verdict')
+            require(settle() == {'available': True, 'used_bytes': 3}, 'a timely probe restores the tier')
         elif gate == 'grapher_status_goes_stale_without_a_heartbeat':
             call('tier', 'add', 'test', 'nfs', str(root / 'slow'), '--rank', '1', '--kind', 'slow')
             current = load(folder / 'instance.json')

@@ -11,7 +11,7 @@
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include "ram_harness.h"
-#include "runtime/WorkerPool.h"
+#include "worker/WorkerPool.h"
 
 namespace chronolog::test
 {
@@ -73,7 +73,7 @@ public:
     std::unique_ptr<internal::v1::Archive::Stub> archive;
 
 private:
-    keeper::WorkerPool pool_{2, 64};
+    WorkerPool pool_{2, 64};
     keeper::JournalService journal_service_{*rig.journal, pool_};
     keeper::ArchiveService archive_service_{*rig.journal, *rig.membership, pool_};
     std::unique_ptr<grpc::Server> server_;

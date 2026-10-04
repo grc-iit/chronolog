@@ -8,9 +8,13 @@
 #include <deque>
 #include <set>
 
-namespace chronolog::grapher
+namespace chronolog
 {
 class WorkerPool;
+}
+
+namespace chronolog::grapher
+{
 struct TransferLimits
 {
     uint64_t chunk_bytes = 64 * 1024 * 1024;
