@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/static/logos/chronolog_logo.svg" alt="ChronoLog logo" width="40%">
+  <img src=".github/assets/chronolog_logo.svg" alt="ChronoLog logo" width="40%">
 </p>
 
 <h1 align="center">ChronoLog</h1>
@@ -436,7 +436,7 @@ Docker and then Podman (`ENGINES=podman` picks one). It serializes on a host loc
 ChronoLog is distributed under the [BSD 2-Clause License](LICENSE).
 
 <p align="center">
-  <img src="website/public/images/logos/grc-logo.png" alt="Gnosis Research Center" width="60">
+  <img src=".github/assets/grc-logo.png" alt="Gnosis Research Center" width="60">
 </p>
 
 <p align="center">
@@ -446,6 +446,6 @@ ChronoLog is distributed under the [BSD 2-Clause License](LICENSE).
 
 <p align="center">
   <strong>Sponsored by:</strong><br>
-  <a href="https://www.nsf.gov"><img src="docs/static/logos/nsf-fb7efe9286a9b499c5907d82af3e70fd.png" alt="National Science Foundation" width="100"></a><br>
+  <a href="https://www.nsf.gov"><img src=".github/assets/nsf-logo.png" alt="National Science Foundation" width="100"></a><br>
   National Science Foundation (NSF CSSI-2104013)
 </p>
