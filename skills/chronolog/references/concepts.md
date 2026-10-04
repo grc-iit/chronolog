@@ -64,10 +64,10 @@ All are built on the public SDKs and inherit the guarantees above.
 
 | Plugin | What it gives you |
 |---|---|
-| chrono-kvs | versioned key-value store: put, get, get as of an HLC, history |
-| chrono-pubsub | topics with at-least-once delivery, resumable consumers, positions saved in kvs |
-| chrono-sql | append-only typed tables with a small SELECT that reports Completion |
-| chrono-mcp | MCP server exposing contexts to agents: remember, recall, latest, follow and reconcile with explicit completeness |
-| chrono-stream | host metrics into ChronoLog and a resumable exporter to InfluxDB with Grafana dashboards |
-| chrono-viz | Grafana datasource for ChronoLog with completeness notices and live tail |
-| chrono-ldms | C bridge for LDMS sampler data with a non-blocking queue |
+| kvs (`plugins/kvs`) | versioned key-value store: put, get, get as of an HLC, history |
+| pubsub (`plugins/pubsub`) | topics with at-least-once delivery, resumable consumers, positions saved in kvs |
+| sql (`plugins/sql`) | append-only typed tables with a small SELECT that reports Completion |
+| mcp (`plugins/mcp`) | MCP server exposing contexts to agents: remember, recall, latest, follow and reconcile with explicit completeness |
+| stream (`plugins/stream`) | host metrics into ChronoLog and a resumable exporter to InfluxDB with Grafana dashboards |
+| viz (`plugins/viz`) | Grafana datasource for ChronoLog with completeness notices and live tail |
+| ldms (`plugins/ldms`) | C bridge for LDMS sampler data with a non-blocking queue |

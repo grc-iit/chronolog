@@ -1,4 +1,4 @@
-"""One chrono-mcp stdio process per `async with`, driven through the MCP client; its pid allows a hard kill."""
+"""One chronolog-mcp stdio process per `async with`, driven through the MCP client; its pid allows a hard kill."""
 import asyncio
 from contextlib import AsyncExitStack
 import json

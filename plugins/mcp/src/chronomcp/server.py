@@ -1,4 +1,4 @@
-"""chrono-mcp: twelve instance and Context tools over the native Context API (RFC-F section 7)."""
+"""chronolog-mcp: twelve instance and Context tools over the native Context API (RFC-F section 7)."""
 import argparse
 import asyncio
 import base64
