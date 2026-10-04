@@ -326,6 +326,70 @@ TEST(FileTierStore, PublishIsNotBlockedByARead)
     EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{300, 0}));
 }
 
+// A publish visits the same number of manifest records whether the story holds 16 files or 400: the story view takes
+// the new record alone, the watermark walk resumes at the cached watermark, and the duplicate lookup is by key.
+TEST(FileTierStore, PublishWorkDoesNotGrowWithTheManifest)
+{
+    auto directory = TestDirectory();
+    constexpr int64_t Base = 1'000'000, Width = 100;
+    auto store = FileTierStore::Open(*directory, "primary", {{1, {Base, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok()) << store.status();
+    const auto publish = [&](int64_t index)
+    {
+        const auto before = (*store)->viewWorkForTesting();
+        const auto published = (*store)->publish(contract::Window(Base + index * Width, Base + (index + 1) * Width));
+        EXPECT_TRUE(published.ok()) << published.status();
+        return (*store)->viewWorkForTesting() - before;
+    };
+    uint64_t small = 0, large = 0;
+    for(int64_t index = 0; index < 400; ++index)
+    {
+        const auto work = publish(index);
+        if(index == 15)
+            small = work;
+        large = work;
+    }
+    EXPECT_GT(small, 0u);
+    EXPECT_EQ(large, small);
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{Base + 400 * Width, 0}));
+    const auto records = (*store)->manifest(1);
+    ASSERT_TRUE(records.ok());
+    EXPECT_EQ(records->size(), 400u);
+}
+
+// The view a store keeps while it publishes equals the view a fresh reader builds from the same manifest, after every
+// publish: windows arrive out of order, leave gaps that later fill, and their names do not sort in window order.
+TEST(FileTierStore, IncrementallyGrownViewEqualsARebuiltView)
+{
+    auto directory = TestDirectory();
+    auto store = FileTierStore::Open(*directory, "primary", {{1, {10, 0}}}, std::make_shared<ProtoChunkCodec>());
+    ASSERT_TRUE(store.ok()) << store.status();
+    const std::vector<int64_t> order{3, 0, 1, 12, 2, 9, 10, 4, 11, 5, 150, 6, 7, 8, 13, 99, 14};
+    std::set<int64_t> done;
+    for(const auto index: order)
+    {
+        ASSERT_TRUE((*store)->publish(contract::Window((index + 1) * 10, (index + 2) * 10)).ok());
+        auto reader = FileTierStore::OpenReadOnly(*directory);
+        ASSERT_TRUE(reader.ok()) << reader.status();
+        const auto grown = (*store)->manifest(1), rebuilt = (*reader)->manifest(1);
+        ASSERT_TRUE(grown.ok() && rebuilt.ok());
+        ASSERT_EQ(grown->size(), rebuilt->size());
+        for(size_t i = 0; i < grown->size(); ++i)
+        {
+            EXPECT_EQ((*grown)[i].file, (*rebuilt)[i].file);
+            EXPECT_EQ((*grown)[i].state, (*rebuilt)[i].state);
+            EXPECT_EQ((*grown)[i].start, (*rebuilt)[i].start);
+            EXPECT_EQ((*grown)[i].end, (*rebuilt)[i].end);
+        }
+        // The watermark is the end of the last window of the gap-free run that starts at the anchor.
+        done.insert(index);
+        int64_t contiguous = 0;
+        while(done.contains(contiguous)) ++contiguous;
+        EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{(contiguous + 1) * 10, 0}));
+    }
+    EXPECT_EQ((*store)->contiguousWatermark(1).value(), (Hlc{160, 0}));
+}
+
 TEST(FileTierStore, AFileErasedDuringAReadNeverSilentlyDropsEvents)
 {
     auto directory = TestDirectory();

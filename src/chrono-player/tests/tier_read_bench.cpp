@@ -1,6 +1,7 @@
 #include "chrono-player/replay/HotReplay.h"
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -22,10 +23,16 @@ public:
         return result;
     }
 };
-bool measure(const std::filesystem::path& root, const TierChain& chain, const char* name)
+// before_read, when set, is a shell command run before each timed read and outside the timing (for example one that
+// drops the page cache), so the read's first byte comes from the tier and not from the client's memory.
+bool measure(const std::filesystem::path& root,
+             const TierChain& chain,
+             const char* name,
+             const char* before_read,
+             size_t reads)
 {
     std::vector<double> times;
-    for(size_t iteration = 0; iteration < 100; ++iteration)
+    for(size_t iteration = 0; iteration < reads; ++iteration)
     {
         auto opened =
                 FileTierStore::OpenReadOnly(root, std::chrono::hours(1), {}, 0, {}, std::chrono::seconds(30), chain);
@@ -40,6 +47,11 @@ bool measure(const std::filesystem::path& root, const TierChain& chain, const ch
         options.archive = std::shared_ptr<FileTierStore>(*std::move(opened));
         options.batch_size = 1;
         HotReplay replay(std::make_shared<Source>(), options);
+        if(before_read && std::system(before_read) != 0)
+        {
+            std::cerr << "before-read command failed\n";
+            return false;
+        }
         const auto begin = std::chrono::steady_clock::now();
         auto stream = replay.read(1, {Range::Axis::Hlc, {100, 0}, {300, 0}});
         if(!stream.ok())
@@ -65,15 +77,23 @@ bool measure(const std::filesystem::path& root, const TierChain& chain, const ch
             return false;
     }
     std::sort(times.begin(), times.end());
-    std::cout << name << " reads=100 p50_ms=" << (times[49] + times[50]) / 2 << " max_ms=" << times.back()
-              << " client_cache=included\n";
+    std::cout << name << " reads=" << reads << " p50_ms=" << (times[(reads - 1) / 2] + times[reads / 2]) / 2
+              << " max_ms=" << times.back()
+              << (before_read ? " client_cache=dropped_before_each_read\n" : " client_cache=included\n");
     return true;
 }
 } // namespace
 
 int main(int argc, char** argv)
 {
-    if(argc != 3)
+    if(argc < 3 || argc > 5)
+    {
+        std::cerr << "usage: chrono_player_tier_read_bench <local-root> <slow-root> [command run before each read] [reads]\n";
+        return 2;
+    }
+    const char* before_read = argc >= 4 && *argv[3] ? argv[3] : nullptr;
+    const size_t reads = argc == 5 ? std::stoul(argv[4]) : 100;
+    if(!reads)
         return 2;
     const std::filesystem::path root = argv[1], slow = argv[2];
     auto opened = FileTierStore::Open(root, "tier-bench", {{1, {100, 0}}});
@@ -113,7 +133,7 @@ int main(int argc, char** argv)
                                                                             {"tier_uuid", tier.tier_uuid},
                                                                             {"f_type", info.f_type}};
     }
-    if(!measure(root, chain, "local"))
+    if(!measure(root, chain, "local", before_read, reads))
         return 1;
     if(!writer->scrubOnce(0).ok())
         return 1;
@@ -122,5 +142,5 @@ int main(int argc, char** argv)
     auto migrated = writer->migrateOnce("slow");
     if(!migrated.ok() || *migrated != 1)
         return 1;
-    return measure(root, chain, "slow") ? 0 : 1;
+    return measure(root, chain, "slow", before_read, reads) ? 0 : 1;
 }
