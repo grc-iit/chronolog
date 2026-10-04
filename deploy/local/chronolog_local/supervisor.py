@@ -29,6 +29,10 @@ def configs(record):
                         process_id='grapher-1', manifest_writer='grapher-1', archive_root=record['tiers'][0]['root']),
         'player': dict(common, listen=e['player'], advertise=e['player'], visor=e['catalog'],
                        keeper_internal={'keeper-1': e['keeper_internal']}, archive_root=record['tiers'][0]['root'])}
+    # The Keeper refuses a WAL directory stamped by another deployment, such as an external --wal-dir that
+    # outlived a purged instance.
+    if 'deployment_id' in record:
+        result['keeper']['deployment_id'] = record['deployment_id']
     # The Grapher and the Player read the same tier table (RFC-I 3.1). An instance created before tier markers
     # existed has no deployment id and keeps a plain archive root. migrate_enabled stays at the Grapher's default,
     # false, until every host that reads the archive runs a Player that follows migrate_v1 (I13.13).

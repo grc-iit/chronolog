@@ -113,6 +113,8 @@ def main():
                             'the Grapher and the Player get the tier table')
                     require('migrate_enabled' not in generated, 'migration stays at its default, off')
                 generated = configs(current)
+                require(generated['keeper']['deployment_id'] == record['deployment_id'],
+                        'the Keeper stamps and checks its WAL with the deployment id')
                 require(generated['grapher']['tier_status_file'] == GRAPHER_STATUS == 'run/grapher-tiers.json' and
                         'tier_status_file' not in generated['player'],
                         'only the Grapher gets the status file, under the instance folder')
