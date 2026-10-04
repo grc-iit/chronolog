@@ -92,10 +92,12 @@ struct Handle
         Read,
         Tail,
         ContextClient,
-        Session
+        Session,
+        Lanes
     } kind;
     std::shared_ptr<sdk::Client> client;
     std::shared_ptr<sdk::Writer> writer;
+    std::shared_ptr<sdk::LaneWriter> lanes;
     std::shared_ptr<sdk::ReadStream> read;
     std::shared_ptr<sdk::TailStream> tail;
     std::shared_ptr<ctx::ContextClient> context;

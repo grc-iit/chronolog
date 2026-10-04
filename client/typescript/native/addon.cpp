@@ -422,6 +422,13 @@ Js js(Napi::Env env, const Held& value)
         out.Set("acquisition", js(env, value->acquisition));
         return out;
     }
+    if(value->kind == Handle::Lanes)
+    {
+        auto out = Napi::Object::New(env);
+        out.Set("handle", external);
+        out.Set("lanes", value->lanes->lanes());
+        return out;
+    }
     if(value->kind == Handle::Session)
     {
         auto out = Napi::Object::New(env);
@@ -657,6 +664,28 @@ Js acquire(const Napi::CallbackInfo& info)
                           return out;
                       });
 }
+Js acquireLanes(const Napi::CallbackInfo& info)
+{
+    auto held = handle(info[0], Handle::Client);
+    auto story = unsigned64(info[1]);
+    auto identity = text(info[2]);
+    auto count = static_cast<size_t>(number(info[3]));
+    auto slice = signed64(info[4]);
+    auto options = object(info[5]);
+    auto request = acquireOptions(options);
+    auto end = deadline(options);
+    return work<Held>(
+            info.Env(),
+            [held, story, identity, count, slice, request = std::move(request), end]() mutable -> absl::StatusOr<Held>
+            {
+                auto result = held->client->acquireLanes(story, identity, count, slice, std::move(request), end);
+                if(!result.ok())
+                    return result.status();
+                auto out = std::make_shared<Handle>(Handle::Lanes);
+                out->lanes = std::make_shared<sdk::LaneWriter>(std::move(*result));
+                return out;
+            });
+}
 Js newAcquireRequestId(const Napi::CallbackInfo& info)
 {
     auto result = handle(info[0], Handle::Client)->client->newAcquireRequestId();
@@ -665,18 +694,27 @@ Js newAcquireRequestId(const Napi::CallbackInfo& info)
     return Napi::String::New(info.Env(), *result);
 }
 Js lease(const Napi::CallbackInfo& info) { return js(info.Env(), handle(info[0], Handle::Writer)->writer->lease()); }
+Held appender(Js value)
+{
+    if(value.IsExternal() && (*value.As<Napi::External<Held>>().Data())->kind == Handle::Lanes)
+        return handle(value, Handle::Lanes);
+    return handle(value, Handle::Writer);
+}
 Js append(const Napi::CallbackInfo& info)
 {
-    auto held = handle(info[0], Handle::Writer);
+    auto held = appender(info[0]);
     auto options = object(info[2]);
     auto input = spec(info[1], options);
     auto end = deadline(options);
     return work<sdk::AppendResult>(info.Env(),
-                                   [held, input = std::move(input), end] { return held->writer->append(input, end); });
+                                   [held, input = std::move(input), end] {
+                                       return held->lanes ? held->lanes->append(input, end)
+                                                          : held->writer->append(input, end);
+                                   });
 }
 Js appendBatch(const Napi::CallbackInfo& info)
 {
-    auto held = handle(info[0], Handle::Writer);
+    auto held = appender(info[0]);
     if(!info[1].IsArray())
         throw Napi::TypeError::New(info.Env(), "batch must be an array");
     auto values = info[1].As<Napi::Array>();
@@ -689,14 +727,17 @@ Js appendBatch(const Napi::CallbackInfo& info)
     }
     auto end = deadline(object(info[2]));
     return work<sdk::BatchResult>(info.Env(),
-                                  [held, specs = std::move(specs), end]
-                                  { return held->writer->appendBatch(specs, end); });
+                                  [held, specs = std::move(specs), end] {
+                                      return held->lanes ? held->lanes->appendBatch(specs, end)
+                                                         : held->writer->appendBatch(specs, end);
+                                  });
 }
 Js release(const Napi::CallbackInfo& info)
 {
-    auto held = handle(info[0], Handle::Writer);
+    auto held = appender(info[0]);
     auto end = deadline(object(info[1]));
-    return work<bool>(info.Env(), [held, end] { return held->writer->release(end); });
+    return work<bool>(info.Env(),
+                      [held, end] { return held->lanes ? held->lanes->release(end) : held->writer->release(end); });
 }
 Js stream(const Napi::CallbackInfo& info)
 {
@@ -777,6 +818,7 @@ Napi::Object init(Napi::Env env, Napi::Object exports)
     exports.Set("connect", Napi::Function::New(env, connect));
     exports.Set("catalog", Napi::Function::New(env, catalog));
     exports.Set("acquire", Napi::Function::New(env, acquire));
+    exports.Set("acquireLanes", Napi::Function::New(env, acquireLanes));
     exports.Set("newAcquireRequestId", Napi::Function::New(env, newAcquireRequestId));
     exports.Set("lease", Napi::Function::New(env, lease));
     exports.Set("append", Napi::Function::New(env, append));
