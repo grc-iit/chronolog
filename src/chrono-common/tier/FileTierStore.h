@@ -150,6 +150,8 @@ public:
     absl::Status sweepTiers();
     absl::Status writeTierReplicas();
     absl::Status awaitTierUnlinksForTesting(std::chrono::milliseconds timeout);
+    // Manifest records visited so far by story view builds, view lookups and watermark walks.
+    uint64_t viewWorkForTesting() const;
     absl::StatusOr<ChunkBytes> loadResolvedFile(const std::string& file) const;
     absl::StatusOr<std::optional<MigrationLocation>> location(const std::string& file) const;
 
@@ -206,8 +208,15 @@ private:
         bool built{};
         uint64_t generation{};
         size_t applied{};
+        // effective is ordered by key (the file name, or writer, chunk and start for a record without a file) and
+        // keys holds that key per position. A view whose story only gained records since it was built takes those
+        // records alone, so a publish does not pay for the files already in the manifest.
         std::vector<ManifestRecord> effective;
+        std::vector<std::string> keys;
         std::vector<size_t> by_start;
+        // Keys applied since the watermark was last computed; overflowed means too many to keep, so recompute.
+        std::vector<std::string> touched;
+        bool touched_overflowed{};
         std::set<std::string> published;
         uint64_t revision{};
         // Superseded inputs of the story by their name without extension, to the output that replaced them.
@@ -218,6 +227,8 @@ private:
     };
     absl::StatusOr<const ManifestIndex*> refresh() const;
     StoryView& viewOf(const ManifestIndex& index, StoryId story) const;
+    void applyToView(const ManifestIndex& index, StoryView& view, const ManifestRecord& record) const;
+    const ManifestRecord* inView(const StoryView& view, const std::string& file) const;
     std::vector<ManifestRecord> effective(const ManifestIndex& index, StoryId story) const;
     Hlc watermark(const ManifestIndex& index, StoryId story) const;
     bool known(const ManifestIndex& index, StoryId story) const;
@@ -226,6 +237,8 @@ private:
     std::chrono::milliseconds manifest_poll_{1000};
     mutable bool polled_{};
     mutable std::map<StoryId, StoryView> views_;
+    // Records a view build, a view lookup or a watermark walk visited, so a gate can assert the work of one publish.
+    mutable uint64_t view_work_{};
     std::set<std::string> inflight_;
     std::condition_variable inflight_changed_;
     mutable std::chrono::steady_clock::time_point refreshed_{};

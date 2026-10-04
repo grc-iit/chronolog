@@ -490,6 +490,96 @@ bool FileTierStore::known(const ManifestIndex& index, StoryId story) const
     return anchors_.contains(story) || index.by_story.contains(story);
 }
 
+namespace
+{
+std::string ViewKey(const ManifestRecord& record)
+{
+    return record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
+                                         std::to_string(record.start.physical_ns) + ":" +
+                                         std::to_string(record.start.logical)
+                               : record.file;
+}
+// A larger batch of new records rebuilds the view, which sorts once instead of inserting one by one.
+constexpr size_t IncrementalViewRecords = 64;
+constexpr size_t TouchedViewKeys = 1024;
+} // namespace
+
+uint64_t FileTierStore::viewWorkForTesting() const
+{
+    std::lock_guard lock(mutex_);
+    return view_work_;
+}
+
+const ManifestRecord* FileTierStore::inView(const StoryView& view, const std::string& file) const
+{
+    ++view_work_;
+    const auto found = std::lower_bound(view.keys.begin(), view.keys.end(), file);
+    if(found == view.keys.end() || *found != file)
+        return nullptr;
+    const auto& record = view.effective[static_cast<size_t>(found - view.keys.begin())];
+    return record.file == file ? &record : nullptr;
+}
+
+// One more record of a built view, with the outcome the rebuild below gives for the same records in the same order.
+void FileTierStore::applyToView(const ManifestIndex& index, StoryView& view, const ManifestRecord& record) const
+{
+    ++view_work_;
+    if(index.rolled_back.contains(record.file))
+        return;
+    if(const auto replaced = index.superseded.find(record.file);
+       replaced != index.superseded.end() && !index.rolled_back.contains(replaced->second))
+    {
+        view.superseded[Stem(record.file)] = replaced->second;
+        return;
+    }
+    auto key = ViewKey(record);
+    const auto found = std::lower_bound(view.keys.begin(), view.keys.end(), key);
+    const auto position = static_cast<size_t>(found - view.keys.begin());
+    const auto by_record_start = [&](const Hlc& start, size_t entry) { return start < view.effective[entry].start; };
+    if(found != view.keys.end() && *found == key)
+    {
+        auto& existing = view.effective[position];
+        if(StateRank(record.state) >= StateRank(existing.state))
+        {
+            if(existing.start != record.start)
+            {
+                view.by_start.erase(std::find(view.by_start.begin(), view.by_start.end(), position));
+                existing = record;
+                view.by_start.insert(
+                        std::upper_bound(view.by_start.begin(), view.by_start.end(), record.start, by_record_start),
+                        position);
+                view_work_ += view.by_start.size();
+            }
+            else
+                existing = record;
+        }
+    }
+    else
+    {
+        // A file named after a later window than every file of the story lands at the end and moves nothing.
+        if(position != view.effective.size())
+        {
+            for(auto& entry: view.by_start)
+                if(entry >= position)
+                    ++entry;
+            view_work_ += view.effective.size();
+        }
+        view.effective.insert(view.effective.begin() + static_cast<std::ptrdiff_t>(position), record);
+        view.keys.insert(view.keys.begin() + static_cast<std::ptrdiff_t>(position), key);
+        view.by_start.insert(
+                std::upper_bound(view.by_start.begin(), view.by_start.end(), record.start, by_record_start),
+                position);
+    }
+    if(!view.first_start || record.start < *view.first_start)
+        view.first_start = record.start;
+    if(record.state == ManifestState::Published)
+        view.published.insert(record.file);
+    if(view.touched.size() < TouchedViewKeys)
+        view.touched.push_back(std::move(key));
+    else
+        view.touched_overflowed = true;
+}
+
 FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, StoryId story) const
 {
     auto& view = views_[story];
@@ -497,8 +587,20 @@ FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, Stor
     const size_t count = found == index.by_story.end() ? 0 : found->second.size();
     const auto revisions = index.revisions.find(story);
     const uint64_t revision = revisions == index.revisions.end() ? 0 : revisions->second;
-    if(view.built && view.generation == index.generation && view.applied == count && view.revision == revision)
-        return view;
+    if(view.built && view.generation == index.generation && view.revision == revision)
+    {
+        if(view.applied == count)
+            return view;
+        // Within one generation and one revision the story's records only grow, and no switch or rollback changed
+        // which of the earlier ones are superseded.
+        if(view.applied < count && count - view.applied <= IncrementalViewRecords)
+        {
+            for(size_t next = view.applied; next < count; ++next)
+                applyToView(index, view, index.records[found->second[next]]);
+            view.applied = count;
+            return view;
+        }
+    }
     view = StoryView{};
     view.built = true;
     view.generation = index.generation;
@@ -506,6 +608,7 @@ FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, Stor
     view.revision = revision;
     if(found == index.by_story.end())
         return view;
+    view_work_ += count;
     std::map<std::string, ManifestRecord> files;
     for(const auto position: found->second)
     {
@@ -520,10 +623,7 @@ FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, Stor
             view.superseded[Stem(record.file)] = replaced->second;
             continue;
         }
-        const auto key = record.file.empty() ? record.manifest_writer + ":" + record.chunk_id + ":" +
-                                                       std::to_string(record.start.physical_ns) + ":" +
-                                                       std::to_string(record.start.logical)
-                                             : record.file;
+        const auto key = ViewKey(record);
         const auto existing = files.find(key);
         if(existing == files.end() || StateRank(record.state) >= StateRank(existing->second.state))
             files[key] = record;
@@ -532,12 +632,18 @@ FileTierStore::StoryView& FileTierStore::viewOf(const ManifestIndex& index, Stor
         if(record.state == ManifestState::Published)
             view.published.insert(record.file);
     }
-    for(auto& [key, record]: files) view.effective.push_back(std::move(record));
+    view.effective.reserve(files.size());
+    view.keys.reserve(files.size());
+    for(auto& [key, record]: files)
+    {
+        view.keys.push_back(key);
+        view.effective.push_back(std::move(record));
+    }
     view.by_start.resize(view.effective.size());
     for(size_t i = 0; i < view.by_start.size(); ++i) view.by_start[i] = i;
-    std::sort(view.by_start.begin(),
-              view.by_start.end(),
-              [&](size_t a, size_t b) { return view.effective[a].start < view.effective[b].start; });
+    std::stable_sort(view.by_start.begin(),
+                     view.by_start.end(),
+                     [&](size_t a, size_t b) { return view.effective[a].start < view.effective[b].start; });
     return view;
 }
 
@@ -560,14 +666,45 @@ Hlc FileTierStore::watermark(const ManifestIndex& index, StoryId story) const
         value = std::max(value, floor->second);
     if(const auto floor = watermarks_.find(story); floor != watermarks_.end())
         value = std::max(value, floor->second);
-    if(view.watermark_valid && view.watermark_input == value)
-        return view.watermark;
-    const Hlc input = value;
-    for(const auto position: view.by_start)
+    const auto counts = [&](const ManifestRecord& record)
     {
-        const auto& record = view.effective[position];
-        if(record.exempt || (record.state != ManifestState::Published && record.state != ManifestState::Empty &&
-                             !(record.state == ManifestState::Deleted && view.published.contains(record.file))))
+        return !record.exempt && (record.state == ManifestState::Published || record.state == ManifestState::Empty ||
+                                  (record.state == ManifestState::Deleted && view.published.contains(record.file)));
+    };
+    const Hlc input = value;
+    auto next = view.by_start.begin();
+    Hlc lowest_input = input;
+    if(view.watermark_valid && !view.touched_overflowed && input >= view.watermark_input)
+    {
+        // The cached watermark is a fixpoint: every counted record that starts at or below it also ends at or below
+        // it, except the records applied since. So an input inside [cached input, cached watermark] with nothing
+        // applied gives the cached answer, and otherwise the walk resumes above the cached watermark.
+        if(view.touched.empty() && input <= view.watermark)
+            return view.watermark;
+        const Hlc cached = view.watermark;
+        value = std::max(value, cached);
+        for(const auto& key: view.touched)
+        {
+            ++view_work_;
+            const auto found = std::lower_bound(view.keys.begin(), view.keys.end(), key);
+            if(found == view.keys.end() || *found != key)
+                continue;
+            const auto& record = view.effective[static_cast<size_t>(found - view.keys.begin())];
+            if(counts(record) && record.start <= cached)
+                value = std::max(value, record.end);
+        }
+        next = std::upper_bound(view.by_start.begin(),
+                                view.by_start.end(),
+                                cached,
+                                [&](const Hlc& bound, size_t entry) { return bound < view.effective[entry].start; });
+        if(input <= cached)
+            lowest_input = view.watermark_input;
+    }
+    for(; next != view.by_start.end(); ++next)
+    {
+        ++view_work_;
+        const auto& record = view.effective[*next];
+        if(!counts(record))
             continue;
         if(record.start > value)
             break;
@@ -575,8 +712,10 @@ Hlc FileTierStore::watermark(const ManifestIndex& index, StoryId story) const
     }
     watermarks_[story] = value;
     view.watermark_valid = true;
-    view.watermark_input = input;
+    view.watermark_input = lowest_input;
     view.watermark = value;
+    view.touched.clear();
+    view.touched_overflowed = false;
     return value;
 }
 
@@ -640,11 +779,8 @@ bool FileTierStore::retired(const ManifestIndex& index, const ManifestRecord& re
 
 bool FileTierStore::effectivePublished(const ManifestIndex& index, const ManifestRecord& record) const
 {
-    const auto& view = viewOf(index, record.story_id);
-    return std::any_of(view.effective.begin(),
-                       view.effective.end(),
-                       [&](const auto& entry)
-                       { return entry.file == record.file && entry.state == ManifestState::Published; });
+    const auto* entry = inView(viewOf(index, record.story_id), record.file);
+    return entry && entry->state == ManifestState::Published;
 }
 
 // A record that vanished after it was planned: retention erased it (no events), compaction replaced it (exactly the
@@ -1058,8 +1194,14 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             const auto& view = viewOf(**index, chunk.story_id);
             holder.reset();
             compacted = false;
-            for(const auto& existing: view.effective)
+            // Every file of this window has the stem as a prefix of its name, so those files sit together in key order.
+            for(auto at = static_cast<size_t>(std::lower_bound(view.keys.begin(), view.keys.end(), stem) -
+                                              view.keys.begin());
+                at < view.effective.size() && view.keys[at].starts_with(stem);
+                ++at)
             {
+                ++view_work_;
+                const auto& existing = view.effective[at];
                 if(Stem(existing.file) != stem)
                     continue;
                 if(existing.state == ManifestState::Empty && chunk.events.empty())
@@ -1076,9 +1218,8 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
             }
             if(const auto replaced = view.superseded.find(stem); !holder && replaced != view.superseded.end())
             {
-                for(const auto& entry: view.effective)
-                    if(entry.file == replaced->second && entry.state == ManifestState::Published)
-                        holder = entry;
+                if(const auto* entry = inView(view, replaced->second); entry && entry->state == ManifestState::Published)
+                    holder = *entry;
                 if(!holder)
                     return absl::UnavailableError("chunk rotation was compacted into a file that is not published");
                 compacted = true;
@@ -1127,10 +1268,10 @@ absl::StatusOr<ManifestRecord> FileTierStore::publish(Chunk chunk)
         const auto replaced = view.superseded.find(stem);
         const bool current =
                 (holder->state == ManifestState::Empty
-                         ? std::any_of(view.effective.begin(),
-                                       view.effective.end(),
-                                       [&](const auto& entry)
-                                       { return entry.file == holder->file && entry.state == ManifestState::Empty; })
+                         ? [&] {
+                               const auto* entry = inView(view, holder->file);
+                               return entry && entry->state == ManifestState::Empty;
+                           }()
                          : effectivePublished(**index, *holder)) &&
                 (compacted ? replaced != view.superseded.end() && replaced->second == holder->file
                            : replaced == view.superseded.end());
