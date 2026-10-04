@@ -178,7 +178,7 @@ def profile(args):
         lines.append("%-30s" % b + "".join("%11.1f%%" % roles[n][2].get(b, 0.0) for n in names))
     top = {}
     for n in names:
-        top[n] = sorted(roles[n][1], key=lambda r: -r["percent"])[:6]
+        top[n] = sorted(roles[n][1], key=lambda r: -r["percent"])[:10]
         lines.append(f"top symbols of {n}:")
         for r in top[n]:
             lines.append("  %5.1f%%  %-26s %s" % (r["percent"], r["bucket"], r["symbol"][:96]))

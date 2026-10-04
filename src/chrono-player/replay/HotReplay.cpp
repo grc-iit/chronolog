@@ -36,6 +36,13 @@ bool inRange(const Range& r, const Event& e)
     return lo < r.end.physical_ns && hi >= r.start.physical_ns;
 }
 
+// A Keeper answers in ReplayLess order, and a stable sort of an ordered input moves every event for nothing.
+void sortReplay(std::vector<Event>& events)
+{
+    if(!std::is_sorted(events.begin(), events.end(), ReplayLess))
+        std::stable_sort(events.begin(), events.end(), ReplayLess);
+}
+
 bool abandoned(const HotFetch& fetch, const Range& range)
 {
     for(const auto& lost: fetch.abandoned)
@@ -366,7 +373,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
         }
         retained += events.size();
         for(const auto& e: events) unbounded |= !physicalBounded(e);
-        std::stable_sort(events.begin(), events.end(), ReplayLess);
+        sortReplay(events);
         inputs.push_back(std::move(events));
     };
     bool policy = fetch.physical_policy;
@@ -983,7 +990,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     {
         std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e); });
         for(const auto& e: k.events) unbounded_event |= !physicalBounded(e);
-        std::stable_sort(k.events.begin(), k.events.end(), ReplayLess);
+        sortReplay(k.events);
         inputs.push_back(std::move(k.events));
     }
     Range cold{range.axis, range.start, std::min(boundary, covered.end)};
