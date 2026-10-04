@@ -7,8 +7,8 @@
 #include <set>
 #include <thread>
 
-#include "journal/RamJournal.h"
-#include "wal/FileSink.h"
+#include "keeper/journal/RamJournal.h"
+#include "keeper/wal/FileSink.h"
 
 namespace chronolog
 {

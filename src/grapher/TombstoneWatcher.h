@@ -1,6 +1,6 @@
 #pragma once
 
-#include "chrono-grapher/server/ArchiveService.h"
+#include "grapher/ArchiveService.h"
 #include <grpcpp/grpcpp.h>
 #include <functional>
 #include <memory>

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <map>
 #include <nlohmann/json.hpp>
-#include "chrono-player/PlayerConfig.h"
+#include "player/PlayerConfig.h"
 
 namespace chronolog::player
 {

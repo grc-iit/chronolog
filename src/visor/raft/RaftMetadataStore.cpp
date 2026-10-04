@@ -1,4 +1,4 @@
-#include "raft/RaftMetadataStore.h"
+#include "visor/raft/RaftMetadataStore.h"
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -9,9 +9,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "adapter/Convert.h"
+#include "visor/adapter/Convert.h"
 #include "chronolog/acquire_refusal.h"
-#include "dynamic/MembershipState.h"
+#include "visor/dynamic/MembershipState.h"
 namespace chronolog::visor
 {
 using namespace nuraft;

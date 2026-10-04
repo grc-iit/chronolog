@@ -1,7 +1,7 @@
 // B45 Part 1 gates for the Grapher: the clock audit on Register and Heartbeat is observational.
-#include "chrono-grapher/server/ClusterWorker.h"
-#include "clock/FakeClock.h"
-#include "rpc/Channel.h"
+#include "grapher/ClusterWorker.h"
+#include "common/clock/FakeClock.h"
+#include "common/rpc/Channel.h"
 
 #include <absl/log/log_sink.h>
 #include <absl/log/log_sink_registry.h>

@@ -1,9 +1,9 @@
-#include "TestSupport.h"
-#include "dynamic/MembershipState.h"
-#include "raft/RaftMetadataStore.h"
-#include "clock/FakeClock.h"
-#include "journal/RamJournal.h"
-#include "membership/ConfigMembership.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/dynamic/MembershipState.h"
+#include "visor/raft/RaftMetadataStore.h"
+#include "common/clock/FakeClock.h"
+#include "keeper/journal/RamJournal.h"
+#include "keeper/membership/ConfigMembership.h"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <map>

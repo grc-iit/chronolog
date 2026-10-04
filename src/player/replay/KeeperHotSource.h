@@ -7,7 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include "chrono-player/replay/RouteSource.h"
+#include "player/replay/RouteSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
 namespace chronolog::player

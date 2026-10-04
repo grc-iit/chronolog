@@ -12,12 +12,12 @@
 #include <sys/wait.h>
 #include <thread>
 
-#include "rpc/Channel.h"
-#include "adapter/ArchiveService.h"
-#include "archive/KeeperArchive.h"
-#include "chrono-grapher/server/ArchiveService.h"
-#include "membership/ConfigMembership.h"
-#include "wal_harness.h"
+#include "common/rpc/Channel.h"
+#include "keeper/adapter/ArchiveService.h"
+#include "keeper/archive/KeeperArchive.h"
+#include "grapher/ArchiveService.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "keeper/tests/wal_harness.h"
 
 namespace chronolog::test
 {

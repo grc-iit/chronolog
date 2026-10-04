@@ -9,8 +9,8 @@
 #include <set>
 #include <string>
 #include <thread>
-#include "clock/VisorClockAudit.h"
-#include "chrono-player/replay/RouteSource.h"
+#include "common/clock/VisorClockAudit.h"
+#include "player/replay/RouteSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
 namespace chronolog::player

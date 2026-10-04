@@ -2,15 +2,15 @@
 #include <future>
 #include <thread>
 
-#include "TestSupport.h"
-#include "adapter/ClusterService.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "dynamic/MembershipState.h"
-#include "adapter/JournalService.h"
-#include "membership/AcquisitionWatcher.h"
-#include "membership/ConfigMembership.h"
-#include "clock/FakeClock.h"
-#include "wal/WalJournal.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/ClusterService.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/dynamic/MembershipState.h"
+#include "keeper/adapter/JournalService.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "common/clock/FakeClock.h"
+#include "keeper/wal/WalJournal.h"
 
 namespace chronolog
 {

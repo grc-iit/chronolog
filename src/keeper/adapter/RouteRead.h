@@ -1,7 +1,7 @@
 #pragma once
 
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "membership/ConfigMembership.h"
+#include "keeper/membership/ConfigMembership.h"
 
 namespace chronolog::keeper
 {

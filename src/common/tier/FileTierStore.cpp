@@ -1,9 +1,9 @@
 #include <sys/statvfs.h>
 #include <absl/log/log.h>
-#include "tier/FileTierStore.h"
+#include "common/tier/FileTierStore.h"
 #include <absl/crc/crc32c.h>
-#include "tier/ArchiveReaderPool.h"
-#include "tier/FileIO.h"
+#include "common/tier/ArchiveReaderPool.h"
+#include "common/tier/FileIO.h"
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>

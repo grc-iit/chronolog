@@ -2,8 +2,8 @@
 
 #include <sqlite3.h>
 
-#include "TestSupport.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 
 namespace chronolog::visor
 {

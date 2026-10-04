@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "chrono-player/replay/ReplayMerge.h"
+#include "player/replay/ReplayMerge.h"
 
 namespace chronolog::player
 {

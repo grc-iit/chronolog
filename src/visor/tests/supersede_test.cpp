@@ -6,9 +6,9 @@
 #include <mutex>
 #include <vector>
 
-#include "TestSupport.h"
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 #include "chronolog/acquire_refusal.h"
 
 namespace chronolog::visor

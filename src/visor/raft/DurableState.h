@@ -2,7 +2,7 @@
 #include <libnuraft/nuraft.hxx>
 #include <mutex>
 #include <sqlite3.h>
-#include "VisorConfig.h"
+#include "visor/VisorConfig.h"
 namespace chronolog::visor
 {
 class DurableState final

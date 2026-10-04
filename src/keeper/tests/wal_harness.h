@@ -7,9 +7,9 @@
 #include <stdexcept>
 #include <unistd.h>
 
-#include "ram_harness.h"
-#include "wal/Record.h"
-#include "wal/WalJournal.h"
+#include "keeper/tests/ram_harness.h"
+#include "keeper/wal/Record.h"
+#include "keeper/wal/WalJournal.h"
 
 namespace chronolog::test
 {

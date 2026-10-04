@@ -1,5 +1,5 @@
-#include "../../../tests/contract/tier_store_contract_test.cpp"
-#include "tier/FileTierStore.h"
+#include "tier_store_contract_test.cpp"
+#include "common/tier/FileTierStore.h"
 #include "chronolog/v1/chronolog.pb.h"
 #include <absl/crc/crc32c.h>
 #include <array>

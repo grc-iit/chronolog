@@ -8,12 +8,12 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
-#include "clock/FakeClock.h"
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/ClusterClient.h"
-#include "chrono-player/adapter/ReplayService.h"
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-player/replay/KeeperHotSource.h"
+#include "common/clock/FakeClock.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/ClusterClient.h"
+#include "player/adapter/ReplayService.h"
+#include "player/replay/HotReplay.h"
+#include "player/replay/KeeperHotSource.h"
 
 namespace chronolog::player
 {

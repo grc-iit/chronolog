@@ -1,5 +1,5 @@
-#include "journal/RamJournal.h"
-#include "clock/PhysicalPolicy.h"
+#include "keeper/journal/RamJournal.h"
+#include "common/clock/PhysicalPolicy.h"
 
 #include <algorithm>
 #include <future>

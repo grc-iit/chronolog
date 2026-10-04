@@ -5,8 +5,8 @@
 #include <atomic>
 #include <thread>
 
-#include "rpc/FlakyResolver.h"
-#include "rpc/Channel.h"
+#include "common/rpc/FlakyResolver.h"
+#include "common/rpc/Channel.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 
 namespace chronolog::rpc

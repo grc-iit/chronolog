@@ -1,4 +1,4 @@
-#include "clock/KernelClock.h"
+#include "common/clock/KernelClock.h"
 #include <sys/timex.h>
 
 namespace chronolog

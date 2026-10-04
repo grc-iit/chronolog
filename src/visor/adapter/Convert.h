@@ -1,6 +1,6 @@
 #pragma once
 
-#include "catalog/AcquisitionLedger.h"
+#include "visor/catalog/AcquisitionLedger.h"
 #include "chronolog/types.h"
 #include "chronolog/v1/chronolog.pb.h"
 #include "chronolog/internal/v1/internal.pb.h"

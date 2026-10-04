@@ -1,7 +1,7 @@
 // B45 Part 1 gates for the VisorClockAudit core shared by the Grapher and the Player. The wire reading of a
 // Register or Heartbeat reply is gated in each service's own tests.
-#include "clock/VisorClockAudit.h"
-#include "clock/FakeClock.h"
+#include "common/clock/VisorClockAudit.h"
+#include "common/clock/FakeClock.h"
 
 #include <absl/log/log_sink.h>
 #include <absl/log/log_sink_registry.h>

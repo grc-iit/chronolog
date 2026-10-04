@@ -1,11 +1,11 @@
-#include "archive/KeeperArchive.h"
+#include "keeper/archive/KeeperArchive.h"
 
 #include <algorithm>
 
 #include <absl/crc/crc32c.h>
 #include <absl/log/log.h>
-#include "adapter/Convert.h"
-#include "rpc/Channel.h"
+#include "keeper/adapter/Convert.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::keeper
 {

@@ -1,5 +1,5 @@
-#include "tier/ChunkCodec.h"
-#include "tier/FileIO.h"
+#include "common/tier/ChunkCodec.h"
+#include "common/tier/FileIO.h"
 #include <hdf5.h>
 #include <algorithm>
 #include <cstdlib>

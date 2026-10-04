@@ -1,13 +1,13 @@
-#include "rpc/Channel.h"
-#include "chrono-player/replay/KeeperHotSource.h"
+#include "common/rpc/Channel.h"
+#include "player/replay/KeeperHotSource.h"
 #include <future>
 #include <algorithm>
 #include <limits>
 #include <thread>
 #include <absl/log/log.h>
 #include <grpcpp/grpcpp.h>
-#include "chrono-player/adapter/Convert.h"
-#include "chrono-player/replay/PhysicalRead.h"
+#include "player/adapter/Convert.h"
+#include "player/replay/PhysicalRead.h"
 
 namespace chronolog::player
 {

@@ -1,5 +1,5 @@
-#include "tier/ChunkCodec.h"
-#include "chrono-player/replay/HotReplay.h"
+#include "common/tier/ChunkCodec.h"
+#include "player/replay/HotReplay.h"
 #include <atomic>
 #include <chrono>
 #include <iostream>

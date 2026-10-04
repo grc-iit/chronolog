@@ -14,20 +14,20 @@
 #include <string>
 #include <thread>
 
-#include "KeeperConfig.h"
-#include "archive/KeeperArchive.h"
-#include "adapter/ArchiveService.h"
-#include "adapter/Convert.h"
-#include "adapter/RouteRead.h"
-#include "adapter/JournalService.h"
-#include "clock/KernelClock.h"
-#include "wal/WalJournal.h"
-#include "membership/AcquisitionWatcher.h"
-#include "membership/ConfigMembership.h"
-#include "membership/RouteWatcher.h"
-#include "runtime/ClusterClient.h"
-#include "rpc/Channel.h"
-#include "worker/WorkerPool.h"
+#include "keeper/KeeperConfig.h"
+#include "keeper/archive/KeeperArchive.h"
+#include "keeper/adapter/ArchiveService.h"
+#include "keeper/adapter/Convert.h"
+#include "keeper/adapter/RouteRead.h"
+#include "keeper/adapter/JournalService.h"
+#include "common/clock/KernelClock.h"
+#include "keeper/wal/WalJournal.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "keeper/membership/RouteWatcher.h"
+#include "keeper/runtime/ClusterClient.h"
+#include "common/rpc/Channel.h"
+#include "common/worker/WorkerPool.h"
 
 namespace
 {

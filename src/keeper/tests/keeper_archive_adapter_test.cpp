@@ -4,8 +4,8 @@
 #include <future>
 #include <thread>
 #include <set>
-#include "adapter_rig.h"
-#include "adapter/Convert.h"
+#include "keeper/tests/adapter_rig.h"
+#include "keeper/adapter/Convert.h"
 namespace chronolog
 {
 namespace

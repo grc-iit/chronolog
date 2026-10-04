@@ -1,5 +1,5 @@
-#include "chrono-grapher/server/ArchiveService.h"
-#include "worker/WorkerPool.h"
+#include "grapher/ArchiveService.h"
+#include "common/worker/WorkerPool.h"
 #include <absl/crc/crc32c.h>
 #include <absl/log/log.h>
 #include <algorithm>

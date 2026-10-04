@@ -1,8 +1,8 @@
 #include "chronolog/acquire_refusal.h"
-#include "TestSupport.h"
+#include "visor/tests/TestSupport.h"
 #include <chrono>
 #include <iostream>
-#include "dynamic/DynamicMembership.h"
+#include "visor/dynamic/DynamicMembership.h"
 #include "membership_contract_test.cpp"
 namespace chronolog::contract
 {

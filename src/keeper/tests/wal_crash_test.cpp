@@ -12,7 +12,7 @@
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "wal_harness.h"
+#include "keeper/tests/wal_harness.h"
 
 namespace chronolog::test
 {

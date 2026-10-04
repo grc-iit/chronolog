@@ -1,4 +1,4 @@
-#include "chrono-player/PlayerConfig.h"
+#include "player/PlayerConfig.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>

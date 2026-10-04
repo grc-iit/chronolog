@@ -11,14 +11,14 @@
 #include <thread>
 #include <vector>
 
-#include "TestSupport.h"
-#include "adapter/CatalogService.h"
-#include "worker/WorkerPool.h"
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/LeaseAuthority.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/CatalogService.h"
+#include "common/worker/WorkerPool.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/LeaseAuthority.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "membership/StaticRouteMembership.h"
+#include "visor/membership/StaticRouteMembership.h"
 
 namespace chronolog::visor
 {

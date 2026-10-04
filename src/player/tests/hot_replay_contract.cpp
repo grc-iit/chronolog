@@ -11,7 +11,7 @@
 #include <sys/vfs.h>
 #include <unistd.h>
 #include "replay_contract_test.cpp"
-#include "chrono-player/replay/HotReplay.h"
+#include "player/replay/HotReplay.h"
 
 namespace chronolog::contract
 {

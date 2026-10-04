@@ -1,4 +1,4 @@
-#include "tier/FileTierStore.h"
+#include "common/tier/FileTierStore.h"
 #include <iostream>
 
 int main(int argc, char** argv)

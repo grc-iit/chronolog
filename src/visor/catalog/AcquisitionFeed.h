@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "catalog/AcquisitionLedger.h"
+#include "visor/catalog/AcquisitionLedger.h"
 
 namespace chronolog::visor
 {

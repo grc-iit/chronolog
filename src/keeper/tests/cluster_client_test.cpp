@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "membership/AcquisitionWatcher.h"
-#include "membership/ConfigMembership.h"
-#include "ram_harness.h"
-#include "runtime/ClusterClient.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "keeper/tests/ram_harness.h"
+#include "keeper/runtime/ClusterClient.h"
 
 namespace chronolog
 {

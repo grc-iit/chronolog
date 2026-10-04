@@ -9,11 +9,11 @@
 #include <map>
 #include <mutex>
 #include <thread>
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/EventConvert.h"
-#include "chrono-player/adapter/ReplayService.h"
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-player/replay/KeeperHotSource.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/EventConvert.h"
+#include "player/adapter/ReplayService.h"
+#include "player/replay/HotReplay.h"
+#include "player/replay/KeeperHotSource.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/util/message_differencer.h>
@@ -751,7 +751,7 @@ TEST_F(replay_adapter, PhysicalAxisIsUnbounded)
     EXPECT_EQ(r.completions[0].reason(), v1::INCOMPLETE_REASON_PHYSICAL_AXIS_UNBOUNDED);
 }
 
-#include "../../../tests/contract/replay/replay_adapter_test.cpp"
+#include "player/tests/replay_adapter_wire_test.cpp"
 
 TEST_F(replay_adapter, TombstonedStoryFailsPrecondition)
 {

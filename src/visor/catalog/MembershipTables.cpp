@@ -1,5 +1,5 @@
-#include "catalog/SqliteMetadataStore.h"
-#include "adapter/Convert.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/adapter/Convert.h"
 #include <set>
 #include <absl/log/log.h>
 #include <stdexcept>

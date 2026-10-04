@@ -1,4 +1,4 @@
-#include "chrono-player/replay/WriterDirectory.h"
+#include "player/replay/WriterDirectory.h"
 #include <chrono>
 
 namespace chronolog::player

@@ -1,4 +1,4 @@
-#include "chrono-grapher/server/GrapherConfig.h"
+#include "grapher/GrapherConfig.h"
 #include <algorithm>
 #include <charconv>
 #include <cctype>

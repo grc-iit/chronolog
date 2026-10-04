@@ -1,4 +1,4 @@
-#include "VisorConfig.h"
+#include "visor/VisorConfig.h"
 
 #include <algorithm>
 #include <cctype>

@@ -1,4 +1,4 @@
-#include "catalog/LeaseAuthority.h"
+#include "visor/catalog/LeaseAuthority.h"
 
 #include <algorithm>
 #include <limits>

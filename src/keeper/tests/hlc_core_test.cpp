@@ -2,8 +2,8 @@
 
 #include <limits>
 
-#include "clock/HlcCore.h"
-#include "clock/SystemClock.h"
+#include "common/clock/HlcCore.h"
+#include "common/clock/SystemClock.h"
 
 namespace chronolog
 {

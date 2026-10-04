@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/ClusterClient.h"
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-visor/adapter/ClusterService.h"
-#include "worker/WorkerPool.h"
-#include "chrono-visor/catalog/SqliteMetadataStore.h"
-#include "chrono-visor/tests/TestSupport.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/ClusterClient.h"
+#include "player/replay/HotReplay.h"
+#include "visor/adapter/ClusterService.h"
+#include "common/worker/WorkerPool.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
 
 namespace chronolog::player
 {

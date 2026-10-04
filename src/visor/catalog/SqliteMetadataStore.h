@@ -11,10 +11,10 @@
 
 #include <sqlite3.h>
 
-#include "catalog/AcquisitionLedger.h"
+#include "visor/catalog/AcquisitionLedger.h"
 #include "chronolog/metadata_store.h"
-#include "catalog/LeaseAuthority.h"
-#include "membership/Topology.h"
+#include "visor/catalog/LeaseAuthority.h"
+#include "visor/membership/Topology.h"
 #include "chronolog/internal/v1/internal.pb.h"
 
 namespace chronolog::visor

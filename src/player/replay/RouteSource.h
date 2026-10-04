@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <vector>
-#include "chrono-player/replay/HotSource.h"
+#include "player/replay/HotSource.h"
 
 namespace chronolog::player
 {

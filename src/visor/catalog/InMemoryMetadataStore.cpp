@@ -1,5 +1,5 @@
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/KeeperChoice.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/KeeperChoice.h"
 
 #include <algorithm>
 #include <optional>

@@ -4,7 +4,7 @@
 #include <limits>
 #include <thread>
 
-#include "clock/ClockAudit.h"
+#include "common/clock/ClockAudit.h"
 
 namespace chronolog
 {

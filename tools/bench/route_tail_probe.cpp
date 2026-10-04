@@ -1,6 +1,6 @@
 #include <chrono>
 #include <iostream>
-#include "rpc/Channel.h"
+#include "common/rpc/Channel.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 int main(int argc, char** argv)
 {

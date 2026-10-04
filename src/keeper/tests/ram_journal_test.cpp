@@ -3,7 +3,7 @@
 #include <atomic>
 #include <thread>
 
-#include "ram_harness.h"
+#include "keeper/tests/ram_harness.h"
 
 namespace chronolog
 {

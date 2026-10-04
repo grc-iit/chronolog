@@ -1,4 +1,4 @@
-#include "catalog/AcquisitionFeed.h"
+#include "visor/catalog/AcquisitionFeed.h"
 
 #include <algorithm>
 #include <utility>

@@ -1,6 +1,6 @@
-#include "adapter/JournalService.h"
+#include "keeper/adapter/JournalService.h"
 
-#include "adapter/Convert.h"
+#include "keeper/adapter/Convert.h"
 
 namespace chronolog::keeper
 {

@@ -11,10 +11,10 @@
 #include <thread>
 #include <string_view>
 
-#include "TestSupport.h"
-#include "adapter/ClusterService.h"
-#include "worker/WorkerPool.h"
-#include "raft/RaftMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/ClusterService.h"
+#include "common/worker/WorkerPool.h"
+#include "visor/raft/RaftMetadataStore.h"
 
 namespace chronolog::visor
 {

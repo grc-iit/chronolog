@@ -1,12 +1,12 @@
-#include "runtime/ClusterClient.h"
+#include "keeper/runtime/ClusterClient.h"
 
 #include <set>
 
 #include <absl/log/log.h>
 #include <absl/strings/str_cat.h>
-#include "KeeperConfig.h"
-#include "adapter/Convert.h"
-#include "wal/WalJournal.h"
+#include "keeper/KeeperConfig.h"
+#include "keeper/adapter/Convert.h"
+#include "keeper/wal/WalJournal.h"
 
 namespace chronolog::keeper
 {

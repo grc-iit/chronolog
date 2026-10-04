@@ -12,14 +12,14 @@
 #include <mutex>
 #include <thread>
 
-#include "TestSupport.h"
-#include "adapter/CatalogService.h"
-#include "adapter/ClusterService.h"
-#include "worker/WorkerPool.h"
-#include "catalog/AcquisitionFeed.h"
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/LeaseAuthority.h"
-#include "membership/StaticRouteMembership.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/CatalogService.h"
+#include "visor/adapter/ClusterService.h"
+#include "common/worker/WorkerPool.h"
+#include "visor/catalog/AcquisitionFeed.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/LeaseAuthority.h"
+#include "visor/membership/StaticRouteMembership.h"
 
 namespace chronolog::visor
 {

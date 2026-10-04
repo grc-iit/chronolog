@@ -14,14 +14,14 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
-#include "rpc/Channel.h"
-#include "chrono-player/PlayerConfig.h"
-#include "chrono-player/adapter/ClusterClient.h"
-#include "clock/KernelClock.h"
-#include "chrono-player/adapter/ReplayService.h"
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-player/replay/KeeperHotSource.h"
-#include "chrono-player/replay/WriterDirectory.h"
+#include "common/rpc/Channel.h"
+#include "player/PlayerConfig.h"
+#include "player/adapter/ClusterClient.h"
+#include "common/clock/KernelClock.h"
+#include "player/adapter/ReplayService.h"
+#include "player/replay/HotReplay.h"
+#include "player/replay/KeeperHotSource.h"
+#include "player/replay/WriterDirectory.h"
 
 namespace
 {

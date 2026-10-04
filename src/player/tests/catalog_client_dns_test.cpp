@@ -2,9 +2,9 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "rpc/FlakyResolver.h"
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/StoryCatalog.h"
+#include "common/rpc/FlakyResolver.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/StoryCatalog.h"
 
 namespace chronolog::player
 {

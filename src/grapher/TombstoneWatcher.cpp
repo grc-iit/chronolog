@@ -1,4 +1,4 @@
-#include "chrono-grapher/server/TombstoneWatcher.h"
+#include "grapher/TombstoneWatcher.h"
 #include <absl/log/log.h>
 #include <algorithm>
 

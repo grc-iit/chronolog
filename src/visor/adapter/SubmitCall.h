@@ -6,7 +6,7 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "worker/WorkerPool.h"
+#include "common/worker/WorkerPool.h"
 
 namespace chronolog::visor
 {

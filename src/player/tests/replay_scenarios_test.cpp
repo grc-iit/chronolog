@@ -6,15 +6,15 @@
 #include <limits>
 #include <mutex>
 #include <unistd.h>
-#include "chrono-player/adapter/Convert.h"
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-player/replay/KeeperHotSource.h"
-#include "adapter/ArchiveService.h"
-#include "membership/ConfigMembership.h"
-#include "clock/FakeClock.h"
-#include "worker/WorkerPool.h"
-#include "tests/ram_harness.h"
-#include "tests/wal_harness.h"
+#include "player/adapter/Convert.h"
+#include "player/replay/HotReplay.h"
+#include "player/replay/KeeperHotSource.h"
+#include "keeper/adapter/ArchiveService.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "common/clock/FakeClock.h"
+#include "common/worker/WorkerPool.h"
+#include "keeper/tests/ram_harness.h"
+#include "keeper/tests/wal_harness.h"
 
 namespace chronolog::player
 {

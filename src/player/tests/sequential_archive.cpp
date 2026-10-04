@@ -1,6 +1,6 @@
 #define CHRONOLOG_SEQUENTIAL_ARCHIVE_READS
 #define HotReplay SequentialHotReplay
-#include "chrono-player/replay/HotReplay.cpp"
+#include "player/replay/HotReplay.cpp"
 #undef HotReplay
 
 namespace chronolog::player

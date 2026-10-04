@@ -1,10 +1,10 @@
-#include "chrono-grapher/server/ArchiveService.h"
-#include "chrono-grapher/server/ClusterWorker.h"
-#include "chrono-grapher/server/GrapherConfig.h"
-#include "chrono-grapher/server/TombstoneWatcher.h"
+#include "grapher/ArchiveService.h"
+#include "grapher/ClusterWorker.h"
+#include "grapher/GrapherConfig.h"
+#include "grapher/TombstoneWatcher.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "clock/KernelClock.h"
-#include "rpc/Channel.h"
+#include "common/clock/KernelClock.h"
+#include "common/rpc/Channel.h"
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
 #include <absl/log/log.h>

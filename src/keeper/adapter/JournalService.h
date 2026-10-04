@@ -3,8 +3,8 @@
 #include <grpcpp/grpcpp.h>
 
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "journal/RamJournal.h"
-#include "worker/WorkerPool.h"
+#include "keeper/journal/RamJournal.h"
+#include "common/worker/WorkerPool.h"
 
 namespace chronolog::keeper
 {

@@ -3,10 +3,10 @@
 #include <atomic>
 #include <condition_variable>
 #include <future>
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/ClusterClient.h"
-#include "chrono-player/replay/KeeperHotSource.h"
-#include "chrono-player/replay/HotReplay.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/ClusterClient.h"
+#include "player/replay/KeeperHotSource.h"
+#include "player/replay/HotReplay.h"
 
 namespace chronolog::player
 {

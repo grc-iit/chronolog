@@ -1,8 +1,8 @@
-#include "chrono-player/adapter/ReplayService.h"
+#include "player/adapter/ReplayService.h"
 #include <condition_variable>
 #include <thread>
-#include "chrono-player/adapter/Convert.h"
-#include "chrono-player/replay/HotReplay.h"
+#include "player/adapter/Convert.h"
+#include "player/replay/HotReplay.h"
 
 namespace chronolog::player
 {

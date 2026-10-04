@@ -1,5 +1,5 @@
-#include "adapter/ClusterService.h"
-#include "dynamic/MembershipState.h"
+#include "visor/adapter/ClusterService.h"
+#include "visor/dynamic/MembershipState.h"
 
 #include <chrono>
 #include <algorithm>
@@ -7,11 +7,11 @@
 #include <optional>
 
 #include <absl/log/log.h>
-#include "adapter/Convert.h"
-#include "rpc/Channel.h"
-#include "adapter/SubmitCall.h"
-#include "clock/SystemClock.h"
-#include "raft/RaftMetadataStore.h"
+#include "visor/adapter/Convert.h"
+#include "common/rpc/Channel.h"
+#include "visor/adapter/SubmitCall.h"
+#include "common/clock/SystemClock.h"
+#include "visor/raft/RaftMetadataStore.h"
 
 namespace chronolog::visor
 {

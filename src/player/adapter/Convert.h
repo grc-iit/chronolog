@@ -1,7 +1,7 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
-#include "chrono-player/adapter/EventConvert.h"
+#include "player/adapter/EventConvert.h"
 #include "chronolog/internal/v1/internal.pb.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.pb.h"

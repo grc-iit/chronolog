@@ -9,8 +9,8 @@
 #include <deque>
 #include <mutex>
 
-#include "membership/AcquisitionWatcher.h"
-#include "ram_harness.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "keeper/tests/ram_harness.h"
 
 namespace chronolog
 {

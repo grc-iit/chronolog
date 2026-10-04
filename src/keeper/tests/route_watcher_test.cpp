@@ -9,9 +9,9 @@
 #include <future>
 #include <mutex>
 
-#include "adapter/Convert.h"
-#include "membership/RouteWatcher.h"
-#include "ram_harness.h"
+#include "keeper/adapter/Convert.h"
+#include "keeper/membership/RouteWatcher.h"
+#include "keeper/tests/ram_harness.h"
 
 namespace chronolog
 {

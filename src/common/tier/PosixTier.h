@@ -1,8 +1,8 @@
 #pragma once
 
-#include "tier/FileIO.h"
-#include "tier/ArchiveReaderPool.h"
-#include "tier/ManifestLog.h"
+#include "common/tier/FileIO.h"
+#include "common/tier/ArchiveReaderPool.h"
+#include "common/tier/ManifestLog.h"
 #include <atomic>
 #include <future>
 #include <memory>

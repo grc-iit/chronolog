@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "chrono-player/replay/CompletionPolicy.h"
+#include "player/replay/CompletionPolicy.h"
 
 namespace chronolog::player
 {

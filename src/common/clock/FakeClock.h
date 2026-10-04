@@ -3,8 +3,8 @@
 #include <mutex>
 
 #include "chronolog/clock.h"
-#include "clock/HlcCore.h"
-#include "clock/CeilingControl.h"
+#include "common/clock/HlcCore.h"
+#include "common/clock/CeilingControl.h"
 
 namespace chronolog
 {

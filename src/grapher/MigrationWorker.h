@@ -1,5 +1,5 @@
 #pragma once
-#include "tier/FileTierStore.h"
+#include "common/tier/FileTierStore.h"
 #include <atomic>
 #include <functional>
 #include <mutex>

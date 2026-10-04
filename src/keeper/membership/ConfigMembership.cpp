@@ -1,4 +1,4 @@
-#include "membership/ConfigMembership.h"
+#include "keeper/membership/ConfigMembership.h"
 
 #include <mutex>
 

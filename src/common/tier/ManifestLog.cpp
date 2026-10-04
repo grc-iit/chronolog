@@ -1,5 +1,5 @@
-#include "tier/ManifestLog.h"
-#include "tier/FileIO.h"
+#include "common/tier/ManifestLog.h"
+#include "common/tier/FileIO.h"
 #include <absl/crc/crc32c.h>
 #include <absl/log/check.h>
 #include <absl/log/log.h>

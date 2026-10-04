@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-#include "catalog/AcquisitionLedger.h"
+#include "visor/catalog/AcquisitionLedger.h"
 #include "chronolog/metadata_store.h"
-#include "catalog/LeaseAuthority.h"
-#include "membership/Topology.h"
+#include "visor/catalog/LeaseAuthority.h"
+#include "visor/membership/Topology.h"
 
 namespace chronolog::visor
 {

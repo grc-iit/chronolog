@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-#include "membership/Topology.h"
+#include "visor/membership/Topology.h"
 
 namespace chronolog::visor::testing
 {

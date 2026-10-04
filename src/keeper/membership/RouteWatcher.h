@@ -12,9 +12,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
-#include "membership/ConfigMembership.h"
-#include "membership/Watcher.h"
-#include "journal/RamJournal.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "keeper/membership/Watcher.h"
+#include "keeper/journal/RamJournal.h"
 
 namespace chronolog::keeper
 {

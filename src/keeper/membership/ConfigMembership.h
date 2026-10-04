@@ -5,7 +5,7 @@
 #include <vector>
 #include <set>
 
-#include "KeeperConfig.h"
+#include "keeper/KeeperConfig.h"
 #include "chronolog/membership.h"
 
 namespace chronolog::keeper

@@ -4,7 +4,7 @@
 #include <set>
 #include <thread>
 
-#include "adapter_rig.h"
+#include "keeper/tests/adapter_rig.h"
 
 namespace chronolog
 {

@@ -2,7 +2,7 @@
 
 #include <array>
 #include <condition_variable>
-#include "clock/CeilingControl.h"
+#include "common/clock/CeilingControl.h"
 #include <atomic>
 #include <functional>
 #include <deque>

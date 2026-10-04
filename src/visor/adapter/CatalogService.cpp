@@ -1,12 +1,12 @@
-#include "adapter/CatalogService.h"
+#include "visor/adapter/CatalogService.h"
 
 #include <utility>
-#include "raft/RaftMetadataStore.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/raft/RaftMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 
-#include "adapter/Convert.h"
-#include "adapter/SubmitCall.h"
-#include "rpc/Channel.h"
+#include "visor/adapter/Convert.h"
+#include "visor/adapter/SubmitCall.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::visor
 {

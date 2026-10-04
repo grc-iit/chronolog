@@ -7,8 +7,8 @@
 #include <set>
 #include <sstream>
 
-#include "adapter/JournalService.h"
-#include "wal_harness.h"
+#include "keeper/adapter/JournalService.h"
+#include "keeper/tests/wal_harness.h"
 
 namespace chronolog::test
 {

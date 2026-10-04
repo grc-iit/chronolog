@@ -1,4 +1,4 @@
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -12,8 +12,8 @@
 
 #include "absl/strings/str_cat.h"
 #include "chronolog/acquire_refusal.h"
-#include "adapter/Convert.h"
-#include "catalog/KeeperChoice.h"
+#include "visor/adapter/Convert.h"
+#include "visor/catalog/KeeperChoice.h"
 
 namespace chronolog::visor
 {

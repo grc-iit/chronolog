@@ -1,5 +1,5 @@
 #pragma once
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 namespace chronolog::visor::dynamic
 {
 internal::v1::MembershipState snapshot(SqliteMetadataStore& store);

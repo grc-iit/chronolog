@@ -10,7 +10,7 @@
 #include <absl/status/statusor.h>
 
 #include "chronolog/types.h"
-#include "catalog/LeaseAuthority.h"
+#include "visor/catalog/LeaseAuthority.h"
 
 namespace chronolog::visor
 {

@@ -1,10 +1,10 @@
 #pragma once
 #include <libnuraft/nuraft.hxx>
 #include <libnuraft/launcher.hxx>
-#include "raft/DurableState.h"
-#include "raft/RaftTestControl.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "catalog/LeaseAuthority.h"
+#include "visor/raft/DurableState.h"
+#include "visor/raft/RaftTestControl.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/catalog/LeaseAuthority.h"
 #include "chronolog/internal/v1/internal.pb.h"
 namespace chronolog::visor
 {

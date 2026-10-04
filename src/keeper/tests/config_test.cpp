@@ -4,8 +4,8 @@
 #include <fstream>
 #include <map>
 
-#include "KeeperConfig.h"
-#include "membership/ConfigMembership.h"
+#include "keeper/KeeperConfig.h"
+#include "keeper/membership/ConfigMembership.h"
 
 namespace chronolog::keeper
 {

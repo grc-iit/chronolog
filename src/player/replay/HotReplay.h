@@ -3,8 +3,8 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include "chrono-player/replay/HotSource.h"
-#include "tier/FileTierStore.h"
+#include "player/replay/HotSource.h"
+#include "common/tier/FileTierStore.h"
 #include "chronolog/replay.h"
 
 namespace chronolog::player

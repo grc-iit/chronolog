@@ -1,4 +1,4 @@
-#include "KeeperConfig.h"
+#include "keeper/KeeperConfig.h"
 
 #include <algorithm>
 #include <cctype>
@@ -11,7 +11,7 @@
 #include <nlohmann/json.hpp>
 
 #include "absl/strings/str_cat.h"
-#include "rpc/Channel.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::keeper
 {

@@ -7,10 +7,10 @@
 #include <fstream>
 #include <thread>
 
-#include "TestSupport.h"
-#include "VisorConfig.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "membership/StaticRouteMembership.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/VisorConfig.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/membership/StaticRouteMembership.h"
 #include "membership_contract_test.cpp"
 
 namespace chronolog::contract

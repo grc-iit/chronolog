@@ -21,16 +21,16 @@
 #include <string>
 #include <thread>
 
-#include "clock/KernelClock.h"
-#include "rpc/Channel.h"
-#include "VisorConfig.h"
-#include "adapter/CatalogService.h"
-#include "adapter/ClusterService.h"
-#include "worker/WorkerPool.h"
-#include "catalog/AcquisitionFeed.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "raft/RaftMetadataStore.h"
-#include "membership/StaticRouteMembership.h"
+#include "common/clock/KernelClock.h"
+#include "common/rpc/Channel.h"
+#include "visor/VisorConfig.h"
+#include "visor/adapter/CatalogService.h"
+#include "visor/adapter/ClusterService.h"
+#include "common/worker/WorkerPool.h"
+#include "visor/catalog/AcquisitionFeed.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/raft/RaftMetadataStore.h"
+#include "visor/membership/StaticRouteMembership.h"
 
 namespace
 {

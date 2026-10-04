@@ -8,9 +8,9 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "TestSupport.h"
-#include "raft/RaftMetadataStore.h"
-#include "adapter/Convert.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/raft/RaftMetadataStore.h"
+#include "visor/adapter/Convert.h"
 #include "chronolog/acquire_refusal.h"
 #include "metadata_store_contract_test.cpp"
 namespace chronolog::contract

@@ -12,14 +12,14 @@
 #include <thread>
 #include <vector>
 
-#include "TestSupport.h"
-#include "adapter/ClusterService.h"
-#include "catalog/AcquisitionFeed.h"
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "clock/FakeClock.h"
-#include "membership/StaticRouteMembership.h"
-#include "VisorConfig.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/ClusterService.h"
+#include "visor/catalog/AcquisitionFeed.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "common/clock/FakeClock.h"
+#include "visor/membership/StaticRouteMembership.h"
+#include "visor/VisorConfig.h"
 
 namespace chronolog::visor
 {

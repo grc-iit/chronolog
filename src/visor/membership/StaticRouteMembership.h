@@ -9,7 +9,7 @@
 #include <string>
 
 #include "chronolog/membership.h"
-#include "membership/Topology.h"
+#include "visor/membership/Topology.h"
 
 namespace chronolog::visor
 {

@@ -1,5 +1,5 @@
-#include "chrono-player/replay/HotReplay.h"
-#include "chrono-player/adapter/EventConvert.h"
+#include "player/replay/HotReplay.h"
+#include "player/adapter/EventConvert.h"
 #include "chronolog/message_limits.h"
 #include <algorithm>
 #include <atomic>
@@ -11,9 +11,9 @@
 #include <set>
 #include <tuple>
 #include "absl/log/log.h"
-#include "chrono-player/replay/CompletionPolicy.h"
-#include "chrono-player/replay/ReplayMerge.h"
-#include "chrono-player/replay/PhysicalRead.h"
+#include "player/replay/CompletionPolicy.h"
+#include "player/replay/ReplayMerge.h"
+#include "player/replay/PhysicalRead.h"
 
 namespace chronolog::player
 {

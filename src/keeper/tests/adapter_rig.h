@@ -5,13 +5,13 @@
 #include <chrono>
 #include <memory>
 
-#include "adapter/ArchiveService.h"
-#include "rpc/Channel.h"
-#include "adapter/JournalService.h"
+#include "keeper/adapter/ArchiveService.h"
+#include "common/rpc/Channel.h"
+#include "keeper/adapter/JournalService.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
-#include "ram_harness.h"
-#include "worker/WorkerPool.h"
+#include "keeper/tests/ram_harness.h"
+#include "common/worker/WorkerPool.h"
 
 namespace chronolog::test
 {

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "clock/KernelClock.h"
-#include "ntp_cases.h"
+#include "common/clock/KernelClock.h"
+#include "common/clock/tests/ntp_cases.h"
 
 namespace chronolog
 {

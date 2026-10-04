@@ -2,10 +2,10 @@
 #include <atomic>
 #include <future>
 
-#include "TestSupport.h"
-#include "adapter/CatalogService.h"
-#include "adapter/ClusterService.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/CatalogService.h"
+#include "visor/adapter/ClusterService.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 
 namespace chronolog::visor
 {

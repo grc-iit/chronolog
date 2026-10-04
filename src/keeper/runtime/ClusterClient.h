@@ -13,11 +13,11 @@
 
 #include "chronolog/clock.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
-#include "clock/ClockAudit.h"
-#include "journal/RamJournal.h"
-#include "membership/AcquisitionWatcher.h"
-#include "membership/ConfigMembership.h"
-#include "rpc/Channel.h"
+#include "common/clock/ClockAudit.h"
+#include "keeper/journal/RamJournal.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "keeper/membership/ConfigMembership.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::keeper
 {

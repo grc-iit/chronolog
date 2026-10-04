@@ -1,4 +1,4 @@
-#include "chrono-player/replay/CompletionPolicy.h"
+#include "player/replay/CompletionPolicy.h"
 #include <algorithm>
 
 namespace chronolog::player

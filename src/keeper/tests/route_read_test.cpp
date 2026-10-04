@@ -3,13 +3,13 @@
 #include <atomic>
 #include <future>
 
-#include "adapter/ArchiveService.h"
-#include "adapter/RouteRead.h"
-#include "archive/KeeperArchive.h"
-#include "wal_harness.h"
+#include "keeper/adapter/ArchiveService.h"
+#include "keeper/adapter/RouteRead.h"
+#include "keeper/archive/KeeperArchive.h"
+#include "keeper/tests/wal_harness.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
-#include "ram_harness.h"
-#include "rpc/Channel.h"
+#include "keeper/tests/ram_harness.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::keeper
 {

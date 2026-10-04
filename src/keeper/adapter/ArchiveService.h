@@ -5,8 +5,8 @@
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/membership.h"
 #include "chronolog/message_limits.h"
-#include "journal/RamJournal.h"
-#include "worker/WorkerPool.h"
+#include "keeper/journal/RamJournal.h"
+#include "common/worker/WorkerPool.h"
 
 namespace chronolog::keeper
 {

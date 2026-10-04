@@ -1,4 +1,4 @@
-#include "membership/StaticRouteMembership.h"
+#include "visor/membership/StaticRouteMembership.h"
 
 #include <algorithm>
 #include <mutex>

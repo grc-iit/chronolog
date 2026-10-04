@@ -1,7 +1,7 @@
 #pragma once
 
-#include "tier/FileTierStore.h"
-#include "chrono-grapher/server/MigrationWorker.h"
+#include "common/tier/FileTierStore.h"
+#include "grapher/MigrationWorker.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include <chrono>
 #include <condition_variable>

@@ -3,9 +3,9 @@
 #include <atomic>
 #include <memory>
 
-#include "TestSupport.h"
-#include "catalog/InMemoryMetadataStore.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/catalog/InMemoryMetadataStore.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 #include "metadata_store_contract_test.cpp"
 
 namespace chronolog::contract

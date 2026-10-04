@@ -4,7 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include "chrono-player/adapter/StoryCatalog.h"
+#include "player/adapter/StoryCatalog.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
 

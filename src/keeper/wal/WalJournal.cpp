@@ -1,4 +1,4 @@
-#include "wal/WalJournal.h"
+#include "keeper/wal/WalJournal.h"
 
 #include <algorithm>
 #include <charconv>
@@ -16,7 +16,7 @@
 
 #include <absl/crc/crc32c.h>
 #include <absl/log/log.h>
-#include "wal/Record.h"
+#include "keeper/wal/Record.h"
 #include "chronolog/internal/v1/internal.pb.h"
 
 namespace chronolog

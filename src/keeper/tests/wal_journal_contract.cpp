@@ -1,9 +1,9 @@
-#include "membership/AcquisitionWatcher.h"
-#include "../../../tests/contract/journal_contract_test.cpp"
-#include "../../../tests/contract/journal_capacity_contract_test.inc"
-#include "wal_harness.h"
-#include "archive/KeeperArchive.h"
-#include "membership/ConfigMembership.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "journal_contract_test.cpp"
+#include "journal_capacity_contract_test.inc"
+#include "keeper/tests/wal_harness.h"
+#include "keeper/archive/KeeperArchive.h"
+#include "keeper/membership/ConfigMembership.h"
 
 namespace chronolog::contract
 {

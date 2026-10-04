@@ -4,8 +4,8 @@
 #include <future>
 #include <mutex>
 #include <unistd.h>
-#include "tier/ChunkCodec.h"
-#include "chrono-player/replay/HotReplay.h"
+#include "common/tier/ChunkCodec.h"
+#include "player/replay/HotReplay.h"
 
 namespace chronolog::player
 {

@@ -1,5 +1,5 @@
-#include "chrono-grapher/server/ArchiveService.h"
-#include "chrono-grapher/server/TombstoneWatcher.h"
+#include "grapher/ArchiveService.h"
+#include "grapher/TombstoneWatcher.h"
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 #include <chrono>
@@ -7,7 +7,7 @@
 #include <deque>
 #include <filesystem>
 #include <map>
-#include "rpc/Channel.h"
+#include "common/rpc/Channel.h"
 #include <mutex>
 #include <unistd.h>
 

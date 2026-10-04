@@ -11,8 +11,8 @@
 #include <grpcpp/grpcpp.h>
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
-#include "membership/Watcher.h"
-#include "wal/WalJournal.h"
+#include "keeper/membership/Watcher.h"
+#include "keeper/wal/WalJournal.h"
 
 namespace chronolog::keeper
 {

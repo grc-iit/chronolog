@@ -11,12 +11,12 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include "catalog/AcquisitionFeed.h"
-#include "catalog/SqliteMetadataStore.h"
+#include "visor/catalog/AcquisitionFeed.h"
+#include "visor/catalog/SqliteMetadataStore.h"
 #include "chronolog/clock.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
 #include "chronolog/metadata_store.h"
-#include "membership/StaticRouteMembership.h"
+#include "visor/membership/StaticRouteMembership.h"
 
 namespace chronolog
 {

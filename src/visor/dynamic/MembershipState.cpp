@@ -1,5 +1,5 @@
-#include "dynamic/MembershipState.h"
-#include "adapter/Convert.h"
+#include "visor/dynamic/MembershipState.h"
+#include "visor/adapter/Convert.h"
 #include <algorithm>
 #include <limits>
 #include <stdexcept>

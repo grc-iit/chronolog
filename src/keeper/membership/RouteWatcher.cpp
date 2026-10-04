@@ -1,7 +1,7 @@
-#include "membership/RouteWatcher.h"
+#include "keeper/membership/RouteWatcher.h"
 
 #include <absl/log/log.h>
-#include "adapter/Convert.h"
+#include "keeper/adapter/Convert.h"
 
 namespace chronolog::keeper
 {

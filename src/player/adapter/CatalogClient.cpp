@@ -1,5 +1,5 @@
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/StoryCatalog.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/StoryCatalog.h"
 
 namespace chronolog::player
 {

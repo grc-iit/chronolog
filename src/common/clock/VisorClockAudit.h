@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "chronolog/clock.h"
-#include "clock/ClockAudit.h"
+#include "common/clock/ClockAudit.h"
 
 namespace chronolog
 {

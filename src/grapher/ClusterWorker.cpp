@@ -1,4 +1,4 @@
-#include "chrono-grapher/server/ClusterWorker.h"
+#include "grapher/ClusterWorker.h"
 
 #include <absl/log/log.h>
 #include <algorithm>
@@ -8,7 +8,7 @@
 #include <optional>
 #include <utility>
 
-#include "rpc/Channel.h"
+#include "common/rpc/Channel.h"
 
 namespace chronolog::grapher
 {

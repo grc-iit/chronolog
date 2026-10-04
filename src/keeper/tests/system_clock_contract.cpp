@@ -1,6 +1,6 @@
-#include "../../../tests/contract/clock_contract_test.cpp"
-#include "clock/FakeClock.h"
-#include "clock/SystemClock.h"
+#include "clock_contract_test.cpp"
+#include "common/clock/FakeClock.h"
+#include "common/clock/SystemClock.h"
 
 namespace chronolog::contract
 {

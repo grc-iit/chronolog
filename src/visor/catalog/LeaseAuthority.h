@@ -8,7 +8,7 @@
 #include <optional>
 #include <set>
 
-#include "catalog/AcquisitionLedger.h"
+#include "visor/catalog/AcquisitionLedger.h"
 
 namespace chronolog::visor
 {

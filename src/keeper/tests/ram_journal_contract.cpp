@@ -1,7 +1,7 @@
-#include "membership/AcquisitionWatcher.h"
-#include "../../../tests/contract/journal_contract_test.cpp"
-#include "../../../tests/contract/journal_capacity_contract_test.inc"
-#include "ram_harness.h"
+#include "keeper/membership/AcquisitionWatcher.h"
+#include "journal_contract_test.cpp"
+#include "journal_capacity_contract_test.inc"
+#include "keeper/tests/ram_harness.h"
 
 namespace chronolog::contract
 {

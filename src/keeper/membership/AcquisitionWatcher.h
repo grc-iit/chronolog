@@ -10,8 +10,8 @@
 #include <grpcpp/grpcpp.h>
 
 #include "chronolog/internal/v1/internal.grpc.pb.h"
-#include "journal/RamJournal.h"
-#include "membership/Watcher.h"
+#include "keeper/journal/RamJournal.h"
+#include "keeper/membership/Watcher.h"
 
 namespace chronolog::keeper
 {

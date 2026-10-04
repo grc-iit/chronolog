@@ -1,9 +1,9 @@
-#include "rpc/Channel.h"
-#include "chrono-player/adapter/ClusterClient.h"
+#include "common/rpc/Channel.h"
+#include "player/adapter/ClusterClient.h"
 #include <algorithm>
 #include <optional>
 #include <utility>
-#include "chrono-player/adapter/Convert.h"
+#include "player/adapter/Convert.h"
 
 namespace chronolog::player
 {

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "chrono-grapher/server/ArchiveService.h"
+#include "grapher/ArchiveService.h"
 #include <optional>
-#include "chrono-grapher/server/MigrationWorker.h"
+#include "grapher/MigrationWorker.h"
 
 namespace chronolog::grapher
 {

@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "clock/FakeClock.h"
-#include "journal/RamJournal.h"
+#include "common/clock/FakeClock.h"
+#include "keeper/journal/RamJournal.h"
 
 namespace chronolog::test
 {

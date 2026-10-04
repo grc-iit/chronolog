@@ -3,10 +3,10 @@
 #include <thread>
 #include <sys/wait.h>
 #include <signal.h>
-#include "TestSupport.h"
-#include "adapter/Convert.h"
-#include "catalog/SqliteMetadataStore.h"
-#include "VisorConfig.h"
+#include "visor/tests/TestSupport.h"
+#include "visor/adapter/Convert.h"
+#include "visor/catalog/SqliteMetadataStore.h"
+#include "visor/VisorConfig.h"
 #include "chronolog/acquire_refusal.h"
 
 namespace chronolog::visor

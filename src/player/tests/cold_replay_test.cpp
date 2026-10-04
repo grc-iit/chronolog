@@ -10,7 +10,7 @@
 #include <poll.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
-#include "chrono-player/replay/HotReplay.h"
+#include "player/replay/HotReplay.h"
 
 namespace chronolog::player
 {

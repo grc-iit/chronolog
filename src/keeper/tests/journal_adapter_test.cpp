@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "adapter_rig.h"
-#include "membership/AcquisitionWatcher.h"
+#include "keeper/tests/adapter_rig.h"
+#include "keeper/membership/AcquisitionWatcher.h"
 
 namespace chronolog
 {
