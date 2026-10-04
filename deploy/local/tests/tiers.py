@@ -21,9 +21,9 @@ def require(condition, message):
         raise AssertionError('FAIL ' + message)
 
 
-def grapher_file(written_at_unix_ms, scrub=None, **fields):
+def grapher_file(written, scrub=None, **fields):
     value = {'writer': 'grapher-1', 'migrate_enabled': False, 'migration_stopped': False,
-             'pending_tier_deletions': {}, 'heartbeat_ms': 1000, 'written_at_unix_ms': written_at_unix_ms,
+             'pending_tier_deletions': {}, 'heartbeat_ms': 1000, 'written_at_unix_ms': written,
              'scrub': scrub or {'enabled': True, 'validated': 7, 'skipped': 1, 'lost': 2, 'rolled_back': 3,
                                 'slow_failed': 4, 'through': 99, 'finished_at_unix_ms': 1700000000123,
                                 'error': 'slow tier timeout'},
