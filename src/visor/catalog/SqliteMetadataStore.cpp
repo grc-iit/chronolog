@@ -733,6 +733,18 @@ absl::Status SqliteMetadataStore::destroyTransaction(StoryId story,
 
 absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, std::string name, Properties properties)
 {
+    return createStoryImpl(std::move(chronicle), std::move(name), std::move(properties), false);
+}
+
+absl::StatusOr<Story>
+SqliteMetadataStore::createStoryAtFloor(std::string chronicle, std::string name, Properties properties)
+{
+    return createStoryImpl(std::move(chronicle), std::move(name), std::move(properties), true);
+}
+
+absl::StatusOr<Story>
+SqliteMetadataStore::createStoryImpl(std::string chronicle, std::string name, Properties properties, bool at_floor)
+{
     if(!validName(chronicle) || !validNewStoryName(name))
         return absl::InvalidArgumentError("invalid chronicle or story name");
     CHRONOLOG_RETURN_IF_ERROR(checkProperties(properties));
@@ -756,6 +768,14 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
         if(*row)
             return absl::AlreadyExistsError("story exists");
     }
+    std::optional<CreationFloor> floor;
+    if(at_floor)
+    {
+        auto computed = creationFloor();
+        if(!computed.ok())
+            return computed.status();
+        floor = *computed;
+    }
     auto id = nextCounter(db_, "story_id");
     if(!id.ok())
         return id.status();
@@ -768,7 +788,7 @@ absl::StatusOr<Story> SqliteMetadataStore::createStory(std::string chronicle, st
     auto done = insert.step();
     if(!done.ok())
         return done.status();
-    CHRONOLOG_RETURN_IF_ERROR(seedMembershipStory(*id));
+    CHRONOLOG_RETURN_IF_ERROR(seedMembershipStory(*id, floor ? &*floor : nullptr));
     CHRONOLOG_RETURN_IF_ERROR(txn.commit());
     return Story{*id, std::move(chronicle), std::move(name), kInitialEpoch, false, std::move(properties)};
 }

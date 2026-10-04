@@ -96,3 +96,50 @@ TEST_P(MembershipContract, ReleasedBeforeEarlierTransitionGetsFloorAfterAbandonA
     EXPECT_EQ(next->assigned_keeper.process_id, next_target);
     EXPECT_EQ(next->incarnation, writer.incarnation + 1);
 }
+
+TEST_P(MembershipContract, NewStoryRouteCarriesTheCreationFloor)
+{
+    // keeper-b holds the highest C and keeper-a the highest CP, so the floor must take each maximum separately.
+    const auto a = extend("keeper-a", 100, 900);
+    const auto b = extend("keeper-b", 700, 100);
+    ASSERT_GT(b.ceiling().physical_ns(), a.ceiling().physical_ns());
+    ASSERT_GT(a.physical_ceiling_ns(), b.physical_ceiling_ns());
+    const auto story = commit(storyProposal("floored"));
+    ASSERT_TRUE(story.ok()) << story.status();
+    const auto update = applied->membershipRouteUpdate(*story).value();
+    EXPECT_EQ(update.ordering_cut().physical_ns(), b.ceiling().physical_ns());
+    EXPECT_EQ(update.ordering_cut().logical(), b.ceiling().logical());
+    EXPECT_EQ(update.physical_floor_ns(), a.physical_ceiling_ns());
+    EXPECT_EQ(update.route().epoch(), 1u);
+    ASSERT_EQ(update.route().keepers_size(), 2);
+    EXPECT_EQ(std::set<std::string>(update.observe_floor().begin(), update.observe_floor().end()),
+              (std::set<std::string>{"keeper-a", "keeper-b"}));
+}
+
+TEST_P(MembershipContract, CreateStoryRefusedWhileAKeeperHasNoCeiling)
+{
+    wire::MembershipCommand q;
+    auto* p = q.mutable_register_()->mutable_process();
+    p->set_process_id("keeper-c");
+    p->set_instance("keeper-c");
+    p->set_endpoint("keeper-c:50052");
+    p->set_role(wire::PROCESS_ROLE_KEEPER);
+    ASSERT_EQ(call<wire::RegisterResponse>(q).status().code(), 0);
+    const auto refused = commit(storyProposal("refused"));
+    EXPECT_EQ(refused.status().code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(applied->listStories("c")->size(), 1u);
+    extend("keeper-c", 100, 100);
+    EXPECT_TRUE(commit(storyProposal("refused")).ok());
+}
+
+TEST_P(MembershipContract, CreationFloorIsComputedAtApplyNotProposal)
+{
+    const auto proposal = storyProposal("late");
+    const auto raised = extend("keeper-b", 900, 900);
+    ASSERT_GT(raised.ceiling().physical_ns(), 5'000'000'100);
+    const auto story = commit(proposal);
+    ASSERT_TRUE(story.ok()) << story.status();
+    const auto update = applied->membershipRouteUpdate(*story).value();
+    EXPECT_EQ(update.ordering_cut().physical_ns(), raised.ceiling().physical_ns());
+    EXPECT_EQ(update.physical_floor_ns(), raised.physical_ceiling_ns());
+}

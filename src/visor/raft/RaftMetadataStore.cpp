@@ -38,6 +38,17 @@ Story story(const v1::Story& s)
 {
     return {s.story_id(), s.chronicle(), s.name(), s.epoch(), s.tombstoned(), convert::propertiesOf(s)};
 }
+std::string createStory(SqliteMetadataStore& store, const v1::CreateStoryRequest& q, bool at_floor)
+{
+    v1::CreateStoryResponse r;
+    auto value = at_floor ? store.createStoryAtFloor(q.chronicle(), q.name(), convert::propertiesOf(q))
+                          : store.createStory(q.chronicle(), q.name(), convert::propertiesOf(q));
+    requireStorage(value.status());
+    *r.mutable_status() = convert::toProto(value.status());
+    if(value.ok())
+        *r.mutable_story() = convert::toProto(*value);
+    return r.SerializeAsString();
+}
 std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogCommand& c)
 {
     switch(c.mutation_case())
@@ -65,18 +76,9 @@ std::string execute(SqliteMetadataStore& store, const internal::v1::CatalogComma
             return r.SerializeAsString();
         }
         case internal::v1::CatalogCommand::kCreateStory:
-        {
-            const auto& q = c.create_story();
-            v1::CreateStoryResponse r;
-            auto value = store.createStory(q.chronicle(), q.name(), convert::propertiesOf(q));
-            requireStorage(value.status());
-            *r.mutable_status() = convert::toProto(value.status());
-            if(value.ok())
-            {
-                *r.mutable_story() = convert::toProto(*value);
-            }
-            return r.SerializeAsString();
-        }
+            return createStory(store, c.create_story(), false);
+        case internal::v1::CatalogCommand::kCreateStoryWithFloor:
+            return createStory(store, c.create_story_with_floor().request(), true);
         case internal::v1::CatalogCommand::kDestroyStory:
         {
             const auto& q = c.destroy_story();
@@ -644,7 +646,7 @@ absl::Status RaftMetadataStore::destroyChronicle(std::string name)
 absl::StatusOr<Story> RaftMetadataStore::createStory(std::string chronicle, std::string name, Properties properties)
 {
     internal::v1::CatalogCommand c;
-    auto* q = c.mutable_create_story();
+    auto* q = c.mutable_create_story_with_floor()->mutable_request();
     q->set_chronicle(chronicle);
     q->set_name(name);
     convert::setProperties(properties, q);
