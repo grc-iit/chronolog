@@ -13,6 +13,7 @@ IDENTITY = ('deployment_id', 'name', 'rank', 'kind', 'tier_uuid', 'f_type')
 # directory. It lives with the supervisor's own status, never under a tier root (I13.15).
 GRAPHER_STATUS = 'run/grapher-tiers.json'
 GRAPHER_STATUS_LIMIT = 1 << 20
+CAPACITY = ('min_free_fraction', 'high_watermark', 'low_watermark')
 
 
 class StatFS(ctypes.Structure):
@@ -94,9 +95,15 @@ def has_tier_table(record):
 
 
 def tier_config_keys(record):
+    """The tier table and tier timings the Grapher and the Player read (I13.15, I13.16). A budget of 0 means the file
+    system capacity; the other capacity knobs keep the Grapher's defaults unless the record carries them."""
     return {'deployment_id': record['deployment_id'],
-            'tiers': [{key: tier[key] for key in ('name', 'kind', 'root', 'rank', 'tier_uuid',
-                                                 'f_type', 'st_dev', 'f_fsid')}
+            'tier_io_timeout_ms': record.get('tier_io_timeout_ms', 1000),
+            'tier_probe_interval_ms': record.get('tier_probe_interval_ms', 5000),
+            'tiers': [dict({key: tier[key] for key in ('name', 'kind', 'root', 'rank', 'tier_uuid',
+                                                      'f_type', 'st_dev', 'f_fsid')},
+                           budget_bytes=tier.get('budget_bytes', 0),
+                           **{key: tier[key] for key in CAPACITY if key in tier})
                       for tier in record['tiers']]}
 
 
@@ -113,21 +120,24 @@ def probe_tier(tier, deployment_id):
         os.close(fd)
 
 
-def probe_worker(operation, tier, deployment_id, replies):
+def probe_worker(operation, tier, deployment_id, replies, clock):
     try:
         result = operation(tier, deployment_id)
     except (OSError, ValueError) as error:
         result = {'available': False, 'used_bytes': None, 'probe_error': str(error)}
-    replies.put((time.monotonic(), result))
+    replies.put((clock(), result))
 
 
 class TierProbe:
-    def __init__(self, tier, deployment_id, timeout_ms, interval_ms, operation=probe_tier):
+    """Reports the last completed probe. A probe in flight is no evidence either way; one past its deadline is."""
+
+    def __init__(self, tier, deployment_id, timeout_ms, interval_ms, operation=probe_tier, clock=time.monotonic):
         self.tier = dict(tier)
         self.deployment_id = deployment_id
         self.timeout = timeout_ms / 1000
         self.interval = interval_ms / 1000
         self.operation = operation
+        self.clock = clock
         self.replies = queue.SimpleQueue()
         self.thread = None
         self.deadline = 0
@@ -135,7 +145,7 @@ class TierProbe:
         self.result = {'available': False, 'used_bytes': None}
 
     def poll(self):
-        now = time.monotonic()
+        now = self.clock()
         if self.thread is not None:
             try:
                 finished, result = self.replies.get_nowait()
@@ -149,10 +159,9 @@ class TierProbe:
                 self.thread = None
                 self.next_probe = now + self.interval
         if self.thread is None and now >= self.next_probe:
-            self.result = {'available': False, 'used_bytes': None}
             self.deadline = now + self.timeout
             self.thread = threading.Thread(target=probe_worker, daemon=True,
-                args=(self.operation, self.tier, self.deployment_id, self.replies))
+                args=(self.operation, self.tier, self.deployment_id, self.replies, self.clock))
             self.thread.start()
         return dict(self.result)
 

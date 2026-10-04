@@ -12,7 +12,8 @@ endforeach()
 
 foreach(gate tier_add_refuses_a_root_of_another_file_system_type status_survives_a_hung_tier
         grapher_status_goes_stale_without_a_heartbeat
-        status_reports_the_graphers_tier_view)
+        status_reports_the_graphers_tier_view generated_configs_carry_budgets_and_tier_timings
+        a_probe_in_flight_keeps_the_last_result)
     add_test(NAME local.${gate}
         COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/tiers.py" ${gate}

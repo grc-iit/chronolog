@@ -62,8 +62,9 @@ def create(args):
                 raise ValueError('non-loopback bind requires --insecure-bind-all')
             if record['policy']['idle_grace_s'] < 0 or args.budget_bytes < 0:
                 raise ValueError('grace and budget must be nonnegative')
-            if args.tier_io_timeout_ms <= 0 or args.tier_probe_interval_ms <= 0:
-                raise ValueError('tier probe deadlines and intervals must be positive')
+            if not (0 < args.tier_io_timeout_ms <= 60000 and 0 < args.tier_probe_interval_ms <= 60000):
+                # The Grapher refuses tier timings above 60000 (I13.15).
+                raise ValueError('tier probe deadlines and intervals must be positive and at most 60000')
             configs(record)
             initialize_local(record)
             atomic(folder / 'instance.json', record)
@@ -77,6 +78,8 @@ def tier_add(args):
     name_check(args.tier_name)
     if args.tier_name == 'local' or args.rank <= 0:
         raise ValueError('slow tiers require a name other than local and a positive rank')
+    if args.budget_bytes < 0:
+        raise ValueError('budget must be nonnegative')
     folder, _ = find(args.name)
     if folder is None:
         raise ValueError('external instances have no managed tiers')
@@ -94,7 +97,7 @@ def tier_add(args):
             raise ValueError('tier root is already configured')
         deployment_id = record.get('deployment_id', record['id'])
         tier = add_marker({'name': args.tier_name, 'root': str(root), 'rank': args.rank,
-                           'kind': 'posix'}, deployment_id)
+                           'kind': 'posix', 'budget_bytes': args.budget_bytes}, deployment_id)
         if 'deployment_id' not in record:
             initialize_local(record)
         record['tiers'] = sorted(record['tiers'] + [tier], key=lambda item: item['rank'])
@@ -308,6 +311,7 @@ def parser():
     p.add_argument('root')
     p.add_argument('--rank', type=int, required=True)
     p.add_argument('--kind', choices=('slow',), required=True)
+    p.add_argument('--budget-bytes', type=int, default=0)
     p = tier.add_parser('ls')
     p.add_argument('name', nargs='?', default='default')
     p = sub.add_parser('doctor')
