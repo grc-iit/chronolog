@@ -28,7 +28,10 @@ Chunk Make(size_t index)
                           std::string(1024, static_cast<char>('a' + i)),
                           std::string(16, 't'),
                           std::string(8, 's'),
-                          {{"host", "bench"}, {"rank", std::to_string(i)}}};
+                          {{"host", "bench"}, {"rank", std::to_string(i)}},
+                          {},
+                          {},
+                          {}};
         chunk.events.push_back(std::move(event));
     }
     return chunk;
@@ -41,7 +44,8 @@ int main(int argc, char** argv)
 {
     if(argc < 4)
     {
-        std::cerr << "usage: chronolog_archive_recovery_bench seed|open|scrub <archive-root> <writer> [files] [first file index]\n";
+        std::cerr << "usage: chronolog_archive_recovery_bench seed|open|scrub <archive-root> <writer> [files] [first "
+                     "file index]\n";
         return 2;
     }
     const std::string mode = argv[1], root = argv[2], writer = argv[3];

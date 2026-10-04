@@ -36,6 +36,41 @@ void formatWindowLine(std::string& out, const AppendResult& result)
 
 constexpr size_t kCacheBlockEntries = 1024;
 
+constexpr size_t kMaxKindBytes = 64;
+constexpr size_t kMaxActorBytes = 256;
+constexpr size_t kMaxLinkTypeBytes = 64;
+constexpr size_t kMaxLinks = 16;
+
+bool completeEventId(const EventId& id)
+{
+    return id.story_id != 0 && id.writer_id != 0 && id.incarnation != 0 && id.sequence != 0;
+}
+
+// I3.9: the Keeper rejects, never truncates, and gives these fields no meaning.
+absl::Status validateEnvelopeFields(const Envelope& envelope)
+{
+    if(envelope.kind.size() > kMaxKindBytes)
+        return absl::InvalidArgumentError("kind exceeds 64 bytes");
+    if(envelope.kind.starts_with("chronolog."))
+        return absl::InvalidArgumentError("kind prefix chronolog. is reserved");
+    if(envelope.actor.size() > kMaxActorBytes)
+        return absl::InvalidArgumentError("actor exceeds 256 bytes");
+    if(envelope.links.size() > kMaxLinks)
+        return absl::InvalidArgumentError("more than 16 links");
+    for(const auto& link: envelope.links)
+    {
+        if(link.type.empty())
+            return absl::InvalidArgumentError("link type is empty");
+        if(link.type.size() > kMaxLinkTypeBytes)
+            return absl::InvalidArgumentError("link type exceeds 64 bytes");
+        if(link.type.starts_with("chronolog."))
+            return absl::InvalidArgumentError("link type prefix chronolog. is reserved");
+        if(!completeEventId(link.target))
+            return absl::InvalidArgumentError("link target needs story_id, writer_id, incarnation and sequence");
+    }
+    return absl::OkStatus();
+}
+
 // The rejection for a fenced incarnation: the cause the Catalog recorded, else the reason inferred without one.
 AppendRejection FenceReason(AcquisitionTerminationCause cause, AppendRejection inferred)
 {
@@ -299,6 +334,8 @@ std::optional<AppendResult> RamJournal::appendOne(StoryId story,
         return fail(absl::InvalidArgumentError("trace_id must be 16 bytes"));
     if(!item.envelope.span_id.empty() && item.envelope.span_id.size() != 8)
         return fail(absl::InvalidArgumentError("span_id must be 8 bytes"));
+    if(auto status = validateEnvelopeFields(item.envelope); !status.ok())
+        return fail(std::move(status));
     if(item.causal_floor.physical_ns < 0 ||
        (item.causal_floor.physical_ns > now_ns &&
         (now_ns < 0 || item.causal_floor.physical_ns - now_ns > causal_skew_limit_ns_.load())))

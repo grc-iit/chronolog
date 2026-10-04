@@ -58,6 +58,22 @@ std::string encode(const Event& event)
     envelope->set_trace_id(event.envelope.trace_id);
     envelope->set_span_id(event.envelope.span_id);
     for(const auto& [key, value]: event.envelope.attributes) (*envelope->mutable_attributes())[key] = value;
+    envelope->set_kind(event.envelope.kind);
+    envelope->set_actor(event.envelope.actor);
+    for(const auto& link: event.envelope.links)
+    {
+        auto* l = envelope->add_links();
+        l->set_type(link.type);
+        l->mutable_target()->set_story_id(link.target.story_id);
+        l->mutable_target()->set_writer_id(link.target.writer_id);
+        l->mutable_target()->set_incarnation(link.target.incarnation);
+        l->mutable_target()->set_sequence(link.target.sequence);
+        if(link.target_hlc)
+        {
+            l->mutable_target_hlc()->set_physical_ns(link.target_hlc->physical_ns);
+            l->mutable_target_hlc()->set_logical(link.target_hlc->logical);
+        }
+    }
     proto.set_durability(v1::DURABILITY_DURABLE);
     return std::string(1, 'E') + proto.SerializeAsString();
 }
@@ -80,8 +96,27 @@ Event decode(std::string_view payload)
     if(time.has_uncertainty_ns())
         event.physical.uncertainty_ns = time.uncertainty_ns();
     const auto& envelope = proto.envelope();
-    event.envelope = {envelope.content_type(), envelope.payload(), envelope.trace_id(), envelope.span_id(), {}};
+    event.envelope = {envelope.content_type(),
+                      envelope.payload(),
+                      envelope.trace_id(),
+                      envelope.span_id(),
+                      {},
+                      envelope.kind(),
+                      envelope.actor(),
+                      {}};
     for(const auto& [key, value]: envelope.attributes()) event.envelope.attributes[key] = value;
+    for(const auto& link: envelope.links())
+    {
+        Link l;
+        l.type = link.type();
+        l.target = {link.target().story_id(),
+                    link.target().writer_id(),
+                    link.target().incarnation(),
+                    link.target().sequence()};
+        if(link.has_target_hlc())
+            l.target_hlc = Hlc{link.target_hlc().physical_ns(), link.target_hlc().logical()};
+        event.envelope.links.push_back(std::move(l));
+    }
     event.durability = Durability::Durable;
     return event;
 }

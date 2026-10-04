@@ -504,6 +504,108 @@ TEST_P(JournalContract, PayloadAndTraceContextValidation)
     EXPECT_EQ((*c)[0].achieved, Durability::Unspecified);
 }
 
+namespace
+{
+Link LinkTo(uint64_t sequence, std::string type = "caused-by")
+{
+    return {std::move(type), {1, 9, 8, sequence}, std::nullopt};
+}
+absl::StatusCode ItemCode(JournalHarness& h, const AppendItem& item)
+{
+    auto results = h.sut->append(Batch({item}), Durability::Accepted);
+    EXPECT_TRUE(results.ok());
+    return results.ok() && results->size() == 1 ? (*results)[0].status.code() : absl::StatusCode::kUnknown;
+}
+} // namespace
+
+TEST_P(JournalContract, EnvelopeKindActorLinksRoundTrip)
+{
+    auto i = Item();
+    i.envelope.kind = "decision";
+    i.envelope.actor = "agent-7";
+    i.envelope.links = {LinkTo(5), {"replies-to", {1, 4, 5, 6}, Hlc{77, 3}}};
+    const auto durability = h->supports_durable ? Durability::Durable : Durability::Accepted;
+    auto a = h->sut->append(Batch({i}), durability);
+    ASSERT_TRUE(a.ok());
+    ASSERT_EQ(a->size(), 1u);
+    ASSERT_TRUE((*a)[0].status.ok());
+    auto check = [&]
+    {
+        auto e = h->sut->read(1, All());
+        ASSERT_TRUE(e.ok());
+        ASSERT_EQ(e->size(), 1u);
+        EXPECT_EQ((*e)[0].envelope.kind, i.envelope.kind);
+        EXPECT_EQ((*e)[0].envelope.actor, i.envelope.actor);
+        EXPECT_EQ((*e)[0].envelope.links, i.envelope.links);
+    };
+    check();
+    if(h->supports_durable && h->crashRestart)
+    {
+        h->crashRestart();
+        check();
+    }
+}
+
+TEST_P(JournalContract, EnvelopeFieldLimitsRejectPerItem)
+{
+    auto at_limit = Item(1);
+    at_limit.envelope.kind.assign(64, 'k');
+    at_limit.envelope.actor.assign(256, 'a');
+    at_limit.envelope.links.assign(16, LinkTo(5, std::string(64, 't')));
+    auto over = [&](auto mutate)
+    {
+        auto item = Item(1);
+        mutate(item.envelope);
+        return item;
+    };
+    EXPECT_EQ(ItemCode(*h, over([](Envelope& e) { e.kind.assign(65, 'k'); })), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ItemCode(*h, over([](Envelope& e) { e.actor.assign(257, 'a'); })), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ItemCode(*h, over([](Envelope& e) { e.links.assign(17, LinkTo(5)); })),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ItemCode(*h, over([](Envelope& e) { e.links = {LinkTo(5, std::string(65, 't'))}; })),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ItemCode(*h, over([](Envelope& e) { e.links = {LinkTo(5, "")}; })), absl::StatusCode::kInvalidArgument);
+    for(int field = 0; field < 4; ++field)
+        EXPECT_EQ(ItemCode(*h,
+                           over(
+                                   [&](Envelope& e)
+                                   {
+                                       Link link = LinkTo(5);
+                                       (field == 0   ? link.target.story_id
+                                        : field == 1 ? link.target.writer_id
+                                        : field == 2 ? link.target.incarnation
+                                                     : link.target.sequence) = 0;
+                                       e.links = {link};
+                                   })),
+                  absl::StatusCode::kInvalidArgument);
+    // Rejections consume nothing: the same sequence admits a valid item, and the limits themselves are accepted.
+    auto accepted = h->sut->append(Batch({at_limit}), Durability::Accepted);
+    ASSERT_TRUE(accepted.ok());
+    ASSERT_EQ(accepted->size(), 1u);
+    EXPECT_TRUE((*accepted)[0].status.ok());
+    auto e = h->sut->read(1, All());
+    ASSERT_TRUE(e.ok());
+    ASSERT_EQ(e->size(), 1u);
+    EXPECT_EQ((*e)[0].envelope.kind, at_limit.envelope.kind);
+}
+
+TEST_P(JournalContract, ReservedKindAndLinkTypeAreRejected)
+{
+    auto kind = Item();
+    kind.envelope.kind = "chronolog.marker";
+    EXPECT_EQ(ItemCode(*h, kind), absl::StatusCode::kInvalidArgument);
+    auto type = Item();
+    type.envelope.links = {LinkTo(5, "chronolog.supersedes")};
+    EXPECT_EQ(ItemCode(*h, type), absl::StatusCode::kInvalidArgument);
+    // Only the prefix is reserved, and attribute keys never are.
+    auto ok = Item();
+    ok.envelope.kind = "chronolog";
+    ok.envelope.links = {LinkTo(5, "chronologx.caused-by")};
+    ok.envelope.attributes["chronolog.operation.id"] = "x";
+    EXPECT_EQ(ItemCode(*h, ok), absl::StatusCode::kOk);
+    EXPECT_EQ(eventCount(), 1u);
+}
+
 TEST_P(JournalContract, HalfOpenRangeAndFrontierIncludesRegisteredWriter)
 {
     auto a = h->sut->append(Batch({Item()}), Durability::Accepted);

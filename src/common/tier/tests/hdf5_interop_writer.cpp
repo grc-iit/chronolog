@@ -17,7 +17,10 @@ int main(int argc, char** argv)
                       std::string("a\0\xffz", 4),
                       std::string(16, '\0'),
                       std::string(8, '\xff'),
-                      {{"host", "dragon"}}};
+                      {{"host", "dragon"}},
+                      {},
+                      {},
+                      {}};
     auto empty = event;
     empty.id.sequence++;
     empty.envelope = {};

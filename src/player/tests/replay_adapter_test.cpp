@@ -1167,6 +1167,10 @@ TEST(EventEncodedSize, MatchesTheEncodedMessageAcrossLengthBoundaries)
     full.envelope.trace_id = std::string(16, '\x01');
     full.envelope.span_id = std::string(8, '\x02');
     full.envelope.attributes = {{"", ""}, {"gen_ai.agent", std::string(200, 'a')}, {"k", std::string(20000, 'v')}};
+    full.envelope.kind = "decision";
+    full.envelope.actor = std::string(200, 'a');
+    full.envelope.links = {{"caused-by", {UINT64_MAX, 1ULL << 35, 300, 127}, Hlc{INT64_MAX, UINT32_MAX}},
+                           {"replies-to", {1, 2, 3, 4}, std::nullopt}};
     full.durability = Durability::Durable;
     full.envelope.payload = "x";
     expectEveryFieldSet(convert::toProto(full));
@@ -1193,7 +1197,10 @@ TEST(EventConvert, MovingConversionsMatchCopies)
                      std::string(5000, 'p'),
                      std::string(16, '\x01'),
                      std::string(8, '\x02'),
-                     {{"a", "1"}}};
+                     {{"a", "1"}},
+                     "result",
+                     "agent-7",
+                     {{"derived-from", {7, 1, 2, 3}, Hlc{9, 1}}, {"supersedes", {7, 1, 2, 4}, std::nullopt}}};
     full.durability = Durability::Durable;
     Event bare;
     bare.envelope.payload = "b";

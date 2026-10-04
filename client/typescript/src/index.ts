@@ -151,6 +151,7 @@ interface Core {
   connect(options: ConnectOptions): Promise<Handle>;
   catalog(handle: Handle, method: string, args: unknown[], options: CallOptions): Promise<unknown>;
   acquire(handle: Handle, story: bigint, identity: string, options: AcquireOptions): Promise<{ handle: Handle; acquisition: Acquisition }>;
+  acquireLanes(handle: Handle, story: bigint, identity: string, lanes: number, sliceNs: bigint, options: AcquireOptions): Promise<{ handle: Handle; lanes: number }>;
   newAcquireRequestId(handle: Handle): string;
   lease(handle: Handle): WriterLease;
   append(handle: Handle, payload: Uint8Array, options: AppendOptions): Promise<AppendResult>;
@@ -203,6 +204,12 @@ export class Client {
     const result = await invoke(() => core.acquire(this.handle, story, identity, options), options.signal);
     return new Writer(result.handle, freeze(result.acquisition));
   }
+  // Acquires min(lanes, route keepers) writers, lane i preferring keeper i. acquireRequestId must be omitted because
+  // each lane mints its own.
+  async acquireLanes(story: bigint, identity: string, lanes: number, sliceNs: bigint, options: AcquireOptions = {}): Promise<LaneWriter> {
+    const result = await invoke(() => core.acquireLanes(this.handle, story, identity, lanes, sliceNs, options), options.signal);
+    return new LaneWriter(result.handle, result.lanes);
+  }
   // A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls.
   newAcquireRequestId(): string { return sync(() => core.newAcquireRequestId(this.handle)); }
   readPhysical(story: bigint, range: PhysicalRange, options: StreamOptions = {}): EventStream {
@@ -215,8 +222,8 @@ export class Client {
     return new EventStream(() => invoke(() => core.stream(this.handle, story, 'tail', after, options)), 'tail', options);
   }
 }
-export class Writer {
-  constructor(private readonly handle: Handle, readonly acquisition: Acquisition) {}
+abstract class Appender {
+  constructor(protected readonly handle: Handle) {}
   async append(payload: Uint8Array, options: AppendOptions = {}): Promise<AppendResult> {
     return freeze(await invoke(() => core.append(this.handle, payload, options), options.signal));
   }
@@ -226,7 +233,15 @@ export class Writer {
   }
   // Stops renewal before sending Release.
   release(options: CallOptions = {}): Promise<boolean> { return invoke(() => core.release(this.handle, options), options.signal); }
+}
+export class Writer extends Appender {
+  constructor(handle: Handle, readonly acquisition: Acquisition) { super(handle); }
   lease(): WriterLease { return freeze(sync(() => core.lease(this.handle))); }
+}
+// One logical writer spread across Keepers by time. Lane i is a Writer named identity + "/lane" + i, and the lane of an
+// append is (physical_ns // sliceNs) % lanes. release stops every lane and resolves whether each reported a release.
+export class LaneWriter extends Appender {
+  constructor(handle: Handle, readonly lanes: number) { super(handle); }
 }
 export class EventStream implements AsyncIterableIterator<Event> {
   readonly completion: Promise<Completion>;

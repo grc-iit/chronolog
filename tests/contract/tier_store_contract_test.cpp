@@ -223,6 +223,41 @@ TEST_P(TierStoreContract, HalfOpenRead)
     EXPECT_TRUE(e->empty());
 }
 
+TEST_P(TierStoreContract, EnvelopeKindActorLinksSurviveTheArchive)
+{
+    auto chunk = Window();
+    auto& envelope = chunk.events[0].envelope;
+    envelope.kind = "decision";
+    envelope.actor = "agent-7";
+    envelope.links = {{"caused-by", {1, 2, 3, 99}, Hlc{90, 4}}, {"replies-to", {1, 5, 6, 7}, std::nullopt}};
+    chunk.events.push_back(chunk.events[0]);
+    chunk.events[1].id.sequence = 101;
+    chunk.events[1].hlc = {150, 1};
+    chunk.events[1].envelope.kind.clear();
+    chunk.events[1].envelope.actor.clear();
+    chunk.events[1].envelope.links.clear();
+    chunk.events.push_back(chunk.events[0]);
+    chunk.events[2].id.sequence = 102;
+    chunk.events[2].hlc = {160, 1};
+    chunk.events[2].envelope.kind.clear();
+    chunk.events[2].envelope.links.resize(1);
+    ASSERT_TRUE(h->sut->publish(chunk).ok());
+    if(h->restart)
+        h->restart();
+    auto e = h->sut->read(1, WholeArchive());
+    ASSERT_TRUE(e.ok());
+    ASSERT_EQ(e->size(), 3u);
+    EXPECT_EQ((*e)[0].envelope.kind, "decision");
+    EXPECT_EQ((*e)[0].envelope.actor, "agent-7");
+    EXPECT_EQ((*e)[0].envelope.links, chunk.events[0].envelope.links);
+    EXPECT_TRUE((*e)[1].envelope.kind.empty());
+    EXPECT_TRUE((*e)[1].envelope.actor.empty());
+    EXPECT_TRUE((*e)[1].envelope.links.empty());
+    EXPECT_TRUE((*e)[2].envelope.kind.empty());
+    EXPECT_EQ((*e)[2].envelope.actor, "agent-7");
+    EXPECT_EQ((*e)[2].envelope.links, chunk.events[2].envelope.links);
+}
+
 TEST_P(TierStoreContract, IndependentWriterLogsMergeWithoutSharedAppend)
 {
     ASSERT_TRUE(h->publishOtherWriter);
