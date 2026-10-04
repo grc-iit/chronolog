@@ -2,6 +2,7 @@
 // provide the documented fresh harness factory, then INSTANTIATE_TEST_SUITE_P.
 // Do not also compile that suite separately into the same test executable.
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -33,6 +34,11 @@ enum class ArchiveFault
     ChecksumMismatch,
     TierUnavailable,
     Hang
+};
+enum class ArchiveRetirement
+{
+    Deleted,
+    Compacted
 };
 struct ReplayHarness
 {
@@ -67,6 +73,11 @@ struct ReplayHarness
     // Published: the harness writes no Lost and no Deleted record. Hang blocks the file's read until the harness is
     // destroyed, so the implementation's own deadline has to end the Read.
     std::function<void(ArchiveFault)> failArchiveFile;
+    // I6.14. Archives effective Published windows of story 1 covering [100, 200) that hold the returned events, none of
+    // which a Keeper holds. After the Read planned them and before it loads the first one, every window is retired and
+    // its file removed: Deleted by a Deleted record (retention), Compacted by a committed compaction whose output holds
+    // their events.
+    std::function<std::vector<Event>(ArchiveRetirement)> retireArchiveFile;
 };
 Range Query() { return {Range::Axis::Hlc, {100, 0}, {300, 0}}; }
 struct Collected
@@ -522,8 +533,11 @@ TEST_P(ReplayContract, LostWindowBelowWatermarkIsSourceFailed)
     EXPECT_FALSE(result->completions[0].complete);
     EXPECT_EQ(result->completions[0].reason, IncompleteReason::SourceFailed);
 }
-// I6.14: an effective Published archive file in the range that cannot be read where the manifest resolves it ends a
-// Read complete=false with SOURCE_FAILED on either axis, and a Tail delivers nothing at or above the file's start.
+// I6.14: "A Read whose range overlaps an effective Published archive record ... whose file cannot be read at its
+// effective location ... MUST end complete=false with reason SOURCE_FAILED, never TRUNCATED (I6.12), and MUST NOT
+// return events of that range while claiming completeness. A file that a Deleted record retires, or whose compaction
+// successor reads, is not a failure. A Tail delivers no event at or above the start of such a file and ends
+// SOURCE_FAILED as I6.13 states." I13.5: "A Deleted record supersedes the publication of the same file for reads."
 TEST_P(ReplayContract, UnreadableArchiveFileIsSourceFailed)
 {
     const std::pair<ArchiveFault, const char*> faults[] = {{ArchiveFault::Missing, "missing"},
@@ -582,6 +596,35 @@ TEST_P(ReplayContract, UnreadableArchiveFileIsSourceFailed)
         ASSERT_EQ(completions.size(), 1u);
         EXPECT_FALSE(completions[0].complete);
         EXPECT_EQ(completions[0].reason, IncompleteReason::SourceFailed);
+    }
+    const std::pair<ArchiveRetirement, const char*> retirements[] = {
+            {ArchiveRetirement::Deleted, "retired by a Deleted record"},
+            {ArchiveRetirement::Compacted, "read from its compaction successor"}};
+    for(const auto& [retirement, name]: retirements)
+    {
+        SCOPED_TRACE(name);
+        auto fresh = GetParam()();
+        ASSERT_NE(fresh, nullptr);
+        ASSERT_TRUE(fresh->retireArchiveFile);
+        ASSERT_TRUE(fresh->setFrontiers);
+        fresh->setFrontiers({{2, 3, {300, 0}}, {4, 3, {300, 0}}});
+        const auto archived = fresh->retireArchiveFile(retirement);
+        ASSERT_FALSE(archived.empty());
+        auto stream = fresh->sut->read(1, Query());
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        auto result = Collect(**stream);
+        ASSERT_TRUE(result.ok()) << result.status();
+        ASSERT_EQ(result->completions.size(), 1u);
+        EXPECT_TRUE(result->completions[0].complete);
+        EXPECT_EQ(result->completions[0].reason, IncompleteReason::None);
+        EXPECT_FALSE(result->events.empty());
+        for(const auto& event: archived)
+        {
+            const auto copies = std::count_if(result->events.begin(),
+                                              result->events.end(),
+                                              [&](const Event& e) { return e.id == event.id; });
+            EXPECT_EQ(copies, retirement == ArchiveRetirement::Compacted ? 1 : 0) << event.hlc.physical_ns;
+        }
     }
 }
 // I6.13: a Tail delivers an event only below the lowest sealed frontier of the sources it consults.
