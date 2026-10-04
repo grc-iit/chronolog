@@ -167,6 +167,7 @@ protected:
             channels[i] = grpc::CreateChannel(peers[i].internal_endpoint, grpc::InsecureChannelCredentials());
             stubs[i] = wire::Cluster::NewStub(channels[i]);
         }
+        services_started_ = std::chrono::steady_clock::now();
         return absl::OkStatus();
     }
     void SetUp() override
@@ -200,6 +201,8 @@ protected:
     }
     bool seed_story_ = true;
     std::chrono::milliseconds route_poll_period_{100};
+    // Every service's first periodic tick comes at least route_poll_period_ after this.
+    std::chrono::steady_clock::time_point services_started_;
     size_t leader()
     {
         const auto until = std::chrono::steady_clock::now() + 8s;
@@ -960,5 +963,40 @@ TEST_F(DynamicRouteWakeTest, EveryReplicaReceivesRoutesWithoutPeriodicTick)
         contexts[i].TryCancel();
         (void)readers[i]->Finish();
     }
+}
+
+// The leader's periodic tick comes route_poll_period_ after start, well after the election, so the Register and the
+// parked Heartbeat below are recorded in the term before the tick first runs in it. The tick must not discard them.
+class DynamicLeaderFirstTickTest: public DynamicClusterTest
+{
+    void SetUp() override
+    {
+        route_poll_period_ = 3s;
+        DynamicClusterTest::SetUp();
+    }
+};
+TEST_F(DynamicLeaderFirstTickTest, AppliedRevisionParkedBeforeTheFirstTickOfTheTermReachesTheNextProposal)
+{
+    const auto selected = leader();
+    ASSERT_LT(selected, 3u);
+    KeeperDriver keeper{*stubs[selected], "keeper-a", "a1"};
+    ASSERT_EQ(keeper.Register().status().code(), 0);
+    wire::HeartbeatRequest beat;
+    beat.set_process_id(keeper.id);
+    beat.set_instance(keeper.instance);
+    beat.set_applied_revision(5);
+    beat.set_applied_route_revision(5);
+    wire::HeartbeatResponse response;
+    ASSERT_TRUE(stubs[selected]->Heartbeat(keeper.context().get(), beat, &response).ok());
+    ASSERT_EQ(response.status().code(), 0);
+    std::this_thread::sleep_until(services_started_ + route_poll_period_ + 500ms);
+    ASSERT_EQ(keeper.Register().status().code(), 0);
+    auto state = stores[selected]->appliedStore().membershipLivenessState();
+    ASSERT_TRUE(state.ok());
+    auto member = std::find_if(state->members().begin(),
+                               state->members().end(),
+                               [&](const auto& entry) { return entry.process().process_id() == keeper.id; });
+    ASSERT_NE(member, state->members().end());
+    EXPECT_EQ(member->applied_route_revision(), 5u);
 }
 } // namespace chronolog::visor

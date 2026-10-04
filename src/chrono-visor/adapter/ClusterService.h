@@ -112,6 +112,10 @@ private:
     template <class Response>
     bool stampClock(Response* response) const;
     void issueTimeouts(internal::v1::MembershipPolicy* policy) const;
+    // Caller holds heartbeat_mutex_. Liveness stamps and parked applied revisions belong to the leader term that
+    // recorded them. Every reader and writer enters the current term first, so the previous term's entries are dropped
+    // before anything of this term is recorded and an entry of the current term is never discarded.
+    void enterTerm(uint64_t term);
 
     RaftMetadataStore* raft_;
     WorkerPool* pool_;
@@ -125,6 +129,9 @@ private:
     std::mutex heartbeat_mutex_;
     std::map<std::string, std::chrono::steady_clock::time_point> heartbeats_;
     std::map<std::string, internal::v1::AppliedRouteRevision> applied_routes_;
+    // The term heartbeats_ and applied_routes_ belong to.
+    uint64_t recorded_term_{};
+    // The term whose lease the failure detector last saw begin, at leader_since_.
     uint64_t leader_term_{};
     std::chrono::steady_clock::time_point leader_since_;
     // The instance and time of each process's latest Heartbeat as it reached this replica, before the call queues or

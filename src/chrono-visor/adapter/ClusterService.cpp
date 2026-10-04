@@ -224,14 +224,14 @@ ClusterService::ClusterService(StaticRouteMembership& membership,
                             {
                                 std::lock_guard heartbeat_lock(heartbeat_mutex_);
                                 auto now = std::chrono::steady_clock::now();
+                                const auto term = raft_->term();
+                                enterTerm(term);
                                 // A term has one leader, so a lease lapse inside it keeps this term's liveness.
-                                if(leader_term_ != raft_->term())
+                                if(leader_term_ != term)
                                 {
-                                    LOG(INFO) << "visor_leader term=" << raft_->term();
-                                    leader_term_ = raft_->term();
+                                    LOG(INFO) << "visor_leader term=" << term;
+                                    leader_term_ = term;
                                     leader_since_ = now;
-                                    heartbeats_.clear();
-                                    applied_routes_.clear();
                                 }
                                 if(now - leader_since_ >= failure_timeout_)
                                 {
@@ -325,6 +325,15 @@ bool ClusterService::stampClock(Response* response) const
     response->set_authority_tick_ns(authorityTickNs());
     *response->mutable_clock_responder() = responder_;
     return response->physical().status() != v1::CLOCK_STATUS_UNAVAILABLE;
+}
+
+void ClusterService::enterTerm(uint64_t term)
+{
+    if(recorded_term_ == term)
+        return;
+    recorded_term_ = term;
+    heartbeats_.clear();
+    applied_routes_.clear();
 }
 
 void ClusterService::issueTimeouts(internal::v1::MembershipPolicy* policy) const
@@ -827,6 +836,7 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
             }
             {
                 std::lock_guard lock(heartbeat_mutex_);
+                enterTerm(raft_->term());
                 if constexpr(std::is_same_v<Request, internal::v1::HeartbeatRequest>)
                 {
                     auto loaded = raft_->appliedStore().membershipCommandState(*q);
@@ -869,6 +879,7 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                 if(propose)
                 {
                     std::lock_guard lock(heartbeat_mutex_);
+                    enterTerm(raft_->term());
                     for(const auto& sent: q->applied_routes())
                     {
                         auto pending = applied_routes_.find(sent.process_id());
@@ -895,6 +906,7 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                     if(new_instance)
                     {
                         std::lock_guard lock(heartbeat_mutex_);
+                        enterTerm(raft_->term());
                         heartbeats_[request->process().process_id()] = std::chrono::steady_clock::now();
                     }
                 }
@@ -918,11 +930,12 @@ ClusterService::dynamicCall(grpc::CallbackServerContext* context, const Request*
                     if(current_instance)
                     {
                         std::lock_guard lock(heartbeat_mutex_);
+                        enterTerm(raft_->term());
                         auto [entry, fresh] = heartbeats_.try_emplace(request->process_id());
                         entry->second = std::chrono::steady_clock::now();
                         // The first heartbeat of a leader term, so a drain can be read against the election.
                         if(fresh)
-                            LOG(INFO) << "keeper_live process=" << request->process_id() << " term=" << leader_term_;
+                            LOG(INFO) << "keeper_live process=" << request->process_id() << " term=" << recorded_term_;
                     }
                 }
             }
