@@ -23,10 +23,11 @@ namespace
 using namespace std::chrono_literals;
 namespace wire = internal::v1;
 
+// Shares dynamic_cluster_test.cpp's 32000 to 32499 range under the same RESOURCE_LOCK visor_raft_ports.
 int loopbackPort()
 {
     static std::mt19937 random(std::random_device{}());
-    return 10000 + (random() % 4400) * 5;
+    return 32000 + static_cast<int>(random() % 500);
 }
 
 class EvidenceRig: public ::testing::Test

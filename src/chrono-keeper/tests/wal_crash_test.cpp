@@ -60,7 +60,9 @@ TEST(WalCrash, DurableGrpcAckSurvivesKillAndRestart)
     std::mt19937 random(std::random_device{}());
     auto addresses = [&]
     {
-        const unsigned port = 10000 + (random() % 4400) * 5;
+        // 32500 to 32767 is this test's pair range; stack harnesses draw 10000 to 31999 and the dynamic cluster
+        // tests 32000 to 32499, below the kernel's ephemeral range at 32768.
+        const unsigned port = 32500 + (random() % 134) * 2;
         endpoint = "127.0.0.1:" + std::to_string(port);
         archive_endpoint = "127.0.0.1:" + std::to_string(port + 1);
         std::ofstream(config_path)

@@ -23,13 +23,15 @@ namespace
 {
 using namespace std::chrono_literals;
 namespace wire = internal::v1;
+// 32000 to 32499 belongs to this executable's in-process clusters (RESOURCE_LOCK visor_raft_ports). Stack harnesses draw
+// 10000 to 31999, WalCrash 32500 to 32767, and the kernel's ephemeral range starts at 32768.
 int candidatePort()
 {
     static std::mt19937 random(std::random_device{}());
     static std::set<int> chosen;
     for(int attempt = 0; attempt < 64; ++attempt)
     {
-        const int port = 10000 + (random() % 4400) * 5;
+        const int port = 32000 + static_cast<int>(random() % 500);
         if(chosen.insert(port).second)
             return port;
     }
