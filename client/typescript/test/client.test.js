@@ -203,3 +203,26 @@ test('appendBatch returns typed item errors in input order', { timeout: 15000 },
     assert.equal(result.itemStatus.code, 9);
   }
 });
+
+test('lane writer opens one lane per route Keeper and round-trips appends', { timeout: 30000 }, async () => {
+  const client = await connect(options);
+  const { chronicle, story } = await create(client, 'lanes');
+  const probe = await client.acquire(story.id, 'lanes-probe');
+  const keepers = probe.acquisition.route.keepers.length;
+  assert.equal(await probe.release(), true);
+  const lanes = await client.acquireLanes(story.id, 'lanes-writer', 4, 1000000000n);
+  try {
+    assert.equal(lanes.lanes, Math.min(4, keepers));
+    const results = [await lanes.append(payload(1)), ...await lanes.appendBatch([{ payload: payload(2) }, { payload: payload(3) }])];
+    for (const result of results) assert.ok(!(result instanceof Error) && result.acked);
+    results.sort((a, b) => a.hlc.physicalNs === b.hlc.physicalNs ? a.hlc.logical - b.hlc.logical : a.hlc.physicalNs < b.hlc.physicalNs ? -1 : 1);
+    const { events } = await complete(client, story.id, results);
+    assert.deepEqual(events.map(event => event.id), results.map(result => result.eventId));
+    assert.deepEqual(events.map(event => Buffer.from(event.envelope.payload).toString()).sort(), [1, 2, 3].map(i => payload(i).toString()));
+  } finally {
+    assert.equal(await lanes.release(), true);
+  }
+  await assert.rejects(lanes.append(payload(4)), error => error instanceof FailedPrecondition && error.code === 'FAILED_PRECONDITION');
+  await client.destroyStory(story.id);
+  await client.destroyChronicle(chronicle);
+});
