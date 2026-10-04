@@ -19,6 +19,10 @@ service Archive
     // for service failure, UNIMPLEMENTED before its port. Domain failures remain
     // in ItemStatus where present; fatal stream failures terminate transport.
     rpc WatchWatermarks(WatchWatermarksRequest) returns (stream WatchWatermarksResponse);
+    // I6.22: Keeper writer checkpoint head and recorded sequence result, for the Player's Await (I6.20).
+    // INVALID_ARGUMENT for malformed input, UNAVAILABLE for source failure, UNIMPLEMENTED before port;
+    // a Keeper that never held the incarnation answers known=false.
+    rpc WriterStatus(WriterStatusRequest) returns (WriterStatusResponse);
 }
 service Cluster
 {
@@ -306,6 +310,54 @@ message FetchHotRequest
     }
     // Maximum events to return; zero means server-configured default limit.
     uint64 max_events = 4;
+    // I6.17: the source returns only matching events and counts matches toward max_events; it never changes the frontier.
+    chronolog.v1.Predicate predicate = 8;
+    // I6.18: NEWEST_FIRST makes the source scan the range in descending ReplayLess order; UNSPECIFIED is oldest-first.
+    chronolog.v1.ReadOrder order = 9;
+}
+// I6.22, I6.20: one writer incarnation and one sequence the Player asks about.
+message WriterStatusRequest
+{
+    // I6.22: Catalog-assigned story identity.
+    uint64 story_id = 1;
+    // I6.22: writer identity of the awaited EventId.
+    uint64 writer_id = 2;
+    // I6.22: incarnation of the awaited EventId.
+    uint64 incarnation = 3;
+    // I6.22: sequence of the awaited EventId.
+    uint64 sequence = 4;
+    // I6.22: Keeper instance the Player expects, as FetchHotRequest.expect_instance.
+    string expect_instance = 5;
+    // I6.22: Route epoch the Player expects, as FetchHotRequest.expect_epoch.
+    uint64 expect_epoch = 6;
+}
+// I6.22: answered from the checkpoint head and dedupe window, which survive release, eviction and restart.
+message WriterStatusResponse
+{
+    // I6.22: false when this Keeper never held the incarnation; the Player then answers unknown (I6.20).
+    bool known = 1;
+    // I6.22: next sequence the Keeper expects from the incarnation.
+    uint64 next_sequence = 2;
+    // I6.22: hlc of the incarnation's last accepted event; absent when it accepted none.
+    chronolog.v1.Hlc last_hlc = 3;
+    // I6.22: the incarnation is released, expired or superseded.
+    bool released = 4;
+    // I6.22: original terminal cause; UNSPECIFIED while the incarnation is live.
+    chronolog.v1.AcquisitionTerminationCause termination_cause = 5;
+    // I6.22: result of the requested sequence while it lies inside the dedupe window; unset below it or at and above next_sequence.
+    oneof recorded
+    {
+        // I6.22: the sequence was accepted with this hlc.
+        chronolog.v1.Hlc recorded_hlc = 6;
+        // I6.22: the sequence was consumed by this recorded rejection (I8.9).
+        chronolog.v1.ItemStatus recorded_rejection = 7;
+    }
+    // I6.22: Keeper-level sealed frontier F, the certificate of answer (2) in I6.20.
+    chronolog.v1.Hlc sealed_frontier = 8;
+    // I6.22: Keeper instance that answered.
+    string instance = 9;
+    // I6.22: Keeper epoch that answered; a mismatch with the Player's Route is SOURCE_FAILED (I6.11).
+    uint64 epoch = 10;
 }
 message FetchHotTrailer
 {
@@ -517,6 +569,15 @@ message AcquireCommand
     repeated AcquisitionFenceObservation fence_observations = 7;
     optional chronolog.v1.KeeperPreferenceResult keeper_preference = 8;
 }
+// I6.16: createStory in dynamic mode. Apply computes the creation floor pair from the applied Catalog state
+// (the maximum C and the maximum CP over every ceiling pair ever granted) in the same transaction that
+// creates the story, and refuses with FAILED_PRECONDITION while a registered Keeper has no ceiling.
+// The command never carries the floor: a value read at proposal can miss a ceiling granted before commit.
+message CreateStoryCommand
+{
+    // I6.16: the validated public request, properties included (I9.2).
+    chronolog.v1.CreateStoryRequest request = 1;
+}
 message DestroyStoryCommand
 {
     chronolog.v1.DestroyStoryRequest request = 1;
@@ -540,6 +601,8 @@ message CatalogCommand
         DestroyStoryCommand destroy_story_with_leases = 11;
         DestroyChronicleCommand destroy_chronicle_with_leases = 12;
         MembershipCommand membership = 8;
+        // I6.16: createStory whose apply computes the dynamic-mode creation floor; create_story stays so existing logs apply as they did.
+        CreateStoryCommand create_story_with_floor = 13;
   chronolog.v1.CreateChronicleRequest create_chronicle = 1;
   chronolog.v1.DestroyChronicleRequest destroy_chronicle = 2;
   chronolog.v1.CreateStoryRequest create_story = 3;
