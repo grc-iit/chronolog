@@ -837,11 +837,10 @@ absl::StatusOr<Acquisition> SqliteMetadataStore::acquire(StoryId id, std::string
         leases_.resolve(due);
     auto sampleGrant = [&](const AcquisitionChange& row) -> absl::StatusOr<AcquisitionLease>
     {
-        auto lease = leases_.sample(row, false);
-        if(row.state == AcquisitionState::Released ||
-           (!lease.ok() && (absl::IsFailedPrecondition(lease.status()) ||
-                            (absl::IsUnavailable(lease.status()) &&
-                             lease.status().message() == "acquisition changed during renewal"))))
+        auto sampled = leases_.sampleLease(row, false);
+        auto& lease = sampled.lease;
+        if(row.state == AcquisitionState::Released || sampled.superseded ||
+           (!lease.ok() && absl::IsFailedPrecondition(lease.status())))
         {
             auto latest = acquisitionRows({{row.story_id, row.writer_id, row.incarnation}});
             if(!latest.ok())

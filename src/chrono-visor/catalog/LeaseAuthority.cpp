@@ -277,7 +277,7 @@ void LeaseAuthority::beforeNextSampleForTest(std::function<void()> callback)
     std::lock_guard lock(mutex_);
     before_sample_ = std::move(callback);
 }
-absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange& row, bool renew)
+LeaseSample LeaseAuthority::sampleLease(const AcquisitionChange& row, bool renew)
 {
     std::function<void()> before;
     {
@@ -290,31 +290,31 @@ absl::StatusOr<AcquisitionLease> LeaseAuthority::sample(const AcquisitionChange&
     const auto time = now();
     auto status = serviceLocked(time, false);
     if(!status.ok())
-        return status;
+        return {status};
     const auto slot = std::pair{row.story_id, row.writer_id};
     const Key key{row.story_id, row.writer_id, row.incarnation};
     if(revisions_[slot] > row.revision && !entries_.contains(key))
-        return absl::UnavailableError("acquisition changed during renewal");
+        return {absl::UnavailableError("acquisition changed during renewal"), true};
     applyLocked(row, time, true);
     auto it = entries_.find(key);
     if(it == entries_.end())
-        return absl::FailedPreconditionError("acquisition is terminal");
+        return {absl::FailedPreconditionError("acquisition is terminal")};
     auto& entry = it->second;
     if(renew)
     {
         if(pending_.contains(key))
-            return absl::UnavailableError("acquisition expiry is pending");
+            return {absl::UnavailableError("acquisition expiry is pending")};
         // Renewal at or after the deadline selects expiry rather than extending: sweep lag is no grace.
         if(time >= entry.deadline)
         {
             pending_.insert(key);
-            return absl::UnavailableError("acquisition deadline is due");
+            return {absl::UnavailableError("acquisition deadline is due")};
         }
         due_.erase({entry.deadline, key});
         entry.deadline = std::max(entry.deadline, time + row.duration_ns);
         due_.insert({entry.deadline, key});
     }
-    return AcquisitionLease{row.duration_ns, std::max<int64_t>(0, entry.deadline - time)};
+    return {AcquisitionLease{row.duration_ns, std::max<int64_t>(0, entry.deadline - time)}};
 }
 size_t LeaseAuthority::acceptEvidence(const std::string& keeper, const std::vector<AcquisitionChange>& rows)
 {

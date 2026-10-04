@@ -38,6 +38,14 @@ absl::Status heldRefusal(int64_t remaining_ns = 0);
 absl::Status withRemaining(absl::Status held, int64_t remaining_ns);
 absl::Status validateRenew(const std::vector<RenewAcquisition>& tuples, size_t limit);
 
+// A lease sample. superseded means the slot moved past the row's revision and the row's entry is gone, so only the
+// row's committed state can say what became of it; lease then holds UNAVAILABLE.
+struct LeaseSample
+{
+    absl::StatusOr<AcquisitionLease> lease;
+    bool superseded{};
+};
+
 struct LeaseQualification
 {
     uint64_t term{};
@@ -58,7 +66,11 @@ public:
     // Reconciliation batches applied so far; each follows one bounded acquisitions scan.
     uint64_t reconciliations() const { return reconciliations_.load(); }
     void onAcquisitionChange(const AcquisitionChange& change) override;
-    absl::StatusOr<AcquisitionLease> sample(const AcquisitionChange& row, bool renew);
+    LeaseSample sampleLease(const AcquisitionChange& row, bool renew);
+    absl::StatusOr<AcquisitionLease> sample(const AcquisitionChange& row, bool renew)
+    {
+        return sampleLease(row, renew).lease;
+    }
     // Keeper admission evidence renews only live rows assigned to `keeper`, under the renewal rules.
     size_t acceptEvidence(const std::string& keeper, const std::vector<AcquisitionChange>& rows);
     void advanceClock(int64_t ns, bool ticking);
