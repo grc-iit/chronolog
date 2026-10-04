@@ -373,6 +373,8 @@ TEST_P(JournalContract, IdempotentRetryReturnsOriginalResult)
     EXPECT_TRUE((*b)[0].status.ok());
     EXPECT_EQ((*a)[0].hlc, (*b)[0].hlc);
     EXPECT_EQ((*a)[0].id, (*b)[0].id);
+    // I5.4: the retry's achieved durability is equal or higher, never lower.
+    EXPECT_GE(static_cast<int>((*b)[0].achieved), static_cast<int>((*a)[0].achieved));
     auto events = h->sut->read(1, All());
     ASSERT_TRUE(events.ok());
     EXPECT_EQ(events->size(), 1u);
@@ -1047,6 +1049,43 @@ TEST_P(JournalContract, WalTruncatesDroppedStoryRecords)
     EXPECT_GT(removed, 0u);
     h->crashRestart();
     EXPECT_EQ(eventCount(), 0u);
+}
+// I13.11: a Keeper that freed on a dropped=true report alone writes no D record, so the story's WAL segments stay
+// pinned, across a restart too, until the tombstone itself arrives.
+TEST_P(JournalContract, ReportOnlyDropPinsWalSegmentsAcrossRestart)
+{
+    if(!h->walSegments || !h->sealArchive)
+        GTEST_SKIP() << "RAM Journal has no WAL segments";
+    // One sealed, undelivered chunk and one unsealed event: nothing but a drop can settle their records.
+    auto chunk = archiveChunk();
+    ASSERT_TRUE(chunk.ok());
+    h->setPhysical(1'100'000'000);
+    auto second = h->sut->append(Batch({Item(2)}), Durability::Durable);
+    ASSERT_TRUE(second.ok());
+    ASSERT_EQ(second->front().status.code(), absl::StatusCode::kOk);
+    const auto held = eventCount();
+    ASSERT_EQ(held, 2u);
+    const auto before = h->walSegments();
+    ASSERT_GT(before.size(), 1u);
+    h->reportArchive({1, {}, "g1", 0, {}, true});
+    EXPECT_EQ(eventCount(), 0u);
+    const auto pinned = h->walSegments();
+    for(const auto& segment: before) EXPECT_TRUE(pinned.contains(segment)) << segment << " removed on a report alone";
+    // No D record and no settlement was written: the restart replays every record the report freed from RAM.
+    h->crashRestart();
+    EXPECT_EQ(eventCount(), held);
+    // The tombstone settles the story: its D record lets the segments go and a second restart keeps it dropped.
+    const auto replayed = h->walSegments();
+    h->tombstone();
+    const auto after = h->walSegments();
+    size_t removed = 0;
+    for(const auto& segment: replayed) removed += !after.contains(segment);
+    EXPECT_GT(removed, 0u);
+    h->crashRestart();
+    EXPECT_EQ(eventCount(), 0u);
+    auto refused = h->sut->append(Batch({Item(9)}), Durability::Accepted);
+    ASSERT_TRUE(refused.ok());
+    EXPECT_EQ(refused->front().status.code(), absl::StatusCode::kFailedPrecondition);
 }
 TEST_P(JournalContract, DroppedStorySurvivesRestart)
 {
