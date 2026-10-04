@@ -66,6 +66,30 @@ def test_catalog_append_read_tail_and_fencing(stack):
         assert again.append(b"new", timeout=3).event_id.sequence == 1
 
 
+def test_kind_actor_and_links_round_trip(stack):
+    client, _, story = stack
+    with client.acquire(story, "envelope-fields") as writer:
+        first = writer.append(b"one", timeout=3)
+        dangling = cl.EventId(story.id, 99, 1, 7)
+        links = (cl.Link("replies_to", first.event_id, first.hlc), cl.Link("cites", dangling))
+        second = writer.append(b"two", kind="note.reply", actor="agent:py-test", links=links, timeout=3)
+        end = cl.Hlc(second.hlc.physical_ns, second.hlc.logical + 1)
+        for attempt in range(30):
+            reader = client.read(story, first.hlc, end, timeout=3)
+            events = list(reader)
+            if reader.completion.complete:
+                break
+            time.sleep(0.1)
+        assert reader.completion.complete and len(events) == 2
+        assert (events[0].envelope.kind, events[0].envelope.actor, events[0].envelope.links) == ("", "", ())
+        assert events[1].envelope.kind == "note.reply"
+        assert events[1].envelope.actor == "agent:py-test"
+        assert events[1].envelope.links == links
+        assert events[1].envelope.links[1].target_hlc is None
+    with pytest.raises(TypeError):
+        cl.Envelope(b"x", links=[(first.event_id, "replies_to")])
+
+
 def test_default_read_and_tail_deliver_eight_maximal_payloads(stack):
     client, _, story = stack
     payloads = [bytes([i]) * (1024 * 1024) for i in range(8)]

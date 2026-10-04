@@ -179,6 +179,13 @@ nb::object pack(const sdk::WriterLease& lease)
                                 maybe(lease.termination_cause, [](auto c) { return nb::int_(static_cast<int>(c)); }),
                         "renewals"_a = lease.renewals));
 }
+nb::object pack(const Link& l)
+{
+    return value("Link",
+                 fields("type"_a = l.type,
+                        "target"_a = pack(l.target),
+                        "target_hlc"_a = maybe(l.target_hlc, [](const Hlc& h) { return pack(h); })));
+}
 nb::object pack(const Envelope& e)
 {
     return value("Envelope",
@@ -186,7 +193,10 @@ nb::object pack(const Envelope& e)
                         "payload"_a = nb::bytes(e.payload.data(), e.payload.size()),
                         "trace_id"_a = nb::bytes(e.trace_id.data(), e.trace_id.size()),
                         "span_id"_a = nb::bytes(e.span_id.data(), e.span_id.size()),
-                        "attributes"_a = e.attributes));
+                        "attributes"_a = e.attributes,
+                        "kind"_a = e.kind,
+                        "actor"_a = e.actor,
+                        "links"_a = tuple(e.links, [](const Link& l) { return pack(l); })));
 }
 } // namespace
 nb::object pack(const sdk::AppendResult& r)
@@ -237,13 +247,20 @@ TimeReading timeReading(nb::handle h)
             optional<uint64_t>(h.attr("uncertainty_ns"), u64),
             static_cast<ClockStatus>(nb::cast<int>(h.attr("status")))};
 }
+Link eventLink(nb::handle h)
+{
+    return {text(h.attr("type")), eventId(h.attr("target")), optional<Hlc>(h.attr("target_hlc"), hlc)};
+}
 Envelope envelope(nb::handle e)
 {
     return {text(e.attr("content_type")),
             binary(e.attr("payload")),
             binary(e.attr("trace_id")),
             binary(e.attr("span_id")),
-            nb::cast<std::map<std::string, std::string>>(e.attr("attributes"))};
+            nb::cast<std::map<std::string, std::string>>(e.attr("attributes")),
+            text(e.attr("kind")),
+            text(e.attr("actor")),
+            list<Link>(e.attr("links"), eventLink)};
 }
 sdk::ClientOptions clientOptions(nb::handle h)
 {

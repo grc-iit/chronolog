@@ -102,6 +102,29 @@ test('catalog, 1000 ordered DURABLE appends, exact binary replay, exclusive tail
   await client.destroyChronicle(chronicle);
 });
 
+test('kind, actor and links round-trip through append and read', { timeout: 25000 }, async () => {
+  const client = await connect(options);
+  const { chronicle, story } = await create(client, 'envelope-fields');
+  const writer = await client.acquire(story.id, 'envelope-fields-writer');
+  try {
+    const first = await writer.append(payload(1));
+    const dangling = { storyId: story.id, writerId: 99n, incarnation: 1n, sequence: 7n };
+    const links = [{ type: 'replies_to', target: first.eventId, targetHlc: first.hlc }, { type: 'cites', target: dangling }];
+    const second = await writer.append(payload(2), { kind: 'note.reply', actor: 'agent:ts-test', links });
+    const { events } = await complete(client, story.id, [first, second]);
+    assert.equal(events.length, 2);
+    assert.deepEqual([events[0].envelope.kind, events[0].envelope.actor, events[0].envelope.links], ['', '', []]);
+    assert.equal(events[1].envelope.kind, 'note.reply');
+    assert.equal(events[1].envelope.actor, 'agent:ts-test');
+    assert.deepEqual(events[1].envelope.links, links);
+    assert.equal('targetHlc' in events[1].envelope.links[1], false);
+  } finally {
+    await writer.release();
+    await client.destroyStory(story.id);
+    await client.destroyChronicle(chronicle);
+  }
+});
+
 test('default Read and Tail deliver eight 1 MiB events', { timeout: 25000 }, async () => {
   const client = await connect(options);
   const { chronicle, story } = await create(client, 'receive-limit');

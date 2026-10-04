@@ -116,7 +116,11 @@ export interface WriterLease {
   readonly terminationCause?: AcquisitionTerminationCause;
   readonly renewals: bigint;
 }
-export interface Envelope { readonly contentType: string; readonly payload: Uint8Array; readonly traceId: Uint8Array; readonly spanId: Uint8Array; readonly attributes: Readonly<Record<string, string>> }
+export interface Link { readonly type: string; readonly target: EventId; readonly targetHlc?: Hlc }
+export interface Envelope {
+  readonly contentType: string; readonly payload: Uint8Array; readonly traceId: Uint8Array; readonly spanId: Uint8Array; readonly attributes: Readonly<Record<string, string>>;
+  readonly kind: string; readonly actor: string; readonly links: readonly Link[];
+}
 export interface TimeReading { readonly physicalNs: bigint; readonly uncertaintyNs?: bigint; readonly status: 'SYNCED' | 'UNSYNCED' | 'UNAVAILABLE' | UnknownEnum }
 export interface Event { readonly id: EventId; readonly hlc: Hlc; readonly physical: TimeReading; readonly envelope: Envelope; readonly durability: Durability | number }
 export interface Frontier { readonly writerId: bigint; readonly incarnation: bigint; readonly frontier: Hlc }
@@ -141,6 +145,7 @@ export interface ConnectOptions extends CallOptions {
 }
 export interface AppendOptions extends CallOptions {
   contentType?: string; attributes?: Record<string, string>; traceId?: Uint8Array; spanId?: Uint8Array;
+  kind?: string; actor?: string; links?: readonly Link[];
   durability?: Durability;
 }
 export interface AppendItem extends Omit<AppendOptions, 'timeoutMs'> { payload: Uint8Array }
@@ -335,6 +340,7 @@ export type FollowFrom = 'NOW' | 'BEGINNING' | 'POSITION' | UnknownEnum;
 export interface PageLimits { maxEvents?: number; maxRawBytes?: number }
 export interface EnvelopeInput {
   payload: Uint8Array; contentType?: string; attributes?: Record<string, string>; traceId?: Uint8Array; spanId?: Uint8Array;
+  kind?: string; actor?: string; links?: readonly Link[];
 }
 export interface Memory { operationId: string; envelope: EnvelopeInput; durability?: Durability; physical?: TimeReading }
 export interface PriorOutcome {
