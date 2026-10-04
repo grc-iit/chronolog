@@ -5,6 +5,7 @@
 #include "catalog/SqliteMetadataStore.h"
 
 #include "adapter/Convert.h"
+#include "adapter/SubmitCall.h"
 #include "rpc/Channel.h"
 
 namespace chronolog::visor

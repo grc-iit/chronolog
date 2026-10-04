@@ -137,6 +137,7 @@ set_tests_properties(build.no_legacy_transport PROPERTIES TIMEOUT 30 LABELS "gat
 # The new components live in their own subdirectories.
 add_subdirectory(src/chrono-common/clock)
 add_subdirectory(src/chrono-common/rpc)
+add_subdirectory(src/chrono-common/worker)
 add_subdirectory(src/chrono-keeper/journal)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/chrono-keeper/wal/CMakeLists.txt")
     add_subdirectory(src/chrono-keeper/wal)

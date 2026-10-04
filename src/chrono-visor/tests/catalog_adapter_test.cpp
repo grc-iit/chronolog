@@ -13,7 +13,7 @@
 
 #include "TestSupport.h"
 #include "adapter/CatalogService.h"
-#include "adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "catalog/InMemoryMetadataStore.h"
 #include "catalog/LeaseAuthority.h"
 #include "catalog/SqliteMetadataStore.h"

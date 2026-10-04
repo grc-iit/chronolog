@@ -4,7 +4,7 @@
 
 #include "chronolog/v1/chronolog.grpc.pb.h"
 #include "journal/RamJournal.h"
-#include "runtime/WorkerPool.h"
+#include "worker/WorkerPool.h"
 
 namespace chronolog::keeper
 {

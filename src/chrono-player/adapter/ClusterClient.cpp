@@ -1,10 +1,55 @@
 #include "rpc/Channel.h"
 #include "chrono-player/adapter/ClusterClient.h"
 #include <algorithm>
+#include <optional>
+#include <utility>
 #include "chrono-player/adapter/Convert.h"
 
 namespace chronolog::player
 {
+namespace
+{
+template <class Response>
+ClockAuditDecision auditReply(VisorClockAudit& audit,
+                              const VisorClockAudit::Bracket& bracket,
+                              const grpc::Status& status,
+                              const Response& response)
+{
+    std::optional<TimeReading> visor;
+    if(status.ok() && response.has_physical())
+    {
+        const auto& wire = response.physical();
+        visor.emplace();
+        visor->physical_ns = wire.physical_ns();
+        if(wire.has_uncertainty_ns())
+            visor->uncertainty_ns = wire.uncertainty_ns();
+        visor->status = wire.status() == v1::CLOCK_STATUS_SYNCED     ? ClockStatus::Synced
+                        : wire.status() == v1::CLOCK_STATUS_UNSYNCED ? ClockStatus::Unsynced
+                                                                     : ClockStatus::Unavailable;
+    }
+    return audit.record(bracket,
+                        status.ok(),
+                        std::move(visor),
+                        {response.clock_responder().replica_id(), response.clock_responder().instance()});
+}
+} // namespace
+
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::RegisterResponse& response)
+{
+    return auditReply(audit, bracket, status, response);
+}
+
+ClockAuditDecision auditVisorReply(VisorClockAudit& audit,
+                                   const VisorClockAudit::Bracket& bracket,
+                                   const grpc::Status& status,
+                                   const internal::v1::HeartbeatResponse& response)
+{
+    return auditReply(audit, bracket, status, response);
+}
+
 ClusterClient::ClusterClient(std::shared_ptr<grpc::Channel> visor_internal,
                              Process self,
                              std::chrono::milliseconds deadline,
@@ -54,9 +99,9 @@ absl::Status ClusterClient::refresh(std::stop_token stop) const
     auto status = stub_->Register(&context, request, &response);
     if(clock_audit_)
     {
-        clock_audit_->finish(bracket, status, response);
+        auditVisorReply(*clock_audit_, bracket, status, response);
         if(status.ok() && !response.status().code())
-            clock_audit_->retain(response.visor_replicas());
+            clock_audit_->retain({response.visor_replicas().begin(), response.visor_replicas().end()});
     }
     if(!status.ok())
         return absl::UnavailableError("visor register failed: " + status.error_message());
@@ -254,7 +299,7 @@ void ClusterClient::monitor(std::stop_token stop) const
             bracket = clock_audit_->begin();
         auto status = stub_->Heartbeat(&context, request, &response);
         if(clock_audit_)
-            clock_audit_->finish(bracket, status, response);
+            auditVisorReply(*clock_audit_, bracket, status, response);
         bool unknown = status.error_code() == grpc::StatusCode::NOT_FOUND ||
                        (status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kNotFound));
         if(status.ok() && response.status().code() == static_cast<int>(absl::StatusCode::kFailedPrecondition))

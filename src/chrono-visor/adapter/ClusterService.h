@@ -18,10 +18,14 @@
 #include "chronolog/metadata_store.h"
 #include "membership/StaticRouteMembership.h"
 
+namespace chronolog
+{
+class WorkerPool;
+}
+
 namespace chronolog::visor
 {
 class RaftMetadataStore;
-class WorkerPool;
 
 // What this replica stamps on the replies it generates: its physical Clock, its identity and the Keeper
 // timeouts it issues in RegisterResponse.policy.

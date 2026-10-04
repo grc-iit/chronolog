@@ -13,7 +13,7 @@
 
 #include "TestSupport.h"
 #include "adapter/ClusterService.h"
-#include "adapter/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "raft/RaftMetadataStore.h"
 
 namespace chronolog::visor

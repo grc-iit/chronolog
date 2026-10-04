@@ -12,7 +12,7 @@
 #include "adapter/ArchiveService.h"
 #include "membership/ConfigMembership.h"
 #include "clock/FakeClock.h"
-#include "runtime/WorkerPool.h"
+#include "worker/WorkerPool.h"
 #include "tests/ram_harness.h"
 #include "tests/wal_harness.h"
 
@@ -99,7 +99,7 @@ protected:
     std::shared_ptr<FakeClock> real_clock;
     std::shared_ptr<keeper::ConfigMembership> real_membership;
     std::unique_ptr<RamJournal> real_journal;
-    std::unique_ptr<keeper::WorkerPool> real_pool;
+    std::unique_ptr<WorkerPool> real_pool;
     std::unique_ptr<keeper::ArchiveService> real_archive;
     void useRealPredecessor(std::string instance = "old-instance")
     {
@@ -131,7 +131,7 @@ protected:
         RouteState retired = routes->state;
         retired.predecessors.front().instance = instance;
         real_journal->applyRoute(1, retired, false, 2, [&] { real_membership->setRouteState(1, retired); });
-        real_pool = std::make_unique<keeper::WorkerPool>(2, 16);
+        real_pool = std::make_unique<WorkerPool>(2, 16);
         real_archive = std::make_unique<keeper::ArchiveService>(*real_journal, *real_membership, *real_pool);
         grpc::ServerBuilder builder;
         int port = 0;
@@ -459,7 +459,7 @@ protected:
     }
     void start(RamJournal& journal, Membership& membership)
     {
-        pool = std::make_unique<keeper::WorkerPool>(2, 16);
+        pool = std::make_unique<WorkerPool>(2, 16);
         archive = std::make_unique<keeper::ArchiveService>(journal, membership, *pool);
         grpc::ServerBuilder builder;
         int port = 0;
@@ -505,7 +505,7 @@ protected:
     }
     test::RamRig rig;
     std::unique_ptr<test::WalRig> wal;
-    std::unique_ptr<keeper::WorkerPool> pool;
+    std::unique_ptr<WorkerPool> pool;
     std::unique_ptr<keeper::ArchiveService> archive;
     std::unique_ptr<grpc::Server> server;
     std::shared_ptr<Routes> routes = std::make_shared<Routes>();

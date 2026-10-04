@@ -1,8 +1,8 @@
 include(GoogleTest)
 
-add_executable(chronolog_common_clock_tests clock_audit_test.cpp kernel_clock_test.cpp)
+add_executable(chronolog_common_clock_tests clock_audit_test.cpp kernel_clock_test.cpp visor_clock_audit_test.cpp)
 target_link_libraries(chronolog_common_clock_tests PRIVATE
-    chronolog_common_clock chronolog_warnings GTest::gtest GTest::gtest_main Threads::Threads)
+    chronolog_common_clock chronolog_warnings absl::log_sink absl::log_sink_registry GTest::gtest GTest::gtest_main Threads::Threads)
 # See the root CMakeLists.txt: ThreadSanitizer needs ASLR disabled on this kernel.
 if("thread" IN_LIST CHRONOLOG_SANITIZERS)
     find_program(CHRONOLOG_SETARCH setarch)
