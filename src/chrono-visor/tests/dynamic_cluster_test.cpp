@@ -905,6 +905,15 @@ TEST_F(DynamicRouteWakeTest, EveryReplicaReceivesRoutesWithoutPeriodicTick)
     ASSERT_TRUE(stores[selected]->createChronicle("wake").ok());
     auto barrier = stores[selected]->createStory("wake", "barrier");
     ASSERT_TRUE(barrier.ok());
+    // A replica's snapshot is its applied state, so subscribe only after every follower has applied the barrier route.
+    for(size_t i = 0; i < 3; ++i)
+    {
+        const auto until = std::chrono::steady_clock::now() + 10s;
+        while(!stores[i]->appliedStore().membershipRouteUpdate(barrier->id).ok() &&
+              std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(10ms);
+        ASSERT_TRUE(stores[i]->appliedStore().membershipRouteUpdate(barrier->id).ok()) << "replica " << i;
+    }
     std::array<grpc::ClientContext, 3> contexts;
     std::array<std::unique_ptr<grpc::ClientReader<wire::WatchRoutesResponse>>, 3> readers;
     std::array<uint64_t, 3> revisions{};
