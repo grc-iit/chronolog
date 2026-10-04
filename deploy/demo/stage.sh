@@ -20,7 +20,8 @@ binary_name() {
 
 find_binary() {
     local found
-    found=$(find "$1/build/dev" -type f -name "$2" -perm -u+x | head -n 1)
+    # Newest first: a build directory configured before a source move still holds the old outputs.
+    found=$(find "$1/build/dev" -type f -name "$2" -perm -u+x -printf '%T@ %p\n' | sort -rn | head -n 1 | cut -d' ' -f2-)
     [ -n "$found" ] || { echo "stage: $2 was not built"; exit 1; }
     echo "$found"
 }
