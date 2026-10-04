@@ -32,6 +32,28 @@ struct Writer::Impl
     // Stops renewal and records an authoritative termination for own-prior recovery.
     void terminated(std::optional<AcquisitionTerminationCause>);
 };
+struct LaneWriter::Impl
+{
+    Impl(std::shared_ptr<detail::State> s, std::vector<Writer> w, int64_t slice)
+        : state(std::move(s))
+        , writers(std::move(w))
+        , slice_ns(slice)
+    {}
+    std::shared_ptr<detail::State> state;
+    std::vector<Writer> writers;
+    const int64_t slice_ns;
+    std::timed_mutex mutex;
+    // The specs as the caller passed them, their stamped copies, and the outcomes already settled by finished lanes.
+    struct Pending
+    {
+        std::vector<AppendSpec> original, stamped;
+        std::vector<std::optional<absl::StatusOr<AppendResult>>> done;
+    };
+    std::optional<Pending> pending;
+    std::optional<size_t> last_lane;
+    Hlc last_hlc;
+    absl::StatusOr<BatchResult> append(std::span<const AppendSpec>, Deadline, bool stream);
+};
 namespace detail
 {
 struct ReplayState

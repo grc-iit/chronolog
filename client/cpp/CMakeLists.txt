@@ -1,7 +1,7 @@
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-add_library(chronolog_client_objects OBJECT lib/client.cpp lib/writer.cpp lib/streams.cpp lib/clock.cpp lib/lease.cpp)
+add_library(chronolog_client_objects OBJECT lib/client.cpp lib/writer.cpp lib/streams.cpp lib/clock.cpp lib/lease.cpp lib/lanes.cpp)
 target_include_directories(chronolog_client_objects PRIVATE include "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(chronolog_client_objects PRIVATE chronolog_proto absl::status absl::statusor chronolog_warnings Threads::Threads)
 
@@ -38,7 +38,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chronolog.pc" DESTINATION ${CMAKE_INS
 include(GoogleTest)
 add_executable(chronolog_client_tests tests/clock_test.cpp tests/identity_test.cpp tests/physical_read_test.cpp
     tests/replay_threading_test.cpp tests/channel_policy_test.cpp tests/floor_test.cpp
-    tests/append_rejection_test.cpp tests/read_options_test.cpp tests/lease_test.cpp
+    tests/append_rejection_test.cpp tests/read_options_test.cpp tests/lease_test.cpp tests/lanes_test.cpp
     "${PROJECT_SOURCE_DIR}/client/cpp/tests/client_test.cpp")
 target_link_libraries(chronolog_client_tests PRIVATE chronolog::client chronolog_common_clock chronolog_proto chronolog_warnings GTest::gtest_main Threads::Threads)
 gtest_discover_tests(chronolog_client_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "sdk." DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 30)

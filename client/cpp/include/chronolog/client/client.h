@@ -154,6 +154,31 @@ private:
     std::unique_ptr<Impl> impl_;
     explicit Writer(std::unique_ptr<Impl>);
     friend class Client;
+    friend class LaneWriter;
+};
+// One logical writer spread across Keepers by time. Each lane is an ordinary Writer named identity + "/lane" + i,
+// so sequence, incarnation and fencing semantics hold per lane. A spec without a physical reading is stamped with
+// one Client clock reading before its first send, and a retry of the same spec keeps that stamp and so its lane.
+class LaneWriter
+{
+public:
+    ~LaneWriter();
+    LaneWriter(LaneWriter&&) noexcept;
+    LaneWriter& operator=(LaneWriter&&) noexcept;
+    LaneWriter(const LaneWriter&) = delete;
+    LaneWriter& operator=(const LaneWriter&) = delete;
+    size_t lanes() const;
+    absl::StatusOr<AppendResult> append(const AppendSpec&, Deadline deadline = {});
+    // Splits by lane keeping each lane's input order; results come back in input order.
+    absl::StatusOr<BatchResult> appendBatch(std::span<const AppendSpec>, Deadline deadline = {});
+    // Releases every lane and returns the first error, or whether every lane reported a release.
+    absl::StatusOr<bool> release(Deadline deadline = {});
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+    explicit LaneWriter(std::unique_ptr<Impl>);
+    friend class Client;
 };
 class Client
 {
@@ -184,6 +209,14 @@ public:
     absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, AcquireOptions, Deadline deadline = {});
     // A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls.
     absl::StatusOr<std::string> newAcquireRequestId();
+    // Acquires min(lanes, route.keepers.size()) writers, lane i preferring route.keepers[i]. The lane of an append is
+    // (physical_ns / slice_ns) % lanes. A caller-supplied acquire_request_id is refused because each lane mints its own.
+    absl::StatusOr<LaneWriter> acquireLanes(StoryId,
+                                            const std::string& identity,
+                                            size_t lanes,
+                                            int64_t slice_ns,
+                                            AcquireOptions = {},
+                                            Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});
