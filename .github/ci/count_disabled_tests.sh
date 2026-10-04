@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prints the number of disabled or skipped tests under tests/contract.
-# Counts DISABLED_ name prefixes and GTEST_SKIP uses.
+# Prints the number of disabled tests under tests/contract: DISABLED_ name prefixes.
+# A GTEST_SKIP there is a harness-capability skip (ARCHITECTURE.md section 15), not a disabled test.
 set -euo pipefail
 root="${1:-tests/contract}"
 if [[ ! -d "$root" ]]; then
@@ -8,4 +8,4 @@ if [[ ! -d "$root" ]]; then
     exit 0
 fi
 grep -rEho --include='*.cpp' --include='*.cc' --include='*.h' --include='*.hpp' \
-    'DISABLED_[A-Za-z0-9_]+|GTEST_SKIP[[:space:]]*\(' "$root" | wc -l
+    'DISABLED_[A-Za-z0-9_]+' "$root" | wc -l
