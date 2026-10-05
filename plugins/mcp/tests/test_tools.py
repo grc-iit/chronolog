@@ -123,3 +123,29 @@ def test_ten_tools_round_trip_and_clean_close_reopens_without_recovery(tmp_path)
             assert stranger.is_error
 
     asyncio.run(asyncio.wait_for(run(), timeout=50))
+
+
+def test_remember_kind_and_links_show_in_recall_and_latest(tmp_path):
+    async def run():
+        chronicle, identity = unique("links"), unique("planner")
+        async with Mcp(launcher(str(tmp_path), identity, chronicle)) as mcp:
+            opened = await mcp.call("context_open", name="provenance", create=True)
+            handle = opened["session_handle"]
+            cause = await mcp.call("context_remember", session_handle=handle, operation_id="k-1",
+                                   content="disk is full", kind="observation")
+            receipt = cause["receipt"]
+            link = {"type": "caused_by", "event_id": receipt["event_id"], "hlc": receipt["hlc"]}
+            await mcp.call("context_remember", session_handle=handle, operation_id="k-2", content="freed 2 GB",
+                           kind="action", links=[link])
+            for tool, arguments in (("context_recall", {}), ("context_latest", {"n": 2})):
+                result = await until(lambda: mcp.call(tool, session_handle=handle, **arguments),
+                                     lambda r: r["answer_complete"])
+                first, second = result["events"]
+                assert (first["kind"], first["links"]) == ("observation", [])
+                assert (second["kind"], second["links"]) == ("action", [link])
+                assert first["actor"] == second["actor"] == opened["identity"]["writer_identity"]
+            reserved = await mcp.call("context_remember", session_handle=handle, operation_id="k-3", content="x",
+                                      kind="chronolog.core")
+            assert reserved["stored"] == "rejected"
+
+    asyncio.run(asyncio.wait_for(run(), timeout=50))
