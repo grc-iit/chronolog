@@ -88,13 +88,23 @@ class Smoke:
         )
         if floor is not None:
             item.causal_floor.CopyFrom(floor)
-        response = self.journal.Append(pb.AppendRequest(
+        request = pb.AppendRequest(
             story_id=acquire.story_id, epoch=acquire.route.epoch,
             items=[item], durability=durability, batch_id=sequence,
-        ), timeout=self.timeout)
-        if len(response.results) != 1 or response.batch_id != sequence:
-            raise RuntimeError("Append response correlation or result count")
-        return response.results[0]
+        )
+        deadline = time.monotonic() + self.timeout
+        while True:
+            self.hold(acquire)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Append registration retry deadline exhausted")
+            response = self.journal.Append(request, timeout=remaining)
+            if len(response.results) != 1 or response.batch_id != sequence:
+                raise RuntimeError("Append response correlation or result count")
+            result = response.results[0]
+            if (result.status.code != 9
+                    or result.rejection != pb.APPEND_REJECTION_NOT_REGISTERED):
+                return result
 
     def read(self, request, timeout=None):
         events, completion = [], None
