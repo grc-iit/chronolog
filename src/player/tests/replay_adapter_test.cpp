@@ -61,6 +61,18 @@ public:
         std::lock_guard lk(mu_);
         known_.insert(story);
     }
+    iv1::WriterStatusResponse writer_status;
+    std::atomic<bool> status_fails{false};
+    grpc::Status
+    WriterStatus(grpc::ServerContext*, const iv1::WriterStatusRequest*, iv1::WriterStatusResponse* response) override
+    {
+        if(status_fails)
+            return grpc::Status(grpc::StatusCode::UNAVAILABLE, "status source down");
+        *response = writer_status;
+        response->set_epoch(7);
+        response->set_instance("instance");
+        return grpc::Status::OK;
+    }
     void add(v1::Event event)
     {
         std::lock_guard lk(mu_);
@@ -364,7 +376,11 @@ protected:
         replay_options.tail_poll = 20ms;
         tune(replay_options);
         replay_options.story_live = [catalog = catalog_](StoryId story) { return catalog->ensureLive(story); };
-        service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options), catalog_);
+        service_ = std::make_unique<ReplayService>(std::make_shared<HotReplay>(source_, replay_options),
+                                                   catalog_,
+                                                   256,
+                                                   [source = source_](EventId id, auto deadline)
+                                                   { return source->writerStatus(id, deadline); });
         grpc::ServerBuilder builder;
         chronolog::rpc::applyServerPolicy(builder);
         int port = 0;
@@ -448,6 +464,231 @@ protected:
     std::unique_ptr<ReplayService> service_;
     std::unique_ptr<v1::Replay::Stub> stub_;
 };
+
+TEST_F(replay_adapter, AwaitAnswersWithACertificate)
+{
+    a_.seal(200);
+    b_.seal(200);
+    v1::AwaitRequest request;
+    *request.mutable_ref() = protoEvent(2, 1, 110).id();
+    auto check = [&](v1::AwaitAnswer expected)
+    {
+        auto ctx = context();
+        v1::AwaitResponse answer;
+        ASSERT_TRUE(stub_->Await(ctx.get(), request, &answer).ok());
+        EXPECT_EQ(answer.answer(), expected);
+        if(expected == v1::AWAIT_ANSWER_VISIBLE)
+        {
+            EXPECT_EQ(answer.event().id().sequence(), request.ref().sequence());
+        }
+        if(expected == v1::AWAIT_ANSWER_ABSENT)
+        {
+            EXPECT_TRUE(answer.has_frontier());
+        }
+    };
+    check(v1::AWAIT_ANSWER_UNKNOWN); // Not acquired.
+    a_.writer_status.set_known(true);
+    a_.writer_status.set_next_sequence(1);
+    a_.writer_status.mutable_sealed_frontier()->set_physical_ns(200);
+    check(v1::AWAIT_ANSWER_ABSENT); // A live sequence at next_sequence.
+    request.mutable_ref()->set_sequence(9);
+    check(v1::AWAIT_ANSWER_ABSENT); // Above next_sequence.
+    for(auto cause: {v1::ACQUISITION_TERMINATION_CAUSE_RELEASED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED,
+                     v1::ACQUISITION_TERMINATION_CAUSE_SUPERSEDED})
+    {
+        a_.writer_status.set_released(true);
+        a_.writer_status.set_termination_cause(cause);
+        check(v1::AWAIT_ANSWER_WILL_NEVER_EXIST);
+    }
+    request.mutable_ref()->set_sequence(1);
+    a_.writer_status.set_next_sequence(4);
+    a_.writer_status.mutable_recorded_rejection()->set_code(static_cast<int>(grpc::StatusCode::OUT_OF_RANGE));
+    check(v1::AWAIT_ANSWER_SEQUENCE_CONSUMED);
+    a_.writer_status.mutable_recorded_hlc()->set_physical_ns(110);
+    check(v1::AWAIT_ANSWER_VISIBLE); // Recorded event survives fencing.
+    a_.writer_status.mutable_recorded_hlc()->set_physical_ns(200);
+    check(v1::AWAIT_ANSWER_ABSENT); // Pending at F == h.
+    a_.writer_status.mutable_recorded_hlc()->set_physical_ns(300);
+    check(v1::AWAIT_ANSWER_ABSENT); // Pending at F < h.
+    a_.writer_status.mutable_recorded_hlc()->set_physical_ns(100);
+    check(v1::AWAIT_ANSWER_UNKNOWN); // Accepted event lost, F > h.
+    a_.writer_status.clear_recorded();
+    check(v1::AWAIT_ANSWER_UNKNOWN); // Below dedupe window.
+    request.mutable_hlc()->set_physical_ns(110);
+    check(v1::AWAIT_ANSWER_VISIBLE); // Supplied HLC point hit.
+    request.mutable_hlc()->set_physical_ns(300);
+    check(v1::AWAIT_ANSWER_ABSENT); // Supplied HLC pending.
+    request.mutable_hlc()->set_physical_ns(100);
+    a_.writer_status.mutable_recorded_hlc()->set_physical_ns(110);
+    check(v1::AWAIT_ANSWER_VISIBLE); // Wrong supplied HLC, consult checkpoint.
+    request.clear_hlc();
+    b_.status_fails = true;
+    check(v1::AWAIT_ANSWER_UNKNOWN); // Another possible owner did not answer.
+    b_.status_fails = false;
+    a_.refuse(true);
+    request.mutable_hlc()->set_physical_ns(100);
+    check(v1::AWAIT_ANSWER_UNKNOWN); // Point source failed.
+    request.set_wait_bound_ns(-1);
+    auto ctx = context();
+    v1::AwaitResponse answer;
+    EXPECT_EQ(stub_->Await(ctx.get(), request, &answer).error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(replay_adapter, LookupByEventIdIsAPointReadOrAZeroWaitAwait)
+{
+    a_.seal(200);
+    b_.seal(200);
+    v1::AwaitRequest request;
+    *request.mutable_ref() = protoEvent(2, 1, 110).id();
+    *request.mutable_hlc() = protoEvent(2, 1, 110).hlc();
+    auto ctx = context();
+    v1::AwaitResponse answer;
+    ASSERT_TRUE(stub_->Await(ctx.get(), request, &answer).ok());
+    EXPECT_EQ(answer.answer(), v1::AWAIT_ANSWER_VISIBLE);
+    request.mutable_ref()->set_writer_id(99);
+    ctx = context();
+    ASSERT_TRUE(stub_->Await(ctx.get(), request, &answer).ok());
+    EXPECT_EQ(answer.answer(), v1::AWAIT_ANSWER_UNKNOWN);
+}
+
+TEST_F(replay_adapter, AwaitUsesOneStreamSlotAndWaitsForVisibility)
+{
+    std::promise<void> entered, release;
+    auto allowed = release.get_future().share();
+    std::atomic<unsigned> rounds{};
+    ReplayService service(
+            std::make_shared<HotReplay>(source_),
+            catalog_,
+            1,
+            [&](EventId, auto) -> absl::StatusOr<iv1::WriterStatusResponse>
+            {
+                const bool first_round = rounds++ == 0;
+                if(first_round)
+                {
+                    entered.set_value();
+                    allowed.wait();
+                }
+                iv1::WriterStatusResponse status;
+                status.set_known(true);
+                status.set_next_sequence(first_round ? 1 : 2);
+                if(!first_round)
+                    status.mutable_recorded_hlc()->set_physical_ns(110);
+                status.mutable_sealed_frontier()->set_physical_ns(100);
+                return status;
+            },
+            5s);
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    auto stub = v1::Replay::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
+    v1::AwaitRequest request;
+    *request.mutable_ref() = protoEvent(2, 1, 110).id();
+    request.set_wait_bound_ns(INT64_MAX);
+    auto first = std::async(std::launch::async,
+                            [&]
+                            {
+                                auto ctx = context();
+                                v1::AwaitResponse response;
+                                auto status = stub->Await(ctx.get(), request, &response);
+                                return std::pair{status, response};
+                            });
+    const auto ready = entered.get_future().wait_for(5s);
+    if(ready != std::future_status::ready)
+    {
+        release.set_value();
+        FAIL() << "Await did not enter checkpoint query";
+    }
+    EXPECT_EQ(service.activeStreams(), 1u);
+    auto ctx = context();
+    v1::AwaitResponse response;
+    EXPECT_EQ(stub->Await(ctx.get(), request, &response).error_code(), grpc::StatusCode::RESOURCE_EXHAUSTED);
+    release.set_value();
+    auto [status, answer] = first.get();
+    EXPECT_TRUE(status.ok());
+    EXPECT_EQ(answer.answer(), v1::AWAIT_ANSWER_VISIBLE);
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
+
+TEST_F(replay_adapter, AwaitIncludesPredecessorsAndRefusesAbandonedCertificates)
+{
+    struct Routes final: RouteSource
+    {
+        RouteState state;
+        absl::StatusOr<Route> route(StoryId) const override { return state.route; }
+        absl::StatusOr<RouteState> routeState(StoryId) const override { return state; }
+    };
+    auto routes = std::make_shared<Routes>();
+    routes->state.route = {7, {{"keeper-b", "b"}}, "", ""};
+    routes->state.predecessors.push_back({{"keeper-a", "a"}, "instance", 7, {300, 0}, 300});
+    auto source = std::make_shared<KeeperHotSource>(routes,
+                                                    nullptr,
+                                                    [this](const KeeperRef& keeper)
+                                                    { return keeper.process_id == "keeper-a" ? a_addr_ : b_addr_; });
+    ReplayService service(std::make_shared<HotReplay>(source),
+                          catalog_,
+                          256,
+                          [source](EventId id, auto deadline) { return source->writerStatus(id, deadline); });
+    v1::AwaitRequest request;
+    *request.mutable_ref() = protoEvent(2, 9, 110).id();
+    a_.writer_status.set_known(true);
+    a_.writer_status.set_next_sequence(1);
+    a_.writer_status.mutable_sealed_frontier()->set_physical_ns(200);
+    auto check = [&](v1::AwaitAnswer expected)
+    {
+        auto answer = service.awaitAnswer(request, std::chrono::system_clock::now() + 5s);
+        ASSERT_TRUE(answer.ok());
+        EXPECT_EQ(answer->answer(), expected);
+    };
+    check(v1::AWAIT_ANSWER_ABSENT);
+    routes->state.predecessors[0].instance = "replaced";
+    check(v1::AWAIT_ANSWER_UNKNOWN);
+    routes->state.predecessors[0].instance = "instance";
+    a_.status_fails = true;
+    check(v1::AWAIT_ANSWER_UNKNOWN);
+    a_.status_fails = false;
+    routes->state.abandoned.push_back({Range::Axis::Hlc, {}, {300, 0}});
+    check(v1::AWAIT_ANSWER_UNKNOWN);
+}
+
+TEST_F(replay_adapter, AwaitReturnsItsCertificateAtTheConfiguredCapAndRejectsTombstones)
+{
+    ReplayService service(
+            std::make_shared<HotReplay>(source_),
+            catalog_,
+            256,
+            [](EventId, auto) -> absl::StatusOr<iv1::WriterStatusResponse>
+            {
+                iv1::WriterStatusResponse status;
+                status.set_known(true);
+                status.set_next_sequence(1);
+                status.mutable_sealed_frontier()->set_physical_ns(100);
+                return status;
+            },
+            1ms);
+    grpc::ServerBuilder builder;
+    int port = 0;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+    builder.RegisterService(&service);
+    auto server = builder.BuildAndStart();
+    auto stub = v1::Replay::NewStub(rpc::peerChannel("127.0.0.1:" + std::to_string(port)));
+    v1::AwaitRequest request;
+    *request.mutable_ref() = protoEvent(2, 1, 110).id();
+    request.set_wait_bound_ns(INT64_MAX);
+    auto ctx = context();
+    v1::AwaitResponse response;
+    ASSERT_TRUE(stub->Await(ctx.get(), request, &response).ok());
+    EXPECT_EQ(response.answer(), v1::AWAIT_ANSWER_ABSENT);
+    EXPECT_EQ(response.frontier().physical_ns(), 100);
+    catalog_->tombstone(kStory);
+    ctx = context();
+    EXPECT_EQ(stub->Await(ctx.get(), request, &response).error_code(), grpc::StatusCode::FAILED_PRECONDITION);
+    service.shutdown();
+    server->Shutdown(std::chrono::system_clock::now() + 2s);
+}
 
 class replay_adapter_recv: public replay_adapter
 {

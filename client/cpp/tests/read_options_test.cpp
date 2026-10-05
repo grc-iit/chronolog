@@ -45,6 +45,15 @@ public:
         std::lock_guard lock(mutex_);
         return requests_;
     }
+    grpc::Status Await(grpc::ServerContext*, const wire::AwaitRequest* request, wire::AwaitResponse* response) override
+    {
+        response->set_answer(wire::AWAIT_ANSWER_VISIBLE);
+        *response->mutable_event()->mutable_id() = request->ref();
+        *response->mutable_hlc() = request->hlc();
+        *response->mutable_event()->mutable_hlc() = request->hlc();
+        response->mutable_event()->mutable_envelope()->set_payload("awaited");
+        return grpc::Status::OK;
+    }
     grpc::Status
     GetStory(grpc::ServerContext*, const wire::GetStoryRequest* request, wire::GetStoryResponse* p) override
     {
@@ -208,3 +217,18 @@ TEST(ClientRead, RouteExposesLiveStoryMetadataAndRejectsInvalidSnapshots)
     }
 }
 } // namespace
+
+TEST(ClientAwait, ReturnsVisibleEventAndRejectsNegativeBound)
+{
+    PagePeer peer;
+    auto client = sdk::Client::Connect(peer.options());
+    ASSERT_TRUE(client.ok());
+    sdk::EventRef ref{{1, 2, 3, 4}, Hlc{100, 2}};
+    auto result = client->await(ref, 0ns);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->answer, sdk::AwaitAnswer::Visible);
+    ASSERT_TRUE(result->event);
+    EXPECT_EQ(result->event->id, ref.id);
+    EXPECT_EQ(result->event->envelope.payload, "awaited");
+    EXPECT_EQ(client->await(ref, -1ns).status().code(), absl::StatusCode::kInvalidArgument);
+}

@@ -73,6 +73,39 @@ bool Before(const v1::Hlc& a, const v1::Hlc& b)
 
 } // namespace
 
+TEST(ArchiveTransferTest, WriterStatusReturnsRetainedCheckpointAndFencesIdentity)
+{
+    test::AdapterRig rig;
+    auto appended = rig.rig.journal->append({1, 7, {Item(1)}}, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    rig.rig.journal->releaseWriter(1, 2, 3, AcquisitionTerminationCause::Expired);
+    rig.rig.journal->eraseEvents(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    iv1::WriterStatusRequest request;
+    request.set_story_id(1);
+    request.set_writer_id(2);
+    request.set_incarnation(3);
+    request.set_sequence(1);
+    request.set_expect_epoch(7);
+    iv1::WriterStatusResponse response;
+    auto ctx = test::AdapterRig::context();
+    ASSERT_TRUE(rig.archive->WriterStatus(ctx.get(), request, &response).ok());
+    EXPECT_TRUE(response.known());
+    EXPECT_TRUE(response.released());
+    EXPECT_EQ(response.next_sequence(), 2u);
+    EXPECT_EQ(response.termination_cause(), v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED);
+    EXPECT_EQ(response.recorded_hlc().physical_ns(), appended->at(0).hlc.physical_ns);
+    EXPECT_TRUE(Before(response.recorded_hlc(), response.sealed_frontier()));
+    request.set_expect_instance("wrong");
+    ctx = test::AdapterRig::context();
+    EXPECT_EQ(rig.archive->WriterStatus(ctx.get(), request, &response).error_code(),
+              grpc::StatusCode::FAILED_PRECONDITION);
+    request.clear_expect_instance();
+    request.set_expect_epoch(8);
+    ctx = test::AdapterRig::context();
+    EXPECT_EQ(rig.archive->WriterStatus(ctx.get(), request, &response).error_code(),
+              grpc::StatusCode::FAILED_PRECONDITION);
+}
+
 TEST(ArchiveTransferTest, FetchHotStreamsBatchesThenOneTrailer)
 {
     test::AdapterRig rig;
@@ -243,6 +276,54 @@ TEST(ArchiveTransferTest, FetchHotMalformedPredicateIsInvalidArgument)
     test::AdapterRig rig;
     auto request = AllRequest();
     request.mutable_predicate()->add_attributes()->set_value("v");
+    EXPECT_EQ(FetchAll(*rig.archive, request).status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST(ArchiveTransferTest, FetchHotNewestFirstReturnsTheNewestEventsOfTheRange)
+{
+    test::AdapterRig rig;
+    std::vector<AppendItem> items;
+    for(uint64_t s = 1; s <= 5; ++s)
+    {
+        items.push_back(Item(s));
+        items.back().envelope.kind = s % 2 ? "a" : "b";
+    }
+    ASSERT_TRUE(rig.rig.journal->append({1, 7, items}, Durability::Accepted).ok());
+    auto request = AllRequest(2);
+    request.set_order(chronolog::v1::READ_ORDER_NEWEST_FIRST);
+    auto fetched = FetchAll(*rig.archive, request);
+    ASSERT_TRUE(fetched.status.ok());
+    ASSERT_EQ(fetched.events.size(), 2u);
+    EXPECT_EQ(fetched.events[0].id().sequence(), 5u);
+    EXPECT_EQ(fetched.events[1].id().sequence(), 4u);
+    EXPECT_TRUE(Before(fetched.events[1].hlc(), fetched.events[0].hlc()));
+    EXPECT_TRUE(fetched.trailer.truncated());
+    EXPECT_EQ(fetched.trailers, 1);
+
+    request.set_max_events(0);
+    fetched = FetchAll(*rig.archive, request);
+    ASSERT_EQ(fetched.events.size(), 5u);
+    for(size_t i = 0; i < 5; ++i) EXPECT_EQ(fetched.events[i].id().sequence(), 5 - i);
+    EXPECT_FALSE(fetched.trailer.truncated());
+
+    request.set_max_events(2);
+    request.mutable_predicate()->add_kinds("a");
+    fetched = FetchAll(*rig.archive, request);
+    ASSERT_EQ(fetched.events.size(), 2u);
+    EXPECT_EQ(fetched.events[0].id().sequence(), 5u);
+    EXPECT_EQ(fetched.events[1].id().sequence(), 3u);
+    EXPECT_TRUE(fetched.trailer.truncated());
+}
+
+TEST(ArchiveTransferTest, FetchHotNewestFirstOnThePhysicalAxisIsInvalidArgument)
+{
+    test::AdapterRig rig;
+    ASSERT_TRUE(rig.rig.journal->append({1, 7, {Item(1)}}, Durability::Accepted).ok());
+    iv1::FetchHotRequest request;
+    request.set_story_id(1);
+    request.mutable_physical()->set_end_ns(INT64_MAX);
+    EXPECT_TRUE(FetchAll(*rig.archive, request).status.ok());
+    request.set_order(chronolog::v1::READ_ORDER_NEWEST_FIRST);
     EXPECT_EQ(FetchAll(*rig.archive, request).status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
 }
 } // namespace chronolog

@@ -29,7 +29,9 @@ constexpr char kDeploymentFile[] = "deployment";
 
 absl::StatusOr<uint64_t> availableBytes(const std::string& dir)
 {
-    struct statvfs stats{};
+    struct statvfs stats
+    {
+    };
     if(::statvfs(dir.c_str(), &stats) != 0)
         return absl::UnavailableError(std::string("statvfs failed: ") + std::strerror(errno));
     return static_cast<uint64_t>(stats.f_bavail) * stats.f_frsize;
@@ -279,9 +281,14 @@ void WalJournal::finishAppend(AppendCallback done, absl::StatusOr<std::vector<Ap
             results.ok() && std::any_of(results->begin(),
                                         results->end(),
                                         [](const AppendResult& result) { return absl::IsOutOfRange(result.status); });
-    if(!rejected)
+    const bool accepted =
+            results.ok() && std::any_of(results->begin(),
+                                        results->end(),
+                                        [](const AppendResult& result)
+                                        { return result.status.ok() && result.achieved == Durability::Accepted; });
+    if(!rejected && (!accepted || failed_.load()))
         return done(std::move(results));
-    auto bytes = rejected ? wal::frame(writersRecord()) : std::string{};
+    auto bytes = wal::frame(writersRecord());
     enqueue(Write{std::move(bytes),
                   [done = std::move(done), results = std::move(results), rejected](absl::Status status) mutable
                   {
@@ -570,12 +577,15 @@ std::vector<WalJournal::SealedChunk> WalJournal::sealedChunks() const
 
 namespace chronolog
 {
+absl::Status WalJournal::persistWriters() { return persistRecord(writersRecord()); }
+
 std::string WalJournal::writersRecord() const { return "W" + checkpointText(); }
 
 void WalJournal::restoreWriters(std::string_view payload)
 {
     std::istringstream in{std::string(payload)};
-    const bool version4 = payload.starts_with("v4 ");
+    const bool version5 = payload.starts_with("v5 ");
+    const bool version4 = payload.starts_with("v4 ") || version5;
     const bool version3 = payload.starts_with("v3 ") || version4;
     const bool version2 = payload.starts_with("v2 ") || version3;
     if(version2)
@@ -627,6 +637,13 @@ void WalJournal::restoreWriters(std::string_view payload)
                 result.rejection = static_cast<AppendRejection>(rejection);
                 if(!absl::IsFailedPrecondition(result.status) && result.rejection != AppendRejection::Unspecified)
                     throw std::runtime_error("WAL append rejection disagrees with status");
+            }
+            if(version5)
+            {
+                uint32_t achieved{};
+                if(!(in >> achieved) || achieved > static_cast<uint32_t>(Durability::Durable))
+                    throw std::runtime_error("invalid WAL durability");
+                result.achieved = static_cast<Durability>(achieved);
             }
             writer.window.push_back(result);
         }

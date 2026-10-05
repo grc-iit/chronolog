@@ -121,6 +121,13 @@ class EventId:
 
 
 @dataclass(frozen=True)
+class Link:
+    type: str
+    target: EventId
+    target_hlc: Hlc | None = None
+
+
+@dataclass(frozen=True)
 class TimeReading:
     physical_ns: int = 0
     uncertainty_ns: int | None = None
@@ -151,8 +158,12 @@ class Envelope:
     trace_id: bytes
     span_id: bytes
     _attributes: tuple[tuple[str, str], ...] = field(repr=False)
+    kind: str
+    actor: str
+    links: tuple[Link, ...]
 
-    def __init__(self, payload=b"", content_type=None, attributes=None, trace_id=None, span_id=None):
+    def __init__(self, payload=b"", content_type=None, attributes=None, trace_id=None, span_id=None,
+                 kind=None, actor=None, links=None):
         for name, data in (("payload", payload), ("trace_id", trace_id or b""), ("span_id", span_id or b"")):
             if not isinstance(data, bytes):
                 raise TypeError(f"{name} must be bytes")
@@ -164,6 +175,14 @@ class Envelope:
             raise TypeError("attributes must be dict[str, str]")
         object.__setattr__(self, "content_type", content_type or "")
         object.__setattr__(self, "_attributes", tuple(sorted(attrs.items())))
+        for name, value in (("kind", kind), ("actor", actor)):
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"{name} must be str")
+            object.__setattr__(self, name, value or "")
+        links = tuple(links or ())
+        if any(not isinstance(link, Link) for link in links):
+            raise TypeError("links must be Link")
+        object.__setattr__(self, "links", links)
 
     @property
     def attributes(self):
@@ -398,8 +417,8 @@ def _id(story):
 
 class _Appender:
     def append(self, payload, *, content_type=None, attributes=None, trace_id=None, span_id=None,
-               durability=Durability.DURABLE, physical=None, timeout=None):
-        envelope = Envelope(payload, content_type, attributes, trace_id, span_id)
+               kind=None, actor=None, links=None, durability=Durability.DURABLE, physical=None, timeout=None):
+        envelope = Envelope(payload, content_type, attributes, trace_id, span_id, kind, actor, links)
         return self._handle.append(AppendSpec(envelope, durability, physical), timeout)
 
     def append_batch(self, items, *, durability=Durability.DURABLE, timeout=None):

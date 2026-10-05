@@ -393,10 +393,17 @@ std::string apply(SqliteMetadataStore& store, const wire::MembershipCommand& q)
         if(!replacement)
             m->set_joined(q.has_join());
     }
+    if(status.ok() && (q.has_drain() || q.has_abandon()))
+        m->set_removed(true);
+    if(status.ok() && q.has_join())
+        m->set_removed(false);
     if(status.ok() && q.has_register_())
     {
         if(previous != q.register_().process().instance())
+        {
             m->set_applied_route_revision(0);
+            m->set_removed(false);
+        }
         *m->mutable_process() = q.register_().process();
         m->set_policy_version(q.register_().policy_version());
         if(m->policy_version() != state.policy().version())

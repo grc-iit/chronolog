@@ -98,6 +98,7 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                        journal_.retiredOwner(req.story_id()))
                         return fail(absl::FailedPreconditionError("owned epoch mismatch"));
                 }
+                const bool newest_first = req.order() == chronolog::v1::READ_ORDER_NEWEST_FIRST;
                 Range range;
                 switch(req.range_case())
                 {
@@ -116,6 +117,8 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 }
                 if(range.start > range.end)
                     return fail(absl::InvalidArgumentError("range start is after end"));
+                if(newest_first && range.axis == Range::Axis::Physical)
+                    return fail(absl::InvalidArgumentError("newest-first is HLC axis only"));
                 const uint64_t limit = req.max_events() ? req.max_events() : options_.default_max_events;
 
                 auto physical = journal_.physicalFrontier(req.story_id());
@@ -146,8 +149,10 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 size_t total_bytes = 0;
                 uint64_t sent = 0;
                 bool truncated = false;
-                for(const auto& event: snapshot->events)
+                const auto& scanned = snapshot->events;
+                for(size_t i = 0; i < scanned.size(); ++i)
                 {
+                    const auto& event = newest_first ? scanned[scanned.size() - 1 - i] : scanned[i];
                     auto encoded = convert::toProto(event);
                     const size_t bytes = encoded.ByteSizeLong();
                     if(sent >= limit || (sent > 0 && total_bytes + bytes > options_.max_bytes))
@@ -192,6 +197,61 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
             });
     if(!queued)
         reactor->begin({}, grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "keeper is saturated"));
+    return reactor;
+}
+
+grpc::ServerUnaryReactor* ArchiveService::WriterStatus(grpc::CallbackServerContext* context,
+                                                       const iv1::WriterStatusRequest* request,
+                                                       iv1::WriterStatusResponse* response)
+{
+    auto* reactor = context->DefaultReactor();
+    if(!pool_.submit(
+               [this, reactor, req = *request, response]
+               {
+                   auto fail = [&](absl::Status status) { reactor->Finish(convert::toGrpc(status)); };
+                   if(!req.story_id() || !req.writer_id() || !req.incarnation() || !req.sequence())
+                       return fail(absl::InvalidArgumentError("complete EventId is required"));
+                   if(journal_.dropped(req.story_id()))
+                       return fail(absl::FailedPreconditionError("story was destroyed"));
+                   if(auto status = journal_.resolveRoute(req.story_id()); !status.ok())
+                       return fail(status);
+                   auto route = membership_.route(req.story_id());
+                   if(!route.ok())
+                       return fail(route.status());
+                   std::optional<Predecessor> owner;
+                   for(const auto& p: journal_.predecessorOwners(req.story_id()))
+                       if(p.epoch == req.expect_epoch())
+                           owner = p;
+                   const auto instance = journal_.instance();
+                   if((!req.expect_instance().empty() && req.expect_instance() != instance) ||
+                      (owner && req.expect_instance() != instance) ||
+                      (!owner && ((req.expect_epoch() && req.expect_epoch() != route->epoch) ||
+                                  journal_.retiredOwner(req.story_id()))))
+                       return fail(absl::FailedPreconditionError("owned instance or epoch mismatch"));
+                   auto status =
+                           journal_.writerStatus({req.story_id(), req.writer_id(), req.incarnation(), req.sequence()});
+                   if(!status.ok())
+                       return fail(status.status());
+                   response->set_known(status->known);
+                   response->set_next_sequence(status->next_sequence);
+                   *response->mutable_last_hlc() = convert::toProto(status->last_hlc);
+                   response->set_released(status->released);
+                   response->set_termination_cause(
+                           static_cast<v1::AcquisitionTerminationCause>(status->termination_cause));
+                   if(status->recorded)
+                   {
+                       if(absl::IsOutOfRange(status->recorded->status))
+                           *response->mutable_recorded_rejection() = convert::toProto(status->recorded->status);
+                       else
+                           *response->mutable_recorded_hlc() = convert::toProto(status->recorded->hlc);
+                   }
+                   *response->mutable_sealed_frontier() = convert::toProto(
+                           owner ? std::min(status->sealed_frontier, owner->own_cut) : status->sealed_frontier);
+                   response->set_instance(instance);
+                   response->set_epoch(owner ? owner->epoch : route->epoch);
+                   reactor->Finish(grpc::Status::OK);
+               }))
+        reactor->Finish(grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "keeper is saturated"));
     return reactor;
 }
 

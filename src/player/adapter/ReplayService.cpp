@@ -199,10 +199,14 @@ private:
 ReplayService::ReplayService(std::shared_ptr<const Replay> replay,
                              std::shared_ptr<const StoryCatalog> catalog,
                              size_t max_streams,
+                             WriterStatusCall writer_status,
+                             std::chrono::milliseconds await_max_wait,
                              PrefixOptions prefix)
     : replay_(std::move(replay))
     , catalog_(std::move(catalog))
     , max_streams_(max_streams)
+    , writer_status_(std::move(writer_status))
+    , await_max_wait_(await_max_wait)
     , prefix_(prefix)
 {}
 

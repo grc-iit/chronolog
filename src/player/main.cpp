@@ -183,7 +183,13 @@ int main(int argc, char** argv)
     prefix_options.resolve_retries = cfg.prefix_resolve_retries;
     prefix_options.read_max_events = cfg.read_max_events;
     prefix_options.batch_size = cfg.batch_size;
-    player::ReplayService service(replay, catalog, 256, prefix_options);
+    player::ReplayService service(
+            replay,
+            catalog,
+            256,
+            [source](EventId id, auto deadline) { return source->writerStatus(id, deadline); },
+            std::chrono::milliseconds(config->await_max_wait_ms),
+            prefix_options);
 
     int port = 0;
     grpc::ServerBuilder builder;

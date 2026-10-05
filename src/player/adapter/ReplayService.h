@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
+#include "chronolog/internal/v1/internal.pb.h"
 #include <memory>
 #include <mutex>
 #include <set>
@@ -16,15 +18,25 @@ namespace chronolog::player
 class ReplayService final: public v1::Replay::CallbackService
 {
 public:
+    using WriterStatusCall =
+            std::function<absl::StatusOr<internal::v1::WriterStatusResponse>(EventId,
+                                                                             std::chrono::system_clock::time_point)>;
+
     // Every stream runs on its own worker thread, so the cap bounds threads. Beyond it a call
     // fails with RESOURCE_EXHAUSTED.
     ReplayService(std::shared_ptr<const Replay> replay,
                   std::shared_ptr<const StoryCatalog> catalog,
                   size_t max_streams = 256,
+                  WriterStatusCall writer_status = {},
+                  std::chrono::milliseconds await_max_wait = std::chrono::milliseconds(300000),
                   PrefixOptions prefix = {});
 
     grpc::ServerWriteReactor<v1::ReadResponse>* Read(grpc::CallbackServerContext*, const v1::ReadRequest*) override;
     grpc::ServerWriteReactor<v1::TailResponse>* Tail(grpc::CallbackServerContext*, const v1::TailRequest*) override;
+
+    grpc::ServerUnaryReactor* Await(grpc::CallbackServerContext*, const v1::AwaitRequest*, v1::AwaitResponse*) override;
+    absl::StatusOr<v1::AwaitResponse> awaitAnswer(const v1::AwaitRequest&,
+                                                  std::chrono::system_clock::time_point deadline) const;
 
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
@@ -63,6 +75,8 @@ private:
     std::shared_ptr<const Replay> replay_;
     std::shared_ptr<const StoryCatalog> catalog_;
     const size_t max_streams_;
+    WriterStatusCall writer_status_;
+    std::chrono::milliseconds await_max_wait_;
     const PrefixOptions prefix_;
     mutable std::mutex mu_;
     std::set<Stream*> streams_;

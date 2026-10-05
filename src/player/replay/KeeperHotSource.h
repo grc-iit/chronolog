@@ -35,6 +35,7 @@ public:
     // Connects to a Keeper listener now, while name resolution works, so a later resolver outage on the
     // network does not reach reads that find the connection already up.
     void warm(const std::string& address) const;
+    std::shared_ptr<KeeperHotSource> bounded(std::chrono::system_clock::time_point deadline) const;
 
     absl::StatusOr<HotFetch> fetch(StoryId story, const Range& range) const override;
     absl::StatusOr<HotFetch> fetchRead(StoryId story, const Range& range, size_t target) const override;
@@ -50,6 +51,9 @@ public:
                                                Hlc from,
                                                const TailStarts& starts,
                                                const EventPredicate& predicate) const override;
+
+    absl::StatusOr<internal::v1::WriterStatusResponse>
+    writerStatus(EventId id, std::chrono::system_clock::time_point deadline) const;
 
 private:
     absl::StatusOr<HotFetch> fetchImpl(StoryId story,
