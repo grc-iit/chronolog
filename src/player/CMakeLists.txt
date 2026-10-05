@@ -20,6 +20,7 @@ add_library(chronolog_player_lib STATIC
     adapter/ClusterClient.cpp
     adapter/Convert.cpp
     adapter/ReplayService.cpp
+    adapter/Await.cpp
     replay/KeeperHotSource.cpp
     replay/WriterDirectory.cpp)
 target_link_libraries(chronolog_player_lib

@@ -73,6 +73,39 @@ bool Before(const v1::Hlc& a, const v1::Hlc& b)
 
 } // namespace
 
+TEST(ArchiveTransferTest, WriterStatusReturnsRetainedCheckpointAndFencesIdentity)
+{
+    test::AdapterRig rig;
+    auto appended = rig.rig.journal->append({1, 7, {Item(1)}}, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    rig.rig.journal->releaseWriter(1, 2, 3, AcquisitionTerminationCause::Expired);
+    rig.rig.journal->eraseEvents(1, {Range::Axis::Hlc, {}, {INT64_MAX, UINT32_MAX}});
+    iv1::WriterStatusRequest request;
+    request.set_story_id(1);
+    request.set_writer_id(2);
+    request.set_incarnation(3);
+    request.set_sequence(1);
+    request.set_expect_epoch(7);
+    iv1::WriterStatusResponse response;
+    auto ctx = test::AdapterRig::context();
+    ASSERT_TRUE(rig.archive->WriterStatus(ctx.get(), request, &response).ok());
+    EXPECT_TRUE(response.known());
+    EXPECT_TRUE(response.released());
+    EXPECT_EQ(response.next_sequence(), 2u);
+    EXPECT_EQ(response.termination_cause(), v1::ACQUISITION_TERMINATION_CAUSE_EXPIRED);
+    EXPECT_EQ(response.recorded_hlc().physical_ns(), appended->at(0).hlc.physical_ns);
+    EXPECT_TRUE(Before(response.recorded_hlc(), response.sealed_frontier()));
+    request.set_expect_instance("wrong");
+    ctx = test::AdapterRig::context();
+    EXPECT_EQ(rig.archive->WriterStatus(ctx.get(), request, &response).error_code(),
+              grpc::StatusCode::FAILED_PRECONDITION);
+    request.clear_expect_instance();
+    request.set_expect_epoch(8);
+    ctx = test::AdapterRig::context();
+    EXPECT_EQ(rig.archive->WriterStatus(ctx.get(), request, &response).error_code(),
+              grpc::StatusCode::FAILED_PRECONDITION);
+}
+
 TEST(ArchiveTransferTest, FetchHotStreamsBatchesThenOneTrailer)
 {
     test::AdapterRig rig;

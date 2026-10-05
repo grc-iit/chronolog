@@ -37,6 +37,10 @@ public:
     grpc::ServerWriteReactor<internal::v1::FetchHotResponse>*
     FetchHot(grpc::CallbackServerContext* context, const internal::v1::FetchHotRequest* request) override;
 
+    grpc::ServerUnaryReactor* WriterStatus(grpc::CallbackServerContext*,
+                                           const internal::v1::WriterStatusRequest*,
+                                           internal::v1::WriterStatusResponse*) override;
+
 private:
     RamJournal& journal_;
     const Membership& membership_;

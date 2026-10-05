@@ -13,11 +13,8 @@ namespace
 
 std::string ExpectedSequence(uint64_t next) { return "expected sequence " + std::to_string(next); }
 
-// Window entries that a checkpoint records: acknowledged DURABLE results and physical rejections.
-bool checkpointEligible(const AppendResult& result)
-{
-    return absl::IsOutOfRange(result.status) || (result.status.ok() && result.achieved == Durability::Durable);
-}
+// Completed sequence results survive even when their events were only accepted in RAM.
+bool checkpointEligible(const AppendResult& result) { return absl::IsOutOfRange(result.status) || result.status.ok(); }
 
 void formatWindowLine(std::string& out, const AppendResult& result)
 {
@@ -31,6 +28,8 @@ void formatWindowLine(std::string& out, const AppendResult& result)
                     static_cast<int>(result.status.code()),
                     " ",
                     static_cast<uint32_t>(result.rejection),
+                    " ",
+                    static_cast<uint32_t>(result.achieved),
                     "\n");
 }
 
@@ -139,15 +138,22 @@ absl::Status RamJournal::registerWriter(StoryId story, uint64_t writer_id, uint6
         if(incarnation == it->second.incarnation)
         {
             it->second.assigned = true;
-            return absl::OkStatus();
+            lock.unlock();
+            return persistWriters();
         }
+    }
+    if(it != st.slots.end())
+    {
+        std::lock_guard old_lock(it->second.current->mu);
+        it->second.current->supersede();
     }
     auto writer = std::make_shared<Writer>();
     writer->writer_id = writer_id;
     writer->incarnation = incarnation;
     st.writers[{writer_id, incarnation}] = writer;
     st.slots[writer_id] = Slot{incarnation, true, writer};
-    return absl::OkStatus();
+    lock.unlock();
+    return persistWriters();
 }
 
 void RamJournal::unassignWriter(StoryId story, uint64_t writer_id)
@@ -180,10 +186,13 @@ void RamJournal::releaseWriter(StoryId story,
     }
     if(!writer)
         return;
-    std::lock_guard lock(writer->mu);
-    writer->released = true;
-    if(writer->termination_cause == AcquisitionTerminationCause::Unspecified)
-        writer->termination_cause = cause;
+    {
+        std::lock_guard lock(writer->mu);
+        writer->released = true;
+        if(writer->termination_cause == AcquisitionTerminationCause::Unspecified)
+            writer->termination_cause = cause;
+    }
+    (void)persistWriters();
 }
 
 std::optional<AppendResult> RamJournal::appendOne(StoryId story,
@@ -464,36 +473,6 @@ std::string RamJournal::checkpointText() const
             {
                 std::lock_guard writer_lock(writer->mu);
                 const auto& slot = story.slots.at(key.first);
-                // Only the current, unreleased incarnation can still be asked for a window entry: an append from a
-                // released or superseded one is refused before the dedupe lookup, so its window is not carried.
-                const bool carries = slot.current == writer && !writer->released;
-                if(!carries)
-                {
-                    writer->cache.clear();
-                    writer->cache_next = 0;
-                    writer->cache_entries = 0;
-                    absl::StrAppend(&body,
-                                    story_id,
-                                    " ",
-                                    key.first,
-                                    " ",
-                                    key.second,
-                                    " ",
-                                    writer->next_sequence,
-                                    " ",
-                                    writer->last_hlc.physical_ns,
-                                    " ",
-                                    writer->last_hlc.logical,
-                                    " ",
-                                    writer->released ? 1 : 0,
-                                    " ",
-                                    (slot.current == writer && slot.assigned) ? 1 : 0,
-                                    " 0 ",
-                                    static_cast<uint32_t>(writer->termination_cause),
-                                    "\n");
-                    ++writers;
-                    continue;
-                }
                 // Drop cached blocks that lie wholly below the window.
                 while(!writer->cache.empty() &&
                       (writer->window.empty() || writer->cache.front().last_sequence < writer->window.begin()->first))
@@ -552,7 +531,7 @@ std::string RamJournal::checkpointText() const
                 ++writers;
             }
     }
-    return absl::StrCat("v4 ", writers, "\n", body);
+    return absl::StrCat("v5 ", writers, "\n", body);
 }
 
 void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
@@ -581,8 +560,14 @@ void RamJournal::restoreWriter(const WriterCheckpoint& checkpoint)
           writer->window.begin()->first < writer->next_sequence - std::max<size_t>(config_.dedupe_window, 1))
         writer->window.erase(writer->window.begin());
     auto& slot = story.slots[key.writer_id];
-    if(slot.incarnation <= key.incarnation)
+    if(slot.incarnation > key.incarnation)
+        writer->supersede();
+    else
+    {
+        if(slot.current && slot.incarnation < key.incarnation)
+            slot.current->supersede();
         slot = Slot{key.incarnation, checkpoint.assigned, writer};
+    }
 }
 
 void RamJournal::restore(const Event& event)
@@ -598,8 +583,14 @@ void RamJournal::restore(const Event& event)
         writer->incarnation = event.id.incarnation;
     }
     auto& slot = st.slots[event.id.writer_id];
-    if(slot.incarnation <= event.id.incarnation)
+    if(slot.incarnation > event.id.incarnation)
+        writer->supersede();
+    else
+    {
+        if(slot.current && slot.incarnation < event.id.incarnation)
+            slot.current->supersede();
         slot = Slot{event.id.incarnation, true, writer};
+    }
     auto pos = std::lower_bound(writer->events.begin(),
                                 writer->events.end(),
                                 event.hlc,
@@ -1348,5 +1339,37 @@ absl::Status RamJournal::dropStory(StoryId story, bool tombstone)
             listener(story);
     }
     return status;
+}
+} // namespace chronolog
+
+namespace chronolog
+{
+absl::StatusOr<RamJournal::WriterStatus> RamJournal::writerStatus(EventId id) const
+{
+    if(dropped(id.story_id))
+        return absl::FailedPreconditionError("story was destroyed");
+    auto seal = keeperFrontier(id.story_id);
+    if(!seal.ok())
+        return seal.status();
+    WriterStatus out;
+    out.sealed_frontier = *seal;
+    auto& sh = shard(id.story_id);
+    std::shared_lock lock(sh.mu);
+    const auto story = sh.stories.find(id.story_id);
+    if(story == sh.stories.end())
+        return out;
+    const auto found = story->second.writers.find({id.writer_id, id.incarnation});
+    if(found == story->second.writers.end())
+        return out;
+    std::lock_guard writer_lock(found->second->mu);
+    const auto& writer = *found->second;
+    out.known = true;
+    out.next_sequence = writer.next_sequence;
+    out.last_hlc = writer.last_hlc;
+    out.released = writer.released;
+    out.termination_cause = writer.termination_cause;
+    if(auto result = writer.window.find(id.sequence); result != writer.window.end())
+        out.recorded = result->second;
+    return out;
 }
 } // namespace chronolog

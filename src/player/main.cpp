@@ -178,7 +178,12 @@ int main(int argc, char** argv)
                     }
                 });
     auto replay = std::make_shared<player::HotReplay>(source, replay_options);
-    player::ReplayService service(replay, catalog);
+    player::ReplayService service(
+            replay,
+            catalog,
+            256,
+            [source](EventId id, auto deadline) { return source->writerStatus(id, deadline); },
+            std::chrono::milliseconds(config->await_max_wait_ms));
 
     int port = 0;
     grpc::ServerBuilder builder;
