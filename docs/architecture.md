@@ -20,6 +20,20 @@ Every event carries three time fields, and none substitutes for another (section
 Replay order is `(hlc, writer_id, incarnation, sequence)`, lexicographic, implemented once as `ReplayLess` in
 `include/chronolog/types.h` (section 7). Section 2 is the glossary; read it first.
 
+## Data model
+
+The data model is RFC-T, built in phases without changing the six contracts. An event carries optional `kind`, `actor`
+and `links`, which the Keeper stores and streams unchanged and never interprets, and a link is a plain reference whose
+target need not exist (I3.9, I3.10). A story is named by the path `<chronicle>/<story>`, a story name may contain `/`,
+segments beginning with `@` are reserved to core, and a prefix of whole segments selects every story below it (I3.11,
+I9.3). There is one reference timeline per deployment, the HLC order of section 7, and the Visor is its registry
+authority for chronicles, stories and ids, not a clock authority or a sequencer (I3.4, I4.7). A reader narrows a Read
+or Tail with a predicate over the indexed fields and waits for a named event with Await (I6.17, I6.20). Later phases add
+branches under the reserved `@` segments, foreign timelines for imported history, and placement groups that own the
+Route and epoch of a subtree.
+
+Landing in this phase, not merged yet: prefix Read and Tail (I6.15), newest-first Read (I6.18) and Await (I6.20).
+
 ## Four services
 
 ```text
@@ -67,7 +81,11 @@ background (I3.8). Release fences the incarnation: the Keeper rejects any later 
 (I3.1, I5.5), the epoch, the writer's physical reading and a `causal_floor`, the highest HLC the client has observed.
 The Keeper validates the epoch: a stale one is answered per item with FAILED_PRECONDITION and the current Route, and
 the client retries with the same EventIds (I4.1, I4.4). It assigns an HLC above the causal floor, so read-then-write
-causality holds (I7.3), and it never modifies the physical time (I3.3).
+causality holds (I7.3), and it never modifies the physical time (I3.3). An item may also carry `kind` (at most 64
+bytes), `actor` (at most 256 bytes) and up to 16 `links`, each with a non-empty type and a complete target EventId. The
+Keeper rejects a violation per item with INVALID_ARGUMENT, rejects a `kind` or link type beginning with `chronolog.` as
+reserved, and does not look a link target up (I3.9, I3.10). An `actor` is a claim by the writer, not an authenticated
+identity (S14.6).
 
 **Durability.** "ACCEPTED: the event is in Keeper RAM and ordered. It is lost on Keeper crash. DURABLE: the event is
 fsync'd in the Keeper WAL with group commit. It survives Keeper crash." (section 5). DURABLE is the default and the
@@ -99,6 +117,16 @@ effective location (I13.13, I13.14).
 in the Route (FetchHot, which returns the Keeper's sealed frontier) and older ones from the archive, merges them in
 total order (I7.1) and deduplicates by EventId across sources (I6.4). A Tail resumes exclusively after a position
 `(hlc, EventId)` and never re-sends the event at that position (I6.9).
+
+**Filters and progress.** A Read or Tail may carry a predicate: a conjunction of equality terms over `kind`, `actor`,
+attribute keys, link targets and EventIds, at most 256 values in total, with no disjunction across terms and no match
+on the payload (I6.17). It is evaluated at the source by scanning the range and only removes events, so the range, the
+order and every Completion rule are unchanged and `max_events` counts matches. A filtered Read can therefore end
+TRUNCATED with fewer matches than `max_events`, and a malformed or oversized predicate fails the request with
+INVALID_ARGUMENT. A Tail that sets `progress` also receives a message with a Position that carries an hlc and no id
+whenever its delivery frontier advances and nothing matched. Resuming from it returns every event at or above that hlc,
+so a rarely matching subscriber does not rescan from its last match (I6.21, I6.23). The Player and the wire API carry
+both; the SDKs do not expose them yet.
 
 ## Completion, and why it is exact
 
@@ -160,6 +188,15 @@ authentication and ACLs (section 14).
 | TypeScript | `client/typescript/` (package `@chronolog/client`, N-API) | The same surface with promises and async iterators. |
 | Plugins | `plugins/<name>/` | Built only on the public SDK and bindings, never on `src/` (section 11). `plugins/mcp` exposes the Context API to agents. See [plugins/README.md](../plugins/README.md). |
 | Launcher | `launcher/` (the `chronolog` CLI) | Runs one node as local processes, tracks instances, adds tiers. Runs the service binaries and never includes `src/`. |
+
+**Writer lanes.** One writer sends every append to the single Keeper that owns its story. `acquireLanes` in C++,
+`acquire_lanes` in Python and `acquireLanes` in TypeScript acquire `min(lanes, route Keepers)` writers named
+`<identity>/lane<i>`, lane i preferring Keeper i. An append goes to lane `(physical_ns / slice_ns) % lanes`, so
+consecutive time slices alternate between Keepers. Sequence, incarnation and fencing stay per lane, an append without a
+physical reading is stamped once before its first send so a retry keeps its lane, and `release` stops every lane. The
+tests are `client/cpp/tests/lanes_test.cpp`, `test_lane_writer_spreads_alternating_slices_and_reads_back_once` in
+`client/python/tests/test_stack.py` and `lane writer opens one lane per route Keeper and round-trips appends` in
+`client/typescript/test/client.test.js`.
 
 ## Where to read next
 

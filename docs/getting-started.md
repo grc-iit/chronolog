@@ -327,6 +327,85 @@ tailed tailed from typescript true
 
 More examples are in `client/typescript/test/client.test.js` and `client/typescript/test/context.test.js`.
 
+## Event fields
+
+An event may carry `kind`, `actor` and `links` next to its payload (ARCHITECTURE.md I3.9). The Keeper stores and streams
+them unchanged and gives them no meaning. `kind` is at most 64 bytes, `actor` at most 256 bytes, and an event holds at
+most 16 links. A link names a target EventId and optionally its hlc, and the target need not exist (I3.10). A `kind` or
+link type beginning with `chronolog.` is reserved and the Keeper rejects it. The `actor` is a claim by the writer, not
+an authenticated identity.
+
+Continuing from `quickstart.py`, with `client` and `story` in scope:
+
+```python
+with client.acquire(story, "envelope-fields") as writer:
+    first = writer.append(b"one")
+    dangling = cl.EventId(story.id, 99, 1, 7)
+    links = (cl.Link("replies_to", first.event_id, first.hlc), cl.Link("cites", dangling))
+    second = writer.append(b"two", kind="note.reply", actor="agent:py-test", links=links)
+    end = cl.Hlc(second.hlc.physical_ns, second.hlc.logical + 1)
+    while True:
+        with client.read(story, first.hlc, end) as reader:
+            events = list(reader)
+        if reader.completion.complete:
+            break
+        time.sleep(0.1)
+    assert (events[0].envelope.kind, events[0].envelope.actor, events[0].envelope.links) == ("", "", ())
+    assert events[1].envelope.kind == "note.reply"
+    assert events[1].envelope.actor == "agent:py-test"
+    assert events[1].envelope.links == links
+```
+
+This is `test_kind_actor_and_links_round_trip` in `client/python/tests/test_stack.py`. TypeScript passes
+`{ kind, actor, links }` to `append`, with links shaped `{ type, target, targetHlc }`, and reads them from
+`event.envelope` (`kind, actor and links round-trip through append and read` in `client/typescript/test/client.test.js`).
+C++ sets `kind`, `actor` and `links` on `AppendSpec::envelope`, a `chronolog::Envelope` (`include/chronolog/types.h`).
+
+## Writer lanes
+
+One writer appends through the single Keeper that owns its story. A lane writer spreads one logical writer across the
+Keepers of the story's Route by time: it acquires `min(lanes, route Keepers)` writers named `<identity>/lane<i>`, and an
+append whose physical reading falls in slice `s` of `slice_ns` nanoseconds goes to lane `s % lanes`. Sequence,
+incarnation and fencing stay per lane. An append without a physical reading is stamped once before its first send, so a
+retry keeps its lane. `release` stops every lane. Read the events back as usual: they merge into one ordered stream.
+
+```python
+with client.acquire_lanes(story, "lanes", 2, 1_000_000_000) as lanes:
+    print("lanes:", lanes.lanes)
+    lanes.append(b"one")
+    lanes.append_batch([b"two", b"three"])
+```
+
+```cpp
+auto lanes = client->acquireLanes(story->id, "lanes", 2, 1'000'000'000);
+if(!lanes.ok())
+    return std::cerr << lanes.status() << "\n", 1;
+cl::AppendSpec spec;
+spec.envelope.payload = "one";
+auto result = lanes->append(spec);
+const std::vector<cl::AppendSpec> specs{spec, spec};
+auto results = lanes->appendBatch(specs); // results come back in input order
+(void)lanes->release();
+```
+
+```js
+const lanes = await client.acquireLanes(story.id, 'lanes', 2, 1000000000n);
+await lanes.append(Buffer.from('one'));
+await lanes.appendBatch([{ payload: Buffer.from('two') }, { payload: Buffer.from('three') }]);
+await lanes.release();
+```
+
+The tests are `test_lane_writer_spreads_alternating_slices_and_reads_back_once` in `client/python/tests/test_stack.py`,
+`client/cpp/tests/lanes_test.cpp` and `lane writer opens one lane per route Keeper and round-trips appends` in
+`client/typescript/test/client.test.js`.
+
+## Filters and progress
+
+A Read or Tail can carry a predicate over `kind`, `actor`, attributes, link targets and EventIds (ARCHITECTURE.md
+I6.17), and a Tail can opt in to progress messages that advance its resume position when nothing matches (I6.21). The
+Player and the wire API (`Predicate`, `TailRequest.progress` in `proto/chronolog/v1/chronolog.proto`) carry both. The
+C++, Python and TypeScript SDKs do not expose them yet, so a client filters events after it reads them.
+
 ## Agents: Claude Code, Codex and Clio-coder
 
 Agents use ChronoLog through the Context API, exposed over MCP by `chronolog-mcp` (`plugins/mcp`). A context is one
