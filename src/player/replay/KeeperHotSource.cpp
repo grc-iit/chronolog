@@ -58,7 +58,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       bool tail,
                                       size_t read_budget,
                                       const EventPredicate& predicate,
-                                      std::chrono::system_clock::time_point deadline) const
+                                      std::chrono::system_clock::time_point deadline,
+                                      bool newest) const
 {
     KeeperFetch out;
     out.frontier.process_id = keeper.process_id;
@@ -91,6 +92,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         request.mutable_physical_filter()->set_end_ns(range.end.physical_ns);
     }
     request.set_expect_epoch(expected_epoch);
+    if(newest)
+        request.set_order(chronolog::v1::READ_ORDER_NEWEST_FIRST);
     if(!predicate.empty())
         *request.mutable_predicate() = convert::toProto(predicate);
     if(predecessor)
@@ -181,6 +184,15 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchReadMatching(StoryId story,
     return fetchImpl(story, range, true, nullptr, predicate, budget);
 }
 
+absl::StatusOr<HotFetch> KeeperHotSource::fetchNewestMatching(StoryId story,
+                                                              const Range& range,
+                                                              size_t target,
+                                                              const EventPredicate& predicate) const
+{
+    const size_t budget = target == SIZE_MAX ? target : target + 1;
+    return fetchImpl(story, range, true, nullptr, predicate, budget, true);
+}
+
 absl::StatusOr<HotFetch> KeeperHotSource::fetchTailMatching(StoryId story,
                                                             Hlc from,
                                                             const TailStarts& starts,
@@ -202,7 +214,8 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                     bool policy,
                                                     const TailStarts* starts,
                                                     const EventPredicate& predicate,
-                                                    size_t read_budget) const
+                                                    size_t read_budget,
+                                                    bool newest) const
 {
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
     auto state = routes_->routeState(story);
@@ -260,7 +273,8 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                              tail,
                                                              read_budget,
                                                              predicate,
-                                                             deadline);
+                                                             deadline,
+                                                             newest);
                                          }));
         }
         for(const auto& p: state->predecessors)
@@ -298,7 +312,8 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                              tail,
                                                              read_budget,
                                                              predicate,
-                                                             deadline);
+                                                             deadline,
+                                                             newest);
                                          }));
         }
         for(auto& f: pending)

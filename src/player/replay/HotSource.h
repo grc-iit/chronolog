@@ -10,6 +10,13 @@
 namespace chronolog::player
 {
 
+// I6.18: the order a Read returns its events in. A newest-first Read is HLC axis only.
+enum class ReadOrder
+{
+    OldestFirst,
+    NewestFirst
+};
+
 // One Keeper's answer to a hot fetch. `sealed` is the Keeper's exclusive frontier F.
 struct KeeperFrontier
 {
@@ -106,6 +113,14 @@ public:
     fetchPhysicalMatching(StoryId story, const Range& range, bool policy, const EventPredicate&) const
     {
         return fetchPhysical(story, range, policy);
+    }
+    // I6.18: the Read fetch of a newest-first Read. Every source answers its newest `target + 1` matching events of
+    // `range`, and is truncated when more existed. The default answers oldest-first, and the Player then cuts every
+    // answer to its newest part, so a source that ignores the order is still read correctly.
+    virtual absl::StatusOr<HotFetch>
+    fetchNewestMatching(StoryId story, const Range& range, size_t target, const EventPredicate& predicate) const
+    {
+        return fetchReadMatching(story, range, target, predicate);
     }
     virtual absl::StatusOr<HotFetch>
     fetchTailMatching(StoryId story, Hlc from, const TailStarts& starts, const EventPredicate&) const

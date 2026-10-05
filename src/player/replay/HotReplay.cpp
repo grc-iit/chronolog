@@ -972,6 +972,41 @@ private:
     IncompleteReason final_reason_{IncompleteReason::None};
 };
 
+// The Hlc right after `h`, saturating at the largest one.
+Hlc successor(Hlc h)
+{
+    if(h.logical < std::numeric_limits<uint32_t>::max())
+        return {h.physical_ns, h.logical + 1};
+    return h.physical_ns < std::numeric_limits<int64_t>::max() ? Hlc{h.physical_ns + 1, 0} : h;
+}
+
+void sortNewestFirst(std::vector<Event>& events)
+{
+    auto newer = [](const Event& a, const Event& b) { return ReplayLess(b, a); };
+    if(!std::is_sorted(events.begin(), events.end(), newer))
+        std::stable_sort(events.begin(), events.end(), newer);
+}
+
+// Both inputs descend in ReplayLess order and are deduplicated by EventId. `older` normally lies wholly below `all`,
+// which makes this an append.
+void appendOlder(std::vector<Event>& all, std::vector<Event> older)
+{
+    if(older.empty())
+        return;
+    if(all.empty() || ReplayLess(older.front(), all.back()))
+    {
+        all.insert(all.end(), std::make_move_iterator(older.begin()), std::make_move_iterator(older.end()));
+        return;
+    }
+    std::reverse(all.begin(), all.end());
+    std::reverse(older.begin(), older.end());
+    std::vector<std::vector<Event>> inputs;
+    inputs.push_back(std::move(all));
+    inputs.push_back(std::move(older));
+    all = mergeReplay(std::move(inputs));
+    std::reverse(all.begin(), all.end());
+}
+
 } // namespace
 
 HotReplay::HotReplay(std::shared_ptr<const HotSource> source, HotReplayOptions options)
@@ -1249,6 +1284,189 @@ HotReplay::read(StoryId id, Range range, size_t max_events, const EventPredicate
         completion.frontier = std::min(covered.end, prefix_cap);
     return std::unique_ptr<ReplayStream>(
             std::make_unique<HotReplayStream>(std::move(inputs), std::move(completion), options_.batch_size));
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate, ReadOrder order) const
+{
+    if(order == ReadOrder::OldestFirst)
+        return read(id, range, max_events, predicate);
+    return readNewest(id, range, max_events, predicate);
+}
+
+absl::StatusOr<Hlc> HotReplay::sealedFrontier(StoryId id, Hlc start) const
+{
+    const Range empty{Range::Axis::Hlc, start, start};
+    auto fetched = source_->fetchReadMatching(id, empty, 1, {});
+    if(!fetched.ok())
+        return fetched.status();
+    std::vector<KeeperFrontier> frontiers;
+    for(const auto& k: fetched->keepers)
+    {
+        frontiers.push_back(k.frontier);
+        frontiers.back().truncated = false;
+    }
+    return CompletionPolicy::decide(empty, fetched->route_epoch, frontiers, {}, false, false, false).frontier;
+}
+
+// I6.18. Every source answers its newest part of [start, e), so the Read holds the newest events of the range once the
+// sources are merged. A source cut by its budget covers only the events above the last one it returned, and an archive
+// component that was not read covers nothing below its start, so the stream is trimmed to the highest of those bounds
+// (`covered`) and then to the target. What remains is every event at or above c and none below it.
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::readNewest(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const
+{
+    if(auto valid = predicate.validate(); !valid.ok())
+        return valid;
+    if(range.axis != Range::Axis::Hlc)
+        return absl::InvalidArgumentError("newest-first is HLC axis only");
+    if(range.end < range.start)
+        return absl::InvalidArgumentError("range end precedes start");
+    const size_t limit = std::max<size_t>(1, max_events ? max_events : options_.read_max_events);
+    // An open end is the minimum sealed frontier read before the scan, so every source's seal at the scan reaches it.
+    // A frontier below the start leaves the Read lagging.
+    Hlc e = range.end;
+    if(e == maxHlc())
+    {
+        auto sealed = sealedFrontier(id, range.start);
+        if(!sealed.ok())
+            return sealed.status();
+        e = std::max(*sealed, range.start);
+    }
+    const Range scan{Range::Axis::Hlc, range.start, e};
+    auto fetched = source_->fetchNewestMatching(id, scan, limit, predicate);
+    if(!fetched.ok())
+        return fetched.status();
+
+    Hlc covered = scan.start;
+    std::vector<KeeperFrontier> frontiers;
+    std::vector<std::vector<Event>> inputs;
+    for(auto& k: fetched->keepers)
+    {
+        std::erase_if(k.events, [&](const Event& ev) { return !inRange(scan, ev) || !predicate.matches(ev); });
+        sortNewestFirst(k.events);
+        bool truncated = k.frontier.truncated;
+        if(k.events.size() > limit + 1)
+        {
+            k.events.resize(limit + 1);
+            truncated = true;
+        }
+        if(truncated && k.frontier.answered)
+            covered = std::max(covered, k.events.empty() ? scan.end : successor(k.events.back().hlc));
+        k.frontier.truncated = false;
+        frontiers.push_back(k.frontier);
+        std::reverse(k.events.begin(), k.events.end());
+        inputs.push_back(std::move(k.events));
+    }
+    std::vector<Event> all = mergeReplay(std::move(inputs));
+    std::reverse(all.begin(), all.end());
+    auto countFrom = [&](Hlc from)
+    {
+        return static_cast<size_t>(
+                std::partition_point(all.begin(), all.end(), [&](const Event& ev) { return ev.hlc >= from; }) -
+                all.begin());
+    };
+    const Hlc hot_bound = covered;
+    const Hlc cold_end = archiveEnd(*fetched, scan);
+    covered = std::max(covered, cold_end);
+    bool archive_ok = true;
+    std::vector<ManifestRecord> records;
+    std::vector<std::pair<Hlc, Hlc>> unreadable;
+    if(cold_end > hot_bound && countFrom(covered) <= limit)
+    {
+        archive_ok = options_.archive && options_.archive->refreshNow().ok();
+        std::vector<ManifestRecord> published;
+        if(archive_ok)
+        {
+            auto manifest = options_.archive->manifest(id);
+            archive_ok = manifest.ok();
+            if(manifest.ok())
+                records = *std::move(manifest);
+        }
+        std::stable_sort(records.begin(),
+                         records.end(),
+                         [](const auto& a, const auto& b)
+                         { return std::tie(a.start, a.file) < std::tie(b.start, b.file); });
+        for(const auto& record: records)
+            if(record.state == ManifestState::Published && record.end > hot_bound && record.start < cold_end)
+                published.push_back(record);
+        // Overlapping records form one component, read whole, newest component first.
+        struct Component
+        {
+            size_t first, last;
+            Hlc start;
+        };
+        std::vector<Component> components;
+        for(size_t i = 0; i < published.size();)
+        {
+            size_t j = i;
+            Hlc group_end = published[i].end;
+            do {
+                group_end = std::max(group_end, published[j++].end);
+            } while(j < published.size() && published[j].start < group_end);
+            components.push_back({i, j, published[i].start});
+            i = j;
+        }
+        const Range cold{Range::Axis::Hlc, hot_bound, cold_end};
+        size_t next = components.size();
+        while(archive_ok && next > 0 && countFrom(covered) <= limit)
+        {
+            const Component& component = components[--next];
+            ArchiveBatch batch(*options_.archive,
+                               std::span<const ManifestRecord>(published).subspan(component.first,
+                                                                                  component.last - component.first),
+                               predicate);
+            for(size_t i = component.first; i < component.last; ++i)
+            {
+                auto events = batch.read(i - component.first, cold);
+                if(!events.ok())
+                {
+                    unreadable.emplace_back(published[i].start, published[i].end);
+                    continue;
+                }
+                std::erase_if(*events, [&](const Event& ev) { return !inRange(cold, ev); });
+                sortNewestFirst(*events);
+                appendOlder(all, *std::move(events));
+            }
+            covered = std::max(hot_bound, component.start);
+        }
+        if(next == 0)
+            covered = hot_bound;
+        if(!records.empty() && archiveTombstoned(options_, id))
+            archive_ok = false;
+    }
+    while(!all.empty() && all.back().hlc < covered) all.pop_back();
+    bool cut = covered > scan.start;
+    if(all.size() > limit)
+    {
+        // Whole HLC tie groups: the target is soft.
+        const Hlc target = all[limit - 1].hlc;
+        while(all.back().hlc < target) all.pop_back();
+        cut = true;
+    }
+    const Hlc c = all.empty() ? covered : all.back().hlc;
+
+    // No LOST window, unreadable file or abandoned range may lie in the claimed [c, e) (I6.14, I4.15).
+    const Hlc claim = cut ? c : scan.start;
+    bool failed = !archive_ok;
+    for(const auto& [start, end]: unreadable) failed |= start < e && end > claim;
+    for(const auto& record: records)
+        failed |= record.state == ManifestState::Lost && record.start < e && record.end > claim;
+    for(const auto& lost: fetched->abandoned) failed |= lost.start < e && lost.end > claim;
+    Completion completion =
+            CompletionPolicy::decide(scan, fetched->route_epoch, frontiers, fetched->writers, failed, false, false);
+    // A seal below e leaves no suffix to certify, so LAGGING_WRITERS outranks the cut (I6.18).
+    std::optional<Hlc> claim_start;
+    if(completion.reason == IncompleteReason::None && cut)
+    {
+        completion.complete = false;
+        completion.reason = IncompleteReason::Truncated;
+        claim_start = c;
+    }
+    if(completion.reason == IncompleteReason::None || completion.reason == IncompleteReason::Truncated)
+        completion.frontier = e;
+    return std::unique_ptr<ReplayStream>(
+            std::make_unique<MergedStream>(std::move(all), std::move(completion), options_.batch_size, claim_start, e));
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position) const

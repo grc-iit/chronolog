@@ -22,7 +22,8 @@ absl::StatusOr<StreamItem> decode(const Response& response, detail::State& state
     else if(response.has_completion())
     {
         item.completion = detail::decode(response.completion());
-        if(item.completion->reason == IncompleteReason::Truncated)
+        // A newest-first claim names its end e, and its continuation reads below c, never from the frontier.
+        if(item.completion->reason == IncompleteReason::Truncated && !response.completion().has_claim_end())
             item.continuation = item.completion->frontier;
     }
     else
@@ -89,6 +90,8 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
         else
             request.set_prefix(prefix);
         request.set_max_events(options.max_events.value_or(0));
+        if(options.order == ReadOrder::NewestFirst)
+            request.set_order(v1::READ_ORDER_NEWEST_FIRST);
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
         stream = replay->Read(context.get(), request);

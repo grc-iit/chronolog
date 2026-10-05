@@ -38,13 +38,20 @@ public:
     absl::StatusOr<v1::AwaitResponse> awaitAnswer(const v1::AwaitRequest&,
                                                   std::chrono::system_clock::time_point deadline) const;
 
-    absl::StatusOr<std::unique_ptr<ReplayStream>>
-    read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
+    // I6.18: UNIMPLEMENTED for a newest-first Read unless the replay is a HotReplay.
+    absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId story,
+                                                       Range range,
+                                                       size_t max_events,
+                                                       const EventPredicate& predicate = {},
+                                                       ReadOrder order = ReadOrder::OldestFirst) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     tail(StoryId story, Event position, const EventPredicate& predicate = {}, bool progress = false) const;
     // I6.15: UNIMPLEMENTED unless the replay is a HotReplay and the Catalog resolves prefixes.
-    absl::StatusOr<std::unique_ptr<ReplayStream>>
-    readPrefix(const std::string& prefix, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>> readPrefix(const std::string& prefix,
+                                                             Range range,
+                                                             size_t max_events,
+                                                             const EventPredicate& predicate = {},
+                                                             ReadOrder order = ReadOrder::OldestFirst) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     tailPrefix(const std::string& prefix, Event position, const EventPredicate& predicate = {}) const;
 

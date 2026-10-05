@@ -2,58 +2,12 @@
 #include <algorithm>
 #include <atomic>
 #include <set>
-#include "player/adapter/EventConvert.h"
-#include "chronolog/message_limits.h"
+#include "player/replay/MergedStream.h"
 
 namespace chronolog::player
 {
 namespace
 {
-
-// A finished result served in batches: the events are already merged, deduplicated and in the order of I7.7.
-class MergedStream final: public ReplayStream
-{
-public:
-    MergedStream(std::vector<Event> events, Completion completion, size_t batch_size)
-        : events_(std::move(events))
-        , completion_(std::move(completion))
-        , batch_size_(std::max<size_t>(batch_size, 1))
-    {}
-
-    absl::StatusOr<std::optional<ReplayBatch>> next() override
-    {
-        if(cancelled_.load())
-            return absl::CancelledError("replay stream cancelled");
-        ReplayBatch batch;
-        size_t bytes = 0;
-        while(pos_ < events_.size() && batch.events.size() < batch_size_)
-        {
-            const size_t event_bytes = convert::encodedSize(events_[pos_]);
-            if(!batch.events.empty() && bytes + event_bytes > kEventBatchBytes)
-                break;
-            bytes += event_bytes;
-            batch.events.push_back(std::move(events_[pos_++]));
-        }
-        if(!batch.events.empty())
-            return std::optional<ReplayBatch>(std::move(batch));
-        if(!completion_sent_)
-        {
-            completion_sent_ = true;
-            batch.completion = completion_;
-            return std::optional<ReplayBatch>(std::move(batch));
-        }
-        return std::optional<ReplayBatch>();
-    }
-    void cancel() override { cancelled_.store(true); }
-
-private:
-    std::vector<Event> events_;
-    Completion completion_;
-    size_t batch_size_;
-    size_t pos_{};
-    bool completion_sent_{};
-    std::atomic<bool> cancelled_{false};
-};
 
 int rank(IncompleteReason reason)
 {
@@ -79,6 +33,9 @@ struct SetRead
     Completion completion;
     // Stories whose own Read failed because they are destroyed or unknown.
     bool story_gone{};
+    // I6.18: c and e of a newest-first Read.
+    std::optional<Hlc> claim_start;
+    std::optional<Hlc> claim_end;
 };
 
 bool destroyedStory(const absl::Status& status)
@@ -88,8 +45,11 @@ bool destroyedStory(const absl::Status& status)
 
 } // namespace
 
-absl::StatusOr<std::unique_ptr<ReplayStream>>
-PrefixReplay::read(const std::string& prefix, Range range, size_t max_events, const EventPredicate& predicate) const
+absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::string& prefix,
+                                                                 Range range,
+                                                                 size_t max_events,
+                                                                 const EventPredicate& predicate,
+                                                                 ReadOrder order) const
 {
     if(auto valid = predicate.validate(); !valid.ok())
         return valid;
@@ -97,6 +57,9 @@ PrefixReplay::read(const std::string& prefix, Range range, size_t max_events, co
         return absl::InvalidArgumentError("range end precedes start");
     const size_t limit = std::max<size_t>(1, max_events ? max_events : options_.read_max_events);
     const bool hlc_axis = range.axis == Range::Axis::Hlc;
+    const bool newest = order == ReadOrder::NewestFirst;
+    if(newest && !hlc_axis)
+        return absl::InvalidArgumentError("newest-first is HLC axis only");
 
     auto readSet = [&](const PrefixResolution& set) -> absl::StatusOr<SetRead>
     {
@@ -171,6 +134,99 @@ PrefixReplay::read(const std::string& prefix, Range range, size_t max_events, co
         return out;
     };
 
+    // I6.18: every story reads newest-first at one end e, so [c, e) is complete for the set where c is the highest
+    // c of its stories. A story that is lagging or failed leaves no suffix to certify.
+    auto readSetNewest = [&](const PrefixResolution& set) -> absl::StatusOr<SetRead>
+    {
+        SetRead out;
+        Hlc e = range.end;
+        if(e == maxHlc())
+            for(StoryId story: set.stories)
+            {
+                auto sealed = replay_.sealedFrontier(story, range.start);
+                if(!sealed.ok() && destroyedStory(sealed.status()))
+                    continue;
+                if(!sealed.ok())
+                    return sealed.status();
+                e = std::min(e, *sealed);
+            }
+        e = std::max(e, range.start);
+        const Range scan{Range::Axis::Hlc, range.start, e};
+        const auto newer = [](const Event& a, const Event& b) { return PrefixLess(b, a); };
+        Hlc covered = range.start;
+        std::optional<Hlc> frontier;
+        bool failed = false, lagging = false, cut = false;
+        for(StoryId story: set.stories)
+        {
+            auto opened = replay_.read(story, scan, limit, predicate, ReadOrder::NewestFirst);
+            if(!opened.ok() && destroyedStory(opened.status()))
+            {
+                out.story_gone = true;
+                continue;
+            }
+            if(!opened.ok())
+                return opened.status();
+            std::vector<Event> events;
+            std::optional<Completion> completion;
+            for(;;)
+            {
+                auto next = (*opened)->next();
+                if(!next.ok())
+                    return next.status();
+                if(!*next)
+                    break;
+                events.insert(events.end(),
+                              std::make_move_iterator((*next)->events.begin()),
+                              std::make_move_iterator((*next)->events.end()));
+                if((*next)->completion)
+                    completion = std::move((*next)->completion);
+            }
+            if(!completion)
+                return absl::InternalError("story Read ended without a Completion");
+            failed |= completion->reason == IncompleteReason::SourceFailed;
+            lagging |= completion->reason == IncompleteReason::LaggingWriters;
+            cut |= completion->reason == IncompleteReason::Truncated;
+            out.completion.laggards.insert(out.completion.laggards.end(),
+                                           completion->laggards.begin(),
+                                           completion->laggards.end());
+            frontier = frontier ? std::min(*frontier, completion->frontier) : completion->frontier;
+            if(const auto* claim = dynamic_cast<const ClaimReplayStream*>(opened->get()); claim && claim->claimStart())
+                covered = std::max(covered, *claim->claimStart());
+            const auto middle = static_cast<std::ptrdiff_t>(out.events.size());
+            out.events.insert(out.events.end(),
+                              std::make_move_iterator(events.begin()),
+                              std::make_move_iterator(events.end()));
+            std::inplace_merge(out.events.begin(), out.events.begin() + middle, out.events.end(), newer);
+        }
+        // Below the highest c a story's events are not all here, and the target holds whole HLC tie groups.
+        while(!out.events.empty() && out.events.back().hlc < covered) out.events.pop_back();
+        cut |= covered > range.start;
+        if(out.events.size() > limit)
+        {
+            const Hlc target = out.events[limit - 1].hlc;
+            const size_t before = out.events.size();
+            while(out.events.back().hlc < target) out.events.pop_back();
+            cut |= out.events.size() < before;
+        }
+        out.completion.frontier = frontier.value_or(Hlc{});
+        out.claim_end = e;
+        if(failed)
+            out.completion.reason = IncompleteReason::SourceFailed;
+        else if(lagging)
+            out.completion.reason = IncompleteReason::LaggingWriters;
+        else
+        {
+            out.completion.frontier = e;
+            if(cut)
+            {
+                out.completion.reason = IncompleteReason::Truncated;
+                out.claim_start = out.events.empty() ? covered : out.events.back().hlc;
+            }
+        }
+        out.completion.complete = out.completion.reason == IncompleteReason::None;
+        return out;
+    };
+
     auto resolved = catalog_.resolvePrefix(prefix, options_.max_scopes);
     if(!resolved.ok())
         return resolved.status();
@@ -183,7 +239,7 @@ PrefixReplay::read(const std::string& prefix, Range range, size_t max_events, co
             return std::unique_ptr<ReplayStream>(
                     std::make_unique<MergedStream>(std::vector<Event>{}, std::move(none), options_.batch_size));
         }
-        auto pass = readSet(*resolved);
+        auto pass = newest ? readSetNewest(*resolved) : readSet(*resolved);
         if(!pass.ok())
             return pass.status();
         // I6.16: after the last frontier, one more linearizable look at the Catalog.
@@ -204,20 +260,28 @@ PrefixReplay::read(const std::string& prefix, Range range, size_t max_events, co
             {
                 completion.complete = false;
                 completion.reason = IncompleteReason::SourceFailed;
+                pass->claim_start.reset();
                 std::erase_if(pass->events, [&](const Event& e) { return destroyed.contains(e.id.story_id); });
             }
             else if(confirmed->created)
             {
                 completion.complete = false;
-                if(rank(completion.reason) < rank(IncompleteReason::LaggingWriters))
+                // A story created after R may hold events in [c, e), so a newest-first Read keeps no claim.
+                const int ceiling = newest ? rank(IncompleteReason::Truncated) : rank(IncompleteReason::LaggingWriters);
+                if(rank(completion.reason) <= ceiling)
+                {
                     completion.reason = IncompleteReason::LaggingWriters;
+                    pass->claim_start.reset();
+                }
             }
             // I6.15: a TRUNCATED prefix Read holds no event of any story at or above c.
-            if(completion.reason == IncompleteReason::Truncated && hlc_axis)
+            if(completion.reason == IncompleteReason::Truncated && hlc_axis && !newest)
                 std::erase_if(pass->events, [&](const Event& e) { return e.hlc >= completion.frontier; });
             return std::unique_ptr<ReplayStream>(std::make_unique<MergedStream>(std::move(pass->events),
                                                                                 std::move(completion),
-                                                                                options_.batch_size));
+                                                                                options_.batch_size,
+                                                                                pass->claim_start,
+                                                                                pass->claim_end));
         }
         resolved = std::move(confirmed->current);
     }
