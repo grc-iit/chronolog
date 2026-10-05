@@ -178,7 +178,12 @@ int main(int argc, char** argv)
                     }
                 });
     auto replay = std::make_shared<player::HotReplay>(source, replay_options);
-    player::ReplayService service(replay, catalog);
+    player::PrefixOptions prefix_options;
+    prefix_options.max_scopes = cfg.prefix_max_scopes;
+    prefix_options.resolve_retries = cfg.prefix_resolve_retries;
+    prefix_options.read_max_events = cfg.read_max_events;
+    prefix_options.batch_size = cfg.batch_size;
+    player::ReplayService service(replay, catalog, 256, prefix_options);
 
     int port = 0;
     grpc::ServerBuilder builder;

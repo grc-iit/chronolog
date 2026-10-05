@@ -114,6 +114,8 @@ inline Completion decode(const v1::Completion& p)
     c.complete = p.complete();
     c.frontier = decode(p.frontier());
     c.reason = static_cast<IncompleteReason>(p.reason());
+    if(p.has_catalog_revision())
+        c.catalog_revision = p.catalog_revision();
     for(const auto& f: p.laggards()) c.laggards.push_back({f.writer_id(), f.incarnation(), decode(f.frontier())});
     return c;
 }
@@ -238,6 +240,29 @@ struct State
         auto current = decode(story.route());
         route(id, current);
         return current.player;
+    }
+    // The Player that serves a prefix: the configured one, else the one the Routes of its stories name.
+    absl::StatusOr<std::string> prefixPlayerEndpoint(const std::string& prefix, TimePoint end)
+    {
+        if(!options.player_endpoint.empty())
+            return options.player_endpoint;
+        grpc::ClientContext context;
+        withDeadline(context, end);
+        v1::ListStoriesByPrefixRequest request;
+        request.set_prefix(prefix);
+        request.set_limit(65536);
+        v1::ListStoriesByPrefixResponse response;
+        auto rpc = catalog->ListStoriesByPrefix(&context, request, &response);
+        if(!rpc.ok())
+            return status(rpc);
+        if(auto result = status(response.status()); !result.ok())
+            return result;
+        if(response.limit_exceeded())
+            return absl::ResourceExhaustedError("prefix matches more than 65536 stories");
+        for(const auto& story: response.stories())
+            if(story.has_route() && !story.route().player().empty())
+                return story.route().player();
+        return absl::NotFoundError("no story under the prefix names a Player; set ClientOptions::player_endpoint");
     }
 };
 // Bounds an individual pull even when its deadline precedes the stream's RPC deadline.

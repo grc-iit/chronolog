@@ -26,6 +26,8 @@ class ProgressReplayStream: public ReplayStream
 {
 public:
     virtual std::optional<Hlc> progress() const = 0;
+    // R, set with the first progress message of a prefix Tail (I6.15).
+    virtual std::optional<uint64_t> revision() const { return std::nullopt; }
 };
 
 class HotReplay final: public Replay
@@ -47,6 +49,10 @@ public:
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position, bool progress) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     tail(StoryId id, Event position, const EventPredicate& predicate, bool progress) const;
+    // I6.15: one Tail over the sources of every story in a set fixed at Catalog revision R. `position.id.story_id` may
+    // be zero. Progress is always on, and the first message names R.
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(std::vector<StoryId> stories, uint64_t revision, Event position, const EventPredicate& predicate) const;
 
 private:
     std::shared_ptr<const HotSource> source_;

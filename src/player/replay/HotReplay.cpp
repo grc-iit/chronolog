@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <future>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -457,7 +458,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
 // A Tail delivers every event below its frontier T, once, in ReplayLess order (I6.13). T starts at the position's hlc and
 // only grows. Each source answers a round from where its last answer ended and everything that answer covers is final
 // (I6.11(a), (e)), so it is kept per source and instance until T passes it; a poll where any source did not answer, or a
-// source restarted, moves nothing.
+// source restarted, moves nothing. A prefix Tail (I6.15) holds one such state per story of its fixed set, takes T as the
+// minimum over the sources of all of them and delivers in the order of I7.7.
 class TailStream final: public ProgressReplayStream
 {
     struct Source
@@ -470,16 +472,28 @@ class TailStream final: public ProgressReplayStream
         bool full{};
         size_t byte_limit{std::numeric_limits<size_t>::max()};
     };
+    struct StoryState
+    {
+        std::map<SourceId, Source> sources;
+        std::set<std::pair<SourceId, std::string>> refusals;
+        std::set<SourceId> warned;
+        bool suspect{};
+        bool confirmed_live{};
+        bool closed{};
+    };
+    // Stories a round asks at once.
+    static constexpr size_t kFanout = 16;
 
 public:
     TailStream(std::shared_ptr<const HotSource> source,
-               StoryId story,
+               std::vector<StoryId> stories,
+               std::optional<uint64_t> revision,
                Event position,
                HotReplayOptions options,
                EventPredicate predicate,
                bool progress)
         : source_(std::move(source))
-        , story_(story)
+        , prefix_(revision.has_value())
         , options_(std::move(options))
         , position_(std::move(position))
         , predicate_(std::move(predicate))
@@ -488,15 +502,35 @@ public:
     {
         options_.batch_size = std::max<size_t>(options_.batch_size, 1);
         options_.read_max_events = std::max<size_t>(options_.read_max_events, 2);
+        for(StoryId story: stories) stories_[story];
+        closed_ = stories_.empty();
+        // I6.15: the first message of a prefix Tail names R and claims nothing beyond the position.
+        if(prefix_)
+            initial_ = {frontier_, *revision};
     }
 
     // Polls once at open time so NOT_FOUND surfaces from tail().
     absl::Status open()
     {
-        auto fetched = source_->fetchTailMatching(story_, frontier_, {}, predicate_);
-        if(!fetched.ok())
-            return fetched.status();
-        absorb(*fetched);
+        std::vector<std::pair<StoryId, TailStarts>> asks;
+        for(const auto& [id, state]: stories_) asks.emplace_back(id, TailStarts{});
+        auto fetched = fetchRound(asks, frontier_);
+        std::vector<std::pair<StoryId, HotFetch*>> answers;
+        for(size_t i = 0; i < asks.size(); ++i)
+        {
+            if(!fetched[i].ok())
+            {
+                if(prefix_ && gone(fetched[i].status()))
+                {
+                    stories_.erase(asks[i].first);
+                    continue;
+                }
+                return fetched[i].status();
+            }
+            answers.emplace_back(asks[i].first, &*fetched[i]);
+        }
+        closed_ = stories_.empty();
+        absorb(answers);
         return absl::OkStatus();
     }
 
@@ -504,10 +538,18 @@ public:
     {
         std::unique_lock lk(mu_);
         emitted_progress_.reset();
+        emitted_revision_.reset();
         for(;;)
         {
             if(cancelled_.load())
                 return finish();
+            if(initial_)
+            {
+                emitted_progress_ = initial_->first;
+                emitted_revision_ = initial_->second;
+                initial_.reset();
+                return std::optional<ReplayBatch>(ReplayBatch{});
+            }
             if(pending_pos_ < pending_.size())
                 return takeBatch();
             if(pending_progress_)
@@ -516,19 +558,33 @@ public:
                 pending_progress_.reset();
                 return std::optional<ReplayBatch>(ReplayBatch{});
             }
-            if(suspect_)
+            if(auto suspects = takeSuspects(); !suspects.empty())
             {
                 // Only the Catalog says a story is destroyed; a Keeper's refusal or an archive tombstone is evidence.
-                suspect_ = false;
                 lk.unlock();
-                const absl::Status live = options_.story_live ? options_.story_live(story_) : absl::OkStatus();
+                std::vector<absl::Status> live;
+                for(StoryId story: suspects)
+                    live.push_back(options_.story_live ? options_.story_live(story) : absl::OkStatus());
                 lk.lock();
                 if(cancelled_.load())
                     continue;
-                confirmed_live_ = live.ok();
-                if(absl::IsFailedPrecondition(live))
-                    return live;
+                for(size_t i = 0; i < suspects.size(); ++i)
+                {
+                    auto it = stories_.find(suspects[i]);
+                    if(it == stories_.end())
+                        continue;
+                    it->second.confirmed_live = live[i].ok();
+                    if(!absl::IsFailedPrecondition(live[i]))
+                        continue;
+                    // A story destroyed during a prefix Tail leaves the set without ending the stream.
+                    if(!prefix_)
+                        return live[i];
+                    stories_.erase(it);
+                }
             }
+            // A closed source produces no more events for its story, which leaves the set.
+            std::erase_if(stories_, [](const auto& entry) { return entry.second.closed; });
+            closed_ |= stories_.empty();
             if(closed_)
                 return finish();
             if(idle_)
@@ -538,23 +594,39 @@ public:
                 continue;
             }
             const Hlc from = frontier_;
-            TailStarts starts;
-            for(auto& [id, source]: sources_)
+            std::vector<std::pair<StoryId, TailStarts>> asks;
+            for(auto& [story, state]: stories_)
             {
-                if(source.events.empty())
-                    source.full = false;
-                starts[id] = std::max(source.covered, from);
-                if(source.full)
-                    starts.retained[id] = source.retained;
+                TailStarts starts;
+                for(auto& [id, source]: state.sources)
+                {
+                    if(source.events.empty())
+                        source.full = false;
+                    starts[id] = std::max(source.covered, from);
+                    if(source.full)
+                        starts.retained[id] = source.retained;
+                }
+                asks.emplace_back(story, std::move(starts));
             }
             lk.unlock();
-            auto fetched = source_->fetchTailMatching(story_, from, starts, predicate_);
-            const bool queued = fetched.ok() && !cancelled_.load() && absorb(*fetched);
+            auto fetched = fetchRound(asks, from);
+            std::vector<std::pair<StoryId, HotFetch*>> answers;
+            absl::Status failure;
+            for(size_t i = 0; i < asks.size(); ++i)
+            {
+                if(fetched[i].ok())
+                    answers.emplace_back(asks[i].first, &*fetched[i]);
+                else if(prefix_ && gone(fetched[i].status()))
+                    stories_.erase(asks[i].first);
+                else if(failure.ok())
+                    failure = fetched[i].status();
+            }
+            const bool queued = failure.ok() && !cancelled_.load() && absorb(answers);
             lk.lock();
             if(cancelled_.load())
                 continue;
-            if(!fetched.ok())
-                return fetched.status();
+            if(!failure.ok())
+                return failure;
             idle_ = !queued;
         }
     }
@@ -567,13 +639,52 @@ public:
     }
 
     std::optional<Hlc> progress() const override { return emitted_progress_; }
+    std::optional<uint64_t> revision() const override { return emitted_revision_; }
 
 private:
+    static bool gone(const absl::Status& status)
+    {
+        return absl::IsNotFound(status) || absl::IsFailedPrecondition(status);
+    }
+
+    // The stories whose Keepers or archive suggested a destruction since the last check.
+    std::vector<StoryId> takeSuspects()
+    {
+        std::vector<StoryId> suspects;
+        for(auto& [story, state]: stories_)
+            if(std::exchange(state.suspect, false))
+                suspects.push_back(story);
+        return suspects;
+    }
+
+    // One fetch per story, kFanout of them at a time.
+    std::vector<absl::StatusOr<HotFetch>> fetchRound(const std::vector<std::pair<StoryId, TailStarts>>& asks,
+                                                     Hlc from) const
+    {
+        std::vector<absl::StatusOr<HotFetch>> out(asks.size(), absl::InternalError("not fetched"));
+        if(asks.size() == 1)
+        {
+            out[0] = source_->fetchTailMatching(asks[0].first, from, asks[0].second, predicate_);
+            return out;
+        }
+        for(size_t i = 0; i < asks.size(); i += kFanout)
+        {
+            std::vector<std::future<void>> running;
+            for(size_t j = i; j < std::min(asks.size(), i + kFanout); ++j)
+                running.push_back(std::async(
+                        std::launch::async,
+                        [&, j]
+                        { out[j] = source_->fetchTailMatching(asks[j].first, from, asks[j].second, predicate_); }));
+            for(auto& done: running) done.get();
+        }
+        return out;
+    }
+
     bool afterPosition(const Event& event) const
     {
         if(position_.id.writer_id == 0 && position_.id.incarnation == 0 && position_.id.sequence == 0)
             return event.hlc >= position_.hlc;
-        return ReplayLess(position_, event);
+        return prefix_ ? PrefixLess(position_, event) : ReplayLess(position_, event);
     }
 
     static bool answered(const KeeperFrontier& f, Epoch route_epoch)
@@ -596,7 +707,7 @@ private:
     }
 
     // Folds one source's reply into its buffer and returns the frontier it contributes to the round.
-    KeeperFrontier takeReply(KeeperFetch& reply, Epoch route_epoch, size_t byte_limit)
+    KeeperFrontier takeReply(StoryId story, StoryState& state, KeeperFetch& reply, Epoch route_epoch, size_t byte_limit)
     {
         KeeperFrontier f = reply.frontier;
         f.truncated = false;
@@ -604,7 +715,7 @@ private:
         if(!answered(f, route_epoch))
             return f;
         const SourceId id{f.process_id, f.predecessor ? f.expected_epoch : Epoch{}};
-        auto [it, fresh_source] = sources_.try_emplace(id, Source{f.instance, frontier_, {}});
+        auto [it, fresh_source] = state.sources.try_emplace(id, Source{f.instance, frontier_, {}});
         Source& source = it->second;
         if(!fresh_source && source.instance != f.instance)
         {
@@ -650,9 +761,8 @@ private:
         source.events.insert(source.events.end(),
                              std::make_move_iterator(fresh.begin()),
                              std::make_move_iterator(fresh.end()));
-        if(payloadBytes(source.events) > byte_limit && warned_sources_.insert(id).second)
-            LOG(WARNING) << "Tail Keeper payload exceeds byte share for story " << story_ << ", source "
-                         << f.process_id;
+        if(payloadBytes(source.events) > byte_limit && state.warned.insert(id).second)
+            LOG(WARNING) << "Tail Keeper payload exceeds byte share for story " << story << ", source " << f.process_id;
         source.byte_limit = byte_limit;
         source.covered = covered;
         f.sealed = covered;
@@ -664,84 +774,132 @@ private:
     }
 
     // Returns true when events were queued.
-    bool absorb(HotFetch& fetch)
+    bool absorb(std::vector<std::pair<StoryId, HotFetch*>>& answers)
     {
-        if(fetch.closed)
-            closed_ = true;
-        std::set<std::pair<SourceId, std::string>> refusals;
-        for(const auto& k: fetch.keepers)
-            if(k.frontier.status == absl::StatusCode::kFailedPrecondition)
+        if(answers.empty())
+            return false;
+        const size_t n = answers.size();
+        for(auto& [story, fetch]: answers)
+        {
+            StoryState& state = stories_.at(story);
+            if(fetch->closed)
+                state.closed = true;
+            std::set<std::pair<SourceId, std::string>> refusals;
+            for(const auto& k: fetch->keepers)
+                if(k.frontier.status == absl::StatusCode::kFailedPrecondition)
+                {
+                    const SourceId id{k.frontier.process_id,
+                                      k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}};
+                    auto instance = k.frontier.instance;
+                    if(instance.empty())
+                        if(auto it = state.sources.find(id); it != state.sources.end())
+                            instance = it->second.instance;
+                    refusals.emplace(id, std::move(instance));
+                }
+            state.suspect = (!refusals.empty() && (!state.confirmed_live || refusals != state.refusals)) ||
+                            archiveRecordsTombstone(story);
+            state.refusals = std::move(refusals);
+            if(reachedAbandoned(fetch->abandoned))
+            {
+                fail(IncompleteReason::SourceFailed);
+                return false;
+            }
+        }
+        std::vector<std::set<SourceId>> asked(n), reset(n);
+        size_t buffered = 0;
+        for(size_t i = 0; i < n; ++i)
+        {
+            std::set<SourceId> held;
+            for(const auto& [id, source]: stories_.at(answers[i].first).sources) held.insert(id);
+            for(const auto& k: answers[i].second->keepers)
+                held.insert(
+                        SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
+            buffered += held.size();
+        }
+        const size_t byte_limit = options_.tail_max_bytes / std::max<size_t>(1, buffered + (options_.archive ? 1 : 0));
+        for(size_t i = 0; i < n; ++i)
+            for(auto& [id, source]: stories_.at(answers[i].first).sources)
+                if(byte_limit < source.byte_limit && payloadBytes(source.events) > byte_limit)
+                {
+                    source = Source{source.instance, frontier_, {}};
+                    reset[i].insert(id);
+                }
+        // I6.13: every source of every story has answered below `bound` and no abandoned range lies there; a Route
+        // with no Keeper proves nothing.
+        const Range range{Range::Axis::Hlc, frontier_, maxHlc()};
+        Hlc bound = maxHlc();
+        for(size_t i = 0; i < n; ++i)
+        {
+            HotFetch& fetch = *answers[i].second;
+            StoryState& state = stories_.at(answers[i].first);
+            std::vector<KeeperFrontier> frontiers;
+            for(auto& k: fetch.keepers)
             {
                 const SourceId id{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}};
-                auto instance = k.frontier.instance;
-                if(instance.empty())
-                    if(auto it = sources_.find(id); it != sources_.end())
-                        instance = it->second.instance;
-                refusals.emplace(id, std::move(instance));
+                asked[i].insert(id);
+                if(reset[i].contains(id))
+                    k.frontier.answered = false;
+                frontiers.push_back(takeReply(answers[i].first, state, k, fetch.route_epoch, byte_limit));
             }
-        suspect_ = (!refusals.empty() && (!confirmed_live_ || refusals != refusals_)) || archiveRecordsTombstone();
-        refusals_ = std::move(refusals);
-        if(reachedAbandoned(fetch.abandoned))
-        {
-            fail(IncompleteReason::SourceFailed);
-            return false;
+            Hlc cut = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
+            cut = !reset[i].empty() || fetch.keepers.empty() || cut == maxHlc() ? frontier_ : std::max(cut, frontier_);
+            bound = std::min(bound, cut);
         }
-        std::vector<KeeperFrontier> frontiers;
-        std::set<SourceId> asked, buffered;
-        for(const auto& [id, source]: sources_) buffered.insert(id);
-        for(const auto& k: fetch.keepers)
-            buffered.insert(
-                    SourceId{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}});
-        const size_t byte_limit =
-                options_.tail_max_bytes / std::max<size_t>(1, buffered.size() + (options_.archive ? 1 : 0));
-        std::set<SourceId> reset;
-        for(auto& [id, source]: sources_)
-            if(byte_limit < source.byte_limit && payloadBytes(source.events) > byte_limit)
+        std::vector<std::vector<Event>> cold(n);
+        for(size_t i = 0; i < n; ++i)
+            if(!loadArchive(options_,
+                            answers[i].first,
+                            frontier_,
+                            bound,
+                            *answers[i].second,
+                            byte_limit,
+                            archive_warned_,
+                            predicate_,
+                            cold[i]))
             {
-                source = Source{source.instance, frontier_, {}};
-                reset.insert(id);
+                stories_.at(answers[i].first).suspect |= archiveRecordsTombstone(answers[i].first);
+                fail(IncompleteReason::SourceFailed);
+                return false;
             }
-        for(auto& k: fetch.keepers)
+        std::vector<Event> events;
+        for(size_t i = 0; i < n; ++i)
         {
-            const SourceId id{k.frontier.process_id, k.frontier.predecessor ? k.frontier.expected_epoch : Epoch{}};
-            asked.insert(id);
-            if(reset.contains(id))
-                k.frontier.answered = false;
-            frontiers.push_back(takeReply(k, fetch.route_epoch, byte_limit));
+            std::erase_if(cold[i],
+                          [&](const Event& e) { return e.hlc < frontier_ || e.hlc >= bound || !afterPosition(e); });
+            std::vector<std::vector<Event>> inputs;
+            inputs.push_back(std::move(cold[i]));
+            auto& sources = stories_.at(answers[i].first).sources;
+            for(auto it = sources.begin(); it != sources.end();)
+            {
+                auto& held = it->second.events;
+                auto split = std::lower_bound(held.begin(),
+                                              held.end(),
+                                              bound,
+                                              [](const Event& e, Hlc h) { return e.hlc < h; });
+                inputs.emplace_back(std::make_move_iterator(held.begin()), std::make_move_iterator(split));
+                if(split != held.begin())
+                    it->second.full = false;
+                held.erase(held.begin(), split);
+                if(held.empty())
+                    it->second.full = false;
+                it = held.empty() && !asked[i].contains(it->first) ? sources.erase(it) : std::next(it);
+            }
+            auto merged = mergeReplay(std::move(inputs));
+            if(n == 1)
+                events = std::move(merged);
+            else
+                events.insert(events.end(),
+                              std::make_move_iterator(merged.begin()),
+                              std::make_move_iterator(merged.end()));
         }
-        // I6.13: every source has answered below `bound` and no abandoned range lies there; a Route with no Keeper
-        // proves nothing.
-        const Range range{Range::Axis::Hlc, frontier_, maxHlc()};
-        Hlc bound = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
-        bound = !reset.empty() || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
-        std::vector<Event> cold;
-        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, archive_warned_, predicate_, cold))
-        {
-            suspect_ |= archiveRecordsTombstone();
-            fail(IncompleteReason::SourceFailed);
-            return false;
-        }
-        std::erase_if(cold, [&](const Event& e) { return e.hlc < frontier_ || e.hlc >= bound || !afterPosition(e); });
-        std::vector<std::vector<Event>> inputs;
-        inputs.push_back(std::move(cold));
-        for(auto it = sources_.begin(); it != sources_.end();)
-        {
-            auto& held = it->second.events;
-            auto split =
-                    std::lower_bound(held.begin(), held.end(), bound, [](const Event& e, Hlc h) { return e.hlc < h; });
-            inputs.emplace_back(std::make_move_iterator(held.begin()), std::make_move_iterator(split));
-            if(split != held.begin())
-                it->second.full = false;
-            held.erase(held.begin(), split);
-            if(held.empty())
-                it->second.full = false;
-            it = held.empty() && !asked.contains(it->first) ? sources_.erase(it) : std::next(it);
-        }
-        auto events = mergeReplay(std::move(inputs));
+        // I7.7: the stories' streams interleave in the order of a prefix Read.
+        if(n > 1)
+            std::stable_sort(events.begin(), events.end(), PrefixLess);
         const bool advanced = bound > frontier_;
         frontier_ = bound;
-        if(reachedAbandoned(fetch.abandoned))
-            fail(IncompleteReason::SourceFailed);
+        for(const auto& answer: answers)
+            if(reachedAbandoned(answer.second->abandoned))
+                fail(IncompleteReason::SourceFailed);
         if(events.empty())
         {
             if(progress_enabled_ && advanced)
@@ -753,11 +911,11 @@ private:
         return true;
     }
 
-    bool archiveRecordsTombstone() const
+    bool archiveRecordsTombstone(StoryId story) const
     {
         if(!options_.archive)
             return false;
-        const auto tombstoned = options_.archive->tombstoned(story_);
+        const auto tombstoned = options_.archive->tombstoned(story);
         return tombstoned.ok() && *tombstoned;
     }
 
@@ -784,12 +942,12 @@ private:
         pending_.clear();
         pending_pos_ = 0;
         ReplayBatch batch;
-        batch.completion = Completion{false, frontier_, {}, final_reason_};
+        batch.completion = Completion{false, frontier_, {}, final_reason_, std::nullopt};
         return batch;
     }
 
     const std::shared_ptr<const HotSource> source_;
-    const StoryId story_;
+    const bool prefix_;
     HotReplayOptions options_;
     const Event position_;
     const EventPredicate predicate_;
@@ -800,16 +958,15 @@ private:
     const bool progress_enabled_;
     std::optional<Hlc> pending_progress_;
     std::optional<Hlc> emitted_progress_;
-    std::map<SourceId, Source> sources_;
+    std::optional<uint64_t> emitted_revision_;
+    // The first message of a prefix Tail: its position and R.
+    std::optional<std::pair<Hlc, uint64_t>> initial_;
+    std::map<StoryId, StoryState> stories_;
     std::vector<Event> pending_;
     size_t pending_pos_{};
     std::atomic<bool> cancelled_{false};
     bool closed_{};
     bool idle_{};
-    bool suspect_{};
-    bool confirmed_live_{};
-    std::set<std::pair<SourceId, std::string>> refusals_;
-    std::set<SourceId> warned_sources_;
     bool archive_warned_{};
     bool final_sent_{};
     IncompleteReason final_reason_{IncompleteReason::None};
@@ -1119,7 +1276,30 @@ HotReplay::tail(StoryId id, Event position, const EventPredicate& predicate, boo
         return absl::InvalidArgumentError("position belongs to a different story");
     if(auto valid = predicate.validate(); !valid.ok())
         return valid;
-    auto stream = std::make_unique<TailStream>(source_, id, std::move(position), options_, predicate, progress);
+    auto stream = std::make_unique<TailStream>(source_,
+                                               std::vector<StoryId>{id},
+                                               std::nullopt,
+                                               std::move(position),
+                                               options_,
+                                               predicate,
+                                               progress);
+    if(auto opened = stream->open(); !opened.ok())
+        return opened;
+    return std::unique_ptr<ReplayStream>(std::move(stream));
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::tail(std::vector<StoryId> stories, uint64_t revision, Event position, const EventPredicate& predicate) const
+{
+    if(auto valid = predicate.validate(); !valid.ok())
+        return valid;
+    auto stream = std::make_unique<TailStream>(source_,
+                                               std::move(stories),
+                                               revision,
+                                               std::move(position),
+                                               options_,
+                                               predicate,
+                                               true);
     if(auto opened = stream->open(); !opened.ok())
         return opened;
     return std::unique_ptr<ReplayStream>(std::move(stream));

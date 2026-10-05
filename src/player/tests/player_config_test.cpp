@@ -89,6 +89,8 @@ TEST(player_config, DefaultsMatchTheSpec)
     EXPECT_EQ(cfg->read_max_events, 262144u);
     EXPECT_EQ(cfg->tail_max_bytes, 64u * 1024 * 1024);
     EXPECT_EQ(cfg->tail_poll_ms, 200u);
+    EXPECT_EQ(cfg->prefix_max_scopes, 1024u);
+    EXPECT_EQ(cfg->prefix_resolve_retries, 3u);
     EXPECT_EQ(cfg->keeper_deadline_ms, 2000u);
     EXPECT_TRUE(cfg->archive_root.empty());
     EXPECT_EQ(cfg->manifest_poll_ms, 1000u);

@@ -32,6 +32,10 @@ struct PlayerConfig
     uint32_t read_max_events = 262144;
     uint32_t tail_max_bytes = 64 * 1024 * 1024;
     uint32_t tail_poll_ms = 200;
+    // I6.15: the most stories one prefix Read or Tail may resolve to.
+    uint32_t prefix_max_scopes = 1024;
+    // I6.16: re-resolutions of a prefix story set before a Read answers LAGGING_WRITERS.
+    uint32_t prefix_resolve_retries = 3;
     std::string archive_root;
     uint32_t manifest_poll_ms = 1000;
     // 30 seconds leaves ample headroom for healthy NVMe and NFS loads; the largest

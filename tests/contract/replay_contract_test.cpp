@@ -4,8 +4,10 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <condition_variable>
+#include <iterator>
 #include <mutex>
 #include <thread>
+#include <tuple>
 #include "chronolog/replay.h"
 namespace chronolog::contract
 {
@@ -977,6 +979,48 @@ TEST_P(ReplayContract, PredicatesOnlyRemoveEvents)
     EXPECT_EQ(HlcsOf(pull.get(3)), (std::vector<int64_t>{110, 150, 200}));
     fresh->awaitPolls(2);
     EXPECT_EQ(pull.delivered(), 3u);
+}
+
+// I7.7: the events of a story, copied into two more stories at the same hlcs and writers, sort by (hlc, story_id,
+// writer_id, incarnation, sequence), and the order inside each story is the one ReplayLess gives.
+TEST_P(ReplayContract, PrefixStreamTotalOrder)
+{
+    auto s = h->sut->read(1, Query());
+    ASSERT_TRUE(s.ok());
+    auto c = Collect(**s);
+    ASSERT_TRUE(c.ok());
+    ASSERT_GE(c->events.size(), 2u);
+    std::vector<Event> merged;
+    for(StoryId story: {3, 1, 2})
+        for(Event e: c->events)
+        {
+            e.id.story_id = story;
+            merged.push_back(std::move(e));
+        }
+    std::sort(merged.begin(), merged.end(), PrefixLess);
+    for(size_t i = 1; i < merged.size(); ++i)
+    {
+        const auto& a = merged[i - 1];
+        const auto& b = merged[i];
+        EXPECT_TRUE(PrefixLess(a, b));
+        EXPECT_FALSE(PrefixLess(b, a));
+        EXPECT_TRUE(std::tuple(a.hlc, a.id.story_id, a.id.writer_id, a.id.incarnation, a.id.sequence) <
+                    std::tuple(b.hlc, b.id.story_id, b.id.writer_id, b.id.incarnation, b.id.sequence));
+        if(a.id.story_id == b.id.story_id)
+        {
+            EXPECT_TRUE(ReplayLess(a, b));
+        }
+    }
+    for(StoryId story: {1, 2, 3})
+    {
+        std::vector<Event> own;
+        std::copy_if(merged.begin(),
+                     merged.end(),
+                     std::back_inserter(own),
+                     [&](const Event& e) { return e.id.story_id == story; });
+        ASSERT_EQ(own.size(), c->events.size());
+        for(size_t i = 0; i < own.size(); ++i) EXPECT_EQ(own[i].id.sequence, c->events[i].id.sequence);
+    }
 }
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReplayContract);
 } // namespace chronolog::contract

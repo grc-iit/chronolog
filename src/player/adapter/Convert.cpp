@@ -66,6 +66,8 @@ v1::Completion toProto(const Completion& completion)
         *entry->mutable_frontier() = toProto(laggard.frontier);
     }
     out.set_reason(toProto(completion.reason));
+    if(completion.catalog_revision)
+        out.set_catalog_revision(*completion.catalog_revision);
     return out;
 }
 

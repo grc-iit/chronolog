@@ -68,6 +68,8 @@ struct ReplayState
     std::shared_ptr<State> state;
     std::unique_ptr<v1::Replay::Stub> replay;
     StoryId story;
+    // I6.15: names the stories of a prefix stream; story is zero then.
+    std::string prefix;
     Deadline overall;
     std::timed_mutex pull_mutex;
     std::mutex cancel_mutex;
@@ -130,7 +132,7 @@ struct ReadStream::Impl: detail::ReplayState
     std::optional<PhysicalRange> physical;
     std::vector<PhysicalRange> pending_ranges;
     std::set<EventId> seen;
-    Completion aggregate{true, {}, {}, IncompleteReason::None};
+    Completion aggregate{true, {}, {}, IncompleteReason::None, std::nullopt};
     std::optional<Hlc> aggregate_frontier;
     std::vector<Event> leaf_events;
     absl::StatusOr<std::optional<StreamItem>> nextPhysical(Deadline);
