@@ -338,7 +338,7 @@ def main():
         parser.add_argument('--' + role, required=True)
     parser.add_argument('--config', help='tools/lab-cluster lab file; runs the scenario across its hosts')
     parser.add_argument('--homelab', action='store_true', help='--config tools/lab-cluster/homelab.json')
-    parser.add_argument('--scenario', choices=('failover', 'physical-claim'), default='failover')
+    parser.add_argument('--scenario', choices=('failover', 'physical-claim', 'prefix-claim'), default='failover')
     args = parser.parse_args()
     if args.homelab:
         args.config = args.config or str(ROOT / 'tools/lab-cluster/homelab.json')
@@ -353,7 +353,7 @@ def main():
         for attempt in range(1, STARTUP_ATTEMPTS + 1):
             try:
                 stack = Lab(args) if args.config else Local(args)
-                peers = configure(stack, new_keeper=args.scenario == 'physical-claim')
+                peers = configure(stack, new_keeper=args.scenario in ('physical-claim', 'prefix-claim'))
                 if args.config:
                     stack.stage()
                 for role in stack.services:
@@ -370,7 +370,9 @@ def main():
                 if args.config or attempt == STARTUP_ATTEMPTS:
                     print('FAIL startup: ' + str(error), flush=True)
                     return 1
-        if args.scenario == 'physical-claim':
+        if args.scenario == 'prefix-claim':
+            from prefix_claim import PrefixClaim as Scenario
+        elif args.scenario == 'physical-claim':
             from physical_claim import PhysicalClaim as Scenario
         else:
             from scenario import Scenario
