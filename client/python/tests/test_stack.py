@@ -66,6 +66,18 @@ def test_catalog_append_read_tail_and_fencing(stack):
         assert again.append(b"new", timeout=3).event_id.sequence == 1
 
 
+def test_await_finds_an_appended_event_and_certifies_a_released_incarnation_never(stack):
+    client, _, story = stack
+    with client.acquire(story, "await") as writer:
+        first = writer.append(b"awaited", timeout=3)
+        found = client.await_event(first.event_id, hlc=first.hlc, bound_s=10, timeout=15)
+        assert found.answer == cl.AwaitAnswer.FOUND and found.frontier is None
+        assert found.event.id == first.event_id and found.event.payload == b"awaited"
+        later = cl.EventId(story.id, writer.writer_id, writer.incarnation, 2)
+    never = client.await_event(later, timeout=5)
+    assert never.answer == cl.AwaitAnswer.NEVER and never.event is None and never.frontier is None
+
+
 def test_kind_actor_and_links_round_trip(stack):
     client, _, story = stack
     with client.acquire(story, "envelope-fields") as writer:

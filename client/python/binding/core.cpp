@@ -219,6 +219,13 @@ nb::object pack(const Event& e)
                         "envelope"_a = pack(e.envelope),
                         "durability"_a = static_cast<int>(e.durability)));
 }
+nb::object pack(const sdk::AwaitResult& r)
+{
+    return value("AwaitResult",
+                 fields("answer"_a = static_cast<int>(r.answer),
+                        "event"_a = maybe(r.event, [](const Event& e) { return pack(e); }),
+                        "frontier"_a = maybe(r.frontier, [](const Hlc& h) { return pack(h); })));
+}
 nb::object pack(const Completion& c)
 {
     return value("Completion",
@@ -657,6 +664,22 @@ NB_MODULE(_core, m)
                     "options"_a = nb::none(),
                     "timeout"_a = nb::none())
             .def("new_acquire_request_id", [](Client& c) { return unwrap(c->newAcquireRequestId()); })
+            .def(
+                    "await_event",
+                    [](Client& c, nb::handle ref, nb::handle at, double bound_s, std::optional<double> t)
+                    {
+                        if(!std::isfinite(bound_s) || bound_s < 0 || bound_s > 315360000)
+                            throw nb::value_error("bound_s must be finite, nonnegative, and at most ten years");
+                        sdk::EventRef r{eventId(ref), optional<Hlc>(at, hlc)};
+                        auto bound = std::chrono::nanoseconds(static_cast<int64_t>(bound_s * 1e9));
+                        auto d = deadline(t);
+                        auto native = c.shared();
+                        return pack(unwrap(call([&] { return native->await(r, bound, d); })));
+                    },
+                    "ref"_a,
+                    "hlc"_a = nb::none(),
+                    "bound_s"_a = 0.0,
+                    "timeout"_a = nb::none())
             .def(
                     "read",
                     [](Client& c, nb::handle id, nb::handle start, nb::handle end, std::optional<double> t)

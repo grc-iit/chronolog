@@ -125,6 +125,9 @@ export interface TimeReading { readonly physicalNs: bigint; readonly uncertainty
 export interface Event { readonly id: EventId; readonly hlc: Hlc; readonly physical: TimeReading; readonly envelope: Envelope; readonly durability: Durability | number }
 export interface Frontier { readonly writerId: bigint; readonly incarnation: bigint; readonly frontier: Hlc }
 export interface Completion { readonly complete: boolean; readonly frontier: Hlc; readonly laggards: readonly Frontier[]; readonly reason: 'NONE' | 'LAGGING_WRITERS' | 'PHYSICAL_AXIS_UNBOUNDED' | 'SOURCE_FAILED' | 'TRUNCATED' | UnknownEnum }
+export type AwaitAnswer = 'FOUND' | 'ABSENT_THROUGH' | 'CONSUMED' | 'NEVER' | 'UNKNOWN' | UnknownEnum;
+// FOUND carries event; ABSENT_THROUGH carries the exclusive frontier through which the event is certified absent.
+export interface AwaitResult { readonly answer: AwaitAnswer; readonly event?: Event; readonly frontier?: Hlc }
 export interface Chronicle { readonly name: string; readonly tombstoned: boolean }
 export interface Story { readonly id: bigint; readonly epoch: bigint; readonly chronicle: string; readonly name: string; readonly tombstoned: boolean }
 export interface AppendResult { readonly eventId: EventId; readonly hlc: Hlc; readonly achieved: Durability | number; readonly acked: boolean }
@@ -150,6 +153,8 @@ export interface AppendOptions extends CallOptions {
 }
 export interface AppendItem extends Omit<AppendOptions, 'timeoutMs'> { payload: Uint8Array }
 export interface StreamOptions extends CallOptions {}
+// hlc is the awaited event's hlc when the caller holds one. boundMs is how long to wait for it, 0 answers at once.
+export interface AwaitOptions extends CallOptions { hlc?: Hlc; boundMs?: number }
 interface StreamItem { events: Event[]; completion?: Completion; continuation?: Hlc }
 type Handle = object;
 interface Core {
@@ -158,6 +163,7 @@ interface Core {
   acquire(handle: Handle, story: bigint, identity: string, options: AcquireOptions): Promise<{ handle: Handle; acquisition: Acquisition }>;
   acquireLanes(handle: Handle, story: bigint, identity: string, lanes: number, sliceNs: bigint, options: AcquireOptions): Promise<{ handle: Handle; lanes: number }>;
   newAcquireRequestId(handle: Handle): string;
+  awaitEvent(handle: Handle, ref: EventId, options: AwaitOptions): Promise<AwaitResult>;
   lease(handle: Handle): WriterLease;
   append(handle: Handle, payload: Uint8Array, options: AppendOptions): Promise<AppendResult>;
   appendBatch(handle: Handle, items: readonly AppendItem[], options: CallOptions): Promise<(AppendResult | Error)[]>;
@@ -217,6 +223,9 @@ export class Client {
   }
   // A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls.
   newAcquireRequestId(): string { return sync(() => core.newAcquireRequestId(this.handle)); }
+  async awaitEvent(ref: EventId, options: AwaitOptions = {}): Promise<AwaitResult> {
+    return freeze(await invoke(() => core.awaitEvent(this.handle, ref, options), options.signal));
+  }
   readPhysical(story: bigint, range: PhysicalRange, options: StreamOptions = {}): EventStream {
     return new EventStream(() => invoke(() => core.stream(this.handle, story, 'physical', range, options)), 'read', options);
   }

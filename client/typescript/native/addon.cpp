@@ -392,6 +392,15 @@ Js js(Napi::Env env, const Event& value)
     out.Set("envelope", envelope);
     return out;
 }
+Js js(Napi::Env env, const sdk::AwaitResult& value)
+{
+    auto out = Napi::Object::New(env);
+    out.Set("answer",
+            enumName(value.answer, {"UNSPECIFIED", "FOUND", "ABSENT_THROUGH", "CONSUMED", "NEVER", "UNKNOWN"}));
+    set(out, "event", value.event);
+    set(out, "frontier", value.frontier);
+    return out;
+}
 Js js(Napi::Env env, const Completion& value)
 {
     auto out = Napi::Object::New(env);
@@ -729,6 +738,19 @@ Js newAcquireRequestId(const Napi::CallbackInfo& info)
         throw Napi::Error(info.Env(), error(info.Env(), result.status()));
     return Napi::String::New(info.Env(), *result);
 }
+Js awaitEvent(const Napi::CallbackInfo& info)
+{
+    auto held = handle(info[0], Handle::Client);
+    sdk::EventRef ref{eventId(info[1]), {}};
+    auto options = object(info[2]);
+    if(has(options, "hlc"))
+        ref.hlc = hlc(options.Get("hlc"));
+    auto bound = std::chrono::milliseconds(
+            has(options, "boundMs") ? static_cast<int64_t>(number(options.Get("boundMs"), 315360000000.0)) : 0);
+    auto end = deadline(options);
+    return thread<sdk::AwaitResult>(info.Env(),
+                                    [held, ref, bound, end] { return held->client->await(ref, bound, end); });
+}
 Js lease(const Napi::CallbackInfo& info) { return js(info.Env(), handle(info[0], Handle::Writer)->writer->lease()); }
 Held appender(Js value)
 {
@@ -856,6 +878,7 @@ Napi::Object init(Napi::Env env, Napi::Object exports)
     exports.Set("acquire", Napi::Function::New(env, acquire));
     exports.Set("acquireLanes", Napi::Function::New(env, acquireLanes));
     exports.Set("newAcquireRequestId", Napi::Function::New(env, newAcquireRequestId));
+    exports.Set("awaitEvent", Napi::Function::New(env, awaitEvent));
     exports.Set("lease", Napi::Function::New(env, lease));
     exports.Set("append", Napi::Function::New(env, append));
     exports.Set("appendBatch", Napi::Function::New(env, appendBatch));
