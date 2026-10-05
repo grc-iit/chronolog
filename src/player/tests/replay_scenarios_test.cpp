@@ -295,10 +295,8 @@ protected:
             if(!*b)
             {
                 EXPECT_EQ(completions, 1);
-                const auto* claim = dynamic_cast<const ClaimReplayStream*>(stream->get());
-                ASSERT_NE(claim, nullptr);
-                claim_start = claim->claimStart();
-                claim_end = claim->claimEnd();
+                claim_start = completion.claim_start;
+                claim_end = completion.claim_end;
                 return;
             }
             returned.insert(returned.end(), (**b).events.begin(), (**b).events.end());

@@ -1456,17 +1456,17 @@ HotReplay::readNewest(StoryId id, Range range, size_t max_events, const EventPre
     Completion completion =
             CompletionPolicy::decide(scan, fetched->route_epoch, frontiers, fetched->writers, failed, false, false);
     // A seal below e leaves no suffix to certify, so LAGGING_WRITERS outranks the cut (I6.18).
-    std::optional<Hlc> claim_start;
     if(completion.reason == IncompleteReason::None && cut)
     {
         completion.complete = false;
         completion.reason = IncompleteReason::Truncated;
-        claim_start = c;
+        completion.claim_start = c;
     }
     if(completion.reason == IncompleteReason::None || completion.reason == IncompleteReason::Truncated)
         completion.frontier = e;
+    completion.claim_end = e;
     return std::unique_ptr<ReplayStream>(
-            std::make_unique<MergedStream>(std::move(all), std::move(completion), options_.batch_size, claim_start, e));
+            std::make_unique<MergedStream>(std::move(all), std::move(completion), options_.batch_size));
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position) const

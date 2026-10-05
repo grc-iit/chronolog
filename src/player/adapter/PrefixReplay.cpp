@@ -33,9 +33,6 @@ struct SetRead
     Completion completion;
     // Stories whose own Read failed because they are destroyed or unknown.
     bool story_gone{};
-    // I6.18: c and e of a newest-first Read.
-    std::optional<Hlc> claim_start;
-    std::optional<Hlc> claim_end;
 };
 
 bool destroyedStory(const absl::Status& status)
@@ -190,8 +187,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
                                            completion->laggards.begin(),
                                            completion->laggards.end());
             frontier = frontier ? std::min(*frontier, completion->frontier) : completion->frontier;
-            if(const auto* claim = dynamic_cast<const ClaimReplayStream*>(opened->get()); claim && claim->claimStart())
-                covered = std::max(covered, *claim->claimStart());
+            if(completion->claim_start)
+                covered = std::max(covered, *completion->claim_start);
             const auto middle = static_cast<std::ptrdiff_t>(out.events.size());
             out.events.insert(out.events.end(),
                               std::make_move_iterator(events.begin()),
@@ -209,7 +206,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
             cut |= out.events.size() < before;
         }
         out.completion.frontier = frontier.value_or(Hlc{});
-        out.claim_end = e;
+        out.completion.claim_end = e;
         if(failed)
             out.completion.reason = IncompleteReason::SourceFailed;
         else if(lagging)
@@ -220,7 +217,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
             if(cut)
             {
                 out.completion.reason = IncompleteReason::Truncated;
-                out.claim_start = out.events.empty() ? covered : out.events.back().hlc;
+                out.completion.claim_start = out.events.empty() ? covered : out.events.back().hlc;
             }
         }
         out.completion.complete = out.completion.reason == IncompleteReason::None;
@@ -260,7 +257,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
             {
                 completion.complete = false;
                 completion.reason = IncompleteReason::SourceFailed;
-                pass->claim_start.reset();
+                completion.claim_start.reset();
                 std::erase_if(pass->events, [&](const Event& e) { return destroyed.contains(e.id.story_id); });
             }
             else if(confirmed->created)
@@ -271,7 +268,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
                 if(rank(completion.reason) <= ceiling)
                 {
                     completion.reason = IncompleteReason::LaggingWriters;
-                    pass->claim_start.reset();
+                    completion.claim_start.reset();
                 }
             }
             // I6.15: a TRUNCATED prefix Read holds no event of any story at or above c.
@@ -279,9 +276,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> PrefixReplay::read(const std::stri
                 std::erase_if(pass->events, [&](const Event& e) { return e.hlc >= completion.frontier; });
             return std::unique_ptr<ReplayStream>(std::make_unique<MergedStream>(std::move(pass->events),
                                                                                 std::move(completion),
-                                                                                options_.batch_size,
-                                                                                pass->claim_start,
-                                                                                pass->claim_end));
+                                                                                options_.batch_size));
         }
         resolved = std::move(confirmed->current);
     }

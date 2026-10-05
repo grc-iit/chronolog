@@ -102,6 +102,71 @@ def test_kind_actor_and_links_round_trip(stack):
         cl.Envelope(b"x", links=[(first.event_id, "replies_to")])
 
 
+def test_newest_first_read_continues_below_claim_start(stack):
+    client, chronicle, story = stack
+    with client.acquire(story, "newest") as writer:
+        results = [writer.append(b"e%d" % i, timeout=3) for i in range(6)]
+    wanted = [r.hlc for r in reversed(results)]
+    seen, end, deadline = [], None, time.monotonic() + 15
+    while True:
+        reader = client.read(story, end=end, newest_first=True, max_events=4, timeout=5)
+        page = [e.hlc for e in reader]
+        completion = reader.completion
+        if completion.reason == cl.IncompleteReason.LAGGING_WRITERS:
+            assert time.monotonic() < deadline
+            time.sleep(0.1)
+            continue
+        seen += page
+        assert completion.claim_end is not None and completion.frontier == completion.claim_end
+        assert reader.continuation is None
+        if completion.complete:
+            break
+        assert completion.reason == cl.IncompleteReason.TRUNCATED
+        assert completion.claim_start is not None and page[-1] >= completion.claim_start
+        end = completion.claim_start
+    assert seen == wanted
+
+
+def test_scope_reads_a_prefix_with_a_kind_predicate_in_order(stack):
+    client, chronicle, story = stack
+    other = client.create_story(chronicle, "other")
+    try:
+        scope = client.scope(chronicle.name)
+        assert sorted(s.id for s in scope.stories()) == sorted([story.id, other.id])
+        results = []
+        with client.acquire(story, "scope-a") as a, client.acquire(other, "scope-b") as b:
+            for i in range(4):
+                for writer in (a, b):
+                    results.append(writer.append(b"e%d" % len(results), kind="note" if i % 2 == 0 else "tool", timeout=3))
+        wanted = [r for i, r in enumerate(results) if (i // 2) % 2 == 0]
+        expected = [r.event_id for r in sorted(wanted, key=lambda r: (r.hlc, r.event_id.story_id, r.event_id.writer_id,
+                                                                       r.event_id.incarnation, r.event_id.sequence))]
+        end = cl.Hlc(max(r.hlc for r in results).physical_ns, max(r.hlc for r in results).logical + 1)
+        for attempt in range(40):
+            reader = scope.read(until=end, where={"kinds": ["note"]}, timeout=5)
+            events = list(reader)
+            if reader.completion.complete:
+                break
+            time.sleep(0.1)
+        assert reader.completion.complete
+        assert len(expected) == 4 and [e.id for e in events] == expected
+        assert {e.envelope.kind for e in events} == {"note"}
+        every = list(client.read(prefix=chronicle.name, end=end, timeout=5))
+        assert len(every) == 8
+        assert list(scope.read(until=end, where={"kinds": ["absent"]}, timeout=5)) == []
+        tail = scope.tail(where={"kinds": ["note"]}, timeout=5)
+        try:
+            assert {next(tail).id for _ in range(4)} == set(expected)
+        finally:
+            tail.cancel()
+        with pytest.raises(ValueError):
+            client.read(story, prefix=chronicle.name)
+        with pytest.raises(ValueError):
+            scope.read(where={"kind": ["note"]})
+    finally:
+        client.destroy_story(other, timeout=5)
+
+
 def test_default_read_and_tail_deliver_eight_maximal_payloads(stack):
     client, _, story = stack
     payloads = [bytes([i]) * (1024 * 1024) for i in range(8)]

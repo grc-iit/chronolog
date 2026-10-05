@@ -226,6 +226,10 @@ class Completion:
     frontier: Hlc = Hlc()
     laggards: tuple[Frontier, ...] = ()
     reason: IncompleteReason = IncompleteReason.NONE
+    # Newest-first reads only. claim_end is the end e of the Read. claim_start is c of a TRUNCATED Read: the events at or
+    # above c are complete on their own, and the next read covers [start, claim_start).
+    claim_start: typing.Optional[Hlc] = None
+    claim_end: typing.Optional[Hlc] = None
 
     def __post_init__(self):
         object.__setattr__(self, "laggards", tuple(self.laggards))
@@ -499,6 +503,38 @@ class LaneWriter(_Appender):
         self.lanes = handle.lanes()
 
 
+@dataclass(frozen=True)
+class _WirePredicate:
+    kinds: tuple[str, ...]
+    actors: tuple[str, ...]
+    attributes: tuple[tuple[str, str], ...]
+    links: tuple[tuple[str, EventId], ...]
+    event_ids: tuple[EventId, ...]
+
+
+_PREDICATE_KEYS = frozenset(("kinds", "actors", "attributes", "link_to", "event_ids"))
+
+
+def _predicate(where):
+    """Normalizes a predicate dict: kinds and actors are any-member sets of str, attributes maps key to value, link_to
+    lists the EventIds or Links the event must link to (a bare EventId matches any link type) and event_ids is an
+    any-member set of EventIds. All terms must hold. None matches every event."""
+    if where is None:
+        return None
+    unknown = set(where) - _PREDICATE_KEYS
+    if unknown:
+        raise ValueError(f"unknown predicate keys: {sorted(unknown)}")
+
+    def strings(value):
+        return (value,) if isinstance(value, str) else tuple(value or ())
+
+    attributes = where.get("attributes") or {}
+    attributes = attributes.items() if hasattr(attributes, "items") else attributes
+    links = tuple((i.type, i.target) if isinstance(i, Link) else ("", i) for i in where.get("link_to") or ())
+    return _WirePredicate(strings(where.get("kinds")), strings(where.get("actors")),
+                          tuple((k, v) for k, v in attributes), links, tuple(where.get("event_ids") or ()))
+
+
 class ReadStream:
     def __init__(self, handle, timeout=None):
         self._handle = handle
@@ -578,15 +614,57 @@ class Client:
     def read_physical(self, story, start, end, *, timeout=None):
         return ReadStream(self._handle.read_physical(_id(story), start, end, timeout), timeout)
 
-    def read(self, story, start=None, end=None, *, timeout=None):
-        handle = self._handle.read(_id(story), start or Hlc(), end or Hlc(2**63 - 1, 2**32 - 1), timeout)
+    def read(self, story=None, start=None, end=None, *, prefix=None, predicate=None, newest_first=False, max_events=None,
+             timeout=None):
+        """Reads one story, or with prefix the merged history of every story under that path prefix. predicate is a
+        dict of kinds, actors, attributes, link_to and event_ids that keeps only matching events. newest_first returns
+        the newest events of [start, end) in descending order, and an end left open means the minimum sealed frontier.
+        A truncated newest-first read names completion.claim_start: continue with end=claim_start. max_events is a soft
+        target of events to return, and zero or None leaves the Player's limit."""
+        if (story is None) == (prefix is None):
+            raise ValueError("pass exactly one of story or prefix")
+        start, end = start or Hlc(), end or Hlc(2**63 - 1, 2**32 - 1)
+        where = _predicate(predicate)
+        if prefix is None:
+            handle = self._handle.read(_id(story), start, end, where, newest_first, max_events, timeout)
+        else:
+            handle = self._handle.read_prefix(prefix, start, end, where, newest_first, max_events, timeout)
         return ReadStream(handle, timeout)
 
-    def tail(self, story, after=None, *, timeout=None):
-        return TailStream(self._handle.tail(_id(story), after, timeout), timeout)
+    def tail(self, story=None, after=None, *, prefix=None, predicate=None, timeout=None):
+        """Follows one story, or with prefix every story under that path prefix; see read for predicate."""
+        if (story is None) == (prefix is None):
+            raise ValueError("pass exactly one of story or prefix")
+        where = _predicate(predicate)
+        if prefix is None:
+            handle = self._handle.tail(_id(story), after, where, timeout)
+        else:
+            handle = self._handle.tail_prefix(prefix, after, where, timeout)
+        return TailStream(handle, timeout)
+
+    def scope(self, prefix):
+        return Scope(self, prefix)
 
     def __enter__(self): return self
     def __exit__(self, *args): return False
+
+
+class Scope:
+    """A scope is a story path prefix such as "chronicle" or "chronicle/story": it names every story whose path equals
+    the prefix or lies below it by whole segments. The methods are Client.read and Client.tail with the prefix fixed."""
+
+    def __init__(self, client, prefix):
+        self._client = client
+        self.prefix = prefix
+
+    def read(self, since=None, until=None, where=None, *, timeout=None):
+        return self._client.read(prefix=self.prefix, start=since, end=until, predicate=where, timeout=timeout)
+
+    def tail(self, after=None, where=None, *, timeout=None):
+        return self._client.tail(prefix=self.prefix, after=after, predicate=where, timeout=timeout)
+
+    def stories(self, *, timeout=None):
+        return self._client._handle.list_stories_by_prefix(self.prefix, timeout)
 
 
 def connect(catalog, player=None, *, timeout=10.0, max_retries=3, retry_backoff=0.02,

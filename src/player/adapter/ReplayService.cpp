@@ -157,15 +157,6 @@ private:
         if(batch.completion)
         {
             *response_.mutable_completion() = convert::toProto(*batch.completion);
-            // I6.18: the bounds of a newest-first claim ride with the stream, not the native Completion.
-            if constexpr(std::is_same_v<Resp, v1::ReadResponse>)
-                if(const auto* claim = dynamic_cast<const ClaimReplayStream*>(stream_.get()))
-                {
-                    if(auto start = claim->claimStart())
-                        *response_.mutable_completion()->mutable_claim_start() = convert::toProto(*start);
-                    if(auto end = claim->claimEnd())
-                        *response_.mutable_completion()->mutable_claim_end() = convert::toProto(*end);
-                }
             return write();
         }
         return true;

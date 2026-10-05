@@ -84,6 +84,56 @@ TEST(WalJournal, TerminationCausesSurviveCheckpointAndReplay)
     }
 }
 
+TEST(WalJournal, RestoredWriterAdmitsHigherIncarnation)
+{
+    WalRig rig;
+    auto original = rig.current->append(batch({1}), Durability::Durable);
+    ASSERT_TRUE(original.ok());
+    ASSERT_TRUE(original->front().status.ok());
+    rig.reopen();
+    auto restored = rig.current->writerStatus({1, 2, 3, 1});
+    ASSERT_TRUE(restored.ok());
+    ASSERT_TRUE(restored->recorded);
+    EXPECT_EQ(restored->recorded->hlc, original->front().hlc);
+    rig.current->releaseWriter(1, 2, 3, AcquisitionTerminationCause::Superseded);
+    ASSERT_TRUE(rig.current->registerWriter(1, 2, 4).ok());
+    auto successor = batch({1});
+    successor.items.front().incarnation = 4;
+    auto appended = rig.current->append(successor, Durability::Accepted);
+    ASSERT_TRUE(appended.ok());
+    ASSERT_TRUE(appended->front().status.ok());
+    EXPECT_GT(appended->front().hlc, original->front().hlc);
+    auto old = rig.current->append(batch({2}), Durability::Accepted);
+    ASSERT_TRUE(old.ok());
+    EXPECT_EQ(old->front().rejection, AppendRejection::FencedSuperseded);
+}
+
+TEST(WalJournal, LostAcceptedEventCannotReturnCheckpointedSuccess)
+{
+    WalRig rig;
+    auto original = rig.current->append(batch({1}), Durability::Accepted);
+    ASSERT_TRUE(original.ok());
+    ASSERT_TRUE(original->front().status.ok());
+    auto live = rig.current->writerStatus({1, 2, 3, 1});
+    ASSERT_TRUE(live.ok());
+    ASSERT_TRUE(live->recorded);
+    EXPECT_EQ(live->recorded->hlc, original->front().hlc);
+    rig.reopen();
+    auto events = rig.current->read(1, all());
+    ASSERT_TRUE(events.ok());
+    EXPECT_TRUE(events->empty());
+    auto restored = rig.current->writerStatus({1, 2, 3, 1});
+    ASSERT_TRUE(restored.ok());
+    EXPECT_TRUE(restored->known);
+    EXPECT_EQ(restored->next_sequence, 2u);
+    EXPECT_EQ(restored->last_hlc, original->front().hlc);
+    EXPECT_FALSE(restored->recorded);
+    auto retry = rig.current->append(batch({1}), Durability::Accepted);
+    ASSERT_TRUE(retry.ok());
+    EXPECT_EQ(retry->front().status.code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(retry->front().rejection, AppendRejection::DedupeWindow);
+}
+
 TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
 {
     for(const auto* checkpoint: {"W1\n1 2 3 2 100 1 0 1 1\n1 100 1\n",
@@ -397,23 +447,22 @@ TEST(WalJournal, CheckpointCacheMatchesTheWindowAcrossBlocksTrimsAndUpgrades)
     EXPECT_EQ(outside->front().status.code(), absl::StatusCode::kFailedPrecondition);
 }
 
-TEST(WalJournal, CheckpointCacheKeepsAcceptedEntriesAndDurabilityUpgrade)
+TEST(WalJournal, CheckpointCacheExcludesAcceptedEntriesAndKeepsDurabilityUpgrade)
 {
     WalRig rig;
     ASSERT_TRUE(rig.current->append(batch({1, 2, 3}), Durability::Accepted).ok());
     auto durable = rig.current->append(batch({4, 5}), Durability::Durable);
     ASSERT_TRUE(durable.ok());
     auto window = checkpointWindow(rig.current->checkpoint());
-    EXPECT_EQ(window.size(), 5u);
-    EXPECT_TRUE(window.contains(1) && window.contains(2) && window.contains(3) && window.contains(4) &&
-                window.contains(5));
-    // The first checkpoint cached everything below the newest entries; upgrading entry 2 must reach the next one.
+    EXPECT_EQ(window.size(), 2u);
+    EXPECT_TRUE(window.contains(4) && window.contains(5));
+    // Upgrading a previously excluded cached sequence must invalidate the cache.
     auto upgraded = rig.current->append(batch({2}), Durability::Durable);
     ASSERT_TRUE(upgraded.ok());
     ASSERT_TRUE(upgraded->front().status.ok());
     EXPECT_EQ(upgraded->front().achieved, Durability::Durable);
     window = checkpointWindow(rig.current->checkpoint());
-    EXPECT_EQ(window.size(), 5u);
+    EXPECT_EQ(window.size(), 3u);
     ASSERT_TRUE(window.contains(2));
     EXPECT_EQ(window.at(2), std::pair(upgraded->front().hlc.physical_ns, upgraded->front().hlc.logical));
 }

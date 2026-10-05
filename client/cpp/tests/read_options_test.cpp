@@ -54,6 +54,22 @@ public:
         response->mutable_event()->mutable_envelope()->set_payload("awaited");
         return grpc::Status::OK;
     }
+    grpc::Status ListStoriesByPrefix(grpc::ServerContext*,
+                                     const wire::ListStoriesByPrefixRequest* request,
+                                     wire::ListStoriesByPrefixResponse* response) override
+    {
+        for(uint64_t id = 1; id <= 2; ++id)
+        {
+            auto* story = response->add_stories();
+            story->set_story_id(id);
+            story->set_chronicle(request->prefix());
+            story->set_name("s" + std::to_string(id));
+            story->set_epoch(3);
+            story->mutable_route()->set_epoch(3);
+            story->mutable_route()->set_player(endpoint_);
+        }
+        return grpc::Status::OK;
+    }
     grpc::Status
     GetStory(grpc::ServerContext*, const wire::GetStoryRequest* request, wire::GetStoryResponse* p) override
     {
@@ -191,6 +207,58 @@ TEST(ClientRead, ExistingAndZeroOptionsUseThePlayerDefault)
     auto requests = peer.requests();
     ASSERT_EQ(requests.size(), 3u);
     for(const auto& request: requests) EXPECT_EQ(request.max_events(), 0u);
+}
+
+TEST(ClientRead, PredicateIsSentForStoryAndPrefixReads)
+{
+    PagePeer peer;
+    auto client = sdk::Client::Connect(peer.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    sdk::ReadOptions options;
+    options.predicate.kinds = {"note", "plan"};
+    options.predicate.actors = {"alice"};
+    options.predicate.attributes = {{"k", "v"}};
+    options.predicate.links = {{"derived", {1, 2, 3, 4}}};
+    options.predicate.event_ids = {{1, 2, 3, 5}};
+    const sdk::HlcRange range{{0, 0}, {40, 0}};
+    auto story = client->read(1, range, options);
+    ASSERT_TRUE(story.ok()) << story.status();
+    auto prefix = client->read("chron", range, options);
+    ASSERT_TRUE(prefix.ok()) << prefix.status();
+    auto plain = client->read("chron", range);
+    ASSERT_TRUE(plain.ok()) << plain.status();
+    for(auto* read: {&*story, &*prefix, &*plain})
+        for(int i = 0; i < 3; ++i) ASSERT_TRUE(read->next().ok());
+    auto requests = peer.requests();
+    ASSERT_EQ(requests.size(), 3u);
+    for(size_t i = 0; i < 2; ++i)
+    {
+        const auto& predicate = requests[i].predicate();
+        ASSERT_TRUE(requests[i].has_predicate());
+        ASSERT_EQ(predicate.kinds_size(), 2);
+        EXPECT_EQ(predicate.kinds(1), "plan");
+        EXPECT_EQ(predicate.actors(0), "alice");
+        EXPECT_EQ(predicate.attributes(0).key(), "k");
+        EXPECT_EQ(predicate.attributes(0).value(), "v");
+        EXPECT_EQ(predicate.links(0).type(), "derived");
+        EXPECT_EQ(predicate.links(0).target().sequence(), 4u);
+        EXPECT_EQ(predicate.event_ids(0).sequence(), 5u);
+    }
+    EXPECT_EQ(requests[0].story_id(), 1u);
+    EXPECT_EQ(requests[1].prefix(), "chron");
+    EXPECT_FALSE(requests[2].has_predicate());
+}
+
+TEST(ClientRead, ListStoriesByPrefixReturnsTheCatalogMatches)
+{
+    PagePeer peer;
+    auto client = sdk::Client::Connect(peer.options());
+    ASSERT_TRUE(client.ok()) << client.status();
+    auto stories = client->listStoriesByPrefix("chron");
+    ASSERT_TRUE(stories.ok()) << stories.status();
+    ASSERT_EQ(stories->size(), 2u);
+    EXPECT_EQ((*stories)[1].name, "s2");
+    EXPECT_EQ(client->listStoriesByPrefix("").status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST(ClientRead, RouteExposesLiveStoryMetadataAndRejectsInvalidSnapshots)

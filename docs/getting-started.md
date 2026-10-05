@@ -399,12 +399,69 @@ The tests are `test_lane_writer_spreads_alternating_slices_and_reads_back_once` 
 `client/cpp/tests/lanes_test.cpp` and `lane writer opens one lane per route Keeper and round-trips appends` in
 `client/typescript/test/client.test.js`.
 
-## Filters and progress
+## Scopes, filters and await
 
-A Read or Tail can carry a predicate over `kind`, `actor`, attributes, link targets and EventIds (ARCHITECTURE.md
-I6.17), and a Tail can opt in to progress messages that advance its resume position when nothing matches (I6.21). The
-Player and the wire API (`Predicate`, `TailRequest.progress` in `proto/chronolog/v1/chronolog.proto`) carry both. The
-C++, Python and TypeScript SDKs do not expose them yet, so a client filters events after it reads them.
+A scope is a story path prefix such as `quickstart` or `quickstart/team`. It names every story whose path equals the
+prefix or lies below it by whole segments, and a Read through a scope merges those stories into one stream in
+`(hlc, story_id, writer_id, incarnation, sequence)` order (ARCHITECTURE.md I6.15, I7.7). A `where` predicate keeps only
+the events whose `kind`, `actor`, attributes, link targets or EventIds match (I6.17). It removes events and never
+changes the range, the order or the Completion. A Tail through a scope fixes its story set when it opens.
+
+Continuing from `quickstart.py`, with `client`, `chronicle` and `story` in scope, after two writers appended events of
+kind `note` and `tool` to `story` and to a second story `other` in the same chronicle, and `end` is an Hlc just above
+the last appended event:
+
+```python
+scope = client.scope(chronicle.name)
+print(sorted(s.id for s in scope.stories()))
+reader = scope.read(until=end, where={"kinds": ["note"]}, timeout=5)
+events = list(reader)
+print(reader.completion.complete, {e.envelope.kind for e in events})
+every = list(client.read(prefix=chronicle.name, end=end, timeout=5))
+tail = scope.tail(where={"kinds": ["note"]}, timeout=5)
+print(next(tail).id)
+tail.cancel()
+```
+
+This is `test_scope_reads_a_prefix_with_a_kind_predicate_in_order` in `client/python/tests/test_stack.py`. The test
+repeats the Read until `completion.complete`, because a Read of a fresh range ends incomplete while a Keeper has not
+sealed it yet. Every SDK Tail asks the Player for progress messages, so its resume position advances when nothing
+matches and a resumed Tail does not rescan from its last match (I6.21). The SDKs expose no flag for this
+(`ClientContract.TailProgressAdvancesTheResumePositionWithoutAnId` in `client/cpp/tests/client_test.cpp`).
+
+C++ passes the predicate in `ReadOptions` or `TailOptions` and the prefix as a string:
+
+```cpp
+cl::ReadOptions options;
+options.predicate.kinds = {"note", "plan"};
+options.predicate.actors = {"alice"};
+auto prefix = client->read("chron", cl::HlcRange{{0, 0}, {40, 0}}, options);
+```
+
+This is `ClientRead.PredicateIsSentForStoryAndPrefixReads` in `client/cpp/tests/read_options_test.cpp`. TypeScript passes no
+story and sets the prefix in the options, `client.read(null, range, { prefix, predicate: { kinds: ['note'] } })`
+(`prefix read with a kind predicate merges stories in order and completes` in `client/typescript/test/client.test.js`).
+
+`await_event` waits for one event by EventId. It returns as soon as the event is visible or the Player holds a
+certificate that settles it, and otherwise at its bound with the current certificate (I6.20):
+
+```python
+with client.acquire(story, "await") as writer:
+    first = writer.append(b"awaited", timeout=3)
+    found = client.await_event(first.event_id, hlc=first.hlc, bound_s=10, timeout=15)
+    print(found.answer == cl.AwaitAnswer.FOUND, found.event.payload)
+    later = cl.EventId(story.id, writer.writer_id, writer.incarnation, 2)
+never = client.await_event(later, timeout=5)
+print(never.answer == cl.AwaitAnswer.NEVER)
+```
+
+The second call runs after the writer released, so its incarnation can never accept sequence 2 and the answer is
+`NEVER`. The other answers are `ABSENT_THROUGH` (not visible, and it cannot have an hlc below a named frontier),
+`CONSUMED` (a rejected append used the sequence) and `UNKNOWN` (no certificate). The test is
+`test_await_finds_an_appended_event_and_certifies_a_released_incarnation_never` in `client/python/tests/test_stack.py`.
+C++ is `Client::await(EventRef, bound)` (`ClientAwait.ReturnsVisibleEventAndRejectsNegativeBound` in
+`client/cpp/tests/read_options_test.cpp`) and TypeScript is `client.awaitEvent` (`awaitEvent finds an appended event and
+certifies a released incarnation never` in `client/typescript/test/client.test.js`).
 
 ## Agents: Claude Code, Codex and Clio-coder
 
@@ -413,6 +470,12 @@ story; an agent identity is a stable writer slot; `remember` stores a memory und
 retry never stores it twice; `recall` and `latest` read certified pages; `follow` waits on several contexts;
 `reconcile` reports each uncertain write as LANDED, ABSENT or UNKNOWN after a crash. The twelve tools are listed in
 [plugins/mcp/README.md](../plugins/mcp/README.md).
+
+`remember` takes an optional `kind` and provenance `links`, each `{type, event_id, hlc}`, with the suggested types
+`caused_by`, `replies_to` and `derived_from`. The actor is the session's writer identity. `recall` and `latest` return
+`kind`, `actor` and `links` on every event, so an agent can follow a memory back to what caused it. A `chronolog.` kind
+is reserved and the call returns `stored: rejected`. The test is `test_remember_kind_and_links_show_in_recall_and_latest`
+in `plugins/mcp/tests/test_tools.py`.
 
 The repository root is a plugin marketplace. Its plugin `chronolog` installs the `chronolog` skill
 (`skills/chronolog`) and the MCP server. Install it from a checkout, with the prefix from the install step on `PATH`

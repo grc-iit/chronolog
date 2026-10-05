@@ -254,6 +254,11 @@ struct Completion
     IncompleteReason reason{IncompleteReason::None};
     // I6.15: the Catalog revision R of a prefix Read's story set; unset for any other Read.
     std::optional<uint64_t> catalog_revision{};
+    // I6.18: set only by a newest-first Read. claim_end is its end e, which frontier repeats when the Read is complete
+    // or TRUNCATED. claim_start is c of a TRUNCATED Read: [c, e) is complete on its own and a continuation reads
+    // [start, c).
+    std::optional<Hlc> claim_start{};
+    std::optional<Hlc> claim_end{};
 };
 // I9.2: read-side slot granularity; Unspecified when created without one.
 enum class Granularity : uint32_t

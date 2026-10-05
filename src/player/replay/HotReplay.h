@@ -47,7 +47,7 @@ public:
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const;
     // I6.18: NewestFirst returns the newest matching events of [start, e) in descending order, with e the range end
-    // or, for an open end (maxHlc), the minimum sealed frontier of the sources. The stream is a ClaimReplayStream.
+    // or, for an open end (maxHlc), the minimum sealed frontier of the sources. The Completion names c and e.
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate, ReadOrder order) const;
     // I6.18: the minimum sealed frontier of the sources of a story, which an open end resolves to. It reads no events.
