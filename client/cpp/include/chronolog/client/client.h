@@ -241,6 +241,13 @@ public:
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});
     absl::StatusOr<TailStream> tail(StoryId, std::optional<Position> after = {}, Deadline deadline = {});
+    // I6.15: the merged history of every story whose path equals the prefix or lies below it by whole segments, in
+    // the order of I7.7. The Completion names the Catalog revision it resolved the set at.
+    absl::StatusOr<ReadStream> read(const std::string& prefix, HlcRange, Deadline deadline = {});
+    absl::StatusOr<ReadStream> read(const std::string& prefix, HlcRange, ReadOptions, Deadline deadline = {});
+    // The story set is fixed when the stream opens; a story created later joins at the next subscription.
+    absl::StatusOr<TailStream>
+    tail(const std::string& prefix, std::optional<Position> after = {}, Deadline deadline = {});
 
 private:
     struct Impl;

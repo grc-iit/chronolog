@@ -146,7 +146,10 @@ private:
                 if(auto progress = tail->progress())
                 {
                     response_.Clear();
-                    *response_.mutable_progress()->mutable_position()->mutable_hlc() = convert::toProto(*progress);
+                    auto* message = response_.mutable_progress();
+                    *message->mutable_position()->mutable_hlc() = convert::toProto(*progress);
+                    if(auto revision = tail->revision())
+                        message->set_catalog_revision(*revision);
                     if(!write())
                         return false;
                 }
@@ -197,12 +200,14 @@ ReplayService::ReplayService(std::shared_ptr<const Replay> replay,
                              std::shared_ptr<const StoryCatalog> catalog,
                              size_t max_streams,
                              WriterStatusCall writer_status,
-                             std::chrono::milliseconds await_max_wait)
+                             std::chrono::milliseconds await_max_wait,
+                             PrefixOptions prefix)
     : replay_(std::move(replay))
     , catalog_(std::move(catalog))
     , max_streams_(max_streams)
     , writer_status_(std::move(writer_status))
     , await_max_wait_(await_max_wait)
+    , prefix_(prefix)
 {}
 
 absl::Status ReplayService::admit(Stream* stream)
@@ -236,13 +241,10 @@ void ReplayService::shutdown()
 }
 
 template <class Resp>
-grpc::ServerWriteReactor<Resp>* ReplayService::open(StoryId story,
+grpc::ServerWriteReactor<Resp>* ReplayService::open(std::function<absl::Status()> precheck,
                                                     std::function<absl::StatusOr<std::unique_ptr<ReplayStream>>()> open)
 {
-    auto* reactor = new StreamReactor<Resp>(
-            *this,
-            [catalog = catalog_, story] { return catalog->ensureLive(story); },
-            std::move(open));
+    auto* reactor = new StreamReactor<Resp>(*this, std::move(precheck), std::move(open));
     reactor->begin();
     return reactor;
 }
@@ -269,9 +271,33 @@ ReplayService::tail(StoryId story, Event position, const EventPredicate& predica
     return replay_->tail(story, std::move(position));
 }
 
+absl::StatusOr<std::unique_ptr<ReplayStream>> ReplayService::readPrefix(const std::string& prefix,
+                                                                        Range range,
+                                                                        size_t max_events,
+                                                                        const EventPredicate& predicate) const
+{
+    const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get());
+    if(!bounded)
+        return absl::UnimplementedError("replay does not support prefixes");
+    return PrefixReplay(*bounded, *catalog_, prefix_).read(prefix, range, max_events, predicate);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+ReplayService::tailPrefix(const std::string& prefix, Event position, const EventPredicate& predicate) const
+{
+    const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get());
+    if(!bounded)
+        return absl::UnimplementedError("replay does not support prefixes");
+    return PrefixReplay(*bounded, *catalog_, prefix_).tail(prefix, std::move(position), predicate);
+}
+
 grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackServerContext*,
                                                                 const v1::ReadRequest* request)
 {
+    // I6.15: a request names exactly one of story_id and prefix.
+    if((request->story_id() != 0) == !request->prefix().empty())
+        return new FailedReactor<v1::ReadResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "exactly one of story_id and prefix is required"));
     auto range = convert::rangeFromProto(*request);
     if(!range.ok())
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(range.status()));
@@ -280,7 +306,12 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(valid));
     const StoryId story = request->story_id();
     const size_t max_events = request->max_events();
-    return open<v1::ReadResponse>(story,
+    if(!request->prefix().empty())
+        return open<v1::ReadResponse>(
+                [] { return absl::OkStatus(); },
+                [this, prefix = request->prefix(), range = *range, max_events, predicate = std::move(predicate)]
+                { return readPrefix(prefix, range, max_events, predicate); });
+    return open<v1::ReadResponse>([catalog = catalog_, story] { return catalog->ensureLive(story); },
                                   [this, story, range = *range, max_events, predicate = std::move(predicate)]
                                   { return read(story, range, max_events, predicate); });
 }
@@ -288,6 +319,13 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
 grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackServerContext*,
                                                                 const v1::TailRequest* request)
 {
+    // I6.15: a request names exactly one of story_id and prefix, and a prefix Tail opts in to progress (I6.21).
+    if((request->story_id() != 0) == !request->prefix().empty())
+        return new FailedReactor<v1::TailResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "exactly one of story_id and prefix is required"));
+    if(!request->prefix().empty() && !request->progress())
+        return new FailedReactor<v1::TailResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "a prefix Tail requires progress"));
     const StoryId story = request->story_id();
     auto position = convert::positionFromProto(story, *request);
     if(!position.ok())
@@ -295,8 +333,13 @@ grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackSe
     auto predicate = convert::fromProto(request->predicate());
     if(auto valid = predicate.validate(); !valid.ok())
         return new FailedReactor<v1::TailResponse>(convert::toGrpc(valid));
+    if(!request->prefix().empty())
+        return open<v1::TailResponse>(
+                [] { return absl::OkStatus(); },
+                [this, prefix = request->prefix(), position = *position, predicate = std::move(predicate)]
+                { return tailPrefix(prefix, position, predicate); });
     return open<v1::TailResponse>(
-            story,
+            [catalog = catalog_, story] { return catalog->ensureLive(story); },
             [this, story, position = *position, predicate = std::move(predicate), progress = request->progress()]
             { return tail(story, position, predicate, progress); });
 }

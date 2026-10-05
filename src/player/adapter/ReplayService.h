@@ -7,6 +7,7 @@
 #include <mutex>
 #include <set>
 #include "common/predicate/Predicate.h"
+#include "player/adapter/PrefixReplay.h"
 #include "player/adapter/StoryCatalog.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
@@ -27,7 +28,8 @@ public:
                   std::shared_ptr<const StoryCatalog> catalog,
                   size_t max_streams = 256,
                   WriterStatusCall writer_status = {},
-                  std::chrono::milliseconds await_max_wait = std::chrono::milliseconds(300000));
+                  std::chrono::milliseconds await_max_wait = std::chrono::milliseconds(300000),
+                  PrefixOptions prefix = {});
 
     grpc::ServerWriteReactor<v1::ReadResponse>* Read(grpc::CallbackServerContext*, const v1::ReadRequest*) override;
     grpc::ServerWriteReactor<v1::TailResponse>* Tail(grpc::CallbackServerContext*, const v1::TailRequest*) override;
@@ -40,6 +42,11 @@ public:
     read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     tail(StoryId story, Event position, const EventPredicate& predicate = {}, bool progress = false) const;
+    // I6.15: UNIMPLEMENTED unless the replay is a HotReplay and the Catalog resolves prefixes.
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    readPrefix(const std::string& prefix, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tailPrefix(const std::string& prefix, Event position, const EventPredicate& predicate = {}) const;
 
     // Drains: refuses new calls and cancels open streams, so tails finish with a
     // complete=false Completion.
@@ -62,7 +69,7 @@ public:
 
 private:
     template <class Resp>
-    grpc::ServerWriteReactor<Resp>* open(StoryId story,
+    grpc::ServerWriteReactor<Resp>* open(std::function<absl::Status()> precheck,
                                          std::function<absl::StatusOr<std::unique_ptr<ReplayStream>>()> open);
 
     std::shared_ptr<const Replay> replay_;
@@ -70,6 +77,7 @@ private:
     const size_t max_streams_;
     WriterStatusCall writer_status_;
     std::chrono::milliseconds await_max_wait_;
+    const PrefixOptions prefix_;
     mutable std::mutex mu_;
     std::set<Stream*> streams_;
     bool closed_{};

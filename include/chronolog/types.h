@@ -252,6 +252,8 @@ struct Completion
     std::vector<Frontier> laggards;
     // None for complete HLC reads; physical reads use PhysicalAxisUnbounded.
     IncompleteReason reason{IncompleteReason::None};
+    // I6.15: the Catalog revision R of a prefix Read's story set; unset for any other Read.
+    std::optional<uint64_t> catalog_revision{};
 };
 // I9.2: read-side slot granularity; Unspecified when created without one.
 enum class Granularity : uint32_t
@@ -459,5 +461,14 @@ inline bool ReplayLess(const Event& a, const Event& b)
     if(a.id.incarnation != b.id.incarnation)
         return a.id.incarnation < b.id.incarnation;
     return a.id.sequence < b.id.sequence;
+}
+// I7.7: total order of a stream that merges more than one story.
+inline bool PrefixLess(const Event& a, const Event& b)
+{
+    if(a.hlc != b.hlc)
+        return a.hlc < b.hlc;
+    if(a.id.story_id != b.id.story_id)
+        return a.id.story_id < b.id.story_id;
+    return ReplayLess(a, b);
 }
 } // namespace chronolog

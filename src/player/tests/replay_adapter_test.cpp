@@ -2,12 +2,15 @@
 // talking to fake Archive servers that stand in for Keepers.
 #include <gtest/gtest.h>
 #include <grpcpp/grpcpp.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <map>
 #include <mutex>
+#include <set>
 #include <thread>
 #include "common/rpc/Channel.h"
 #include "player/adapter/EventConvert.h"
@@ -42,9 +45,22 @@ v1::Event protoEvent(uint64_t writer, uint64_t sequence, int64_t hlc)
     return e;
 }
 
+v1::Event storyEvent(StoryId story, uint64_t writer, uint64_t sequence, int64_t hlc)
+{
+    auto e = protoEvent(writer, sequence, hlc);
+    e.mutable_id()->set_story_id(story);
+    return e;
+}
+
 class FakeArchive final: public iv1::Archive::Service
 {
 public:
+    // A story this Keeper knows; others are NOT_FOUND.
+    void addStory(StoryId story)
+    {
+        std::lock_guard lk(mu_);
+        known_.insert(story);
+    }
     iv1::WriterStatusResponse writer_status;
     std::atomic<bool> status_fails{false};
     grpc::Status
@@ -150,10 +166,12 @@ public:
         uint64_t epoch;
         bool truncated;
         bool refused;
+        bool known;
         std::string instance;
         std::chrono::milliseconds delay;
         {
             std::lock_guard lk(mu_);
+            known = known_.contains(request->story_id());
             refused = refused_;
             instance = instance_;
             events = events_;
@@ -174,11 +192,13 @@ public:
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "story was destroyed");
         for(auto waited = 0ms; waited < delay && !context->IsCancelled(); waited += 20ms)
             std::this_thread::sleep_for(20ms);
-        if(request->story_id() != kStory)
+        if(!known)
             return grpc::Status(grpc::StatusCode::NOT_FOUND, "unknown story");
         iv1::FetchHotResponse batch;
         for(const auto& e: events)
         {
+            if(e.id().story_id() != request->story_id())
+                continue;
             bool in;
             if(request->has_hlc())
             {
@@ -221,6 +241,7 @@ private:
     std::condition_variable called_;
     unsigned seen_{};
     bool refused_{};
+    std::set<StoryId> known_{kStory};
     std::string instance_;
     std::vector<v1::Event> events_;
     int64_t sealed_{200};
@@ -246,15 +267,69 @@ struct FakeCatalog final: StoryCatalog
     {
         std::lock_guard lk(mu);
         stories[story] = true;
+        ++revision_;
+    }
+    void create(StoryId story, std::string path)
+    {
+        std::lock_guard lk(mu);
+        stories[story] = false;
+        paths[story] = std::move(path);
+        ++revision_;
+    }
+    uint64_t revision() const
+    {
+        std::lock_guard lk(mu);
+        return revision_;
+    }
+    unsigned confirmed() const
+    {
+        std::lock_guard lk(mu);
+        return confirms;
+    }
+    absl::StatusOr<PrefixResolution> resolvePrefix(const std::string& prefix, uint32_t limit) const override
+    {
+        std::lock_guard lk(mu);
+        return resolveLocked(prefix, limit);
+    }
+    absl::StatusOr<PrefixConfirmation>
+    confirmPrefix(const std::string& prefix, uint32_t limit, const PrefixResolution& resolved) const override
+    {
+        if(beforeConfirm)
+            beforeConfirm();
+        std::lock_guard lk(mu);
+        ++confirms;
+        auto current = resolveLocked(prefix, limit);
+        if(!current.ok())
+            return current.status();
+        const std::set<StoryId> before(resolved.stories.begin(), resolved.stories.end());
+        const bool created = std::any_of(current->stories.begin(),
+                                         current->stories.end(),
+                                         [&](StoryId story) { return !before.contains(story); });
+        return PrefixConfirmation{created, std::move(*current)};
     }
     unsigned asked() const
     {
         std::lock_guard lk(mu);
         return lookups;
     }
+    absl::StatusOr<PrefixResolution> resolveLocked(const std::string& prefix, uint32_t limit) const
+    {
+        PrefixResolution out{revision_, {}};
+        for(const auto& [story, path]: paths)
+            if((path == prefix || path.starts_with(prefix + "/")) && !stories.at(story))
+                out.stories.push_back(story);
+        if(out.stories.size() > limit)
+            return absl::ResourceExhaustedError("over the limit");
+        return out;
+    }
     mutable std::mutex mu;
     mutable unsigned lookups{};
-    std::map<StoryId, bool> stories{{kStory, false}, {2, true}};
+    mutable unsigned confirms{};
+    uint64_t revision_{10};
+    // Runs at the start of every confirming read, outside the lock.
+    std::function<void()> beforeConfirm;
+    std::map<StoryId, bool> stories{{kStory, false}, {2, true}, {3, false}, {5, false}};
+    std::map<StoryId, std::string> paths{{kStory, "c/a"}, {2, "c/a/old"}, {3, "c/a/x"}, {5, "c/ab"}};
 };
 
 struct FakeWriters final: WriterSource
@@ -998,6 +1073,7 @@ TEST_F(replay_adapter, PhysicalAxisIsUnbounded)
 }
 
 #include "player/tests/replay_adapter_wire_test.cpp"
+#include "player/tests/replay_adapter_prefix_test.cpp"
 
 TEST_F(replay_adapter, TombstonedStoryFailsPrecondition)
 {

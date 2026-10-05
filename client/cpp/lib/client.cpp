@@ -488,6 +488,33 @@ absl::StatusOr<ReadStream> Client::readPhysical(StoryId id, PhysicalRange range,
         return endpoint.status();
     return ReadStream(std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, id, range, deadline));
 }
+absl::StatusOr<ReadStream> Client::read(const std::string& prefix, HlcRange range, Deadline deadline)
+{
+    return read(prefix, range, ReadOptions{}, deadline);
+}
+absl::StatusOr<ReadStream>
+Client::read(const std::string& prefix, HlcRange range, ReadOptions options, Deadline deadline)
+{
+    if(prefix.empty() || range.end < range.start)
+        return absl::InvalidArgumentError("invalid prefix or HLC read range");
+    auto endpoint = impl_->state->prefixPlayerEndpoint(prefix, impl_->state->deadline(deadline));
+    if(!endpoint.ok())
+        return endpoint.status();
+    auto impl = std::make_unique<ReadStream::Impl>(impl_->state, *endpoint, StoryId{}, range, options, deadline);
+    impl->prefix = prefix;
+    return ReadStream(std::move(impl));
+}
+absl::StatusOr<TailStream> Client::tail(const std::string& prefix, std::optional<Position> after, Deadline deadline)
+{
+    if(prefix.empty())
+        return absl::InvalidArgumentError("invalid tail prefix");
+    auto endpoint = impl_->state->prefixPlayerEndpoint(prefix, impl_->state->deadline(deadline));
+    if(!endpoint.ok())
+        return endpoint.status();
+    auto impl = std::make_unique<TailStream::Impl>(impl_->state, *endpoint, StoryId{}, after, deadline);
+    impl->prefix = prefix;
+    return TailStream(std::move(impl));
+}
 absl::StatusOr<TailStream> Client::tail(StoryId id, std::optional<Position> after, Deadline deadline)
 {
     if(!id || (after && after->id.story_id != id))

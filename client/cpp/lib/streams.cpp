@@ -29,14 +29,14 @@ absl::StatusOr<StreamItem> decode(const Response& response, detail::State& state
         return absl::DataLossError("unset replay response");
     return item;
 }
-bool after(const Event& event, const Position& p)
+bool after(const Event& event, const Position& p, bool prefix)
 {
     if(p.id == EventId{} || (p.id.writer_id == 0 && p.id.incarnation == 0 && p.id.sequence == 0))
         return event.hlc >= p.hlc;
     Event previous;
     previous.hlc = p.hlc;
     previous.id = p.id;
-    return ReplayLess(previous, event);
+    return prefix ? PrefixLess(previous, event) : ReplayLess(previous, event);
 }
 } // namespace
 ReadStream::ReadStream(std::unique_ptr<Impl> impl)
@@ -84,7 +84,10 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
     if(!stream)
     {
         v1::ReadRequest request;
-        request.set_story_id(story);
+        if(prefix.empty())
+            request.set_story_id(story);
+        else
+            request.set_prefix(prefix);
         request.set_max_events(options.max_events.value_or(0));
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
@@ -265,7 +268,10 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
         if(!stream)
         {
             v1::TailRequest request;
-            request.set_story_id(story);
+            if(prefix.empty())
+                request.set_story_id(story);
+            else
+                request.set_prefix(prefix);
             request.set_progress(true);
             auto p = position.value_or(Position{{}, {story, 0, 0, 0}});
             detail::encode(p.hlc, request.mutable_from()->mutable_hlc());
@@ -332,7 +338,7 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
             return std::optional<StreamItem>(std::move(*item));
         }
         if(position)
-            std::erase_if(item->events, [&](const Event& e) { return !after(e, *position); });
+            std::erase_if(item->events, [&](const Event& e) { return !after(e, *position, !prefix.empty()); });
         if(item->events.empty())
             continue;
         const auto& last = item->events.back();

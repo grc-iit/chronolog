@@ -67,6 +67,8 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
                                                 "read_max_events",
                                                 "tail_max_bytes",
                                                 "tail_poll_ms",
+                                                "prefix_max_scopes",
+                                                "prefix_resolve_retries",
                                                 "await_max_wait_ms",
                                                 "archive_root",
                                                 "manifest_poll_ms",
@@ -107,6 +109,8 @@ absl::Status applyJson(const nlohmann::json& json, PlayerConfig& cfg)
         num("read_max_events", cfg.read_max_events);
         num("tail_max_bytes", cfg.tail_max_bytes);
         num("tail_poll_ms", cfg.tail_poll_ms);
+        num("prefix_max_scopes", cfg.prefix_max_scopes);
+        num("prefix_resolve_retries", cfg.prefix_resolve_retries);
         num("await_max_wait_ms", cfg.await_max_wait_ms);
         str("archive_root", cfg.archive_root);
         num("manifest_poll_ms", cfg.manifest_poll_ms);
@@ -208,6 +212,8 @@ absl::StatusOr<PlayerConfig> PlayerConfig::load(const std::optional<std::string>
                             {"read_max_events", &cfg.read_max_events},
                             {"tail_max_bytes", &cfg.tail_max_bytes},
                             {"tail_poll_ms", &cfg.tail_poll_ms},
+                            {"prefix_max_scopes", &cfg.prefix_max_scopes},
+                            {"prefix_resolve_retries", &cfg.prefix_resolve_retries},
                             {"await_max_wait_ms", &cfg.await_max_wait_ms},
                             {"manifest_poll_ms", &cfg.manifest_poll_ms},
                             {"archive_read_timeout_ms", &cfg.archive_read_timeout_ms},
@@ -249,10 +255,12 @@ absl::Status PlayerConfig::validate() const
     if(listen.empty() || player_id.empty())
         return absl::InvalidArgumentError("listen and player_id must be set");
     if(await_max_wait_ms == 0 || tail_max_bytes == 0 || read_max_events == 0 || batch_size == 0 || tail_poll_ms == 0 ||
-       keeper_deadline_ms == 0 || manifest_poll_ms == 0 || archive_read_timeout_ms == 0)
+       keeper_deadline_ms == 0 || manifest_poll_ms == 0 || archive_read_timeout_ms == 0 || prefix_max_scopes == 0 ||
+       prefix_resolve_retries == 0)
         return absl::InvalidArgumentError(
-                "tail_max_bytes, read_max_events, batch_size, tail_poll_ms, "
-                "keeper_deadline_ms, manifest_poll_ms and archive_read_timeout_ms must be positive");
+                "await_max_wait_ms, tail_max_bytes, read_max_events, batch_size, tail_poll_ms, keeper_deadline_ms, "
+                "manifest_poll_ms, archive_read_timeout_ms, prefix_max_scopes and prefix_resolve_retries must be "
+                "positive");
     if(!tier_io_timeout_ms || !tier_probe_interval_ms || !tier_probe_timeout_ms || !slow_tier_io_threads ||
        slow_tier_io_threads > 8)
         return absl::InvalidArgumentError(
