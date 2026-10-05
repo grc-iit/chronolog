@@ -10,6 +10,7 @@
 #include "chronolog/acquire_refusal.h"
 #include "chronolog/client/client.h"
 #include "chronolog/internal/v1/internal.grpc.pb.h"
+#include "chronolog/v1/chronolog.grpc.pb.h"
 
 namespace sdk = chronolog::client;
 namespace iv1 = chronolog::internal::v1;
@@ -149,15 +150,30 @@ int write(const char* catalog, const char* out)
              << result->hlc.physical_ns << ' ' << result->hlc.logical << ' ' << static_cast<int>(spec.durability) << ' '
              << static_cast<int>(result->achieved) << ' ' << spec.envelope.payload << '\n';
     }
+    sdk::AppendSpec rejected;
+    rejected.physical = TimeReading{-100'000'000'000LL, 1, ClockStatus::Synced};
+    auto result = writer->append(rejected);
+    if(result.status().code() != absl::StatusCode::kOutOfRange)
+        fail("expected a consumed physical rejection");
+    const auto acquisition = writer->acquisition();
+    std::ofstream(path(out, "rejections.tsv")) << acquisition.story_id << ' ' << acquisition.writer_id << ' '
+                                               << acquisition.incarnation << " 25 0 0 0 0 rejection\n";
     return 0;
 }
 
-int checkpoint(const char* keeper, const char* out, bool after)
+int checkpoint(const char* keeper, const char* player, const char* out, bool after)
 {
     auto stub = iv1::Archive::NewStub(grpc::CreateChannel(keeper, grpc::InsecureChannelCredentials()));
-    const auto rows = loadRows(path(out, "events.tsv"));
+    auto rows = loadRows(path(out, "events.tsv"));
     if(rows.empty())
         fail("no checkpoint writers");
+    const auto last_hlc = rows.back().hlc;
+    const auto rejections = loadRows(path(out, "rejections.tsv"));
+    if(rejections.empty())
+        fail("no consumed rejection to checkpoint");
+    rows.insert(rows.end(), rejections.begin(), rejections.end());
+    auto replay = v1::Replay::NewStub(grpc::CreateChannel(player, grpc::InsecureChannelCredentials()));
+    size_t durable_results = 0, consumed = 0, unknown = 0;
     std::ifstream expected(path(out, "checkpoints"));
     std::ofstream saved;
     if(!after)
@@ -174,9 +190,42 @@ int checkpoint(const char* keeper, const char* out, bool after)
         iv1::WriterStatusResponse status;
         if(!stub->WriterStatus(&ctx, req, &status).ok() || !status.known())
             fail("checkpoint writer unknown");
-        if(!status.has_recorded_hlc() || fromWire(status.recorded_hlc()) != row.hlc)
-            fail("checkpoint lost sequence result");
-        if(status.next_sequence() != rows.back().id.sequence + 1 || fromWire(status.last_hlc()) != rows.back().hlc)
+        if(row.achieved == static_cast<int>(Durability::Unspecified))
+        {
+            if(!status.has_recorded_rejection() ||
+               status.recorded_rejection().code() != static_cast<int>(absl::StatusCode::kOutOfRange))
+                fail("checkpoint lost consumed rejection");
+            ++consumed;
+        }
+        else if(!after || row.achieved == static_cast<int>(Durability::Durable))
+        {
+            if(!status.has_recorded_hlc() || fromWire(status.recorded_hlc()) != row.hlc)
+                fail("checkpoint lost sequence result");
+            durable_results += row.achieved == static_cast<int>(Durability::Durable);
+        }
+        else
+        {
+            if(status.has_recorded_hlc() || status.has_recorded_rejection())
+                fail("checkpoint retained a lost ACCEPTED result");
+            ++unknown;
+        }
+        if(after && row.achieved != static_cast<int>(Durability::Durable))
+        {
+            v1::AwaitRequest request;
+            request.mutable_ref()->set_story_id(row.id.story_id);
+            request.mutable_ref()->set_writer_id(row.id.writer_id);
+            request.mutable_ref()->set_incarnation(row.id.incarnation);
+            request.mutable_ref()->set_sequence(row.id.sequence);
+            grpc::ClientContext context;
+            context.set_deadline(std::chrono::system_clock::now() + 5s);
+            v1::AwaitResponse response;
+            const auto answer = row.achieved == static_cast<int>(Durability::Accepted)
+                                        ? v1::AWAIT_ANSWER_UNKNOWN
+                                        : v1::AWAIT_ANSWER_SEQUENCE_CONSUMED;
+            if(!replay->Await(&context, request, &response).ok() || response.answer() != answer || response.has_event())
+                fail("Await returned the wrong certificate for a consumed sequence");
+        }
+        if(status.next_sequence() != rows.back().id.sequence + 1 || fromWire(status.last_hlc()) != last_hlc)
             fail("checkpoint lost writer head");
         if(after)
         {
@@ -195,6 +244,10 @@ int checkpoint(const char* keeper, const char* out, bool after)
                   << status.last_hlc().logical() << ' ' << status.released() << ' ' << status.termination_cause()
                   << '\n';
     }
+    if(!durable_results || !consumed || (after && !unknown))
+        fail("checkpoint did not exercise all retention cases");
+    std::cout << "checkpoint-" << (after ? "after" : "before") << " durable=" << durable_results
+              << " consumed=" << consumed << " unknown=" << unknown << '\n';
     return 0;
 }
 
@@ -792,10 +845,10 @@ int main(int argc, char** argv)
         return compactEnd(argv[2], argv[3]);
     if(command == "compact-destroy" && argc == 4)
         return compactDestroy(argv[2], argv[3]);
-    if(command == "checkpoint-before" && argc == 4)
-        return checkpoint(argv[2], argv[3], false);
-    if(command == "checkpoint-after" && argc == 4)
-        return checkpoint(argv[2], argv[3], true);
+    if(command == "checkpoint-before" && argc == 5)
+        return checkpoint(argv[2], argv[3], argv[4], false);
+    if(command == "checkpoint-after" && argc == 5)
+        return checkpoint(argv[2], argv[3], argv[4], true);
     if(command == "write" && argc == 4)
         return write(argv[2], argv[3]);
     if(command == "frontier" && argc == 4)

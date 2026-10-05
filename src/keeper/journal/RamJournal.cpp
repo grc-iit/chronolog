@@ -13,8 +13,10 @@ namespace
 
 std::string ExpectedSequence(uint64_t next) { return "expected sequence " + std::to_string(next); }
 
-// Completed sequence results survive even when their events were only accepted in RAM.
-bool checkpointEligible(const AppendResult& result) { return absl::IsOutOfRange(result.status) || result.status.ok(); }
+bool checkpointEligible(const AppendResult& result)
+{
+    return absl::IsOutOfRange(result.status) || (result.status.ok() && result.achieved == Durability::Durable);
+}
 
 void formatWindowLine(std::string& out, const AppendResult& result)
 {

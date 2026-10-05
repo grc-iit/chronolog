@@ -81,12 +81,12 @@ grep -o 'archive_transfer_start chunk=[^ ]*' "$scratch/keeper.log" | sed 's/.*ch
 step frontier "$driver" frontier "$keeper_internal" "$out"
 # I6.8: a complete Read before the kill is the reference for the same Read after the restart.
 step stable-before "$driver" stable-before "$catalog" "$out"
-step checkpoint-before "$driver" checkpoint-before "$keeper_internal" "$out"
+step checkpoint-before "$driver" checkpoint-before "$keeper_internal" "127.0.0.1:$((port+4))" "$out"
 kill -KILL "${pid_of[keeper]}"
 wait "${pid_of[keeper]}" 2>/dev/null || true
 unset 'pid_of[keeper]'
 start keeper keeper2 "$keeper" 'journal ready' || { echo "FAIL keeper restart"; dump; exit 1; }
-step checkpoint-after "$driver" checkpoint-after "$keeper_internal" "$out"
+step checkpoint-after "$driver" checkpoint-after "$keeper_internal" "127.0.0.1:$((port+4))" "$out"
 step append "$driver" append "$catalog" "$out"
 step resume "$driver" after "$out"
 step hot "$driver" hot "$keeper_internal" "$out"
