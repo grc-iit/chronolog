@@ -248,6 +248,22 @@ EventId eventId(nb::handle h)
 }
 sdk::Position position(nb::handle h) { return {hlc(h.attr("hlc")), eventId(h.attr("id"))}; }
 sdk::HlcRange hlcRange(nb::handle h) { return {hlc(h.attr("start")), hlc(h.attr("end"))}; }
+EventPredicate predicate(nb::handle h)
+{
+    EventPredicate out;
+    if(h.is_none())
+        return out;
+    out.kinds = list<std::string>(h.attr("kinds"), text);
+    out.actors = list<std::string>(h.attr("actors"), text);
+    out.attributes = list<EventPredicate::Attribute>(h.attr("attributes"),
+                                                     [](nb::handle t)
+                                                     { return EventPredicate::Attribute{text(t[0]), text(t[1])}; });
+    out.links = list<EventPredicate::LinkTerm>(h.attr("links"),
+                                               [](nb::handle t)
+                                               { return EventPredicate::LinkTerm{text(t[0]), eventId(t[1])}; });
+    out.event_ids = list<EventId>(h.attr("event_ids"), eventId);
+    return out;
+}
 TimeReading timeReading(nb::handle h)
 {
     return {i64(h.attr("physical_ns")),
@@ -682,17 +698,46 @@ NB_MODULE(_core, m)
                     "timeout"_a = nb::none())
             .def(
                     "read",
-                    [](Client& c, nb::handle id, nb::handle start, nb::handle end, std::optional<double> t)
+                    [](Client& c,
+                       nb::handle id,
+                       nb::handle start,
+                       nb::handle end,
+                       nb::handle where,
+                       std::optional<double> t)
                     {
                         auto story = u64(id);
                         sdk::HlcRange r{hlc(start), hlc(end)};
+                        sdk::ReadOptions options;
+                        options.predicate = predicate(where);
                         auto d = deadline(t);
                         auto native = c.shared();
-                        return held(call([&] { return native->read(story, r, d); }));
+                        return held(call([&] { return native->read(story, r, options, d); }));
                     },
                     "id"_a,
                     "start"_a,
                     "end"_a,
+                    "predicate"_a = nb::none(),
+                    "timeout"_a = nb::none())
+            .def(
+                    "read_prefix",
+                    [](Client& c,
+                       const std::string& prefix,
+                       nb::handle start,
+                       nb::handle end,
+                       nb::handle where,
+                       std::optional<double> t)
+                    {
+                        sdk::HlcRange r{hlc(start), hlc(end)};
+                        sdk::ReadOptions options;
+                        options.predicate = predicate(where);
+                        auto d = deadline(t);
+                        auto native = c.shared();
+                        return held(call([&] { return native->read(prefix, r, options, d); }));
+                    },
+                    "prefix"_a,
+                    "start"_a,
+                    "end"_a,
+                    "predicate"_a = nb::none(),
                     "timeout"_a = nb::none())
             .def(
                     "read_physical",
@@ -710,16 +755,51 @@ NB_MODULE(_core, m)
                     "timeout"_a = nb::none())
             .def(
                     "tail",
-                    [](Client& c, nb::handle id, nb::handle after, std::optional<double> t)
+                    [](Client& c, nb::handle id, nb::handle after, nb::handle where, std::optional<double> t)
                     {
                         auto story = u64(id);
                         auto p = optional<sdk::Position>(after, position);
+                        sdk::TailOptions options;
+                        options.predicate = predicate(where);
                         auto d = deadline(t);
                         auto native = c.shared();
-                        return held(call([&] { return native->tail(story, p, d); }));
+                        return held(call([&] { return native->tail(story, p, options, d); }));
                     },
                     "id"_a,
                     "after"_a = nb::none(),
+                    "predicate"_a = nb::none(),
+                    "timeout"_a = nb::none())
+            .def(
+                    "tail_prefix",
+                    [](Client& c,
+                       const std::string& prefix,
+                       nb::handle after,
+                       nb::handle where,
+                       std::optional<double> t)
+                    {
+                        auto p = optional<sdk::Position>(after, position);
+                        sdk::TailOptions options;
+                        options.predicate = predicate(where);
+                        auto d = deadline(t);
+                        auto native = c.shared();
+                        return held(call([&] { return native->tail(prefix, p, options, d); }));
+                    },
+                    "prefix"_a,
+                    "after"_a = nb::none(),
+                    "predicate"_a = nb::none(),
+                    "timeout"_a = nb::none())
+            .def(
+                    "list_stories_by_prefix",
+                    [](Client& c, const std::string& prefix, std::optional<double> t)
+                    {
+                        auto d = deadline(t);
+                        auto native = c.shared();
+                        auto r = unwrap(call([&] { return native->listStoriesByPrefix(prefix, d); }));
+                        nb::list out;
+                        for(auto& x: r) out.append(pack(x));
+                        return out;
+                    },
+                    "prefix"_a,
                     "timeout"_a = nb::none());
     m.def("connect",
           [](nb::handle options)

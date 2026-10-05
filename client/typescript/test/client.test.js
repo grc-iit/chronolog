@@ -125,6 +125,44 @@ test('kind, actor and links round-trip through append and read', { timeout: 2500
   }
 });
 
+test('prefix read with a kind predicate merges stories in order and completes', { timeout: 25000 }, async () => {
+  const client = await connect(options);
+  const { chronicle, story } = await create(client, 'prefix');
+  const other = await client.createStory(chronicle, 'other');
+  const writers = [await client.acquire(story.id, 'prefix-a'), await client.acquire(other.id, 'prefix-b')];
+  try {
+    const results = [];
+    for (let i = 0; i < 4; ++i) {
+      for (const writer of writers) results.push(await writer.append(payload(results.length), { kind: i % 2 === 0 ? 'note' : 'tool' }));
+    }
+    const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+    const order = (x, y) => cmp(x.hlc.physicalNs, y.hlc.physicalNs) || cmp(x.hlc.logical, y.hlc.logical) ||
+      cmp(x.eventId.storyId, y.eventId.storyId) || cmp(x.eventId.writerId, y.eventId.writerId) ||
+      cmp(x.eventId.incarnation, y.eventId.incarnation) || cmp(x.eventId.sequence, y.eventId.sequence);
+    const expected = results.filter((_, i) => Math.floor(i / 2) % 2 === 0).sort(order).map(r => r.eventId);
+    const last = results.reduce((m, r) => order(r, m) > 0 ? r : m);
+    const range = { start: { physicalNs: 0n, logical: 0 }, end: { physicalNs: last.hlc.physicalNs, logical: last.hlc.logical + 1 } };
+    let events, completion;
+    for (let attempt = 0; attempt < 40; ++attempt) {
+      const stream = client.read(null, range, { prefix: chronicle, predicate: { kinds: ['note'] }, timeoutMs: 5000 });
+      events = [];
+      for await (const event of stream) events.push(event);
+      completion = await stream.completion;
+      if (completion.complete) break;
+      await delay(50);
+    }
+    assert.equal(completion.complete, true);
+    assert.equal(expected.length, 4);
+    assert.deepEqual(events.map(e => e.id), expected);
+    assert.deepEqual(new Set(events.map(e => e.envelope.kind)), new Set(['note']));
+  } finally {
+    for (const writer of writers) await writer.release();
+    await client.destroyStory(other.id);
+    await client.destroyStory(story.id);
+    await client.destroyChronicle(chronicle);
+  }
+});
+
 test('awaitEvent finds an appended event and certifies a released incarnation never', { timeout: 25000 }, async () => {
   const client = await connect(options);
   const { chronicle, story } = await create(client, 'await');

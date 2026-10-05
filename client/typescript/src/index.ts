@@ -152,7 +152,14 @@ export interface AppendOptions extends CallOptions {
   durability?: Durability;
 }
 export interface AppendItem extends Omit<AppendOptions, 'timeoutMs'> { payload: Uint8Array }
-export interface StreamOptions extends CallOptions {}
+// Every term must hold. kinds and actors match any member, attributes maps a key to its required value, linkTo lists
+// the EventIds or links the event must link to (a bare EventId matches any link type) and eventIds matches any member.
+export interface Predicate {
+  readonly kinds?: readonly string[]; readonly actors?: readonly string[]; readonly attributes?: Readonly<Record<string, string>>;
+  readonly linkTo?: readonly (EventId | { readonly type?: string; readonly target: EventId })[]; readonly eventIds?: readonly EventId[];
+}
+// prefix streams every story whose path equals it or lies below it by whole segments, and takes the story null.
+export interface StreamOptions extends CallOptions { prefix?: string; predicate?: Predicate }
 // hlc is the awaited event's hlc when the caller holds one. boundMs is how long to wait for it, 0 answers at once.
 export interface AwaitOptions extends CallOptions { hlc?: Hlc; boundMs?: number }
 interface StreamItem { events: Event[]; completion?: Completion; continuation?: Hlc }
@@ -168,7 +175,7 @@ interface Core {
   append(handle: Handle, payload: Uint8Array, options: AppendOptions): Promise<AppendResult>;
   appendBatch(handle: Handle, items: readonly AppendItem[], options: CallOptions): Promise<(AppendResult | Error)[]>;
   release(handle: Handle, options: CallOptions): Promise<boolean>;
-  stream(handle: Handle, story: bigint, mode: 'read' | 'tail' | 'physical', input: HlcRange | PhysicalRange | Position | null, options: CallOptions): Promise<Handle>;
+  stream(handle: Handle, story: bigint | null, mode: 'read' | 'tail' | 'physical', input: HlcRange | PhysicalRange | Position | null, options: CallOptions): Promise<Handle>;
   next(handle: Handle, mode: 'read' | 'tail', options: CallOptions): Promise<StreamItem | null>;
   cancel(handle: Handle, mode: 'read' | 'tail'): void;
   connectContext(options: ContextOptions, call: CallOptions): Promise<Handle>;
@@ -229,10 +236,10 @@ export class Client {
   readPhysical(story: bigint, range: PhysicalRange, options: StreamOptions = {}): EventStream {
     return new EventStream(() => invoke(() => core.stream(this.handle, story, 'physical', range, options)), 'read', options);
   }
-  read(story: bigint, range: HlcRange, options: StreamOptions = {}): EventStream {
+  read(story: bigint | null, range: HlcRange, options: StreamOptions = {}): EventStream {
     return new EventStream(() => invoke(() => core.stream(this.handle, story, 'read', range, options)), 'read', options);
   }
-  tail(story: bigint, after: Position | null = null, options: StreamOptions = {}): EventStream {
+  tail(story: bigint | null, after: Position | null = null, options: StreamOptions = {}): EventStream {
     return new EventStream(() => invoke(() => core.stream(this.handle, story, 'tail', after, options)), 'tail', options);
   }
 }

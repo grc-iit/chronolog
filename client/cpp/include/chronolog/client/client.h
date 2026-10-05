@@ -7,6 +7,7 @@
 #include <span>
 #include <variant>
 #include "chronolog/client/clock.h"
+#include "chronolog/predicate.h"
 #include "chronolog/types.h"
 
 namespace chronolog::client
@@ -91,6 +92,14 @@ struct HlcRange
 struct ReadOptions
 {
     std::optional<uint32_t> max_events;
+    // I6.17: only matching events are returned and the range, order and completeness are unchanged. An empty predicate
+    // matches every event. The Player validates it.
+    EventPredicate predicate{};
+};
+struct TailOptions
+{
+    // I6.17: only matching events are delivered and the delivery frontier is unchanged.
+    EventPredicate predicate{};
 };
 struct PhysicalRange
 {
@@ -220,6 +229,9 @@ public:
     absl::StatusOr<Story> getStory(StoryId, Deadline deadline = {});
     absl::StatusOr<Route> route(StoryId, Deadline deadline = {});
     absl::StatusOr<std::vector<Story>> listStories(const std::string& chronicle, Deadline deadline = {});
+    // I9.3: the stories whose path equals the prefix or lies below it by whole segments, never tombstoned.
+    // RESOURCE_EXHAUSTED when more than 65536 match.
+    absl::StatusOr<std::vector<Story>> listStoriesByPrefix(const std::string& prefix, Deadline deadline = {});
     absl::Status destroyStory(StoryId, Deadline deadline = {});
     absl::StatusOr<Writer> acquire(StoryId, const std::string& identity, Deadline deadline = {});
     // An empty acquire_request_id reuses this Client's unresolved id from an identical earlier call, else mints one.
@@ -241,6 +253,7 @@ public:
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});
     absl::StatusOr<TailStream> tail(StoryId, std::optional<Position> after = {}, Deadline deadline = {});
+    absl::StatusOr<TailStream> tail(StoryId, std::optional<Position> after, TailOptions, Deadline deadline = {});
     // I6.15: the merged history of every story whose path equals the prefix or lies below it by whole segments, in
     // the order of I7.7. The Completion names the Catalog revision it resolved the set at.
     absl::StatusOr<ReadStream> read(const std::string& prefix, HlcRange, Deadline deadline = {});
@@ -248,6 +261,8 @@ public:
     // The story set is fixed when the stream opens; a story created later joins at the next subscription.
     absl::StatusOr<TailStream>
     tail(const std::string& prefix, std::optional<Position> after = {}, Deadline deadline = {});
+    absl::StatusOr<TailStream>
+    tail(const std::string& prefix, std::optional<Position> after, TailOptions, Deadline deadline = {});
 
 private:
     struct Impl;

@@ -90,6 +90,7 @@ Hlc hlc(nb::handle);
 EventId eventId(nb::handle);
 sdk::Position position(nb::handle);
 sdk::HlcRange hlcRange(nb::handle);
+EventPredicate predicate(nb::handle);
 Envelope envelope(nb::handle);
 TimeReading timeReading(nb::handle);
 sdk::ClientOptions clientOptions(nb::handle);
