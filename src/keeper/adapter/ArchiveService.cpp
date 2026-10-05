@@ -130,7 +130,14 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                                    {req.physical_filter().end_ns(), 0}};
                 if(filter && filter->start >= filter->end)
                     return fail(absl::InvalidArgumentError("invalid physical range"));
-                auto snapshot = journal_.sealedRead(req.story_id(), range, std::nullopt, filter);
+                const auto predicate = convert::fromProto(req.predicate());
+                if(auto valid = predicate.validate(); !valid.ok())
+                    return fail(valid);
+                std::function<bool(const Event&)> keep;
+                if(!predicate.empty())
+                    keep = [&](const Event& event) { return predicate.matches(event); };
+                auto snapshot =
+                        journal_.sealedRead(req.story_id(), range, std::nullopt, filter, keep ? &keep : nullptr);
                 if(!snapshot.ok())
                     return fail(snapshot.status());
                 std::deque<iv1::FetchHotResponse> out;

@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include "common/predicate/Predicate.h"
 #include "player/adapter/StoryCatalog.h"
 #include "chronolog/replay.h"
 #include "chronolog/v1/chronolog.grpc.pb.h"
@@ -35,7 +36,10 @@ public:
     absl::StatusOr<v1::AwaitResponse> awaitAnswer(const v1::AwaitRequest&,
                                                   std::chrono::system_clock::time_point deadline) const;
 
-    absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId story, Range range, size_t max_events) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate = {}) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(StoryId story, Event position, const EventPredicate& predicate = {}, bool progress = false) const;
 
     // Drains: refuses new calls and cancels open streams, so tails finish with a
     // complete=false Completion.

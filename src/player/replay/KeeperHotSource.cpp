@@ -57,6 +57,7 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       bool policy,
                                       bool tail,
                                       size_t read_budget,
+                                      const EventPredicate& predicate,
                                       std::chrono::system_clock::time_point deadline) const
 {
     KeeperFetch out;
@@ -90,6 +91,8 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
         request.mutable_physical_filter()->set_end_ns(range.end.physical_ns);
     }
     request.set_expect_epoch(expected_epoch);
+    if(!predicate.empty())
+        *request.mutable_predicate() = convert::toProto(predicate);
     if(predecessor)
         request.set_expect_instance(predecessor->instance);
     const auto address = internal_address_(keeper);
@@ -151,29 +154,54 @@ KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetch(StoryId story, const Range& range) const
 {
-    return fetchImpl(story, range, true, nullptr);
+    return fetchImpl(story, range, true, nullptr, {});
 }
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetchRead(StoryId story, const Range& range, size_t target) const
 {
-    const size_t budget = target == SIZE_MAX ? target : target + 1;
-    return fetchImpl(story, range, true, nullptr, budget);
+    return fetchReadMatching(story, range, target, {});
 }
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetchTail(StoryId story, Hlc from, const TailStarts& starts) const
 {
-    return fetchImpl(story, Range{Range::Axis::Hlc, from, maxHlc()}, true, &starts);
+    return fetchTailMatching(story, from, starts, {});
 }
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysical(StoryId story, const Range& range, bool policy) const
 {
-    return fetchImpl(story, range, policy, nullptr);
+    return fetchPhysicalMatching(story, range, policy, {});
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchReadMatching(StoryId story,
+                                                            const Range& range,
+                                                            size_t target,
+                                                            const EventPredicate& predicate) const
+{
+    const size_t budget = target == SIZE_MAX ? target : target + 1;
+    return fetchImpl(story, range, true, nullptr, predicate, budget);
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchTailMatching(StoryId story,
+                                                            Hlc from,
+                                                            const TailStarts& starts,
+                                                            const EventPredicate& predicate) const
+{
+    return fetchImpl(story, Range{Range::Axis::Hlc, from, maxHlc()}, true, &starts, predicate);
+}
+
+absl::StatusOr<HotFetch> KeeperHotSource::fetchPhysicalMatching(StoryId story,
+                                                                const Range& range,
+                                                                bool policy,
+                                                                const EventPredicate& predicate) const
+{
+    return fetchImpl(story, range, policy, nullptr, predicate);
 }
 
 absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                     const Range& range,
                                                     bool policy,
                                                     const TailStarts* starts,
+                                                    const EventPredicate& predicate,
                                                     size_t read_budget) const
 {
     const auto deadline = std::chrono::system_clock::now() + options_.deadline;
@@ -231,6 +259,7 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                              out.physical_policy,
                                                              tail,
                                                              read_budget,
+                                                             predicate,
                                                              deadline);
                                          }));
         }
@@ -268,6 +297,7 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
                                                              out.physical_policy,
                                                              tail,
                                                              read_budget,
+                                                             predicate,
                                                              deadline);
                                          }));
         }

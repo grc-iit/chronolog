@@ -114,7 +114,8 @@ public:
     absl::StatusOr<SealedRead> sealedRead(StoryId id,
                                           Range range,
                                           std::optional<Hlc> tick = std::nullopt,
-                                          std::optional<Range> physical_filter = std::nullopt) const;
+                                          std::optional<Range> physical_filter = std::nullopt,
+                                          const std::function<bool(const Event&)>* keep = nullptr) const;
     Hlc sealTick() const { return reserveFrontier(clock_->tick()); }
 
     std::vector<StoryId> storyIds() const;
@@ -340,11 +341,13 @@ private:
              const Range* range = nullptr,
              std::vector<Event>* events = nullptr,
              std::optional<Hlc> tick = std::nullopt,
-             std::optional<Range> physical_filter = std::nullopt) const;
+             std::optional<Range> physical_filter = std::nullopt,
+             const std::function<bool(const Event&)>* keep = nullptr) const;
     static void scan(const Writer& writer,
                      Range range,
                      std::vector<Event>& out,
-                     std::optional<Range> physical_filter = std::nullopt);
+                     std::optional<Range> physical_filter = std::nullopt,
+                     const std::function<bool(const Event&)>* keep = nullptr);
     void complete(const std::shared_ptr<Writer>& writer, uint64_t sequence, absl::Status status);
 
     std::shared_ptr<Clock> clock_;

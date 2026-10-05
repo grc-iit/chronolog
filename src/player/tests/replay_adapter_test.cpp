@@ -108,6 +108,7 @@ public:
 
     std::atomic<unsigned> unavailable{0};
     std::atomic<unsigned> calls{0};
+    std::atomic<unsigned> predicated{0};
     std::atomic<bool> enforce_epoch{false};
     std::atomic<unsigned> stale_epochs{0};
     std::atomic<Epoch> accepted_epoch{0};
@@ -167,6 +168,8 @@ public:
             return {grpc::StatusCode::FAILED_PRECONDITION, "stale epoch"};
         }
         accepted_epoch = request->expect_epoch();
+        if(request->has_predicate())
+            ++predicated;
         if(refused)
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "story was destroyed");
         for(auto waited = 0ms; waited < delay && !context->IsCancelled(); waited += 20ms)
@@ -192,6 +195,8 @@ public:
             if(in && request->has_physical_filter())
                 in = e.physical().physical_ns() >= request->physical_filter().start_ns() &&
                      e.physical().physical_ns() < request->physical_filter().end_ns();
+            if(in && request->has_predicate())
+                in = convert::fromProto(request->predicate()).matches(convert::fromProto(e));
             if(in)
                 *batch.mutable_batch()->add_events() = e;
             if(batch.batch().events_size() == 2)
@@ -1082,6 +1087,78 @@ TEST_F(replay_adapter, TailResumesExclusivelyAndFollowsNewEvents)
     ctx->TryCancel();
     while(reader->Read(&response)) {}
     EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::CANCELLED);
+}
+
+TEST_F(replay_adapter, MalformedOrOversizedPredicateIsInvalidArgument)
+{
+    auto request = hlcRead(100, 200);
+    request.mutable_predicate()->add_attributes()->set_value("v");
+    auto malformed = read(request);
+    EXPECT_EQ(malformed.status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+    EXPECT_TRUE(malformed.events.empty());
+    request.clear_predicate();
+    for(int i = 0; i < 257; ++i) request.mutable_predicate()->add_kinds("k" + std::to_string(i));
+    EXPECT_EQ(read(request).status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+    request.mutable_predicate()->mutable_kinds()->RemoveLast();
+    EXPECT_TRUE(read(request).status.ok());
+
+    auto tail = tailFrom(protoEvent(2, 2, 130));
+    tail.mutable_predicate()->add_links()->set_type("cites");
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), tail);
+    v1::TailResponse response;
+    EXPECT_FALSE(reader->Read(&response));
+    EXPECT_EQ(reader->Finish().error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(replay_adapter, ReadWithAPredicateReachesTheKeepersAndKeepsOnlyMatches)
+{
+    auto note = protoEvent(2, 4, 170);
+    note.mutable_envelope()->set_kind("note");
+    a_.add(note);
+    auto request = hlcRead(100, 200);
+    request.mutable_predicate()->add_kinds("note");
+    auto r = read(request);
+    ASSERT_TRUE(r.status.ok()) << r.status.error_message();
+    ASSERT_EQ(r.events.size(), 1u);
+    EXPECT_EQ(r.events[0].id().sequence(), 4u);
+    EXPECT_GT(a_.predicated.load(), 0u);
+    EXPECT_GT(b_.predicated.load(), 0u);
+    ASSERT_EQ(r.completions.size(), 1u);
+    EXPECT_TRUE(r.completions[0].complete());
+    EXPECT_EQ(r.completions[0].frontier().physical_ns(), 200);
+}
+
+TEST_F(replay_adapter, TailWithAPredicateDeliversOnlyMatches)
+{
+    auto note = protoEvent(2, 4, 170);
+    note.mutable_envelope()->set_kind("note");
+    a_.add(note);
+    auto request = tailFrom(protoEvent(2, 2, 130));
+    request.mutable_predicate()->add_kinds("note");
+    auto ctx = context();
+    auto reader = stub_->Tail(ctx.get(), request);
+    std::vector<int64_t> seen;
+    v1::TailResponse response;
+    auto pump = [&](size_t want)
+    {
+        for(int i = 0; i < 100 && seen.size() < want && reader->Read(&response); ++i)
+            for(const auto& e: response.batch().events()) seen.push_back(e.hlc().physical_ns());
+    };
+    pump(1);
+    EXPECT_EQ(seen, (std::vector<int64_t>{170}));
+    auto later = protoEvent(4, 4, 210);
+    later.mutable_envelope()->set_kind("note");
+    b_.add(later);
+    b_.add(protoEvent(4, 5, 220));
+    a_.seal(300);
+    b_.seal(300);
+    pump(2);
+    EXPECT_EQ(seen, (std::vector<int64_t>{170, 210}));
+    EXPECT_GT(a_.predicated.load(), 0u);
+    ctx->TryCancel();
+    while(reader->Read(&response)) {}
+    reader->Finish();
 }
 
 TEST_F(replay_adapter, ClientCancelReleasesTheStream)
