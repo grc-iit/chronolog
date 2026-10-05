@@ -129,6 +129,54 @@ sdk::HlcRange hlcRange(Js value)
     auto input = object(value);
     return {hlc(input.Get("start")), hlc(input.Get("end"))};
 }
+std::vector<Js> items(Js value, const char* what)
+{
+    if(!value.IsArray())
+        throw Napi::TypeError::New(value.Env(), std::string(what) + " must be an array");
+    auto array = value.As<Napi::Array>();
+    std::vector<Js> out;
+    for(uint32_t i = 0; i < array.Length(); ++i) out.push_back(array.Get(i));
+    return out;
+}
+EventPredicate predicate(Js value)
+{
+    auto input = object(value);
+    auto keys = input.GetPropertyNames();
+    for(uint32_t i = 0; i < keys.Length(); ++i)
+    {
+        auto key = text(keys.Get(i));
+        if(key != "kinds" && key != "actors" && key != "attributes" && key != "linkTo" && key != "eventIds")
+            throw Napi::TypeError::New(value.Env(), "unknown predicate key " + key);
+    }
+    EventPredicate out;
+    if(has(input, "kinds"))
+        for(auto item: items(input.Get("kinds"), "kinds")) out.kinds.push_back(text(item));
+    if(has(input, "actors"))
+        for(auto item: items(input.Get("actors"), "actors")) out.actors.push_back(text(item));
+    if(has(input, "attributes"))
+    {
+        auto attributes = object(input.Get("attributes"));
+        auto names = attributes.GetPropertyNames();
+        for(uint32_t i = 0; i < names.Length(); ++i)
+        {
+            auto key = text(names.Get(i));
+            out.attributes.push_back({key, text(attributes.Get(key))});
+        }
+    }
+    if(has(input, "linkTo"))
+        for(auto item: items(input.Get("linkTo"), "linkTo"))
+        {
+            auto term = object(item);
+            if(has(term, "target"))
+                out.links.push_back(
+                        {has(term, "type") ? text(term.Get("type")) : std::string(), eventId(term.Get("target"))});
+            else
+                out.links.push_back({std::string(), eventId(item)});
+        }
+    if(has(input, "eventIds"))
+        for(auto item: items(input.Get("eventIds"), "eventIds")) out.event_ids.push_back(eventId(item));
+    return out;
+}
 Link linkOf(Js value)
 {
     auto input = object(value);
@@ -800,9 +848,27 @@ Js release(const Napi::CallbackInfo& info)
 Js stream(const Napi::CallbackInfo& info)
 {
     auto held = handle(info[0], Handle::Client);
-    auto story = unsigned64(info[1]);
     auto mode = text(info[2]);
-    auto end = deadline(object(info[4]));
+    auto opts = object(info[4]);
+    auto end = deadline(opts);
+    const bool prefixed = has(opts, "prefix");
+    std::string prefix;
+    uint64_t story = 0;
+    if(prefixed)
+    {
+        if(!(info[1].IsNull() || info[1].IsUndefined()) || mode == "physical")
+            throw Napi::TypeError::New(info.Env(), "a prefix stream takes no story and no physical range");
+        prefix = text(opts.Get("prefix"));
+    }
+    else
+        story = unsigned64(info[1]);
+    EventPredicate where;
+    if(has(opts, "predicate"))
+    {
+        if(mode == "physical")
+            throw Napi::TypeError::New(info.Env(), "a physical read takes no predicate");
+        where = predicate(opts.Get("predicate"));
+    }
     auto* owner = &runtime(info.Env());
     auto opened = [owner](auto result, Handle::Kind kind) -> absl::StatusOr<Held>
     {
@@ -827,16 +893,28 @@ Js stream(const Napi::CallbackInfo& info)
     if(mode == "read")
     {
         auto input = hlcRange(info[3]);
+        sdk::ReadOptions options;
+        options.predicate = std::move(where);
         return work<Held>(info.Env(),
-                          [held, story, input, end, opened]
-                          { return opened(held->client->read(story, input, end), Handle::Read); });
+                          [held, story, prefix, prefixed, input, options, end, opened]
+                          {
+                              return opened(prefixed ? held->client->read(prefix, input, options, end)
+                                                     : held->client->read(story, input, options, end),
+                                            Handle::Read);
+                          });
     }
     std::optional<sdk::Position> after;
     if(!info[3].IsNull() && !info[3].IsUndefined())
         after = position(info[3]);
+    sdk::TailOptions options;
+    options.predicate = std::move(where);
     return work<Held>(info.Env(),
-                      [held, story, after, end, opened]
-                      { return opened(held->client->tail(story, after, end), Handle::Tail); });
+                      [held, story, prefix, prefixed, after, options, end, opened]
+                      {
+                          return opened(prefixed ? held->client->tail(prefix, after, options, end)
+                                                 : held->client->tail(story, after, options, end),
+                                        Handle::Tail);
+                      });
 }
 Js next(const Napi::CallbackInfo& info)
 {

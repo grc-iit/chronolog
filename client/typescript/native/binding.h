@@ -36,6 +36,7 @@ Hlc hlc(Js);
 EventId eventId(Js);
 sdk::Position position(Js);
 sdk::HlcRange hlcRange(Js);
+EventPredicate predicate(Js);
 Envelope envelope(Js payload, Napi::Object options);
 TimeReading timeReading(Js);
 sdk::ClientOptions clientOptions(Napi::Object);

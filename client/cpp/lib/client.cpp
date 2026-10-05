@@ -125,6 +125,20 @@ absl::StatusOr<Route> Client::route(StoryId id, Deadline deadline)
     impl_->state->route(id, current);
     return current;
 }
+absl::StatusOr<std::vector<Story>> Client::listStoriesByPrefix(const std::string& prefix, Deadline deadline)
+{
+    if(prefix.empty())
+        return absl::InvalidArgumentError("invalid story prefix");
+    v1::ListStoriesByPrefixRequest request;
+    request.set_prefix(prefix);
+    request.set_limit(65536);
+    CATALOG_CALL(ListStoriesByPrefix);
+    if(response.limit_exceeded())
+        return absl::ResourceExhaustedError("prefix matches more than 65536 stories");
+    std::vector<Story> out;
+    for(const auto& s: response.stories()) out.push_back(detail::decode(s));
+    return out;
+}
 absl::StatusOr<std::vector<Story>> Client::listStories(const std::string& chronicle, Deadline deadline)
 {
     v1::ListStoriesRequest request;
@@ -506,16 +520,27 @@ Client::read(const std::string& prefix, HlcRange range, ReadOptions options, Dea
 }
 absl::StatusOr<TailStream> Client::tail(const std::string& prefix, std::optional<Position> after, Deadline deadline)
 {
+    return tail(prefix, after, TailOptions{}, deadline);
+}
+absl::StatusOr<TailStream>
+Client::tail(const std::string& prefix, std::optional<Position> after, TailOptions options, Deadline deadline)
+{
     if(prefix.empty())
         return absl::InvalidArgumentError("invalid tail prefix");
     auto endpoint = impl_->state->prefixPlayerEndpoint(prefix, impl_->state->deadline(deadline));
     if(!endpoint.ok())
         return endpoint.status();
-    auto impl = std::make_unique<TailStream::Impl>(impl_->state, *endpoint, StoryId{}, after, deadline);
+    auto impl =
+            std::make_unique<TailStream::Impl>(impl_->state, *endpoint, StoryId{}, after, std::move(options), deadline);
     impl->prefix = prefix;
     return TailStream(std::move(impl));
 }
 absl::StatusOr<TailStream> Client::tail(StoryId id, std::optional<Position> after, Deadline deadline)
+{
+    return tail(id, after, TailOptions{}, deadline);
+}
+absl::StatusOr<TailStream>
+Client::tail(StoryId id, std::optional<Position> after, TailOptions options, Deadline deadline)
 {
     if(!id || (after && after->id.story_id != id))
         return absl::InvalidArgumentError("invalid tail story or position");
@@ -523,6 +548,7 @@ absl::StatusOr<TailStream> Client::tail(StoryId id, std::optional<Position> afte
     auto endpoint = impl_->state->playerEndpoint(id, end);
     if(!endpoint.ok())
         return endpoint.status();
-    return TailStream(std::make_unique<TailStream::Impl>(impl_->state, *endpoint, id, after, deadline));
+    return TailStream(
+            std::make_unique<TailStream::Impl>(impl_->state, *endpoint, id, after, std::move(options), deadline));
 }
 } // namespace chronolog::client

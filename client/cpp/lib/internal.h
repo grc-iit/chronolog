@@ -37,6 +37,28 @@ inline void encode(const EventId& id, v1::EventId* p)
     p->set_incarnation(id.incarnation);
     p->set_sequence(id.sequence);
 }
+inline bool unconstrained(const EventPredicate& p)
+{
+    return p.kinds.empty() && p.actors.empty() && p.attributes.empty() && p.links.empty() && p.event_ids.empty();
+}
+inline void encode(const EventPredicate& predicate, v1::Predicate* p)
+{
+    for(const auto& kind: predicate.kinds) p->add_kinds(kind);
+    for(const auto& actor: predicate.actors) p->add_actors(actor);
+    for(const auto& term: predicate.attributes)
+    {
+        auto* out = p->add_attributes();
+        out->set_key(term.key);
+        out->set_value(term.value);
+    }
+    for(const auto& term: predicate.links)
+    {
+        auto* out = p->add_links();
+        out->set_type(term.type);
+        encode(term.target, out->mutable_target());
+    }
+    for(const auto& id: predicate.event_ids) encode(id, p->add_event_ids());
+}
 inline Route decode(const v1::Route& p)
 {
     Route r;

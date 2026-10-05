@@ -89,6 +89,8 @@ absl::StatusOr<std::optional<StreamItem>> ReadStream::Impl::next(Deadline deadli
         else
             request.set_prefix(prefix);
         request.set_max_events(options.max_events.value_or(0));
+        if(!detail::unconstrained(options.predicate))
+            detail::encode(options.predicate, request.mutable_predicate());
         detail::encode(range.start, request.mutable_hlc()->mutable_start());
         detail::encode(range.end, request.mutable_hlc()->mutable_end());
         stream = replay->Read(context.get(), request);
@@ -273,6 +275,8 @@ absl::StatusOr<std::optional<StreamItem>> TailStream::Impl::next(Deadline deadli
             else
                 request.set_prefix(prefix);
             request.set_progress(true);
+            if(!detail::unconstrained(options.predicate))
+                detail::encode(options.predicate, request.mutable_predicate());
             auto p = position.value_or(Position{{}, {story, 0, 0, 0}});
             detail::encode(p.hlc, request.mutable_from()->mutable_hlc());
             if(p.id != EventId{})

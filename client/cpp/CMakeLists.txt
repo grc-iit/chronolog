@@ -24,7 +24,7 @@ install(TARGETS chronolog_client chronolog_client_static chronolog_proto EXPORT 
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT client
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT client)
 install(DIRECTORY include/chronolog/client DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
-install(FILES "${PROJECT_SOURCE_DIR}/include/chronolog/types.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
+install(FILES "${PROJECT_SOURCE_DIR}/include/chronolog/types.h" "${PROJECT_SOURCE_DIR}/include/chronolog/predicate.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/chronolog COMPONENT client)
 configure_package_config_file(cmake/chronologConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/chronologConfig.cmake"
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/chronolog)
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/chronologConfigVersion.cmake" VERSION ${PROJECT_VERSION}

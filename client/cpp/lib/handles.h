@@ -141,11 +141,18 @@ struct ReadStream::Impl: detail::ReplayState
 };
 struct TailStream::Impl: detail::ReplayState
 {
-    Impl(std::shared_ptr<detail::State> s, std::string endpoint, StoryId id, std::optional<Position> p, Deadline d)
+    Impl(std::shared_ptr<detail::State> s,
+         std::string endpoint,
+         StoryId id,
+         std::optional<Position> p,
+         TailOptions o,
+         Deadline d)
         : ReplayState(std::move(s), std::move(endpoint), id, d)
         , position(p)
+        , options(std::move(o))
     {}
     std::optional<Position> position;
+    TailOptions options;
     std::unique_ptr<grpc::ClientReader<v1::TailResponse>> stream;
     size_t retries{}; // consecutive failures since the last delivered event
     absl::StatusOr<std::optional<StreamItem>> next(Deadline);
