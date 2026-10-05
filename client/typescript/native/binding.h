@@ -50,6 +50,7 @@ Js js(Napi::Env, const sdk::AppendResult&);
 Js js(Napi::Env, const sdk::Position&);
 Js js(Napi::Env, const sdk::HlcRange&);
 Js js(Napi::Env, const Event&);
+Js js(Napi::Env, const sdk::AwaitResult&);
 Js js(Napi::Env, const Completion&);
 Js js(Napi::Env, const sdk::StreamItem&);
 Js js(Napi::Env, const std::optional<sdk::StreamItem>&);

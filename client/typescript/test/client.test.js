@@ -125,6 +125,27 @@ test('kind, actor and links round-trip through append and read', { timeout: 2500
   }
 });
 
+test('awaitEvent finds an appended event and certifies a released incarnation never', { timeout: 25000 }, async () => {
+  const client = await connect(options);
+  const { chronicle, story } = await create(client, 'await');
+  const writer = await client.acquire(story.id, 'await-writer');
+  try {
+    const first = await writer.append(payload(1));
+    const found = await client.awaitEvent(first.eventId, { hlc: first.hlc, boundMs: 10000, timeoutMs: 15000 });
+    assert.equal(found.answer, 'FOUND');
+    assert.equal('frontier' in found, false);
+    assert.deepEqual(found.event.id, first.eventId);
+    assert.deepEqual(Buffer.from(found.event.envelope.payload), payload(1));
+    assert.equal(await writer.release(), true);
+    const later = { ...first.eventId, sequence: 2n };
+    const never = await client.awaitEvent(later, { timeoutMs: 5000 });
+    assert.deepEqual(never, { answer: 'NEVER' });
+  } finally {
+    await client.destroyStory(story.id);
+    await client.destroyChronicle(chronicle);
+  }
+});
+
 test('default Read and Tail deliver eight 1 MiB events', { timeout: 25000 }, async () => {
   const client = await connect(options);
   const { chronicle, story } = await create(client, 'receive-limit');

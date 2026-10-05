@@ -72,6 +72,14 @@ class AcquisitionTerminationCause(IntEnum):
     OWNER_REMOVED = 4
 
 
+class AwaitAnswer(IntEnum):
+    FOUND = 1
+    ABSENT_THROUGH = 2
+    CONSUMED = 3
+    NEVER = 4
+    UNKNOWN = 5
+
+
 class KeeperPreferenceResult(IntEnum):
     UNSPECIFIED = 0
     HONORED = 1
@@ -222,6 +230,17 @@ class Completion:
     def __post_init__(self):
         object.__setattr__(self, "laggards", tuple(self.laggards))
         object.__setattr__(self, "reason", _coerce(IncompleteReason, self.reason))
+
+
+@dataclass(frozen=True)
+class AwaitResult:
+    """FOUND carries event; ABSENT_THROUGH carries the exclusive frontier through which the event is certified absent."""
+    answer: AwaitAnswer
+    event: typing.Optional[Event] = None
+    frontier: typing.Optional[Hlc] = None
+
+    def __post_init__(self):
+        object.__setattr__(self, "answer", _coerce(AwaitAnswer, self.answer))
 
 
 @dataclass(frozen=True)
@@ -550,6 +569,11 @@ class Client:
     def new_acquire_request_id(self):
         """A random 128-bit id owned by this Client in this process, to retain one logical acquire across calls."""
         return self._handle.new_acquire_request_id()
+
+    def await_event(self, ref, *, hlc=None, bound_s=0.0, timeout=None):
+        """Waits up to bound_s seconds for ref, an EventId. hlc is the event's hlc when the caller holds one. Returns
+        an AwaitResult: FOUND, ABSENT_THROUGH, CONSUMED, NEVER or UNKNOWN."""
+        return self._handle.await_event(ref, hlc, bound_s, timeout)
 
     def read_physical(self, story, start, end, *, timeout=None):
         return ReadStream(self._handle.read_physical(_id(story), start, end, timeout), timeout)

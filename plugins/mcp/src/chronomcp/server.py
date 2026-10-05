@@ -121,15 +121,55 @@ def _follow_token(p):
     return token("f1", position_values(p))
 
 
+def _id_json(i):
+    return {"story_id": str(i.story_id), "writer_id": str(i.writer_id), "incarnation": str(i.incarnation),
+            "sequence": str(i.sequence)}
+
+
+def _u64(value, name, high=2**64 - 1):
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        value = int(value)
+    return _bound(value, 0, high, name)
+
+
+def _links(items):
+    """Provenance links from the tool's {type, event_id, hlc?} items; the Keeper validates their limits (I3.9)."""
+    if items is None:
+        return None
+    if not isinstance(items, list):
+        raise ValueError("links must be a list of {type, event_id, hlc}")
+    out = []
+    for item in items:
+        if not isinstance(item, dict) or set(item) - {"type", "event_id", "hlc"} or not isinstance(
+                item.get("type"), str) or not isinstance(item.get("event_id"), dict):
+            raise ValueError("each link must be {type: string, event_id: {story_id, writer_id, incarnation, "
+                             "sequence}, hlc?: [physical_ns, logical]}")
+        ident = item["event_id"]
+        if set(ident) != {"story_id", "writer_id", "incarnation", "sequence"}:
+            raise ValueError("link event_id must be {story_id, writer_id, incarnation, sequence}")
+        hlc = item.get("hlc")
+        if hlc is not None:
+            if not isinstance(hlc, (list, tuple)) or len(hlc) != 2:
+                raise ValueError("link hlc must be [physical_ns, logical]")
+            hlc = cl.Hlc(_u64(hlc[0], "link hlc physical_ns", 2**63 - 1), _u64(hlc[1], "link hlc logical", 2**32 - 1))
+        out.append(cl.Link(item["type"], cl.EventId(*(_u64(ident[k], f"link event_id.{k}") for k in (
+            "story_id", "writer_id", "incarnation", "sequence"))), hlc))
+    return out
+
+
+def _link_json(link):
+    return {"type": link.type, "event_id": _id_json(link.target), "hlc": hlc_json(link.target_hlc)}
+
+
 def _event(e, view):
     try:
         content = {"encoding": "utf8", "data": e.envelope.payload.decode("utf-8")}
     except UnicodeDecodeError:
         content = {"encoding": "base64", "data": base64.b64encode(e.envelope.payload).decode("ascii")}
-    out = {"id": {"story_id": str(e.id.story_id), "writer_id": str(e.id.writer_id),
-                  "incarnation": str(e.id.incarnation), "sequence": str(e.id.sequence)},
+    out = {"id": _id_json(e.id),
            "hlc": hlc_json(e.hlc), "at": _at(e.id.story_id, e.hlc), "content_type": e.envelope.content_type,
-           "content": content}
+           "content": content, "kind": e.envelope.kind, "actor": e.envelope.actor,
+           "links": [_link_json(link) for link in e.envelope.links]}
     if view == "full":
         out.update({"follow_token": _follow_token(cl.Position(e.hlc, e.id)), "durability": e.durability.name,
                     "physical": {"physical_ns": str(e.physical.physical_ns),
@@ -477,6 +517,10 @@ def create_server(args):
     def ref_token(ref):
         return token("r1", [str(ref.story_id), ref.chronicle, ref.name])
 
+    def writer_identity(label):
+        identity = cl.AgentIdentity(base(), label)
+        return "agent-context/v2:" + compact([identity.agent_id, identity.slot])
+
     def describe(s):
         status = s.native.status()
         identity = cl.AgentIdentity(base(), s.label)
@@ -484,7 +528,7 @@ def create_server(args):
                 "context": {"story_id": str(s.ref.story_id), "chronicle": s.ref.chronicle, "name": s.ref.name},
                 "access": s.access.name.lower(),
                 "identity": {"agent_id": identity.agent_id, "label": identity.slot,
-                             "writer_identity": "agent-context/v2:" + compact([identity.agent_id, identity.slot])},
+                             "writer_identity": writer_identity(s.label)},
                 "writer": _stamp(status.writer), "state": status.state.name,
                 "next_action": _next_action(status.state) if s.writable else None}
 
@@ -595,17 +639,26 @@ def create_server(args):
     def context_remember(session_handle: str, operation_id: str, content: str | dict,
                          content_type: str | None = None, attributes: dict[str, str] | None = None,
                          trace_id: str | None = None, span_id: str | None = None, durability: str = "durable",
-                         physical_ns: str | None = None, resend_after_absent: bool = False) -> str:
+                         physical_ns: str | None = None, resend_after_absent: bool = False,
+                         kind: str | None = None, links: list[dict] | None = None) -> str:
         """Store one memory. Reuse operation_id when retrying after an error or timeout: the same id with the same
         content returns its known outcome and never stores twice; a new id is a new memory. stored is durable,
-        ram_only_may_vanish, rejected or unknown; unknown is resolved with context_reconcile."""
+        ram_only_may_vanish, rejected or unknown; unknown is resolved with context_reconcile.
+        kind names what the memory is (observation, action, result, decision, message; at most 64 bytes; the
+        chronolog. prefix is reserved and rejected). links record provenance as [{type, event_id, hlc?}], at most
+        16: type is "caused_by", "replies_to", "derived_from" or any name up to 64 bytes, event_id is the
+        {story_id, writer_id, incarnation, sequence} of an earlier event (the id of a recalled event or of a
+        receipt), hlc optionally the target's hlc as [physical_ns, logical]. A link is a plain reference and its
+        target need not exist. The actor recorded is this session's writer_identity, a claim and not an
+        authenticated identity."""
         s = st()
         session = s.session(session_handle, writable=True)
         if durability not in ("durable", "accepted"):
             raise ValueError("durability must be durable or accepted")
-        payload, kind = _payload(content, content_type)
-        envelope = cl.Envelope(payload, kind, attributes, bytes.fromhex(trace_id) if trace_id else None,
-                               bytes.fromhex(span_id) if span_id else None)
+        payload, media_type = _payload(content, content_type)
+        envelope = cl.Envelope(payload, media_type, attributes, bytes.fromhex(trace_id) if trace_id else None,
+                               bytes.fromhex(span_id) if span_id else None, kind, writer_identity(session.label),
+                               _links(links))
         try:
             s.need_store()
             if session.persist_required:
@@ -680,7 +733,9 @@ def create_server(args):
         carries the range. since/until accept int64 nanoseconds or RFC 3339, exclusive of start/end/cursor;
         until is exclusive. They map to Hlc{t, 0}: Keeper CLOCK_REALTIME at acceptance, with HLC lead at most D
         (61 s by default), so these are acceptance-time ranges (I8.7, I8.8), not writer-time readPhysical ranges.
-        HLC coverage can be complete (I6.1). Check verdict and answer_complete before treating a missing event as absent."""
+        HLC coverage can be complete (I6.1). Check verdict and answer_complete before treating a missing event as absent.
+        Every event carries kind, actor and links ([{type, event_id, hlc}] such as caused_by, replies_to,
+        derived_from); a link's event_id is passed as-is to context_remember links to reply or cite."""
         s = st()
         session = s.session(session_handle)
         _bound(max_events, 1, 1000, "max_events")
@@ -736,7 +791,9 @@ def create_server(args):
         """The last n events of a context before an optional `at` token (exclusive), oldest first, at a disclosed
         verified as_of. until accepts int64 nanoseconds or RFC 3339, exclusive of before, as Hlc{t, 0}.
         This is Keeper acceptance time, CLOCK_REALTIME with HLC lead at most D (61 s by default; I8.7, I8.8),
-        not writer-time readPhysical. HLC coverage can be complete (I6.1). selection_complete says the last-n selection is proven."""
+        not writer-time readPhysical. HLC coverage can be complete (I6.1). selection_complete says the last-n selection is proven.
+        Every event carries kind, actor and links ([{type, event_id, hlc}] such as caused_by, replies_to,
+        derived_from), the provenance an agent follows back."""
         s = st()
         session = s.session(session_handle)
         _bound(n, 1, 1000, "n")

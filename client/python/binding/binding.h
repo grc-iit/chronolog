@@ -84,6 +84,7 @@ nb::object pack(const sdk::Position&);
 nb::object pack(const sdk::HlcRange&);
 nb::object pack(const sdk::AppendResult&);
 nb::object pack(const Event&);
+nb::object pack(const sdk::AwaitResult&);
 nb::object pack(const Completion&);
 Hlc hlc(nb::handle);
 EventId eventId(nb::handle);
