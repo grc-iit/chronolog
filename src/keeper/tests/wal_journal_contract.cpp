@@ -17,6 +17,19 @@ std::unique_ptr<JournalHarness> MakeWal(uint32_t window_us)
     h->payload_limit = rig->ram_config.payload_max_bytes;
     h->supports_durable = true;
     h->setPhysical = [rig](int64_t ns) { rig->clock->setPhysical(ns); };
+    h->writerStatus = [rig](EventId id) -> absl::StatusOr<CheckpointStatus>
+    {
+        auto status = rig->current->writerStatus(id);
+        if(!status.ok())
+            return status.status();
+        return CheckpointStatus{status->known,
+                                status->released,
+                                status->next_sequence,
+                                status->last_hlc,
+                                status->termination_cause,
+                                status->recorded};
+    };
+    h->evictEvents = [rig] { rig->current->eraseEvents(1, All()); };
     h->supersedeIncarnation = [rig] { (void)rig->current->registerWriter(1, 2, 4); };
     h->unassignWriter = [rig] { rig->current->unassignWriter(1, 2); };
     h->releaseIncarnation = [rig] { rig->current->releaseWriter(1, 2, 3); };

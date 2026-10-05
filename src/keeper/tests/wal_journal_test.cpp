@@ -103,7 +103,7 @@ TEST(WalJournal, AppendRejectionReasonsReadLegacyWriterCheckpoints)
         EXPECT_EQ(retry->front().status.code(),
                   std::string_view(checkpoint).ends_with("11\n") ? absl::StatusCode::kOutOfRange
                                                                  : absl::StatusCode::kOk);
-        EXPECT_TRUE(rig.current->checkpoint().starts_with("v4 "));
+        EXPECT_TRUE(rig.current->checkpoint().starts_with("v5 "));
     }
 }
 
@@ -118,6 +118,23 @@ TEST(WalJournal, AppendRejectionReasonsRejectMalformedCheckpoint)
         std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
         EXPECT_THROW(rig.reopen(), std::runtime_error);
     }
+}
+
+TEST(WalJournal, WriterStatusRestoresLegacySupersededHeads)
+{
+    WalRig rig;
+    rig.journal.reset();
+    const auto path = std::filesystem::path(rig.control->directory) / "1.wal";
+    const auto bytes = wal::frame("Wv4 2\n1 2 3 2 100 1 0 0 1 0\n1 100 1 0 0\n1 2 4 1 0 0 0 1 0 0\n");
+    std::ofstream(path, std::ios::binary | std::ios::app).write(bytes.data(), bytes.size());
+    rig.reopen();
+    auto status = rig.current->writerStatus({1, 2, 3, 2});
+    ASSERT_TRUE(status.ok());
+    EXPECT_TRUE(status->known);
+    EXPECT_TRUE(status->released);
+    EXPECT_EQ(status->termination_cause, AcquisitionTerminationCause::Superseded);
+    EXPECT_EQ(status->next_sequence, 2u);
+    EXPECT_FALSE(status->recorded);
 }
 
 TEST(WalJournal, TerminationCausesRejectMalformedCheckpoint)
@@ -224,7 +241,7 @@ std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::str
     std::istringstream in(text);
     std::string line;
     std::getline(in, line);
-    EXPECT_EQ(line, "v4 1");
+    EXPECT_EQ(line, "v5 1");
     std::getline(in, line);
     std::istringstream header(line);
     uint64_t story, writer, incarnation, next, released, assigned;
@@ -236,8 +253,8 @@ std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::str
         *declared = count;
     std::map<uint64_t, std::pair<int64_t, uint32_t>> window;
     uint64_t sequence;
-    int code, rejection;
-    while(in >> sequence >> physical >> logical >> code >> rejection)
+    int code, rejection, achieved;
+    while(in >> sequence >> physical >> logical >> code >> rejection >> achieved)
     {
         EXPECT_EQ(code, 0);
         EXPECT_EQ(rejection, 0);
@@ -250,13 +267,13 @@ std::map<uint64_t, std::pair<int64_t, uint32_t>> checkpointWindow(const std::str
 TEST(WalJournal, AppendsQueuedBehindAnFsyncAreAcknowledgedByTheNextSingleFsync)
 {
     WalRig rig;
+    for(uint64_t writer = 10; writer < 15; ++writer) ASSERT_TRUE(rig.current->registerWriter(1, writer, 3).ok());
     rig.control->block();
     auto first = std::async(std::launch::async, [&] { return rig.current->append(batch({1}), Durability::Durable); });
     (void)rig.control->waitPending();
     std::vector<std::future<absl::StatusOr<std::vector<AppendResult>>>> queued;
     for(uint64_t writer = 10; writer < 15; ++writer)
     {
-        ASSERT_TRUE(rig.current->registerWriter(1, writer, 3).ok());
         AppendBatch own{1, 7, {}};
         AppendItem item;
         item.writer_id = writer;
@@ -380,27 +397,28 @@ TEST(WalJournal, CheckpointCacheMatchesTheWindowAcrossBlocksTrimsAndUpgrades)
     EXPECT_EQ(outside->front().status.code(), absl::StatusCode::kFailedPrecondition);
 }
 
-TEST(WalJournal, CheckpointCacheSkipsAcceptedEntriesUntilARetryMakesThemDurable)
+TEST(WalJournal, CheckpointCacheKeepsAcceptedEntriesAndDurabilityUpgrade)
 {
     WalRig rig;
     ASSERT_TRUE(rig.current->append(batch({1, 2, 3}), Durability::Accepted).ok());
     auto durable = rig.current->append(batch({4, 5}), Durability::Durable);
     ASSERT_TRUE(durable.ok());
     auto window = checkpointWindow(rig.current->checkpoint());
-    EXPECT_EQ(window.size(), 2u);
-    EXPECT_TRUE(window.contains(4) && window.contains(5));
+    EXPECT_EQ(window.size(), 5u);
+    EXPECT_TRUE(window.contains(1) && window.contains(2) && window.contains(3) && window.contains(4) &&
+                window.contains(5));
     // The first checkpoint cached everything below the newest entries; upgrading entry 2 must reach the next one.
     auto upgraded = rig.current->append(batch({2}), Durability::Durable);
     ASSERT_TRUE(upgraded.ok());
     ASSERT_TRUE(upgraded->front().status.ok());
     EXPECT_EQ(upgraded->front().achieved, Durability::Durable);
     window = checkpointWindow(rig.current->checkpoint());
-    EXPECT_EQ(window.size(), 3u);
+    EXPECT_EQ(window.size(), 5u);
     ASSERT_TRUE(window.contains(2));
     EXPECT_EQ(window.at(2), std::pair(upgraded->front().hlc.physical_ns, upgraded->front().hlc.logical));
 }
 
-TEST(WalJournal, ReleasedWriterKeepsItsCountersButNotItsWindowInTheCheckpoint)
+TEST(WalJournal, ReleasedWriterKeepsItsCountersAndWindowInTheCheckpoint)
 {
     WalRig rig;
     auto appended = rig.current->append(batch({1, 2, 3}), Durability::Durable);
@@ -409,8 +427,8 @@ TEST(WalJournal, ReleasedWriterKeepsItsCountersButNotItsWindowInTheCheckpoint)
     EXPECT_EQ(checkpointWindow(rig.current->checkpoint(), &declared).size(), 3u);
     rig.current->releaseWriter(1, 2, 3);
     const auto window = checkpointWindow(rig.current->checkpoint(), &declared);
-    EXPECT_TRUE(window.empty());
-    EXPECT_EQ(declared, 0u);
+    EXPECT_EQ(window.size(), 3u);
+    EXPECT_EQ(declared, 3u);
     auto retry = rig.current->append(batch({3}), Durability::Durable);
     ASSERT_TRUE(retry.ok());
     EXPECT_EQ(retry->front().status.code(), absl::StatusCode::kFailedPrecondition);

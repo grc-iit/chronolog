@@ -12,8 +12,18 @@ namespace chronolog::contract
 // Seed story=1 epoch=7, registered writer=2 incarnation=3. Clock starts at 100.
 // supports_durable selects a WAL implementation or the ACCEPTED-only skeleton.
 // crashRestart loses RAM and reopens WAL; setPhysical preserves HLC state.
+struct CheckpointStatus
+{
+    bool known{}, released{};
+    uint64_t next_sequence{};
+    Hlc last_hlc;
+    AcquisitionTerminationCause termination_cause{};
+    std::optional<AppendResult> recorded;
+};
 struct JournalHarness
 {
+    std::function<absl::StatusOr<CheckpointStatus>(EventId)> writerStatus;
+    std::function<void()> evictEvents;
     std::unique_ptr<Journal> sut;
     size_t payload_limit{1024 * 1024};
     int64_t causal_skew_limit_ns{1000};
@@ -1688,4 +1698,43 @@ TEST_P(JournalContract, RejoinedKeeperFinishesItsPredecessorEmptyTail)
     h->reportArchive({1, cut, "grapher", 2, {}, false});
     EXPECT_EQ(h->evictionFloor(), cut);
 }
+TEST_P(JournalContract, WriterCheckpointHeadSurvivesReleaseAndEviction)
+{
+    auto accepted = h->sut->append(Batch({Item()}), h->supports_durable ? Durability::Durable : Durability::Accepted);
+    ASSERT_TRUE(accepted.ok());
+    ASSERT_TRUE(accepted->at(0).status.ok());
+    auto bad = Item(2);
+    bad.physical = {-100'000'000'000LL, 1, ClockStatus::Synced};
+    auto rejected = h->sut->append(Batch({bad}), Durability::Accepted);
+    ASSERT_TRUE(rejected.ok());
+    ASSERT_EQ(rejected->at(0).status.code(), absl::StatusCode::kOutOfRange);
+    h->terminateIncarnation(AcquisitionTerminationCause::Expired);
+    h->evictEvents();
+    auto verify = [&]
+    {
+        auto status = h->writerStatus({1, 2, 3, 1});
+        ASSERT_TRUE(status.ok());
+        EXPECT_TRUE(status->known);
+        EXPECT_EQ(status->next_sequence, 3u);
+        EXPECT_EQ(status->last_hlc, accepted->at(0).hlc);
+        EXPECT_TRUE(status->released);
+        EXPECT_EQ(status->termination_cause, AcquisitionTerminationCause::Expired);
+        ASSERT_TRUE(status->recorded);
+        EXPECT_EQ(status->recorded->hlc, accepted->at(0).hlc);
+        status = h->writerStatus({1, 2, 3, 2});
+        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(status->recorded);
+        EXPECT_EQ(status->recorded->status.code(), absl::StatusCode::kOutOfRange);
+        status = h->writerStatus({1, 2, 99, 1});
+        ASSERT_TRUE(status.ok());
+        EXPECT_FALSE(status->known);
+    };
+    verify();
+    if(h->supports_durable)
+    {
+        h->crashRestart();
+        verify();
+    }
+}
+
 } // namespace chronolog::contract

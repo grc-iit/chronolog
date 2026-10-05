@@ -152,6 +152,52 @@ int write(const char* catalog, const char* out)
     return 0;
 }
 
+int checkpoint(const char* keeper, const char* out, bool after)
+{
+    auto stub = iv1::Archive::NewStub(grpc::CreateChannel(keeper, grpc::InsecureChannelCredentials()));
+    const auto rows = loadRows(path(out, "events.tsv"));
+    if(rows.empty())
+        fail("no checkpoint writers");
+    std::ifstream expected(path(out, "checkpoints"));
+    std::ofstream saved;
+    if(!after)
+        saved.open(path(out, "checkpoints"));
+    for(const auto& row: rows)
+    {
+        iv1::WriterStatusRequest req;
+        req.set_story_id(row.id.story_id);
+        req.set_writer_id(row.id.writer_id);
+        req.set_incarnation(row.id.incarnation);
+        req.set_sequence(row.id.sequence);
+        grpc::ClientContext ctx;
+        ctx.set_deadline(std::chrono::system_clock::now() + 5s);
+        iv1::WriterStatusResponse status;
+        if(!stub->WriterStatus(&ctx, req, &status).ok() || !status.known())
+            fail("checkpoint writer unknown");
+        if(!status.has_recorded_hlc() || fromWire(status.recorded_hlc()) != row.hlc)
+            fail("checkpoint lost sequence result");
+        if(status.next_sequence() != rows.back().id.sequence + 1 || fromWire(status.last_hlc()) != rows.back().hlc)
+            fail("checkpoint lost writer head");
+        if(after)
+        {
+            uint64_t next;
+            int64_t physical;
+            uint32_t logical;
+            bool released;
+            int cause;
+            if(!(expected >> next >> physical >> logical >> released >> cause) || next != status.next_sequence() ||
+               Hlc{physical, logical} != fromWire(status.last_hlc()) || released != status.released() ||
+               cause != static_cast<int>(status.termination_cause()))
+                fail("checkpoint changed across SIGKILL");
+        }
+        else
+            saved << status.next_sequence() << ' ' << status.last_hlc().physical_ns() << ' '
+                  << status.last_hlc().logical() << ' ' << status.released() << ' ' << status.termination_cause()
+                  << '\n';
+    }
+    return 0;
+}
+
 int frontier(const char* keeper, const char* out)
 {
     auto hot = fetchHot(keeper, loadStory(out), 1);
@@ -746,6 +792,10 @@ int main(int argc, char** argv)
         return compactEnd(argv[2], argv[3]);
     if(command == "compact-destroy" && argc == 4)
         return compactDestroy(argv[2], argv[3]);
+    if(command == "checkpoint-before" && argc == 4)
+        return checkpoint(argv[2], argv[3], false);
+    if(command == "checkpoint-after" && argc == 4)
+        return checkpoint(argv[2], argv[3], true);
     if(command == "write" && argc == 4)
         return write(argv[2], argv[3]);
     if(command == "frontier" && argc == 4)

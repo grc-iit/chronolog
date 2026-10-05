@@ -75,6 +75,7 @@ protected:
     bool supportsDurable() const override { return true; }
     bool durableAvailable() const override { return !failed_.load(); }
     void finishAppend(AppendCallback done, absl::StatusOr<std::vector<AppendResult>> results) override;
+    absl::Status persistWriters() override;
     void persist(const Event& event, std::function<void(absl::Status)> done) override;
     void beginPersistBatch() override;
     void endPersistBatch() override;
@@ -104,7 +105,7 @@ private:
     void truncate();
     absl::Status reclaim();
     void trackRecord(std::string_view payload, uint64_t segment);
-    // Wv2 record: every writer's counters and the dedupe window entries that are acknowledged or rejected.
+    // Wv5 record: every writer head and its completed sequence results, including ACCEPTED receipts.
     std::string writersRecord() const;
     void restoreWriters(std::string_view payload);
     struct Segment

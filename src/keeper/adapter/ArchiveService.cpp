@@ -195,4 +195,59 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
     return reactor;
 }
 
+grpc::ServerUnaryReactor* ArchiveService::WriterStatus(grpc::CallbackServerContext* context,
+                                                       const iv1::WriterStatusRequest* request,
+                                                       iv1::WriterStatusResponse* response)
+{
+    auto* reactor = context->DefaultReactor();
+    if(!pool_.submit(
+               [this, reactor, req = *request, response]
+               {
+                   auto fail = [&](absl::Status status) { reactor->Finish(convert::toGrpc(status)); };
+                   if(!req.story_id() || !req.writer_id() || !req.incarnation() || !req.sequence())
+                       return fail(absl::InvalidArgumentError("complete EventId is required"));
+                   if(journal_.dropped(req.story_id()))
+                       return fail(absl::FailedPreconditionError("story was destroyed"));
+                   if(auto status = journal_.resolveRoute(req.story_id()); !status.ok())
+                       return fail(status);
+                   auto route = membership_.route(req.story_id());
+                   if(!route.ok())
+                       return fail(route.status());
+                   std::optional<Predecessor> owner;
+                   for(const auto& p: journal_.predecessorOwners(req.story_id()))
+                       if(p.epoch == req.expect_epoch())
+                           owner = p;
+                   const auto instance = journal_.instance();
+                   if((!req.expect_instance().empty() && req.expect_instance() != instance) ||
+                      (owner && req.expect_instance() != instance) ||
+                      (!owner && ((req.expect_epoch() && req.expect_epoch() != route->epoch) ||
+                                  journal_.retiredOwner(req.story_id()))))
+                       return fail(absl::FailedPreconditionError("owned instance or epoch mismatch"));
+                   auto status =
+                           journal_.writerStatus({req.story_id(), req.writer_id(), req.incarnation(), req.sequence()});
+                   if(!status.ok())
+                       return fail(status.status());
+                   response->set_known(status->known);
+                   response->set_next_sequence(status->next_sequence);
+                   *response->mutable_last_hlc() = convert::toProto(status->last_hlc);
+                   response->set_released(status->released);
+                   response->set_termination_cause(
+                           static_cast<v1::AcquisitionTerminationCause>(status->termination_cause));
+                   if(status->recorded)
+                   {
+                       if(absl::IsOutOfRange(status->recorded->status))
+                           *response->mutable_recorded_rejection() = convert::toProto(status->recorded->status);
+                       else
+                           *response->mutable_recorded_hlc() = convert::toProto(status->recorded->hlc);
+                   }
+                   *response->mutable_sealed_frontier() = convert::toProto(
+                           owner ? std::min(status->sealed_frontier, owner->own_cut) : status->sealed_frontier);
+                   response->set_instance(instance);
+                   response->set_epoch(owner ? owner->epoch : route->epoch);
+                   reactor->Finish(grpc::Status::OK);
+               }))
+        reactor->Finish(grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED, "keeper is saturated"));
+    return reactor;
+}
+
 } // namespace chronolog::keeper

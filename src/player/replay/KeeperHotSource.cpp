@@ -35,6 +35,19 @@ std::shared_ptr<internal::v1::Archive::Stub> KeeperHotSource::stubFor(const std:
     return stub;
 }
 
+std::shared_ptr<KeeperHotSource> KeeperHotSource::bounded(std::chrono::system_clock::time_point deadline) const
+{
+    auto options = options_;
+    const auto now = std::chrono::system_clock::now();
+    if(deadline < now + options.deadline)
+        options.deadline =
+                std::max(std::chrono::milliseconds(0), std::chrono::ceil<std::chrono::milliseconds>(deadline - now));
+    auto result = std::make_shared<KeeperHotSource>(routes_, writers_, internal_address_, options);
+    std::lock_guard lock(mu_);
+    result->stubs_ = stubs_;
+    return result;
+}
+
 KeeperFetch KeeperHotSource::fetchOne(const KeeperRef& keeper,
                                       StoryId story,
                                       const Range& range,
@@ -329,6 +342,63 @@ absl::StatusOr<HotFetch> KeeperHotSource::fetchImpl(StoryId story,
         return out;
     }
     return absl::InternalError("route retry exhausted");
+}
+
+absl::StatusOr<internal::v1::WriterStatusResponse>
+KeeperHotSource::writerStatus(EventId id, std::chrono::system_clock::time_point deadline) const
+{
+    auto state = routes_->routeState(id.story_id);
+    if(!state.ok())
+        return state.status();
+    if(!state->abandoned.empty())
+        return absl::UnavailableError("writer may belong to an abandoned Keeper");
+    const auto end = std::min(deadline, std::chrono::system_clock::now() + options_.deadline);
+    auto ask = [this, id, end](KeeperRef keeper, Epoch epoch, std::string instance)
+    {
+        internal::v1::WriterStatusRequest req;
+        req.set_story_id(id.story_id);
+        req.set_writer_id(id.writer_id);
+        req.set_incarnation(id.incarnation);
+        req.set_sequence(id.sequence);
+        req.set_expect_epoch(epoch);
+        req.set_expect_instance(instance);
+        grpc::ClientContext context;
+        rpc::withDeadline(context, end);
+        internal::v1::WriterStatusResponse response;
+        auto status = stubFor(internal_address_(keeper))->WriterStatus(&context, req, &response);
+        if(!status.ok())
+            return absl::StatusOr<internal::v1::WriterStatusResponse>(
+                    absl::Status(static_cast<absl::StatusCode>(status.error_code()), status.error_message()));
+        if(response.epoch() != epoch || (!instance.empty() && response.instance() != instance))
+            return absl::StatusOr<internal::v1::WriterStatusResponse>(
+                    absl::UnavailableError("writer status identity mismatch"));
+        return absl::StatusOr<internal::v1::WriterStatusResponse>(std::move(response));
+    };
+    std::vector<std::future<absl::StatusOr<internal::v1::WriterStatusResponse>>> pending;
+    for(const auto& keeper: state->route.keepers)
+        pending.push_back(std::async(std::launch::async, ask, keeper, state->route.epoch, std::string{}));
+    for(const auto& p: state->predecessors)
+        pending.push_back(std::async(std::launch::async, ask, p.keeper, p.epoch, p.instance));
+    internal::v1::WriterStatusResponse known;
+    bool failed = false;
+    for(auto& call: pending)
+    {
+        auto result = call.get();
+        if(!result.ok())
+            failed = true;
+        else if(result->known())
+        {
+            if(known.known())
+                failed = true;
+            known = std::move(*result);
+        }
+    }
+    auto latest = routes_->routeState(id.story_id);
+    if(!latest.ok() || latest->route.epoch != state->route.epoch || !latest->abandoned.empty())
+        failed = true;
+    if(failed)
+        return absl::UnavailableError("writer status source failed");
+    return known;
 }
 
 } // namespace chronolog::player

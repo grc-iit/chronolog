@@ -18,6 +18,25 @@ using AcquireOptions = chronolog::AcquireOptions;
 using AcquireRefusal = chronolog::AcquireRefusal;
 // Typed HELD, PRIOR_MISMATCH or terminal-retry detail of a refused acquire; never parsed from the message.
 std::optional<AcquireRefusal> acquireRefusalOf(const absl::Status&);
+enum class AwaitAnswer
+{
+    Visible = 1,
+    Absent = 2,
+    SequenceConsumed = 3,
+    WillNeverExist = 4,
+    Unknown = 5
+};
+struct EventRef
+{
+    EventId id;
+    std::optional<Hlc> hlc;
+};
+struct AwaitResult
+{
+    AwaitAnswer answer{AwaitAnswer::Unknown};
+    std::optional<Event> event;
+    std::optional<Hlc> frontier;
+};
 struct RetryPolicy
 {
     size_t max_retries{3};
@@ -217,6 +236,7 @@ public:
                                             int64_t slice_ns,
                                             AcquireOptions = {},
                                             Deadline deadline = {});
+    absl::StatusOr<AwaitResult> await(EventRef ref, std::chrono::nanoseconds bound, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, Deadline deadline = {});
     absl::StatusOr<ReadStream> read(StoryId, HlcRange, ReadOptions, Deadline deadline = {});
     absl::StatusOr<ReadStream> readPhysical(StoryId, PhysicalRange, Deadline deadline = {});

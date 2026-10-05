@@ -422,6 +422,49 @@ absl::StatusOr<LaneWriter> Client::acquireLanes(StoryId id,
     return LaneWriter(std::make_unique<LaneWriter::Impl>(impl_->state, std::move(writers), slice_ns));
 }
 #undef CATALOG_CALL
+absl::StatusOr<AwaitResult> Client::await(EventRef ref, std::chrono::nanoseconds bound, Deadline deadline)
+{
+    auto state = impl_->state;
+    if(state->forked())
+        return absl::FailedPreconditionError("Client cannot be used after fork");
+    if(bound.count() < 0 || !ref.id.story_id || !ref.id.writer_id || !ref.id.incarnation || !ref.id.sequence)
+        return absl::InvalidArgumentError("complete EventId and nonnegative wait bound required");
+    const auto end = state->deadline(deadline);
+    auto endpoint = state->playerEndpoint(ref.id.story_id, end);
+    if(!endpoint.ok())
+        return endpoint.status();
+    auto stub = v1::Replay::NewStub(state->channel(*endpoint));
+    grpc::ClientContext context;
+    detail::withDeadline(context, end);
+    v1::AwaitRequest request;
+    detail::encode(ref.id, request.mutable_ref());
+    if(ref.hlc)
+        detail::encode(*ref.hlc, request.mutable_hlc());
+    request.set_wait_bound_ns(bound.count());
+    v1::AwaitResponse response;
+    auto status = stub->Await(&context, request, &response);
+    if(!status.ok())
+        return detail::status(status);
+    if(response.answer() < v1::AWAIT_ANSWER_VISIBLE || response.answer() > v1::AWAIT_ANSWER_UNKNOWN)
+        return absl::DataLossError("invalid Await answer");
+    AwaitResult result;
+    result.answer = static_cast<AwaitAnswer>(response.answer());
+    if(result.answer == AwaitAnswer::Visible)
+    {
+        if(!response.has_event() || !response.has_hlc() || detail::decode(response.event().id()) != ref.id)
+            return absl::DataLossError("invalid visible Await event");
+        result.event = detail::decode(response.event());
+        state->observe(result.event->hlc);
+    }
+    if(result.answer == AwaitAnswer::Absent)
+    {
+        if(!response.has_frontier())
+            return absl::DataLossError("absent Await has no frontier");
+        result.frontier = detail::decode(response.frontier());
+    }
+    return result;
+}
+
 absl::StatusOr<ReadStream> Client::read(StoryId id, HlcRange range, Deadline deadline)
 {
     return read(id, range, ReadOptions{}, deadline);
