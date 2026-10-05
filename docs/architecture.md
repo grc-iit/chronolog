@@ -32,7 +32,18 @@ or Tail with a predicate over the indexed fields and waits for a named event wit
 branches under the reserved `@` segments, foreign timelines for imported history, and placement groups that own the
 Route and epoch of a subtree.
 
-Landing in this phase, not merged yet: prefix Read and Tail (I6.15), newest-first Read (I6.18) and Await (I6.20).
+In the Python SDK a prefix Read with a predicate and an Await look like this, taken from
+`test_scope_reads_a_prefix_with_a_kind_predicate_in_order` and
+`test_await_finds_an_appended_event_and_certifies_a_released_incarnation_never` in `client/python/tests/test_stack.py`:
+
+```python
+notes = client.scope(chronicle.name).read(until=end, where={"kinds": ["note"]}, timeout=5)
+found = client.await_event(first.event_id, hlc=first.hlc, bound_s=10, timeout=15)
+```
+
+[Getting started](getting-started.md#scopes-filters-and-await) runs both end to end.
+
+Landing in this phase, not merged yet: newest-first Read (I6.18).
 
 ## Four services
 
@@ -125,8 +136,8 @@ order and every Completion rule are unchanged and `max_events` counts matches. A
 TRUNCATED with fewer matches than `max_events`, and a malformed or oversized predicate fails the request with
 INVALID_ARGUMENT. A Tail that sets `progress` also receives a message with a Position that carries an hlc and no id
 whenever its delivery frontier advances and nothing matched. Resuming from it returns every event at or above that hlc,
-so a rarely matching subscriber does not rescan from its last match (I6.21, I6.23). The Player and the wire API carry
-both; the SDKs do not expose them yet.
+so a rarely matching subscriber does not rescan from its last match (I6.21, I6.23). The three SDKs take a predicate
+on Read and Tail and always set `progress` on a Tail.
 
 ## Completion, and why it is exact
 
