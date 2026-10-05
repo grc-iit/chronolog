@@ -453,12 +453,14 @@ try
 {
     std::lock_guard lock(mutex_);
     Query ungranted(db_,
-                    "SELECT process_id FROM membership_members m WHERE role=?1 AND instance<>'' AND NOT EXISTS "
+                    "SELECT value FROM membership_members m WHERE role=?1 AND instance<>'' AND NOT EXISTS "
                     "(SELECT 1 FROM membership_instances i WHERE i.process_id=m.process_id AND i.granted=1) "
-                    "ORDER BY process_id LIMIT 1");
+                    "ORDER BY process_id");
     ungranted.number(1, wire::PROCESS_ROLE_KEEPER);
-    if(ungranted.next())
-        return absl::FailedPreconditionError("Keeper " + ungranted.bytes(0) + " has never been granted a ceiling");
+    while(ungranted.next())
+        if(const auto member = ungranted.message<wire::MemberState>(0); !member.removed())
+            return absl::FailedPreconditionError("Keeper " + member.process().process_id() +
+                                                 " has never been granted a ceiling");
     CreationFloor floor;
     Query granted(db_, "SELECT value FROM membership_instances WHERE granted=1");
     while(granted.next())

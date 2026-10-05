@@ -129,6 +129,16 @@ sdk::HlcRange hlcRange(Js value)
     auto input = object(value);
     return {hlc(input.Get("start")), hlc(input.Get("end"))};
 }
+Link linkOf(Js value)
+{
+    auto input = object(value);
+    Link result;
+    result.type = text(input.Get("type"));
+    result.target = eventId(input.Get("target"));
+    if(has(input, "targetHlc"))
+        result.target_hlc = hlc(input.Get("targetHlc"));
+    return result;
+}
 Envelope envelope(Js payload, Napi::Object options)
 {
     Envelope result;
@@ -139,6 +149,18 @@ Envelope envelope(Js payload, Napi::Object options)
         result.trace_id = bytes(options.Get("traceId"));
     if(has(options, "spanId"))
         result.span_id = bytes(options.Get("spanId"));
+    if(has(options, "kind"))
+        result.kind = text(options.Get("kind"));
+    if(has(options, "actor"))
+        result.actor = text(options.Get("actor"));
+    if(has(options, "links"))
+    {
+        auto links = options.Get("links");
+        if(!links.IsArray())
+            throw Napi::TypeError::New(links.Env(), "links must be an array");
+        auto array = links.As<Napi::Array>();
+        for(uint32_t i = 0; i < array.Length(); ++i) result.links.push_back(linkOf(array.Get(i)));
+    }
     if(has(options, "attributes"))
     {
         auto attributes = object(options.Get("attributes"));
@@ -353,6 +375,20 @@ Js js(Napi::Env env, const Event& value)
     for(const auto& [key, item]: value.envelope.attributes)
         attributes.DefineProperty(Napi::PropertyDescriptor::Value(key, Napi::String::New(env, item), napi_enumerable));
     envelope.Set("attributes", attributes);
+    envelope.Set("kind", value.envelope.kind);
+    envelope.Set("actor", value.envelope.actor);
+    auto links = Napi::Array::New(env, value.envelope.links.size());
+    for(uint32_t i = 0; i < value.envelope.links.size(); ++i)
+    {
+        const auto& item = value.envelope.links[i];
+        auto entry = Napi::Object::New(env);
+        entry.Set("type", item.type);
+        entry.Set("target", js(env, item.target));
+        if(item.target_hlc)
+            entry.Set("targetHlc", js(env, *item.target_hlc));
+        links.Set(i, entry);
+    }
+    envelope.Set("links", links);
     out.Set("envelope", envelope);
     return out;
 }

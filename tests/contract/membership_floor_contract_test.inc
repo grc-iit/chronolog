@@ -132,6 +132,20 @@ TEST_P(MembershipContract, CreateStoryRefusedWhileAKeeperHasNoCeiling)
     EXPECT_TRUE(commit(storyProposal("refused")).ok());
 }
 
+TEST_P(MembershipContract, AbandonedKeeperWithoutACeilingDoesNotBlockCreateStory)
+{
+    wire::MembershipCommand q;
+    auto* p = q.mutable_register_()->mutable_process();
+    p->set_process_id("keeper-c");
+    p->set_instance("keeper-c");
+    p->set_endpoint("keeper-c:50052");
+    p->set_role(wire::PROCESS_ROLE_KEEPER);
+    ASSERT_EQ(call<wire::RegisterResponse>(q).status().code(), 0);
+    EXPECT_EQ(commit(storyProposal("blocked")).status().code(), absl::StatusCode::kFailedPrecondition);
+    remove("keeper-c", true);
+    EXPECT_TRUE(commit(storyProposal("unblocked")).ok());
+}
+
 TEST_P(MembershipContract, CreationFloorIsComputedAtApplyNotProposal)
 {
     const auto proposal = storyProposal("late");

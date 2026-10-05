@@ -98,6 +98,7 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                        journal_.retiredOwner(req.story_id()))
                         return fail(absl::FailedPreconditionError("owned epoch mismatch"));
                 }
+                const bool newest_first = req.order() == chronolog::v1::READ_ORDER_NEWEST_FIRST;
                 Range range;
                 switch(req.range_case())
                 {
@@ -116,6 +117,8 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 }
                 if(range.start > range.end)
                     return fail(absl::InvalidArgumentError("range start is after end"));
+                if(newest_first && range.axis == Range::Axis::Physical)
+                    return fail(absl::InvalidArgumentError("newest-first is HLC axis only"));
                 const uint64_t limit = req.max_events() ? req.max_events() : options_.default_max_events;
 
                 auto physical = journal_.physicalFrontier(req.story_id());
@@ -146,8 +149,10 @@ grpc::ServerWriteReactor<iv1::FetchHotResponse>* ArchiveService::FetchHot(grpc::
                 size_t total_bytes = 0;
                 uint64_t sent = 0;
                 bool truncated = false;
-                for(const auto& event: snapshot->events)
+                const auto& scanned = snapshot->events;
+                for(size_t i = 0; i < scanned.size(); ++i)
                 {
+                    const auto& event = newest_first ? scanned[scanned.size() - 1 - i] : scanned[i];
                     auto encoded = convert::toProto(event);
                     const size_t bytes = encoded.ByteSizeLong();
                     if(sent >= limit || (sent > 0 && total_bytes + bytes > options_.max_bytes))
