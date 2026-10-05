@@ -243,13 +243,26 @@ grpc::ServerWriteReactor<Resp>* ReplayService::open(StoryId story,
     return reactor;
 }
 
-absl::StatusOr<std::unique_ptr<ReplayStream>> ReplayService::read(StoryId story, Range range, size_t max_events) const
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+ReplayService::read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate) const
 {
     if(const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get()))
-        return bounded->read(story, range, max_events);
+        return bounded->read(story, range, max_events, predicate);
     if(max_events)
         return absl::UnimplementedError("replay does not support per-request event targets");
+    if(!predicate.empty())
+        return absl::UnimplementedError("replay does not support predicates");
     return replay_->read(story, range);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+ReplayService::tail(StoryId story, Event position, const EventPredicate& predicate, bool progress) const
+{
+    if(const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get()))
+        return bounded->tail(story, std::move(position), predicate, progress);
+    if(!predicate.empty())
+        return absl::UnimplementedError("replay does not support predicates");
+    return replay_->tail(story, std::move(position));
 }
 
 grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackServerContext*,
@@ -258,10 +271,14 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
     auto range = convert::rangeFromProto(*request);
     if(!range.ok())
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(range.status()));
+    auto predicate = convert::fromProto(request->predicate());
+    if(auto valid = predicate.validate(); !valid.ok())
+        return new FailedReactor<v1::ReadResponse>(convert::toGrpc(valid));
     const StoryId story = request->story_id();
     const size_t max_events = request->max_events();
     return open<v1::ReadResponse>(story,
-                                  [this, story, range = *range, max_events] { return read(story, range, max_events); });
+                                  [this, story, range = *range, max_events, predicate = std::move(predicate)]
+                                  { return read(story, range, max_events, predicate); });
 }
 
 grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackServerContext*,
@@ -271,13 +288,13 @@ grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackSe
     auto position = convert::positionFromProto(story, *request);
     if(!position.ok())
         return new FailedReactor<v1::TailResponse>(convert::toGrpc(position.status()));
-    return open<v1::TailResponse>(story,
-                                  [replay = replay_, story, position = *position, progress = request->progress()]
-                                  {
-                                      if(auto* hot = dynamic_cast<const HotReplay*>(replay.get()))
-                                          return hot->tail(story, position, progress);
-                                      return replay->tail(story, position);
-                                  });
+    auto predicate = convert::fromProto(request->predicate());
+    if(auto valid = predicate.validate(); !valid.ok())
+        return new FailedReactor<v1::TailResponse>(convert::toGrpc(valid));
+    return open<v1::TailResponse>(
+            story,
+            [this, story, position = *position, predicate = std::move(predicate), progress = request->progress()]
+            { return tail(story, position, predicate, progress); });
 }
 
 } // namespace chronolog::player

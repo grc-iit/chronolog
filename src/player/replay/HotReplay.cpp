@@ -1,4 +1,5 @@
 #include "player/replay/HotReplay.h"
+#include "common/predicate/Predicate.h"
 #include "player/adapter/EventConvert.h"
 #include "chronolog/message_limits.h"
 #include <algorithm>
@@ -142,37 +143,43 @@ size_t payloadBytes(const std::vector<Event>& events)
 class ArchiveBatch
 {
 public:
-    ArchiveBatch(const FileTierStore& archive, std::span<const ManifestRecord> records)
+    ArchiveBatch(const FileTierStore& archive, std::span<const ManifestRecord> records, const EventPredicate& predicate)
         : archive_(archive)
         , records_(records)
+        , predicate_(predicate)
     {}
 
+    // `cap` counts the events that match the predicate (I6.17), so a file is decoded whole when there is one.
     absl::StatusOr<std::vector<Event>> read(size_t index, Range range, size_t cap = SIZE_MAX)
     {
+        const size_t decode_cap = predicate_.empty() ? cap : SIZE_MAX;
 #ifdef CHRONOLOG_SEQUENTIAL_ARCHIVE_READS
-        return archive_.readRecord(records_[index], range, cap);
+        auto result = archive_.readRecord(records_[index], range, decode_cap);
 #else
         if(index >= first_ + results_.size())
         {
             first_ = index;
             const size_t count = std::min(archive_.readConcurrency(), records_.size() - index);
-            results_ = archive_.readRecords(records_.subspan(index, count), range, cap);
+            results_ = archive_.readRecords(records_.subspan(index, count), range, decode_cap);
         }
         auto result = std::move(results_[index - first_]);
         if(result.ok())
-        {
             // A sorted wider prefix contains the same prefix of every subsequently narrowed end bound.
             std::erase_if(*result, [&](const Event& event) { return !inRange(range, event); });
+#endif
+        if(result.ok())
+        {
+            std::erase_if(*result, [&](const Event& event) { return !predicate_.matches(event); });
             if(result->size() > cap)
                 result->resize(cap);
         }
         return result;
-#endif
     }
 
 private:
     const FileTierStore& archive_;
     std::span<const ManifestRecord> records_;
+    const EventPredicate& predicate_;
 #ifndef CHRONOLOG_SEQUENTIAL_ARCHIVE_READS
     size_t first_{};
     std::vector<absl::StatusOr<std::vector<Event>>> results_;
@@ -186,6 +193,7 @@ bool loadArchive(const HotReplayOptions& options,
                  const HotFetch& fetch,
                  size_t byte_limit,
                  bool& warned,
+                 const EventPredicate& predicate,
                  std::vector<Event>& events)
 {
     Hlc end = archiveEnd(fetch, Range{Range::Axis::Hlc, from, bound});
@@ -203,7 +211,7 @@ bool loadArchive(const HotReplayOptions& options,
     std::erase_if(*manifest,
                   [&](const ManifestRecord& record)
                   { return record.state != ManifestState::Published || record.end <= from || record.start >= end; });
-    ArchiveBatch batch(*options.archive, *manifest);
+    ArchiveBatch batch(*options.archive, *manifest, predicate);
     for(size_t i = 0; i < manifest->size(); ++i)
     {
         const auto& record = (*manifest)[i];
@@ -221,7 +229,7 @@ bool loadArchive(const HotReplayOptions& options,
                 group_end = {group_end.physical_ns + 1, 0};
             else
                 ++group_end.logical;
-            ArchiveBatch tie(*options.archive, std::span<const ManifestRecord>(&record, 1));
+            ArchiveBatch tie(*options.archive, std::span<const ManifestRecord>(&record, 1), predicate);
             part = tie.read(0, Range{Range::Axis::Hlc, part->front().hlc, group_end});
             if(!part.ok())
                 return false;
@@ -356,7 +364,8 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
                                                            const Range& range,
                                                            HotFetch& fetch,
                                                            const HotReplayOptions& options,
-                                                           const HotSource& source)
+                                                           const HotSource& source,
+                                                           const EventPredicate& predicate)
 {
     const size_t limit = std::max<size_t>(1, options.read_max_events);
     size_t retained = 0;
@@ -365,7 +374,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
     std::vector<std::vector<Event>> inputs;
     auto take = [&](std::vector<Event> events)
     {
-        std::erase_if(events, [&](const Event& e) { return !inRange(range, e); });
+        std::erase_if(events, [&](const Event& e) { return !inRange(range, e) || !predicate.matches(e); });
         if(events.size() > limit - retained)
         {
             limited = true;
@@ -393,7 +402,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
     }
     if(!policy && fetch.physical_policy)
     {
-        auto full = source.fetchPhysical(story, range, false);
+        auto full = source.fetchPhysicalMatching(story, range, false, predicate);
         if(!full.ok())
             return full.status();
         fetch = *std::move(full);
@@ -417,7 +426,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> physicalRead(StoryId story,
     }
     if(!selected.empty())
     {
-        ArchiveBatch batch(*options.archive, selected);
+        ArchiveBatch batch(*options.archive, selected, predicate);
         for(size_t i = 0; i < selected.size(); ++i)
         {
             auto events = batch.read(i, range, limit - retained + 1);
@@ -467,11 +476,13 @@ public:
                StoryId story,
                Event position,
                HotReplayOptions options,
+               EventPredicate predicate,
                bool progress)
         : source_(std::move(source))
         , story_(story)
         , options_(std::move(options))
         , position_(std::move(position))
+        , predicate_(std::move(predicate))
         , frontier_(position_.hlc)
         , progress_enabled_(progress)
     {
@@ -482,7 +493,7 @@ public:
     // Polls once at open time so NOT_FOUND surfaces from tail().
     absl::Status open()
     {
-        auto fetched = source_->fetchTail(story_, frontier_, {});
+        auto fetched = source_->fetchTailMatching(story_, frontier_, {}, predicate_);
         if(!fetched.ok())
             return fetched.status();
         absorb(*fetched);
@@ -537,7 +548,7 @@ public:
                     starts.retained[id] = source.retained;
             }
             lk.unlock();
-            auto fetched = source_->fetchTail(story_, from, starts);
+            auto fetched = source_->fetchTailMatching(story_, from, starts, predicate_);
             const bool queued = fetched.ok() && !cancelled_.load() && absorb(*fetched);
             lk.lock();
             if(cancelled_.load())
@@ -611,7 +622,7 @@ private:
             if(e.hlc < from)
                 continue;
             last = std::max(last, e.hlc);
-            if(afterPosition(e))
+            if(afterPosition(e) && predicate_.matches(e))
                 fresh.push_back(std::move(e));
         }
         // A truncated answer ends at the last event it returned, which may share its hlc with events it cut off.
@@ -704,7 +715,7 @@ private:
         Hlc bound = prefixCut(range, maxHlc(), fetch.route_epoch, frontiers, fetch.abandoned);
         bound = !reset.empty() || fetch.keepers.empty() || bound == maxHlc() ? frontier_ : std::max(bound, frontier_);
         std::vector<Event> cold;
-        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, archive_warned_, cold))
+        if(!loadArchive(options_, story_, frontier_, bound, fetch, byte_limit, archive_warned_, predicate_, cold))
         {
             suspect_ |= archiveRecordsTombstone();
             fail(IncompleteReason::SourceFailed);
@@ -781,6 +792,7 @@ private:
     const StoryId story_;
     HotReplayOptions options_;
     const Event position_;
+    const EventPredicate predicate_;
     std::mutex mu_;
     std::condition_variable cv_;
     // Every event below this has been delivered or precedes the position.
@@ -817,6 +829,20 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range range, size_t max_events) const
 {
+    return read(id, range, max_events, {});
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::read(StoryId id, Range range, const EventPredicate& predicate) const
+{
+    return read(id, range, 0, predicate);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const
+{
+    if(auto valid = predicate.validate(); !valid.ok())
+        return valid;
     const size_t limit = std::max<size_t>(1, max_events ? max_events : options_.read_max_events);
     if(range.end < range.start)
         return absl::InvalidArgumentError("range end precedes start");
@@ -830,8 +856,9 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                 for(const auto& record: *manifest) archive_policy &= record.physical_policy;
         }
     }
-    auto fetched = range.axis == Range::Axis::Physical ? source_->fetchPhysical(id, range, archive_policy)
-                                                       : source_->fetchRead(id, range, limit);
+    auto fetched = range.axis == Range::Axis::Physical
+                           ? source_->fetchPhysicalMatching(id, range, archive_policy, predicate)
+                           : source_->fetchReadMatching(id, range, limit, predicate);
     if(!fetched.ok())
         return fetched.status();
     if(range.axis == Range::Axis::Physical)
@@ -839,7 +866,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         fetched->physical_policy &= archive_policy;
         auto physical_options = options_;
         physical_options.read_max_events = limit;
-        return physicalRead(id, range, *fetched, physical_options, *source_);
+        return physicalRead(id, range, *fetched, physical_options, *source_, predicate);
     }
     Range covered = range;
     bool limited = false;
@@ -850,7 +877,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
         if(k.frontier.truncated && !k.frontier.truncated_at)
             k.frontier.truncated_at = k.events.empty() ? range.start : k.events.back().hlc;
         frontiers.push_back(k.frontier);
-        std::erase_if(k.events, [&](const Event& e) { return !inRange(range, e); });
+        std::erase_if(k.events, [&](const Event& e) { return !inRange(range, e) || !predicate.matches(e); });
         for(const auto& e: k.events)
             hot_times.push_back(range.axis == Range::Axis::Hlc ? e.hlc : Hlc{e.physical.physical_ns, 0});
     }
@@ -912,6 +939,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
             if(published[i].start >= covered.end || published[i].start >= boundary)
                 break;
             size_t j = i;
+            // A file counts its events, an upper bound on its matches, so a predicate can truncate a Read early.
             size_t group_count = 0;
             Hlc group_end = published[i].end;
             do {
@@ -935,7 +963,10 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                    source_truncated)
                 {
                     // The archive's mandatory prefix may exceed the target at the hot sources too.
-                    auto prefix = source_->fetchRead(id, Range{Range::Axis::Hlc, range.start, group_end}, SIZE_MAX);
+                    auto prefix = source_->fetchReadMatching(id,
+                                                             Range{Range::Axis::Hlc, range.start, group_end},
+                                                             SIZE_MAX,
+                                                             predicate);
                     if(!prefix.ok())
                         return prefix.status();
                     if(prefix->route_epoch != fetched->route_epoch ||
@@ -961,7 +992,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
                         frontiers.push_back(k.frontier);
                         source_truncated |= k.frontier.truncated;
                         for(const auto& e: k.events)
-                            if(inRange(range, e))
+                            if(inRange(range, e) && predicate.matches(e))
                                 hot_times.push_back(e.hlc);
                     }
                     prefix_cap = range.end;
@@ -1016,7 +1047,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
     bool unbounded_event = false;
     for(auto& k: fetched->keepers)
     {
-        std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e); });
+        std::erase_if(k.events, [&](const Event& e) { return !inRange(covered, e) || !predicate.matches(e); });
         for(const auto& e: k.events) unbounded_event |= !physicalBounded(e);
         sortReplay(k.events);
         inputs.push_back(std::move(k.events));
@@ -1028,7 +1059,7 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
             if(record.state == ManifestState::Lost && record.start < cold.end && record.end > cold.start)
                 archive_ok = false;
         std::erase_if(selected, [&](const ManifestRecord& record) { return record.start >= cold.end; });
-        ArchiveBatch batch(*options_.archive, selected);
+        ArchiveBatch batch(*options_.archive, selected, predicate);
         for(size_t i = 0; i < selected.size(); ++i)
         {
             auto events = batch.read(i, cold);
@@ -1065,16 +1096,30 @@ absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::read(StoryId id, Range 
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position) const
 {
-    return tail(id, std::move(position), false);
+    return tail(id, std::move(position), EventPredicate{}, false);
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>> HotReplay::tail(StoryId id, Event position, bool progress) const
+{
+    return tail(id, std::move(position), EventPredicate{}, progress);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::tail(StoryId id, Event position, const EventPredicate& predicate) const
+{
+    return tail(id, std::move(position), predicate, false);
+}
+
+absl::StatusOr<std::unique_ptr<ReplayStream>>
+HotReplay::tail(StoryId id, Event position, const EventPredicate& predicate, bool progress) const
 {
     if(position.id == EventId{})
         position.id.story_id = id;
     if(position.id.story_id != id)
         return absl::InvalidArgumentError("position belongs to a different story");
-    auto stream = std::make_unique<TailStream>(source_, id, std::move(position), options_, progress);
+    if(auto valid = predicate.validate(); !valid.ok())
+        return valid;
+    auto stream = std::make_unique<TailStream>(source_, id, std::move(position), options_, predicate, progress);
     if(auto opened = stream->open(); !opened.ok())
         return opened;
     return std::unique_ptr<ReplayStream>(std::move(stream));

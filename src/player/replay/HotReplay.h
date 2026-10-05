@@ -36,7 +36,17 @@ public:
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range) const override;
     absl::StatusOr<std::unique_ptr<ReplayStream>> read(StoryId id, Range range, size_t max_events) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position) const override;
+    // I6.17: only matching events are returned or delivered; max_events counts matches and completion is unchanged.
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId id, Range range, const EventPredicate& predicate) const override;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(StoryId id, Event position, const EventPredicate& predicate) const override;
+    // I6.21: a progress Tail also emits an empty batch carrying the frontier when it advances with nothing matching.
     absl::StatusOr<std::unique_ptr<ReplayStream>> tail(StoryId id, Event position, bool progress) const;
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    tail(StoryId id, Event position, const EventPredicate& predicate, bool progress) const;
 
 private:
     std::shared_ptr<const HotSource> source_;

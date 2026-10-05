@@ -10,6 +10,7 @@ add_library(chronolog_player_replay STATIC
     replay/ReplayMerge.cpp)
 target_include_directories(chronolog_player_replay PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>")
 target_link_libraries(chronolog_player_replay PUBLIC chronolog_contracts chronolog_proto Threads::Threads chronolog_common_tier
+    chronolog_common_predicate
     PRIVATE chronolog_warnings absl::log)
 
 # gRPC clients and the Replay service.

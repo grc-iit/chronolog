@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "chronolog/types.h"
+#include "common/predicate/Predicate.h"
 
 namespace chronolog::player
 {
@@ -93,6 +94,23 @@ public:
     virtual absl::StatusOr<HotFetch> fetchTail(StoryId story, Hlc from, const TailStarts&) const
     {
         return fetch(story, Range{Range::Axis::Hlc, from, maxHlc()});
+    }
+    // I6.17: the same three fetches with a predicate the source applies where it scans, counting only matches toward
+    // its budget. The defaults ignore it, which is correct because consumers filter again.
+    virtual absl::StatusOr<HotFetch>
+    fetchReadMatching(StoryId story, const Range& range, size_t target, const EventPredicate&) const
+    {
+        return fetchRead(story, range, target);
+    }
+    virtual absl::StatusOr<HotFetch>
+    fetchPhysicalMatching(StoryId story, const Range& range, bool policy, const EventPredicate&) const
+    {
+        return fetchPhysical(story, range, policy);
+    }
+    virtual absl::StatusOr<HotFetch>
+    fetchTailMatching(StoryId story, Hlc from, const TailStarts& starts, const EventPredicate&) const
+    {
+        return fetchTail(story, from, starts);
     }
 };
 
