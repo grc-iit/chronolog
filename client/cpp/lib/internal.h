@@ -138,6 +138,10 @@ inline Completion decode(const v1::Completion& p)
     c.reason = static_cast<IncompleteReason>(p.reason());
     if(p.has_catalog_revision())
         c.catalog_revision = p.catalog_revision();
+    if(p.has_claim_start())
+        c.claim_start = decode(p.claim_start());
+    if(p.has_claim_end())
+        c.claim_end = decode(p.claim_end());
     for(const auto& f: p.laggards()) c.laggards.push_back({f.writer_id(), f.incarnation(), decode(f.frontier())});
     return c;
 }

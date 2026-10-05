@@ -89,9 +89,18 @@ struct HlcRange
     Hlc start;
     Hlc end;
 };
+// I6.18: a newest-first Read returns the newest events of [start, end) in descending order. An end at the largest Hlc
+// is open: the Player resolves it to the minimum sealed frontier. A TRUNCATED newest-first Completion carries no
+// continuation, because its claimed suffix [c, e) ends the Read and the rest of the history lies below c.
+enum class ReadOrder
+{
+    OldestFirst,
+    NewestFirst
+};
 struct ReadOptions
 {
     std::optional<uint32_t> max_events;
+    ReadOrder order{ReadOrder::OldestFirst};
     // I6.17: only matching events are returned and the range, order and completeness are unchanged. An empty predicate
     // matches every event. The Player validates it.
     EventPredicate predicate{};

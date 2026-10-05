@@ -127,3 +127,4 @@ def test_unknown_enum_values_keep_their_numbers():
     assert cl.AppendResult(cl.EventId(), cl.Hlc(), 999).durability == 999
     assert cl.Event(cl.EventId(), cl.TimeReading(), cl.Hlc(), cl.Envelope(), 999).durability == 999
     assert cl.Completion(reason=999).reason == 999
+    assert cl.Completion().claim_start is None and cl.Completion().claim_end is None

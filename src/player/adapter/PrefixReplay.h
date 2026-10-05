@@ -29,8 +29,13 @@ public:
 
     // Resolves the set at one Catalog revision, reads every story, merges in the order of I7.7 and certifies the
     // result under I6.15 and I6.16. RESOURCE_EXHAUSTED when the prefix resolves to more than max_scopes stories.
-    absl::StatusOr<std::unique_ptr<ReplayStream>>
-    read(const std::string& prefix, Range range, size_t max_events, const EventPredicate& predicate) const;
+    // Newest-first (I6.18) merges descending: an open end is the minimum sealed frontier over every story, and the
+    // claimed suffix starts at the highest c of the stories.
+    absl::StatusOr<std::unique_ptr<ReplayStream>> read(const std::string& prefix,
+                                                       Range range,
+                                                       size_t max_events,
+                                                       const EventPredicate& predicate,
+                                                       ReadOrder order = ReadOrder::OldestFirst) const;
 
     // Fixes the story set at the revision it resolves at; the first message of the stream names it.
     absl::StatusOr<std::unique_ptr<ReplayStream>>

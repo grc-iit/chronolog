@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <set>
@@ -195,6 +196,7 @@ public:
         if(!known)
             return grpc::Status(grpc::StatusCode::NOT_FOUND, "unknown story");
         iv1::FetchHotResponse batch;
+        std::vector<v1::Event> matching;
         for(const auto& e: events)
         {
             if(e.id().story_id() != request->story_id())
@@ -218,7 +220,24 @@ public:
             if(in && request->has_predicate())
                 in = convert::fromProto(request->predicate()).matches(convert::fromProto(e));
             if(in)
-                *batch.mutable_batch()->add_events() = e;
+                matching.push_back(e);
+        }
+        // Newest-first keeps the newest max_events, as the Keeper does (I6.18).
+        if(request->order() == v1::READ_ORDER_NEWEST_FIRST)
+        {
+            std::sort(matching.begin(),
+                      matching.end(),
+                      [](const v1::Event& a, const v1::Event& b)
+                      { return ReplayLess(convert::fromProto(b), convert::fromProto(a)); });
+            if(request->max_events() && matching.size() > request->max_events())
+            {
+                matching.resize(request->max_events());
+                truncated = true;
+            }
+        }
+        for(const auto& e: matching)
+        {
+            *batch.mutable_batch()->add_events() = e;
             if(batch.batch().events_size() == 2)
             {
                 writer->Write(batch);
@@ -1074,6 +1093,7 @@ TEST_F(replay_adapter, PhysicalAxisIsUnbounded)
 
 #include "player/tests/replay_adapter_wire_test.cpp"
 #include "player/tests/replay_adapter_prefix_test.cpp"
+#include "player/tests/replay_adapter_newest_test.cpp"
 
 TEST_F(replay_adapter, TombstonedStoryFailsPrecondition)
 {

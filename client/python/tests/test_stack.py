@@ -102,6 +102,31 @@ def test_kind_actor_and_links_round_trip(stack):
         cl.Envelope(b"x", links=[(first.event_id, "replies_to")])
 
 
+def test_newest_first_read_continues_below_claim_start(stack):
+    client, chronicle, story = stack
+    with client.acquire(story, "newest") as writer:
+        results = [writer.append(b"e%d" % i, timeout=3) for i in range(6)]
+    wanted = [r.hlc for r in reversed(results)]
+    seen, end, deadline = [], None, time.monotonic() + 15
+    while True:
+        reader = client.read(story, end=end, newest_first=True, max_events=4, timeout=5)
+        page = [e.hlc for e in reader]
+        completion = reader.completion
+        if completion.reason == cl.IncompleteReason.LAGGING_WRITERS:
+            assert time.monotonic() < deadline
+            time.sleep(0.1)
+            continue
+        seen += page
+        assert completion.claim_end is not None and completion.frontier == completion.claim_end
+        assert reader.continuation is None
+        if completion.complete:
+            break
+        assert completion.reason == cl.IncompleteReason.TRUNCATED
+        assert completion.claim_start is not None and page[-1] >= completion.claim_start
+        end = completion.claim_start
+    assert seen == wanted
+
+
 def test_scope_reads_a_prefix_with_a_kind_predicate_in_order(stack):
     client, chronicle, story = stack
     other = client.create_story(chronicle, "other")

@@ -239,7 +239,9 @@ nb::object pack(const Completion& c)
                                                                      "incarnation"_a = f.incarnation,
                                                                      "frontier"_a = pack(f.frontier)));
                                              }),
-                        "reason"_a = static_cast<int>(c.reason)));
+                        "reason"_a = static_cast<int>(c.reason),
+                        "claim_start"_a = maybe(c.claim_start, [](const Hlc& h) { return pack(h); }),
+                        "claim_end"_a = maybe(c.claim_end, [](const Hlc& h) { return pack(h); })));
 }
 Hlc hlc(nb::handle h) { return {i64(h.attr("physical_ns")), u32(h.attr("logical"))}; }
 EventId eventId(nb::handle h)
@@ -703,12 +705,17 @@ NB_MODULE(_core, m)
                        nb::handle start,
                        nb::handle end,
                        nb::handle where,
+                       bool newest_first,
+                       std::optional<uint32_t> max_events,
                        std::optional<double> t)
                     {
                         auto story = u64(id);
                         sdk::HlcRange r{hlc(start), hlc(end)};
                         sdk::ReadOptions options;
                         options.predicate = predicate(where);
+                        options.max_events = max_events;
+                        if(newest_first)
+                            options.order = sdk::ReadOrder::NewestFirst;
                         auto d = deadline(t);
                         auto native = c.shared();
                         return held(call([&] { return native->read(story, r, options, d); }));
@@ -717,6 +724,8 @@ NB_MODULE(_core, m)
                     "start"_a,
                     "end"_a,
                     "predicate"_a = nb::none(),
+                    "newest_first"_a = false,
+                    "max_events"_a = nb::none(),
                     "timeout"_a = nb::none())
             .def(
                     "read_prefix",
@@ -725,11 +734,16 @@ NB_MODULE(_core, m)
                        nb::handle start,
                        nb::handle end,
                        nb::handle where,
+                       bool newest_first,
+                       std::optional<uint32_t> max_events,
                        std::optional<double> t)
                     {
                         sdk::HlcRange r{hlc(start), hlc(end)};
                         sdk::ReadOptions options;
                         options.predicate = predicate(where);
+                        options.max_events = max_events;
+                        if(newest_first)
+                            options.order = sdk::ReadOrder::NewestFirst;
                         auto d = deadline(t);
                         auto native = c.shared();
                         return held(call([&] { return native->read(prefix, r, options, d); }));
@@ -738,6 +752,8 @@ NB_MODULE(_core, m)
                     "start"_a,
                     "end"_a,
                     "predicate"_a = nb::none(),
+                    "newest_first"_a = false,
+                    "max_events"_a = nb::none(),
                     "timeout"_a = nb::none())
             .def(
                     "read_physical",

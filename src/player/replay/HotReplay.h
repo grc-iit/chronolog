@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include "player/replay/HotSource.h"
+#include "player/replay/MergedStream.h"
 #include "common/tier/FileTierStore.h"
 #include "chronolog/replay.h"
 
@@ -45,6 +46,12 @@ public:
     read(StoryId id, Range range, const EventPredicate& predicate) const override;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const;
+    // I6.18: NewestFirst returns the newest matching events of [start, e) in descending order, with e the range end
+    // or, for an open end (maxHlc), the minimum sealed frontier of the sources. The Completion names c and e.
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    read(StoryId id, Range range, size_t max_events, const EventPredicate& predicate, ReadOrder order) const;
+    // I6.18: the minimum sealed frontier of the sources of a story, which an open end resolves to. It reads no events.
+    absl::StatusOr<Hlc> sealedFrontier(StoryId id, Hlc start) const;
     absl::StatusOr<std::unique_ptr<ReplayStream>>
     tail(StoryId id, Event position, const EventPredicate& predicate) const override;
     // I6.21: a progress Tail also emits an empty batch carrying the frontier when it advances with nothing matching.
@@ -57,6 +64,9 @@ public:
     tail(std::vector<StoryId> stories, uint64_t revision, Event position, const EventPredicate& predicate) const;
 
 private:
+    absl::StatusOr<std::unique_ptr<ReplayStream>>
+    readNewest(StoryId id, Range range, size_t max_events, const EventPredicate& predicate) const;
+
     std::shared_ptr<const HotSource> source_;
     HotReplayOptions options_;
 };

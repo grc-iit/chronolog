@@ -51,6 +51,10 @@ public:
                                                Hlc from,
                                                const TailStarts& starts,
                                                const EventPredicate& predicate) const override;
+    absl::StatusOr<HotFetch> fetchNewestMatching(StoryId story,
+                                                 const Range& range,
+                                                 size_t target,
+                                                 const EventPredicate& predicate) const override;
 
     absl::StatusOr<internal::v1::WriterStatusResponse>
     writerStatus(EventId id, std::chrono::system_clock::time_point deadline) const;
@@ -61,7 +65,8 @@ private:
                                        bool policy,
                                        const TailStarts* starts,
                                        const EventPredicate& predicate,
-                                       size_t read_budget = 0) const;
+                                       size_t read_budget = 0,
+                                       bool newest = false) const;
     KeeperFetch fetchOne(const KeeperRef& keeper,
                          StoryId story,
                          const Range& range,
@@ -72,7 +77,8 @@ private:
                          bool tail,
                          size_t read_budget,
                          const EventPredicate& predicate,
-                         std::chrono::system_clock::time_point deadline) const;
+                         std::chrono::system_clock::time_point deadline,
+                         bool newest) const;
     std::shared_ptr<internal::v1::Archive::Stub> stubFor(const std::string& address) const;
 
     std::shared_ptr<const RouteSource> routes_;

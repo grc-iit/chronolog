@@ -68,6 +68,10 @@ v1::Completion toProto(const Completion& completion)
     out.set_reason(toProto(completion.reason));
     if(completion.catalog_revision)
         out.set_catalog_revision(*completion.catalog_revision);
+    if(completion.claim_start)
+        *out.mutable_claim_start() = toProto(*completion.claim_start);
+    if(completion.claim_end)
+        *out.mutable_claim_end() = toProto(*completion.claim_end);
     return out;
 }
 

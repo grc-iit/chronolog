@@ -62,6 +62,7 @@ public:
         if(!lie && ((!q->expect_instance().empty() && q->expect_instance() != instance) || q->expect_epoch() != epoch))
             return {grpc::StatusCode::FAILED_PRECONDITION, "different owner"};
         wire::FetchHotResponse batch;
+        std::vector<Event> matching;
         for(const auto& e: events)
         {
             bool match = q->has_hlc() ? e.hlc >= convert::fromProto(q->hlc().start()) &&
@@ -76,9 +77,25 @@ public:
                 const __int128_t u = bounded ? *e.physical.uncertainty_ns : 0;
                 match = bounded ? p - u < r.end_ns() && p + u >= r.start_ns() : p >= r.start_ns() && p < r.end_ns();
             }
+            if(match && q->has_predicate())
+                match = convert::fromProto(q->predicate()).matches(e);
             if(match)
-                *batch.mutable_batch()->add_events() = convert::toProto(e);
+                matching.push_back(e);
         }
+        // Newest-first keeps the newest max_events, as the Keeper does (I6.18).
+        bool cut = false;
+        if(q->order() == v1::READ_ORDER_NEWEST_FIRST)
+        {
+            std::sort(matching.begin(),
+                      matching.end(),
+                      [](const Event& a, const Event& b) { return ReplayLess(b, a); });
+            if(q->max_events() && matching.size() > q->max_events())
+            {
+                matching.resize(q->max_events());
+                cut = true;
+            }
+        }
+        for(const auto& e: matching) *batch.mutable_batch()->add_events() = convert::toProto(e);
         if(batch.has_batch() && !writer->Write(batch))
             return grpc::Status::CANCELLED;
         wire::FetchHotResponse end;
@@ -87,7 +104,7 @@ public:
         trailer->set_instance(instance);
         *trailer->mutable_sealed_frontier() = convert::toProto(seal);
         trailer->set_physical_frontier_ns(physical);
-        trailer->set_truncated(truncated);
+        trailer->set_truncated(truncated || cut);
         writer->Write(end);
         return grpc::Status::OK;
     }
@@ -172,6 +189,7 @@ protected:
     std::filesystem::path root;
     std::vector<Event> returned;
     Completion completion;
+    std::optional<Hlc> claim_start, claim_end;
     std::string start(KeeperDriver& driver, std::unique_ptr<grpc::Server>& server)
     {
         grpc::ServerBuilder builder;
@@ -236,6 +254,51 @@ protected:
                 return;
             }
             EXPECT_EQ(completions, 0);
+            returned.insert(returned.end(), (**b).events.begin(), (**b).events.end());
+            if((**b).completion)
+            {
+                completion = *(**b).completion;
+                ++completions;
+            }
+        }
+        FAIL() << "unbounded stream";
+    }
+    // I6.18: one Keeper (seal 300) holds 160 to 280 and the archive holds 110 to 140 below the eviction floor 150.
+    void seedNewestFirst()
+    {
+        routes->state.archived_below = {150, 0};
+        current.seal = {300, 0};
+        current.events.clear();
+        for(int t = 160; t <= 280; t += 10) current.events.push_back(event(t, 4));
+        old.events.clear();
+        ASSERT_TRUE(archive_writer->publish({"low", 1, {100, 0}, {125, 0}, {event(110), event(120)}, false}).ok());
+        ASSERT_TRUE(archive_writer->publish({"mid", 1, {125, 0}, {150, 0}, {event(130), event(140)}, false}).ok());
+    }
+    std::vector<int64_t> returnedTimes() const
+    {
+        std::vector<int64_t> out;
+        for(const auto& e: returned) out.push_back(e.hlc.physical_ns);
+        return out;
+    }
+    // A newest-first Read of story 1: `returned` holds the events in stream order and the claim the stream names.
+    void readNewest(Range range, size_t max_events, const EventPredicate& predicate = {})
+    {
+        HotReplay replay(source, options);
+        auto stream = replay.read(1, range, max_events, predicate, ReadOrder::NewestFirst);
+        ASSERT_TRUE(stream.ok()) << stream.status();
+        returned.clear();
+        int completions = 0;
+        for(int n = 0; n < 100; ++n)
+        {
+            auto b = (*stream)->next();
+            ASSERT_TRUE(b.ok()) << b.status();
+            if(!*b)
+            {
+                EXPECT_EQ(completions, 1);
+                claim_start = completion.claim_start;
+                claim_end = completion.claim_end;
+                return;
+            }
             returned.insert(returned.end(), (**b).events.begin(), (**b).events.end());
             if((**b).completion)
             {
@@ -543,6 +606,143 @@ TEST_F(ReplayContract, TruncatedEmptyPredecessorHasNoCompletePrefix)
     EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
     EXPECT_EQ(completion.frontier, (Hlc{100, 0}));
     EXPECT_TRUE(returned.empty());
+}
+TEST_F(ReplayContract, NewestFirstTruncatedSuffixIsComplete)
+{
+    seedNewestFirst();
+    const std::vector<int64_t>
+            history{280, 270, 260, 250, 240, 230, 220, 210, 200, 190, 180, 170, 160, 140, 130, 120, 110};
+    std::vector<int64_t> streamed;
+    Hlc end = maxHlc();
+    const std::vector<int64_t> expected_end{300, 240, 190, 130};
+    for(size_t page = 0; page < expected_end.size(); ++page)
+    {
+        readNewest({Range::Axis::Hlc, {100, 0}, end}, 5);
+        ASSERT_TRUE(claim_end) << page;
+        EXPECT_EQ(*claim_end, (Hlc{expected_end[page], 0})) << page;
+        if(page + 1 == expected_end.size())
+        {
+            EXPECT_TRUE(completion.complete);
+            EXPECT_FALSE(claim_start);
+            EXPECT_EQ(completion.frontier, *claim_end);
+        }
+        else
+        {
+            EXPECT_EQ(completion.reason, IncompleteReason::Truncated) << page;
+            EXPECT_EQ(completion.frontier, *claim_end) << page;
+            ASSERT_TRUE(claim_start) << page;
+            // [c, e) is complete on its own: every event of the history inside it is in the stream, and none below c.
+            std::vector<int64_t> window;
+            for(int64_t t: history)
+                if(t >= claim_start->physical_ns && t < claim_end->physical_ns)
+                    window.push_back(t);
+            EXPECT_EQ(returnedTimes(), window) << page;
+            end = *claim_start;
+        }
+        for(int64_t t: returnedTimes()) streamed.push_back(t);
+    }
+    // The continuations over [start, c) neither skip nor repeat an event.
+    EXPECT_EQ(streamed, history);
+}
+TEST_F(ReplayContract, NewestFirstLostWindowFailsTheClaimOnlyInsideTheSuffix)
+{
+    seedNewestFirst();
+    current.events.resize(3);
+    auto records = archive_writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    for(const auto& r: *records)
+        if(r.start == Hlc{125, 0})
+            std::filesystem::remove(root / r.file);
+    archive_writer.reset();
+    auto recovered = FileTierStore::Open(root, "writer", {{1, {100, 0}}});
+    ASSERT_TRUE(recovered.ok());
+    archive_writer = *std::move(recovered);
+    // The target ends the stream at 160, above the lost window [125, 150): the suffix is complete.
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 3);
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    ASSERT_TRUE(claim_start);
+    EXPECT_EQ(*claim_start, (Hlc{160, 0}));
+    EXPECT_EQ(returnedTimes(), (std::vector<int64_t>{180, 170, 160}));
+    // Reaching below the window puts it inside [c, e), cut or not.
+    for(size_t limit: {4, 100})
+    {
+        readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, limit);
+        EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed) << limit;
+        EXPECT_FALSE(claim_start) << limit;
+    }
+}
+TEST_F(ReplayContract, NewestFirstUnreadableFileAndAbandonedRangeFailTheClaimInsideTheSuffix)
+{
+    seedNewestFirst();
+    current.events.resize(3);
+    auto records = archive_writer->manifest(1);
+    ASSERT_TRUE(records.ok());
+    for(const auto& r: *records)
+        if(r.start == Hlc{125, 0})
+            std::filesystem::remove(root / r.file);
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 3);
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 100);
+    EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed);
+    EXPECT_FALSE(claim_start);
+
+    routes->state.archived_below = {};
+    routes->state.abandoned = {{Range::Axis::Hlc, {170, 0}, {175, 0}}};
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 2);
+    EXPECT_EQ(completion.reason, IncompleteReason::SourceFailed);
+    EXPECT_FALSE(claim_start);
+    routes->state.abandoned = {{Range::Axis::Hlc, {110, 0}, {120, 0}}};
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 2);
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    ASSERT_TRUE(claim_start);
+    EXPECT_EQ(*claim_start, (Hlc{170, 0}));
+}
+TEST_F(ReplayContract, NewestFirstSealBelowAGivenEndIsLaggingWritersWithNoClaim)
+{
+    seedNewestFirst();
+    current.seal = {250, 0};
+    readNewest({Range::Axis::Hlc, {100, 0}, {300, 0}}, 3);
+    EXPECT_EQ(completion.reason, IncompleteReason::LaggingWriters);
+    EXPECT_EQ(completion.frontier, (Hlc{250, 0}));
+    EXPECT_FALSE(claim_start);
+    ASSERT_TRUE(claim_end);
+    EXPECT_EQ(*claim_end, (Hlc{300, 0}));
+    // An open end resolves to the seal instead, so the same Read certifies its suffix below 250.
+    readNewest({Range::Axis::Hlc, {100, 0}, maxHlc()}, 3);
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    ASSERT_TRUE(claim_end);
+    EXPECT_EQ(*claim_end, (Hlc{250, 0}));
+    EXPECT_EQ(completion.frontier, (Hlc{250, 0}));
+    EXPECT_EQ(returnedTimes(), (std::vector<int64_t>{240, 230, 220}));
+}
+TEST_F(ReplayContract, NewestFirstOpenEndIsTheLowestSealBelowACutAndMergesHotWithArchive)
+{
+    seedNewestFirst();
+    current.events.resize(3);
+    old.seal = {190, 0};
+    old.events = {event(135)};
+    readNewest({Range::Axis::Hlc, {100, 0}, maxHlc()}, 100);
+    EXPECT_TRUE(completion.complete);
+    ASSERT_TRUE(claim_end);
+    EXPECT_EQ(*claim_end, (Hlc{190, 0}));
+    EXPECT_EQ(completion.frontier, (Hlc{190, 0}));
+    EXPECT_EQ(returnedTimes(), (std::vector<int64_t>{180, 170, 160, 140, 135, 130, 120, 110}));
+}
+TEST_F(ReplayContract, NewestFirstPredicateOnlyRemovesEvents)
+{
+    seedNewestFirst();
+    for(auto& e: current.events) e.envelope.kind = e.hlc.physical_ns % 20 == 0 ? "note" : "other";
+    EventPredicate notes;
+    notes.kinds = {"note"};
+    readNewest({Range::Axis::Hlc, {100, 0}, maxHlc()}, 3, notes);
+    EXPECT_EQ(returnedTimes(), (std::vector<int64_t>{280, 260, 240}));
+    EXPECT_EQ(completion.reason, IncompleteReason::Truncated);
+    ASSERT_TRUE(claim_start);
+    EXPECT_EQ(*claim_start, (Hlc{240, 0}));
+    EXPECT_EQ(*claim_end, (Hlc{300, 0}));
+    readNewest({Range::Axis::Hlc, {100, 0}, maxHlc()}, 100, notes);
+    EXPECT_TRUE(completion.complete);
+    EXPECT_EQ(returnedTimes(), (std::vector<int64_t>{280, 260, 240, 220, 200, 180, 160}));
 }
 // A real Keeper behind its own server, so the Tail rule meets the seal the Keeper really computes. The seal ticks F,
 // scans writer 2 (still empty), and writers 2 and 4 then assign above F before the scan reaches writer 4, whose event it

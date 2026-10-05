@@ -249,11 +249,16 @@ grpc::ServerWriteReactor<Resp>* ReplayService::open(std::function<absl::Status()
     return reactor;
 }
 
-absl::StatusOr<std::unique_ptr<ReplayStream>>
-ReplayService::read(StoryId story, Range range, size_t max_events, const EventPredicate& predicate) const
+absl::StatusOr<std::unique_ptr<ReplayStream>> ReplayService::read(StoryId story,
+                                                                  Range range,
+                                                                  size_t max_events,
+                                                                  const EventPredicate& predicate,
+                                                                  ReadOrder order) const
 {
     if(const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get()))
-        return bounded->read(story, range, max_events, predicate);
+        return bounded->read(story, range, max_events, predicate, order);
+    if(order == ReadOrder::NewestFirst)
+        return absl::UnimplementedError("replay does not support newest-first reads");
     if(max_events)
         return absl::UnimplementedError("replay does not support per-request event targets");
     if(!predicate.empty())
@@ -274,12 +279,13 @@ ReplayService::tail(StoryId story, Event position, const EventPredicate& predica
 absl::StatusOr<std::unique_ptr<ReplayStream>> ReplayService::readPrefix(const std::string& prefix,
                                                                         Range range,
                                                                         size_t max_events,
-                                                                        const EventPredicate& predicate) const
+                                                                        const EventPredicate& predicate,
+                                                                        ReadOrder order) const
 {
     const auto* bounded = dynamic_cast<const HotReplay*>(replay_.get());
     if(!bounded)
         return absl::UnimplementedError("replay does not support prefixes");
-    return PrefixReplay(*bounded, *catalog_, prefix_).read(prefix, range, max_events, predicate);
+    return PrefixReplay(*bounded, *catalog_, prefix_).read(prefix, range, max_events, predicate, order);
 }
 
 absl::StatusOr<std::unique_ptr<ReplayStream>>
@@ -304,16 +310,26 @@ grpc::ServerWriteReactor<v1::ReadResponse>* ReplayService::Read(grpc::CallbackSe
     auto predicate = convert::fromProto(request->predicate());
     if(auto valid = predicate.validate(); !valid.ok())
         return new FailedReactor<v1::ReadResponse>(convert::toGrpc(valid));
+    if(request->order() != v1::READ_ORDER_UNSPECIFIED && request->order() != v1::READ_ORDER_OLDEST_FIRST &&
+       request->order() != v1::READ_ORDER_NEWEST_FIRST)
+        return new FailedReactor<v1::ReadResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown read order"));
+    const ReadOrder order =
+            request->order() == v1::READ_ORDER_NEWEST_FIRST ? ReadOrder::NewestFirst : ReadOrder::OldestFirst;
+    // I6.18: newest-first is HLC axis only.
+    if(order == ReadOrder::NewestFirst && range->axis != Range::Axis::Hlc)
+        return new FailedReactor<v1::ReadResponse>(
+                grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "newest-first is HLC axis only"));
     const StoryId story = request->story_id();
     const size_t max_events = request->max_events();
     if(!request->prefix().empty())
         return open<v1::ReadResponse>(
                 [] { return absl::OkStatus(); },
-                [this, prefix = request->prefix(), range = *range, max_events, predicate = std::move(predicate)]
-                { return readPrefix(prefix, range, max_events, predicate); });
+                [this, prefix = request->prefix(), range = *range, max_events, order, predicate = std::move(predicate)]
+                { return readPrefix(prefix, range, max_events, predicate, order); });
     return open<v1::ReadResponse>([catalog = catalog_, story] { return catalog->ensureLive(story); },
-                                  [this, story, range = *range, max_events, predicate = std::move(predicate)]
-                                  { return read(story, range, max_events, predicate); });
+                                  [this, story, range = *range, max_events, order, predicate = std::move(predicate)]
+                                  { return read(story, range, max_events, predicate, order); });
 }
 
 grpc::ServerWriteReactor<v1::TailResponse>* ReplayService::Tail(grpc::CallbackServerContext*,

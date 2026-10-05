@@ -226,6 +226,10 @@ class Completion:
     frontier: Hlc = Hlc()
     laggards: tuple[Frontier, ...] = ()
     reason: IncompleteReason = IncompleteReason.NONE
+    # Newest-first reads only. claim_end is the end e of the Read. claim_start is c of a TRUNCATED Read: the events at or
+    # above c are complete on their own, and the next read covers [start, claim_start).
+    claim_start: typing.Optional[Hlc] = None
+    claim_end: typing.Optional[Hlc] = None
 
     def __post_init__(self):
         object.__setattr__(self, "laggards", tuple(self.laggards))
@@ -610,17 +614,21 @@ class Client:
     def read_physical(self, story, start, end, *, timeout=None):
         return ReadStream(self._handle.read_physical(_id(story), start, end, timeout), timeout)
 
-    def read(self, story=None, start=None, end=None, *, prefix=None, predicate=None, timeout=None):
+    def read(self, story=None, start=None, end=None, *, prefix=None, predicate=None, newest_first=False, max_events=None,
+             timeout=None):
         """Reads one story, or with prefix the merged history of every story under that path prefix. predicate is a
-        dict of kinds, actors, attributes, link_to and event_ids that keeps only matching events."""
+        dict of kinds, actors, attributes, link_to and event_ids that keeps only matching events. newest_first returns
+        the newest events of [start, end) in descending order, and an end left open means the minimum sealed frontier.
+        A truncated newest-first read names completion.claim_start: continue with end=claim_start. max_events is a soft
+        target of events to return, and zero or None leaves the Player's limit."""
         if (story is None) == (prefix is None):
             raise ValueError("pass exactly one of story or prefix")
         start, end = start or Hlc(), end or Hlc(2**63 - 1, 2**32 - 1)
         where = _predicate(predicate)
         if prefix is None:
-            handle = self._handle.read(_id(story), start, end, where, timeout)
+            handle = self._handle.read(_id(story), start, end, where, newest_first, max_events, timeout)
         else:
-            handle = self._handle.read_prefix(prefix, start, end, where, timeout)
+            handle = self._handle.read_prefix(prefix, start, end, where, newest_first, max_events, timeout)
         return ReadStream(handle, timeout)
 
     def tail(self, story=None, after=None, *, prefix=None, predicate=None, timeout=None):
