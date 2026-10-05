@@ -717,6 +717,8 @@ message MemberState
     bool joined = 4;
     uint64 policy_version = 5;
     uint64 applied_route_revision = 6;
+    // I6.16: set by drain and abandon in apply, cleared by a new-instance register.
+    bool removed = 7;
 }
 message MembershipState
 {
