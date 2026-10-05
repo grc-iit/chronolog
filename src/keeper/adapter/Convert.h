@@ -6,6 +6,7 @@
 
 #include "chronolog/internal/v1/internal.pb.h"
 #include "chronolog/types.h"
+#include "common/predicate/Predicate.h"
 #include "chronolog/v1/chronolog.pb.h"
 
 // Conversions between contract types and generated protobuf types. The service adapters,
@@ -47,6 +48,7 @@ v1::WriterFrontier toProto(const Frontier& frontier);
 TimeReading fromProto(const v1::TimeReading& reading);
 Envelope fromProto(const v1::Envelope& envelope);
 AppendItem fromProto(const v1::AppendItem& item);
+EventPredicate fromProto(const v1::Predicate& predicate);
 
 struct ParsedAppend
 {

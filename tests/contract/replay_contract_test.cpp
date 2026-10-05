@@ -871,5 +871,112 @@ TEST_P(ReplayContract, TailEndsWhenTheStoryIsTombstoned)
     ASSERT_TRUE(pull.ended());
     EXPECT_EQ(pull.status().code(), absl::StatusCode::kFailedPrecondition);
 }
+
+std::vector<EventId> IdsOf(const std::vector<Event>& events)
+{
+    std::vector<EventId> out;
+    for(const auto& e: events) out.push_back(e.id);
+    return out;
+}
+
+absl::StatusOr<Collected> ReadMatching(const Replay& sut, const EventPredicate& predicate)
+{
+    auto stream = sut.read(1, Query(), predicate);
+    if(!stream.ok())
+        return stream.status();
+    return Collect(**stream);
+}
+
+void ExpectSameCompletion(const Completion& want, const Completion& got)
+{
+    EXPECT_EQ(got.complete, want.complete);
+    EXPECT_EQ(got.frontier, want.frontier);
+    EXPECT_EQ(got.reason, want.reason);
+    ASSERT_EQ(got.laggards.size(), want.laggards.size());
+    for(size_t i = 0; i < want.laggards.size(); ++i)
+    {
+        EXPECT_EQ(got.laggards[i].writer_id, want.laggards[i].writer_id);
+        EXPECT_EQ(got.laggards[i].frontier, want.laggards[i].frontier);
+    }
+}
+
+TEST_P(ReplayContract, PredicatesOnlyRemoveEvents)
+{
+    ASSERT_TRUE(h->setFrontiers);
+    ASSERT_TRUE(h->failSource);
+    // Writer 4 is a laggard, so the Completion has something to name that a predicate must not change.
+    h->setFrontiers({{2, 3, {301, 0}}, {4, 3, {299, 0}}});
+    auto stream = h->sut->read(1, Query());
+    ASSERT_TRUE(stream.ok());
+    auto plain = Collect(**stream);
+    ASSERT_TRUE(plain.ok());
+    ASSERT_EQ(plain->completions.size(), 1u);
+    ASSERT_GE(plain->events.size(), 3u);
+    ASSERT_EQ(plain->completions[0].laggards.size(), 1u);
+
+    auto all = ReadMatching(*h->sut, {});
+    ASSERT_TRUE(all.ok());
+    EXPECT_EQ(IdsOf(all->events), IdsOf(plain->events));
+    ASSERT_EQ(all->completions.size(), 1u);
+    ExpectSameCompletion(plain->completions[0], all->completions[0]);
+
+    EventPredicate none;
+    none.kinds = {"no-such-kind"};
+    auto nothing = ReadMatching(*h->sut, none);
+    ASSERT_TRUE(nothing.ok());
+    EXPECT_TRUE(nothing->events.empty());
+    ASSERT_EQ(nothing->completions.size(), 1u);
+    ExpectSameCompletion(plain->completions[0], nothing->completions[0]);
+
+    EventPredicate two;
+    two.event_ids = {plain->events.back().id, plain->events[1].id};
+    auto some = ReadMatching(*h->sut, two);
+    ASSERT_TRUE(some.ok());
+    EXPECT_EQ(IdsOf(some->events), (std::vector<EventId>{plain->events[1].id, plain->events.back().id}));
+    ASSERT_EQ(some->completions.size(), 1u);
+    ExpectSameCompletion(plain->completions[0], some->completions[0]);
+
+    // The sources consulted are unchanged, so a failed Keeper still makes the Read incomplete.
+    h->failSource();
+    stream = h->sut->read(1, Query());
+    ASSERT_TRUE(stream.ok());
+    auto failed = Collect(**stream);
+    ASSERT_TRUE(failed.ok());
+    ASSERT_EQ(failed->completions.size(), 1u);
+    EXPECT_EQ(failed->completions[0].reason, IncompleteReason::SourceFailed);
+    nothing = ReadMatching(*h->sut, none);
+    ASSERT_TRUE(nothing.ok());
+    EXPECT_TRUE(nothing->events.empty());
+    ASSERT_EQ(nothing->completions.size(), 1u);
+    ExpectSameCompletion(failed->completions[0], nothing->completions[0]);
+
+    EventPredicate malformed;
+    malformed.attributes.push_back({"", "v"});
+    EXPECT_EQ(ReadMatching(*h->sut, malformed).status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(h->sut->tail(1, StoryStart(), malformed).status().code(), absl::StatusCode::kInvalidArgument);
+
+    // A Tail has the same rule on a fresh stack, where every Keeper answers.
+    auto fresh = GetParam()();
+    ASSERT_NE(fresh, nullptr);
+    ASSERT_TRUE(fresh->setKeeper);
+    ASSERT_TRUE(fresh->awaitPolls);
+    auto kinded = [](uint64_t writer, uint64_t sequence, int64_t hlc, std::string kind)
+    {
+        Event e = TailEvent(writer, sequence, hlc);
+        e.envelope.kind = std::move(kind);
+        return e;
+    };
+    fresh->setKeeper("keeper-a",
+                     {{kinded(2, 1, 110, "note"), kinded(2, 2, 190, "other"), kinded(2, 3, 200, "note")}, {500, 0}});
+    fresh->setKeeper("keeper-b", {{kinded(4, 1, 120, "other"), kinded(4, 2, 150, "note")}, {500, 0}});
+    EventPredicate notes;
+    notes.kinds = {"note"};
+    auto tail = fresh->sut->tail(1, StoryStart(), notes);
+    ASSERT_TRUE(tail.ok());
+    TailPull pull(**tail);
+    EXPECT_EQ(HlcsOf(pull.get(3)), (std::vector<int64_t>{110, 150, 200}));
+    fresh->awaitPolls(2);
+    EXPECT_EQ(pull.delivered(), 3u);
+}
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReplayContract);
 } // namespace chronolog::contract

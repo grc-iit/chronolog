@@ -27,6 +27,20 @@ Event event(int64_t time)
     return e;
 }
 
+Event kinded(int64_t time, std::string kind)
+{
+    auto e = event(time);
+    e.envelope.kind = std::move(kind);
+    return e;
+}
+
+EventPredicate kindIs(std::string kind)
+{
+    EventPredicate predicate;
+    predicate.kinds.push_back(std::move(kind));
+    return predicate;
+}
+
 class FakeHotSource final: public HotSource
 {
 public:
@@ -701,6 +715,99 @@ TEST_F(ColdReplay, PhysicalReadDoesNotTreatAnHlcEvictionFloorAsPhysicalTime)
     ASSERT_TRUE(*final);
     ASSERT_TRUE((**final).completion);
     EXPECT_EQ((**final).completion->reason, IncompleteReason::PhysicalAxisUnbounded);
+}
+
+TEST_F(ColdReplay, APredicateKeepsOnlyMatchesFromTheArchiveAndTheKeepers)
+{
+    ASSERT_TRUE(writer->publish({"p",
+                                 1,
+                                 {100, 0},
+                                 {200, 0},
+                                 {kinded(120, "note"), kinded(140, "other"), kinded(160, "note")},
+                                 false})
+                        .ok());
+    source->response.keepers[0].events = {kinded(250, "note"), kinded(260, "other")};
+    HotReplay replay(source, options);
+    auto stream = replay.read(1, {Range::Axis::Hlc, {100, 0}, {300, 0}}, 0, kindIs("note"));
+    ASSERT_TRUE(stream.ok()) << stream.status();
+    std::vector<int64_t> seen;
+    std::optional<Completion> done;
+    for(int i = 0; i < 10; ++i)
+    {
+        auto batch = (*stream)->next();
+        ASSERT_TRUE(batch.ok()) << batch.status();
+        if(!*batch)
+            break;
+        for(const auto& e: (**batch).events) seen.push_back(e.hlc.physical_ns);
+        if((**batch).completion)
+            done = (**batch).completion;
+    }
+    EXPECT_EQ(seen, (std::vector<int64_t>{120, 160, 250}));
+    ASSERT_TRUE(done);
+    EXPECT_TRUE(done->complete);
+}
+
+TEST_F(ColdReplay, MaxEventsCountsOnlyMatches)
+{
+    publish(140);
+    source->response.keepers[0].events = {kinded(210, "note"),
+                                          kinded(220, "other"),
+                                          kinded(230, "other"),
+                                          kinded(240, "note")};
+    HotReplay replay(source, options);
+    auto collect = [&](const EventPredicate& predicate)
+    {
+        auto stream = replay.read(1, {Range::Axis::Hlc, {100, 0}, {300, 0}}, 2, predicate);
+        EXPECT_TRUE(stream.ok());
+        size_t count = 0;
+        std::optional<Completion> done;
+        for(int i = 0; stream.ok() && i < 10; ++i)
+        {
+            auto batch = (*stream)->next();
+            EXPECT_TRUE(batch.ok());
+            if(!batch.ok() || !*batch)
+                break;
+            count += (**batch).events.size();
+            if((**batch).completion)
+                done = (**batch).completion;
+        }
+        return std::pair{count, done};
+    };
+    auto matched = collect(kindIs("note"));
+    EXPECT_EQ(matched.first, 2u);
+    ASSERT_TRUE(matched.second);
+    EXPECT_TRUE(matched.second->complete);
+    auto unfiltered = collect({});
+    ASSERT_TRUE(unfiltered.second);
+    EXPECT_FALSE(unfiltered.second->complete);
+    EXPECT_EQ(unfiltered.second->reason, IncompleteReason::Truncated);
+}
+
+TEST_F(ColdReplay, TailArchiveReadCapsMatchesNotDecodedEvents)
+{
+    ASSERT_TRUE(writer->publish({"p",
+                                 1,
+                                 {100, 0},
+                                 {200, 0},
+                                 {kinded(110, "other"),
+                                  kinded(120, "other"),
+                                  kinded(130, "other"),
+                                  kinded(140, "other"),
+                                  kinded(150, "note"),
+                                  kinded(160, "note")},
+                                 false})
+                        .ok());
+    source->response.closed = true;
+    options.read_max_events = 2;
+    HotReplay replay(source, options);
+    auto stream = replay.tail(1, event(100), kindIs("note"));
+    ASSERT_TRUE(stream.ok()) << stream.status();
+    auto batch = nextWithin(**stream);
+    ASSERT_TRUE(batch.ok());
+    ASSERT_TRUE(*batch);
+    ASSERT_EQ((**batch).events.size(), 2u);
+    EXPECT_EQ((**batch).events[0].hlc, (Hlc{150, 1}));
+    EXPECT_EQ((**batch).events[1].hlc, (Hlc{160, 1}));
 }
 
 TEST_F(ColdReplay, TailCatchesUpFromArchiveExclusivelyAfterPosition)

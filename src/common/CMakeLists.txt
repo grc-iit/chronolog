@@ -1,4 +1,4 @@
-# Shared code (M11.2): the clock, the gRPC channel layer (M11.3), the worker pool and the tier store.
+# Shared code (M11.2): the clock, the gRPC channel layer (M11.3), the worker pool, the tier store and the predicate matcher.
 find_package(hdf5 CONFIG REQUIRED)
 include(GoogleTest)
 
@@ -30,6 +30,10 @@ target_link_libraries(chronolog_common_tier PUBLIC
     chronolog_contracts chronolog_proto Threads::Threads
     PRIVATE hdf5::hdf5-static chronolog_warnings nlohmann_json::nlohmann_json absl::log absl::crc32c)
 
+add_library(chronolog_common_predicate STATIC predicate/Predicate.cpp)
+target_include_directories(chronolog_common_predicate PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>")
+target_link_libraries(chronolog_common_predicate PUBLIC chronolog_contracts PRIVATE chronolog_warnings)
+
 add_executable(chronolog_common_clock_tests
     clock/tests/clock_audit_test.cpp clock/tests/kernel_clock_test.cpp clock/tests/visor_clock_audit_test.cpp)
 target_link_libraries(chronolog_common_clock_tests PRIVATE chronolog_common_clock chronolog_warnings
@@ -54,6 +58,12 @@ target_include_directories(chronolog_common_tier_tests PRIVATE "${PROJECT_SOURCE
 target_link_libraries(chronolog_common_tier_tests PRIVATE
     chronolog_common_tier chronolog_warnings nlohmann_json::nlohmann_json GTest::gtest GTest::gtest_main)
 gtest_discover_tests(chronolog_common_tier_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "common."
+    DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
+
+add_executable(chronolog_common_predicate_tests predicate/tests/predicate_test.cpp)
+target_link_libraries(chronolog_common_predicate_tests PRIVATE
+    chronolog_common_predicate chronolog_warnings GTest::gtest GTest::gtest_main)
+gtest_discover_tests(chronolog_common_predicate_tests DISCOVERY_TIMEOUT 60 TEST_PREFIX "common."
     DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES PROPERTIES TIMEOUT 30)
 
 add_executable(chronolog_hdf5_interop_writer tier/tests/hdf5_interop_writer.cpp)

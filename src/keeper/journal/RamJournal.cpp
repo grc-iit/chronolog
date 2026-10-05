@@ -791,10 +791,16 @@ absl::StatusOr<std::vector<Event>> RamJournal::read(StoryId id, Range range) con
     return out;
 }
 
-void RamJournal::scan(const Writer& writer, Range range, std::vector<Event>& out, std::optional<Range> physical_filter)
+void RamJournal::scan(const Writer& writer,
+                      Range range,
+                      std::vector<Event>& out,
+                      std::optional<Range> physical_filter,
+                      const std::function<bool(const Event&)>* keep)
 {
     auto emit = [&](const Event& event)
     {
+        if(keep && !(*keep)(event))
+            return;
         if(physical_filter)
         {
             auto interval = physicalInterval(event.physical);
@@ -827,7 +833,8 @@ Hlc RamJournal::seal(StoryId id,
                      const Range* range,
                      std::vector<Event>* events,
                      std::optional<Hlc> tick,
-                     std::optional<Range> physical_filter) const
+                     std::optional<Range> physical_filter,
+                     const std::function<bool(const Event&)>* keep) const
 {
     // F is ticked before any writer lock is taken, so every assignment already made is below F
     // and, once its writer lock is acquired here, inserted. Every later assignment is above F.
@@ -854,7 +861,7 @@ Hlc RamJournal::seal(StoryId id,
         {
             std::lock_guard lock(w->mu);
             if(range)
-                scan(*w, *range, *events, physical_filter);
+                scan(*w, *range, *events, physical_filter, keep);
             if(!w->pending.empty())
                 f = std::min(f, w->pending.begin()->second.event.hlc);
             if(!w->released && candidates.count(w.get()))
@@ -877,8 +884,11 @@ absl::StatusOr<RamJournal::SealedView> RamJournal::sealedView(StoryId id) const
     return view;
 }
 
-absl::StatusOr<RamJournal::SealedRead>
-RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick, std::optional<Range> physical_filter) const
+absl::StatusOr<RamJournal::SealedRead> RamJournal::sealedRead(StoryId id,
+                                                              Range range,
+                                                              std::optional<Hlc> tick,
+                                                              std::optional<Range> physical_filter,
+                                                              const std::function<bool(const Event&)>* keep) const
 {
     if(range.start > range.end)
         return absl::InvalidArgumentError("range start is after end");
@@ -890,7 +900,7 @@ RamJournal::sealedRead(StoryId id, Range range, std::optional<Hlc> tick, std::op
         return status;
     std::vector<std::shared_ptr<Writer>> live;
     SealedRead out;
-    out.view.sealed = seal(id, live, &range, &out.events, tick, physical_filter);
+    out.view.sealed = seal(id, live, &range, &out.events, tick, physical_filter, keep);
     for(const auto& writer: live)
         out.view.frontiers.push_back(Frontier{writer->writer_id, writer->incarnation, out.view.sealed});
     out.evicted_below = evictionFloor(id);
