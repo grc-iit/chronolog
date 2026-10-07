@@ -337,11 +337,11 @@ def main():
     for role in ('rpc', 'visor', 'keeper', 'grapher', 'player'):
         parser.add_argument('--' + role, required=True)
     parser.add_argument('--config', help='tools/lab-cluster lab file; runs the scenario across its hosts')
-    parser.add_argument('--homelab', action='store_true', help='--config tools/lab-cluster/homelab.json')
+    parser.add_argument('--lab', action='store_true', help='--config tools/lab-cluster/lab.json (a copy of lab.example.json naming your hosts)')
     parser.add_argument('--scenario', choices=('failover', 'physical-claim', 'prefix-claim'), default='failover')
     args = parser.parse_args()
-    if args.homelab:
-        args.config = args.config or str(ROOT / 'tools/lab-cluster/homelab.json')
+    if args.lab:
+        args.config = args.config or str(ROOT / 'tools/lab-cluster/lab.json')
     if args.config and args.scenario != 'failover':
         parser.error('--config runs the failover scenario only')
     def interrupted(signum, frame):

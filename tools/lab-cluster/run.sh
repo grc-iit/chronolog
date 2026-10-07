@@ -7,7 +7,7 @@ echo "Waiting for dragon stack lock"
 flock 8
 exec systemd-run --user --scope --quiet -p MemoryMax=4G -p MemorySwapMax=0 \
     timeout -k 90 820 bash -c '
-        python3 tools/lab-cluster/cluster.py --config tools/lab-cluster/homelab.json "$@" & driver=$!
+        python3 tools/lab-cluster/cluster.py --config "${CHRONOLOG_LAB:-tools/lab-cluster/lab.json}" "$@" & driver=$!
         trap '\''kill -TERM "$driver" 2>/dev/null || true; wait "$driver" || true'\'' EXIT
         trap '\''exit 130'\'' INT TERM
         wait "$driver"

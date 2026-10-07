@@ -6,7 +6,7 @@ Usage:
   cluster.py --config LAB.json --preflight-only  take the locks, check archive mounts and service-port reachability
   cluster.py --config LAB.json                   full run; logs and results under build/cluster/<tag>
 
-LAB.json (lab.example.json is a generic three-node lab, homelab.json the sprint homelab) names every host
+LAB.json (lab.example.json is a generic three-node lab; copy it to lab.json, which git ignores, for your hosts) names every host
 (name, address, optional ssh target, optional NFS mount and archive path), the driver host whose commands run
 locally, the two Grapher hosts (grapher-a, grapher-b), the remote work directory, the service ports and the
 optional per-host lock commands. Each host runs a Visor replica, a Keeper and a Player; the first host's Player

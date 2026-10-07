@@ -161,3 +161,6 @@ node_modules/
 htmlcov/
 # Reference papers and proposals (local only)
 _references/
+
+# Site-specific lab-cluster hosts; copy tools/lab-cluster/lab.example.json
+tools/lab-cluster/lab.json

@@ -13,27 +13,6 @@ import cluster
 from topology import Lab
 
 
-def homelab_keeps_the_sprint_placement():
-    lab = Lab(CLUSTER / 'homelab.json')
-    nfs, local = '/mnt/nfs/chronolog-sprint/archive', '/data/chronolog-sprint/archive'
-    assert [(r['node'], r['ip'], r['replica'], r['archive'], r['grapher']) for r in lab.table] == [
-        ('dragon', '100.101.232.95', 1, nfs, 'grapher-a'), ('blade', '100.124.181.9', 2, nfs, 'grapher-b'),
-        ('mini', '100.74.131.112', 3, local, None)]
-    assert lab.ports == {'dragon': [50051, 50061, 50071, 50052, 50062, 50054, 50053],
-                         'blade': [50051, 50061, 50071, 50052, 50062, 50054, 50053],
-                         'mini': [50051, 50061, 50071, 50052, 50062, 50054]}
-    assert lab.driver == 'dragon' and lab.archive == nfs and lab.driver_env == {'RBUILD_HELD': 'build'}
-    assert [lock['host'] for lock in lab.locks] == ['mini', 'blade']
-    configs = lab.configs({node: '/w' for node in lab.nodes}, 't')
-    assert configs['visor-1'][1]['graphers'] == ['100.101.232.95:50053', '100.124.181.9:50053']
-    assert configs['visor-2'][1]['player'] == '100.101.232.95:50054'
-    assert configs['grapher-b'] == ('blade', configs['grapher-b'][1]) and configs['grapher-b'][1]['archive_root'] == nfs
-    assert configs['player-3'][1]['archive_root'] == local and configs['keeper-3'][1]['wal_dir'] == '/w/run/t/keeper-3/wal'
-    assert lab.plan()['probe'] == 'player-2'
-    assert lab.archive_ready('mini') == 'test -d /data/chronolog-sprint'
-    assert lab.archive_ready('blade') == 'test -d /mnt/nfs && mountpoint -q /mnt/nfs'
-
-
 def example_lab_resolves_hosts_from_the_file():
     lab = Lab(CLUSTER / 'lab.example.json')
     assert lab.locks == [] and lab.driver_env == {}
@@ -82,7 +61,9 @@ def invalid_labs_are_refused():
 def code_names_no_lab_host():
     sources = [CLUSTER / name for name in ('cluster.py', 'scenario.py', 'topology.py', 'agent.py')]
     sources.append(ROOT / 'tests/integration/dynamic/run.py')
-    for config in ('homelab.json', 'lab.example.json'):
+    for config in ('lab.json', 'lab.example.json'):
+        if not (CLUSTER / config).exists():
+            continue
         lab = Lab(CLUSTER / config)
         for word in [*lab.nodes, *lab.nodes.values(), lab.archive, lab.workdir.lstrip('~/')]:
             pattern = re.compile(r'(?<![\w.-])' + re.escape(word) + r'(?![\w-])')
