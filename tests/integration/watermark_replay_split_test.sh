@@ -132,7 +132,7 @@ trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
 kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log "$MONITOR_DIR"/chrono-player-*.log
-rm -f "$OUTPUT_DIR"/TailChronicle.*.h5
+rm -rf "$OUTPUT_DIR"/TailChronicle "$OUTPUT_DIR"/TailChronicle.*.h5
 
 say "deploying 2 keepers / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k 2 -r 1 > /dev/null 2>&1 || { say "deploy failed"; exit 2; }
@@ -191,7 +191,7 @@ fi
 # The premise: nothing of this story is on disk yet, so whatever the replay
 # returns came from the keepers. Checked rather than assumed -- when it does not
 # hold, the failure is that probe 1 ran too late, not that the hot path is broken.
-if [ "$(find "$OUTPUT_DIR" -name 'TailChronicle.*.h5' 2>/dev/null | wc -l)" -ne 0 ]; then
+if [ "$(find "$OUTPUT_DIR"/TailChronicle -name '*.h5' 2>/dev/null | wc -l)" -ne 0 ]; then
     bad "probe 1 (hot): the grapher already archived the story; probe 1 ran too late to exercise the hot path"
 fi
 u1=$(replay_unique "$RUN_DIR/replay_probe1.out")
@@ -222,7 +222,7 @@ if [ "$u2" -eq 30 ]; then
 else
     bad "probe 2 (archived): expected 30 unique events, got $u2"
 fi
-h5_count=$(ls "$OUTPUT_DIR"/TailChronicle.TailStory.*.h5 2>/dev/null | wc -l)
+h5_count=$(ls "$OUTPUT_DIR"/TailChronicle/TailStory/*.h5 2>/dev/null | wc -l)
 if [ "$h5_count" -gt 0 ]; then
     ok "probe 2 (archived): $h5_count HDF5 file(s) persisted for the story"
 else

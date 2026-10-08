@@ -1,10 +1,10 @@
 // A grapher writes each window of a story to one file. When the same window is
-// written again, the new file gets a number: .vlen.1.h5, .vlen.2.h5. That happens when
-// keeper chunks for a window arrive after the grapher has already merged and
-// written it: a keeper that was late, a re-sent chunk, or a story whose
-// pipeline retired before the last chunks arrived. Once the keepers free those
-// chunks, the numbered file is the only copy of their events, so a replay has
-// to read every write of a window.
+// written again, the new write gets a file of its own (every file name is used
+// once, see ArchiveLayout.h). That happens when keeper chunks for a window
+// arrive after the grapher has already merged and written it: a keeper that
+// was late, a re-sent chunk, or a story whose pipeline retired before the last
+// chunks arrived. Once the keepers free those chunks, that later file is the
+// only copy of their events, so a replay has to read every write of a window.
 
 #include <gtest/gtest.h>
 
@@ -61,7 +61,7 @@ protected:
     void TearDown() override { fs::remove_all(archiveDir); }
 
     // Publishes the window with events at the given times, as the grapher's
-    // HDF5 extractor does; a second write of the window gets a numbered file.
+    // HDF5 extractor does; a second write of the window gets a file of its own.
     void writeWindow(std::vector<uint64_t> const& event_times,
                      std::string const& chronicle = "chron",
                      std::string const& story = "story")
@@ -146,7 +146,7 @@ TEST_F(ArchiveNumberedFiles, AStoryWithDotsInItsNamesIsReplayedWithEveryWrite)
     std::string const chronicle = "node01.cluster.local";
     std::string const story = "cpu.usage";
     writeWindow({kWindowStart + 1, kWindowStart + 2}, chronicle, story);
-    writeWindow({kWindowStart + 3}, chronicle, story); // a later write: .vlen.1.h5
+    writeWindow({kWindowStart + 3}, chronicle, story); // a later write: a second file
 
     EXPECT_EQ(replayedTimes(kWindowStart, kWindowEnd, nullptr, chronicle, story),
               (std::vector<uint64_t>{kWindowStart + 1, kWindowStart + 2, kWindowStart + 3}));

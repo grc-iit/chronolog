@@ -1,6 +1,7 @@
 #ifndef CHRONOLOG_HDF5_FILE_CHUNK_EXTRACTOR_H
 #define CHRONOLOG_HDF5_FILE_CHUNK_EXTRACTOR_H
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -28,16 +29,16 @@ public:
 
     bool is_active() const { return (std::filesystem::exists(rootDirectory)); }
 
-    // Delete every persisted HDF5 file belonging to a story
-    // (<chronicle>.<story>.*.vlen.h5 in rootDirectory). Returns the count of
-    // deleted files in deleted_count when non-null; returns CL_SUCCESS even if
-    // no files matched (a destroy on a never-recorded story is not an error).
+    // Delete the persisted HDF5 files of a story, in its
+    // directory (<archive>/<chronicle>/<story>, see ArchiveLayout.h; the
+    // directory stays). Returns the count of deleted files in deleted_count
+    // when non-null; returns CL_SUCCESS even if there were none (a destroy on a
+    // never-recorded story is not an error).
     int delete_story_files(std::string const& chronicle_name,
                            std::string const& story_name,
                            size_t* deleted_count = nullptr);
 
-    // Delete every persisted HDF5 file belonging to a chronicle
-    // (<chronicle>.*.vlen.h5 in rootDirectory).
+    // Delete the persisted HDF5 files of a chronicle, as for a story.
     int delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count = nullptr);
 
     // Report each successfully written merged window to the registry so the
@@ -53,11 +54,17 @@ public:
     int openArchiveManifest(std::string const& writer_id);
 
 private:
+    // deletes the archive files in one story directory
+    int deleteStoryDirectory(std::filesystem::path const& dir, std::string const& what, size_t& count);
+
     // appends the deletion of a story, or of the whole chronicle when
     // story_name is null, to the manifest if one is open
     int recordDeletion(std::string const& chronicle_name, std::string const* story_name);
 
     std::string rootDirectory;
+    // the writer part of the names of the files this extractor publishes (see
+    // ArchiveLayout.h); its recording group once the manifest is open
+    std::string fileWriterTag;
     StoryWatermarkRegistry* watermarkRegistry = nullptr;
     // shared: the extractor is copied into the extraction chain's variant
     std::shared_ptr<ArchiveManifestWriter> archiveManifest;

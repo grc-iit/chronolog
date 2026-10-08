@@ -137,6 +137,12 @@ public:
 
     void setWatermarkExempt(bool exempt) { watermarkExempt = exempt; }
 
+    // The incarnation of the pipeline that made this chunk (see
+    // StoryPipeline::currentIncarnation); 0 when no pipeline did.
+    uint64_t getIncarnation() const { return incarnation; }
+
+    void setIncarnation(uint64_t pipeline_incarnation) { incarnation = pipeline_incarnation; }
+
     // Keeper side: the receipt the grapher returned for the last delivery of
     // this chunk (see ChunkReceipt.h); 0 if no grapher acknowledged it.
     // Transient, not serialized.
@@ -167,6 +173,7 @@ private:
     uint64_t revisionTime;
     std::map<EventSequence, LogEvent> logEvents;
     bool watermarkExempt = false;
+    uint64_t incarnation = 0;
     uint64_t grapherInstance = 0;
     uint64_t grapherReceipt = 0;
     std::set<uint64_t> carriedReceiptSet;

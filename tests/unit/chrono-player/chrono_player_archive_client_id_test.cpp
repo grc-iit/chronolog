@@ -15,6 +15,7 @@
 #include <H5Cpp.h>
 #include <thallium.hpp>
 
+#include <ArchiveLayout.h>
 #include <ArchiveManifest.h>
 #include <chrono_monitor.h>
 #include <HDF5ArchiveReadingAgent.h>
@@ -113,8 +114,9 @@ TEST_F(ArchiveClientId, FileWithThe32BitLayoutStillReads)
     type.insertMember("clientId", HOFFSET(LegacyEventRecord, clientId), H5::PredType::NATIVE_UINT32);
     type.insertMember("eventIndex", HOFFSET(LegacyEventRecord, eventIndex), H5::PredType::NATIVE_UINT32);
     type.insertMember("logRecord", HOFFSET(LegacyEventRecord, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
-    // the file, recorded in the manifest like any other
-    fs::path const file_path = archiveDir / "chron.story.10.vlen.h5";
+    // the file in its story's directory, recorded in the manifest like any other
+    fs::path const file_path = chl::storyArchiveDirectory(archiveDir, "chron", "story") / "10.1.1.0.vlen.h5";
+    fs::create_directories(file_path.parent_path());
     {
         H5::H5File file(file_path.string(), H5F_ACC_TRUNC);
         H5::Group group = file.createGroup("story_chunks");

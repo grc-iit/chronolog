@@ -28,6 +28,7 @@
 
 #include <H5Cpp.h>
 
+#include <ArchiveLayout.h>
 #include <chrono_monitor.h>
 #include <HDF5FileAccess.h>
 #include <StoryChunk.h>
@@ -65,9 +66,13 @@ protected:
 
     void TearDown() override { fs::remove_all(dir); }
 
-    static chl::StoryChunk window(uint64_t start_secs, int events, std::size_t payload)
+    static chl::StoryChunk window(uint64_t start_secs,
+                                  int events,
+                                  std::size_t payload,
+                                  std::string const& chronicle = "C",
+                                  std::string const& story = "S")
     {
-        chl::StoryChunk chunk("C", "S", kStory, start_secs * NS, (start_secs + 30) * NS);
+        chl::StoryChunk chunk(chronicle, story, kStory, start_secs * NS, (start_secs + 30) * NS);
         for(int i = 0; i < events; ++i)
         {
             chunk.insertEvent(chl::LogEvent(kStory, start_secs * NS + 1 + i, 1, i, std::string(payload, 'x')));
@@ -75,12 +80,33 @@ protected:
         return chunk;
     }
 
+    // every file under the archive directory, by its path relative to it
     std::vector<std::string> fileNames() const
     {
         std::vector<std::string> names;
-        for(auto const& entry: fs::directory_iterator(dir)) { names.push_back(entry.path().filename().string()); }
+        for(auto const& entry: fs::recursive_directory_iterator(dir))
+        {
+            if(entry.is_regular_file())
+            {
+                names.push_back(entry.path().lexically_relative(dir).string());
+            }
+        }
         std::sort(names.begin(), names.end());
         return names;
+    }
+
+    // the files as "<dir>/<start second>": a name's other fields only make it
+    // unique (see ArchiveLayout.h)
+    std::vector<std::string> windows() const
+    {
+        std::vector<std::string> out;
+        for(std::string const& name: fileNames())
+        {
+            fs::path const path(name);
+            std::string const file = path.filename().string();
+            out.push_back((path.parent_path() / file.substr(0, file.find('.'))).string());
+        }
+        return out;
     }
 
     // every write's events are on disk: one file per write, each holding the
@@ -114,7 +140,9 @@ TEST_F(ChunkWriter, ASuccessfulWriteLeavesOnlyTheWindowFile)
 
     EXPECT_GT(writer.writeStoryChunk(chunk), 0u);
 
-    EXPECT_EQ(fileNames(), (std::vector<std::string>{"C.S.60.vlen.h5"}));
+    EXPECT_EQ(windows(), (std::vector<std::string>{"C/S/60"}));
+    ASSERT_EQ(fileNames().size(), 1u);
+    EXPECT_TRUE(chl::isWindowFileName(fs::path(fileNames()[0]).filename().string()));
 }
 
 // A write that fails midway must not leave the window's name pointing at a file
@@ -235,13 +263,129 @@ TEST_F(ChunkWriter, AWrittenWindowCanBeOpenedForReadingWhileAnotherHandleIsOpen)
 {
     chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
     chl::StoryChunk chunk = window(60, 4, 16);
-    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+    std::string path;
+    ASSERT_GT(writer.writeStoryChunk(chunk, &path), 0u);
 
-    std::string const path = (dir / "C.S.60.vlen.h5").string();
     H5::H5File first(path, H5F_ACC_RDONLY, H5::FileCreatPropList::DEFAULT, chl::archiveFileAccess());
     EXPECT_NO_THROW({
         H5::H5File second(path, H5F_ACC_RDONLY, H5::FileCreatPropList::DEFAULT, chl::archiveFileAccess());
         second.close();
     });
     first.close();
+}
+
+// ---- where a window goes -----------------------------------------------------
+//
+// A window's file is <archive>/<chronicle>/<story>/<start second>.<writer
+// tag>.<sequence>.vlen.h5. The directories keep the chronicle and story apart,
+// so names may hold anything: only what a directory name cannot be is encoded.
+
+TEST(ArchiveLayout, NamesAreKeptAsTypedExceptWhatADirectoryNameCannotHold)
+{
+    EXPECT_EQ(chl::encodeArchiveName("node01.cluster.local"), "node01.cluster.local");
+    EXPECT_EQ(chl::encodeArchiveName("cpu usage-1_ü"), "cpu usage-1_ü");
+    EXPECT_EQ(chl::encodeArchiveName("a/b"), "a%2Fb");
+    EXPECT_EQ(chl::encodeArchiveName("100%"), "100%25");
+    EXPECT_EQ(chl::encodeArchiveName("%2F"), "%252F");
+    EXPECT_EQ(chl::encodeArchiveName("."), "%2E");
+    EXPECT_EQ(chl::encodeArchiveName(".."), "%2E%2E");
+    EXPECT_EQ(chl::encodeArchiveName("..."), "...");
+    EXPECT_EQ(chl::encodeArchiveName(".hidden"), ".hidden");
+    EXPECT_EQ(chl::encodeArchiveName(""), "%");
+    // a NUL would cut the path short, into the directory of story "a"
+    EXPECT_EQ(chl::encodeArchiveName(std::string("a\0b", 3)), "a%00b");
+}
+
+TEST(ArchiveLayout, NoEncodedNameIsTheManifestDirectory)
+{
+    EXPECT_NE(chl::encodeArchiveName("%manifest"), "%manifest");
+}
+
+TEST(ArchiveLayout, AStorysDirectorySitsInItsChroniclesDirectory)
+{
+    EXPECT_EQ(chl::storyArchiveDirectory("/arch", "a.b", "c/d"), fs::path("/arch/a.b/c%2Fd"));
+    EXPECT_EQ(chl::chronicleArchiveDirectory("/arch", ".."), fs::path("/arch/%2E%2E"));
+}
+
+TEST_F(ChunkWriter, NamesThatJoinAlikeGetFilesOfTheirOwn)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk first = window(60, 1, 16, "a.b", "c");
+    chl::StoryChunk second = window(60, 2, 16, "a", "b.c");
+    ASSERT_GT(writer.writeStoryChunk(first), 0u);
+    ASSERT_GT(writer.writeStoryChunk(second), 0u);
+
+    EXPECT_EQ(windows(), (std::vector<std::string>{"a.b/c/60", "a/b.c/60"}));
+}
+
+TEST_F(ChunkWriter, NamesWithSlashesPercentSignsAndDotsAreWritten)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    std::string published;
+    chl::StoryChunk slash = window(60, 1, 16, "x/y", "..");
+    chl::StoryChunk percent = window(60, 1, 16, "100%", ".");
+    ASSERT_GT(writer.writeStoryChunk(slash, &published), 0u);
+    EXPECT_EQ(fs::path(published).parent_path(), dir / "x%2Fy" / "%2E%2E");
+    ASSERT_GT(writer.writeStoryChunk(percent), 0u);
+
+    EXPECT_EQ(windows(), (std::vector<std::string>{"100%25/%2E/60", "x%2Fy/%2E%2E/60"}));
+}
+
+// A name is never used twice, even by a second write of the same window or by
+// another writer of the same story: on NFS a name looked up while it was
+// missing can stay "not found" after it comes back.
+TEST_F(ChunkWriter, EveryWriteGetsANameOfItsOwn)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data", chl::StoryChunkWriter::writerTag("1"));
+    chl::StoryChunkWriter other(dir.string(), "story_chunks", "data", chl::StoryChunkWriter::writerTag("2"));
+    chl::StoryChunk first = window(60, 1, 16);
+    chl::StoryChunk second = window(60, 2, 16);
+    chl::StoryChunk third = window(60, 3, 16);
+    std::string a, b, c;
+    ASSERT_GT(writer.writeStoryChunk(first, &a), 0u);
+    ASSERT_GT(writer.writeStoryChunk(second, &b), 0u);
+    ASSERT_GT(other.writeStoryChunk(third, &c), 0u);
+
+    EXPECT_EQ(windows(), (std::vector<std::string>{"C/S/60", "C/S/60", "C/S/60"}));
+    EXPECT_NE(a, b);
+    EXPECT_NE(a, c);
+    EXPECT_NE(b, c);
+    expectOneFilePerWrite(3);
+}
+
+TEST(ArchiveLayout, AWindowFileNameCarriesItsWriterAndSequence)
+{
+    std::string const tag = chl::StoryChunkWriter::writerTag("7");
+    EXPECT_EQ(tag.rfind("7.", 0), 0u);
+    EXPECT_EQ(tag, chl::StoryChunkWriter::writerTag("7")); // the same for the whole process
+    std::string const name = chl::windowFileName(60ULL * 1000000000ULL, tag, 5, 42);
+    EXPECT_EQ(name, "60." + tag + ".5.42.vlen.h5");
+    chl::WindowFileName parsed;
+    ASSERT_TRUE(chl::parseWindowFileName(name, parsed));
+    EXPECT_EQ(parsed.start_second, 60u);
+    EXPECT_EQ(parsed.recording_group, 7u);
+    EXPECT_EQ(parsed.incarnation, 5u);
+    EXPECT_EQ(parsed.sequence, 42u);
+    ASSERT_TRUE(chl::parseWindowFileName(name + ".partial.host.1.0", parsed)); // a partial file of it
+    EXPECT_EQ(parsed.incarnation, 5u);
+    EXPECT_FALSE(chl::parseWindowFileName("60.vlen.h5", parsed));        // named before writer tags
+    EXPECT_FALSE(chl::parseWindowFileName("60.7.1.42.vlen.h5", parsed)); // before incarnations
+    EXPECT_TRUE(chl::isWindowFileName(name));
+    EXPECT_TRUE(chl::isWindowFileName(name + ".partial.host.1.0"));
+    EXPECT_TRUE(chl::isWindowFileName("60.vlen.h5")); // written before writer tags
+    EXPECT_TRUE(chl::isWindowFileName("60.vlen.1.h5"));
+    EXPECT_FALSE(chl::isWindowFileName("notes.txt"));
+    EXPECT_FALSE(chl::isWindowFileName("c.s.60.vlen.h5")); // a flat name is not in a story directory
+    EXPECT_FALSE(chl::isWindowFileName("60..1.vlen.h5"));
+}
+
+// A missing archive directory is a misconfiguration or an archive file system
+// that is not mounted; creating it would put the archive on the local disk.
+TEST_F(ChunkWriter, AMissingArchiveDirectoryIsNotCreated)
+{
+    chl::StoryChunkWriter writer((dir / "unmounted").string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 1, 16);
+
+    EXPECT_EQ(writer.writeStoryChunk(chunk), 0u);
+    EXPECT_FALSE(fs::exists(dir / "unmounted"));
 }

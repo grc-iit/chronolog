@@ -1,9 +1,10 @@
 #include <filesystem>
 #include <json-c/json.h>
-#include <regex>
 #include <string>
+#include <vector>
 #include <thallium.hpp>
 
+#include <ArchiveLayout.h>
 #include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
@@ -14,6 +15,7 @@
 namespace tl = thallium;
 
 namespace chl = chronolog;
+
 
 chronolog::HDF5FileChunkExtractor::HDF5FileChunkExtractor(const std::string& hdf5_files_root_dir)
     : rootDirectory(hdf5_files_root_dir)
@@ -26,6 +28,7 @@ chronolog::HDF5FileChunkExtractor::~HDF5FileChunkExtractor()
     LOG_TRACE("[HDF5FileChunkExtractor] Destructor called. Cleaning up...");
 }
 //////
+
 
 int chronolog::HDF5FileChunkExtractor::reset(std::string const& new_archive_dir)
 {
@@ -89,6 +92,7 @@ int chronolog::HDF5FileChunkExtractor::openArchiveManifest(std::string const& wr
     }
     LOG_INFO("[HDF5FileChunkExtractor] Recording published files in {}", manifest->logPath());
     archiveManifest = std::move(manifest);
+    fileWriterTag = StoryChunkWriter::writerTag(writer_id);
     return chl::CL_SUCCESS;
 }
 
@@ -112,100 +116,102 @@ int chronolog::HDF5FileChunkExtractor::recordDeletion(std::string const& chronic
 //////
 
 
-namespace
+// Deletes the archive's files in one story directory (isWindowFileName),
+// adding the window files to count. Nothing else is touched: the
+// directory is named after a client's names, and the archive root may be a
+// directory other programs use (the template's is /tmp). The directory itself
+// stays, so that no path a player has looked up comes back after it was
+// removed (see ArchiveLayout.h). Every grapher sharing the archive runs the
+// same destroy, so a file or directory already gone is not an error.
+int chronolog::HDF5FileChunkExtractor::deleteStoryDirectory(std::filesystem::path const& dir,
+                                                            std::string const& what,
+                                                            size_t& count)
 {
-// Escape characters that have special meaning in std::regex so chronicle/story
-// names containing them (e.g. dots) are matched literally rather than as
-// metacharacters.
-std::string regex_escape(std::string const& in)
-{
-    return std::regex_replace(in, std::regex(R"([.^$|()\\*+?{}\[\]])"), R"(\$&)");
-}
-
-int delete_matching_files(std::string const& root_directory,
-                          std::regex const& filename_pattern,
-                          std::string const& what,
-                          size_t* deleted_count)
-{
-    size_t local_count = 0;
-    if(!std::filesystem::exists(root_directory))
+    std::error_code ec;
+    std::vector<std::filesystem::path> files;
+    for(std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
     {
-        LOG_DEBUG("[HDF5FileChunkExtractor] Archive directory {} does not exist; nothing to delete for {}",
-                  root_directory,
-                  what);
-        if(deleted_count != nullptr)
+        std::error_code type_ec;
+        if(it->is_regular_file(type_ec) && chl::isWindowFileName(it->path().filename().string()))
         {
-            *deleted_count = 0;
+            files.push_back(it->path());
         }
+    }
+    if(ec == std::errc::no_such_file_or_directory)
+    {
         return chl::CL_SUCCESS;
     }
-
-    // std::filesystem::directory_iterator's constructor reports an open
-    // failure (e.g. EACCES on the archive directory) by setting `ec` and
-    // returning an end-iterator. Previously we only checked `ec` inside the
-    // loop body, so a failed open looked like an empty directory and
-    // delete_*_files returned CL_SUCCESS with zero deletions -- the metadata
-    // would be gone but the files would still be on disk. Check `ec`
-    // immediately after construction.
-    std::error_code ec;
-    std::filesystem::directory_iterator it(root_directory, ec);
     if(ec)
     {
-        LOG_ERROR("[HDF5FileChunkExtractor] Failed to open directory {}: {}", root_directory, ec.message());
+        LOG_ERROR("[HDF5FileChunkExtractor] Cannot list {} ({}): {}", dir.string(), what, ec.message());
         return chl::CL_ERR_UNKNOWN;
     }
-    for(auto const& entry: it)
+    for(auto const& file: files)
     {
-        if(!entry.is_regular_file())
-        {
-            continue;
-        }
-        std::string const filename = entry.path().filename().string();
-        if(!std::regex_match(filename, filename_pattern))
-        {
-            continue;
-        }
         std::error_code rm_ec;
-        std::filesystem::remove(entry.path(), rm_ec);
-        if(rm_ec)
+        bool const removed = std::filesystem::remove(file, rm_ec);
+        if(rm_ec && rm_ec != std::errc::no_such_file_or_directory)
         {
-            LOG_ERROR("[HDF5FileChunkExtractor] Failed to delete {}: {}", entry.path().string(), rm_ec.message());
+            LOG_ERROR("[HDF5FileChunkExtractor] Failed to delete {} ({}): {}", file.string(), what, rm_ec.message());
             return chl::CL_ERR_UNKNOWN;
         }
-        LOG_INFO("[HDF5FileChunkExtractor] Deleted {} ({})", entry.path().string(), what);
-        ++local_count;
+        if(removed && !chl::isPartialFileName(file.filename().string()))
+        {
+            ++count;
+        }
     }
-    if(deleted_count != nullptr)
-    {
-        *deleted_count = local_count;
-    }
+    LOG_INFO("[HDF5FileChunkExtractor] Deleted the archive files in {} ({})", dir.string(), what);
     return chl::CL_SUCCESS;
 }
-} // namespace
 
 int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chronicle_name,
                                                           std::string const& story_name,
                                                           size_t* deleted_count)
 {
-    // Matches the filename layout produced by StoryChunkWriter::writeStoryChunk:
-    //   <chronicle>.<story>.<startSec>.vlen.h5, and <...>.vlen.<n>.h5 for a
-    //   later write of the same window.
-    std::string const pattern_str =
-            regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
-    std::regex const filename_pattern(pattern_str);
     std::string const what = "story " + chronicle_name + "/" + story_name;
-    int const status = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    size_t count = 0;
+    int const status =
+            deleteStoryDirectory(storyArchiveDirectory(rootDirectory, chronicle_name, story_name), what, count);
+    if(deleted_count != nullptr)
+    {
+        *deleted_count = count;
+    }
     return (status == chl::CL_SUCCESS) ? recordDeletion(chronicle_name, &story_name) : status;
 }
 
 int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count)
 {
-    // Matches any story under the chronicle:
-    //   <chronicle>.<anyStory>.<startSec>.vlen(.<n>)?.h5
-    std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
-    std::regex const filename_pattern(pattern_str);
     std::string const what = "chronicle " + chronicle_name;
-    int const status = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    std::filesystem::path const dir = chronicleArchiveDirectory(rootDirectory, chronicle_name);
+    size_t count = 0;
+    std::error_code ec;
+    std::vector<std::filesystem::path> story_dirs;
+    for(std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::error_code type_ec;
+        if(it->is_directory(type_ec))
+        {
+            story_dirs.push_back(it->path());
+        }
+    }
+    int status = chl::CL_SUCCESS;
+    if(ec && ec != std::errc::no_such_file_or_directory)
+    {
+        LOG_ERROR("[HDF5FileChunkExtractor] Cannot list {} ({}): {}", dir.string(), what, ec.message());
+        status = chl::CL_ERR_UNKNOWN;
+    }
+    for(auto const& story_dir: story_dirs)
+    {
+        if(status != chl::CL_SUCCESS)
+        {
+            break;
+        }
+        status = deleteStoryDirectory(story_dir, what, count);
+    }
+    if(deleted_count != nullptr)
+    {
+        *deleted_count = count;
+    }
     return (status == chl::CL_SUCCESS) ? recordDeletion(chronicle_name, nullptr) : status;
 }
 
@@ -244,7 +250,10 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
         return chl::CL_SUCCESS;
     }
 
-    StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
+    StoryChunkWriter chunkWriter(rootDirectory,
+                                 "story_chunks",
+                                 "data",
+                                 fileWriterTag.empty() ? StoryChunkWriter::writerTag("0") : fileWriterTag);
     std::string published_file;
     hsize_t size = chunkWriter.writeStoryChunk(*story_chunk, &published_file);
     if(size != 0 && archiveManifest != nullptr)

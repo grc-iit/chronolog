@@ -12,6 +12,7 @@
 
 #include <csignal>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <typeinfo>
@@ -66,7 +67,7 @@ protected:
     std::size_t archivedFileCount() const
     {
         std::size_t count = 0;
-        for(auto const& entry: fs::directory_iterator(archiveDir))
+        for(auto const& entry: fs::recursive_directory_iterator(archiveDir))
         {
             if(entry.is_regular_file() && entry.path().extension() == ".h5")
             {
@@ -286,7 +287,7 @@ namespace
 // is no file or it cannot be read in full.
 long readableEventCount(fs::path const& dir)
 {
-    for(auto const& entry: fs::directory_iterator(dir))
+    for(auto const& entry: fs::recursive_directory_iterator(dir))
     {
         if(entry.path().extension() != ".h5")
         {
@@ -457,7 +458,7 @@ TEST_F(HDF5FileChunkExtractorWatermark, OpeningTheManifestCreatesThisGraphersLog
 TEST_F(HDF5FileChunkExtractorWatermark, WrittenWindowIsRecordedInTheManifest)
 {
     ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
-    chl::StoryChunk window("C.x", "S.y", kStory, T0, T1);
+    chl::StoryChunk window("C.x", "S/y", kStory, T0, T1);
     addEvent(window, T0 + 1, 0);
     addEvent(window, T0 + 2, 1);
 
@@ -466,7 +467,7 @@ TEST_F(HDF5FileChunkExtractorWatermark, WrittenWindowIsRecordedInTheManifest)
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::PUBLISH);
     EXPECT_EQ(records[0].chronicle, "C.x");
-    EXPECT_EQ(records[0].story, "S.y");
+    EXPECT_EQ(records[0].story, "S/y");
     EXPECT_EQ(records[0].start, T0);
     EXPECT_EQ(records[0].end, T1);
     EXPECT_EQ(records[0].events, 2u);
@@ -548,4 +549,47 @@ TEST_F(HDF5FileChunkExtractorWatermark, DeletingAChronicleIsRecorded)
     EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::DELETE);
     EXPECT_TRUE(records[0].whole_chronicle);
     EXPECT_EQ(records[0].chronicle, "C");
+}
+
+// Destroy deletes by name, and the names are a client's: a chronicle named like
+// a directory that was already in the archive root (the template's root is
+// /tmp) must not take that directory's contents with it.
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyingAChronicleDeletesOnlyArchiveFiles)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    fs::create_directories(archiveDir / "C" / "unrelated" / "nested");
+    std::ofstream(archiveDir / "C" / "notes.txt") << "x";
+    std::ofstream(archiveDir / "C" / "unrelated" / "nested" / "1.vlen.h5") << "x";
+    std::ofstream(archiveDir / "C" / "S" / "notes.txt") << "x";
+
+    size_t deleted = 0;
+    ASSERT_EQ(extractor.delete_chronicle_files("C", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "notes.txt"));
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "unrelated" / "nested" / "1.vlen.h5"));
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "S" / "notes.txt"));
+    EXPECT_EQ(archivedFileCount(), 1u); // only the nested stranger
+}
+
+// A destroy deletes a story's files but keeps its directory and the
+// chronicle's: a directory that came back after it was removed could stay
+// "not found" for a player on NFS that looked it up while it was missing.
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyingAStoryKeepsItsDirectories)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    std::ofstream(archiveDir / "C" / "S" / "1.vlen.h5.partial.host.42.0") << "x";
+
+    size_t deleted = 0;
+    ASSERT_EQ(extractor.delete_story_files("C", "S", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_EQ(archivedFileCount(), 0u);
+    EXPECT_TRUE(fs::is_empty(archiveDir / "C" / "S"));
+    EXPECT_EQ(extractor.delete_chronicle_files("C"), chl::CL_SUCCESS);
+    EXPECT_TRUE(fs::is_directory(archiveDir / "C" / "S"));
 }

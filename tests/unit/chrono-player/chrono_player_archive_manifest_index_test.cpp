@@ -362,8 +362,8 @@ TEST_F(ArchiveManifestIndex, AnotherGraphersDeletionLeavesThisGraphersFilesToIts
     EXPECT_TRUE(replayedTimes(archive, 0, 200 * NS).empty());
 }
 
-// A story destroyed and created again on another grapher can reuse an old
-// file name, so one file can be recorded by two logs. A deletion takes only its own log's claim, so
+// File names are never reused, but one file can still be recorded by two logs
+// (a rebuilt manifest, for one). A deletion takes only its own log's claim, so
 // the file stays until every log that recorded it has let go of it.
 TEST_F(ArchiveManifestIndex, AFileTwoLogsRecordedStaysUntilBothLetGo)
 {

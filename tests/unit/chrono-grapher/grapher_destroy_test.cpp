@@ -58,9 +58,10 @@ chl::StoryChunk* windowOfStory(uint64_t start_secs)
 std::size_t filesOfStory(fs::path const& dir)
 {
     std::size_t count = 0;
-    for(auto const& entry: fs::directory_iterator(dir))
+    std::error_code ec;
+    for(fs::directory_iterator it(dir / "C" / "S", ec), end; !ec && it != end; it.increment(ec))
     {
-        if(entry.path().filename().string().rfind("C.S.", 0) == 0)
+        if(it->path().extension() == ".h5")
         {
             ++count;
         }

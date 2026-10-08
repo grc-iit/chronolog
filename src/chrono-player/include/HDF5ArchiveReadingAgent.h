@@ -27,7 +27,8 @@ namespace chronolog
 // publishes and for each story or chronicle whose files it deletes. A replay
 // first reads what the logs gained since the last replay, so a file is found as
 // soon as its record is appended, without listing any directory. Archives
-// written before 3.3.0, which have no manifest, are not read.
+// written before 3.3.0, which kept files flat in the archive directory with no
+// manifest, are not read.
 class HDF5ArchiveReadingAgent
 {
 public:
@@ -59,9 +60,9 @@ public:
 
 private:
     // One file the manifest recorded: where it is, and the logs that recorded
-    // it (ids into manifest_tails_). A story destroyed and created again can
-    // have the same file name recorded by another grapher, so one path can
-    // come from several logs, and each log's deletion takes only its own claim.
+    // it (ids into manifest_tails_). Graphers never publish the same name (see
+    // ArchiveLayout.h), so normally one log; a log copied or written by hand
+    // can repeat a path, and each log's deletion then takes only its own claim.
     struct RecordedFile
     {
         std::string path;
