@@ -196,47 +196,60 @@ check_rpc_comm_conf() {
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check rpc conf done${NC}" || true
 }
 
-# A player finds new archive files by looking them up by name. NFS mounted with the
-# default lookupcache=all caches a failed lookup until the client revalidates the
-# directory, for up to acdirmax. A keeper frees a written chunk
-# archive_visibility_delay_secs after the grapher confirms it, so if a player can keep
-# "not found" longer than that, a replay can miss the chunk's events and still report
-# success. Prints why for one player host's `findmnt -n -o FSTYPE,OPTIONS` output, or
-# nothing when the mount is safe (see "Archive on a Shared File System" in the
-# multi-node deployment docs).
+# A player finds archive files through the manifest logs the graphers append to in the
+# archive directory, and finds the logs by listing <archive>/%manifest/. Two NFS client
+# caches can hide a written chunk's events from a replay that still reports success:
+#  - nocto: NFS shows a player what a grapher appended once the player opens the log
+#    again (close-to-open consistency); with nocto the player can go on reading a log as
+#    it was for up to acregmax, while a keeper frees a written chunk
+#    archive_visibility_delay_secs after the grapher confirms it.
+#  - acdirmax: the listing of %manifest/ can be up to acdirmax old, so a log a grapher
+#    creates while players run can go unseen that long. Windows are aligned to chunk
+#    boundaries, so a grapher can write its first window one acceptance_window_secs
+#    after it starts, and keepers free its chunks archive_visibility_delay_secs later.
+# Cached failed lookups (lookupcache) do not matter: no archive path is ever removed and
+# created again (see ArchiveLayout.h). Prints one line per problem for one player host's
+# `findmnt -n -o FSTYPE,OPTIONS` output, or nothing when the mount is safe (see "Archive
+# on a Shared File System" in the multi-node deployment docs).
 archive_mount_warning() {
-  local host=$1 mount_info=$2 delay=$3
+  local host=$1 mount_info=$2 first_free=$3
   local fstype=${mount_info%% *}
   local options=",${mount_info#* },"
   [[ "${fstype}" == nfs* ]] || return 0
+  if [[ "${options}" == *",nocto,"* ]]; then
+    echo "${host} mounts ${OUTPUT_DIR} over NFS with nocto: a player can keep reading an old copy of the" \
+      "archive manifest, so a replay can miss events and still report success. Remove nocto from the" \
+      "archive mount."
+  fi
   [[ "${options}" == *",noac,"* ]] && return 0
-  local lookupcache="all"
-  [[ "${options}" =~ ,lookupcache=([a-z]+), ]] && lookupcache=${BASH_REMATCH[1]}
-  [[ "${lookupcache}" == "pos"* || "${lookupcache}" == "none" ]] && return 0
   local acdirmax=60
   [[ "${options}" =~ ,actimeo=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
   [[ "${options}" =~ ,acdirmax=([0-9]+), ]] && acdirmax=${BASH_REMATCH[1]}
-  if [[ ${delay} -le ${acdirmax} ]]; then
-    echo "${host} mounts ${OUTPUT_DIR} over NFS with lookupcache=${lookupcache} and acdirmax=${acdirmax}:" \
-      "a failed lookup can stay cached for up to ${acdirmax} s, longer than a keeper keeps a written chunk" \
-      "(archive_visibility_delay_secs=${delay}), so a replay can miss events and still report success." \
-      "Mount the archive with lookupcache=positive, or set archive_visibility_delay_secs above ${acdirmax}."
+  if [[ ${acdirmax} -ge ${first_free} ]]; then
+    echo "${host} mounts ${OUTPUT_DIR} over NFS with acdirmax=${acdirmax}: a player's listing of the" \
+      "archive manifest can miss a grapher's new log for that long, while keepers can free the chunks" \
+      "of its first window ${first_free} s after it starts, so a replay can miss events and still" \
+      "report success. Mount the archive with acdirmax below ${first_free}."
   fi
 }
 
 check_archive_mount() {
   echo -e "${INFO}Checking the archive mount on ChronoPlayer hosts ...${NC}"
-  local delay
-  delay=$(jq -r '.chrono_keeper.DataStoreInternals.archive_visibility_delay_secs // 10' "${CONF_FILE}")
-  local host mount_info warning
+  # the earliest keepers free a chunk a grapher wrote after it started
+  local first_free
+  first_free=$(jq -r '(.chrono_grapher.DataStoreInternals.acceptance_window_secs // 60)
+    + (.chrono_keeper.DataStoreInternals.archive_visibility_delay_secs // 10)' "${CONF_FILE}")
+  local host mount_info warning line
   for host in $(sort -u "${PLAYER_HOSTS}"); do
     mount_info=$(ssh -n "${host}" "findmnt -n -o FSTYPE,OPTIONS --target '${OUTPUT_DIR}'" 2>/dev/null || true)
     if [[ -z "${mount_info}" ]]; then
       [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Could not read the mount of ${OUTPUT_DIR} on ${host}; not checked${NC}" || true
       continue
     fi
-    warning=$(archive_mount_warning "${host}" "${mount_info}" "${delay}")
-    [[ -n "${warning}" ]] && echo -e "${WARN}WARNING: ${warning}${NC}" >&2 || true
+    warning=$(archive_mount_warning "${host}" "${mount_info}" "${first_free}")
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && echo -e "${WARN}WARNING: ${line}${NC}" >&2 || true
+    done <<<"${warning}"
   done
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Check archive mount done${NC}" || true
 }
@@ -728,9 +741,15 @@ clean() {
   echo -e "${DEBUG}Removing generated conf and output files ...${NC}"
   rm -f ${CONF_FILE}.*
   rm -f ${CLIENT_CONF_FILE}.*
-  rm -f ${OUTPUT_DIR}/*
+  clean_output_dir "${OUTPUT_DIR}"
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Clean done${NC}" || true
+}
+
+# Removes the archive the deployment wrote into the output directory, and
+# nothing else; see archive_cleanup.sh.
+clean_output_dir() {
+  bash "${SCRIPT_DIR}/archive_cleanup.sh" "$1"
 }
 
 parse_args() {

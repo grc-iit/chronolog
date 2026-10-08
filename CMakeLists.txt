@@ -369,6 +369,7 @@ install(
 #------------------------------------------------------------------------------
 install(
     PROGRAMS
+        tools/deploy/archive_cleanup.sh
         tools/deploy/deploy_local.sh
         tools/deploy/deploy_cluster.sh
     DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
