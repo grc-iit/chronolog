@@ -13,6 +13,7 @@
 #include <vector>
 #include <thallium.hpp>
 
+#include <HDF5FileChunkExtractor.h>
 #include <StoryPipeline.h>
 #include <StoryChunkExtractionQueue.h>
 
@@ -142,6 +143,9 @@ private:
         Kind kind;
         ChronicleName chronicleName;
         StoryName storyName; // only meaningful for Kind::Story
+        // which files the deletion covers, fixed when the destroy arrives: the
+        // story can be created again before the worker gets to it
+        HDF5FileChunkExtractor::DestroyScope scope;
         std::vector<StoryPipeline*> pipelines;
         std::vector<StoryChunk*> remainingChunks;
     };

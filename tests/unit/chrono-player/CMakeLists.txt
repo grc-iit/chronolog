@@ -40,39 +40,6 @@ endif()
 
 #------------------------------------------------------------------------------
 
-add_executable(fs_monitoring_test
-    chrono_player_fs_monitoring_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
-    ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
-)
-
-target_include_directories(fs_monitoring_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
-    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
-    ${CMAKE_SOURCE_DIR}/client/cpp/include
-)
-
-target_link_directories(fs_monitoring_test PRIVATE ${HDF5_LIBRARY_DIRS})
-target_link_libraries(fs_monitoring_test PRIVATE
-    chrono_common
-    chronolog_client
-    thallium
-    ${HDF5_LIBRARIES}
-)
-
-set_target_properties(fs_monitoring_test PROPERTIES
-    OUTPUT_NAME chronolog-test-player-fs-monitoring
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
-)
-
-add_test(NAME Unit_ChronoPlayer_FileSystemMonitoring COMMAND fs_monitoring_test)
-if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(fs_monitoring_test DESTINATION tests)
-endif()
-
-#------------------------------------------------------------------------------
-
 # HotRangeSplit (GTest) — the replay split between archive and keepers;
 # header-only, no network needed
 find_package(GTest REQUIRED)
@@ -253,7 +220,7 @@ endif()
 
 #------------------------------------------------------------------------------
 
-# Player ArchiveReaders conf (GTest): the archive knobs and their range checks
+# Player ArchiveReaders conf (GTest): where the archive is
 add_executable(player_reader_conf_test
     chrono_player_reader_conf_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ChronoPlayerConfiguration.cpp
@@ -279,22 +246,22 @@ endif()
 
 #------------------------------------------------------------------------------
 
-# Archive probe (GTest): a replay finds a file written since the last directory
-# listing by looking its name up
-add_executable(archive_probe_test
-    chrono_player_archive_probe_test.cpp
+# Archive manifest index (GTest): a replay finds files through the graphers'
+# manifest logs, and the flat files of an archive from before the manifest
+add_executable(archive_manifest_index_test
+    chrono_player_archive_manifest_index_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
 )
 
-target_include_directories(archive_probe_test PRIVATE
+target_include_directories(archive_manifest_index_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-player/include
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
     ${HDF5_INCLUDE_DIRS}
 )
 
-target_link_directories(archive_probe_test PRIVATE ${HDF5_LIBRARY_DIRS})
-target_link_libraries(archive_probe_test PRIVATE
+target_link_directories(archive_manifest_index_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_manifest_index_test PRIVATE
     GTest::gtest_main
     chrono_common
     chronolog_client
@@ -302,10 +269,10 @@ target_link_libraries(archive_probe_test PRIVATE
     ${HDF5_LIBRARIES}
 )
 
-set_target_properties(archive_probe_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-probe)
-gtest_discover_tests(archive_probe_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+set_target_properties(archive_manifest_index_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-manifest-index)
+gtest_discover_tests(archive_manifest_index_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
 if(CHRONOLOG_INSTALL_TESTS)
-    chronolog_install_target(archive_probe_test DESTINATION tests)
+    chronolog_install_target(archive_manifest_index_test DESTINATION tests)
 endif()
 
 #------------------------------------------------------------------------------

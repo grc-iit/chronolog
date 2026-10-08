@@ -15,10 +15,14 @@
 #include <H5Cpp.h>
 #include <thallium.hpp>
 
+#include <ArchiveLayout.h>
+#include <ArchiveManifest.h>
 #include <chrono_monitor.h>
 #include <HDF5ArchiveReadingAgent.h>
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
+
+#include "ArchiveTestSupport.h"
 
 namespace chl = chronolog;
 namespace fs = std::filesystem;
@@ -74,7 +78,7 @@ protected:
     // Everything the archive returns for the test window.
     void readWindow()
     {
-        chl::HDF5ArchiveReadingAgent agent(archiveDir.string(), true, std::chrono::milliseconds(100));
+        chl::HDF5ArchiveReadingAgent agent(archiveDir.string());
         agent.initialize();
         agent.readArchivedStory("chron", "story", kWindowStart, kWindowEnd, chunks);
         agent.shutdown();
@@ -92,8 +96,7 @@ TEST_F(ArchiveClientId, ArchivedEventKeepsItsFullClientId)
     constexpr chl::ClientId kWideClientId = 0x7F00000012345678ULL;
     chl::StoryChunk chunk("chron", "story", kStory, kWindowStart, kWindowEnd);
     chunk.insertEvent(chl::LogEvent(kStory, kWindowStart + 1, kWideClientId, 3, "payload"));
-    chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+    ASSERT_FALSE(chl::test::publishWindow(archiveDir, chunk).empty());
 
     readWindow();
     ASSERT_EQ(chunks.size(), 1u);
@@ -111,14 +114,28 @@ TEST_F(ArchiveClientId, FileWithThe32BitLayoutStillReads)
     type.insertMember("clientId", HOFFSET(LegacyEventRecord, clientId), H5::PredType::NATIVE_UINT32);
     type.insertMember("eventIndex", HOFFSET(LegacyEventRecord, eventIndex), H5::PredType::NATIVE_UINT32);
     type.insertMember("logRecord", HOFFSET(LegacyEventRecord, logRecord), H5::VarLenType(H5::PredType::NATIVE_UINT8));
+    // the file in its story's directory, recorded in the manifest like any other
+    fs::path const file_path = chl::storyArchiveDirectory(archiveDir, "chron", "story") / "10.1.1.0.vlen.h5";
+    fs::create_directories(file_path.parent_path());
     {
-        H5::H5File file((archiveDir / "chron.story.10.vlen.h5").string(), H5F_ACC_TRUNC);
+        H5::H5File file(file_path.string(), H5F_ACC_TRUNC);
         H5::Group group = file.createGroup("story_chunks");
         hsize_t dims = 1;
         H5::DataSpace space(1, &dims);
         H5::DataSet dataset = file.createDataSet("/story_chunks/data.vlen_bytes", type, space);
         dataset.write(&record, type);
     }
+    chl::ArchiveManifestWriter manifest(archiveDir.string(), "1");
+    ASSERT_EQ(manifest.open(), chl::CL_SUCCESS);
+    chl::ArchiveManifestRecord published;
+    published.op = chl::ArchiveManifestRecord::Op::PUBLISH;
+    published.chronicle = "chron";
+    published.story = "story";
+    published.file = file_path.lexically_relative(archiveDir).string();
+    published.start = kWindowStart;
+    published.end = kWindowEnd;
+    published.events = 1;
+    ASSERT_EQ(manifest.append(published), chl::CL_SUCCESS);
 
     readWindow();
     ASSERT_EQ(chunks.size(), 1u);

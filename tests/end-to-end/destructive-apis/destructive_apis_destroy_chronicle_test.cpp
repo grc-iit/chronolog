@@ -8,7 +8,8 @@
 //      client; otherwise auto-Releases sole-caller stories (we already
 //      released both) and broadcasts destroy_chronicle to every Grapher.
 //      Each Grapher's destroy is internally async.
-//   4. Poll until no <chronicle>.*.vlen.h5 files remain.
+//   4. Poll until no archive file of the chronicle remains under
+//      <hdf5 dir>/<chronicle>/ (see ArchiveLayout.h).
 
 #include "destructive_apis_common.h"
 

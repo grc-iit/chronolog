@@ -24,7 +24,7 @@
 # Each probe compares the replayed events with the written ones by timestamp
 # (exact set, no duplicates) and reads B and the keepers' share from the player's
 # per-query log line. The HDF5 files are checked at the end: one per window that
-# held events, and no numbered (rewritten) file.
+# held events, and no second file for any window (none rewritten).
 #
 # Timing (seconds; patched into the installed conf template and restored):
 #   keeper  window K=5, acceptance AK=3   -> a chunk seals at most K+AK after its first event
@@ -198,8 +198,6 @@ jq ".chrono_keeper.DataStoreInternals.story_chunk_duration_secs = $K_CHUNK |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT |
     .chrono_grapher.DataStoreInternals.inactive_story_delay_secs = 600 |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS |
-    .chrono_player.ArchiveReaders.archive_window_secs = $G_CHUNK |
-    .chrono_player.ArchiveReaders.archive_scan_interval_secs = 2 |
     .chrono_player.Monitoring.monitor.level = \"debug\" |
     .chrono_player.Monitoring.monitor.flushlevel = \"debug\" |
     .chrono_player.Monitoring.monitor.filesize = 104857600" \
@@ -213,7 +211,7 @@ trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
 kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log "$MONITOR_DIR"/chrono-player-*.log
-rm -f "$OUTPUT_DIR"/"$CHRONICLE".*.h5
+rm -rf "${OUTPUT_DIR:?}/$CHRONICLE" "$OUTPUT_DIR"/"$CHRONICLE".*.h5
 
 say "deploying 2 keepers / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k 2 -r 1 > /dev/null 2>&1 || { say "deploy failed"; exit 2; }
@@ -252,8 +250,11 @@ probe p2
 check_set "phase 2 (cold)" A
 check_eq "phase 2 (cold)" "events from the keepers" 0 "$P_HOT"
 check_eq "phase 2 (cold)" "B (end of the empty window after A's)" $(((sA + 2 * G_CHUNK) * 1000000000)) "$P_B"
-if [ -f "$OUTPUT_DIR/$CHRONICLE.$STORY.$sA.vlen.h5" ]; then
-    ok "phase 2 (cold): A's window is archived as $CHRONICLE.$STORY.$sA.vlen.h5"
+# a file name is <start second>.<group>.<grapher start>.<incarnation>.<sequence>.vlen.h5
+# (ArchiveLayout.h)
+a_file=$(ls "$OUTPUT_DIR/$CHRONICLE/$STORY/$sA".*.vlen.h5 2> /dev/null | head -n 1)
+if [ -n "$a_file" ]; then
+    ok "phase 2 (cold): A's window is archived as $(basename "$a_file")"
 else
     bad "phase 2 (cold): no archive file for A's window $sA"
 fi
@@ -312,9 +313,11 @@ check_eq "phase 5 (resumed)" "events from the keepers" 0 "$P_HOT"
 check_eq "phase 5 (resumed)" "B (caught up)" $(((T5 - G_ACCEPT - 4) * 1000000000)) "$P_B"
 
 # ------------------------------------------------------- archive files ----
-expected_files="$CHRONICLE.$STORY.$sA.vlen.h5 $CHRONICLE.$STORY.$sC.vlen.h5 $CHRONICLE.$STORY.$sD.vlen.h5"
-actual_files=$(cd "$OUTPUT_DIR" && ls "$CHRONICLE".*.h5 2> /dev/null | sort | tr '\n' ' ' | sed 's/ $//')
-check_eq "archive" "files (one per window with events, none rewritten)" "$expected_files" "$actual_files"
+# one file per window with events: their start seconds, the first field of
+# each name
+expected_files="$sA $sC $sD"
+actual_files=$(cd "$OUTPUT_DIR/$CHRONICLE/$STORY" 2> /dev/null && ls -- *.h5 2> /dev/null | cut -d. -f1 | sort | tr '\n' ' ' | sed 's/ $//')
+check_eq "archive" "windows with a file (one each, none rewritten)" "$expected_files" "$actual_files"
 
 kill "$holder_pid" 2> /dev/null
 say "-------- $PASS passed, $FAIL failed --------"

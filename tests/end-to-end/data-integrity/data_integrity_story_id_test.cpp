@@ -1,6 +1,6 @@
 // Property: every event recorded for {chronicle, story} carries the same
 // StoryID — and that StoryID equals the value derived from the chronicle
-// and story names (CityHash64(chronicle + story)).
+// and story names (see Chronicle::storyIdOf in the visor).
 //
 // Replaces fidelity_test_01.py, reading from the on-disk HDF5 archive.
 

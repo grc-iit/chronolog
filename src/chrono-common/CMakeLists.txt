@@ -6,6 +6,7 @@ find_package(Thallium REQUIRED)
 # chrono_common Library
 #------------------------------------------------------------------------------
 add_library(chrono_common STATIC
+    src/ArchiveManifest.cpp
     src/city.cpp
     src/ConfigurationBlocks.cpp
     src/StoryChunk.cpp

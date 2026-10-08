@@ -21,10 +21,11 @@ alone would funnel every producer through one story handle and one mutex — an
 L2 aggregator pulling 200 nodes' `meminfo` would queue all 200 samples per
 interval behind one lock, and since `store()` runs synchronously on the updtr
 thread that backpressure becomes missed updates upstream. Producer names are
-sanitized to `[A-Za-z0-9_-]` because archive filenames are built by direct
-concatenation (`<chronicle>.<story>.<startSec>.vlen.h5`): a `/` would become a
-path separator into a directory that does not exist, and a `.` would break the
-grapher's file discovery.
+sanitized to `[A-Za-z0-9_-]`. Releases before 3.3.0 named archive files
+`<chronicle>.<story>.<startSec>.vlen.h5`, where a `/` in a story name made
+archival fail and a `.` could mix two stories' files. 3.3.0 keeps each story in
+a directory of its own and takes any name, but story names this plugin has
+already written keep their sanitized form.
 
 Each `store()` call serializes the selected metrics of the set into a single
 JSON object and appends it to the story via `StoryHandle::log_event()`:

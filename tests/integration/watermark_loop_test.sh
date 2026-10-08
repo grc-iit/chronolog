@@ -120,9 +120,9 @@ wait_freed_but_tail() { # $1 = deadline seconds from now; passes once no keeper 
     return 1
 }
 
-h5_story_events() { # total events across TailChronicle.TailStory files
+h5_story_events() { # total events across the TailChronicle/TailStory files
     local total=0 f n
-    for f in "$OUTPUT_DIR"/TailChronicle.TailStory.*.h5; do
+    for f in "$OUTPUT_DIR"/TailChronicle/TailStory/*.h5; do
         [ -f "$f" ] || continue
         n=$("$H5DUMP" -H -d /story_chunks/data.vlen_bytes "$f" 2>/dev/null |
             sed -n 's/.*DATASPACE *SIMPLE *{ *( *\([0-9]*\) *).*/\1/p' | head -1)
@@ -156,7 +156,7 @@ trap 'cleanup; restore_conf' EXIT
 kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log
-rm -f "$OUTPUT_DIR"/TailChronicle.*.h5
+rm -rf "$OUTPUT_DIR"/TailChronicle "$OUTPUT_DIR"/TailChronicle.*.h5
 
 say "deploying 2 keepers / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k 2 -r 1 > /dev/null 2>&1 || { say "deploy failed"; exit 2; }
@@ -236,7 +236,7 @@ else
 fi
 
 # durability: the three runs wrote 30 events each; every one must reach disk
-# (TailChronicle.TailStory.*.vlen.h5, possibly rotated; duplicates allowed).
+# (TailChronicle/TailStory/*.vlen.h5, possibly numbered; duplicates allowed).
 # The tail keeps each keeper's newest chunk in memory whether or not it is
 # persisted, so poll the archive rather than infer it from frees; the last
 # run's chunks reach the grapher only through the re-send after the outage.

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <deque>
@@ -20,13 +21,21 @@ namespace chl = chronolog;
 
 ////////////////////////
 
+namespace
+{
+std::atomic<uint64_t> latestIncarnation{0};
+}
+
+uint64_t chronolog::StoryPipeline::currentIncarnation() { return latestIncarnation.load(); }
+
 chronolog::StoryPipeline::StoryPipeline(chronolog::ChronicleName const& chronicle_name,
                                         chronolog::StoryName const& story_name,
                                         chronolog::StoryId const& story_id,
                                         uint64_t story_start_time,
                                         uint32_t chunk_granularity,
                                         uint32_t acceptance_window)
-    : storyId(story_id)
+    : incarnation(++latestIncarnation)
+    , storyId(story_id)
     , chronicleName(chronicle_name)
     , storyName(story_name)
     , chunkGranularity(chunk_granularity)
@@ -51,6 +60,7 @@ chronolog::StoryPipeline::StoryPipeline(chronolog::ChronicleName const& chronicl
                                                           storyId,
                                                           (story_start_time + chunkGranularity * i),
                                                           (story_start_time + chunkGranularity * (i + 1)));
+        new_chunk->setIncarnation(incarnation);
         storyTimelineMap.insert(std::pair<uint64_t, chronolog::StoryChunk*>(new_chunk->getStartTime(), new_chunk));
     }
 
@@ -172,6 +182,7 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::p
                                                       storyId,
                                                       TimelineStart() - chunkGranularity,
                                                       TimelineStart());
+    new_chunk->setIncarnation(incarnation);
 
     auto result =
             storyTimelineMap.insert(std::pair<uint64_t, chronolog::StoryChunk*>(new_chunk->getStartTime(), new_chunk));
@@ -209,6 +220,7 @@ std::map<uint64_t, chronolog::StoryChunk*>::iterator chronolog::StoryPipeline::a
                                                            storyId,
                                                            TimelineEnd(),
                                                            TimelineEnd() + chunkGranularity);
+    new_chunk->setIncarnation(incarnation);
     auto result = storyTimelineMap.insert(std::pair<uint64_t, chronolog::StoryChunk*>(TimelineEnd(), new_chunk));
 
     if(!result.second)
@@ -403,6 +415,7 @@ void chronolog::StoryPipeline::mergeEvents(chronolog::StoryChunk& other_chunk)
                     auto* salvage_chunk =
                             new StoryChunk(chronicleName, storyName, storyId, other_chunk.getStartTime(), salvage_end);
                     salvage_chunk->setWatermarkExempt(true);
+                    salvage_chunk->setIncarnation(incarnation);
                     holdReceipts(*salvage_chunk, other_chunk);
                     salvage_chunk->mergeEvents(other_chunk);
                     if(!other_chunk.empty() && other_chunk.firstEventTime() < salvage_end)

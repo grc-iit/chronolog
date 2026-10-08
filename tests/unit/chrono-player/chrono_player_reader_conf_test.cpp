@@ -1,6 +1,4 @@
-// The player's ArchiveReaders block: where its archive lives, how often it
-// lists that directory for new files, and the grapher's window size, which a
-// replay uses to build the names of files the listing has not shown yet.
+// The player's ArchiveReaders block: where its archive lives.
 
 #include <gtest/gtest.h>
 
@@ -27,41 +25,21 @@ int parseInto(chl::PlayerConfiguration& conf, char const* json_text)
 }
 } // namespace
 
-TEST(PlayerReaderConf, ReadsTheArchiveReaderKnobs)
+TEST(PlayerReaderConf, ReadsTheArchiveDirectory)
 {
     chl::PlayerConfiguration conf;
-    ASSERT_EQ(parseInto(conf,
-                        R"({"ArchiveReaders": {"story_files_dir": "/tmp/archive",
-                                               "archive_scan_interval_secs": 3,
-                                               "archive_window_secs": 45}})"),
-              chl::CL_SUCCESS);
+    ASSERT_EQ(parseInto(conf, R"({"ArchiveReaders": {"story_files_dir": "/tmp/archive"}})"), chl::CL_SUCCESS);
     EXPECT_EQ(conf.READER_CONF.story_files_dir, "/tmp/archive");
-    EXPECT_EQ(conf.READER_CONF.archive_scan_interval_secs, 3);
-    EXPECT_EQ(conf.READER_CONF.archive_window_secs, 45);
 }
 
-TEST(PlayerReaderConf, RejectsAScanIntervalOfZero)
-{
-    // the scan thread would spin
-    chl::PlayerConfiguration conf;
-    EXPECT_EQ(parseInto(conf, R"({"ArchiveReaders": {"archive_scan_interval_secs": 0}})"), chl::CL_ERR_INVALID_CONF);
-}
-
-TEST(PlayerReaderConf, RejectsANegativeScanInterval)
+// The knobs of the directory listing and name probing that the manifest
+// replaced are ignored, so a conf that still has them keeps working.
+TEST(PlayerReaderConf, KnobsOfTheRemovedDirectoryScanAreIgnored)
 {
     chl::PlayerConfiguration conf;
-    EXPECT_EQ(parseInto(conf, R"({"ArchiveReaders": {"archive_scan_interval_secs": -5}})"), chl::CL_ERR_INVALID_CONF);
-}
-
-TEST(PlayerReaderConf, RejectsANegativeWindow)
-{
-    chl::PlayerConfiguration conf;
-    EXPECT_EQ(parseInto(conf, R"({"ArchiveReaders": {"archive_window_secs": -30}})"), chl::CL_ERR_INVALID_CONF);
-}
-
-TEST(PlayerReaderConf, ZeroWindowIsAllowedAndTurnsProbingOff)
-{
-    chl::PlayerConfiguration conf;
-    ASSERT_EQ(parseInto(conf, R"({"ArchiveReaders": {"archive_window_secs": 0}})"), chl::CL_SUCCESS);
-    EXPECT_EQ(conf.READER_CONF.archive_window_secs, 0);
+    EXPECT_EQ(parseInto(conf,
+                        R"({"ArchiveReaders": {"story_files_dir": "/tmp/archive",
+                                               "archive_scan_interval_secs": 0,
+                                               "archive_window_secs": -30}})"),
+              chl::CL_SUCCESS);
 }

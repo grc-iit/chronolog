@@ -253,18 +253,12 @@ struct DataStoreConf
     // Keeper-only knob.
     int watermark_resend_timeout_secs = 300;
     // After the grapher reports a chunk written, the keeper keeps the chunk
-    // and serves its events as unconfirmed for this long, so a replay does not
-    // depend on the player already seeing the new archive file. A replay now
-    // looks a missing window's file up by name rather than waiting for the
-    // player's next directory listing (ArchiveReaders.archive_window_secs), so
-    // this only has to cover the write-to-report round trip -- provided the
-    // players' archive mount does not cache failed lookups. NFS does by
-    // default (lookupcache=all): a name a player asked for just before the file
-    // appeared stays "not found" until the client revalidates the directory,
-    // anywhere from acdirmin to acdirmax (30-60 s by default, longer where a
-    // site raises them to spare its server). Mount the archive with
-    // lookupcache=positive (see the multi-node deployment docs), or raise this
-    // above acdirmax. 0 frees on the report. Keeper-only knob.
+    // and serves its events as unconfirmed for this long, so a replay under
+    // way when the report arrives still finds the events somewhere. The
+    // grapher records a file in the archive manifest before it reports it
+    // written, and a replay reads the manifest before it looks for files, so
+    // this only has to cover one replay's round trip. 0 frees on the report.
+    // Keeper-only knob.
     int archive_visibility_delay_secs = 10;
     // How long a keeper stopped with SIGTERM waits for the grapher to confirm
     // every chunk it holds written, sending unacked chunks again meanwhile.
@@ -304,26 +298,15 @@ struct DataStoreConf
 
 struct ExtractorReaderConf
 {
+    // The archive directory: the graphers' hdf5_archive_dir. The player finds
+    // files through the manifest the graphers keep there. Player-only knob.
     std::string story_files_dir;
-    // How often the player lists the archive directory to find new files. On
-    // NFS a listing is served from the client's directory cache, so it can be
-    // as old as acdirmax whatever this interval is; mount the archive with a
-    // small acdirmin/acdirmax to keep it close. Player-only knob.
-    int archive_scan_interval_secs = 5;
-    // The grapher's story_chunk_duration_secs: the time range of one archive
-    // file, and so the step between the names a replay probes for files the
-    // last listing did not show. Set it to the grapher's value. 0 turns
-    // probing off and leaves a replay with whatever the listing has.
-    // Player-only knob.
-    int archive_window_secs = 30;
 
     int parseJsonConf(json_object*);
 
     [[nodiscard]] std::string to_String() const
     {
-        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir +
-               " archive_scan_interval_secs: " + std::to_string(archive_scan_interval_secs) +
-               " archive_window_secs: " + std::to_string(archive_window_secs) + "]";
+        return "[EXTRACTOR_READER_CONF: STORY_FILES_DIR: " + story_files_dir + "]";
     }
 };
 

@@ -1,5 +1,4 @@
 # helpers.py
-import subprocess
 from datetime import datetime, time, timedelta
 
 
@@ -29,9 +28,3 @@ def parse_time_arg(arg: str, is_end: bool) -> str:
 
     return to_nanosecond(dt)
 
-
-def run_reader(cmd_args):
-    proc = subprocess.run(
-        cmd_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
-    return proc.stdout, proc.stderr
