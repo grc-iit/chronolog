@@ -128,10 +128,10 @@ inline bool parse_args(int argc, char** argv, Args& out)
     return true;
 }
 
-// StoryId derivation matches ChronoVisor::Chronicle::getStoryId.
+// StoryId derivation matches ChronoVisor's Chronicle::storyIdOf.
 inline uint64_t expected_story_id(std::string const& chronicle, std::string const& story)
 {
-    std::string s = chronicle + story;
+    std::string s = std::to_string(chronicle.length()) + ":" + chronicle + story;
     return CityHash64(s.c_str(), s.length());
 }
 

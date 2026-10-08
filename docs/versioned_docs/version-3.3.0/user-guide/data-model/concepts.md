@@ -83,7 +83,7 @@ Story names are scoped within their parent Chronicle, so two different Chronicle
 
 ### Story
 
-A Story is a time-series dataset within a Chronicle. It represents a logical stream of events that client applications generate over time. Each Story is uniquely identified by a `StoryId`, computed as `CityHash64(chronicleName + storyName)`. Concatenating the Chronicle name ensures that identically named Stories in different Chronicles receive distinct IDs.
+A Story is a time-series dataset within a Chronicle. It represents a logical stream of events that client applications generate over time. Each Story is uniquely identified by a `StoryId`, computed as `CityHash64(len(chronicleName) + ":" + chronicleName + storyName)`. Including the Chronicle name gives identically named Stories in different Chronicles distinct IDs, and its length keeps pairs such as `ab`/`c` and `a`/`bc` apart. The ID is internal to the servers: clients identify a Story by its Chronicle and Story names.
 
 Story-level attributes (indexing granularity, type, tiering policy, access permission) are reserved for future use. The v3.0.0 client API does not expose them — `Client::AcquireStory` takes only the chronicle name and the story name.
 

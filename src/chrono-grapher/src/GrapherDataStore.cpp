@@ -183,7 +183,7 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
     // Steps 1-3: under dataStoreMutex, unhook the pipeline from both maps,
     // absorb in-flight chunks, and unhook the ingestion handle. All three
     // must be atomic w.r.t. startStoryRecording: story_id is a deterministic
-    // CityHash64(chronicle+story), so a Destroy-then-recreate-then-reAcquire
+    // hash of the chronicle and story names, so a Destroy-then-recreate-then-reAcquire
     // can reach this same Grapher while this destroy is in flight. If we
     // released dataStoreMutex before removeStoryIngestionHandle, a concurrent
     // startStoryRecording could install a fresh handle in the gap and we
