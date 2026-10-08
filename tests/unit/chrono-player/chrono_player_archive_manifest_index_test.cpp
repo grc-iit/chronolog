@@ -321,6 +321,34 @@ TEST_F(ArchiveManifestIndex, ADestroyedChronicleLeavesChroniclesThatSortNextToIt
     EXPECT_EQ(replayedTimes(archive, 0, 200 * NS, nullptr, "chron2", "story").size(), 1u);
 }
 
+// A destroy that runs after the story was created again leaves the new story's
+// files, and its deletion record says which files it covered: its process's up
+// to an incarnation. The new story's file, recorded before the deletion in the
+// same log, stays replayable.
+TEST_F(ArchiveManifestIndex, ADeletionLeavesTheFilesOfTheStoryCreatedAfterIt)
+{
+    chl::StoryChunk old_window = window(60, 90, {60 * NS + 1});
+    old_window.setIncarnation(5);
+    chl::StoryChunk new_window = window(90, 120, {90 * NS + 1});
+    new_window.setIncarnation(9);
+    publish(old_window);
+    publish(new_window);
+    std::string const tag = chl::StoryChunkWriter::writerTag("0"); // the writer tag publishWindow uses
+    uint64_t const writer_start = std::stoull(tag.substr(tag.find('.') + 1));
+    chl::HDF5ArchiveReadingAgent archive(archiveDir.string());
+    archive.initialize();
+
+    ASSERT_TRUE(chl::test::recordDeletion(archiveDir, "chron", "story", "1", writer_start, 7));
+    EXPECT_EQ(replayedTimes(archive, 0, 200 * NS), (std::vector<uint64_t>{90 * NS + 1}));
+    chl::HDF5ArchiveReadingAgent restarted(archiveDir.string());
+    restarted.initialize();
+    EXPECT_EQ(replayedTimes(restarted, 0, 200 * NS), (std::vector<uint64_t>{90 * NS + 1}));
+
+    // a deletion without a bound takes every file its log recorded before it
+    ASSERT_TRUE(chl::test::recordDeletion(archiveDir, "chron", "story", "1"));
+    EXPECT_TRUE(replayedTimes(archive, 0, 200 * NS).empty());
+}
+
 // A grapher records a deletion after its earlier records, so everything its
 // log named for the story before it is gone, whatever a lookup says: on a
 // shared file system a cached lookup can still find a deleted file.

@@ -194,6 +194,11 @@ int chronolog::GrapherDataStore::destroyStory(chronolog::StoryId const& story_id
     chl::StoryPipeline* pipeline = nullptr;
     {
         std::lock_guard storeLock(dataStoreMutex);
+        // Which files the deletion covers, fixed now: a pipeline made after
+        // this point, under this lock, for the story created again, is numbered
+        // higher, and its files stay (see HDF5FileChunkExtractor::DestroyScope).
+        task.scope.incarnation_bound = chl::StoryPipeline::currentIncarnation();
+        task.scope.requested_at = std::chrono::system_clock::now();
         // Tombstone the story so a late chunk cannot be adopted into a fresh
         // pipeline (and a fresh HDF5 file) after the destroy worker deletes files.
         destroyedStories.insert(story_id);
@@ -266,6 +271,9 @@ int chronolog::GrapherDataStore::destroyChronicle(chronolog::ChronicleName const
     std::vector<chl::StoryId> story_ids_to_unhook;
     {
         std::lock_guard storeLock(dataStoreMutex);
+        // fixed now, as for a story (see destroyStory)
+        task.scope.incarnation_bound = chl::StoryPipeline::currentIncarnation();
+        task.scope.requested_at = std::chrono::system_clock::now();
         // Tombstone the chronicle so late chunks for any of its stories (including
         // ones already retired from the maps) cannot be adopted into fresh HDF5
         // files after the destroy worker deletes them.
@@ -420,7 +428,7 @@ void chronolog::GrapherDataStore::destroyWorkerTask()
         {
             if(task.kind == DestroyTask::Kind::Story)
             {
-                delete_rc = theExtractionChain->delete_story_files(task.chronicleName, task.storyName);
+                delete_rc = theExtractionChain->delete_story_files(task.chronicleName, task.storyName, task.scope);
                 LOG_INFO("[GrapherDataStore] Destroy worker: delete_story_files Chronicle={}, Story={} rc={}",
                          task.chronicleName,
                          task.storyName,
@@ -428,7 +436,7 @@ void chronolog::GrapherDataStore::destroyWorkerTask()
             }
             else
             {
-                delete_rc = theExtractionChain->delete_chronicle_files(task.chronicleName);
+                delete_rc = theExtractionChain->delete_chronicle_files(task.chronicleName, task.scope);
                 LOG_INFO("[GrapherDataStore] Destroy worker: delete_chronicle_files Chronicle={} rc={}",
                          task.chronicleName,
                          delete_rc);

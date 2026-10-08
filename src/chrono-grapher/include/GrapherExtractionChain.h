@@ -128,7 +128,9 @@ public:
     // Forward a story-level destroy to every extractor that knows how to
     // delete persisted artifacts. Today only HDF5 persists; CSV/logging are
     // no-ops. Returns the first non-success status.
-    int delete_story_files(std::string const& chronicle_name, std::string const& story_name)
+    int delete_story_files(std::string const& chronicle_name,
+                           std::string const& story_name,
+                           HDF5FileChunkExtractor::DestroyScope const& scope = HDF5FileChunkExtractor::DestroyScope())
     {
         int ret = CL_SUCCESS;
         for(auto& e: theExtractors)
@@ -139,7 +141,7 @@ public:
                         using T = std::decay_t<decltype(extractor)>;
                         if constexpr(std::is_same_v<T, HDF5FileChunkExtractor>)
                         {
-                            return extractor.delete_story_files(chronicle_name, story_name);
+                            return extractor.delete_story_files(chronicle_name, story_name, nullptr, scope);
                         }
                         return CL_SUCCESS;
                     },
@@ -152,7 +154,9 @@ public:
         return ret;
     }
 
-    int delete_chronicle_files(std::string const& chronicle_name)
+    int
+    delete_chronicle_files(std::string const& chronicle_name,
+                           HDF5FileChunkExtractor::DestroyScope const& scope = HDF5FileChunkExtractor::DestroyScope())
     {
         int ret = CL_SUCCESS;
         for(auto& e: theExtractors)
@@ -163,7 +167,7 @@ public:
                         using T = std::decay_t<decltype(extractor)>;
                         if constexpr(std::is_same_v<T, HDF5FileChunkExtractor>)
                         {
-                            return extractor.delete_chronicle_files(chronicle_name);
+                            return extractor.delete_chronicle_files(chronicle_name, nullptr, scope);
                         }
                         return CL_SUCCESS;
                     },

@@ -4,6 +4,7 @@
 #include <vector>
 #include <H5Cpp.h>
 
+#include <ArchiveLayout.h>
 #include <chronolog_errcode.h>
 #include <StoryChunkWriter.h>
 #include <HDF5FileAccess.h>
@@ -265,7 +266,25 @@ void chronolog::HDF5ArchiveReadingAgent::applyDeletion(ArchiveManifestRecord con
 {
     // Takes the deletion's log off every file of one story, and drops the
     // story's entry once nothing is left in it. Returns the next story.
-    auto const release_story = [this, log](auto story_it)
+    // A deletion that carries a bound covers only the files of its writer's
+    // destroyed story: files of the writer process that started at
+    // writer_start with an incarnation up to the bound, and any of an earlier
+    // process. A file that process wrote later belongs to the story created
+    // again (see HDF5FileChunkExtractor's DestroyScope).
+    auto const covers = [&record](RecordedFile const& file)
+    {
+        if(record.incarnation_bound == UINT64_MAX)
+        {
+            return true;
+        }
+        WindowFileName parsed;
+        if(!parseWindowFileName(fs::path(file.path).filename().string(), parsed))
+        {
+            return true;
+        }
+        return parsed.writer_start != record.writer_start || parsed.incarnation <= record.incarnation_bound;
+    };
+    auto const release_story = [this, log, &covers](auto story_it)
     {
         auto& ranges = story_it->second.ranges;
         for(auto range_it = ranges.begin(); range_it != ranges.end();)
@@ -277,7 +296,10 @@ void chronolog::HDF5ArchiveReadingAgent::applyDeletion(ArchiveManifestRecord con
             // comes off first: a remove_if predicate may not change elements.
             for(RecordedFile& file: files)
             {
-                file.logs.erase(std::remove(file.logs.begin(), file.logs.end(), log), file.logs.end());
+                if(covers(file))
+                {
+                    file.logs.erase(std::remove(file.logs.begin(), file.logs.end(), log), file.logs.end());
+                }
             }
             files.erase(std::remove_if(files.begin(),
                                        files.end(),
