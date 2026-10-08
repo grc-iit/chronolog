@@ -117,30 +117,22 @@ Let’s fire up the interactive client! Open your terminal, navigate to the /bin
 
 Feel free to test and explore the chronolog operations.
 
-### Reader Script
+### Retrieving interactions
 
-Make sure to place the reader script folder from src/chronomcp/reader_script into your chronolog installation folder - 
-e.g $HOME/chronolog/Debug/reader_script
+`retrieve_interaction` replays a story through ChronoPlayer with the Python client, so it needs no
+separate reader. For that the plugin's client, made at the first tool call, listens for
+ChronoPlayer's answers on this machine. The client library keeps one client per process, so start,
+record and stop use the same one:
 
-Make sure to activate chronolog spack environment to load all the required libraries.
-```bash
-cd ChronoLog
-spack env activate -p .
-```
+| Variable | Default | What |
+|---|---|---|
+| `CHRONO_QUERY_HOST` | `127.0.0.1` | This machine's address as ChronoPlayer reaches it. Set it when the player runs on another node. |
+| `CHRONO_QUERY_PORT` | `5557` | The port to listen on. Another client on the same machine, a second MCP server included, needs a different one; a client whose port is taken crashes (issue #719). |
+| `CHRONO_QUERY_PROVIDER_ID` | `57` | The provider id of that listener. |
 
-Build the reader script.
-```bash
-cd chronolog/Debug/reader_script
-mkdir build && cd build
-cmake ..
-```
-
-```bash
-make
-```
-
-Test the hdf5 file reader by - 
-/$HOME/chronolog/Debug/reader_script/build/./hdf5_file_reader -c /$HOME/chronolog/Debug/conf/grapher_conf_1.json
-
+These are the `ClientQueryService` settings of a client configuration. ChronoVisor keeps chronicles
+and stories in memory only, so after it restarts `retrieve_interaction` creates the chronicle and
+story again to read their archived events; retrieving a name nothing was written to leaves an empty
+story behind.
 
 Please follow all the steps carefully, feel free to make an issue if there's any problem setting up the chronolog.
