@@ -66,15 +66,12 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 
 - Events in a chunk the grapher has not yet confirmed written come from the keeper even below `B`,
   since the archive may not have them. So do events in a chunk confirmed less than
-  `archive_visibility_delay_secs` ago, which covers the gap between the grapher writing a file and
-  the player being able to read it.
-- A replay that reaches past the newest file the player has listed for the story looks the missing
-  windows up by name, using `archive_window_secs`, instead of waiting for the next listing. A lookup
-  by name does not go through the directory listing a shared file system caches, so a file written
-  moments ago on another node is found, unless the mount also caches failed lookups, as NFS does by
-  default: then a name looked up before its file existed stays "not found" for up to `acdirmax`.
-  See [Archive on a Shared File System](../deployment/multi-node.md#archive-on-a-shared-file-system)
-  for the mount options that avoid it.
+  `archive_visibility_delay_secs` ago, which covers a replay already under way when the confirmation
+  arrives.
+- The player finds the archive files through the [archive manifest](./hdf5-archive.md#archive-manifest),
+  which the grapher appends to before it confirms a chunk written, and reads what the manifest gained
+  just before each replay. A file is therefore findable by the time its keepers are told they may
+  free the chunk.
 - A replay sees an event once its chunk has sealed on the keeper (about `story_chunk_duration_secs`
   plus `acceptance_window_secs`), without waiting for the grapher to write it.
 - A keeper that does not answer within 5 seconds is left out. Its watermark is then unknown, so the
@@ -83,9 +80,9 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
   missing and appear once they are persisted. A keeper's answer that hits the per-query cap of
   262,144 events, and an archive file that cannot be read, return the same status.
 - The archive side reads every file written for a window. When keeper chunks for a window arrive after
-  the grapher has written it, the grapher writes the window again to a numbered file
-  (`{chronicle}.{story}.{start second}.vlen.1.h5`, then `.2`, and so on). Once the keepers free those
-  chunks, the numbered file is the only copy of their events.
+  the grapher has written it, the grapher writes the window again to another file of the same window
+  (see [HDF5 Archive](./hdf5-archive.md#layout)). Once the keepers free those chunks, that file is the
+  only copy of their events.
 - The player merges the archive's events with the keepers' and returns each event once, identified by
   time, client id and index. An event can reach it twice: from a keeper and from the archive when the
   grapher has written the keeper's chunk but the keeper has not received the report yet, or twice
@@ -135,9 +132,7 @@ retires.
 |---|---|---|---|
 | `watermark_report_interval_secs` | grapher | `1` | How often the grapher sends changed watermarks and receipts to the keepers. |
 | `watermark_resend_timeout_secs` | keeper | `300` | How long a keeper waits for a chunk to be confirmed written before sending it again. Keep it well above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template), or healthy chunks are sent twice. |
-| `archive_visibility_delay_secs` | keeper | `10` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. A replay looks a missing window's file up by name instead of waiting for the player's next directory listing, so this only covers the write-to-report round trip. On NFS mounted with the default `lookupcache`, a name a player asked for just before the file appeared can stay "not found" for up to `acdirmax` (60 s by default): mount the archive with `lookupcache=positive` (see [Archive on a Shared File System](../deployment/multi-node.md#archive-on-a-shared-file-system)) or raise this above `acdirmax`. `0` frees the chunk on confirmation. |
-| `archive_scan_interval_secs` | player | `5` | How often the player lists the archive directory for new files. On NFS a listing comes from the client's directory cache and can be up to `acdirmax` old whatever this is set to. |
-| `archive_window_secs` | player | `30` | The grapher's `story_chunk_duration_secs`, which is the time range of one archive file. A replay uses it to build the names of files the listing has not shown yet. `0` turns that probing off. |
+| `archive_visibility_delay_secs` | keeper | `10` | How long a keeper keeps a chunk, and serves its events to replays, after the grapher confirms it written. The grapher records the file in the archive manifest before it confirms, and a replay reads the manifest before it reads the archive, so this only covers a replay already under way when the confirmation arrives. `0` frees the chunk on confirmation. |
 | `retention_cap_mb` | keeper | `4096` | Retained-memory level that triggers a warning; set it above the ~125 s of ingest a healthy keeper holds. `0` turns the warning off. |
 | `shutdown_confirm_timeout_secs` | keeper | `150` | How long a keeper stopped with SIGTERM waits for the grapher to confirm its chunks written. Cover the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template): a chunk that has just arrived is written only after both. `0` exits without waiting. |
 

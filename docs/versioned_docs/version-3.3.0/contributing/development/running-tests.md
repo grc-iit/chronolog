@@ -256,12 +256,11 @@ The three GTest suites below (`story_chunk_test`, `story_pipeline_test`, `chrono
 
 ### Unit Tests – ChronoPlayer
 
-4 standalone CTest entries; 2 are disabled in the default run.
+3 standalone CTest entries; 2 are disabled in the default run.
 
 | Test Name | Type | Framework | Source File | Description |
 |---|---|---|---|---|
 | `Unit_ChronoPlayer_HDF5ArchiveReadingAgent` | Unit | Custom | `tests/unit/chrono-player/chrono_player_hdf5_archive_reader_test.cpp` | HDF5 reading agent retrieves story chunks from archive |
-| `Unit_ChronoPlayer_FileSystemMonitoring` | Unit | Custom | `tests/unit/chrono-player/chrono_player_fs_monitoring_test.cpp` | File-system watcher detects new archive files |
 | `Unit_ChronoPlayer_StoryChunkTransferAgent` *(DISABLED)* | Unit | Custom | `tests/unit/chrono-player/chrono_player_transfer_agent_test.cpp` | Transfer agent lifecycle (under development) |
 | `Unit_ChronoPlayer_PlaybackServiceLifecycle` *(DISABLED)* | Unit | Custom | `tests/unit/chrono-player/chrono_player_playback_service_test.cpp` | Playback service start/stop lifecycle (under development) |
 

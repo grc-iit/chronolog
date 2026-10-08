@@ -46,7 +46,7 @@ A storage policy covers *every* producer feeding its container/schema, but the C
 
 This matters for throughput, not just organization. With one story per policy, every producer's sample would contend on a single story handle: an L2 aggregator pulling 200 nodes' `meminfo` would queue all 200 samples per interval behind one lock. Since `store()` runs synchronously on the aggregator's worker thread, that backpressure becomes missed updates upstream — sample loss at the storing node. Keying per producer yields N independent stories that proceed in parallel. A story is acquired lazily, on the first sample seen from each producer.
 
-Producer names are sanitized before use: anything outside `[A-Za-z0-9_-]` is folded to `_`. LDMS producer names are typically hostnames, and both `.` and `/` are unsafe in a ChronoLog story name — archive filenames are built by direct concatenation (`<chronicle>.<story>.<start>.vlen.h5`), so a `/` becomes a path separator into a nonexistent directory and a `.` breaks the grapher's file discovery.
+Producer names are sanitized before use: anything outside `[A-Za-z0-9_-]` is folded to `_`. Releases before 3.3.0 named archive files `<chronicle>.<story>.<start>.vlen.h5`, so a `/` in a story name made archival fail and a `.` could mix two stories' files. 3.3.0 keeps each story in a directory of its own and accepts any name, but the plugin keeps sanitizing so that the story names it writes stay the same.
 
 ## Event format
 

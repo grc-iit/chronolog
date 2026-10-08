@@ -77,66 +77,40 @@ The value of `--record-groups` must be ≤ the total number of keeper nodes.
 
 ChronoGraphers write the HDF5 archive into the output directory (`-u, --output-dir`), and
 ChronoPlayers on other nodes read it from the same path, so that directory must be on a file system
-every grapher and player node mounts. Keepers and clients never touch it.
+every grapher and player node mounts. Keepers and clients never touch it. The layout is described in
+[HDF5 Archive](../architecture/hdf5-archive.md).
 
-On NFS, two client-side caches decide how soon a player sees a file a grapher on another node has
-just written:
+A player finds new files through the graphers' manifest logs in `<archive>/%manifest/`, not by
+listing the story directories, so the NFS directory caches (`acdirmin`, `acdirmax`) do not decide
+when a replay sees a new file. They do decide when it sees a new log: a player lists `%manifest/`
+to find the logs, and that listing can be up to `acdirmax` old, so a log a grapher creates while
+players run can go unseen that long.
+Each grapher creates its log when it starts. Windows are aligned to `story_chunk_duration_secs`
+boundaries, so its first window can be written one `acceptance_window_secs` after it starts (60 s in
+the template), and keepers free those chunks `archive_visibility_delay_secs` (10 s) later. Keep
+`acdirmax` below the sum, 70 s with the template; the NFS default, 60 s, is.
 
-| Cache | Mount options | Effect on a replay |
-|-------|---------------|--------------------|
-| Failed lookups | `lookupcache` (the default, `all`, caches them) | A player that looked a file name up before the file existed keeps getting "not found" for it until it revalidates the directory, which can take up to `acdirmax`. A keeper frees a chunk `archive_visibility_delay_secs` (10 s) after ChronoGrapher confirms it written, so a longer miss leaves those events out of a replay that still reports success. |
-| Directory attributes and listings | `acdirmin`, `acdirmax` (30 s and 60 s by default) | The player's directory listing, repeated every `archive_scan_interval_secs`, can be up to `acdirmax` old. |
+What the player relies on is NFS close-to-open consistency: a grapher closes its log after each
+record, and a player that opens the log afterwards sees the record. That is the NFS default. A
+mount with `nocto` drops it, and a player can keep reading an old copy of a log for up to
+`acregmax`, while a keeper frees a chunk `archive_visibility_delay_secs` (10 s) after ChronoGrapher
+confirms it written; a replay can then miss those events and still report success.
 
-File attribute caching (`acregmin`, `acregmax`) does not matter here: an archive file never changes
-once it appears under its name. Lustre keeps client metadata caches coherent through its lock
-manager, so this section is specific to NFS.
+Cached failed lookups (`lookupcache`) do not matter. A client that looked a path up while it was
+missing can keep answering "not found" for it for up to `acdirmax`, but no archive path is ever
+removed and created again: every file gets a name used once, and a destroy deletes a story's files
+but keeps its directories (see [HDF5 Archive](../architecture/hdf5-archive.md)).
 
-The recommended setup is a mount of the archive directory alone, on the grapher and player nodes:
+Keep the clocks of the grapher hosts and the archive's file server within 120 s of each other
+(NTP). A destroy deletes another grapher's files of the story by their modification time, which the
+file server sets; see [HDF5 Archive](../architecture/hdf5-archive.md#destroying-a-story-or-a-chronicle).
 
-```
-server:/export/chronolog-archive  /mnt/chronolog-archive  nfs  lookupcache=positive,acdirmin=3,acdirmax=5,nosharecache,<site options>  0 0
-```
+`deploy_cluster.sh --start` checks this before it launches anything: on each ChronoPlayer host it
+reads how the output directory is mounted (`findmnt`), and prints a warning naming the host when the
+mount is NFS with `nocto`, or with `acdirmax` at or above the grapher's `acceptance_window_secs` plus
+the keeper's `archive_visibility_delay_secs`. The deployment goes ahead either way.
 
-| Option | Why |
-|--------|-----|
-| `lookupcache=positive` | Failed lookups are not cached, so a player finds a file on its next lookup. Found files are still cached. |
-| `acdirmin=3,acdirmax=5` | A directory listing is at most about 5 seconds old. |
-| `nosharecache` | Needed when this mount comes from the same export as another mount with different options; otherwise the client shares one cache between them and may keep the other mount's options. |
-
-The cost is one server lookup for each missing name a player asks for, and one attribute check of
-the archive directory every few seconds, from the grapher and player nodes only. A site that keeps
-long attribute caches on its general mount to spare the server, for instance a RAID array of hard
-drives serving many compute nodes, can leave that mount as it is. Then pass the new mount point to
-the deploy script, which sets it as both the graphers' `hdf5_archive_dir` and the players'
-`story_files_dir`:
-
-```bash
-./deploy_cluster.sh --start -u /mnt/chronolog-archive
-```
-
-If the archive has to stay on a mount that caches failed lookups, raise
-`archive_visibility_delay_secs` above that mount's `acdirmax` instead. This costs keeper memory: each
-keeper holds every chunk that much longer after it is written.
-
-`deploy_cluster.sh --start` checks this before it launches anything: on each ChronoPlayer host it reads
-how the output directory is mounted (`findmnt`), and prints a warning when the mount is NFS that caches
-failed lookups (`lookupcache` other than `positive` or `none`) for up to an `acdirmax` no shorter than
-`archive_visibility_delay_secs`. The warning names the host and the value to set; the deployment goes
-ahead either way.
-
-To measure a mount, cache a failed lookup on one node and time how long it takes to see a file
-created on another:
-
-```bash
-# node A (a player node)
-f=/mnt/chronolog-archive/lookup_probe_$$; stat "$f" 2>/dev/null; echo "$f"
-while ! stat "$f" >/dev/null 2>&1; do sleep 1; done; date +%T
-# node B (a grapher node), a few seconds later, with the name node A printed
-touch <that name>; date +%T
-```
-
-The gap between the two times is how long the mount keeps a failed lookup. The same loop with `ls`
-in place of `stat` measures how old a directory listing can be.
+Lustre keeps client caches coherent through its lock manager, so this section is specific to NFS.
 
 ## Execution Modes
 
