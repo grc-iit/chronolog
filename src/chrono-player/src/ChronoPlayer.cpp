@@ -284,10 +284,7 @@ int main(int argc, char** argv)
     chronolog::ArchiveReadingAgent* archiveReadingAgent = nullptr;
 
     std::string archive_path = PLAYER_CONF.READER_CONF.story_files_dir;
-    archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue,
-                                                             archive_path,
-                                                             PLAYER_CONF.READER_CONF.archive_scan_interval_secs,
-                                                             PLAYER_CONF.READER_CONF.archive_window_secs);
+    archiveReadingAgent = new chronolog::ArchiveReadingAgent(readingRequestQueue, archive_path);
 
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...

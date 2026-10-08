@@ -1,6 +1,5 @@
-// A grapher writes each window of a story to
-// {chronicle}.{story}.{start second}.vlen.h5. When the same window is written
-// again, the file gets a number: .vlen.1.h5, .vlen.2.h5. That happens when
+// A grapher writes each window of a story to one file. When the same window is
+// written again, the new file gets a number: .vlen.1.h5, .vlen.2.h5. That happens when
 // keeper chunks for a window arrive after the grapher has already merged and
 // written it: a keeper that was late, a re-sent chunk, or a story whose
 // pipeline retired before the last chunks arrived. Once the keepers free those
@@ -10,12 +9,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <list>
 #include <string>
-#include <thread>
 #include <vector>
 #include <unistd.h>
 
@@ -27,6 +23,8 @@
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
 
+#include "ArchiveTestSupport.h"
+
 namespace chl = chronolog;
 namespace fs = std::filesystem;
 
@@ -34,7 +32,6 @@ namespace
 {
 constexpr uint64_t NS = 1000000000ULL;
 constexpr chl::StoryId kStory = 7;
-// file names carry the window start in whole seconds
 constexpr uint64_t kWindowStart = 60 * NS;
 constexpr uint64_t kWindowEnd = 120 * NS;
 
@@ -63,8 +60,8 @@ protected:
 
     void TearDown() override { fs::remove_all(archiveDir); }
 
-    // Writes the window with events at the given times, as the grapher's HDF5
-    // extractor does; a second write of the window gets a numbered file.
+    // Publishes the window with events at the given times, as the grapher's
+    // HDF5 extractor does; a second write of the window gets a numbered file.
     void writeWindow(std::vector<uint64_t> const& event_times,
                      std::string const& chronicle = "chron",
                      std::string const& story = "story")
@@ -75,8 +72,7 @@ protected:
         {
             window.insertEvent(chl::LogEvent(kStory, time, 5, index++, "payload"));
         }
-        chl::StoryChunkWriter writer(archiveDir.string(), "story_chunks", "data");
-        ASSERT_GT(writer.writeStoryChunk(window), 0u);
+        ASSERT_FALSE(chl::test::publishWindow(archiveDir, window).empty());
     }
 
     // The event times a replay of [start, end) reads from the archive, and
@@ -89,7 +85,6 @@ protected:
     {
         chl::HDF5ArchiveReadingAgent archive(archiveDir.string());
         archive.initialize();
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         std::list<chl::StoryChunk*> chunks;
         int const read_status = archive.readArchivedStory(chronicle, story, start, end, chunks);
         if(status != nullptr)
@@ -117,22 +112,9 @@ TEST_F(ArchiveNumberedFiles, ReplayReadsEveryWriteOfAWindow)
     writeWindow({kWindowStart + 1});
     writeWindow({kWindowStart + 2});
     writeWindow({kWindowStart + 3});
-    ASSERT_TRUE(fs::exists(archiveDir / "chron.story.60.vlen.2.h5"));
 
     EXPECT_EQ(replayedTimes(kWindowStart, kWindowEnd),
               (std::vector<uint64_t>{kWindowStart + 1, kWindowStart + 2, kWindowStart + 3}));
-}
-
-TEST_F(ArchiveNumberedFiles, AFileThatCannotBeReadIsReported)
-{
-    writeWindow({kWindowStart + 1});
-    // a second write of the window that never completed: the name is right, the
-    // content is not
-    std::ofstream(archiveDir / "chron.story.60.vlen.1.h5") << "not an HDF5 file";
-
-    int status = chl::CL_SUCCESS;
-    EXPECT_EQ(replayedTimes(kWindowStart, kWindowEnd, &status), (std::vector<uint64_t>{kWindowStart + 1}));
-    EXPECT_NE(status, chl::CL_SUCCESS);
 }
 
 TEST_F(ArchiveNumberedFiles, ReadableFilesReportSuccess)
@@ -156,41 +138,8 @@ TEST_F(ArchiveNumberedFiles, ReplayReadsLaterWritesOfTheWindowThatReachesPastThe
               (std::vector<uint64_t>{kWindowStart + 1, kWindowStart + 2}));
 }
 
-// ---- names with dots -----------------------------------------------------------
-//
 // Chronicle and story names may contain dots -- a chronicle named after a fully
-// qualified host name, say -- and the file name joins them with dots too. The
-// reader takes the start second, "vlen" and the file number from the right end
-// of the name, and looks the rest up as one string rather than splitting it.
-
-TEST(ArchiveFileNames, FixedFieldsAreReadFromTheRight)
-{
-    chl::HDF5ArchiveReadingAgent::ArchiveFileName parsed;
-    ASSERT_TRUE(
-            chl::HDF5ArchiveReadingAgent::parseArchiveFileName("/a/node01.cluster.local.cpu.usage.60.vlen.h5", parsed));
-    EXPECT_EQ(parsed.story_prefix, "node01.cluster.local.cpu.usage");
-    EXPECT_EQ(parsed.start_time, 60 * NS);
-    EXPECT_FALSE(parsed.numbered);
-
-    ASSERT_TRUE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName("run.b.123.60.vlen.2.h5", parsed));
-    EXPECT_EQ(parsed.story_prefix, "run.b.123");
-    EXPECT_EQ(parsed.start_time, 60 * NS);
-    EXPECT_TRUE(parsed.numbered);
-
-    // a name part that looks like the suffix stays in the prefix
-    ASSERT_TRUE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName("c.x.5.vlen.60.vlen.h5", parsed));
-    EXPECT_EQ(parsed.story_prefix, "c.x.5.vlen");
-    EXPECT_EQ(parsed.start_time, 60 * NS);
-}
-
-TEST(ArchiveFileNames, OtherFilesAreNotArchiveFiles)
-{
-    chl::HDF5ArchiveReadingAgent::ArchiveFileName parsed;
-    EXPECT_FALSE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName("notes.txt", parsed));
-    EXPECT_FALSE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName("c.s.60.vlen.h5.partial.host.12.3", parsed));
-    EXPECT_FALSE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName("c.s.sixty.vlen.h5", parsed));
-    EXPECT_FALSE(chl::HDF5ArchiveReadingAgent::parseArchiveFileName(".60.vlen.h5", parsed));
-}
+// qualified host name, say.
 
 TEST_F(ArchiveNumberedFiles, AStoryWithDotsInItsNamesIsReplayedWithEveryWrite)
 {

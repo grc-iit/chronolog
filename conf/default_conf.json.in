@@ -222,9 +222,7 @@
       "inactive_story_delay_secs": 300
     },
     "ArchiveReaders": {
-      "story_files_dir": "/tmp",
-      "archive_scan_interval_secs": 5,
-      "archive_window_secs": 30
+      "story_files_dir": "/tmp"
     }
 }
 }

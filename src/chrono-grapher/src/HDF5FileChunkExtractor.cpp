@@ -4,6 +4,7 @@
 #include <string>
 #include <thallium.hpp>
 
+#include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
@@ -75,6 +76,37 @@ int chronolog::HDF5FileChunkExtractor::reset(json_object* json_block)
 
     LOG_INFO("HDF5FileChunkExtractor] Reset success: using {}", rootDirectory);
     return chl::CL_SUCCESS;
+}
+
+int chronolog::HDF5FileChunkExtractor::openArchiveManifest(std::string const& writer_id)
+{
+    auto manifest = std::make_shared<ArchiveManifestWriter>(rootDirectory, writer_id);
+    int const status = manifest->open();
+    if(status != chl::CL_SUCCESS)
+    {
+        LOG_ERROR("[HDF5FileChunkExtractor] Could not open the archive manifest log {}", manifest->logPath());
+        return status;
+    }
+    LOG_INFO("[HDF5FileChunkExtractor] Recording published files in {}", manifest->logPath());
+    archiveManifest = std::move(manifest);
+    return chl::CL_SUCCESS;
+}
+
+int chronolog::HDF5FileChunkExtractor::recordDeletion(std::string const& chronicle_name, std::string const* story_name)
+{
+    if(archiveManifest == nullptr)
+    {
+        return chl::CL_SUCCESS;
+    }
+    ArchiveManifestRecord record;
+    record.op = ArchiveManifestRecord::Op::DELETE;
+    record.chronicle = chronicle_name;
+    record.whole_chronicle = (story_name == nullptr);
+    if(story_name != nullptr)
+    {
+        record.story = *story_name;
+    }
+    return archiveManifest->append(record);
 }
 
 //////
@@ -162,7 +194,8 @@ int chronolog::HDF5FileChunkExtractor::delete_story_files(std::string const& chr
             regex_escape(chronicle_name) + "\\." + regex_escape(story_name) + "\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "story " + chronicle_name + "/" + story_name;
-    return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    int const status = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    return (status == chl::CL_SUCCESS) ? recordDeletion(chronicle_name, &story_name) : status;
 }
 
 int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const& chronicle_name, size_t* deleted_count)
@@ -172,7 +205,8 @@ int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const&
     std::string const pattern_str = regex_escape(chronicle_name) + "\\.[^.]+\\.[0-9]+\\.vlen(\\.[0-9]+)?\\.h5";
     std::regex const filename_pattern(pattern_str);
     std::string const what = "chronicle " + chronicle_name;
-    return delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    int const status = delete_matching_files(rootDirectory, filename_pattern, what, deleted_count);
+    return (status == chl::CL_SUCCESS) ? recordDeletion(chronicle_name, nullptr) : status;
 }
 
 int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chunk)
@@ -211,7 +245,30 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
     }
 
     StoryChunkWriter chunkWriter(rootDirectory, "story_chunks", "data");
-    hsize_t size = chunkWriter.writeStoryChunk(*story_chunk);
+    std::string published_file;
+    hsize_t size = chunkWriter.writeStoryChunk(*story_chunk, &published_file);
+    if(size != 0 && archiveManifest != nullptr)
+    {
+        // Before W moves and receipts settle: once they do, keepers free the
+        // chunk, and a player finds the file only through this record. A file
+        // no record names is removed and the window counts as failed.
+        ArchiveManifestRecord record;
+        record.op = ArchiveManifestRecord::Op::PUBLISH;
+        record.chronicle = story_chunk->getChronicleName();
+        record.story = story_chunk->getStoryName();
+        record.file = std::filesystem::path(published_file).lexically_relative(rootDirectory).string();
+        record.start = story_chunk->getStartTime();
+        record.end = story_chunk->getEndTime();
+        record.events = story_chunk->getEventCount();
+        if(archiveManifest->append(record) != chl::CL_SUCCESS)
+        {
+            LOG_ERROR("[HDF5FileChunkExtractor] Could not record {} in the archive manifest; removing it",
+                      published_file);
+            std::error_code ec;
+            std::filesystem::remove(published_file, ec);
+            size = 0;
+        }
+    }
     if(size == 0)
     {
         LOG_ERROR("[HDF5FileChunkExtractor] Error writing StoryChunk to file: StoryId={} {}-{} {}-{} eventCount {}",

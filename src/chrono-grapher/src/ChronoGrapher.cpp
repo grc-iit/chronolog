@@ -169,9 +169,16 @@ int main(int argc, char** argv)
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
-    theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
-                                                      GRAPHER_CONF.EXTRACTION_MODULE_CONF,
-                                                      &theWatermarkRegistry);
+    // the recording group id names this grapher's log in the archive manifest:
+    // it stays the same across restarts, and no two graphers share it
+    if(theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
+                                                         GRAPHER_CONF.EXTRACTION_MODULE_CONF,
+                                                         &theWatermarkRegistry,
+                                                         std::to_string(recording_group_id)) != chronolog::CL_SUCCESS)
+    {
+        LOG_ERROR("[ChronoGrapher] Extraction chain failed to activate, exiting");
+        return (-1);
+    }
 
     theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
 

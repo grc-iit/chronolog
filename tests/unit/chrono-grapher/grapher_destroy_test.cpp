@@ -19,6 +19,7 @@
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
+#include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
 #include <ChunkIngestionQueue.h>
 #include <ExtractionModuleConfiguration.h>
@@ -94,6 +95,24 @@ TEST(ExtractionQueue, AnEmptyEjectDoesNotCountAsInProcess)
     chl::StoryChunkExtractionQueue queue;
     EXPECT_EQ(queue.ejectStoryChunk(), nullptr);
     EXPECT_TRUE(queue.idle());
+}
+
+// The grapher names its manifest log after its recording group, so each
+// grapher sharing an archive appends to a log of its own.
+TEST(GrapherExtractionChain, ActivatingOpensTheManifestLogOfTheGivenWriter)
+{
+    ensureLogger();
+    fs::path const dir = fs::temp_directory_path() / ("chronolog_grapher_chain_test_" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+
+    chl::ExtractionModuleConfiguration extraction_conf;
+    extraction_conf.extractors["hdf5_extractor"] = json_tokener_parse(
+            ("{\"type\": \"hdf5_extractor\", \"hdf5_archive_dir\": \"" + dir.string() + "\"}").c_str());
+    chl::ChronoGrapherExtractionChain chain;
+    ASSERT_EQ(chain.activate(chl::ServiceId(), extraction_conf, nullptr, "4"), chl::CL_SUCCESS);
+    EXPECT_TRUE(fs::is_regular_file(dir / chl::kArchiveManifestDirName / "4.log"));
+    fs::remove_all(dir);
 }
 
 TEST(GrapherDestroy, AWindowBeingWrittenWhenItsStoryIsDestroyedIsDeletedToo)

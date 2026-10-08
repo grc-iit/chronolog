@@ -2,6 +2,7 @@
 #define CHRONOLOG_HDF5_FILE_CHUNK_EXTRACTOR_H
 
 #include <filesystem>
+#include <memory>
 #include <string>
 
 struct json_object;
@@ -9,6 +10,7 @@ struct json_object;
 namespace chronolog
 {
 
+class ArchiveManifestWriter;
 class StoryChunk;
 class StoryWatermarkRegistry;
 
@@ -44,9 +46,21 @@ public:
     // the pointer must survive moves. Optional — nullptr disables reporting.
     void attachWatermarkRegistry(StoryWatermarkRegistry* registry) { watermarkRegistry = registry; }
 
+    // Opens this grapher's log in the archive manifest (see ArchiveManifest.h)
+    // under writer_id, which must stay the same across restarts. From then on
+    // a window counts as written only once its record is appended, and a
+    // deletion is recorded too. Call after reset().
+    int openArchiveManifest(std::string const& writer_id);
+
 private:
+    // appends the deletion of a story, or of the whole chronicle when
+    // story_name is null, to the manifest if one is open
+    int recordDeletion(std::string const& chronicle_name, std::string const* story_name);
+
     std::string rootDirectory;
     StoryWatermarkRegistry* watermarkRegistry = nullptr;
+    // shared: the extractor is copied into the extraction chain's variant
+    std::shared_ptr<ArchiveManifestWriter> archiveManifest;
 };
 
 } // namespace chronolog

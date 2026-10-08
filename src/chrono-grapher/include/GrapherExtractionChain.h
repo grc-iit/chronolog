@@ -70,9 +70,12 @@ public:
         return true;
     }
 
+    // manifest_writer_id: the name of this grapher's log in the archive
+    // manifest (the recording group id); empty writes no manifest
     int activate(ServiceId const& service_id,
                  ExtractionModuleConfiguration const& extraction_conf,
-                 StoryWatermarkRegistry* watermark_registry = nullptr)
+                 StoryWatermarkRegistry* watermark_registry = nullptr,
+                 std::string const& manifest_writer_id = std::string())
     {
         int ret_value = CL_SUCCESS;
 
@@ -98,6 +101,14 @@ public:
                     break;
                 }
                 hdf5_extractor.attachWatermarkRegistry(watermark_registry);
+                if(!manifest_writer_id.empty())
+                {
+                    ret_value = hdf5_extractor.openArchiveManifest(manifest_writer_id);
+                    if(CL_SUCCESS != ret_value)
+                    {
+                        break;
+                    }
+                }
                 theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")

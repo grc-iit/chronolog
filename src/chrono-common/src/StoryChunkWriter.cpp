@@ -212,7 +212,7 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunkHVL& story_chunk)
     return 0;
 }
 
-hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
+hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk, std::string* published_file)
 {
     std::vector<LogEventHVL> data;
     data.reserve(story_chunk.getEventCount());
@@ -262,6 +262,10 @@ hsize_t StoryChunkWriter::writeStoryChunk(StoryChunk& story_chunk)
         }
 
         LOG_DEBUG("[StoryChunkWriter] Finished writing StoryChunk to file.");
+        if(published_file != nullptr)
+        {
+            *published_file = file_name;
+        }
         return file_size;
     }
     catch(H5::Exception const& error)

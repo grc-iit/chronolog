@@ -23,6 +23,7 @@
 #include <H5Cpp.h>
 #include <thallium.hpp>
 
+#include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
 #include <HDF5FileChunkExtractor.h>
 #include <StoryChunk.h>
@@ -415,4 +416,136 @@ TEST_F(HDF5FileChunkExtractorWatermark, WMovesOnlyPastAWindowThatReadsBack)
     // the sweep covers both a cap too small to write and one large enough
     EXPECT_GT(held, 0u);
     EXPECT_GT(moved, 0u);
+}
+
+// ---- archive manifest -------------------------------------------------------
+//
+// Players find archive files through the manifest. A window counts as written
+// -- W moves, receipts settle, keepers free their chunks -- only once its record
+// is in the manifest, so a player can always find what a keeper has let go of.
+
+namespace
+{
+std::vector<chl::ArchiveManifestRecord> manifestRecords(fs::path const& archive_dir)
+{
+    std::vector<chl::ArchiveManifestRecord> records;
+    for(std::string const& log: chl::listArchiveManifestLogs(archive_dir.string()))
+    {
+        chl::ArchiveManifestTail tail(log);
+        tail.readNew(records);
+    }
+    return records;
+}
+
+// the manifest's log replaced by a directory: every append fails
+void breakManifest(fs::path const& archive_dir)
+{
+    for(std::string const& log: chl::listArchiveManifestLogs(archive_dir.string()))
+    {
+        fs::remove(log);
+        fs::create_directory(log);
+    }
+}
+} // namespace
+
+TEST_F(HDF5FileChunkExtractorWatermark, OpeningTheManifestCreatesThisGraphersLog)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("3"), chl::CL_SUCCESS);
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / chl::kArchiveManifestDirName / "3.log"));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, WrittenWindowIsRecordedInTheManifest)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C.x", "S.y", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    addEvent(window, T0 + 2, 1);
+
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::PUBLISH);
+    EXPECT_EQ(records[0].chronicle, "C.x");
+    EXPECT_EQ(records[0].story, "S.y");
+    EXPECT_EQ(records[0].start, T0);
+    EXPECT_EQ(records[0].end, T1);
+    EXPECT_EQ(records[0].events, 2u);
+    // the path is relative to the archive root and names the file on disk
+    EXPECT_TRUE(fs::path(records[0].file).is_relative());
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / records[0].file));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, SecondWriteOfAWindowIsRecordedUnderItsOwnName)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk first("C", "S", kStory, T0, T1);
+    addEvent(first, T0 + 1, 0);
+    chl::StoryChunk late("C", "S", kStory, T0, T1);
+    addEvent(late, T0 + 2, 1);
+
+    ASSERT_EQ(extractor.process_chunk(&first), chl::CL_SUCCESS);
+    ASSERT_EQ(extractor.process_chunk(&late), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 2u);
+    EXPECT_NE(records[0].file, records[1].file);
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / records[1].file));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, EmptyWindowLeavesNoRecord)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    EXPECT_TRUE(manifestRecords(archiveDir).empty());
+}
+
+// A file no record names is invisible to every player. Counting it as written
+// would let the keepers free the only other copy of its events.
+TEST_F(HDF5FileChunkExtractorWatermark, WindowWhoseRecordCannotBeAppendedIsAFailedWrite)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    breakManifest(archiveDir);
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    window.carryReceipt(receipt);
+
+    EXPECT_NE(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+    // and the unrecorded file is not left behind
+    EXPECT_EQ(archivedFileCount(), 0u);
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DeletingAStoryIsRecorded)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+
+    ASSERT_EQ(extractor.delete_story_files("C", "S"), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 2u);
+    EXPECT_EQ(records[1].op, chl::ArchiveManifestRecord::Op::DELETE);
+    EXPECT_FALSE(records[1].whole_chronicle);
+    EXPECT_EQ(records[1].chronicle, "C");
+    EXPECT_EQ(records[1].story, "S");
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DeletingAChronicleIsRecorded)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+
+    ASSERT_EQ(extractor.delete_chronicle_files("C"), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::DELETE);
+    EXPECT_TRUE(records[0].whole_chronicle);
+    EXPECT_EQ(records[0].chronicle, "C");
 }

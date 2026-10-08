@@ -25,7 +25,10 @@ public:
 
     hsize_t writeStoryChunk(StoryChunkHVL& story_chunk);
 
-    hsize_t writeStoryChunk(StoryChunk& story_chunk);
+    // Writes the chunk under a temporary name and moves it into place. Returns
+    // the file size, 0 on failure; published_file, when given, receives the
+    // path the file got.
+    hsize_t writeStoryChunk(StoryChunk& story_chunk, std::string* published_file = nullptr);
 
     hsize_t writeEvents(std::unique_ptr<H5::H5File>& file, std::vector<LogEventHVL>& data);
 
