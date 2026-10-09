@@ -4,6 +4,19 @@ on:
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
+    inputs:
+      nfs_profiles:
+        description: "NFS mount profiles, space-separated name=options (every mount also gets nosharecache, and vers=4.2 unless the options name a version)"
+        default: "default= nocto=vers=3,nocto,acregmin=60,acregmax=60"
+      nfs_passes:
+        description: "NFS passes, space-separated profile:clean|omission[:warn|nowarn]"
+        default: "default:clean:nowarn nocto:omission:warn"
+      nfs_destroy_profile:
+        description: "Profile whose clean pass also runs the destroy test, or none"
+        default: "default"
+      nfs_cache_secs:
+        description: "Longest NFS attribute cache time of the profiles, in seconds (raise it above 60 with larger ac* options)"
+        default: "60"
 
 concurrency:
   group: distributed-${{ github.event.pull_request.number || github.ref }}
@@ -26,6 +39,13 @@ jobs:
       contents: read
       packages: write
     timeout-minutes: 120
+    env:
+      # The NFS pass (#705): pull requests use the defaults of the dispatch inputs.
+      NFS_EXPORT: /srv/chronolog-nfs
+      NFS_PROFILES: ${{ inputs.nfs_profiles || 'default= nocto=vers=3,nocto,acregmin=60,acregmax=60' }}
+      NFS_PASSES: ${{ inputs.nfs_passes || 'default:clean:nowarn nocto:omission:warn' }}
+      NFS_DESTROY_PROFILE: ${{ inputs.nfs_destroy_profile || 'default' }}
+      NFS_CACHE_SECS: ${{ inputs.nfs_cache_secs || '60' }}
 
     steps:
       - name: Checkout code
@@ -50,6 +70,9 @@ jobs:
           echo "Pulling base image: ${IMAGE_NAME}"
           docker pull "${IMAGE_NAME}"
           echo "✅ Base image pulled"
+
+      - name: Set up NFS server on the runner
+        run: tests/distributed/nfs/nfs_server.sh setup --export "${NFS_EXPORT}"
 
       - name: Set up distributed deployment
         run: |
@@ -118,11 +141,19 @@ jobs:
           echo "✅ Generated dynamic-compose.yaml"
           cat dynamic-compose.yaml
 
+          # one NFS mount of the runner's export per profile, in every container
+          profile_args=()
+          for p in ${NFS_PROFILES}; do profile_args+=(--profile "$p"); done
+          tests/distributed/nfs/nfs_compose_override.sh --containers ${NUM_CONTAINERS} \
+            --server 127.0.0.1 --export "${NFS_EXPORT}" "${profile_args[@]}" > nfs-compose.override.yaml
+          echo "✅ Generated nfs-compose.override.yaml"
+          cat nfs-compose.override.yaml
+
       - name: Launch docker-compose containers
         id: launch
         run: |
           _start=$(date +%s)
-          docker compose -f dynamic-compose.yaml up -d
+          docker compose -f dynamic-compose.yaml -f nfs-compose.override.yaml up -d
           echo "✅ Containers launched"
           docker ps
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
@@ -884,6 +915,29 @@ jobs:
           "
           echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
 
+      - name: Run NFS pass (archive on NFS, per mount profile)
+        id: nfs-pass
+        continue-on-error: true
+        run: |
+          _start=$(date +%s)
+          pass_args=""
+          for p in ${NFS_PASSES}; do pass_args+=" --pass $p"; done
+          # rc is nfs_pass.sh's status under any shell errexit setting, so the
+          # outputs below are written for a failed pass too
+          set -o pipefail
+          rc=0
+          docker exec --user grc-iit chronolog-c1 bash -c "
+            cd /home/grc-iit/chronolog-repo && tests/distributed/nfs/nfs_pass.sh \
+              --work-dir /home/grc-iit/chronolog-install/chronolog \
+              --repo-dir /home/grc-iit/chronolog-repo \
+              --probe /home/grc-iit/chronolog-build/Release/tests/integration/watermark-replay/chronolog-test-exact-split-probe \
+              --destroy-profile ${NFS_DESTROY_PROFILE} --cache-secs ${NFS_CACHE_SECS} \
+              --log-dir /home/grc-iit/nfs-pass-logs ${pass_args}
+          " 2>&1 | tee /tmp/nfs_pass.log || rc=$?
+          echo "duration=$(( $(date +%s) - _start ))" >> "$GITHUB_OUTPUT"
+          { echo 'summary<<NFS_EOF'; sed -n '/NFS pass summary/,$p' /tmp/nfs_pass.log; echo 'NFS_EOF'; } >> "$GITHUB_OUTPUT"
+          exit $rc
+
       - name: Clean up archive output directory
         if: always()
         run: |
@@ -917,7 +971,9 @@ jobs:
       - name: Clean up containers
         if: always()
         run: |
-          docker compose -f dynamic-compose.yaml down -v
+          files=(-f dynamic-compose.yaml)
+          [ -f nfs-compose.override.yaml ] && files+=(-f nfs-compose.override.yaml)
+          docker compose "${files[@]}" down -v
           echo "✅ Containers cleaned up"
 
       - name: Job summary
@@ -939,6 +995,12 @@ jobs:
           PERF_OUTCOME="${{ steps.perf-test.outcome }}"
           READ_D=${{ steps.read-path.outputs.duration || 0 }}
           READ_OUTCOME="${{ steps.read-path.outcome }}"
+          NFS_D=${{ steps.nfs-pass.outputs.duration || 0 }}
+          NFS_OUTCOME="${{ steps.nfs-pass.outcome }}"
+          NFS_SUMMARY=$(cat <<'NFS_SUMMARY_EOF'
+          ${{ steps.nfs-pass.outputs.summary }}
+          NFS_SUMMARY_EOF
+          )
           PERF_OUTPUT=$(cat <<'PERF_SUMMARY_EOF'
           ${{ steps.perf-test.outputs.output }}
           PERF_SUMMARY_EOF
@@ -956,6 +1018,12 @@ jobs:
             success) READ_ICON="✅" ;;
             failure) READ_ICON="❌" ;;
             *)       READ_ICON="⚠️" ;;
+          esac
+
+          case "$NFS_OUTCOME" in
+            success) NFS_ICON="✅" ;;
+            failure) NFS_ICON="❌" ;;
+            *)       NFS_ICON="⚠️" ;;
           esac
 
           {
@@ -983,6 +1051,7 @@ jobs:
             echo "| Deploy ChronoLog (distributed) | $(fmt_duration "$DEPLOY_D") |"
             echo "| Client performance test | $(fmt_duration "$PERF_D") |"
             echo "| Client read path test | $(fmt_duration "$READ_D") |"
+            echo "| NFS pass | $(fmt_duration "$NFS_D") |"
             echo ""
             echo "### 🔎 Client read path test"
             echo ""
@@ -992,6 +1061,16 @@ jobs:
             echo ""
             echo "${PERF_ICON} Outcome: \`${PERF_OUTCOME}\` (4 MPI ranks, 1024 events × 4096 B)"
             echo ""
+            echo "### 🗂️ NFS pass (does not fail the job)"
+            echo ""
+            echo "${NFS_ICON} Outcome: \`${NFS_OUTCOME}\` · profiles: \`${NFS_PROFILES}\` · passes: \`${NFS_PASSES}\`"
+            echo ""
+            if [ -n "$(echo "$NFS_SUMMARY" | tr -d '[:space:]')" ]; then
+              echo '```'
+              echo "$NFS_SUMMARY"
+              echo '```'
+              echo ""
+            fi
             if [ -n "$(echo "$PERF_OUTPUT" | tr -d '[:space:]')" ]; then
               echo "<details><summary>Last 80 lines of MPI output</summary>"
               echo ""
