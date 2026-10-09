@@ -11,6 +11,8 @@ add_test(NAME Unit_NFS_ComposeOverride
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/nfs_compose_override_test.sh ${CMAKE_SOURCE_DIR})
 add_test(NAME Unit_NFS_ServerDryRun
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/nfs_server_dry_run_test.sh ${CMAKE_SOURCE_DIR})
+add_test(NAME Unit_NFS_Classify
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/nfs_classify_test.sh ${CMAKE_SOURCE_DIR})
 
 #------------------------------------------------------------------------------
 # Unit test subdirectories (one component per folder)
