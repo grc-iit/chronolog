@@ -39,5 +39,39 @@ else
     echo "PASS: missing expected file refused"
 fi
 
+# timeline_matches on timelines built from classify_replay lines, as the
+# visibility test writes them.
+line() { # $1 replay output; prints one timeline line
+    printf '%s\n' "$1" > "$dir/out"
+    echo "  t=5s $(classify_replay "$dir/expected" "$dir/out")"
+}
+ok_line=$(line "$(ev 100 200 300; echo 'REPLAY_STATUS CL_SUCCESS')")
+omission_line=$(line "$(ev 100; echo 'REPLAY_STATUS CL_SUCCESS')")
+partial_line=$(line "$(ev 100; echo 'REPLAY_STATUS CL_ERR_PARTIAL_RESULT')")
+partial_extra_line=$(line "$(ev 100 400; echo 'REPLAY_STATUS CL_ERR_PARTIAL_RESULT')")
+partial_dup_line=$(line "$(ev 100 100; echo 'REPLAY_STATUS CL_ERR_PARTIAL_RESULT')")
+unexpected_line=$(line "$(ev 100 200 300 400; echo 'REPLAY_STATUS CL_SUCCESS')")
+judge() { # $1 label, $2 expect, $3 0 if the timeline must match, $4... lines
+    local label=$1 expect=$2 want=$3
+    shift 3
+    printf '%s\n' "$@" > "$dir/timeline"
+    timeline_matches "$expect" "$dir/timeline"
+    local got=$?
+    if [ "$got" -eq "$want" ]; then echo "PASS: $label"; else echo "FAIL: $label: returned $got" >&2; failures=$((failures + 1)); fi
+}
+: > "$dir/timeline"
+timeline_matches clean "$dir/timeline"
+if [ $? -eq 1 ]; then echo "PASS: clean, no replays"; else echo "FAIL: clean, no replays" >&2; failures=$((failures + 1)); fi
+judge "clean, every replay OK" clean 0 "$ok_line" "$ok_line"
+judge "clean, one omission" clean 1 "$ok_line" "$omission_line"
+judge "clean, one partial result" clean 1 "$ok_line" "$partial_line"
+judge "omission, one omission" omission 0 "$ok_line" "$omission_line"
+judge "omission, partial result missing events" omission 0 "$omission_line" "$partial_line"
+judge "omission, partial result with an extra event" omission 1 "$omission_line" "$partial_extra_line"
+judge "omission, partial result with a duplicate" omission 1 "$omission_line" "$partial_dup_line"
+judge "omission, an unexpected event" omission 1 "$omission_line" "$unexpected_line"
+judge "omission, none missing" omission 1 "$ok_line" "$ok_line"
+judge "unknown expectation" sometimes 2 "$ok_line"
+
 echo "$failures classify checks failed"
 test "$failures" -eq 0
