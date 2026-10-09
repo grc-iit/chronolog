@@ -13,8 +13,11 @@
 //       acquires the story, replays its whole range, releases it, and prints
 //       EVENT <timestamp> <client id> <index> per event, then
 //       REPLAY_STATUS <CL_...> and REPLAY_COUNT <n>
+//   destroy <chronicle> <story>
+//       destroys the story and prints DESTROY_STATUS <CL_...>. The story must
+//       not be acquired by any client, this one included.
 //
-// Usage: exact_split_probe --config <client conf> write|replay <chronicle> <story> [count [hold_secs]]
+// Usage: exact_split_probe --config <client conf> write|replay|destroy <chronicle> <story> [count [hold_secs]]
 // Arguments are positional: the shared cmd_arg_parse getopt rejects flags it
 // does not know.
 
@@ -51,10 +54,10 @@ int main(int argc, char** argv)
         }
         positional.push_back(arg);
     }
-    if(positional.size() < 3 || (positional[0] != "write" && positional[0] != "replay") ||
+    if(positional.size() < 3 || (positional[0] != "write" && positional[0] != "replay" && positional[0] != "destroy") ||
        (positional[0] == "write" && positional.size() < 4))
     {
-        std::cerr << "Usage: " << argv[0] << " --config <client conf> write|replay <chronicle> <story> [count]"
+        std::cerr << "Usage: " << argv[0] << " --config <client conf> write|replay|destroy <chronicle> <story> [count]"
                   << std::endl;
         return EXIT_FAILURE;
     }
@@ -85,13 +88,23 @@ int main(int argc, char** argv)
     queryConf.PORT = confManager.QUERY_CONF.PORT;
     queryConf.PROVIDER_ID = confManager.QUERY_CONF.PROVIDER_ID;
 
+    std::string const status_key = (mode == "write")     ? "WRITE_STATUS "
+                                   : (mode == "destroy") ? "DESTROY_STATUS "
+                                                         : "REPLAY_STATUS ";
     chronolog::Client client(portalConf, queryConf);
     int ret = client.Connect();
     if(ret != chronolog::CL_SUCCESS)
     {
-        std::cout << (mode == "write" ? "WRITE_STATUS " : "REPLAY_STATUS ") << chronolog::to_string_client(ret)
-                  << std::endl;
+        std::cout << status_key << chronolog::to_string_client(ret) << std::endl;
         return EXIT_FAILURE;
+    }
+
+    if(mode == "destroy")
+    {
+        ret = client.DestroyStory(chronicle_name, story_name);
+        std::cout << status_key << chronolog::to_string_client(ret) << std::endl;
+        client.Disconnect();
+        return (ret == chronolog::CL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
     if(mode == "write")
