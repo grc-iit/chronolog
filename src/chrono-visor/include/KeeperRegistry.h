@@ -7,7 +7,6 @@
 #include <list>
 #include <map>
 #include <mutex>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -193,11 +192,13 @@ public:
     int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
 
     // Broadcast destroy_story to every active Grapher in the registry.
-    // Because a story may have been re-acquired across multiple recording
-    // groups over its lifetime (activeStories only tracks the current binding
-    // and a fresh group is picked at every Acquire), HDF5 files for the same
-    // story can live on Graphers other than the one currently recording it.
-    // Each Grapher filters by filename and no-ops on stories it never saw.
+    // A story may have been recorded by several recording groups over its
+    // lifetime: an acquire picks the group from the story id and the active
+    // groups, so the story moves when a group joins or leaves, and archives
+    // written before #706 came from a group drawn at random at every acquire.
+    // HDF5 files for the same story can therefore live on Graphers other than
+    // the one currently recording it. Each Grapher filters by filename and
+    // no-ops on stories it never saw.
     int notifyAllGraphersOfStoryDestruction(ChronicleName const&, StoryName const&, StoryId const&);
 
     // Broadcast destroy_chronicle to every active Grapher in the registry.
@@ -245,8 +246,6 @@ private:
 
     std::map<RecordingGroupId, RecordingGroup> recordingGroups;
     std::vector<RecordingGroup*> activeGroups;
-    std::mt19937 mt_random; //mersene twister random int generator
-    std::uniform_int_distribution<size_t> group_id_distribution;
     std::map<StoryId, RecordingGroup*> activeStories;
 };
 } // namespace chronolog
