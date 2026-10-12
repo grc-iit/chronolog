@@ -17,6 +17,7 @@
 
 #include <chrono_monitor.h>
 #include "ChronologClientImpl.h"
+#include "QueryServiceAddress.h"
 #include "StorytellerClient.h"
 
 namespace chl = chronolog;
@@ -73,8 +74,17 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     }
     else
     {
-        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + clientQueryServiceConf.IP +
-                                              ":" + std::to_string(clientQueryServiceConf.PORT);
+        std::string query_ip = query_service_ip(clientQueryServiceConf.IP, clientPortalServiceConf.IP);
+        if(query_ip != clientQueryServiceConf.IP)
+        {
+            LOG_INFO("[ChronologClientImpl] Query service listens on {} instead of the conf's {}: the visor at {} is "
+                     "on another host",
+                     query_ip,
+                     clientQueryServiceConf.IP,
+                     clientPortalServiceConf.IP);
+        }
+        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + query_ip + ":" +
+                                              std::to_string(clientQueryServiceConf.PORT);
 
         margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         tlEngine = new tl::engine(margo_id);
@@ -82,7 +92,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
         storyReaderService = chl::ClientQueryService::CreateClientQueryService(
                 *tlEngine,
                 chronolog::ServiceId(clientQueryServiceConf.PROTO_CONF,
-                                     clientQueryServiceConf.IP,
+                                     query_ip,
                                      clientQueryServiceConf.PORT,
                                      clientQueryServiceConf.PROVIDER_ID));
     }
