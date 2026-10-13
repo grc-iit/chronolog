@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -46,6 +47,31 @@ inline std::optional<RecordingGroupId> select_recording_group(uint64_t story_id,
         }
     }
     return selected;
+}
+
+/**
+ * The group of groups (the visor's recordingGroups) that records story_id: the
+ * selection above over the groups for which is_active(group) holds now. It is
+ * drawn from the groups that can record at the moment of the acquire, not from
+ * a list kept up to date at registration: a group whose only keeper or whose
+ * grapher is re-registering is inactive but can still be listed, and the hash
+ * would send it the same stories at every acquire. Returns nullptr when no
+ * group is active.
+ */
+template <typename Group, typename IsActive>
+Group* select_active_recording_group(uint64_t story_id, std::map<RecordingGroupId, Group>& groups, IsActive is_active)
+{
+    std::vector<RecordingGroupId> active_ids;
+    active_ids.reserve(groups.size());
+    for(auto const& [group_id, group]: groups)
+    {
+        if(is_active(group))
+        {
+            active_ids.push_back(group_id);
+        }
+    }
+    std::optional<RecordingGroupId> selected = select_recording_group(story_id, active_ids);
+    return selected ? &groups.at(*selected) : nullptr;
 }
 
 /**

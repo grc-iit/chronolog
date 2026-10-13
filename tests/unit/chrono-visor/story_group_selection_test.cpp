@@ -11,6 +11,7 @@
 using chronolog::add_active_group;
 using chronolog::RecordingGroupId;
 using chronolog::remove_active_group;
+using chronolog::select_active_recording_group;
 using chronolog::select_recording_group;
 
 namespace
@@ -144,4 +145,42 @@ TEST(ActiveGroups, RemovingAGroupThatIsNotListedChangesNothing)
     std::vector<int*> none;
     remove_active_group(none, &c);
     EXPECT_TRUE(none.empty());
+}
+
+namespace
+{
+
+struct FakeGroup
+{
+    bool active = true;
+};
+
+bool fake_is_active(FakeGroup const& group) { return group.active; }
+
+} // namespace
+
+// A group whose only keeper or whose grapher is re-registering is inactive
+// while still listed in the visor's activeGroups; the stories that hash to it
+// must go to a group that can record them.
+TEST(ActiveRecordingGroup, AnInactiveGroupIsNeverChosen)
+{
+    std::map<RecordingGroupId, FakeGroup> groups{{1, {}}, {2, {}}, {3, {}}};
+    groups[2].active = false;
+    for(uint64_t story = 0; story < kStories; ++story)
+    {
+        FakeGroup* chosen = select_active_recording_group(story, groups, fake_is_active);
+        ASSERT_NE(chosen, nullptr);
+        EXPECT_NE(chosen, &groups[2]) << "story " << story;
+        // the same choice as over the active groups alone
+        RecordingGroupId expected = select_recording_group(story, {1, 3}).value();
+        EXPECT_EQ(chosen, &groups[expected]) << "story " << story;
+    }
+}
+
+TEST(ActiveRecordingGroup, NoActiveGroupNoSelection)
+{
+    std::map<RecordingGroupId, FakeGroup> groups{{1, {false}}, {2, {false}}};
+    EXPECT_EQ(select_active_recording_group(42, groups, fake_is_active), nullptr);
+    std::map<RecordingGroupId, FakeGroup> none;
+    EXPECT_EQ(select_active_recording_group(42, none, fake_is_active), nullptr);
 }

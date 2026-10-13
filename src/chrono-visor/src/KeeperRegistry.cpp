@@ -584,19 +584,21 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             return chronolog::CL_SUCCESS;
         }
 
-        // The group is a function of the story id and the set of active groups,
-        // not a random draw: a story released and acquired again soon after goes
-        // back to the group whose keepers still hold its recent events. With a
-        // fresh draw at every acquire, a replay could be served by another group
-        // and miss those events while still reporting success (#706).
-        std::vector<RecordingGroupId> active_group_ids;
-        active_group_ids.reserve(activeGroups.size());
-        for(RecordingGroup const* group: activeGroups) { active_group_ids.push_back(group->groupId); }
-        RecordingGroupId selected_id = select_recording_group(story_id, active_group_ids).value();
-        recording_group =
-                *std::find_if(activeGroups.begin(),
-                              activeGroups.end(),
-                              [selected_id](RecordingGroup const* group) { return group->groupId == selected_id; });
+        // The group is a function of the story id and the set of groups that can
+        // record now, not a random draw: a story released and acquired again soon
+        // after goes back to the group whose keepers still hold its recent events.
+        // With a fresh draw at every acquire, a replay could be served by another
+        // group and miss those events while still reporting success (#706).
+        recording_group = select_active_recording_group(story_id,
+                                                        recordingGroups,
+                                                        [](RecordingGroup const& group) { return group.isActive(); });
+        if(recording_group == nullptr)
+        {
+            LOG_ERROR("[ChronoProcessRegistry] No RecordingGroup can record story {}: none has an active grapher and "
+                      "keeper",
+                      story_id);
+            return chronolog::CL_ERR_NO_KEEPERS;
+        }
         activeStories[story_id] = recording_group;
     }
 
