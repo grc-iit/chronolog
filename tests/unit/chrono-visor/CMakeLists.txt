@@ -29,3 +29,23 @@ gtest_discover_tests(chronicle_story_id_test TEST_PREFIX "Unit_ChronoVisor_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronicle_story_id_test DESTINATION tests)
 endif()
+
+# Recording group chosen for a story (GTest) — header-only, no network needed
+add_executable(story_group_selection_test
+    story_group_selection_test.cpp
+)
+
+target_include_directories(story_group_selection_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(story_group_selection_test PRIVATE
+    GTest::gtest_main
+)
+
+set_target_properties(story_group_selection_test PROPERTIES OUTPUT_NAME chronolog-test-story-group-selection)
+gtest_discover_tests(story_group_selection_test TEST_PREFIX "Unit_ChronoVisor_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(story_group_selection_test DESTINATION tests)
+endif()

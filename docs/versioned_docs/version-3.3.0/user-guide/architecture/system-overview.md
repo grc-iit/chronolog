@@ -24,7 +24,7 @@ ChronoLog is composed of five main components, each running as an independent pr
 A **Recording Group** is a logical grouping of recording processes that work together to handle a subset of the story recording workload:
 
 - Each group contains **multiple ChronoKeepers**, **one ChronoGrapher**, and **one ChronoPlayer**.
-- ChronoVisor assigns newly acquired **Stories** to a recording group using uniform random distribution for load balancing.
+- ChronoVisor assigns newly acquired **Stories** to a recording group chosen from the story id by rendezvous hashing over the active groups: stories spread evenly over the groups, and a story acquired again returns to the same group while the groups stay the same. A story keeps its group while any client holds it.
 - All processes in a group register with ChronoVisor and send periodic heartbeat/statistics messages so that ChronoVisor can monitor group health and composition.
 - A deployment can have multiple Recording Groups, allowing ChronoLog to scale horizontally by adding more groups.
 
