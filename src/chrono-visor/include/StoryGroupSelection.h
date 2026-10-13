@@ -1,6 +1,7 @@
 #ifndef CHRONOLOG_STORY_GROUP_SELECTION_H
 #define CHRONOLOG_STORY_GROUP_SELECTION_H
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -45,6 +46,31 @@ inline std::optional<RecordingGroupId> select_recording_group(uint64_t story_id,
         }
     }
     return selected;
+}
+
+/**
+ * Add group to the visor's list of active groups, unless it is listed already.
+ * The selection above draws from that list, so a group must be in it at most
+ * once: a copy left behind after the group is removed keeps receiving the
+ * stories that hash to it, with no grapher or no keepers to record them.
+ */
+template <typename Group>
+void add_active_group(std::vector<Group*>& active_groups, Group* group)
+{
+    if(std::find(active_groups.begin(), active_groups.end(), group) == active_groups.end())
+    {
+        active_groups.push_back(group);
+    }
+}
+
+/**
+ * Remove every copy of group from the list of active groups; a group that is
+ * not listed leaves the list unchanged.
+ */
+template <typename Group>
+void remove_active_group(std::vector<Group*>& active_groups, Group* group)
+{
+    active_groups.erase(std::remove(active_groups.begin(), active_groups.end(), group), active_groups.end());
 }
 
 } // namespace chronolog

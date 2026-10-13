@@ -352,7 +352,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
 
     if(recording_group.isActive() && recording_group.activeKeeperCount == 1)
     {
-        activeGroups.push_back(&recording_group);
+        add_active_group(activeGroups, &recording_group);
     }
 
     LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
@@ -402,7 +402,7 @@ int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const& keeper_id_card)
         // and the group needs to be removed from the active group rotation
         if(recording_group.isActive() && (*keeper_process_iter).second.active && recording_group.activeKeeperCount == 1)
         {
-            activeGroups.erase(std::remove(activeGroups.begin(), activeGroups.end(), &recording_group));
+            remove_active_group(activeGroups, &recording_group);
         }
 
         // we mark the keeperProcessEntry as inactive and set the time it would be safe to delete.
@@ -1401,7 +1401,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg
     // check if the group is ready for active group rotation
     if(recording_group.isActive())
     {
-        activeGroups.push_back(&recording_group);
+        add_active_group(activeGroups, &recording_group);
     }
 
     LOG_INFO("[ChronoProcessRegistry]  has {} activeGroups; {} RecordingGroups ",
@@ -1438,28 +1438,12 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
     // if it were an active recordingGroup before remove it from rotation
     if(recording_group.isActive())
     {
-        auto active_group_iter = activeGroups.begin();
-        while(active_group_iter != activeGroups.end())
-        {
-            if((*active_group_iter) != &recording_group)
-            {
-                ++active_group_iter;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        if(active_group_iter != activeGroups.end())
-        {
-            //INNA: what do we do with any active Stories that this group were recordng? force release them and notify clients?
-            // wait for the new grapher?
-            LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} is not active; activeGroups.size{}",
-                     recording_group.groupId,
-                     activeGroups.size());
-            activeGroups.erase(active_group_iter);
-        }
+        //INNA: what do we do with any active Stories that this group were recordng? force release them and notify clients?
+        // wait for the new grapher?
+        remove_active_group(activeGroups, &recording_group);
+        LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} is not active; activeGroups.size{}",
+                 recording_group.groupId,
+                 activeGroups.size());
     }
 
     if(recording_group.grapherProcess != nullptr && recording_group.grapherProcess->active)

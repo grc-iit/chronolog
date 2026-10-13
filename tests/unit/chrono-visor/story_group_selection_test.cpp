@@ -8,7 +8,9 @@
 
 #include <StoryGroupSelection.h>
 
+using chronolog::add_active_group;
 using chronolog::RecordingGroupId;
+using chronolog::remove_active_group;
 using chronolog::select_recording_group;
 
 namespace
@@ -111,3 +113,35 @@ TEST(StoryGroupSelection, OneGroupTakesEveryStory)
 }
 
 TEST(StoryGroupSelection, NoGroupNoSelection) { EXPECT_FALSE(select_recording_group(42, {}).has_value()); }
+
+// A group listed twice in the visor's active groups stays listed after one
+// removal, and keeps receiving the stories that hash to it with no grapher or
+// no keepers left.
+TEST(ActiveGroups, AGroupIsListedOnce)
+{
+    int a = 0, b = 0;
+    std::vector<int*> groups;
+    add_active_group(groups, &a);
+    add_active_group(groups, &b);
+    add_active_group(groups, &a);
+    EXPECT_EQ(groups, (std::vector<int*>{&a, &b}));
+}
+
+TEST(ActiveGroups, RemovingAGroupRemovesEveryCopy)
+{
+    int a = 0, b = 0, c = 0;
+    std::vector<int*> groups{&a, &b, &c, &b};
+    remove_active_group(groups, &b);
+    EXPECT_EQ(groups, (std::vector<int*>{&a, &c}));
+}
+
+TEST(ActiveGroups, RemovingAGroupThatIsNotListedChangesNothing)
+{
+    int a = 0, b = 0, c = 0;
+    std::vector<int*> groups{&a, &b};
+    remove_active_group(groups, &c);
+    EXPECT_EQ(groups, (std::vector<int*>{&a, &b}));
+    std::vector<int*> none;
+    remove_active_group(none, &c);
+    EXPECT_TRUE(none.empty());
+}
