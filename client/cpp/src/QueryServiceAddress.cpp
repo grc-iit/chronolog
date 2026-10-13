@@ -1,3 +1,5 @@
+#include <climits>
+#include <cstdint>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -38,7 +40,7 @@ bool is_loopback(struct in_addr const& addr) { return (ntohl(addr.s_addr) >> 24)
 
 // The source address the kernel picks for packets to dest. Connecting a UDP
 // socket only selects the route; nothing is sent.
-std::optional<std::string> source_address_towards(struct in_addr const& dest)
+std::optional<struct in_addr> source_address_towards(struct in_addr const& dest)
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if(fd < 0)
@@ -52,16 +54,32 @@ std::optional<std::string> source_address_towards(struct in_addr const& dest)
     peer.sin_port = htons(9); // any port: the route depends on the address only
     struct sockaddr_in local;
     socklen_t local_len = sizeof(local);
-    std::optional<std::string> result;
-    char text[INET_ADDRSTRLEN] = {0};
+    std::optional<struct in_addr> result;
     if(connect(fd, reinterpret_cast<struct sockaddr const*>(&peer), sizeof(peer)) == 0 &&
-       getsockname(fd, reinterpret_cast<struct sockaddr*>(&local), &local_len) == 0 &&
-       inet_ntop(AF_INET, &local.sin_addr, text, sizeof(text)) != nullptr)
+       getsockname(fd, reinterpret_cast<struct sockaddr*>(&local), &local_len) == 0)
     {
-        result = text;
+        result = local.sin_addr;
     }
     close(fd);
     return result;
+}
+
+// This host's address on the route to a visor that is not on loopback, or
+// nothing when visor_ip is loopback, does not resolve or has no route.
+std::optional<struct in_addr> address_towards_remote_visor(std::string const& visor_ip)
+{
+    std::optional<struct in_addr> visor_addr = resolve_ipv4(visor_ip);
+    if(!visor_addr || is_loopback(*visor_addr))
+    {
+        return std::nullopt;
+    }
+    return source_address_towards(*visor_addr);
+}
+
+std::string to_dotted(struct in_addr const& addr)
+{
+    char text[INET_ADDRSTRLEN] = {0};
+    return inet_ntop(AF_INET, &addr, text, sizeof(text)) != nullptr ? std::string(text) : std::string();
 }
 
 } // namespace
@@ -69,14 +87,31 @@ std::optional<std::string> source_address_towards(struct in_addr const& dest)
 std::string chronolog::query_service_ip(std::string const& conf_ip, std::string const& visor_ip)
 {
     std::optional<struct in_addr> conf_addr = resolve_ipv4(conf_ip);
-    if(!conf_addr || !is_loopback(*conf_addr))
+    if(!conf_addr)
     {
         return conf_ip;
     }
-    std::optional<struct in_addr> visor_addr = resolve_ipv4(visor_ip);
-    if(!visor_addr || is_loopback(*visor_addr))
+    if(is_loopback(*conf_addr))
     {
-        return conf_ip;
+        if(std::optional<struct in_addr> own_addr = address_towards_remote_visor(visor_ip))
+        {
+            conf_addr = own_addr;
+        }
     }
-    return source_address_towards(*visor_addr).value_or(conf_ip);
+    std::string dotted = to_dotted(*conf_addr);
+    return dotted.empty() ? conf_ip : dotted;
+}
+
+uint32_t chronolog::client_host_ipv4(std::string const& visor_ip)
+{
+    std::optional<struct in_addr> addr = address_towards_remote_visor(visor_ip);
+    if(!addr)
+    {
+        char name[HOST_NAME_MAX + 1] = {0};
+        if(gethostname(name, sizeof(name) - 1) == 0)
+        {
+            addr = resolve_ipv4(name);
+        }
+    }
+    return addr ? ntohl(addr->s_addr) : 0;
 }

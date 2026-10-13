@@ -3,14 +3,9 @@
 #include <iostream>
 #include <limits.h>
 #include <mutex>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <sstream>
 #include <string>
-#include <sys/socket.h>
 #include <unistd.h>
-
-#include <arpa/inet.h>
 
 #include <margo.h>
 #include <thallium.hpp>
@@ -66,7 +61,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     // it into the ClientId so consumers can reach back to this client. Writer-
     // only clients have no inbound port and report 0.
     uint16_t query_port = (READER_MODE == clientMode) ? clientQueryServiceConf.PORT : uint16_t{0};
-    defineClientIdentity(query_port);
+    defineClientIdentity(query_port, clientPortalServiceConf.IP);
 
     if(WRITER_MODE == clientMode)
     {
@@ -106,33 +101,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
 
 ////////
 
-// Resolve the host's primary IPv4 address in host byte order. Returns 0 if the
-// hostname does not resolve to an IPv4 address (e.g. air-gapped environments);
-// that's intentionally non-fatal — ClientId is still unique within a host
-// thanks to the pid-derived instance discriminator.
-static uint32_t resolve_local_ipv4()
-{
-    char hostname[HOST_NAME_MAX + 1] = {0};
-    if(gethostname(hostname, sizeof(hostname) - 1) != 0)
-    {
-        return 0;
-    }
-    struct addrinfo hints;
-    std::memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo* res = nullptr;
-    if(getaddrinfo(hostname, nullptr, &hints, &res) != 0 || res == nullptr)
-    {
-        return 0;
-    }
-    auto const* sin = reinterpret_cast<struct sockaddr_in const*>(res->ai_addr);
-    uint32_t ip = ntohl(sin->sin_addr.s_addr);
-    freeaddrinfo(res);
-    return ip;
-}
-
-void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port)
+void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port, std::string const& visor_ip)
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
@@ -141,7 +110,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
 
     clientLogin = login_name; //this truncates login_name to the actual strlen...
 
-    clientIdentity.ip = resolve_local_ipv4();
+    clientIdentity.ip = client_host_ipv4(visor_ip);
     clientIdentity.port = query_service_port;
     clientIdentity.instance = static_cast<uint16_t>(getpid() & 0xFFFFu);
 

@@ -83,7 +83,7 @@ Configures the client's local endpoint used for query responses from ChronoPlaye
 | Field | Default | Description |
 |---|---|---|
 | `protocol_conf` | `"ofi+sockets"` | Transport protocol (must match the rest of the deployment). |
-| `service_ip` | `"127.0.0.1"` | IP address the client binds for receiving query responses. A loopback address is replaced when `VisorClientPortalService.service_ip` is not loopback: the client then listens on this host's address on the route to the visor, so one client conf serves clients on every host. Any other address is used as given. |
+| `service_ip` | `"127.0.0.1"` | IP address the client binds for receiving query responses. A loopback address is replaced when `VisorClientPortalService.service_ip` is not loopback: the client then listens on this host's address on the route to the visor, so one client conf serves clients on every host. Any other address is used as given; a host name is resolved to its IPv4 address. |
 | `service_base_port` | `5557` | Port the client listens on for playback query responses. |
 | `service_provider_id` | `57` | Thallium provider ID for this service endpoint. |
 

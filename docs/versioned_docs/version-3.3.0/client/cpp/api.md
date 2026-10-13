@@ -240,7 +240,7 @@ struct ClientIdentity
 };
 ```
 
-`ClientId` layout: bits `[63:32]` ip, bits `[31:16]` port, bits `[15:0]` instance. The high 48 bits identify the client's network endpoint so a downstream consumer reading back events can identify the producer; the low 16 bits disambiguate multiple writer-only processes running on the same host.
+`ClientId` layout: bits `[63:32]` ip, bits `[31:16]` port, bits `[15:0]` instance. The high 48 bits identify the client's network endpoint so a downstream consumer reading back events can identify the producer; the low 16 bits disambiguate multiple writer-only processes running on the same host. The ip is this host's address on the route to the visor when the visor is on another host (the address the query service listens on), and otherwise the address the host name resolves to.
 
 ---
 
