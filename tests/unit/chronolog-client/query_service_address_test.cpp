@@ -1,6 +1,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 
 #include <arpa/inet.h>
@@ -14,6 +15,7 @@
 
 #include "QueryServiceAddress.h"
 
+using chronolog::address_towards_remote_visor;
 using chronolog::client_host_ipv4;
 using chronolog::query_service_ip;
 
@@ -82,67 +84,97 @@ uint32_t host_name_ipv4()
 
 } // namespace
 
-TEST(QueryServiceAddressTest, ExplicitAddressIsKept)
+// Names under .invalid never resolve (RFC 6761). The trailing dot keeps the
+// resolver from appending a search domain, where a wildcard record could answer.
+constexpr char const* kNoSuchVisor = "no-such-visor.invalid.";
+constexpr char const* kNoSuchHost = "no-such-host.invalid.";
+
+// A documentation address (RFC 5737) standing for a visor on another host.
+constexpr char const* kRemote = "192.0.2.7";
+
+TEST(QueryServiceAddressTest, TheRouteToAVisorAtOneOfThisHostsAddressesLeavesFromIt)
 {
-    EXPECT_EQ(query_service_ip("10.1.2.3", "192.0.2.10"), "10.1.2.3");
+    std::string const own_ip = first_non_loopback_ipv4();
+    if(own_ip.empty())
+    {
+        GTEST_SKIP() << "no IPv4 interface other than loopback";
+    }
+    EXPECT_EQ(address_towards_remote_visor(own_ip), own_ip);
 }
 
-TEST(QueryServiceAddressTest, LoopbackIsKeptWhenTheVisorIsOnLoopback)
+TEST(QueryServiceAddressTest, NoRouteIsTakenForAVisorOnLoopbackOrUnknown)
 {
-    EXPECT_EQ(query_service_ip("127.0.0.1", "127.0.0.1"), "127.0.0.1");
-    EXPECT_EQ(query_service_ip("127.0.0.1", "127.0.1.1"), "127.0.0.1");
-    EXPECT_EQ(query_service_ip("127.0.0.1", "localhost"), "127.0.0.1");
+    EXPECT_EQ(address_towards_remote_visor("127.0.0.1"), std::nullopt);
+    EXPECT_EQ(address_towards_remote_visor("127.0.1.1"), std::nullopt);
+    EXPECT_EQ(address_towards_remote_visor("localhost"), std::nullopt);
+    EXPECT_EQ(address_towards_remote_visor(kNoSuchVisor), std::nullopt);
+    EXPECT_EQ(address_towards_remote_visor(""), std::nullopt);
+}
+
+TEST(QueryServiceAddressTest, ExplicitAddressIsKept)
+{
+    for(std::optional<std::string> const& towards: {std::optional<std::string>(kRemote), std::optional<std::string>()})
+    {
+        auto const result = query_service_ip("10.1.2.3", towards);
+        EXPECT_EQ(result.ip, "10.1.2.3");
+        EXPECT_FALSE(result.replaced);
+    }
+}
+
+TEST(QueryServiceAddressTest, LoopbackIsKeptWithoutARemoteVisor)
+{
+    auto const result = query_service_ip("127.0.0.1", std::nullopt);
+    EXPECT_EQ(result.ip, "127.0.0.1");
+    EXPECT_FALSE(result.replaced);
 }
 
 // With the visor on another host, every reader-mode client given the template's
 // 127.0.0.1 would listen, and announce itself, under that one address.
-TEST(QueryServiceAddressTest, LoopbackIsReplacedByTheAddressOnTheRouteToTheVisor)
+TEST(QueryServiceAddressTest, LoopbackIsReplacedByTheAddressTowardsARemoteVisor)
 {
-    std::string const own_ip = first_non_loopback_ipv4();
-    if(own_ip.empty())
+    for(char const* conf_ip: {"127.0.0.1", "127.0.1.1", "localhost"})
     {
-        GTEST_SKIP() << "no IPv4 interface other than loopback";
+        auto const result = query_service_ip(conf_ip, std::string(kRemote));
+        EXPECT_EQ(result.ip, kRemote) << conf_ip;
+        EXPECT_TRUE(result.replaced) << conf_ip;
     }
-    // the route to one of this host's own addresses leaves from that address
-    EXPECT_EQ(query_service_ip("127.0.0.1", own_ip), own_ip);
-    EXPECT_EQ(query_service_ip("localhost", own_ip), own_ip);
-}
-
-TEST(QueryServiceAddressTest, ConfAddressIsKeptWhenTheVisorDoesNotResolve)
-{
-    EXPECT_EQ(query_service_ip("127.0.0.1", "no-such-visor.invalid"), "127.0.0.1");
-    EXPECT_EQ(query_service_ip("127.0.0.1", ""), "127.0.0.1");
 }
 
 // ServiceId takes only dotted addresses: a host name given back unchanged would
-// be announced to the players as address 0.
-TEST(QueryServiceAddressTest, AHostNameIsReturnedAsItsAddress)
+// be announced to the players as address 0. Resolving a name is not a
+// replacement, so the client does not log that the visor is on another host.
+TEST(QueryServiceAddressTest, AHostNameIsReturnedAsItsAddressWithoutCountingAsReplaced)
 {
-    EXPECT_EQ(query_service_ip("localhost", "127.0.0.1"), "127.0.0.1");
-    EXPECT_EQ(query_service_ip("localhost", "localhost"), "127.0.0.1");
-    EXPECT_EQ(query_service_ip("localhost", "no-such-visor.invalid"), "127.0.0.1");
+    auto const result = query_service_ip("localhost", std::nullopt);
+    EXPECT_EQ(result.ip, "127.0.0.1");
+    EXPECT_FALSE(result.replaced);
 }
 
 TEST(QueryServiceAddressTest, AConfNameThatDoesNotResolveIsKept)
 {
-    EXPECT_EQ(query_service_ip("no-such-host.invalid", "192.0.2.10"), "no-such-host.invalid");
+    auto const result = query_service_ip(kNoSuchHost, std::string(kRemote));
+    EXPECT_EQ(result.ip, kNoSuchHost);
+    EXPECT_FALSE(result.replaced);
+}
+
+// A conf address on a fast network while the visor is reached over another
+// one: the ClientId must name the address the client listens on.
+TEST(QueryServiceAddressTest, AReaderIsIdentifiedByItsListenAddress)
+{
+    EXPECT_EQ(client_host_ipv4(std::string("10.10.0.5"), std::string(kRemote)), host_order("10.10.0.5"));
+    EXPECT_EQ(client_host_ipv4(std::string("10.10.0.5"), std::nullopt), host_order("10.10.0.5"));
 }
 
 // On a stock Ubuntu or Debian host the host name resolves to 127.0.1.1, so a
 // ClientId taken from it would be the same on every host.
-TEST(QueryServiceAddressTest, ClientIdentityUsesTheAddressOnTheRouteToARemoteVisor)
+TEST(QueryServiceAddressTest, AWriterOrLoopbackReaderIsIdentifiedByTheRouteToARemoteVisor)
 {
-    std::string const own_ip = first_non_loopback_ipv4();
-    if(own_ip.empty())
-    {
-        GTEST_SKIP() << "no IPv4 interface other than loopback";
-    }
-    EXPECT_EQ(client_host_ipv4(own_ip), host_order(own_ip));
+    EXPECT_EQ(client_host_ipv4(std::nullopt, std::string(kRemote)), host_order(kRemote));
+    EXPECT_EQ(client_host_ipv4(std::string("127.0.0.1"), std::string(kRemote)), host_order(kRemote));
 }
 
-TEST(QueryServiceAddressTest, ClientIdentityFallsBackToTheHostNameWithoutARemoteVisor)
+TEST(QueryServiceAddressTest, WithoutEitherTheClientIsIdentifiedByItsHostName)
 {
-    EXPECT_EQ(client_host_ipv4("127.0.0.1"), host_name_ipv4());
-    EXPECT_EQ(client_host_ipv4("no-such-visor.invalid"), host_name_ipv4());
-    EXPECT_EQ(client_host_ipv4(""), host_name_ipv4());
+    EXPECT_EQ(client_host_ipv4(std::nullopt, std::nullopt), host_name_ipv4());
+    EXPECT_EQ(client_host_ipv4(std::string("127.0.0.1"), std::nullopt), host_name_ipv4());
 }

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <limits.h>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unistd.h>
@@ -57,11 +58,22 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     , storyteller(nullptr)
     , storyReaderService(nullptr)
 {
+    // The route to a remote visor is looked up once and used for both the query
+    // service address and the ClientId.
+    std::optional<std::string> towards_visor = address_towards_remote_visor(clientPortalServiceConf.IP);
+    QueryServiceIp query_ip;
+    if(READER_MODE == clientMode)
+    {
+        query_ip = query_service_ip(clientQueryServiceConf.IP, towards_visor);
+    }
+
     // For reader-mode clients, the local query service has a stable port; pin
     // it into the ClientId so consumers can reach back to this client. Writer-
     // only clients have no inbound port and report 0.
     uint16_t query_port = (READER_MODE == clientMode) ? clientQueryServiceConf.PORT : uint16_t{0};
-    defineClientIdentity(query_port, clientPortalServiceConf.IP);
+    defineClientIdentity(query_port,
+                         (READER_MODE == clientMode) ? std::optional<std::string>(query_ip.ip) : std::nullopt,
+                         towards_visor);
 
     if(WRITER_MODE == clientMode)
     {
@@ -69,16 +81,21 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     }
     else
     {
-        std::string query_ip = query_service_ip(clientQueryServiceConf.IP, clientPortalServiceConf.IP);
-        if(query_ip != clientQueryServiceConf.IP)
+        if(query_ip.replaced)
         {
             LOG_INFO("[ChronologClientImpl] Query service listens on {} instead of the conf's {}: the visor at {} is "
                      "on another host",
-                     query_ip,
+                     query_ip.ip,
                      clientQueryServiceConf.IP,
                      clientPortalServiceConf.IP);
         }
-        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + query_ip + ":" +
+        else if(query_ip.ip != clientQueryServiceConf.IP)
+        {
+            LOG_INFO("[ChronologClientImpl] Query service listens on {}, the address of the conf's {}",
+                     query_ip.ip,
+                     clientQueryServiceConf.IP);
+        }
+        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + query_ip.ip + ":" +
                                               std::to_string(clientQueryServiceConf.PORT);
 
         margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
@@ -87,7 +104,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
         storyReaderService = chl::ClientQueryService::CreateClientQueryService(
                 *tlEngine,
                 chronolog::ServiceId(clientQueryServiceConf.PROTO_CONF,
-                                     query_ip,
+                                     query_ip.ip,
                                      clientQueryServiceConf.PORT,
                                      clientQueryServiceConf.PROVIDER_ID));
     }
@@ -101,7 +118,9 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
 
 ////////
 
-void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port, std::string const& visor_ip)
+void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port,
+                                                          std::optional<std::string> const& listen_ip,
+                                                          std::optional<std::string> const& towards_visor)
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
@@ -110,7 +129,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
 
     clientLogin = login_name; //this truncates login_name to the actual strlen...
 
-    clientIdentity.ip = client_host_ipv4(visor_ip);
+    clientIdentity.ip = client_host_ipv4(listen_ip, towards_visor);
     clientIdentity.port = query_service_port;
     clientIdentity.instance = static_cast<uint16_t>(getpid() & 0xFFFFu);
 

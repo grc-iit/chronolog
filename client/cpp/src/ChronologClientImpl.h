@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -96,7 +97,9 @@ private:
 
     ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
 
-    void defineClientIdentity(uint16_t query_service_port, std::string const& visor_ip);
+    void defineClientIdentity(uint16_t query_service_port,
+                              std::optional<std::string> const& listen_ip,
+                              std::optional<std::string> const& towards_visor);
 };
 } //namespace chronolog
 

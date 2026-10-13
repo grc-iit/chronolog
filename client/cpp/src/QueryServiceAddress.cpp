@@ -64,18 +64,6 @@ std::optional<struct in_addr> source_address_towards(struct in_addr const& dest)
     return result;
 }
 
-// This host's address on the route to a visor that is not on loopback, or
-// nothing when visor_ip is loopback, does not resolve or has no route.
-std::optional<struct in_addr> address_towards_remote_visor(std::string const& visor_ip)
-{
-    std::optional<struct in_addr> visor_addr = resolve_ipv4(visor_ip);
-    if(!visor_addr || is_loopback(*visor_addr))
-    {
-        return std::nullopt;
-    }
-    return source_address_towards(*visor_addr);
-}
-
 std::string to_dotted(struct in_addr const& addr)
 {
     char text[INET_ADDRSTRLEN] = {0};
@@ -84,27 +72,53 @@ std::string to_dotted(struct in_addr const& addr)
 
 } // namespace
 
-std::string chronolog::query_service_ip(std::string const& conf_ip, std::string const& visor_ip)
+std::optional<std::string> chronolog::address_towards_remote_visor(std::string const& visor_ip)
+{
+    std::optional<struct in_addr> visor_addr = resolve_ipv4(visor_ip);
+    if(!visor_addr || is_loopback(*visor_addr))
+    {
+        return std::nullopt;
+    }
+    std::optional<struct in_addr> own_addr = source_address_towards(*visor_addr);
+    if(!own_addr)
+    {
+        return std::nullopt;
+    }
+    return to_dotted(*own_addr);
+}
+
+chronolog::QueryServiceIp chronolog::query_service_ip(std::string const& conf_ip,
+                                                      std::optional<std::string> const& towards_visor)
 {
     std::optional<struct in_addr> conf_addr = resolve_ipv4(conf_ip);
     if(!conf_addr)
     {
-        return conf_ip;
+        return {conf_ip, false};
     }
-    if(is_loopback(*conf_addr))
+    if(is_loopback(*conf_addr) && towards_visor)
     {
-        if(std::optional<struct in_addr> own_addr = address_towards_remote_visor(visor_ip))
-        {
-            conf_addr = own_addr;
-        }
+        return {*towards_visor, true};
     }
     std::string dotted = to_dotted(*conf_addr);
-    return dotted.empty() ? conf_ip : dotted;
+    return {dotted.empty() ? conf_ip : dotted, false};
 }
 
-uint32_t chronolog::client_host_ipv4(std::string const& visor_ip)
+uint32_t chronolog::client_host_ipv4(std::optional<std::string> const& listen_ip,
+                                     std::optional<std::string> const& towards_visor)
 {
-    std::optional<struct in_addr> addr = address_towards_remote_visor(visor_ip);
+    std::optional<struct in_addr> addr;
+    for(std::optional<std::string> const& candidate: {listen_ip, towards_visor})
+    {
+        if(candidate)
+        {
+            std::optional<struct in_addr> candidate_addr = resolve_ipv4(*candidate);
+            if(candidate_addr && !is_loopback(*candidate_addr))
+            {
+                addr = candidate_addr;
+                break;
+            }
+        }
+    }
     if(!addr)
     {
         char name[HOST_NAME_MAX + 1] = {0};
