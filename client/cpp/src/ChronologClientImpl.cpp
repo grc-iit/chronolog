@@ -3,20 +3,17 @@
 #include <iostream>
 #include <limits.h>
 #include <mutex>
-#include <netdb.h>
-#include <netinet/in.h>
+#include <optional>
 #include <sstream>
 #include <string>
-#include <sys/socket.h>
 #include <unistd.h>
-
-#include <arpa/inet.h>
 
 #include <margo.h>
 #include <thallium.hpp>
 
 #include <chrono_monitor.h>
 #include "ChronologClientImpl.h"
+#include "QueryServiceAddress.h"
 #include "StorytellerClient.h"
 
 namespace chl = chronolog;
@@ -61,11 +58,22 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     , storyteller(nullptr)
     , storyReaderService(nullptr)
 {
+    // The route to a remote visor is looked up once and used for both the query
+    // service address and the ClientId.
+    std::optional<std::string> towards_visor = address_towards_remote_visor(clientPortalServiceConf.IP);
+    QueryServiceIp query_ip;
+    if(READER_MODE == clientMode)
+    {
+        query_ip = query_service_ip(clientQueryServiceConf.IP, towards_visor);
+    }
+
     // For reader-mode clients, the local query service has a stable port; pin
     // it into the ClientId so consumers can reach back to this client. Writer-
     // only clients have no inbound port and report 0.
     uint16_t query_port = (READER_MODE == clientMode) ? clientQueryServiceConf.PORT : uint16_t{0};
-    defineClientIdentity(query_port);
+    defineClientIdentity(query_port,
+                         (READER_MODE == clientMode) ? std::optional<std::string>(query_ip.ip) : std::nullopt,
+                         towards_visor);
 
     if(WRITER_MODE == clientMode)
     {
@@ -73,8 +81,22 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
     }
     else
     {
-        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + clientQueryServiceConf.IP +
-                                              ":" + std::to_string(clientQueryServiceConf.PORT);
+        if(query_ip.replaced)
+        {
+            LOG_INFO("[ChronologClientImpl] Query service listens on {} instead of the conf's {}: the visor at {} is "
+                     "on another host",
+                     query_ip.ip,
+                     clientQueryServiceConf.IP,
+                     clientPortalServiceConf.IP);
+        }
+        else if(query_ip.ip != clientQueryServiceConf.IP)
+        {
+            LOG_INFO("[ChronologClientImpl] Query service listens on {}, the address of the conf's {}",
+                     query_ip.ip,
+                     clientQueryServiceConf.IP);
+        }
+        std::string QUERY_SERVICE_NA_STRING = clientQueryServiceConf.PROTO_CONF + "://" + query_ip.ip + ":" +
+                                              std::to_string(clientQueryServiceConf.PORT);
 
         margo_instance_id margo_id = margo_init(QUERY_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
         tlEngine = new tl::engine(margo_id);
@@ -82,7 +104,7 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
         storyReaderService = chl::ClientQueryService::CreateClientQueryService(
                 *tlEngine,
                 chronolog::ServiceId(clientQueryServiceConf.PROTO_CONF,
-                                     clientQueryServiceConf.IP,
+                                     query_ip.ip,
                                      clientQueryServiceConf.PORT,
                                      clientQueryServiceConf.PROVIDER_ID));
     }
@@ -96,33 +118,9 @@ chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServi
 
 ////////
 
-// Resolve the host's primary IPv4 address in host byte order. Returns 0 if the
-// hostname does not resolve to an IPv4 address (e.g. air-gapped environments);
-// that's intentionally non-fatal — ClientId is still unique within a host
-// thanks to the pid-derived instance discriminator.
-static uint32_t resolve_local_ipv4()
-{
-    char hostname[HOST_NAME_MAX + 1] = {0};
-    if(gethostname(hostname, sizeof(hostname) - 1) != 0)
-    {
-        return 0;
-    }
-    struct addrinfo hints;
-    std::memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo* res = nullptr;
-    if(getaddrinfo(hostname, nullptr, &hints, &res) != 0 || res == nullptr)
-    {
-        return 0;
-    }
-    auto const* sin = reinterpret_cast<struct sockaddr_in const*>(res->ai_addr);
-    uint32_t ip = ntohl(sin->sin_addr.s_addr);
-    freeaddrinfo(res);
-    return ip;
-}
-
-void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port)
+void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service_port,
+                                                          std::optional<std::string> const& listen_ip,
+                                                          std::optional<std::string> const& towards_visor)
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
@@ -131,7 +129,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
 
     clientLogin = login_name; //this truncates login_name to the actual strlen...
 
-    clientIdentity.ip = resolve_local_ipv4();
+    clientIdentity.ip = client_host_ipv4(listen_ip, towards_visor);
     clientIdentity.port = query_service_port;
     clientIdentity.instance = static_cast<uint16_t>(getpid() & 0xFFFFu);
 

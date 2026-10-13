@@ -240,7 +240,7 @@ struct ClientIdentity
 };
 ```
 
-`ClientId` layout: bits `[63:32]` ip, bits `[31:16]` port, bits `[15:0]` instance. The high 48 bits identify the client's network endpoint so a downstream consumer reading back events can identify the producer; the low 16 bits disambiguate multiple writer-only processes running on the same host.
+`ClientId` layout: bits `[63:32]` ip, bits `[31:16]` port, bits `[15:0]` instance. The high 48 bits identify the client's network endpoint so a downstream consumer reading back events can identify the producer; the low 16 bits disambiguate multiple writer-only processes running on the same host. For a reader-mode client the ip is the address its query service listens on, unless that is a loopback address. Otherwise, and for a writer-only client, it is this host's address on the route to the visor when the visor is on another host, and the address the host name resolves to when it is not.
 
 ---
 
