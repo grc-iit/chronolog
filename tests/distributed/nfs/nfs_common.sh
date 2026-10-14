@@ -67,18 +67,21 @@ classify_replay() {
 # timeline, one classify_replay line per replay, shows what EXPECT asks for,
 # 1 when it does not, 2 for an unknown EXPECT.
 #   clean     at least one replay, and every replay OK
-#   omission  at least one OMISSION, and no replay with an event that was not
-#             written or with an event twice, whatever its status: a partial
-#             result is classified PARTIAL before its extra and dup counts
+#   omission  at least one OMISSION, the last replay OK, and no replay with an
+#             event that was not written or with an event twice, whatever its
+#             status: a partial result is classified PARTIAL before its extra
+#             and dup counts. The last replay is past the cache time, so a
+#             stale cache has expired by then and only lost events stay missing.
 timeline_matches() {
-    local expect=$1 timeline=$2 n ok omission corrupt
+    local expect=$1 timeline=$2 n ok omission corrupt last
     n=$(grep -c . "$timeline" || true)
     ok=$(grep -c ' OK ' "$timeline" || true)
     omission=$(grep -c ' OMISSION ' "$timeline" || true)
     corrupt=$(grep -cE ' (extra|dup)=[1-9]' "$timeline" || true)
+    last=$(grep . "$timeline" | tail -n 1)
     case "$expect" in
         clean) [ "$n" -gt 0 ] && [ "$ok" -eq "$n" ] ;;
-        omission) [ "$omission" -gt 0 ] && [ "$corrupt" -eq 0 ] ;;
+        omission) [ "$omission" -gt 0 ] && [ "$corrupt" -eq 0 ] && [[ "$last" == *' OK '* ]] ;;
         *) return 2 ;;
     esac
 }

@@ -5,8 +5,9 @@
 # compares every replay with the events written, by timestamp.
 #   --expect clean     every replay returns each event exactly once with CL_SUCCESS
 #   --expect omission  at least one replay misses events and still returns
-#                      CL_SUCCESS (the nocto negative control), and no
-#                      replay returns an event not written or one twice
+#                      CL_SUCCESS (the nocto negative control), the last
+#                      replay returns every event, and no replay returns
+#                      an event not written or one twice
 #
 # Usage: nfs_visibility_test.sh --work-dir W --probe P --writer HOST --reader HOST
 #            --chronicle C --story S --expect clean|omission [--bursts 2]
@@ -20,7 +21,7 @@ set -uo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$here/nfs_common.sh"
 usage() {
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 

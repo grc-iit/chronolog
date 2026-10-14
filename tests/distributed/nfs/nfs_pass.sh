@@ -5,7 +5,7 @@
 # mounts with that profile's NFS options, and runs the visibility test, plus
 # the destroy test on the destroy profile when the pass expects clean.
 #   expect   clean (every replay complete) or omission (the negative control:
-#            some replay misses events and still reports success)
+#            a replay misses events yet reports success; the last is complete)
 #   warn     deploy_cluster.sh must warn about the archive mount; nowarn: it
 #            must not; left out: not checked
 #
