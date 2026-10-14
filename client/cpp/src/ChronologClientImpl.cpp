@@ -122,7 +122,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
                                                           std::optional<std::string> const& listen_ip,
                                                           std::optional<std::string> const& towards_visor)
 {
-    euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
+    euid = geteuid();
 
     clientLogin = client_login_name();
 

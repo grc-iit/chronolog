@@ -4,24 +4,32 @@
 #include <cstddef>
 #include <string>
 
+#include <pwd.h>
+#include <sys/types.h>
+
 namespace chronolog
 {
 
-// The signature of getlogin_r, which the tests replace.
+// The signatures of getlogin_r and getpwuid_r, which the tests replace.
 using GetLoginFunction = int (*)(char* name, std::size_t size);
+using GetPasswdFunction =
+        int (*)(uid_t uid, struct passwd* entry, char* buffer, std::size_t size, struct passwd** found);
 
 /**
- * The user name a client logs when it starts: the login name of the process's
- * controlling terminal when getlogin_r finds one, and otherwise the name of the
- * effective user, or an empty string when the password database has no entry
- * for it. getlogin_r fails for a client with no controlling terminal, such as
- * one started over ssh with a command, by mpiexec or by a batch scheduler, and
- * then leaves its buffer unwritten.
+ * The user name a client logs when it starts: the login name getlogin_r finds,
+ * and otherwise the name of the effective user, or the effective uid as a
+ * number when the password database has no entry for it. glibc's getlogin_r
+ * reads /proc/self/loginuid, which pam_loginuid sets for ssh and console
+ * logins, and falls back to the utmp entry of the terminal on standard input.
+ * It fails when neither is there, as for a process started by docker exec or
+ * in a container whose sshd cannot set loginuid, and then leaves its buffer
+ * unwritten.
  */
 std::string client_login_name();
 
-// The same, with get_login in place of getlogin_r.
-std::string client_login_name(GetLoginFunction get_login);
+// The same, with get_login in place of getlogin_r and get_passwd in place of
+// getpwuid_r.
+std::string client_login_name(GetLoginFunction get_login, GetPasswdFunction get_passwd = ::getpwuid_r);
 
 } // namespace chronolog
 
