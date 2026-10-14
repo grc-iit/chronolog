@@ -40,7 +40,7 @@ jobs:
       - name: Compute base image hash
         id: basehash
         run: |
-          echo "hash=${{ hashFiles('spack.yaml', 'client/spack.yaml', 'docker/**') }}" >> $GITHUB_OUTPUT
+          echo "hash=${{ hashFiles('spack.yaml', 'client/spack.yaml', 'docker/dockerfile') }}" >> $GITHUB_OUTPUT
 
       - name: Set base image name (immutable)
         id: set-base-image-name

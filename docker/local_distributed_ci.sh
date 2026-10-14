@@ -24,6 +24,8 @@
 #   9  python tail read               (writer on c2, reader on c3)
 #   10 every recording group archived data
 #   11 keeper shutdown delivers its retained chunks
+#   11b NFS pass (only with --nfs): the archive tests again, once per mount
+#       profile, with the archive on an NFS export of this host
 #   12 stop, clean archive, tear down
 #
 # Usage:
@@ -37,6 +39,24 @@
 #   --skip-build reuse whatever is already installed in the shared volume
 #   --keep       leave containers running after the run (for debugging)
 #   -h           this help
+#
+# NFS pass (#705), needs sudo on this host to export a directory:
+#   --nfs                       run stage 11b after stage 11
+#   --nfs-only                  as --nfs, but skip stages 7-11
+#   --nfs-profile NAME=OPTIONS  an NFS mount of the export, at /mnt/nfs/NAME in
+#                               every container, with these mount options
+#                               (repeatable; default: "default=" and
+#                               "nocto=vers=3,nocto,acregmin=60,acregmax=60")
+#   --nfs-pass PROFILE:EXPECT[:warn|nowarn]
+#                               one pass on PROFILE; EXPECT is clean or omission;
+#                               warn/nowarn: whether the deploy must warn about
+#                               the mount (repeatable; default:
+#                               "default:clean:nowarn" and "nocto:omission:warn")
+#   --nfs-destroy-profile NAME  profile whose clean pass also runs the destroy
+#                               test, or none (default: default)
+#   --nfs-export DIR            directory to export (default: /srv/chronolog-nfs-localci)
+#   --nfs-cache-secs N          longest attribute cache time of the profiles
+#                               (default 60; raise it with acregmax/acdirmax above 60)
 #
 # Requires: docker, docker compose. Everything else lives in the image.
 
@@ -52,13 +72,24 @@ NUM_GRAPHERS=2
 NUM_PLAYERS=2
 SKIP_BUILD=0
 KEEP=0
+NFS=0
+NFS_ONLY=0
+NFS_PROFILES=()
+NFS_PASSES=()
+NFS_DESTROY_PROFILE=default
+NFS_EXPORT=/srv/chronolog-nfs-localci
+NFS_CACHE_SECS=60
+NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
+NFS_OVERRIDE_NEW=""
+NFS_SERVER_UP=0
+CONTAINERS_CREATED=0
 
 # Paths inside the containers -- identical to the workflow's.
 WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
 INSTALL_DIR="/home/grc-iit/chronolog-install"
 REPO_DIR="/home/grc-iit/chronolog-repo"
 
-usage() { sed -n '3,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
+usage() { sed -n '3,61p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -68,12 +99,24 @@ while [ $# -gt 0 ]; do
         -p) NUM_PLAYERS="$2"; shift 2 ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --keep) KEEP=1; shift ;;
+        --nfs) NFS=1; shift ;;
+        --nfs-only) NFS=1; NFS_ONLY=1; shift ;;
+        --nfs-profile) NFS_PROFILES+=("$2"); shift 2 ;;
+        --nfs-pass) NFS_PASSES+=("$2"); shift 2 ;;
+        --nfs-destroy-profile) NFS_DESTROY_PROFILE="$2"; shift 2 ;;
+        --nfs-export) NFS_EXPORT="$2"; shift 2 ;;
+        --nfs-cache-secs) NFS_CACHE_SECS="$2"; shift 2 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown option: $1"; usage 1 ;;
     esac
 done
 
 NUM_CONTAINERS=$(( NUM_KEEPERS + NUM_GRAPHERS + NUM_PLAYERS + 1 ))
+if [ "${NFS}" = 1 ]; then
+    [ ${#NFS_PROFILES[@]} -gt 0 ] || NFS_PROFILES=("default=" "nocto=vers=3,nocto,acregmin=60,acregmax=60")
+    [ ${#NFS_PASSES[@]} -gt 0 ] || NFS_PASSES=("default:clean:nowarn" "nocto:omission:warn")
+fi
+COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 
 # ---------------------------------------------------------------- reporting --
 RUN_START=$(date +%s)
@@ -125,18 +168,29 @@ summary() {
 cleanup() {
     local rc=$?
     if [ "${KEEP}" = "1" ]; then
-        echo ""
-        echo "ℹ️  --keep: leaving containers up. Inspect with:"
-        echo "     docker exec -it --user grc-iit chronolog-c1 bash"
-        echo "   Tear down with:"
-        echo "     docker compose -f ${COMPOSE_FILE} down -v"
-    elif [ -f "${COMPOSE_FILE}" ]; then
+        if [ "${CONTAINERS_CREATED}" = 1 ]; then
+            echo ""
+            echo "ℹ️  --keep: leaving containers up. Inspect with:"
+            echo "     docker exec -it --user grc-iit chronolog-c1 bash"
+            echo "   Tear down with:"
+            echo "     docker compose ${COMPOSE_ARGS[*]} down -v"
+        fi
+        if [ "${NFS_SERVER_UP}" = 1 ]; then
+            echo "ℹ️  --keep: leaving the NFS export. Remove it with:"
+            echo "     ${REPO_ROOT}/tests/distributed/nfs/nfs_server.sh teardown --export ${NFS_EXPORT}"
+        fi
+    elif [ "${CONTAINERS_CREATED}" = 1 ]; then
         echo ""
         echo "── tearing down containers ──"
         dex c1 bash -c "cd ${REPO_DIR} 2>/dev/null && ./tools/deploy/single_user_deploy.sh -s -w ${WORK_DIR}" >/dev/null 2>&1 || true
-        docker compose -f "${COMPOSE_FILE}" down -v >/dev/null 2>&1 || true
-        rm -f "${COMPOSE_FILE}"
+        docker compose "${COMPOSE_ARGS[@]}" down -v >/dev/null 2>&1 || true
+        rm -f "${COMPOSE_FILE}" "${NFS_OVERRIDE}"
         echo "✅ containers removed"
+    fi
+    [ -n "${NFS_OVERRIDE_NEW}" ] && rm -f "${NFS_OVERRIDE_NEW}"
+    if [ "${KEEP}" != 1 ] && [ "${NFS_SERVER_UP}" = 1 ]; then
+        "${REPO_ROOT}/tests/distributed/nfs/nfs_server.sh" teardown --export "${NFS_EXPORT}" >/dev/null 2>&1 || true
+        echo "✅ NFS export ${NFS_EXPORT} removed"
     fi
     summary
     exit $rc
@@ -145,6 +199,12 @@ cleanup() {
 # `docker exec` as grc-iit into container cN. Kept short because every stage uses it.
 dex() { local c="$1"; shift; docker exec --user grc-iit "chronolog-${c}" "$@"; }
 dex_root() { local c="$1"; shift; docker exec --user root "chronolog-${c}" "$@"; }
+
+# Installed before the NFS setup so that a setup that fails halfway is torn
+# down too. Containers are torn down only once this run has created them: a
+# compose file left by an earlier --keep run may describe containers still in
+# use.
+trap cleanup EXIT INT TERM
 
 # ------------------------------------------------------------------ preflight --
 stage "Preflight"
@@ -170,9 +230,24 @@ fi
 echo "image     : ${IMAGE}"
 echo "topology  : ${NUM_CONTAINERS} containers = 1 visor + ${NUM_KEEPERS} keeper + ${NUM_GRAPHERS} grapher + ${NUM_PLAYERS} player"
 echo "repo      : ${REPO_ROOT}"
+if [ "${NFS}" = 1 ]; then
+    echo "nfs       : export ${NFS_EXPORT}; profiles ${NFS_PROFILES[*]}; passes ${NFS_PASSES[*]}"
+    echo "            exporting needs sudo"
+    # check the profiles before anything is set up: the override generator
+    # refuses a bad one. It goes to a file of its own until stage 1, so the
+    # override of a cluster left up with --keep stays as it is.
+    profile_args=()
+    for p in "${NFS_PROFILES[@]}"; do profile_args+=(--profile "$p"); done
+    NFS_OVERRIDE_NEW=$(mktemp "${TMPDIR:-/tmp}/chronolog-nfs-override.XXXXXX")
+    "${REPO_ROOT}/tests/distributed/nfs/nfs_compose_override.sh" --containers "${NUM_CONTAINERS}" \
+        --server 127.0.0.1 --export "${NFS_EXPORT}" "${profile_args[@]}" > "${NFS_OVERRIDE_NEW}" \
+        || stage_fail "the NFS compose override refused the profiles"
+    # set first: setup can stop after turning leases off or writing the
+    # export, and teardown undoes whatever setup got to
+    NFS_SERVER_UP=1
+    "${REPO_ROOT}/tests/distributed/nfs/nfs_server.sh" setup --export "${NFS_EXPORT}" || stage_fail "NFS server setup failed"
+fi
 stage_ok
-
-trap cleanup EXIT INT TERM
 
 # --------------------------------------------------- 1. compose + launch ------
 stage "1. Generate compose and launch containers"
@@ -221,7 +296,18 @@ volumes:
 EOF
 } > "${COMPOSE_FILE}"
 
-docker compose -f "${COMPOSE_FILE}" up -d >/dev/null 2>&1 || stage_fail "compose up failed"
+if [ "${NFS}" = 1 ]; then
+    mv -f "${NFS_OVERRIDE_NEW}" "${NFS_OVERRIDE}" && NFS_OVERRIDE_NEW=""
+    COMPOSE_ARGS+=(-f "${NFS_OVERRIDE}")
+fi
+
+# set only now: the teardown stops and removes containers by name, and before
+# compose up those can only belong to a cluster an earlier run left up
+CONTAINERS_CREATED=1
+if ! up_out=$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1); then
+    tail -5 <<< "${up_out}"
+    stage_fail "compose up failed"
+fi
 sleep 10
 for i in $(seq 1 "${NUM_CONTAINERS}"); do
     docker exec "chronolog-c${i}" true 2>/dev/null || stage_fail "container c${i} not responding"
@@ -370,6 +456,9 @@ if [ "${DEPLOY_BAD}" != "0" ]; then
     stage_fail "deployment verification failed"
 fi
 stage_ok
+
+# Stages 7-11 are skipped under --nfs-only; the fi is before stage 11b.
+if [ "${NFS_ONLY}" = 0 ]; then
 
 # --------------------------------------------------- 7. perf test -------------
 stage "7. Client performance test (write path)"
@@ -591,6 +680,29 @@ dex c1 bash -c "
     [ \$DONE -ge \$EXPECTED ] && [ \$LOST_TOTAL -eq 0 ] && [ \$SHUT_SENT_TOTAL -gt 0 ]
 " || stage_fail "the writer failed, a keeper delivered nothing on shutdown, or a chunk was never confirmed written"
 stage_ok
+
+fi # stages 7-11
+
+# --------------------------------------------------- 11b. NFS pass ------------
+if [ "${NFS}" = 1 ]; then
+    stage "11b. NFS pass"
+    # the scripts come from the working tree even under --skip-build
+    dex_root c1 bash -c "mkdir -p ${REPO_DIR}/tests/distributed/nfs && cp -r /workspace/tests/distributed/nfs/. ${REPO_DIR}/tests/distributed/nfs/ && chown -R grc-iit:grc-iit ${REPO_DIR}/tests/distributed" \
+        || stage_fail "copying the NFS pass scripts into c1 failed"
+    pass_args=()
+    for p in "${NFS_PASSES[@]}"; do pass_args+=(--pass "$p"); done
+    if ! dex c1 bash -c "cd ${REPO_DIR} && tests/distributed/nfs/nfs_pass.sh \
+        --work-dir ${WORK_DIR} --repo-dir ${REPO_DIR} \
+        --probe /home/grc-iit/chronolog-build/Release/tests/integration/watermark-replay/chronolog-test-exact-split-probe \
+        --destroy-profile ${NFS_DESTROY_PROFILE} --cache-secs ${NFS_CACHE_SECS} \
+        --log-dir /home/grc-iit/nfs-pass-logs $(printf '%q ' "${pass_args[@]}")"; then
+        # the logs are on the shared volume, which the teardown deletes
+        nfs_logs=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-nfs-pass-logs.XXXXXX")
+        docker cp chronolog-c1:/home/grc-iit/nfs-pass-logs/. "${nfs_logs}/" > /dev/null 2>&1 || true
+        stage_fail "NFS pass failed (logs copied to ${nfs_logs})"
+    fi
+    stage_ok
+fi
 
 # --------------------------------------------------- 12. stop -----------------
 stage "12. Stop ChronoLog and clean archive"
