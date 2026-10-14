@@ -682,12 +682,16 @@ if [ "${NFS}" = 1 ]; then
         || stage_fail "copying the NFS pass scripts into c1 failed"
     pass_args=()
     for p in "${NFS_PASSES[@]}"; do pass_args+=(--pass "$p"); done
-    dex c1 bash -c "cd ${REPO_DIR} && tests/distributed/nfs/nfs_pass.sh \
+    if ! dex c1 bash -c "cd ${REPO_DIR} && tests/distributed/nfs/nfs_pass.sh \
         --work-dir ${WORK_DIR} --repo-dir ${REPO_DIR} \
         --probe /home/grc-iit/chronolog-build/Release/tests/integration/watermark-replay/chronolog-test-exact-split-probe \
         --destroy-profile ${NFS_DESTROY_PROFILE} --cache-secs ${NFS_CACHE_SECS} \
-        --log-dir /home/grc-iit/nfs-pass-logs $(printf '%q ' "${pass_args[@]}")" \
-        || stage_fail "NFS pass failed (logs in /home/grc-iit/nfs-pass-logs in c1)"
+        --log-dir /home/grc-iit/nfs-pass-logs $(printf '%q ' "${pass_args[@]}")"; then
+        # the logs are on the shared volume, which the teardown deletes
+        nfs_logs=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-nfs-pass-logs.XXXXXX")
+        docker cp chronolog-c1:/home/grc-iit/nfs-pass-logs/. "${nfs_logs}/" > /dev/null 2>&1 || true
+        stage_fail "NFS pass failed (logs copied to ${nfs_logs})"
+    fi
     stage_ok
 fi
 

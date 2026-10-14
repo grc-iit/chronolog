@@ -938,6 +938,25 @@ jobs:
           { echo 'summary<<NFS_EOF'; sed -n '/NFS pass summary/,$p' /tmp/nfs_pass.log; echo 'NFS_EOF'; } >> "$GITHUB_OUTPUT"
           exit $rc
 
+      # the pass logs are on the shared_home volume, which "Clean up
+      # containers" deletes: deploy logs, every replay, the destroy output and
+      # each pass's daemon logs
+      - name: Copy NFS pass logs out of c1
+        if: steps.nfs-pass.outcome == 'failure'
+        run: |
+          rm -rf ./nfs-pass-logs
+          mkdir -p ./nfs-pass-logs
+          docker cp chronolog-c1:/home/grc-iit/nfs-pass-logs/. ./nfs-pass-logs/ || \
+            echo "the NFS pass wrote no logs" > ./nfs-pass-logs/MISSING.txt
+
+      - name: Upload NFS pass logs artifact
+        if: steps.nfs-pass.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nfs-pass-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ./nfs-pass-logs
+          retention-days: 14
+
       - name: Clean up archive output directory
         if: always()
         run: |

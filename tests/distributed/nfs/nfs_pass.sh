@@ -78,6 +78,12 @@ stop_all() {
     done
     sleep 2
 }
+# save_daemon_logs N: keeps pass N's daemon logs, which the next pass's
+# "single_user_deploy.sh -c" deletes
+save_daemon_logs() {
+    mkdir -p "$LOG_DIR/pass-$1-monitor"
+    cp "$WORK_DIR"/monitor/*.log "$LOG_DIR/pass-$1-monitor/" 2> /dev/null || true
+}
 
 results=() failed=0 i=0
 for spec in "${passes[@]}"; do
@@ -114,6 +120,7 @@ for spec in "${passes[@]}"; do
         results+=("PASS $i $profile expect=$expect deploy-failed")
         failed=1
         stop_all
+        save_daemon_logs "$i"
         continue
     fi
     sleep 15
@@ -166,6 +173,7 @@ for spec in "${passes[@]}"; do
     fi
 
     stop_all
+    save_daemon_logs "$i"
     bash "$REPO_DIR/tools/deploy/archive_cleanup.sh" "$archive" || true
     rmdir "$archive" "$(dirname "$archive")" 2> /dev/null || true
     results+=("PASS $i $profile expect=$expect deploy-warning=$wres visibility=${vres:-none} destroy=$dres logs=$lres")
