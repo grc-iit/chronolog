@@ -44,6 +44,12 @@ for v in WORK_DIR REPO_DIR PROBE; do [ -n "${!v}" ] || usage; done
     echo "probe not found: $PROBE" >&2
     exit 2
 }
+# a probe built before the destroy mode prints only its usage for it, which
+# the destroy test would report as a failed destroy
+if [ "$DESTROY_PROFILE" != none ] && ! grep -qa 'write|replay|destroy' "$PROBE"; then
+    echo "$PROBE has no destroy mode: it was built from older sources; rebuild it" >&2
+    exit 2
+fi
 for spec in "${passes[@]}"; do
     [[ "$spec" =~ ^[a-z0-9][a-z0-9_-]*:(clean|omission)(:(warn|nowarn))?$ ]] || {
         echo "bad --pass '$spec': use profile:clean|omission[:warn|nowarn]" >&2
