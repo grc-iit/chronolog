@@ -3,8 +3,9 @@
 # archived and the keepers have freed them, destroys the story, creates it
 # again under the same name with events B, and checks that a replay from
 # another host returns exactly B, that none of A's files is left in the story
-# directory while the directory itself stays, and that the manifest holds a
-# deletion record for the story.
+# directory while the directory itself stays (the same directory, not one
+# created again for B), and that the manifest holds a deletion record for the
+# story.
 #
 # Usage: nfs_destroy_test.sh --work-dir W --probe P --writer HOST --reader HOST
 #            --archive DIR --chronicle C --story S [--events 20]
@@ -81,6 +82,15 @@ sleep "$wait_secs"
 replay_is A || fail "events A were not replayed exactly before the destroy"
 ls -1 "$story_dir" 2> /dev/null | grep '\.vlen\.h5$' > "$LOG_DIR/files_A" || true
 [ -s "$LOG_DIR/files_A" ] || fail "no archive file for A in $story_dir"
+# A destroy keeps the chronicle and story directories (ArchiveLayout.h): on
+# NFS a path removed and created again can stay hidden for up to acdirmax.
+# Writing B would create a removed directory again, so checking that it exists
+# afterwards proves nothing. A destroy deletes only archive files, so a marker
+# file of this test's own outlives it exactly when the directory does. The
+# marker goes on exit; archive_cleanup.sh leaves a directory with it in place.
+marker="$story_dir/.nfs-destroy-test-marker"
+trap 'rm -f "$marker"' EXIT
+: > "$marker" || fail "cannot create $marker"
 
 probe_on "$WRITER" destroy "$CHRONICLE" "$STORY" > "$LOG_DIR/destroy.out" 2>&1
 grep -q '^DESTROY_STATUS CL_SUCCESS' "$LOG_DIR/destroy.out" ||
@@ -90,7 +100,7 @@ write_set B
 say "destroyed the story, wrote $EVENTS events B; waiting ${wait_secs}s"
 sleep "$wait_secs"
 replay_is B || fail "the story created again does not replay exactly events B"
-[ -d "$story_dir" ] || fail "the story directory is gone; a destroy keeps it"
+[ -e "$marker" ] || fail "the destroy removed the story directory (B created it again); a destroy keeps it"
 while read -r f; do
     [ ! -e "$story_dir/$f" ] || fail "file $f of the destroyed story is still there"
 done < "$LOG_DIR/files_A"
