@@ -26,14 +26,14 @@ LOG_DIR=/tmp/nfs-pass
 passes=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --work-dir) WORK_DIR=${2-}; shift 2 ;;
-        --repo-dir) REPO_DIR=${2-}; shift 2 ;;
-        --probe) PROBE=${2-}; shift 2 ;;
-        --pass) passes+=("${2-}"); shift 2 ;;
-        --destroy-profile) DESTROY_PROFILE=${2-}; shift 2 ;;
-        --mount-root) MOUNT_ROOT=${2-}; shift 2 ;;
-        --cache-secs) CACHE_SECS=${2-}; shift 2 ;;
-        --log-dir) LOG_DIR=${2-}; shift 2 ;;
+        --work-dir) WORK_DIR=${2-}; shift 2 || usage ;;
+        --repo-dir) REPO_DIR=${2-}; shift 2 || usage ;;
+        --probe) PROBE=${2-}; shift 2 || usage ;;
+        --pass) passes+=("${2-}"); shift 2 || usage ;;
+        --destroy-profile) DESTROY_PROFILE=${2-}; shift 2 || usage ;;
+        --mount-root) MOUNT_ROOT=${2-}; shift 2 || usage ;;
+        --cache-secs) CACHE_SECS=${2-}; shift 2 || usage ;;
+        --log-dir) LOG_DIR=${2-}; shift 2 || usage ;;
         *) usage ;;
     esac
 done

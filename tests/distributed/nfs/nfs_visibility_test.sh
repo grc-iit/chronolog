@@ -29,19 +29,19 @@ WORK_DIR="" PROBE="" WRITER="" READER="" CHRONICLE="" STORY="" EXPECT=""
 BURSTS=2 BURST_EVENTS=20 BURST_GAP=35 INTERVAL=5 CACHE_SECS=60 LOG_DIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --work-dir) WORK_DIR=${2-}; shift 2 ;;
-        --probe) PROBE=${2-}; shift 2 ;;
-        --writer) WRITER=${2-}; shift 2 ;;
-        --reader) READER=${2-}; shift 2 ;;
-        --chronicle) CHRONICLE=${2-}; shift 2 ;;
-        --story) STORY=${2-}; shift 2 ;;
-        --expect) EXPECT=${2-}; shift 2 ;;
-        --bursts) BURSTS=${2-}; shift 2 ;;
-        --burst-events) BURST_EVENTS=${2-}; shift 2 ;;
-        --burst-gap) BURST_GAP=${2-}; shift 2 ;;
-        --interval) INTERVAL=${2-}; shift 2 ;;
-        --cache-secs) CACHE_SECS=${2-}; shift 2 ;;
-        --log-dir) LOG_DIR=${2-}; shift 2 ;;
+        --work-dir) WORK_DIR=${2-}; shift 2 || usage ;;
+        --probe) PROBE=${2-}; shift 2 || usage ;;
+        --writer) WRITER=${2-}; shift 2 || usage ;;
+        --reader) READER=${2-}; shift 2 || usage ;;
+        --chronicle) CHRONICLE=${2-}; shift 2 || usage ;;
+        --story) STORY=${2-}; shift 2 || usage ;;
+        --expect) EXPECT=${2-}; shift 2 || usage ;;
+        --bursts) BURSTS=${2-}; shift 2 || usage ;;
+        --burst-events) BURST_EVENTS=${2-}; shift 2 || usage ;;
+        --burst-gap) BURST_GAP=${2-}; shift 2 || usage ;;
+        --interval) INTERVAL=${2-}; shift 2 || usage ;;
+        --cache-secs) CACHE_SECS=${2-}; shift 2 || usage ;;
+        --log-dir) LOG_DIR=${2-}; shift 2 || usage ;;
         *) usage ;;
     esac
 done

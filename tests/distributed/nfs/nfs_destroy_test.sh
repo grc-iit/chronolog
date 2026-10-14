@@ -26,16 +26,16 @@ WORK_DIR="" PROBE="" WRITER="" READER="" ARCHIVE="" CHRONICLE="" STORY=""
 EVENTS=20 CACHE_SECS=60 LOG_DIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --work-dir) WORK_DIR=${2-}; shift 2 ;;
-        --probe) PROBE=${2-}; shift 2 ;;
-        --writer) WRITER=${2-}; shift 2 ;;
-        --reader) READER=${2-}; shift 2 ;;
-        --archive) ARCHIVE=${2-}; shift 2 ;;
-        --chronicle) CHRONICLE=${2-}; shift 2 ;;
-        --story) STORY=${2-}; shift 2 ;;
-        --events) EVENTS=${2-}; shift 2 ;;
-        --cache-secs) CACHE_SECS=${2-}; shift 2 ;;
-        --log-dir) LOG_DIR=${2-}; shift 2 ;;
+        --work-dir) WORK_DIR=${2-}; shift 2 || usage ;;
+        --probe) PROBE=${2-}; shift 2 || usage ;;
+        --writer) WRITER=${2-}; shift 2 || usage ;;
+        --reader) READER=${2-}; shift 2 || usage ;;
+        --archive) ARCHIVE=${2-}; shift 2 || usage ;;
+        --chronicle) CHRONICLE=${2-}; shift 2 || usage ;;
+        --story) STORY=${2-}; shift 2 || usage ;;
+        --events) EVENTS=${2-}; shift 2 || usage ;;
+        --cache-secs) CACHE_SECS=${2-}; shift 2 || usage ;;
+        --log-dir) LOG_DIR=${2-}; shift 2 || usage ;;
         *) usage ;;
     esac
 done
