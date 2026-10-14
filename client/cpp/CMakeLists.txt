@@ -26,6 +26,8 @@ add_library(chronolog_client
     src/ClientConfiguration.cpp
     src/QueryServiceAddress.h
     src/QueryServiceAddress.cpp
+    src/ClientLoginName.h
+    src/ClientLoginName.cpp
     ${CMAKE_SOURCE_DIR}/client/cpp/src/chrono_monitor.cpp
 )
 

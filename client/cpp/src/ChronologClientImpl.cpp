@@ -1,7 +1,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <limits.h>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -13,6 +12,7 @@
 
 #include <chrono_monitor.h>
 #include "ChronologClientImpl.h"
+#include "ClientLoginName.h"
 #include "QueryServiceAddress.h"
 #include "StorytellerClient.h"
 
@@ -124,10 +124,7 @@ void chronolog::ChronologClientImpl::defineClientIdentity(uint16_t query_service
 {
     euid = geteuid(); //TODO: effective uid might be a better choice than login name ...
 
-    char login_name[LOGIN_NAME_MAX];
-    getlogin_r(login_name, LOGIN_NAME_MAX);
-
-    clientLogin = login_name; //this truncates login_name to the actual strlen...
+    clientLogin = client_login_name();
 
     clientIdentity.ip = client_host_ipv4(listen_ip, towards_visor);
     clientIdentity.port = query_service_port;
