@@ -47,3 +47,24 @@ gtest_discover_tests(chronolog_client_query_service_address_test TEST_PREFIX "Un
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_query_service_address_test DESTINATION tests)
 endif()
+
+# User name a client logs at start, with or without a controlling terminal
+add_executable(chronolog_client_login_name_test
+    client_login_name_test.cpp
+)
+
+target_include_directories(chronolog_client_login_name_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/src
+)
+
+target_link_libraries(chronolog_client_login_name_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+)
+
+set_target_properties(chronolog_client_login_name_test PROPERTIES OUTPUT_NAME chronolog-test-client-login-name)
+gtest_discover_tests(chronolog_client_login_name_test TEST_PREFIX "Unit_ChronologClient_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_login_name_test DESTINATION tests)
+endif()
