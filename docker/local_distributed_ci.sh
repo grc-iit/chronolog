@@ -80,6 +80,7 @@ NFS_DESTROY_PROFILE=default
 NFS_EXPORT=/srv/chronolog-nfs-localci
 NFS_CACHE_SECS=60
 NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
+NFS_OVERRIDE_NEW=""
 NFS_SERVER_UP=0
 CONTAINERS_CREATED=0
 
@@ -186,6 +187,7 @@ cleanup() {
         rm -f "${COMPOSE_FILE}" "${NFS_OVERRIDE}"
         echo "✅ containers removed"
     fi
+    [ -n "${NFS_OVERRIDE_NEW}" ] && rm -f "${NFS_OVERRIDE_NEW}"
     if [ "${KEEP}" != 1 ] && [ "${NFS_SERVER_UP}" = 1 ]; then
         "${REPO_ROOT}/tests/distributed/nfs/nfs_server.sh" teardown --export "${NFS_EXPORT}" >/dev/null 2>&1 || true
         echo "✅ NFS export ${NFS_EXPORT} removed"
@@ -231,6 +233,15 @@ echo "repo      : ${REPO_ROOT}"
 if [ "${NFS}" = 1 ]; then
     echo "nfs       : export ${NFS_EXPORT}; profiles ${NFS_PROFILES[*]}; passes ${NFS_PASSES[*]}"
     echo "            exporting needs sudo"
+    # check the profiles before anything is set up: the override generator
+    # refuses a bad one. It goes to a file of its own until stage 1, so the
+    # override of a cluster left up with --keep stays as it is.
+    profile_args=()
+    for p in "${NFS_PROFILES[@]}"; do profile_args+=(--profile "$p"); done
+    NFS_OVERRIDE_NEW=$(mktemp "${TMPDIR:-/tmp}/chronolog-nfs-override.XXXXXX")
+    "${REPO_ROOT}/tests/distributed/nfs/nfs_compose_override.sh" --containers "${NUM_CONTAINERS}" \
+        --server 127.0.0.1 --export "${NFS_EXPORT}" "${profile_args[@]}" > "${NFS_OVERRIDE_NEW}" \
+        || stage_fail "the NFS compose override refused the profiles"
     # set first: setup can stop after turning leases off or writing the
     # export, and teardown undoes whatever setup got to
     NFS_SERVER_UP=1
@@ -240,7 +251,6 @@ stage_ok
 
 # --------------------------------------------------- 1. compose + launch ------
 stage "1. Generate compose and launch containers"
-CONTAINERS_CREATED=1
 {
     cat <<EOF
 x-common: &x-common
@@ -287,14 +297,13 @@ EOF
 } > "${COMPOSE_FILE}"
 
 if [ "${NFS}" = 1 ]; then
-    profile_args=()
-    for p in "${NFS_PROFILES[@]}"; do profile_args+=(--profile "$p"); done
-    "${REPO_ROOT}/tests/distributed/nfs/nfs_compose_override.sh" --containers "${NUM_CONTAINERS}" \
-        --server 127.0.0.1 --export "${NFS_EXPORT}" "${profile_args[@]}" > "${NFS_OVERRIDE}" \
-        || stage_fail "the NFS compose override refused the profiles"
+    mv -f "${NFS_OVERRIDE_NEW}" "${NFS_OVERRIDE}" && NFS_OVERRIDE_NEW=""
     COMPOSE_ARGS+=(-f "${NFS_OVERRIDE}")
 fi
 
+# set only now: the teardown stops and removes containers by name, and before
+# compose up those can only belong to a cluster an earlier run left up
+CONTAINERS_CREATED=1
 if ! up_out=$(docker compose "${COMPOSE_ARGS[@]}" up -d 2>&1); then
     tail -5 <<< "${up_out}"
     stage_fail "compose up failed"
