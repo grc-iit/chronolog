@@ -22,6 +22,8 @@ check "restarts the server after turning leases off" \
 out=$("$srv" teardown --export /srv/chronolog-nfs --dry-run)
 check "teardown removes its exports file" grep -q "rm -f /etc/exports.d/chronolog-ci.exports" <<< "$out"
 check "teardown restores the lease setting" grep -q "/run/chronolog-ci-nfs.leases-enable" <<< "$out"
+check "teardown restores the lease setting before re-exporting, which can fail" \
+    bash -c "grep -n . <<< \"\$1\" | awk -F: '/leases-enable/ { l = \$1 } /exportfs -ra/ { e = \$1 } END { exit !(l && e > l) }'" _ "$out"
 check "teardown keeps the server running" bash -c "! grep -qE 'systemctl (stop|disable)' <<< \"\$1\"" _ "$out"
 check "teardown keeps the directory" bash -c "! grep -q 'rm -rf' <<< \"\$1\"" _ "$out"
 check "refuses a relative export" bash -c "! \"\$1\" setup --export srv --dry-run > /dev/null 2>&1" _ "$srv"

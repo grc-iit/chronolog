@@ -55,14 +55,19 @@ case "$action" in
         run sysctl -w fs.leases-enable=0
         run systemctl restart nfs-server
         run exportfs -ra
-        [ "$dry_run" = 1 ] || sudo exportfs -v | grep -q "^$export_dir" || die "$export_dir is not exported"
+        # exportfs -v starts each export with its path; a prefix match would
+        # also accept another export whose path starts with this one
+        [ "$dry_run" = 1 ] || sudo exportfs -v | awk -v d="$export_dir" '$1 == d { f = 1 } END { exit !f }' ||
+            die "$export_dir is not exported"
         ;;
     teardown)
         run rm -f "$EXPORTS_FILE"
-        run exportfs -ra
+        # restore the lease setting first: exportfs -ra fails on any broken
+        # line in /etc/exports or /etc/exports.d, and set -e then exits
         if [ "$dry_run" = 1 ] || [ -e "$LEASES_FILE" ]; then
             run sh -c "sysctl -w fs.leases-enable=\$(cat $LEASES_FILE) && rm -f $LEASES_FILE"
         fi
+        run exportfs -ra
         ;;
     *) die "action must be setup or teardown" ;;
 esac
