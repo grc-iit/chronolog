@@ -19,7 +19,7 @@ The two pipelines share `.github/workflows/chronolog-base.yml`, which provides t
 
 | | |
 |---|---|
-| **Triggers** | Pull requests that change `.cpp`, `.h`, `.hpp`, `.cc`, `.cxx` or `.c` files or the format config; manual dispatch |
+| **Triggers** | Pull requests that change `.cpp`, `.h`, `.hpp`, `.cc`, `.cxx` or `.c` files, the format config or this workflow; manual dispatch |
 | **Runner** | `ubuntu-24.04` |
 | **Timeout** | 10 minutes |
 
