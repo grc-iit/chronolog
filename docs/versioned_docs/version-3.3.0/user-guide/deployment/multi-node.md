@@ -120,7 +120,7 @@ Exactly one mode must be specified per invocation:
 |------|-------------|
 | `--start` | Start all ChronoLog processes across the cluster |
 | `--stop` | Stop all ChronoLog processes gracefully. Keepers stop first and get 4 minutes, since each waits for ChronoGrapher to confirm its chunks written; other processes are force-killed after 5 minutes. |
-| `--clean` | Remove generated config files, per-group host files, logs, and output. All processes must be stopped first. |
+| `--clean` | Remove generated config files, per-group host files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. All processes must be stopped first. |
 
 ## Options
 
