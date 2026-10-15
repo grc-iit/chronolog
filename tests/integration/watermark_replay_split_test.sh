@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integration test for the player's watermark-based replay split
-# (see docs/versioned_docs/version-3.2.0/user-guide/architecture/durable-retention.md).
+# (see docs/versioned_docs/version-3.3.0/user-guide/architecture/durable-retention.md).
 #
 # The player fans story_range_fetch out over the story's keeper roster and
 # splits replay at B, the highest persisted watermark any keeper reports:

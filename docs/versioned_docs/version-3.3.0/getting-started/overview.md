@@ -106,6 +106,7 @@ ChronoLog is a scalable, high-performance distributed shared log store designed 
 ## Core Features
 
 - **Multi-Tiered Storage:** Leverages multiple storage tiers (e.g., persistent memory, flash storage) to scale log capacity and optimize performance.
+- **Manifest-Indexed Archive (3.3+):** ChronoGrapher archives each story in a directory of its own and records every file it writes or deletes in its manifest log, which ChronoPlayer reads to find the files, so a replay sees new files on NFS without waiting for a directory listing, and any chronicle or story name can be archived. See [HDF5 Archive](../user-guide/architecture/hdf5-archive.md).
 - **Durable Chunk Retention (3.2+):** A ChronoKeeper keeps every sealed chunk until ChronoGrapher confirms it written to the archive, and a replay reads the events not yet archived directly from the keepers, so an event is never held only in one component's memory on its way to storage. See [Durable Chunk Retention](../user-guide/architecture/durable-retention.md).
 - **On-Demand In-Memory Tail Reads (3.1+):** High-speed millisecond-scale retrieval of the most recent $N$ events directly from ChronoKeeper RAM (`playback`), bypassing the persistent archive path for real-time monitoring and streaming.
 - **High Concurrency:** Supports multiple writers and multiple readers (MWMR) for efficient concurrent access to the log.

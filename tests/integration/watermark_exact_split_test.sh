@@ -1,6 +1,6 @@
 #!/bin/bash
 # End-to-end check that a replay splits exactly where the watermark design says
-# (see docs/versioned_docs/version-3.2.0/user-guide/architecture/durable-retention.md).
+# (see docs/versioned_docs/version-3.3.0/user-guide/architecture/durable-retention.md).
 #
 # A client writes bursts of events; they flow keeper -> grapher -> HDF5 -> player
 # and come back through ReplayStory. The player splits a replay at B, the highest
