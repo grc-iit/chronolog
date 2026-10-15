@@ -137,7 +137,7 @@ trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
 kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-keeper-*.log "$MONITOR_DIR"/chrono-grapher-*.log "$MONITOR_DIR"/chrono-player-*.log
-rm -f "$OUTPUT_DIR"/TailChronicle.*.h5
+rm -rf "$OUTPUT_DIR"/TailChronicle "$OUTPUT_DIR"/TailChronicle.*.h5
 
 say "deploying $KEEPERS keepers / 1 recording group"
 "$DEPLOY" -d -w "$WORK_DIR" -k "$KEEPERS" -r 1 > /dev/null 2>&1 || { say "deploy failed"; exit 2; }

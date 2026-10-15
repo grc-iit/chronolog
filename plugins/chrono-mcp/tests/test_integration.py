@@ -1,10 +1,15 @@
 """Integration tests for Chronolog MCP Server."""
 
+import asyncio
+import os
+
 import pytest
 import time
 import random
 
 try:
+    from fastmcp.exceptions import ToolError
+
     from chronomcp.capabilities import (
         record_handler,
         retrieve_handler,
@@ -48,12 +53,24 @@ class TestIntegration:
         assert isinstance(record_result, str)
         assert record_result == "Interaction recorded to ChronoLog"
 
-        # Retrieve interactions
-        retrieve_result = await retrieve_handler.retrieve_interaction(
-            chronicle_name, story_name
-        )
-        assert isinstance(retrieve_result, str)
-        assert "Not records found." not in retrieve_result
+        # Retrieve interactions. A replay sees an event once its keeper has
+        # sealed the chunk holding it (about 25 s with the template's 10 s
+        # chunks and 15 s acceptance window), so ask until it shows up.
+        deadline = time.time() + 60
+        while True:
+            try:
+                retrieve_result = await retrieve_handler.retrieve_interaction(
+                    chronicle_name, story_name
+                )
+            except ToolError as error:  # a replay that timed out, say: ask again
+                retrieve_result = str(error)
+            # a records file means events came back; anything else is a message
+            records_file = retrieve_result.split(" ")[0]
+            if os.path.isfile(records_file) or time.time() > deadline:
+                break
+            await asyncio.sleep(5)
+        assert os.path.isfile(records_file), retrieve_result
+        os.remove(records_file)
 
         # Stop session
         stop_result = await stop_handler.stop_chronolog()

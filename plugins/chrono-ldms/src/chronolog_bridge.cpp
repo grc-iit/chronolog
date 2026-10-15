@@ -79,14 +79,12 @@ struct StoreHandle
 
 /* Make a producer name safe to appear in a ChronoLog story name.
  *
- * The archive filename is built by direct concatenation --
- *   <root><chronicle>.<story>.<startSec>.vlen.h5   (StoryChunkWriter)
- * -- with no sanitisation anywhere, and the grapher's file-discovery pattern
- * matches the story field as [^.]+. So a '/' in a story name becomes a path
- * separator into a directory that does not exist (archival fails outright), and
- * a '.' breaks discovery. LDMS producer names are typically hostnames, which
- * routinely contain dots, so both hazards are live. Anything outside
- * [A-Za-z0-9_-] is folded to '_'. */
+ * ChronoLog releases before 3.3.0 named archive files
+ *   <root><chronicle>.<story>.<startSec>.vlen.h5
+ * so a '/' in a story name made archival fail and a '.' could mix two stories'
+ * files. 3.3.0 keeps each story in a directory of its own and takes any name,
+ * but story names already written by this plugin keep this form, so anything
+ * outside [A-Za-z0-9_-] is still folded to '_'. */
 std::string sanitize_producer(const char* producer)
 {
     std::string out;

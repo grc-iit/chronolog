@@ -32,6 +32,7 @@ foreach(_pair ${_da_props})
     target_include_directories(${_bin} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/client/cpp/include
+        ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     )
     target_link_libraries(${_bin} PRIVATE
         chronolog_client

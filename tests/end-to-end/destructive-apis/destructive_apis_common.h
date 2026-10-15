@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <ArchiveLayout.h>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -105,48 +106,32 @@ inline int fail(std::string const& msg)
     return 1;
 }
 
-// Count HDF5 chunk files the Grapher would have written for a story:
-//   <hdf5Dir>/<chronicle>.<story>.<startSec>.vlen.h5
-// (plus the numbered <...>.vlen.<n>.h5 form). Returns 0 when the directory
-// doesn't exist (an empty deployment hasn't created it yet).
-inline size_t count_story_files(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
+// The HDF5 files under dir, recursively; 0 when dir does not exist (an empty
+// deployment has not created it yet).
+inline size_t count_h5_files(std::filesystem::path const& dir)
 {
-    if(!std::filesystem::is_directory(hdf5Dir))
+    std::error_code ec;
+    if(!std::filesystem::is_directory(dir, ec))
         return 0;
-    std::string const prefix = chronicle + "." + story + ".";
     size_t n = 0;
-    for(auto const& entry: std::filesystem::directory_iterator(hdf5Dir))
+    for(std::filesystem::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
     {
-        if(!entry.is_regular_file())
-            continue;
-        auto name = entry.path().filename().string();
-        if(name.size() < 3 || name.compare(name.size() - 3, 3, ".h5") != 0)
-            continue;
-        if(name.compare(0, prefix.size(), prefix) != 0)
-            continue;
-        ++n;
+        if(it->is_regular_file() && it->path().extension() == ".h5")
+            ++n;
     }
     return n;
 }
 
+// Count the HDF5 chunk files the Grapher wrote for a story: they are in
+// <hdf5Dir>/<chronicle>/<story>/ (see ArchiveLayout.h).
+inline size_t count_story_files(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
+{
+    return count_h5_files(chronolog::storyArchiveDirectory(hdf5Dir, chronicle, story));
+}
+
 inline size_t count_chronicle_files(std::string const& hdf5Dir, std::string const& chronicle)
 {
-    if(!std::filesystem::is_directory(hdf5Dir))
-        return 0;
-    std::string const prefix = chronicle + ".";
-    size_t n = 0;
-    for(auto const& entry: std::filesystem::directory_iterator(hdf5Dir))
-    {
-        if(!entry.is_regular_file())
-            continue;
-        auto name = entry.path().filename().string();
-        if(name.size() < 3 || name.compare(name.size() - 3, 3, ".h5") != 0)
-            continue;
-        if(name.compare(0, prefix.size(), prefix) != 0)
-            continue;
-        ++n;
-    }
-    return n;
+    return count_h5_files(chronolog::chronicleArchiveDirectory(hdf5Dir, chronicle));
 }
 
 // Generate a unique chronicle/story name suffix so tests can be re-run

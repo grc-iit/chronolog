@@ -13,6 +13,7 @@
 #include "StoryChunk.h"
 
 class StoryPipeline_TestAppendStoryChunk_testSuccess_Test;
+class StoryPipeline_TestIncarnation_EachPipelineIsNumberedAboveTheLastAndStampsItsChunks_Test;
 class StoryPipeline_TestPrependStoryChunk_testSuccess_Test;
 class StoryPipeline_TestFinalize_testNoPendingChunks_Test;
 class StoryPipeline_TestFinalize_testOnlyPassiveDeque_Test;
@@ -64,6 +65,16 @@ public:
 
     StoryName const& getStoryName() const { return storyName; }
 
+    // Every pipeline of this process gets the next number, and stamps it on the
+    // chunks it makes. A story destroyed and created again gets a new pipeline,
+    // so a destroy can tell its own story's chunks (and files) from those of the
+    // story created after it: theirs are numbered higher than the number current
+    // when the destroy arrived.
+    uint64_t getIncarnation() const { return incarnation; }
+
+    // the number the latest pipeline of this process got
+    static uint64_t currentIncarnation();
+
     uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
     uint64_t TimelineStart() const
@@ -93,6 +104,7 @@ public:
     void attachReceiptTracker(ReceiptTracker* tracker) { theReceiptTracker = tracker; }
 
 private:
+    uint64_t incarnation;
     StoryId storyId;
     ChronicleName chronicleName;
     StoryName storyName;
@@ -125,6 +137,8 @@ private:
     void holdReceipts(StoryChunk& holder, StoryChunk const& other_chunk);
 
     // Added friend tests for the unit tests to test private functions
+
+    FRIEND_TEST(::StoryPipeline_TestIncarnation, EachPipelineIsNumberedAboveTheLastAndStampsItsChunks);
 
     FRIEND_TEST(::StoryPipeline_TestPrependStoryChunk, testSuccess);
     std::map<uint64_t, StoryChunk*>::iterator prependStoryChunk();

@@ -19,11 +19,11 @@ namespace chronolog
 // unavailable". Those failures land where they hurt most now -- a failed write
 // stops the story's watermark, and a failed read makes a replay incomplete.
 //
-// Turning it off is safe for this access pattern. One grapher owns a given
-// window file and writes it once, through a temporary name (see
-// StoryChunkWriter); a window that has to be written again goes to a numbered
-// sibling rather than back into the same file. Readers only ever read. There is
-// no second writer for the lock to keep out.
+// Turning it off is safe for this access pattern. Every file is written once,
+// through a temporary name, by the grapher that publishes it under a name no
+// other write uses (see StoryChunkWriter and ArchiveLayout.h); a window that has
+// to be written again goes to another file. Readers only ever read. There is no
+// second writer for the lock to keep out.
 //
 // ignore_when_disabled leaves a file system whose driver cannot honour the
 // setting working normally instead of failing the open.

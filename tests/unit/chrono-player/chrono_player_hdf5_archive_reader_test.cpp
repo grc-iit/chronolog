@@ -9,6 +9,7 @@
 #include <chrono>
 #include <list>
 #include <atomic>
+#include <thallium.hpp>
 #include <HDF5ArchiveReadingAgent.h>
 #include <ConfigurationManager.h>
 #include <cmd_arg_parse.h>
@@ -79,7 +80,7 @@ int main(int argc, char** argv)
     tl::abt scope;
 
     std::string archive_path = PLAYER_CONF.READER_CONF.story_files_dir;
-    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path, true); // Default to polling mode
+    agent_ptr = new chronolog::HDF5ArchiveReadingAgent(archive_path);
 
     agent_ptr->initialize();
 

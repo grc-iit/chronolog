@@ -2,9 +2,8 @@
 //
 // Three property tests (StoryID consistency, event count, event order)
 // validate that events injected via chrono-client-admin -f land in the
-// on-disk HDF5 archive written by ChronoGrapher (files named
-// "{chronicle}.{story}.<timestamp>.vlen.h5", flat in the deployment's
-// output dir).
+// on-disk HDF5 archive written by ChronoGrapher (files in
+// "<output dir>/<chronicle>/<story>/", see ArchiveLayout.h).
 //
 // A Replay lens (chrono-client-admin -i + '-r ...') and a CSV lens were
 // both explored earlier and removed from this iteration:
@@ -17,6 +16,7 @@
 
 #pragma once
 
+#include <ArchiveLayout.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
@@ -128,10 +128,10 @@ inline bool parse_args(int argc, char** argv, Args& out)
     return true;
 }
 
-// StoryId derivation matches ChronoVisor::Chronicle::getStoryId.
+// StoryId derivation matches ChronoVisor's Chronicle::storyIdOf.
 inline uint64_t expected_story_id(std::string const& chronicle, std::string const& story)
 {
-    std::string s = chronicle + story;
+    std::string s = std::to_string(chronicle.length()) + ":" + chronicle + story;
     return CityHash64(s.c_str(), s.length());
 }
 
@@ -148,27 +148,21 @@ inline std::vector<std::string> read_reference_lines(std::string const& path)
     return out;
 }
 
-// ChronoGrapher writes archive files flat in its configured story_files_dir,
-// named "{chronicle}.{story}.<timestamp>.vlen.h5" (one file per flushed
-// chunk). We scan the output dir for anything matching that prefix and read
-// each matching file as a Story via its compound dataset.
+// ChronoGrapher writes a story's archive files into
+// <story_files_dir>/<chronicle>/<story>/ (see ArchiveLayout.h), one file per
+// written window. We read each of them as a Story via its compound dataset.
 inline std::vector<std::filesystem::path>
 hdf5_files_for_story(std::string const& hdf5Dir, std::string const& chronicle, std::string const& story)
 {
     std::vector<std::filesystem::path> out;
-    std::string prefix = chronicle + "." + story + ".";
-    if(!std::filesystem::is_directory(hdf5Dir))
+    std::filesystem::path const story_dir = chronolog::storyArchiveDirectory(hdf5Dir, chronicle, story);
+    std::error_code ec;
+    if(!std::filesystem::is_directory(story_dir, ec))
         return out;
-    for(auto const& entry: std::filesystem::directory_iterator(hdf5Dir))
+    for(auto const& entry: std::filesystem::directory_iterator(story_dir, ec))
     {
-        if(!entry.is_regular_file())
-            continue;
-        auto name = entry.path().filename().string();
-        if(name.size() < 3 || name.compare(name.size() - 3, 3, ".h5") != 0)
-            continue;
-        if(name.compare(0, prefix.size(), prefix) != 0)
-            continue;
-        out.push_back(entry.path());
+        if(entry.is_regular_file() && entry.path().extension() == ".h5")
+            out.push_back(entry.path());
     }
     std::sort(out.begin(), out.end());
     return out;

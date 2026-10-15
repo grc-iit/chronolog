@@ -95,12 +95,20 @@ public:
     //    std::unordered_map<std::string, uint64_t> *getName2IdMap() { return storyName2IdMap_; }
     //    std::unordered_map<uint64_t, std::string> *getId2NameMap() { return storyId2NameMap_; }
 
+    // The StoryId of a chronicle's story. Server-internal: clients name
+    // stories, and only ever hand back the id the visor gave them. The
+    // chronicle name's length goes first, so the hashed string tells where the
+    // chronicle ends: plain concatenation gave ("ab", "c") and ("a", "bc") one id.
+    static uint64_t storyIdOf(std::string const& chronicle_name, std::string const& story_name)
+    {
+        std::string const story_name_for_hash =
+                std::to_string(chronicle_name.length()) + ":" + chronicle_name + story_name;
+        return CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+    }
+
     bool hasStory(const std::string& story_name)
     {
-        std::string story_name_for_hash = name_ + story_name;
-        //        auto name2IdRecord = storyName2IdMap_->find(story_name_for_hash);
-        //        if (name2IdRecord != storyName2IdMap_->end()) return true;
-        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        uint64_t sid = storyIdOf(name_, story_name);
         if(storyMap_.find(sid) != storyMap_.end())
         {
             return true;
@@ -125,9 +133,7 @@ public:
         }
         else
         {
-            std::string story_name_for_hash = name_ + story_name;
-            //            return storyName2IdMap_->find(story_name_for_hash)->second;
-            return CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+            return storyIdOf(name_, story_name);
         }
     }
 
@@ -152,8 +158,7 @@ public:
     std::pair<int, Story*> addStory(const std::string& story_name)
     {
         /* Check if Story exists */
-        std::string story_name_for_hash = name_ + story_name;
-        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        uint64_t sid = storyIdOf(name_, story_name);
         auto story_iter = storyMap_.find(sid);
         if(story_iter != storyMap_.end())
         {
@@ -169,8 +174,6 @@ public:
                   storyMap_.size(),
                   static_cast<const void*>(this));
         auto res = storyMap_.emplace(sid, pStory);
-        //        storyName2IdMap_->insert_or_assign(story_name_for_hash, sid);
-        //        storyId2NameMap_->insert_or_assign(sid, story_name_for_hash);
         if(res.second)
         {
             return std::pair<int, Story*>(chronolog::CL_SUCCESS, pStory);
@@ -183,12 +186,7 @@ public:
 
     int removeStory(std::string const& chronicle_name, const std::string& story_name)
     {
-        // add chronicle_name to story_name before hash to allow same story name across chronicles
-        std::string story_name_for_hash = chronicle_name + story_name;
-        /* Check if Story exists, fail if true */
-        //        if(storyName2IdMap_->find(story_name_for_hash) != storyName2IdMap_->end()) {
-        //            uint64_t sid = storyName2IdMap_->find(story_name_for_hash)->second;
-        uint64_t sid = CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        uint64_t sid = storyIdOf(chronicle_name, story_name);
         auto storyMapRecord = storyMap_.find(sid);
         if(storyMapRecord != storyMap_.end())
         {

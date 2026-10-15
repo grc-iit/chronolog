@@ -28,7 +28,8 @@ INSTALL_DIR="${CHRONOLOG_INSTALL_DIR:-$HOME/chronolog-install/chronolog}"
 ADMIN="${INSTALL_DIR}/bin/chrono-client-admin"
 CLIENT_CONF="${INSTALL_DIR}/conf/default-chrono-client-conf.json"
 OUTPUT_DIR="${OUTPUT_DIR:-${INSTALL_DIR}/output}"
-STORY_PREFIX="chronicle_0_0.story_0_0."
+# the story's archive directory, <output>/<chronicle>/<story> (see ArchiveLayout.h)
+STORY_DIR="${OUTPUT_DIR}/chronicle_0_0/story_0_0"
 
 if [[ ! -x "${ADMIN}" ]]; then
     echo "[data-integrity:setup] chrono-client-admin not found at ${ADMIN}; skipping."
@@ -49,11 +50,11 @@ fi
 echo "[data-integrity:setup] Injecting reference events from ${REFERENCE_INPUT}"
 echo "[data-integrity:setup] Watch dir: ${OUTPUT_DIR}"
 
-# Start from an empty output dir. Leftover files from a previous integrity
-# run would short-circuit the wait loop; leftover files from other client
-# apps would inflate downstream file counts. The fixture owns the watch dir
-# for the duration of the test.
-find "${OUTPUT_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+# Start without the story's files: leftovers from a previous integrity run
+# would short-circuit the wait loop. Only the chronicle's directory goes; the
+# rest of the archive, the graphers' manifest logs in %manifest among it,
+# belongs to the running deployment.
+rm -rf "${OUTPUT_DIR}/chronicle_0_0"
 
 if ! "${ADMIN}" -c "${CLIENT_CONF}" -f "${REFERENCE_INPUT}" -h 1 -t 1 -n 1; then
     echo "[data-integrity:setup] Injection via chrono-client-admin failed (non-zero exit)."
@@ -65,9 +66,9 @@ fi
 # acceptance_window_secs=180) chunks land a few minutes after injection.
 WAIT_DEADLINE=$((SECONDS + 240))
 while (( SECONDS < WAIT_DEADLINE )); do
-    h5_count=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "${STORY_PREFIX}*.h5" 2>/dev/null | wc -l)
+    h5_count=$(find "${STORY_DIR}" -maxdepth 1 -name "*.h5" 2>/dev/null | wc -l)
     if (( h5_count > 0 )); then
-        echo "[data-integrity:setup] Detected ${h5_count} HDF5 file(s) for ${STORY_PREFIX}* in ${OUTPUT_DIR}"
+        echo "[data-integrity:setup] Detected ${h5_count} HDF5 file(s) in ${STORY_DIR}"
         echo "[data-integrity:setup] Setup complete."
         exit 0
     fi
@@ -76,5 +77,5 @@ done
 
 echo "[data-integrity:setup] Timed out waiting for HDF5 flush into ${OUTPUT_DIR}"
 echo "[data-integrity:setup] Existing contents:"
-ls -la "${OUTPUT_DIR}" || true
+ls -laR "${OUTPUT_DIR}" || true
 exit 1

@@ -863,3 +863,26 @@ TEST(StoryPipeline_TestFinalize, testFinalizeWithMixedTimeline)
     EXPECT_EQ(countNonEmpty(q), 3);
     freeChunks(q);
 }
+
+// A story destroyed and created again gets a new pipeline, numbered above every
+// earlier one, and the chunks a pipeline makes carry its number: that is how a
+// destroy tells the old story's files from the new one's.
+TEST(StoryPipeline_TestIncarnation, EachPipelineIsNumberedAboveTheLastAndStampsItsChunks)
+{
+    initLogger();
+    chl::StoryPipeline first("C", "S", 1, 0, 1, 1);
+    EXPECT_EQ(chl::StoryPipeline::currentIncarnation(), first.getIncarnation());
+    chl::StoryPipeline second("C", "S", 1, 0, 1, 1);
+    EXPECT_GT(second.getIncarnation(), first.getIncarnation());
+    EXPECT_EQ(chl::StoryPipeline::currentIncarnation(), second.getIncarnation());
+    for(auto const& [start, chunk]: second.storyTimelineMap)
+    {
+        EXPECT_EQ(chunk->getIncarnation(), second.getIncarnation());
+    }
+
+    // finalize frees the pipelines' ingestion handles
+    std::vector<chl::StoryChunk*> q;
+    first.finalize(q);
+    second.finalize(q);
+    freeChunks(q);
+}

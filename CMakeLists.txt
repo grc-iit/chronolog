@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_MACOSX_RPATH)
     set(CMAKE_MACOSX_RPATH 0)
 endif()
 
-project(ChronoLog VERSION 3.2.0 LANGUAGES CXX C)
+project(ChronoLog VERSION 3.3.0 LANGUAGES CXX C)
 
 #------------------------------------------------------------------------------
 # Version information
@@ -369,6 +369,7 @@ install(
 #------------------------------------------------------------------------------
 install(
     PROGRAMS
+        tools/deploy/archive_cleanup.sh
         tools/deploy/deploy_local.sh
         tools/deploy/deploy_cluster.sh
     DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}

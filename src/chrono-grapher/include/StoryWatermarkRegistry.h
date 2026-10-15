@@ -123,7 +123,7 @@ public:
     // then forget it so a later acquisition of the same name starts fresh.
     //
     // KNOWN GAP — recreate under the same name. Story ids are a deterministic
-    // CityHash64(chronicle + story), so destroying a story and creating it again
+    // hash of the chronicle and story names, so destroying a story and creating it again
     // under the same name yields the same id. Two orderings are lossy:
     //  - the new registration reaches this grapher before the drop report is
     //    published: registerStory re-creates the entry, the drop is never

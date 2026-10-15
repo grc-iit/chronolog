@@ -431,9 +431,15 @@ clean() {
     rm -f "${MONITOR_DIR}"/*.log
 
     echo -e "${DEBUG}Removing output files${NC}"
-    rm -f "${OUTPUT_DIR}"/*
+    clean_output_dir "${OUTPUT_DIR}"
 
     echo -e "${INFO}ChronoLog cleaning done.${NC}"
+}
+
+# Removes the archive the deployment wrote into the output directory, and
+# nothing else; see archive_cleanup.sh.
+clean_output_dir() {
+    bash "${SCRIPT_DIR}/archive_cleanup.sh" "$1"
 }
 
 usage() {

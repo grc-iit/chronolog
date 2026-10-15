@@ -12,6 +12,10 @@
 
 #include <csignal>
 #include <filesystem>
+#include <chrono>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <typeinfo>
@@ -23,6 +27,8 @@
 #include <H5Cpp.h>
 #include <thallium.hpp>
 
+#include <ArchiveLayout.h>
+#include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
 #include <HDF5FileChunkExtractor.h>
 #include <StoryChunk.h>
@@ -65,7 +71,7 @@ protected:
     std::size_t archivedFileCount() const
     {
         std::size_t count = 0;
-        for(auto const& entry: fs::directory_iterator(archiveDir))
+        for(auto const& entry: fs::recursive_directory_iterator(archiveDir))
         {
             if(entry.is_regular_file() && entry.path().extension() == ".h5")
             {
@@ -285,7 +291,7 @@ namespace
 // is no file or it cannot be read in full.
 long readableEventCount(fs::path const& dir)
 {
-    for(auto const& entry: fs::directory_iterator(dir))
+    for(auto const& entry: fs::recursive_directory_iterator(dir))
     {
         if(entry.path().extension() != ".h5")
         {
@@ -415,4 +421,328 @@ TEST_F(HDF5FileChunkExtractorWatermark, WMovesOnlyPastAWindowThatReadsBack)
     // the sweep covers both a cap too small to write and one large enough
     EXPECT_GT(held, 0u);
     EXPECT_GT(moved, 0u);
+}
+
+// ---- archive manifest -------------------------------------------------------
+//
+// Players find archive files through the manifest. A window counts as written
+// -- W moves, receipts settle, keepers free their chunks -- only once its record
+// is in the manifest, so a player can always find what a keeper has let go of.
+
+namespace
+{
+std::vector<chl::ArchiveManifestRecord> manifestRecords(fs::path const& archive_dir)
+{
+    std::vector<chl::ArchiveManifestRecord> records;
+    for(std::string const& log: chl::listArchiveManifestLogs(archive_dir.string()))
+    {
+        chl::ArchiveManifestTail tail(log);
+        tail.readNew(records);
+    }
+    return records;
+}
+
+// the manifest's log replaced by a directory: every append fails
+void breakManifest(fs::path const& archive_dir)
+{
+    for(std::string const& log: chl::listArchiveManifestLogs(archive_dir.string()))
+    {
+        fs::remove(log);
+        fs::create_directory(log);
+    }
+}
+} // namespace
+
+TEST_F(HDF5FileChunkExtractorWatermark, OpeningTheManifestCreatesThisGraphersLog)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("3"), chl::CL_SUCCESS);
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / chl::kArchiveManifestDirName / "3.log"));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, WrittenWindowIsRecordedInTheManifest)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C.x", "S/y", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    addEvent(window, T0 + 2, 1);
+
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::PUBLISH);
+    EXPECT_EQ(records[0].chronicle, "C.x");
+    EXPECT_EQ(records[0].story, "S/y");
+    EXPECT_EQ(records[0].start, T0);
+    EXPECT_EQ(records[0].end, T1);
+    EXPECT_EQ(records[0].events, 2u);
+    // the path is relative to the archive root and names the file on disk
+    EXPECT_TRUE(fs::path(records[0].file).is_relative());
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / records[0].file));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, SecondWriteOfAWindowIsRecordedUnderItsOwnName)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk first("C", "S", kStory, T0, T1);
+    addEvent(first, T0 + 1, 0);
+    chl::StoryChunk late("C", "S", kStory, T0, T1);
+    addEvent(late, T0 + 2, 1);
+
+    ASSERT_EQ(extractor.process_chunk(&first), chl::CL_SUCCESS);
+    ASSERT_EQ(extractor.process_chunk(&late), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 2u);
+    EXPECT_NE(records[0].file, records[1].file);
+    EXPECT_TRUE(fs::is_regular_file(archiveDir / records[1].file));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, EmptyWindowLeavesNoRecord)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    EXPECT_TRUE(manifestRecords(archiveDir).empty());
+}
+
+// A file no record names is invisible to every player. Counting it as written
+// would let the keepers free the only other copy of its events.
+TEST_F(HDF5FileChunkExtractorWatermark, WindowWhoseRecordCannotBeAppendedIsAFailedWrite)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    breakManifest(archiveDir);
+    uint64_t const receipt = registry.assignReceipt(kStory);
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    window.carryReceipt(receipt);
+
+    EXPECT_NE(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
+    // and the unrecorded file is not left behind
+    EXPECT_EQ(archivedFileCount(), 0u);
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyRejectsSymlinkedStoryAndChronicleDirectories)
+{
+    for(bool chronicle_link: {false, true})
+    {
+        fs::path const base = archiveDir / (chronicle_link ? "chronicle-link" : "story-link");
+        fs::path const root = base / "archive";
+        fs::path const foreign = base / "foreign";
+        fs::create_directories(root);
+        fs::create_directories(foreign / "S");
+        extractor.reset(root.string());
+        ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+        if(chronicle_link)
+        {
+            fs::create_directory_symlink(foreign, root / "C");
+        }
+        else
+        {
+            fs::create_directory(root / "C");
+            fs::create_directory_symlink(foreign / "S", root / "C" / "S");
+        }
+        fs::path const file = foreign / "S" / "60.vlen.h5";
+        for(bool whole_chronicle: {false, true})
+        {
+            std::ofstream(file) << "unrelated data";
+            fs::last_write_time(file, fs::file_time_type::clock::now() - std::chrono::minutes(5));
+            chl::HDF5FileChunkExtractor::DestroyScope scope;
+            scope.requested_at = std::chrono::system_clock::now();
+            size_t deleted = 99;
+            int const status = whole_chronicle ? extractor.delete_chronicle_files("C", &deleted, scope)
+                                               : extractor.delete_story_files("C", "S", &deleted, scope);
+            EXPECT_NE(status, chl::CL_SUCCESS);
+            EXPECT_EQ(deleted, 0u);
+            EXPECT_TRUE(fs::exists(file));
+        }
+        chl::ArchiveManifestTail tail((root / chl::kArchiveManifestDirName / "1.log").string());
+        std::vector<chl::ArchiveManifestRecord> records;
+        ASSERT_EQ(tail.readNew(records), chl::CL_SUCCESS);
+        EXPECT_TRUE(records.empty()) << "a refused destroy must not be recorded as complete";
+    }
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyAcceptsASymlinkToTheArchiveRoot)
+{
+    fs::path const root = archiveDir / "real";
+    fs::create_directories(root / "C" / "S");
+    fs::path const link = archiveDir / "link";
+    fs::create_directory_symlink(root, link);
+    extractor.reset(link.string() + "/");
+    std::ofstream(root / "C" / "S" / "60.vlen.h5") << "archive data";
+    size_t deleted = 0;
+    EXPECT_EQ(extractor.delete_story_files("C", "S", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_FALSE(fs::exists(root / "C" / "S" / "60.vlen.h5"));
+
+    fs::create_directories(root / "C" / "T");
+    std::ofstream(root / "C" / "T" / "90.vlen.h5") << "archive data";
+    EXPECT_EQ(extractor.delete_chronicle_files("C", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_FALSE(fs::exists(root / "C" / "T" / "90.vlen.h5"));
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DeletingAStoryIsRecorded)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+
+    ASSERT_EQ(extractor.delete_story_files("C", "S"), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 2u);
+    EXPECT_EQ(records[1].op, chl::ArchiveManifestRecord::Op::DELETE);
+    EXPECT_FALSE(records[1].whole_chronicle);
+    EXPECT_EQ(records[1].chronicle, "C");
+    EXPECT_EQ(records[1].story, "S");
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, DeletingAChronicleIsRecorded)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+
+    ASSERT_EQ(extractor.delete_chronicle_files("C"), chl::CL_SUCCESS);
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].op, chl::ArchiveManifestRecord::Op::DELETE);
+    EXPECT_TRUE(records[0].whole_chronicle);
+    EXPECT_EQ(records[0].chronicle, "C");
+}
+
+// Destroy deletes by name, and the names are a client's: a chronicle named like
+// a directory that was already in the archive root (the template's root is
+// /tmp) must not take that directory's contents with it.
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyingAChronicleDeletesOnlyArchiveFiles)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    fs::create_directories(archiveDir / "C" / "unrelated" / "nested");
+    std::ofstream(archiveDir / "C" / "notes.txt") << "x";
+    std::ofstream(archiveDir / "C" / "unrelated" / "nested" / "1.vlen.h5") << "x";
+    std::ofstream(archiveDir / "C" / "S" / "notes.txt") << "x";
+
+    size_t deleted = 0;
+    ASSERT_EQ(extractor.delete_chronicle_files("C", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "notes.txt"));
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "unrelated" / "nested" / "1.vlen.h5"));
+    EXPECT_TRUE(fs::exists(archiveDir / "C" / "S" / "notes.txt"));
+    EXPECT_EQ(archivedFileCount(), 1u); // only the nested stranger
+}
+
+// A destroy deletes a story's files but keeps its directory and the
+// chronicle's: a directory that came back after it was removed could stay
+// "not found" for a player on NFS that looked it up while it was missing.
+TEST_F(HDF5FileChunkExtractorWatermark, DestroyingAStoryKeepsItsDirectories)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk window("C", "S", kStory, T0, T1);
+    addEvent(window, T0 + 1, 0);
+    ASSERT_EQ(extractor.process_chunk(&window), chl::CL_SUCCESS);
+    std::ofstream(archiveDir / "C" / "S" / "1.vlen.h5.partial.host.42.0") << "x";
+
+    size_t deleted = 0;
+    ASSERT_EQ(extractor.delete_story_files("C", "S", &deleted), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    EXPECT_EQ(archivedFileCount(), 0u);
+    EXPECT_TRUE(fs::is_empty(archiveDir / "C" / "S"));
+    EXPECT_EQ(extractor.delete_chronicle_files("C"), chl::CL_SUCCESS);
+    EXPECT_TRUE(fs::is_directory(archiveDir / "C" / "S"));
+}
+
+// ---- destroy after the story was created again -------------------------------
+//
+// A destroy can run after the story was created again (it waits for extraction
+// to drain), and the new story writes into the same directory. Only the
+// destroyed story's files may go.
+
+namespace
+{
+// a file in C/S under name, last modified age ago
+fs::path touchWindowFile(fs::path const& archive_dir, std::string const& name, std::chrono::seconds age)
+{
+    fs::path const path = archive_dir / "C" / "S" / name;
+    fs::create_directories(path.parent_path());
+    std::ofstream(path) << "x";
+    auto const when = std::chrono::system_clock::now() - age;
+    auto const ns = std::chrono::duration_cast<std::chrono::nanoseconds>(when.time_since_epoch()).count();
+    struct timespec times[2];
+    times[0].tv_sec = times[1].tv_sec = ns / 1000000000;
+    times[0].tv_nsec = times[1].tv_nsec = ns % 1000000000;
+    ::utimensat(AT_FDCWD, path.c_str(), times, 0);
+    return path;
+}
+} // namespace
+
+TEST_F(HDF5FileChunkExtractorWatermark, ADestroyLeavesTheFilesOfTheStoryCreatedAfterIt)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::StoryChunk before("C", "S", kStory, T0, T1);
+    addEvent(before, T0 + 1, 0);
+    before.setIncarnation(5);
+    chl::StoryChunk after("C", "S", kStory, T1, T2);
+    addEvent(after, T1 + 1, 1);
+    after.setIncarnation(9); // the pipeline of the story created again
+    ASSERT_EQ(extractor.process_chunk(&before), chl::CL_SUCCESS);
+    ASSERT_EQ(extractor.process_chunk(&after), chl::CL_SUCCESS);
+    ASSERT_EQ(archivedFileCount(), 2u);
+
+    chl::HDF5FileChunkExtractor::DestroyScope scope;
+    scope.incarnation_bound = 7; // current when the destroy arrived
+    scope.requested_at = std::chrono::system_clock::now();
+    size_t deleted = 0;
+    ASSERT_EQ(extractor.delete_story_files("C", "S", &deleted, scope), chl::CL_SUCCESS);
+    EXPECT_EQ(deleted, 1u);
+    ASSERT_EQ(archivedFileCount(), 1u);
+    for(auto const& entry: fs::directory_iterator(archiveDir / "C" / "S"))
+    {
+        chl::WindowFileName parsed;
+        ASSERT_TRUE(chl::parseWindowFileName(entry.path().filename().string(), parsed));
+        EXPECT_EQ(parsed.incarnation, 9u);
+    }
+    // the deletion record says which files it covered, so players keep the new one
+    auto const records = manifestRecords(archiveDir);
+    ASSERT_FALSE(records.empty());
+    EXPECT_EQ(records.back().op, chl::ArchiveManifestRecord::Op::DELETE);
+    EXPECT_EQ(records.back().incarnation_bound, 7u);
+}
+
+TEST_F(HDF5FileChunkExtractorWatermark, ADestroyTakesEveryFileOfAnEarlierProcessOfThisGroup)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    fs::path const earlier = touchWindowFile(archiveDir, "60.1.1000.99.0.vlen.h5", std::chrono::seconds(0));
+
+    chl::HDF5FileChunkExtractor::DestroyScope scope;
+    scope.incarnation_bound = 1;
+    scope.requested_at = std::chrono::system_clock::now();
+    ASSERT_EQ(extractor.delete_story_files("C", "S", nullptr, scope), chl::CL_SUCCESS);
+    EXPECT_FALSE(fs::exists(earlier));
+}
+
+// Another grapher deletes its own files; this one deletes them only when they
+// are older than the destroy by a margin for clock differences, which covers a
+// grapher that is down.
+TEST_F(HDF5FileChunkExtractorWatermark, ADestroyTakesAnotherGraphersFileOnlyWhenItIsOldEnough)
+{
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    fs::path const old_file = touchWindowFile(archiveDir, "60.2.5.1.0.vlen.h5", std::chrono::minutes(10));
+    fs::path const recent = touchWindowFile(archiveDir, "90.2.5.1.1.vlen.h5", std::chrono::seconds(30));
+    fs::path const old_layout = touchWindowFile(archiveDir, "30.vlen.h5", std::chrono::minutes(10));
+
+    chl::HDF5FileChunkExtractor::DestroyScope scope;
+    scope.incarnation_bound = UINT64_MAX;
+    scope.requested_at = std::chrono::system_clock::now();
+    ASSERT_EQ(extractor.delete_story_files("C", "S", nullptr, scope), chl::CL_SUCCESS);
+    EXPECT_FALSE(fs::exists(old_file));
+    EXPECT_FALSE(fs::exists(old_layout));
+    EXPECT_TRUE(fs::exists(recent));
 }

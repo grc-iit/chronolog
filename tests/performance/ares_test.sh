@@ -852,8 +852,13 @@ clean_output_dir() {
       log "WARNING: hosts file $file not found — skipping output clean for it"
       continue
     fi
-    if ! run_shell "mpssh rm -f output/* on $(basename "$file")" \
-      "mpssh -f '$file' \"rm -f '${OUTPUT_DIR}/'*\""; then
+    # Use the deployment cleanup policy: a matching suffix in another
+    # application's directory does not make that file ours.
+    local clean_cmd dispatch_cmd
+    printf -v clean_cmd 'bash %q %q' "${DEPLOY_SCRIPT%/*}/archive_cleanup.sh" "${OUTPUT_DIR:?}"
+    printf -v dispatch_cmd 'mpssh -f %q %q' "$file" "$clean_cmd"
+    if ! run_shell "mpssh clean output/ on $(basename "$file")" \
+      "$dispatch_cmd"; then
       log "WARNING: mpssh clean_output_dir for $file returned non-zero — continuing"
     fi
   done

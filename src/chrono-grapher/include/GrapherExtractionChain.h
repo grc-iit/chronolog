@@ -70,9 +70,12 @@ public:
         return true;
     }
 
+    // manifest_writer_id: the name of this grapher's log in the archive
+    // manifest (the recording group id); empty writes no manifest
     int activate(ServiceId const& service_id,
                  ExtractionModuleConfiguration const& extraction_conf,
-                 StoryWatermarkRegistry* watermark_registry = nullptr)
+                 StoryWatermarkRegistry* watermark_registry = nullptr,
+                 std::string const& manifest_writer_id = std::string())
     {
         int ret_value = CL_SUCCESS;
 
@@ -98,6 +101,14 @@ public:
                     break;
                 }
                 hdf5_extractor.attachWatermarkRegistry(watermark_registry);
+                if(!manifest_writer_id.empty())
+                {
+                    ret_value = hdf5_extractor.openArchiveManifest(manifest_writer_id);
+                    if(CL_SUCCESS != ret_value)
+                    {
+                        break;
+                    }
+                }
                 theExtractors.push_back(std::move(hdf5_extractor));
             }
             else if((*iter).first == "logging_extractor")
@@ -117,7 +128,9 @@ public:
     // Forward a story-level destroy to every extractor that knows how to
     // delete persisted artifacts. Today only HDF5 persists; CSV/logging are
     // no-ops. Returns the first non-success status.
-    int delete_story_files(std::string const& chronicle_name, std::string const& story_name)
+    int delete_story_files(std::string const& chronicle_name,
+                           std::string const& story_name,
+                           HDF5FileChunkExtractor::DestroyScope const& scope = HDF5FileChunkExtractor::DestroyScope())
     {
         int ret = CL_SUCCESS;
         for(auto& e: theExtractors)
@@ -128,7 +141,7 @@ public:
                         using T = std::decay_t<decltype(extractor)>;
                         if constexpr(std::is_same_v<T, HDF5FileChunkExtractor>)
                         {
-                            return extractor.delete_story_files(chronicle_name, story_name);
+                            return extractor.delete_story_files(chronicle_name, story_name, nullptr, scope);
                         }
                         return CL_SUCCESS;
                     },
@@ -141,7 +154,9 @@ public:
         return ret;
     }
 
-    int delete_chronicle_files(std::string const& chronicle_name)
+    int
+    delete_chronicle_files(std::string const& chronicle_name,
+                           HDF5FileChunkExtractor::DestroyScope const& scope = HDF5FileChunkExtractor::DestroyScope())
     {
         int ret = CL_SUCCESS;
         for(auto& e: theExtractors)
@@ -152,7 +167,7 @@ public:
                         using T = std::decay_t<decltype(extractor)>;
                         if constexpr(std::is_same_v<T, HDF5FileChunkExtractor>)
                         {
-                            return extractor.delete_chronicle_files(chronicle_name);
+                            return extractor.delete_chronicle_files(chronicle_name, nullptr, scope);
                         }
                         return CL_SUCCESS;
                     },

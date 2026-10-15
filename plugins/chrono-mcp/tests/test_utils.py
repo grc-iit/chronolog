@@ -11,10 +11,10 @@ def are_chronolog_processes_running():
         bool: True if all processes are running, False otherwise
     """
     required_processes = [
-        "chronovisor_server",
-        "chrono_grapher",
-        "chrono_keeper",
-        "chrono_player",
+        "chrono-visor",
+        "chrono-grapher",
+        "chrono-keeper",
+        "chrono-player",
     ]
 
     try:
@@ -23,7 +23,7 @@ def are_chronolog_processes_running():
             [
                 "pgrep",
                 "-laf",
-                "chronovisor_server|chrono_grapher|chrono_keeper|chrono_player",
+                "chrono-(visor|grapher|keeper|player) --config",
             ],
             capture_output=True,
             text=True,

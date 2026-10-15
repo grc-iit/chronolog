@@ -3,6 +3,7 @@
 from fastmcp.exceptions import ToolError
 
 from chronomcp.utils import config
+from chronomcp.utils.config import CL_ERR_CHRONICLE_EXISTS
 
 
 async def start_chronolog(
@@ -12,20 +13,19 @@ async def start_chronolog(
     chronicle = chronicle_name or config.DEFAULT_CHRONICLE
     story = story_name or config.DEFAULT_STORY
 
-    ret = config.client.Connect()
+    ret = config.get_client().Connect()
     if ret != 0:
         raise ToolError(f"Failed to connect to ChronoLog: {ret}")
 
-    attrs: dict[str, str] = {}
-    ret = config.client.CreateChronicle(chronicle, attrs, 1)
-    if ret != 0:
-        config.client.Disconnect()
+    # a chronicle from an earlier session is reused
+    ret = config.get_client().CreateChronicle(chronicle)
+    if ret not in (0, CL_ERR_CHRONICLE_EXISTS):
+        config.get_client().Disconnect()
         raise ToolError(f"Failed to create chronicle '{chronicle}': {ret}")
 
-    ret, handle = config.client.AcquireStory(chronicle, story, attrs, 1)
+    ret, handle = config.get_client().AcquireStory(chronicle, story)
     if ret != 0:
-        config.client.ReleaseStory(chronicle, story)
-        config.client.Disconnect()
+        config.get_client().Disconnect()
         raise ToolError(
             f"Failed to acquire story '{story}' in chronicle '{chronicle}': {ret}"
         )
