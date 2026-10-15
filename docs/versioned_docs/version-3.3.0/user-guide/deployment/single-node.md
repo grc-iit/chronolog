@@ -53,7 +53,7 @@ Exactly one mode must be specified per invocation:
 |------|-------------|
 | `--start` | Start all ChronoLog processes |
 | `--stop` | Stop all ChronoLog processes gracefully (force-kills after timeout) |
-| `--clean` | Remove generated config files, logs, and output artifacts. Requires all processes to be stopped first. |
+| `--clean` | Remove generated config files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. Requires all processes to be stopped first. |
 
 ## Options
 

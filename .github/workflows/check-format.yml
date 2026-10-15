@@ -16,7 +16,7 @@ on:
       - '**/*.cxx'
       - '**/*.c'
       - '.github/code-style/ChronoLog.clang-format'
-      - '.github/workflows/clang-format-check.yml'
+      - '.github/workflows/check-format.yml'
   workflow_dispatch:
 
 jobs:

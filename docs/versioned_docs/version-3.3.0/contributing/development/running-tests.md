@@ -5,361 +5,291 @@ title: "Running Tests"
 
 # Running Tests
 
-ChronoLog's test suite covers four broad categories: **unit**, **integration**, **communication/overhead**, and **system/workload** tests. The full suite is registered with CMake's CTest framework except for a handful of Python system scripts and shell workload drivers that live outside the CTest tree.
+ChronoLog's tests come in three groups:
 
-A debug build exposes the largest set of tests (~133 CTest entries). Some entries are **DISABLED** in the default run; others are marked **MANUAL** because they require a live multi-process ChronoLog deployment before they can succeed.
+- **CTest entries** in the build tree: unit tests that need nothing running, and integration, end-to-end, communication and overhead tests that need a running deployment.
+- **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
+- **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
+
+A Debug build registers 527 CTest entries: 480 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
 ## How to Run Tests
 
-### CTest (automated)
+### Unit tests
 
-From your CMake build directory:
-
-```bash
-# List all registered tests without running them
-ctest -N
-
-# Run all enabled tests (parallel, verbose)
-ctest --output-on-failure -j$(nproc)
-
-# Run a specific subset by name regex
-ctest -R "Unit_ChronoCommon_StoryChunk" --output-on-failure
-
-# Run including DISABLED tests
-ctest -R "." --output-on-failure
-```
-
-:::info
-`ctest -N` is the authoritative source of truth for test counts and names in a given build. Debug builds include extra GTest cases (e.g. TRACE/DEBUG macro tests) that are absent from release builds.
-:::
-
-### Manual Tests
-
-Tests labelled **MANUAL** require ChronoVisor, ChronoKeeper, and the client library to be running before execution. Start the deployment first (see the [Docker tutorials](../../tutorials/docker-single-node/running-chronolog.md)), then invoke the binary directly:
+Build through the deploy script, then run CTest in the build directory. The script builds into `<build dir>/<build type>`, so the path ends in `Debug`:
 
 ```bash
-# Example — client connectivity test
-./tests/integration/client/client_connect_rpc_test
+tools/deploy/local_single_user_deploy.sh -b -t Debug
+tools/deploy/local_single_user_deploy.sh -i -t Debug
 
-# Shell-based communication protocol test
-bash tests/communication/thallium_protocol_test.sh
+ctest --test-dir ~/chronolog-build/Debug -R 'Unit_' --output-on-failure -j4
 ```
 
-### Disabled Tests
+The unit tests need no running daemons. A few bind a fixed loopback port (`Unit_ChronoCommon_ExtractionChainConfig` uses 2225), so stop a local deployment or another test run that holds it. Some binaries get their library paths only at install, so install before running CTest.
 
-The following tests are registered with CTest but excluded from the default run. They can be forced with `ctest -R <name>`:
+Other useful forms:
 
-| CTest Name | Source File | Reason |
+```bash
+ctest --test-dir ~/chronolog-build/Debug -N                       # list without running
+ctest --test-dir ~/chronolog-build/Debug -R 'Unit_ChronoPlayer_'  # one component
+ctest --test-dir ~/chronolog-build/Debug -R 'ArchiveManifest'     # any name matching a regex
+```
+
+GTest suites are registered case by case, so `-R Unit_ChronoCommon_StoryChunk` runs all 47 StoryChunk cases.
+
+### Tests that need a running deployment
+
+The `Integration_`, `EndToEnd_`, `Communication_` and `Overhead_` entries connect to a running ChronoLog. Start one first, then run them:
+
+```bash
+~/chronolog-install/chronolog/tools/deploy/deploy_local.sh -d -w ~/chronolog-install/chronolog -k 2 -r 1
+ctest --test-dir ~/chronolog-build/Debug -R 'Integration_Client_|EndToEnd_' --output-on-failure
+~/chronolog-install/chronolog/tools/deploy/deploy_local.sh -s -w ~/chronolog-install/chronolog
+```
+
+The local pipeline in CI runs the whole CTest set against a single-host deployment of 5 keepers and 3 recording groups.
+
+### Disabled tests
+
+These are registered but excluded from the default run. Force one with `ctest -R <name>`:
+
+| CTest Name | Source File |
+|---|---|
+| `Functional_ChronoKeeper_ExtractionChain` | `tests/functional/chrono-keeper/chrono_keeper_extraction_chain_test.cpp` |
+| `Functional_ChronoGrapher_ExtractionChain` | `tests/functional/chrono-grapher/chrono_grapher_extraction_chain_test.cpp` |
+| `Functional_ChronoPlayer_ChunkConsumer` | `tests/functional/chrono-player/story_chunk_consumer_service_test.cpp` |
+| `Functional_ChronoPlayer_QueryResponseAgent` | `tests/functional/chrono-player/chrono_player_transfer_agent_test.cpp` |
+| `Functional_ChronoPlayer_PlaybackServiceLifecycle` | `tests/functional/chrono-player/chrono_player_playback_service_test.cpp` |
+
+---
+
+## Unit Tests
+
+One row per test binary. **Cases** is the number of CTest entries it registers.
+
+### Common (`tests/unit/chrono-common/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoCommon_StoryChunk_` | 47 | `chrono_common_story_chunk_test.cpp` | Inserting, merging, erasing and extracting events in a StoryChunk, including window boundaries and duplicates |
+| `Unit_ChronoCommon_StoryPipeline_` | 37 | `chrono_common_story_pipeline_test.cpp` | The story pipeline's timeline: chunk allocation, ingestion, decay, prepend/append, finalize, receipts and incarnation numbers |
+| `Unit_ChronoCommon_ArchiveManifest` | 27 | `chrono_common_archive_manifest_test.cpp` | Manifest records, the writer's appends and the reader's tail, including a log replaced on the same inode |
+| `Unit_ChronoCommon_ChunkWriter`, `Unit_ChronoCommon_ArchiveLayout` | 14 | `chrono_common_story_chunk_writer_test.cpp` | Writing a window through a temporary name into its story directory; name encoding and file names |
+| `Unit_ChronoCommon_ConfTemplate` | 6 | `chrono_common_conf_template_test.cpp` | The shipped configuration template keeps the timing rules between components |
+| `Unit_ChronoCommon_DataStoreConf` | 6 | `chrono_common_data_store_conf_test.cpp` | Validation of the DataStoreInternals settings |
+| `Unit_ChronoCommon_ExtractionModule` | 5 | `chrono_common_extraction_module_test.cpp` | The drain loop shared by the keeper and the grapher |
+| `Unit_ChronoCommon_ChunkExtractorCSV` | 2 | `chrono_common_chunk_extractor_csv_test.cpp` | The CSV extractor and empty windows |
+| `Unit_ChronoCommon_ExtractionChainConfig` | 1 | `chrono_common_extraction_chain_config_test.cpp` | Parsing extraction chain configurations (custom `main`, not GTest) |
+
+### ChronoKeeper (`tests/unit/chrono-keeper/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 57 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
+| `Unit_ChronoKeeper_KeeperReleaseDataLoss`, `..._KeeperOrphanAtRetirementDataLoss` | 5 | `chrono_keeper_release_dataloss_test.cpp` | Releasing a story does not lose events still in its pipeline |
+| `Unit_ChronoKeeper_KeeperExtractionChain` | 4 | `chrono_keeper_extraction_chain_test.cpp` | The chain hands extracted chunks to the retention store instead of deleting them |
+| `Unit_ChronoKeeper_KeeperOrphanRecovery` | 3 | `chrono_keeper_orphan_recovery_test.cpp` | Events that arrive for a story with no pipeline are sealed and kept |
+| `Unit_ChronoKeeper_KeeperChunkRetentionCap` | 2 | `chrono_keeper_retention_cap_test.cpp` | The `retention_cap_mb` alarm |
+| `Unit_ChronoKeeper_KeeperStoryRetirement` | 2 | `chrono_keeper_story_retirement_test.cpp` | A retired story frees its chunks only when they are written and out of the tail |
+
+### ChronoGrapher (`tests/unit/chrono-grapher/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoGrapher_StoryWatermarkRegistry` | 31 | `story_watermark_registry_test.cpp` | The per-story persisted watermark W and the receipts of delivered keeper chunks |
+| `Unit_ChronoGrapher_HDF5FileChunkExtractorWatermark` | 26 | `hdf5_file_chunk_extractor_test.cpp` | The HDF5 extractor advances W and settles receipts only after a window and its manifest record are written |
+| `Unit_ChronoGrapher_GrapherConfiguration` | 8 | `grapher_configuration_test.cpp` | A grapher refuses a chain without the HDF5 extractor |
+| `Unit_ChronoGrapher_WatermarkReportTransport` | 7 | `watermark_report_transport_test.cpp` | Watermark reports from the grapher to the keepers over real engines on loopback |
+| `Unit_ChronoGrapher_GrapherDestroy`, `..._ExtractionQueue`, `..._GrapherExtractionChain` | 5 | `grapher_destroy_test.cpp` | A destroy waits for windows still being written |
+| `Unit_ChronoGrapher_GrapherDataCollectionReport` | 2 | `grapher_data_collection_report_test.cpp` | Watermark reports sent from the data-collection loop |
+| `Unit_ChronoGrapher_GrapherPipelineRetirement` | 2 | `grapher_pipeline_retirement_test.cpp` | A stopped story's pipeline writes its last windows before it is retired |
+
+### ChronoPlayer (`tests/unit/chrono-player/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoPlayer_ArchiveManifestIndex` | 22 | `chrono_player_archive_manifest_index_test.cpp` | The player finds archive files only through the manifest, and drops the files of destroyed stories |
+| `Unit_ChronoPlayer_HotRangeSplit`, `Unit_ChronoPlayer_ReplayPlan` | 13 | `chrono_player_hot_range_split_test.cpp` | Where a replay splits between the archive and the keepers |
+| `Unit_ChronoPlayer_ArchiveNumberedFiles` | 5 | `chrono_player_archive_numbered_files_test.cpp` | A window written more than once is read from every file |
+| `Unit_ChronoPlayer_KeeperHotFetch` | 4 | `chrono_player_keeper_hot_fetch_client_test.cpp` | Fetches from all keepers at once; a silent keeper costs one deadline |
+| `Unit_ChronoPlayer_ReplayEventMerge` | 4 | `chrono_player_replay_event_merge_test.cpp` | Merging archive and keeper events without duplicates |
+| `Unit_ChronoPlayer_ArchiveClientId` | 2 | `chrono_player_archive_client_id_test.cpp` | The full 64-bit client id survives the archive |
+| `Unit_ChronoPlayer_ArchiveVisibility` | 2 | `chrono_player_archive_visibility_test.cpp` | Archive reads at the split point |
+| `Unit_ChronoPlayer_PlayerReaderConf` | 2 | `chrono_player_reader_conf_test.cpp` | The `ArchiveReaders` block; removed settings are ignored |
+| `Unit_ChronoPlayer_PlayerPipelineRetirement` | 2 | `player_pipeline_retirement_test.cpp` | A stopped story still answers queries until it is retired |
+| `Unit_ChronoPlayer_HDF5ArchiveReadingAgent` | 1 | `chrono_player_hdf5_archive_reader_test.cpp` | Reading story chunks from HDF5 files (custom `main`, not GTest) |
+
+### ChronoVisor (`tests/unit/chrono-visor/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoVisor_StoryGroupSelection`, `..._ActiveGroups`, `..._ActiveRecordingGroup` | 12 | `story_group_selection_test.cpp` | A story's recording group comes from its story id, stays the same when it is acquired again, and moves only when the groups change |
+| `Unit_ChronoVisor_ChronicleStoryId` | 2 | `chronicle_story_id_test.cpp` | Name pairs that concatenate alike get different story ids |
+
+### Client library (`tests/unit/chronolog-client/`)
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronologClient_QueryServiceAddressTest` | 10 | `query_service_address_test.cpp` | The address a reader listens on when the visor is on another host |
+| `Unit_ChronologClient_ClientIdentityTest` | 5 | `chronolog_client_identity_test.cpp` | The `ClientId` layout |
+| `Unit_ChronologClient_ClientLoginName` | 4 | `client_login_name_test.cpp` | The logged user name when the process has no login name |
+
+### Plugins
+
+| CTest prefix | Cases | Source File | What it covers |
+|---|---:|---|---|
+| `Unit_ChronoSQL_ChronoSQLParser`, `..._RowCodec`, `..._Metadata` | 28 | `tests/unit/chronosql/chronosql_*_test.cpp` | ChronoSQL's parser, row encoding and table metadata |
+| `Unit_ChronoKVS_ChronoKVSLogger_` | 25 | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | ChronoKVS logging levels and macros (Debug build; Release registers fewer) |
+| `Unit_ChronoPubSub_ChronoPubSubLogger_` | 25 | `tests/unit/chronopubsub/chronopubsub_logger_test.cpp` | The same for ChronoPubSub |
+| `Unit_ChronoKVS_ChronoKVSConfig`, `Unit_ChronoPubSub_ChronoPubSubConfig`, `Unit_ChronoSQL_ChronoSQLConfig` | 6 | `tests/unit/chrono{kvs,pubsub,sql}/*_config_test.cpp` | Loading each plugin's configuration file |
+
+### Deploy and CI scripts (`tests/unit/*.sh`)
+
+Shell tests that check scripts without deploying anything. Each is one CTest entry.
+
+| CTest Name | Source File | What it covers |
 |---|---|---|
-| `Unit_ChronoCommon_ExtractionChain` | `tests/unit/chrono-common/chrono_common_extraction_chain_test.cpp` | Under active development |
-| `Unit_ChronoCommon_ChunkConsumerService` | `tests/unit/chrono-common/chrono_common_chunk_consumer_service_test.cpp` | Under active development |
-| `Unit_ChronoPlayer_StoryChunkTransferAgent` | `tests/unit/chrono-player/chrono_player_transfer_agent_test.cpp` | Under active development |
-| `Unit_ChronoPlayer_PlaybackServiceLifecycle` | `tests/unit/chrono-player/chrono_player_playback_service_test.cpp` | Under active development |
+| `Unit_Deploy_ArchiveCleanup` | `deploy_archive_cleanup_test.sh` | `deploy_local.sh -c` cleans the archive through the manifest and leaves other data |
+| `Unit_Performance_ArchiveCleanup` | `performance_archive_cleanup_test.sh` | The same cleanup as the performance scripts run it |
+| `Unit_NFS_ComposeOverride` | `nfs_compose_override_test.sh` | The compose override that mounts each NFS profile |
+| `Unit_NFS_ServerDryRun` | `nfs_server_dry_run_test.sh` | What `nfs_server.sh` would run, without sudo |
+| `Unit_NFS_Classify` | `nfs_classify_test.sh` | How the NFS pass classifies a replay |
+| `Unit_NFS_Args` | `nfs_args_test.sh` | The NFS pass scripts refuse an option with no value |
+| `Unit_LocalCI_BadNfsProfile` | `local_ci_bad_profile_test.sh` | `local_distributed_ci.sh` refuses a bad `--nfs-profile` before touching anything |
 
 ---
 
-## Server Tests
+## Functional Tests
 
-:::info
-The three GTest suites below (`story_chunk_test`, `story_pipeline_test`, `chronokvs_logger_test`) are discovered at runtime by GTest. CTest registers each individual test case as a separate entry, so a single `ctest -R Unit_ChronoCommon_StoryChunk` run executes all 47 cases.
-:::
-
-### Unit Tests – StoryChunk
-
-47 GTest cases. CTest name prefix: `Unit_ChronoCommon_StoryChunk_`
-
-**TestConstructors**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testEmptyConstructor` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Empty StoryChunk has no events |
-| `testNormalCtorInit` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Start/end times set correctly |
-| `testBoundaryCtorInit` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | `endTime < startTime` is auto-corrected to `startTime + 5000` |
-
-**TestInsertEvent**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testNormalInsertEvent` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Single event inserted and retrieved |
-| `testInsertAtEndTime` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Event at `endTime` boundary rejected |
-| `testInsertBeforeStart` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Event before `startTime` rejected |
-| `testInsertAtStartTime` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Event at `startTime` accepted |
-| `testOutOfOrderInsert` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 6 out-of-order events stored chronologically |
-| `testDuplicateKeyCombinations` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Same timestamp with different client/index accepted; true duplicate rejected |
-| `testStressInsert` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 100 000 events inserted and verified |
-| `testIncorrectEventId` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Event with wrong `storyId` rejected |
-| `testInsertLargeEventRecord` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 20 KB payload event accepted |
-
-**TestMergeEvents**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testEmptyInputMap` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Merge of empty map does nothing |
-| `testStartBeforeWindow` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Only in-window events merged from map |
-| `testValidMerge` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 2 valid events merged and map emptied |
-| `testAllInvalidMerges` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | All out-of-window events rejected |
-| `testDuplicateTimestamps` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 3 events at same timestamp all merged |
-| `testHugeMerge` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 1 000 events merged at once |
-| `BoundaryEndTimeExclusion` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Event at `endTime` excluded; `endTime-1` included |
-| `testMergeFromMiddle` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Merge starts from arbitrary iterator position |
-| `testMergeEmptyChunk` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Merging empty StoryChunk changes nothing |
-| `testMergeWithinWindow` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 2 in-window events merged from other chunk |
-| `testMergeOutsideWindow` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Only in-window subset merged |
-| `testMixedChunkMerge` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Overlap events from differently-windowed chunk |
-| `testMergeStartTimeIncorrect` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | `mergeStart` before/after window still bounded by chunk window |
-| `testMergeMapThenChunk` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Sequential map-merge then chunk-merge both succeed |
-| `testIncorrectStoryId` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Wrong `storyId` event rejected |
-| `testEmptyAndHugePayloads` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Empty-record and 5 KB payload handled |
-| `testMergeStartBeforeEndInside` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Other chunk starts before, ends inside |
-| `testMergeStartInsideEndAfter` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Other chunk starts inside, ends after |
-| `testMergeExactBoundaryNoOverlap` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | No overlap at exact boundary |
-
-**TestEraseEvents**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testValidErase` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Erase single event by timestamp range |
-| `testNonExistingTimestamp` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Erase non-existent timestamp is no-op |
-| `testEraseDuplicateTimestamps` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Both events at same timestamp erased |
-| `testEraseInRange` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Range erase removes all events in `[120, 160)` |
-| `testEraseOutOfTime` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Range outside chunk window is no-op |
-| `testEraseInvalidTime` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | `start > end` is no-op |
-| `testEraseAllEvents` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Erase `[10, 2000)` removes all events |
-| `testStressErase` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Erase 20 000 events from a 100 000-event chunk |
-| `testEraseEndTimeMinusOne` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | `endTime-1` erased; others kept |
-| `testZeroRange` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Erase `[x, x)` is no-op |
-
-**TestExtractEventSeries**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testExtractEmptyChunk` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Extract from empty chunk returns empty vector |
-| `testExtractSingleEvent` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Single event extracted with correct fields |
-| `testExtractEventsSorted` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 7 events extracted in ascending order |
-| `testExtractTwice` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Second extract returns empty after chunk cleared |
-| `testExtractAfterReinsert` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | Insert → extract → insert → extract cycle |
-| `testExtractLargePayload` | Unit | GTest | `tests/unit/chrono-common/story_chunk_test.cpp` | 5 KB payload preserved after extract |
-
----
-
-### Unit Tests – StoryPipeline
-
-28 GTest cases. CTest name prefix: `Unit_ChronoCommon_StoryPipeline_`
-
-**TestConstructors**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testValidEmptyInit` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Pipeline created with zero `startTime` |
-| `testOnBoundaryStartTime` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Granularity-aligned start kept; 3 chunks allocated |
-| `testNonBoundaryRounding` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Non-aligned start rounded to previous boundary |
-| `testHugeStoryStartTimeNoOverflow` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Near-max `startTime` with no `uint64` overflow |
-
-**TestGetActiveIngestionHandle**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testNonNullHandleEmptyDeques` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Handle non-null; active and passive deques empty |
-
-**TestCollectIngestedEvents**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testNoChunkValid` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | No chunk → collect is no-op |
-| `testSingleEmptyChunk` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Empty chunk removed; deques stay empty |
-| `testSingleNonEmptyChunk` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Non-empty chunk merged and deleted |
-| `testNullptrInActiveDeque` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | `nullptr` entry skipped without crash |
-
-**TestExtractDecayedChunks**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testEmptyExtract` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Extract before decay threshold extracts nothing |
-| `testExtractSmallAfterDecay` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Non-empty chunk stashed after decay |
-| `testExtractMultiple` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Two chunks stashed past both decay points |
-| `testNoAppendAfterSingleDecay` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Timeline shrinks; no append when ≥2 chunks remain |
-| `testAppendBehaviorAfterMultiDecay` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | New chunk appended when only 1 chunk left |
-| `testExtractLeavesTwo` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Empty head chunks removed; future non-empty chunk preserved |
-
-**MergeEvents**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testEmptyMerge` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Merging empty chunk is no-op |
-| `testPrependSuccess` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Event before `TimelineStart` causes prepend |
-| `testSingleAppend` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Event after `TimelineEnd` extends timeline by 1 chunk |
-| `testMultipleAppend` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Far-future event extends timeline multiple chunks |
-
-**TestPrependStoryChunk**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testSuccess` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Prepend moves `TimelineStart` back by 1 granularity |
-
-**TestAppendStoryChunk**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testSuccess` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Append moves `TimelineEnd` forward by 1 granularity |
-
-**TestFinalize**
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `testNoPendingChunks` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Finalize on empty pipeline does nothing |
-| `testOnlyPassiveDeque` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Passive-deque chunk stashed |
-| `testOnlyActiveDeque` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Active-deque chunk stashed |
-| `testMixedDeques` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Passive then active chunks stashed in FIFO order |
-| `testEmptyVsNonTimeline` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Empty head chunks skipped; non-empty stashed |
-| `testFinalizeDoubleCall` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | Second finalize is a safe no-op |
-| `testFinalizeWithMixedTimeline` | Unit | GTest | `tests/unit/chrono-common/story_pipeline_test.cpp` | 3 non-empty chunks in pipeline all stashed |
-
----
-
-### Unit Tests – ChronoKVS Logger
-
-25 GTest cases in a debug build (22 in release). CTest name prefix: `Unit_ChronoKVS_ChronoKVSLogger_`
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `LogLevel_EnumOrdering` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Log-level enum ordering is correct |
-| `LogLevel_ExactValues` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Log-level enum exact integer values |
-| `DefaultLevel_ReturnsExpected` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | `getDefaultLogLevel()` returns DEBUG (debug build) or ERROR (release) |
-| `LogLevelToString_AllLevels` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | All 7 levels convert to correct string |
-| `LogLevelToString_Unknown` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Unknown level returns fallback string |
-| `FormatMessage_SingleString` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Format with a single string argument |
-| `FormatMessage_OneIntArg` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Format with one integer argument |
-| `FormatMessage_StringArg` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Format with one string argument |
-| `FormatMessage_MultipleArgs` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Format with multiple mixed arguments |
-| `Macros_InfoEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | INFO macro fires when level ≤ INFO |
-| `Macros_InfoDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | INFO macro suppressed when level > INFO |
-| `Macros_WarningEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | WARNING macro fires when level ≤ WARNING |
-| `Macros_WarningDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | WARNING macro suppressed when level > WARNING |
-| `Macros_ErrorEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | ERROR macro fires when level ≤ ERROR |
-| `Macros_ErrorDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | ERROR macro suppressed when level > ERROR |
-| `Macros_CriticalEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | CRITICAL macro fires when level ≤ CRITICAL |
-| `Macros_CriticalDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | CRITICAL macro suppressed when level > CRITICAL |
-| `Macros_OffDisablesAll` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | OFF level suppresses all macros |
-| `DebugMacros_TraceEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | TRACE macro fires at TRACE level *(debug build only)* |
-| `DebugMacros_TraceDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | TRACE macro suppressed above TRACE level *(debug build only)* |
-| `DebugMacros_DebugEnabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | DEBUG macro fires at DEBUG level *(debug build only)* |
-| `DebugMacros_DebugDisabled` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | DEBUG macro suppressed above DEBUG level *(debug build only)* |
-| `DebugMacros_AllLevelsWithTrace` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | All levels produce output with TRACE active *(debug build only)* |
-| `ReleaseMacros_TraceDebugAreNoops` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | TRACE/DEBUG are no-ops in release builds *(release build only)* |
-| `ReleaseMacros_InfoStillWorks` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | INFO still works after TRACE/DEBUG no-op *(release build only)* |
-| `LogMessage_DirectCall` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | Direct `log_message()` call at each level |
-| `LogMessage_AllLevelsDirect` | Unit | GTest | `tests/unit/chronokvs/chronokvs_logger_test.cpp` | All levels exercised via `log_message()` |
-
----
-
-### Unit Tests – ChronoPlayer
-
-3 standalone CTest entries; 2 are disabled in the default run.
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Unit_ChronoPlayer_HDF5ArchiveReadingAgent` | Unit | Custom | `tests/unit/chrono-player/chrono_player_hdf5_archive_reader_test.cpp` | HDF5 reading agent retrieves story chunks from archive |
-| `Unit_ChronoPlayer_StoryChunkTransferAgent` *(DISABLED)* | Unit | Custom | `tests/unit/chrono-player/chrono_player_transfer_agent_test.cpp` | Transfer agent lifecycle (under development) |
-| `Unit_ChronoPlayer_PlaybackServiceLifecycle` *(DISABLED)* | Unit | Custom | `tests/unit/chrono-player/chrono_player_playback_service_test.cpp` | Playback service start/stop lifecycle (under development) |
-
----
-
-### Integration Tests – Keeper-Grapher
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Integration_KeeperGrapher_StoryChunkIngest` | Integration | Custom | `tests/integration/keeper-grapher/keeper_grapher_ingest_test.cpp` | ChronoKeeper ingest pipeline stores chunks in ChronoGrapher |
-| `Integration_KeeperGrapher_StoryChunkExtract` | Integration | Custom | `tests/integration/keeper-grapher/keeper_grapher_extract_test.cpp` | Decay-triggered extraction delivers chunks from Keeper to Grapher |
-
----
-
-### Integration Tests – Package Discovery
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `PackageDiscovery_CMakeFindPackage` | Integration | CMake | `tests/integration/package-discovery/package_discovery_cmake_test.cpp` | `find_package(ChronoLog)` locates headers and libraries in-tree |
-| `PackageDiscovery_PkgConfig` | Integration | CMake | `tests/integration/package-discovery/package_discovery_pkgconfig_test.cpp` | `pkg-config --cflags chronolog` returns correct flags in-tree |
-| `PackageDiscovery_Installed_CMakeFindPackage` | Integration | CMake script | *(CMake script)* | `find_package(ChronoLog)` succeeds after `cmake --install` |
-| `PackageDiscovery_Installed_PkgConfig` | Integration | CMake script | *(CMake script)* | `pkg-config` succeeds after `cmake --install` |
-
----
-
-### Communication Tests
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Communication_Thallium_ServerRepeaterRpc` | Communication | Custom | `tests/communication/thallium_server_test.cpp` | Thallium RPC server accepts and echoes RPCs |
-| `Communication_Thallium_ClientMpi` | Communication | MPI | `tests/communication/thallium_client_mpi_test.cpp` | MPI-launched client exchanges RPCs with server |
-| `Communication_Thallium_ClientSendRecvOrRdma` *(MANUAL)* | Communication | Custom | `tests/communication/thallium_client_test.cpp` | Send/recv and RDMA paths tested with live server |
-| `Communication_Thallium_ProtocolScript` *(MANUAL)* | Communication | Shell | `tests/communication/thallium_protocol_test.sh` | Shell script probes all supported Thallium transports |
-
----
-
-### Overhead / Benchmark Tests
-
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Overhead_Clock_HighResolutionClock` | Overhead | Custom | `tests/overhead/clock/clock_high_resolution_test.cpp` | `clock_gettime` resolution and monotonicity |
-| `Overhead_Clock_TimestampCollection` | Overhead | Custom | `tests/overhead/clock/clock_timestamp_collection_test.cpp` | Throughput of timestamp-collection in a tight loop |
-| `Overhead_Clock_TimestampCollisionDetection` | Overhead | Custom | `tests/overhead/clock/clock_timestamp_collision_test.cpp` | Collision-detection logic under concurrent timestamp pressure |
-| `Overhead_Clock_Script` *(MANUAL)* | Overhead | Shell | `tests/overhead/clock/clock_cset_shield_test.sh` | CPU-set shielding effect on clock overhead |
-| `Overhead_Lock_ContentionBenchmark` | Overhead | Custom | `tests/overhead/lock/lock_overhead_test.cpp` | Mutex vs. spinlock contention benchmark |
-
----
-
-### System & Workload Scripts
-
-These scripts are **not registered with CTest**. Run them directly after a full deployment.
-
-| Script | Type | Description |
+| CTest Name | Source File | What it covers |
 |---|---|---|
-| `test/system/fidelity_test_01.py` | System | Python fidelity test — scenario 01 |
-| `test/system/fidelity_test_02.py` | System | Python fidelity test — scenario 02 |
-| `test/system/fidelity_test_03.py` | System | Python fidelity test — scenario 03 |
-| `test/system/fidelity_test_all.py` | System | Drives all three fidelity scenarios in sequence |
-| `tests/synthetic_workload/perf_test.sh` | Workload | MPI-launched performance benchmark |
-| `tests/synthetic_workload/distributed_syslog.sh` | Workload | Distributed syslog simulation across multiple nodes |
+| `Functional_ChronoGrapher_DestroyFiles` | `tests/functional/chrono-grapher/chrono_grapher_destroy_files_test.cpp` | Deleting a story's or chronicle's archive files; needs no deployment |
+
+The other five functional tests are disabled (see above).
 
 ---
 
-## Client Tests
+## Tests That Need a Running Deployment
 
-:::warning
-All client integration tests require a **live ChronoLog deployment** (ChronoVisor + ChronoKeeper + ChronoGrapher) before they will succeed. Start the system first — see the [Docker tutorials](../../tutorials/docker-single-node/running-chronolog.md) — then run these tests manually.
-:::
+### Integration
 
-### Integration Tests
+| CTest Name | Source File | What it covers |
+|---|---|---|
+| `Integration_Client_ConnectRpc` | `tests/integration/client/client_connect_rpc_test.cpp` | Connect to ChronoVisor |
+| `Integration_Client_MetadataRpc` | `tests/integration/client/client_metadata_rpc_test.cpp` | Create and destroy chronicles and stories |
+| `Integration_Client_MultiPthread` | `tests/integration/client/client_multi_pthread_test.cpp` | POSIX threads sharing one client |
+| `Integration_Client_ThreadInterdependency` | `tests/integration/client/client_thread_interdependency_test.cpp` | Threads that depend on each other's stories |
+| `Integration_Client_MultiStorytellers` | `tests/integration/client/client_multi_storytellers_test.cpp` | Several story handles writing at once |
+| `Integration_Client_StoryReader` | `tests/integration/client/client_story_reader_test.cpp` | Replaying events a writer logged |
+| `Integration_Client_ReplayCallback` | `tests/integration/client/client_replay_callback_test.cpp` | The callback form of `ReplayStory` |
+| `Integration_Client_ClientIdRoundtrip` | `tests/integration/client/client_clientid_roundtrip_test.cpp` | A writer's `ClientId` survives the archive and comes back in a replay |
+| `Integration_Client_MultiArgobots` | `tests/integration/client/client_multi_argobots_test.cpp` | Argobots threads sharing one client |
+| `Integration_Client_MultiOpenmp` | `tests/integration/client/client_multi_openmp_test.cpp` | OpenMP threads writing in parallel |
+| `Integration_Client_HybridArgobots` | `tests/integration/client/client_hybrid_argobots_test.cpp` | Argobots and POSIX threads together |
+| `Integration_KeeperGrapher_StoryChunkIngest` | `tests/integration/keeper-grapher/keeper_grapher_ingest_test.cpp` | Keeper ingestion into the grapher |
+| `Integration_KeeperGrapher_StoryChunkExtract` | `tests/integration/keeper-grapher/keeper_grapher_extract_test.cpp` | Chunk extraction from keeper to grapher |
+| `Integration_ChronoKVS_PluginIntegration` | `tests/integration/chronokvs/chronokvs_integration_test.cpp` | ChronoKVS writes and reads (300 s timeout) |
+| `Integration_ChronoPubSub_PluginIntegration` | `tests/integration/chronopubsub/chronopubsub_integration_test.cpp` | ChronoPubSub publish and subscribe (600 s timeout) |
+| `Integration_ChronoSQL_PluginIntegration` | `tests/integration/chronosql/chronosql_integration_test.cpp` | ChronoSQL on a small YCSB-shaped workload (600 s timeout) |
 
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Integration_Client_ConnectRpc` | Integration | Custom | `tests/integration/client/client_connect_rpc_test.cpp` | Client connects to ChronoVisor via RPC |
-| `Integration_Client_MetadataRpc` | Integration | Custom | `tests/integration/client/client_metadata_rpc_test.cpp` | Create/destroy chronicle and story metadata RPCs |
-| `Integration_Client_MultiPthread` | Integration | Custom | `tests/integration/client/client_multi_pthread_test.cpp` | Multiple POSIX threads sharing a single client handle |
-| `Integration_Client_ThreadInterdependency` | Integration | Custom | `tests/integration/client/client_thread_interdependency_test.cpp` | Threads depend on each other's story events |
-| `Integration_Client_MultiStorytellers` | Integration | Custom | `tests/integration/client/client_multi_storytellers_test.cpp` | Multiple storyteller handles writing concurrently |
-| `Integration_Client_StoryReader` | Integration | Custom | `tests/integration/client/client_story_reader_test.cpp` | Reader API retrieves events written by a storyteller |
-| `Integration_Client_MultiArgobots` | Integration | Custom | `tests/integration/client/client_multi_argobots_test.cpp` | Multiple Argobots ULTs sharing a client |
-| `Integration_Client_MultiOpenmp` | Integration | Custom | `tests/integration/client/client_multi_openmp_test.cpp` | OpenMP threads writing events in parallel |
-| `Integration_Client_HybridArgobots` | Integration | Custom | `tests/integration/client/client_hybrid_argobots_test.cpp` | Hybrid Argobots + POSIX thread concurrency |
+### End-to-end
+
+| CTest Name | Source File | What it covers |
+|---|---|---|
+| `EndToEnd_TailRead_Playback` | `tests/end-to-end/tail-read/tail_read_playback_test.cpp` | `StoryHandle::playback(N)` returns the newest N events from the keepers |
+| `EndToEnd_DestructiveAPIs_DestroyStory` | `tests/end-to-end/destructive-apis/destructive_apis_destroy_story_test.cpp` | Destroying a story removes its archive files |
+| `EndToEnd_DestructiveAPIs_DestroyChronicle` | `tests/end-to-end/destructive-apis/destructive_apis_destroy_chronicle_test.cpp` | Destroying a chronicle removes every story's files |
+| `EndToEnd_DestructiveAPIs_DestroyRefused` | `tests/end-to-end/destructive-apis/destructive_apis_destroy_refused_test.cpp` | A destroy is refused while another client holds the story |
+| `EndToEnd_DestructiveAPIs_DisconnectAutoRelease` | `tests/end-to-end/destructive-apis/destructive_apis_disconnect_autorelease_test.cpp` | Disconnect releases the stories a client holds |
+| `EndToEnd_DataIntegrity_StoryId`, `..._EventCount`, `..._EventOrder` | `tests/end-to-end/data-integrity/data_integrity_*_test.cpp` | Archived events match a reference input: story id, count and order |
+
+`DestructiveAPIs_Setup`/`_Cleanup` and `DataIntegrity_Setup`/`_Cleanup` are CTest fixtures for these tests; they check the deployment but do not start one. `DataIntegrity_Setup` writes its input with `chrono-client-admin`, which the build no longer produces, so the data-integrity tests do not run. With the template's timings, the destructive-API tests can time out waiting for a story's first archive file, since the grapher's acceptance window alone is 60 s.
+
+### Package discovery
+
+| CTest Name | What it covers |
+|---|---|
+| `PackageDiscovery_CMakeFindPackage` | `find_package(ChronoLog)` in the build tree |
+| `PackageDiscovery_PkgConfig` | `pkg-config chronolog` in the build tree |
+| `PackageDiscovery_Installed_CMakeFindPackage` | `find_package(ChronoLog)` after install |
+| `PackageDiscovery_Installed_PkgConfig` | `pkg-config` after install |
+
+### Communication and overhead
+
+| CTest Name | Source File | What it covers |
+|---|---|---|
+| `Communication_Thallium_ServerRepeaterRpc` | `tests/communication/thallium_server_test.cpp` | A Thallium RPC server |
+| `Communication_Thallium_ClientSendRecvOrRdma` | `tests/communication/thallium_client_test.cpp` | Send/receive and RDMA against that server |
+| `Communication_Thallium_ClientMpi` | `tests/communication/thallium_client_mpi_test.cpp` | The same from MPI ranks |
+| `Communication_Thallium_ProtocolScript` | `tests/communication/thallium_protocol_test.sh` | Each supported Thallium transport |
+| `Overhead_Clock_HighResolutionClock` | `tests/overhead/clock/clock_high_resolution_test.cpp` | Clock resolution and monotonicity |
+| `Overhead_Clock_TimestampCollection` | `tests/overhead/clock/clock_timestamp_collection_test.cpp` | Cost of collecting timestamps |
+| `Overhead_Clock_TimestampCollisionDetection` | `tests/overhead/clock/clock_timestamp_collision_test.cpp` | Timestamp collisions under concurrency |
+| `Overhead_Clock_Script` | `tests/overhead/clock/clock_cset_shield_test.sh` | Clock cost with CPU-set shielding |
+| `Overhead_Lock_ContentionBenchmark` | `tests/overhead/lock/lock_overhead_test.cpp` | Mutex and spinlock contention |
 
 ---
 
-### Communication Tests – Client
+## Integration Scripts
 
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Communication_Thallium_ClientSendRecvOrRdma` *(MANUAL)* | Communication | Custom | `tests/communication/thallium_client_test.cpp` | Client-side send/recv and RDMA paths with live server |
+These deploy real daemons on one host, run a scenario and stop the daemons. They take minutes and are not in CI; run them by hand before a pull request that touches the keeper's retention store, the watermark protocol, the replay path or the player.
+
+```bash
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/watermark_loop_test.sh          # ~5 min, expect 5/5
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/watermark_replay_split_test.sh  # ~4 min, expect 9/9
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/replay_fanout_timing_test.sh    # ~3 min, expect 4/4
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/watermark_exact_split_test.sh   # ~3 min, expect 20/20
+```
+
+| Script | What it protects |
+|---|---|
+| `watermark_loop_test.sh` | Chunks are freed only once the grapher confirms them, none early, nothing lost across a grapher SIGSTOP, and the events are on disk afterwards. |
+| `watermark_replay_split_test.sh` | A replay returns the same events whether they are on the keepers, archived, or split across both, with no duplicates. |
+| `replay_fanout_timing_test.sh` | The player fetches from its keepers together: two keepers frozen with SIGSTOP cost one deadline, not two. |
+| `watermark_exact_split_test.sh` | A replay splits exactly where the watermark puts it, while the data is on the keepers, archived, split, with the grapher stopped and after it resumes; one archive file per window, none rewritten. |
+
+Run them one at a time; each deploys its own cluster on the same ports. Each restores the configuration it patched and stops its daemons on exit. If one is interrupted, check for leftover daemons and for a `*.backup` file in `~/chronolog-install/chronolog/conf/`.
 
 ---
 
-### ChronoKVS Integration
+## The Distributed Pipeline Locally
 
-| Test Name | Type | Framework | Source File | Description |
-|---|---|---|---|---|
-| `Integration_ChronoKVS_PluginIntegration` *(MANUAL)* | Integration | Custom | `tests/integration/chronokvs/chronokvs_integration_test.cpp` | ChronoKVS plugin end-to-end write/read with live deployment |
+The pull-request check that runs a multi-host deployment is the distributed pipeline: 7 containers (1 visor, 2 keepers, 2 graphers, 2 players), with cross-host RPC, MPI clients on several containers and, at the end, the archive on an NFS export. `docker/local_distributed_ci.sh` runs the same stages against your working tree:
 
-:::info
-`Integration_ChronoKVS_PluginIntegration` has a **300-second CTest timeout**. It exercises the full ChronoKVS write and read path, so a running ChronoLog system and a populated KVS store are required.
-:::
+```bash
+docker/local_distributed_ci.sh -i IMAGE                 # the same topology as CI
+docker/local_distributed_ci.sh -i IMAGE -k 1 -g 1 -p 1  # 4 containers, faster
+docker/local_distributed_ci.sh -i IMAGE --keep          # leave the containers up
+docker/local_distributed_ci.sh -i IMAGE --nfs           # also run the NFS pass (needs sudo)
+```
+
+`IMAGE` is the base image with Spack and the dependencies, as CI builds it (`ghcr.io/grc-iit/chronolog-base:sha-<hash>`). A full run with `--nfs` takes about 22 minutes. See [CI/CD](../guidelines/ci-cd.md#distributed-pipeline) for what each stage checks and what the NFS pass expects.
+
+---
+
+## AddressSanitizer
+
+The normal Debug build has no sanitizer. Build a separate tree with the flags passed through the deploy script, install it, and run the unit tests:
+
+```bash
+tools/deploy/local_single_user_deploy.sh -b -t Debug -B ~/chronolog-build/Asan -I ~/chronolog-install-asan \
+  --cxx-flags "-fsanitize=address -fno-omit-frame-pointer"
+tools/deploy/local_single_user_deploy.sh -i -t Debug -B ~/chronolog-build/Asan -I ~/chronolog-install-asan
+
+ASAN_OPTIONS=detect_leaks=1 ctest --test-dir ~/chronolog-build/Asan/Debug -R 'Unit_' --output-on-failure
+```
+
+Keep ASan and normal objects in separate build trees. As of 3.3.0, 26 unit tests fail under ASan, all with leaks: the StoryPipeline tests (its ingestion handle is never freed) and the ChronoKVS, ChronoPubSub and ChronoSQL configuration tests. Compare a run against that, not against a clean result.
+
+---
+
+## Workload Script
+
+`tests/synthetic_workload/distributed_syslog.sh` is not registered with CTest. It ingests `/var/log/syslog` with `chrono-bench` from several nodes (the hosts in `conf/hosts_client`) against a running deployment.
