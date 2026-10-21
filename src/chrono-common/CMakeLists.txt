@@ -11,6 +11,7 @@ add_library(chrono_common STATIC
     src/ArchiveManifest.cpp
     src/city.cpp
     src/Crc32c.cpp
+    src/LogEventCodec.cpp
     src/ConfigurationBlocks.cpp
     src/StoryChunk.cpp
     src/StoryChunkWriter.cpp
