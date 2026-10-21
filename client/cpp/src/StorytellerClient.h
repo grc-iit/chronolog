@@ -114,6 +114,8 @@ public:
 
     virtual ~StoryHandleImpl();
 
+    using StoryHandle::log_event;
+
     virtual uint64_t log_event(std::string const&) override;
 
     virtual int playback(size_t n, std::vector<Event>& events) override;
