@@ -223,3 +223,23 @@ gtest_discover_tests(chunk_extractor_csv_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chunk_extractor_csv_test DESTINATION tests)
 endif()
+
+# Crc32c (GTest): the SSE4.2 path and the boost fallback agree
+add_executable(crc32c_test
+    chrono_common_crc32c_test.cpp
+)
+
+target_include_directories(crc32c_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(crc32c_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+)
+
+set_target_properties(crc32c_test PROPERTIES OUTPUT_NAME chronolog-test-common-crc32c)
+gtest_discover_tests(crc32c_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(crc32c_test DESTINATION tests)
+endif()
