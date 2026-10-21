@@ -243,3 +243,25 @@ gtest_discover_tests(crc32c_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(crc32c_test DESTINATION tests)
 endif()
+
+# LogEventCodec (GTest): the byte layout of a keeper WAL event, and how a cut,
+# oversized or newer-version encoding is refused
+add_executable(log_event_codec_test
+    chrono_common_log_event_codec_test.cpp
+)
+
+target_include_directories(log_event_codec_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(log_event_codec_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+)
+
+set_target_properties(log_event_codec_test PROPERTIES OUTPUT_NAME chronolog-test-common-log-event-codec)
+gtest_discover_tests(log_event_codec_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(log_event_codec_test DESTINATION tests)
+endif()
