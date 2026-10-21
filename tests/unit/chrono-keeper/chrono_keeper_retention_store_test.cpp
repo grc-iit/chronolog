@@ -26,6 +26,7 @@
 
 #include <KeeperChunkRetentionStore.h>
 #include <StoryChunkExtractionQueue.h>
+#include <WalObserver.h>
 
 namespace chl = chronolog;
 
@@ -1474,4 +1475,247 @@ TEST(KeeperChunkRetentionStore, ADropIsForgottenAfterItsTimeToLive)
 
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
     drainOne(q, store, true);
+}
+
+// ---- WalObserver hooks -------------------------------------------------------
+//
+// The keeper's WAL releases a durable event's record the first time the
+// grapher confirms the chunk holding it written, not when the store frees the
+// chunk: a confirmed chunk can stay retained for tail reads long after, and
+// waiting for the free would tie the WAL's size to tail_capacity. A destroyed
+// story, a chunk sealed after its story was destroyed and an event the
+// pipeline drops release their records too.
+
+// Records every call, copying the chunk's identities at call time: the store
+// may free the chunk right after the hook returns.
+struct RecordingWalObserver: public chl::WalObserver
+{
+    struct ChunkCall
+    {
+        chl::StoryId story;
+        uint64_t start;
+        uint64_t end;
+        std::vector<chl::EventSequence> events;
+    };
+
+    static ChunkCall chunkCall(chl::StoryId story, chl::StoryChunk const& chunk)
+    {
+        ChunkCall call{story, chunk.getStartTime(), chunk.getEndTime(), {}};
+        for(auto it = chunk.begin(); it != chunk.end(); ++it) { call.events.push_back(it->first); }
+        return call;
+    }
+
+    void chunkWritten(chl::StoryId story, chl::StoryChunk const& chunk) override
+    {
+        written.push_back(chunkCall(story, chunk));
+    }
+    void chunkDiscarded(chl::StoryId story, chl::StoryChunk const& chunk) override
+    {
+        discarded.push_back(chunkCall(story, chunk));
+    }
+    void eventDiscarded(chl::StoryId story, chl::EventSequence const& event) override
+    {
+        discardedEvents.emplace_back(story, event);
+    }
+    void storyDropped(chl::StoryId story) override { dropped.push_back(story); }
+
+    std::vector<ChunkCall> written;
+    std::vector<ChunkCall> discarded;
+    std::vector<std::pair<chl::StoryId, chl::EventSequence>> discardedEvents;
+    std::vector<chl::StoryId> dropped;
+};
+
+TEST(KeeperChunkRetentionStore, WalHookFiresOnceAtFirstConfirmation)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10); // the tail keeps the chunk after it is written
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    EXPECT_TRUE(wal.written.empty()); // acked, but W does not cover it yet
+
+    // the stall timer sends it again before the report that settles receipt 1
+    ASSERT_EQ(store.requeueStalled(std::chrono::seconds(0)), 1u);
+    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+    ASSERT_EQ(wal.written.size(), 1u);
+    EXPECT_EQ(wal.written[0].story, sid);
+    EXPECT_EQ(wal.written[0].start, 100u);
+    EXPECT_EQ(wal.written[0].end, 200u);
+    EXPECT_EQ(wal.written[0].events,
+              (std::vector<chl::EventSequence>{chl::EventSequence{100, 1, 0},
+                                               chl::EventSequence{101, 1, 1},
+                                               chl::EventSequence{102, 1, 2}}));
+
+    // the re-send lands under a receipt that is pending, then settles: the
+    // chunk is confirmed a second time, its records were already released
+    shipWithReceipt(q, store, kGrapher, 2);
+    store.applyReport(sid, watermarkReport(200, kGrapher, 2, {2}));
+    store.applyReport(sid, watermarkReport(300, kGrapher, 2));
+    store.confirmPersisted(sid, 300);
+    store.freeDurableChunks();
+    EXPECT_EQ(wal.written.size(), 1u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+
+    // nor when the tail lets go of it and the store frees it
+    store.releaseStoryTail(sid);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    EXPECT_EQ(wal.written.size(), 1u);
+    EXPECT_TRUE(wal.discarded.empty());
+    EXPECT_TRUE(wal.dropped.empty());
+}
+
+TEST(KeeperChunkRetentionStore, WalHookWaitsForReceiptSettlement)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 5);
+
+    // W covers the chunk, but the grapher has not written receipt 5's events
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5, {5}));
+    EXPECT_TRUE(wal.written.empty());
+    // nor does a receipt view from another grapher instance settle it
+    store.applyReport(sid, watermarkReport(300, kGrapher + 1, 50));
+    EXPECT_TRUE(wal.written.empty());
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+
+    store.applyReport(sid, watermarkReport(300, kGrapher, 5));
+    EXPECT_EQ(wal.written.size(), 1u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+}
+
+TEST(KeeperChunkRetentionStore, WalHookWaitsForTheWatermark)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 0);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+
+    // receipt settled, W short of the chunk's end
+    store.applyReport(sid, watermarkReport(199, kGrapher, 1));
+    EXPECT_TRUE(wal.written.empty());
+
+    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+    EXPECT_EQ(wal.written.size(), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, WalHookFiresBeforeTheTailReleasesTheChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+
+    // released to the WAL while the chunk is still indexed and served
+    ASSERT_EQ(wal.written.size(), 1u);
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(store.getTailSequences(sid, 10).size(), 3u);
+    EXPECT_EQ(store.getTailEvents(sid, {chl::EventSequence{101, 1, 1}}).size(), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, WalHookOnDropAndOnDiscardedSealedChunk)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    chl::StoryId sid = 7;
+    chl::StoryId other = 8;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.ingestSealedChunk(other, makeChunk(other, 100, 200, 100, 3, 2, "B"));
+    shipWithReceipt(q, store, kGrapher, 1);
+
+    store.applyReport(sid, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 1, {1}));
+    EXPECT_EQ(wal.dropped, (std::vector<chl::StoryId>{sid}));
+    // the drop releases the story's records; its freed chunks were never written
+    EXPECT_TRUE(wal.written.empty());
+    EXPECT_TRUE(wal.discarded.empty());
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+
+    // a chunk of the destroyed story that seals afterwards is deleted unwritten
+    store.ingestSealedChunk(sid, makeChunk(sid, 200, 300, 200, 2, 1, "late"));
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+    ASSERT_EQ(wal.discarded.size(), 1u);
+    EXPECT_EQ(wal.discarded[0].story, sid);
+    EXPECT_EQ(wal.discarded[0].start, 200u);
+    EXPECT_EQ(wal.discarded[0].events,
+              (std::vector<chl::EventSequence>{chl::EventSequence{200, 1, 0}, chl::EventSequence{201, 1, 1}}));
+
+    // the other story is untouched and still releases on confirmation
+    EXPECT_TRUE(wal.written.empty());
+    store.applyReport(other, watermarkReport(200, kGrapher, 1));
+    ASSERT_EQ(wal.written.size(), 1u);
+    EXPECT_EQ(wal.written[0].story, other);
+    EXPECT_EQ(wal.dropped.size(), 1u);
+}
+
+TEST(KeeperChunkRetentionStore, WalHookForwardsAPipelineDiscard)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+
+    store.eventDiscarded(7, chl::EventSequence{150, 3, 4});
+
+    ASSERT_EQ(wal.discardedEvents.size(), 1u);
+    EXPECT_EQ(wal.discardedEvents[0].first, 7u);
+    EXPECT_EQ(wal.discardedEvents[0].second, (chl::EventSequence{150, 3, 4}));
+    EXPECT_EQ(store.retainedChunkCount(7), 0u);
+}
+
+// Every path a hook sits on, with no observer set (the WAL off): the store
+// keeps and frees what it did before the hooks, and nothing reaches an
+// observer that was set and then cleared.
+TEST(KeeperChunkRetentionStore, NoObserverChangesNothing)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10);
+    RecordingWalObserver wal;
+    store.setWalObserver(&wal);
+    store.setWalObserver(nullptr);
+    chl::StoryId sid = 7;
+    chl::StoryId dropped = 8;
+
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u); // still indexed
+    store.releaseStoryTail(sid);
+    EXPECT_EQ(store.retainedChunkCount(sid), 0u);
+
+    store.ingestSealedChunk(dropped, makeChunk(dropped, 100, 200, 100, 3, 1, "B"));
+    shipWithReceipt(q, store, kGrapher, 1);
+    store.applyReport(dropped, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 1, {1}));
+    EXPECT_EQ(store.retainedChunkCount(dropped), 0u);
+    store.ingestSealedChunk(dropped, makeChunk(dropped, 200, 300, 200, 3, 1, "late"));
+    EXPECT_EQ(store.retainedChunkCount(dropped), 0u);
+    EXPECT_EQ(q.size(), 0);
+    store.eventDiscarded(sid, chl::EventSequence{150, 1, 0});
+
+    EXPECT_TRUE(wal.written.empty());
+    EXPECT_TRUE(wal.discarded.empty());
+    EXPECT_TRUE(wal.discardedEvents.empty());
+    EXPECT_TRUE(wal.dropped.empty());
+    EXPECT_EQ(store.retainedByteCount(), 0u);
 }

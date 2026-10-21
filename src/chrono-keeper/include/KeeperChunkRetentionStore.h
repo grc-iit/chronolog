@@ -16,6 +16,7 @@
 
 #include "ActiveTailSource.h"
 #include "StoryChunkExtractionQueue.h"
+#include "WalObserver.h"
 
 namespace chronolog
 {
@@ -46,6 +47,11 @@ namespace chronolog
 // stall timer (requeueStalled), tail reads and range fetches all serialize
 // here. Queue stashes happen outside the lock.
 //
+// WAL: with a WalObserver set, the store tells the keeper's WAL when a chunk
+// is first confirmed written, when it deletes a sealed chunk of a destroyed
+// story, and when the grapher destroys a story. Those calls are made with
+// tailMutex held, so the observer never waits on an fsync.
+//
 // Shutdown contract: destroy this store only after the extraction module has
 // been shut down (the keeper main enforces this order). The destructor hands
 // still-queued or unshipped chunks to the queue — whose own shutdown frees
@@ -66,6 +72,21 @@ public:
         , archiveVisibilityDelay(archive_visibility_delay)
         , droppedStoryTtl(dropped_story_ttl)
     {}
+
+    // The keeper's WAL, told when its records can go (see WalObserver). Set
+    // before the services start; with none set, the store behaves as without
+    // a WAL.
+    void setWalObserver(WalObserver* observer) { walObserver = observer; }
+
+    // The pipeline dropped an event it could not place. Forwarded to the WAL
+    // without taking tailMutex: the pipeline calls this with its own mutex held.
+    void eventDiscarded(StoryId const& story_id, EventSequence const& event)
+    {
+        if(walObserver != nullptr)
+        {
+            walObserver->eventDiscarded(story_id, event);
+        }
+    }
 
     // Hand every not-yet-shipped chunk to the extraction queue WHILE extraction is
     // still running. waitUntilDurable() calls this on every round of the keeper's
@@ -219,6 +240,11 @@ public:
                          sealed_chunk->getStartTime(),
                          sealed_chunk->getEndTime(),
                          sealed_chunk->getEventCount());
+                // its events will never be written, so the WAL lets them go
+                if(walObserver != nullptr)
+                {
+                    walObserver->chunkDiscarded(story_id, *sealed_chunk);
+                }
                 delete sealed_chunk;
                 return;
             }
@@ -706,6 +732,9 @@ private:
         // when the keeper first saw the chunk shipped under a settled receipt
         bool written = false;
         std::chrono::steady_clock::time_point written_at;
+        // the WAL was told the chunk is confirmed written; a re-send that
+        // replaces the receipt does not tell it again
+        bool wal_released = false;
     };
 
     struct StoryRetention
@@ -826,6 +855,12 @@ private:
     // its state when it is visible in the archive, covered by the known
     // watermark, tail-released, and not queued. Returns the iterator following
     // the (possibly erased) entry.
+    //
+    // Also where the WAL learns that a chunk is confirmed written, the first
+    // time it is, whether or not the chunk can go yet: a confirmed chunk can
+    // stay indexed for tail reads long after, and waiting for the free would
+    // tie the WAL's size to tail_capacity. Every chunk this frees has been
+    // confirmed, so the WAL hears of it before the free.
     std::unordered_map<StoryChunk*, ChunkState>::iterator
     maybeFreeChunk(StoryRetention& story, std::unordered_map<StoryChunk*, ChunkState>::iterator chunk_iter)
     {
@@ -833,6 +868,14 @@ private:
         ChunkState& state = chunk_iter->second;
         // checked first, so the sighting is recorded whatever else keeps the chunk
         bool const visible = visibleInArchive(story, state, std::chrono::steady_clock::now());
+        if(!state.wal_released && confirmedWritten(story, chunk, state))
+        {
+            state.wal_released = true;
+            if(walObserver != nullptr)
+            {
+                walObserver->chunkWritten(chunk->getStoryId(), *chunk);
+            }
+        }
         if(!visible || state.in_queue || state.indexed_count != 0 || chunk->getEndTime() > story.known_w)
         {
             return ++chunk_iter;
@@ -868,6 +911,12 @@ private:
         // and that is the case where there is nothing here to free yet and
         // everything still to come. ingestSealedChunk drops those.
         droppedStories[story_id] = std::chrono::steady_clock::now();
+        // the WAL drops every copy it holds of the story, including events
+        // still unsealed here
+        if(walObserver != nullptr)
+        {
+            walObserver->storyDropped(story_id);
+        }
         auto story_it = storyRetention.find(story_id);
         if(story_it == storyRetention.end())
         {
@@ -997,6 +1046,8 @@ private:
     // are still sealing here; cleared early when the id is recorded again
     std::chrono::milliseconds droppedStoryTtl;
     std::unordered_map<StoryId, std::chrono::steady_clock::time_point> droppedStories;
+    // set once before the services start, so read without a lock
+    WalObserver* walObserver = nullptr;
     mutable std::mutex tailMutex;
     std::unordered_map<StoryId, StoryRetention> storyRetention;
 
