@@ -41,6 +41,7 @@ class PyStoryHandle: public StoryHandle
 {
 public:
     /* Inherit the constructors */
+    using StoryHandle::log_event;
     using StoryHandle::StoryHandle;
 
     /* Trampoline (need one for each virtual function) */
@@ -67,7 +68,9 @@ void BindChronologStoryHandle(pybind11::module& m)
 {
     pybind11::class_<StoryHandle, PyStoryHandle>(m, "StoryHandle")
             .def(pybind11::init<>())
-            .def("log_event", &StoryHandle::log_event, pybind11::arg("log_string"))
+            .def("log_event",
+                 pybind11::overload_cast<std::string const&>(&StoryHandle::log_event),
+                 pybind11::arg("log_string"))
             // Tail read: fill `events` (an EventList) with the most recent `n`
             // events of this story, served from the keepers' in-memory tail.
             // Returns CL_SUCCESS on success; events are in ascending order.

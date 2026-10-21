@@ -89,3 +89,23 @@ gtest_discover_tests(chronolog_client_errcode_durability_test TEST_PREFIX "Unit_
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_errcode_durability_test DESTINATION tests)
 endif()
+
+# StoryHandle::log_event(record, options, event_time) and LogEventOptions
+add_executable(chronolog_client_log_event_options_test
+    client_log_event_options_test.cpp
+)
+
+target_include_directories(chronolog_client_log_event_options_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(chronolog_client_log_event_options_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+)
+
+set_target_properties(chronolog_client_log_event_options_test PROPERTIES OUTPUT_NAME chronolog-test-client-log-event-options)
+gtest_discover_tests(chronolog_client_log_event_options_test TEST_PREFIX "Unit_ChronologClient_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_log_event_options_test DESTINATION tests)
+endif()

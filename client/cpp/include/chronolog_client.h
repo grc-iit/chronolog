@@ -133,6 +133,23 @@ private:
     std::string logRecord;
 };
 
+// How far an event must get before log_event(record, options, event_time)
+// returns CL_SUCCESS.
+enum class Durability : uint8_t
+{
+    Accepted = 1, // in keeper memory; what log_event(record) gives today
+    Durable = 2   // fsync'd in the keeper's WAL
+};
+
+struct LogEventOptions
+{
+    Durability durability = Durability::Accepted;
+    // durable writes only: deadline per RPC attempt, and how many attempts
+    // before CL_ERR_DURABILITY_UNKNOWN
+    uint32_t timeout_ms = 10000;
+    uint32_t attempts = 3;
+};
+
 class StoryHandle
 {
 public:
@@ -151,6 +168,23 @@ public:
         (void)n;
         (void)events;
         return CL_ERR_UNKNOWN;
+    }
+
+    // Write `record` and return CL_SUCCESS once the event reached
+    // options.durability; event_time receives the event's timestamp. Accepted
+    // returns the keeper's status, which log_event(record) discards. The
+    // default implementation sends Accepted through log_event(record) and
+    // answers CL_ERR_DURABILITY_UNAVAILABLE to Durable, sending nothing.
+    // A subclass that overrides only one log_event overload adds
+    // `using StoryHandle::log_event;` so it does not hide the other.
+    virtual int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time)
+    {
+        if(options.durability != Durability::Accepted)
+        {
+            return CL_ERR_DURABILITY_UNAVAILABLE;
+        }
+        event_time = log_event(record);
+        return (event_time != 0) ? CL_SUCCESS : CL_ERR_UNKNOWN;
     }
 };
 
