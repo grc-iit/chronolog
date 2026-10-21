@@ -184,3 +184,28 @@ gtest_discover_tests(keeper_wal_file_sink_test TEST_PREFIX "Unit_ChronoKeeper_" 
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_file_sink_test DESTINATION tests)
 endif()
+
+# WalReleaseTracker (GTest) — the WAL's table of pending durable events per
+# story and per segment, which decides when a segment can be deleted.
+add_executable(keeper_wal_release_tracker_test
+    chrono_keeper_wal_release_tracker_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalReleaseTracker.cpp
+)
+
+target_include_directories(keeper_wal_release_tracker_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_wal_release_tracker_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(keeper_wal_release_tracker_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-release-tracker)
+gtest_discover_tests(keeper_wal_release_tracker_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_release_tracker_test DESTINATION tests)
+endif()
