@@ -18,6 +18,7 @@ target_sources(chrono_keeper PRIVATE
     src/KeeperStoryPipeline.cpp
     src/KeeperDataStore.cpp
     src/DualEndpointChunkExtractorRDMA.cpp
+    src/WalFileSink.cpp
 )
 
 target_link_libraries(chrono_keeper

@@ -161,3 +161,26 @@ gtest_discover_tests(keeper_orphan_recovery_test TEST_PREFIX "Unit_ChronoKeeper_
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_orphan_recovery_test DESTINATION tests)
 endif()
+
+# WalFileSink (GTest) — the POSIX file layer under the keeper WAL and the
+# fault-injecting test sink, in a temporary directory. Thallium for the test
+# that holds a sync on an Argobots stream.
+add_executable(keeper_wal_file_sink_test
+    chrono_keeper_wal_file_sink_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFileSink.cpp
+)
+
+target_include_directories(keeper_wal_file_sink_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+)
+
+target_link_libraries(keeper_wal_file_sink_test PRIVATE
+    GTest::gtest_main
+    thallium
+)
+
+set_target_properties(keeper_wal_file_sink_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-file-sink)
+gtest_discover_tests(keeper_wal_file_sink_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_file_sink_test DESTINATION tests)
+endif()
