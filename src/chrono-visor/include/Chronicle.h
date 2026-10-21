@@ -17,6 +17,7 @@
 #include <city.h>
 #include <chrono_monitor.h>
 #include <chronolog_errcode.h>
+#include <StoryIdOf.h>
 
 #include "Story.h"
 #include "Archive.h"
@@ -95,15 +96,10 @@ public:
     //    std::unordered_map<std::string, uint64_t> *getName2IdMap() { return storyName2IdMap_; }
     //    std::unordered_map<uint64_t, std::string> *getId2NameMap() { return storyId2NameMap_; }
 
-    // The StoryId of a chronicle's story. Server-internal: clients name
-    // stories, and only ever hand back the id the visor gave them. The
-    // chronicle name's length goes first, so the hashed string tells where the
-    // chronicle ends: plain concatenation gave ("ab", "c") and ("a", "bc") one id.
+    // The StoryId of a chronicle's story; see chronolog::storyIdOf.
     static uint64_t storyIdOf(std::string const& chronicle_name, std::string const& story_name)
     {
-        std::string const story_name_for_hash =
-                std::to_string(chronicle_name.length()) + ":" + chronicle_name + story_name;
-        return CityHash64(story_name_for_hash.c_str(), story_name_for_hash.length());
+        return chronolog::storyIdOf(chronicle_name, story_name);
     }
 
     bool hasStory(const std::string& story_name)
