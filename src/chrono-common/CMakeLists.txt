@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+# header-only: boost/crc.hpp is the CRC-32C fallback
+find_package(Boost 1.80 REQUIRED)
 
 #------------------------------------------------------------------------------
 # chrono_common Library
@@ -8,6 +10,7 @@ find_package(Thallium REQUIRED)
 add_library(chrono_common STATIC
     src/ArchiveManifest.cpp
     src/city.cpp
+    src/Crc32c.cpp
     src/ConfigurationBlocks.cpp
     src/StoryChunk.cpp
     src/StoryChunkWriter.cpp
@@ -24,6 +27,7 @@ target_include_directories(chrono_common
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/client/cpp/include>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/client/cpp/include
+        ${Boost_INCLUDE_DIRS}
 )
 
 target_link_libraries(chrono_common
