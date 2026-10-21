@@ -182,6 +182,23 @@ TEST_F(WalFileSinkTest, WriteAtSplitsMoreIovecsThanIovMax)
     EXPECT_EQ(content.substr(10, count), bytes);
 }
 
+TEST_F(WalFileSinkTest, WriteAtWithNegativeIovcntReturnsEinval)
+{
+    auto sink = openSink();
+    ASSERT_EQ(sink->createZeroed("seg", 4096), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    std::string const data = "event";
+    iovec iov[1] = {iovOf(data)};
+    EXPECT_EQ(sink->writeAt(fd, 0, iov, -1), EINVAL);
+    ASSERT_EQ(sink->closeFile(fd), 0);
+
+    std::string content;
+    ASSERT_EQ(sink->readFile("seg", content), 0);
+    EXPECT_TRUE(allZero(content, 0, content.size()));
+}
+
 TEST_F(WalFileSinkTest, OpenForWriteOfMissingFileReturnsEnoent)
 {
     auto sink = openSink();
@@ -208,6 +225,39 @@ TEST_F(WalFileSinkTest, RenameRemoveListAndSyncDirectory)
 
     std::string content;
     EXPECT_EQ(sink->readFile("00000000000000000001.wal", content), ENOENT);
+}
+
+// Each list call reads the directory through its own descriptor; with a
+// shared offset, concurrent calls would split the entries between them.
+TEST_F(WalFileSinkTest, ConcurrentListsEachSeeEveryEntry)
+{
+    auto sink = openSink();
+    // enough entries that one readdir buffer does not hold them all
+    std::size_t const count = 2000;
+    for(std::size_t i = 0; i < count; ++i)
+    {
+        std::ofstream(fs::path(dir) / ("entry-with-a-long-name-" + std::to_string(i)));
+    }
+
+    std::atomic<int> wrong{0};
+    std::vector<std::thread> listers;
+    for(int t = 0; t < 4; ++t)
+    {
+        listers.emplace_back(
+                [&]
+                {
+                    for(int round = 0; round < 50; ++round)
+                    {
+                        std::vector<std::string> names;
+                        if(sink->list(names) != 0 || names.size() != count)
+                        {
+                            ++wrong;
+                        }
+                    }
+                });
+    }
+    for(auto& lister: listers) { lister.join(); }
+    EXPECT_EQ(wrong.load(), 0);
 }
 
 TEST_F(WalFileSinkTest, FreeSpaceReportsTheFileSystem)
@@ -256,6 +306,43 @@ TEST_F(WalFileSinkTest, FailSyncsWithEioReturnsItOnEveryLaterSync)
     EXPECT_EQ(sink->syncData(fd), EIO);
     EXPECT_EQ(sink->syncData(fd), EIO);
     EXPECT_EQ(sink->syncCount(), 3u);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+}
+
+TEST_F(WalFileSinkTest, DirectorySyncsAreCountedApartFromDataSyncs)
+{
+    auto sink = openFaultSink();
+    ASSERT_EQ(sink->createZeroed("seg", 4096), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    EXPECT_EQ(sink->syncDirectory(), 0);
+    EXPECT_EQ(sink->syncDirectory(), 0);
+    EXPECT_EQ(sink->syncData(fd), 0);
+    EXPECT_EQ(sink->directorySyncCount(), 2u);
+    // the fdatasync inside createZeroed is not seen by the fault sink
+    EXPECT_EQ(sink->syncCount(), 1u);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+}
+
+TEST_F(WalFileSinkTest, FailDirectorySyncsWithEioLeavesDataSyncsAlone)
+{
+    auto sink = openFaultSink();
+    ASSERT_EQ(sink->createZeroed("seg", 4096), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    sink->failDirectorySyncsWith(EIO);
+    EXPECT_EQ(sink->syncDirectory(), EIO);
+    EXPECT_EQ(sink->syncData(fd), 0);
+    EXPECT_EQ(sink->directorySyncCount(), 1u);
+
+    // and failSyncsWith leaves directory syncs alone
+    sink->failDirectorySyncsWith(0);
+    sink->failSyncsWith(EIO);
+    EXPECT_EQ(sink->syncDirectory(), 0);
+    EXPECT_EQ(sink->syncData(fd), EIO);
+    EXPECT_EQ(sink->directorySyncCount(), 2u);
     EXPECT_EQ(sink->closeFile(fd), 0);
 }
 

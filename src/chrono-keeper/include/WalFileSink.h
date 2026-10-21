@@ -52,24 +52,33 @@ std::unique_ptr<WalFileSink> makePosixWalFileSink();
 
 // Test sink: wraps a real one, injects failures and stalls. The failure and
 // hold settings may be changed from any thread while the sink is in use.
+// createZeroed fdatasyncs through the inner sink, so the syncData settings and
+// syncCount do not apply to that sync; failWritesWith does fail createZeroed.
 class FaultInjectingWalFileSink: public WalFileSink
 {
 public:
     explicit FaultInjectingWalFileSink(std::unique_ptr<WalFileSink> inner);
 
     // Every later syncData returns err without syncing; 0 turns it off.
+    // syncDirectory is not affected.
     void failSyncsWith(int err);
+    // Every later syncDirectory returns err without syncing; 0 turns it off.
+    void failDirectorySyncsWith(int err);
     // Every later writeAt and createZeroed returns err without writing (e.g.
     // ENOSPC); 0 turns it off.
     void failWritesWith(int err);
     // Later freeSpace calls report these values instead of the real ones.
     void setFreeSpace(uint64_t free_bytes, uint64_t total_bytes);
-    // Later syncData calls wait until releaseSyncs. The wait yields to other
-    // Argobots threads on the caller's stream; outside Argobots it sleeps.
+    // Later syncData calls wait until releaseSyncs; syncDirectory is not held.
+    // Inside an Argobots thread the wait only yields, so other threads on the
+    // caller's stream run and the stream spins while nothing else is ready;
+    // outside Argobots it sleeps 100 us between checks.
     void holdSyncs();
     void releaseSyncs();
     // Number of syncData calls so far, counted on entry, so a held sync counts.
     uint64_t syncCount() const;
+    // Number of syncDirectory calls so far, failed ones included.
+    uint64_t directorySyncCount() const;
 
     int openDirectory(std::string const& dir) override;
     int lockDirectory() override;
@@ -88,9 +97,11 @@ public:
 private:
     std::unique_ptr<WalFileSink> inner;
     std::atomic<int> syncError{0};
+    std::atomic<int> directorySyncError{0};
     std::atomic<int> writeError{0};
     std::atomic<bool> syncsHeld{false};
     std::atomic<uint64_t> syncs{0};
+    std::atomic<uint64_t> directorySyncs{0};
     std::mutex freeSpaceMutex;
     bool freeSpaceSet = false;
     uint64_t fakeFreeBytes = 0;

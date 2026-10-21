@@ -24,6 +24,10 @@ namespace
 
 int writeAllAt(int fd, uint64_t offset, iovec const* iov, int iovcnt)
 {
+    if(iovcnt < 0)
+    {
+        return EINVAL;
+    }
     // pwritev may write less than asked and takes at most IOV_MAX buffers, so
     // walk a copy of the array, trimming what has been written
     std::vector<iovec> rest(iov, iov + iovcnt);
@@ -272,8 +276,9 @@ public:
         {
             return EBADF;
         }
-        // fdopendir takes over the descriptor it is given
-        int fd = ::dup(dirFd);
+        // fdopendir takes over the descriptor it is given. A fresh open, not
+        // dup, so concurrent calls do not share one directory offset.
+        int fd = ::openat(dirFd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
         if(fd < 0)
         {
             return errno;
@@ -285,7 +290,6 @@ public:
             ::close(fd);
             return err;
         }
-        ::rewinddir(dir);
         names.clear();
         int err = 0;
         while(true)
@@ -335,14 +339,16 @@ private:
     int lockFd = -1;
 };
 
-// Lets other Argobots threads on the caller's stream run; outside Argobots
-// there is nothing to yield to.
+// Inside an Argobots thread, yields so other threads on the caller's stream
+// run; sleeping there would stall the whole stream. Outside Argobots there is
+// nothing to yield to, so it sleeps.
 void waitBriefly()
 {
     ABT_unit_type type;
     if(ABT_initialized() == ABT_SUCCESS && ABT_self_get_type(&type) == ABT_SUCCESS && type == ABT_UNIT_TYPE_THREAD)
     {
         ABT_self_yield();
+        return;
     }
     std::this_thread::sleep_for(std::chrono::microseconds(100));
 }
@@ -356,6 +362,8 @@ FaultInjectingWalFileSink::FaultInjectingWalFileSink(std::unique_ptr<WalFileSink
 {}
 
 void FaultInjectingWalFileSink::failSyncsWith(int err) { syncError = err; }
+
+void FaultInjectingWalFileSink::failDirectorySyncsWith(int err) { directorySyncError = err; }
 
 void FaultInjectingWalFileSink::failWritesWith(int err) { writeError = err; }
 
@@ -372,6 +380,8 @@ void FaultInjectingWalFileSink::holdSyncs() { syncsHeld = true; }
 void FaultInjectingWalFileSink::releaseSyncs() { syncsHeld = false; }
 
 uint64_t FaultInjectingWalFileSink::syncCount() const { return syncs.load(); }
+
+uint64_t FaultInjectingWalFileSink::directorySyncCount() const { return directorySyncs.load(); }
 
 int FaultInjectingWalFileSink::openDirectory(std::string const& dir) { return inner->openDirectory(dir); }
 
@@ -415,7 +425,15 @@ int FaultInjectingWalFileSink::rename(std::string const& from, std::string const
 
 int FaultInjectingWalFileSink::remove(std::string const& name) { return inner->remove(name); }
 
-int FaultInjectingWalFileSink::syncDirectory() { return inner->syncDirectory(); }
+int FaultInjectingWalFileSink::syncDirectory()
+{
+    ++directorySyncs;
+    if(int err = directorySyncError.load())
+    {
+        return err;
+    }
+    return inner->syncDirectory();
+}
 
 int FaultInjectingWalFileSink::readFile(std::string const& name, std::string& out)
 {
