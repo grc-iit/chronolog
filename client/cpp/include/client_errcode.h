@@ -25,7 +25,14 @@ enum ClientErrorCode
     // collision-policy work being developed in parallel already assigns them, and
     // reusing a value here would silently change what a code means once the two
     // meet. Leaving the gap keeps both sets stable across that merge.
-    CL_ERR_PARTIAL_RESULT = -18 // Query returned fewer records than it had promised
+    CL_ERR_PARTIAL_RESULT = -18, // Query returned fewer records than it had promised
+    // A durable write (Durability::Durable) gets one of the next three codes.
+    CL_ERR_DURABILITY_UNAVAILABLE = -19, // The keeper has no WAL, its WAL failed, or it lacks the RPC.
+                                         // Nothing was stored; retrying will not help until an operator acts
+    CL_ERR_DURABILITY_FULL = -20,        // The WAL file system is below its reserve, or the keeper holds more
+                                         // unconfirmed data than durable_cap_mb. Nothing was stored; retry later
+    CL_ERR_DURABILITY_UNKNOWN = -21      // No answer after every attempt. The event may be stored; a new
+                                         // log_event call creates a second event with a new identity
 };
 
 // Convert enum value to its name (for logging)
@@ -63,6 +70,12 @@ inline const char* to_string(ClientErrorCode e)
             return "CL_ERR_PROTOCOL_VERSION_MISMATCH";
         case CL_ERR_PARTIAL_RESULT:
             return "CL_ERR_PARTIAL_RESULT";
+        case CL_ERR_DURABILITY_UNAVAILABLE:
+            return "CL_ERR_DURABILITY_UNAVAILABLE";
+        case CL_ERR_DURABILITY_FULL:
+            return "CL_ERR_DURABILITY_FULL";
+        case CL_ERR_DURABILITY_UNKNOWN:
+            return "CL_ERR_DURABILITY_UNKNOWN";
         default:
             return "UnknownClientErrorCode";
     }
@@ -87,6 +100,9 @@ inline const char* to_string_client(int code)
         case CL_ERR_QUERY_TIMED_OUT:
         case CL_ERR_PROTOCOL_VERSION_MISMATCH:
         case CL_ERR_PARTIAL_RESULT:
+        case CL_ERR_DURABILITY_UNAVAILABLE:
+        case CL_ERR_DURABILITY_FULL:
+        case CL_ERR_DURABILITY_UNKNOWN:
             return to_string(static_cast<chronolog::ClientErrorCode>(code));
         default:
             return "UnknownClientErrorCode";

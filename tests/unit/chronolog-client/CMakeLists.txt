@@ -68,3 +68,24 @@ gtest_discover_tests(chronolog_client_login_name_test TEST_PREFIX "Unit_Chronolo
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_login_name_test DESTINATION tests)
 endif()
+
+# Durability error codes
+add_executable(chronolog_client_errcode_durability_test
+    client_errcode_durability_test.cpp
+)
+
+target_include_directories(chronolog_client_errcode_durability_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(chronolog_client_errcode_durability_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+)
+
+set_target_properties(chronolog_client_errcode_durability_test PROPERTIES OUTPUT_NAME chronolog-test-client-errcode-durability)
+gtest_discover_tests(chronolog_client_errcode_durability_test TEST_PREFIX "Unit_ChronologClient_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_errcode_durability_test DESTINATION tests)
+endif()
