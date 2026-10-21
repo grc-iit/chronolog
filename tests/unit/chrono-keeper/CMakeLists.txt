@@ -184,3 +184,27 @@ gtest_discover_tests(keeper_wal_file_sink_test TEST_PREFIX "Unit_ChronoKeeper_" 
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_file_sink_test DESTINATION tests)
 endif()
+
+# WalFormat (GTest) — the keeper WAL's record frames and the segment scan
+# recovery runs, on byte buffers and one temporary file.
+add_executable(keeper_wal_format_test
+    chrono_keeper_wal_format_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFormat.cpp
+)
+
+target_include_directories(keeper_wal_format_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_wal_format_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+)
+
+set_target_properties(keeper_wal_format_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-format)
+gtest_discover_tests(keeper_wal_format_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_format_test DESTINATION tests)
+endif()
