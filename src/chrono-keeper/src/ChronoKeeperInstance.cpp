@@ -346,7 +346,8 @@ int main(int argc, char** argv)
     /// Registration with ChronoVisor __________________________________________________________________________________
     // try to register with chronoVisor a few times than log ERROR and exit...
     int registration_status = chronolog::CL_ERR_UNKNOWN;
-    int retries = 5;
+    constexpr int max_registration_attempts = 5;
+    int retries = max_registration_attempts;
     int attempt = 0;
     while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
     {
@@ -354,12 +355,16 @@ int main(int argc, char** argv)
                 chronolog::KeeperRegistrationMsg(keeperIdCard, dataStoreServiceId));
         retries--;
         attempt++;
-        if(chronolog::CL_SUCCESS != registration_status && retries > 0)
+        if(chronolog::CL_SUCCESS != registration_status)
         {
-            LOG_WARNING("[ChronoKeeperInstance] Registration attempt {} of 5 failed with status {}; retrying in 5 s",
+            LOG_WARNING("[ChronoKeeperInstance] Registration attempt {} of {} failed with status {}",
                         attempt,
+                        max_registration_attempts,
                         registration_status);
-            sleep(5);
+            if(retries > 0)
+            {
+                sleep(5);
+            }
         }
     }
 
