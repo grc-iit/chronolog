@@ -56,7 +56,19 @@ typedef struct workload_conf_args_
     uint64_t poll_interval_ms = 500; // sleep between playback() polls
     uint64_t max_wait_sec = 180;     // give up waiting for an event to seal after this
     std::string csv_prefix;          // if set, rank 0 writes <prefix>.{latency,playback,write}.csv
+    // Durable writes: log_event(record, options, t) with Durability::Durable
+    bool durable = false;
+    uint32_t durable_timeout_ms = 10000; // deadline per RPC attempt
+    uint32_t durable_attempts = 3;       // attempts before CL_ERR_DURABILITY_UNKNOWN
 } workload_conf_args;
+
+// getopt_long values of the options that have no short letter
+enum long_only_option
+{
+    OPT_DURABLE = 256,
+    OPT_TIMEOUT_MS,
+    OPT_ATTEMPTS
+};
 
 static void usage(char** argv)
 {
@@ -81,6 +93,9 @@ static void usage(char** argv)
                  "-e|--poll_interval <ms>\t(latency) sleep between playback() polls in ms\n"
                  "-m|--max_wait <sec>\t\t(latency) give up waiting for an event to seal after this\n"
                  "-x|--csv <prefix>\t\t(latency) write per-sample CSVs to <prefix>.{latency,playback,write}.csv\n"
+                 "--durable\t\tWrite each event with Durability::Durable (fsync'd in the keeper WAL)\n"
+                 "--timeout-ms <n>\t(durable) deadline per RPC attempt in ms (default 10000)\n"
+                 "--attempts <n>\t\t(durable) attempts before CL_ERR_DURABILITY_UNKNOWN (default 3)\n"
                  "-u|--usage\t\tPrint this page\n"
               << std::endl;
 }
@@ -113,6 +128,17 @@ static uint64_t get_uint64_t_from_string(const std::string& str)
     return value;
 }
 
+static uint32_t get_uint32_t_from_string(const std::string& str)
+{
+    uint64_t value = get_uint64_t_from_string(str);
+    if(value > UINT32_MAX)
+    {
+        std::cerr << "Number too large: " << str << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    return static_cast<uint32_t>(value);
+}
+
 static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char** argv)
 {
     int rank, size;
@@ -142,6 +168,9 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
                                     {"max_wait", required_argument, nullptr, 'm'},
                                     {"csv", required_argument, nullptr, 'x'},
                                     {"usage", no_argument, nullptr, 'u'},
+                                    {"durable", no_argument, nullptr, OPT_DURABLE},
+                                    {"timeout-ms", required_argument, nullptr, OPT_TIMEOUT_MS},
+                                    {"attempts", required_argument, nullptr, OPT_ATTEMPTS},
                                     {nullptr, 0, nullptr, 0}};
 
     while((opt = getopt_long(argc, argv, "c:wrlh:t:a:s:b:n:g:yf:opk:e:m:x:u", long_options, nullptr)) != -1)
@@ -208,6 +237,15 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
             case 'x':
                 workload_args.csv_prefix = optarg;
                 break;
+            case OPT_DURABLE:
+                workload_args.durable = true;
+                break;
+            case OPT_TIMEOUT_MS:
+                workload_args.durable_timeout_ms = get_uint32_t_from_string(optarg);
+                break;
+            case OPT_ATTEMPTS:
+                workload_args.durable_attempts = get_uint32_t_from_string(optarg);
+                break;
             case 'u':
                 if(rank == 0)
                 {
@@ -254,6 +292,13 @@ static std::pair<std::string, workload_conf_args> cmd_arg_parse(int argc, char**
                       << (workload_args.barrier ? "true" : "false") << std::endl;
             std::cout << "Shared story (all procs access the same story): "
                       << (workload_args.shared_story ? "true" : "false") << std::endl;
+            std::cout << "Durable writes: " << (workload_args.durable ? "true" : "false");
+            if(workload_args.durable)
+            {
+                std::cout << " (timeout " << workload_args.durable_timeout_ms << " ms per attempt, "
+                          << workload_args.durable_attempts << " attempts)";
+            }
+            std::cout << std::endl;
         }
         return {std::pair<std::string, workload_conf_args>((config_file), workload_args)};
     }
@@ -441,6 +486,51 @@ struct latency_stats
     uint64_t write_end_ns = 0;
 };
 
+// Per-rank accumulators for durable writes, reduced once at the end like
+// latency_stats.
+struct durable_stats
+{
+    std::vector<double> ack_us;           // send -> answer of each durable log_event() call
+    std::map<int, uint64_t> return_codes; // answers by return code
+    uint64_t acked = 0;                   // calls answered CL_SUCCESS
+
+    // Wall-clock span from the first send to the last answer, for events/s.
+    uint64_t start_ns = 0;
+    uint64_t end_ns = 0;
+};
+
+// Write one event. With --durable it goes through log_event(record, options, t)
+// and the answer is counted in `stats` instead of asserted, since -19/-20/-21
+// are answers the bench reports. Returns the event time, or 0 on failure.
+static uint64_t write_event(chronolog::StoryHandle* story_handle,
+                            const std::string& event_payload,
+                            const workload_conf_args& workload_args,
+                            durable_stats& stats)
+{
+    if(!workload_args.durable)
+        return test_write_event(story_handle, event_payload);
+
+    chronolog::LogEventOptions options;
+    options.durability = chronolog::Durability::Durable;
+    options.timeout_ms = workload_args.durable_timeout_ms;
+    options.attempts = workload_args.durable_attempts;
+
+    uint64_t event_time = 0;
+    uint64_t t_start = now_ns();
+    int rc = story_handle->log_event(event_payload, options, event_time);
+    uint64_t t_end = now_ns();
+
+    stats.ack_us.push_back(static_cast<double>(t_end - t_start) / 1e3);
+    ++stats.return_codes[rc];
+    if(stats.start_ns == 0)
+        stats.start_ns = t_start;
+    stats.end_ns = t_end;
+    if(rc != chronolog::CL_SUCCESS)
+        return 0;
+    ++stats.acked;
+    return event_time;
+}
+
 // Log `event_count` events to `story_handle`, then poll playback() until each
 // of THIS client's events first becomes visible. Records send->visible latency
 // plus log_event()/playback() service times into `stats`.
@@ -450,7 +540,8 @@ static void latency_measure_story(chronolog::StoryHandle* story_handle,
                                   uint64_t event_count,
                                   size_t playback_n,
                                   const std::string& payload_str,
-                                  latency_stats& stats)
+                                  latency_stats& stats,
+                                  durable_stats& dur_stats)
 {
     // Single interleaved loop: write events on the event-interval schedule while
     // polling playback() on the poll-interval schedule. Interleaving matters when
@@ -481,7 +572,7 @@ static void latency_measure_story(chronolog::StoryHandle* story_handle,
         while(written < event_count && now >= next_write_ns)
         {
             uint64_t t_write_start = now_ns();
-            uint64_t event_time = test_write_event(story_handle, event_payload);
+            uint64_t event_time = write_event(story_handle, event_payload, workload_args, dur_stats);
             uint64_t t_write_end = now_ns();
             // log_event() service time: the write-side cost that concurrent tail
             // reads contend with on the keeper's per-story sequencingMutex.
@@ -759,6 +850,59 @@ static void report_latency(int rank, int size, const latency_stats& stats, const
     }
 }
 
+// Aggregate the durable write answers on rank 0 and print them: ack latency,
+// acknowledged events per second, and how many calls got each return code.
+// Runs MPI collectives on every rank.
+static void report_durable(int rank, int size, const durable_stats& stats, const workload_conf_args& workload_args)
+{
+    std::vector<int> ack_counts;
+    std::vector<double> all_ack_us = gather_doubles(rank, size, stats.ack_us, ack_counts);
+
+    // (code, count) pairs, flattened so gather_u64 can carry them
+    std::vector<uint64_t> local_codes;
+    for(const auto& [code, count]: stats.return_codes)
+    {
+        local_codes.push_back(static_cast<uint64_t>(static_cast<int64_t>(code)));
+        local_codes.push_back(count);
+    }
+    std::vector<uint64_t> all_codes = gather_u64(rank, size, local_codes);
+
+    uint64_t total_acked = 0;
+    MPI_Reduce(&stats.acked, &total_acked, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    // Ranks that wrote nothing must not drag the min to zero.
+    uint64_t local_start = (stats.start_ns == 0) ? UINT64_MAX : stats.start_ns;
+    uint64_t first_send_ns = 0, last_answer_ns = 0;
+    MPI_Reduce(&local_start, &first_send_ns, 1, MPI_UINT64_T, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&stats.end_ns, &last_answer_ns, 1, MPI_UINT64_T, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    if(rank != 0)
+        return;
+
+    std::map<int, uint64_t> code_totals;
+    for(size_t i = 0; i + 1 < all_codes.size(); i += 2)
+    {
+        code_totals[static_cast<int>(static_cast<int64_t>(all_codes[i]))] += all_codes[i + 1];
+    }
+
+    std::cout << "Durable writes (timeout " << workload_args.durable_timeout_ms << " ms per attempt, "
+              << workload_args.durable_attempts << " attempts): " << all_ack_us.size() << " sent, " << total_acked
+              << " acknowledged" << std::endl;
+    print_distribution("Durable ack latency", all_ack_us, "us");
+    if(last_answer_ns > first_send_ns && first_send_ns != UINT64_MAX)
+    {
+        double span_s = static_cast<double>(last_answer_ns - first_send_ns) / 1e9;
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "Durable acknowledged throughput: " << static_cast<double>(total_acked) / span_s
+                  << " events/s over " << span_s << " s" << std::endl;
+    }
+    for(const auto& [code, count]: code_totals)
+    {
+        std::cout << "Durable return code " << chronolog::to_string_client(code) << " (" << code << "): " << count
+                  << std::endl;
+    }
+}
+
 int main(int argc, char** argv)
 {
     // To suppress argobots warning
@@ -855,6 +999,8 @@ int main(int argc, char** argv)
 
     // Latency-mode accumulators (per rank)
     latency_stats lat_stats;
+    // Durable-mode accumulators (per rank)
+    durable_stats dur_stats;
 
     std::string client_id = gen_random(8);
 
@@ -945,7 +1091,8 @@ int main(int argc, char** argv)
                                           event_count_per_story,
                                           playback_n,
                                           payload_str,
-                                          lat_stats);
+                                          lat_stats,
+                                          dur_stats);
                 }
                 else if(workload_args.read)
                 {
@@ -1007,7 +1154,7 @@ int main(int argc, char** argv)
                                         event_payload = payload_str.substr(0, event_size);
                                         event_payload_size_per_rank += event_size;
                                         writeEventTimer.resumeTimer();
-                                        ret_u = test_write_event(story_handle, event_payload);
+                                        ret_u = write_event(story_handle, event_payload, workload_args, dur_stats);
                                         if(workload_args.barrier)
                                             MPI_Barrier(MPI_COMM_WORLD);
 
@@ -1059,7 +1206,10 @@ int main(int argc, char** argv)
                                                 last_event_timestamp = event_timestamp;
                                                 event_payload_size_per_rank += event_payload.size();
                                                 writeEventTimer.resumeTimer();
-                                                ret_u = test_write_event(story_handle, event_payload);
+                                                ret_u = write_event(story_handle,
+                                                                    event_payload,
+                                                                    workload_args,
+                                                                    dur_stats);
                                                 if(workload_args.barrier)
                                                     MPI_Barrier(MPI_COMM_WORLD);
                                             }
@@ -1216,6 +1366,19 @@ int main(int argc, char** argv)
                           << std::endl;
             }
         }
+    }
+
+    // Durable answers are reported whether or not -p is given; with -p they
+    // continue the performance results block above.
+    if(workload_args.durable && !workload_args.read)
+    {
+        if(rank == 0 && !workload_args.perf_test)
+        {
+            std::cout << "==================================================================" << std::endl;
+            std::cout << "=================      Performance results:      =================" << std::endl;
+            std::cout << "==================================================================" << std::endl;
+        }
+        report_durable(rank, size, dur_stats, workload_args);
     }
 
     // Latency results are the whole point of latency mode, so always report them
