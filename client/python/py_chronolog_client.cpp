@@ -73,17 +73,17 @@ public:
     // called here as log_event(record, options), it returns
     // (status, event_time), the same pair the binding below returns.
     // Without one, the default body runs and reaches log_event(record).
+    // The GIL stays held across the default body: it does not block, and
+    // log_event(record) must hold it to raise when it has no override.
     int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time) override
     {
+        pybind11::gil_scoped_acquire gil;
+        pybind11::function override = pybind11::get_override(static_cast<StoryHandle const*>(this), "log_event");
+        if(override)
         {
-            pybind11::gil_scoped_acquire gil;
-            pybind11::function override = pybind11::get_override(static_cast<StoryHandle const*>(this), "log_event");
-            if(override)
-            {
-                auto result = override(record, options).cast<std::pair<int, uint64_t>>();
-                event_time = result.second;
-                return result.first;
-            }
+            auto result = override(record, options).cast<std::pair<int, uint64_t>>();
+            event_time = result.second;
+            return result.first;
         }
         return StoryHandle::log_event(record, options, event_time);
     }

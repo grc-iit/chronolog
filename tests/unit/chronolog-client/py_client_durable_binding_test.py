@@ -36,14 +36,10 @@ check(len(overloads) == 2, "StoryHandle.log_event lists %d overloads, want 2:\n%
 check("LogEventOptions" in doc, "no log_event overload takes LogEventOptions:\n%s" % doc)
 
 
-
 # Calling the bound C++ overload on a Python subclass goes through the
-# PyStoryHandle trampoline, with the GIL released and taken back, to the
-# subclass's log_event(record, options).
+# PyStoryHandle trampoline to the subclass's log_event(record, options).
 class FakeHandle(m.StoryHandle):
-    def log_event(self, record, options=None):
-        if options is None:
-            return 41
+    def log_event(self, record, options):
         return (int(options.durability), 42)
 
 
@@ -52,6 +48,20 @@ durable = m.LogEventOptions()
 durable.durability = m.Durability.Durable
 check(m.StoryHandle.log_event(fake, "x", durable) == (2, 42),
       "trampoline did not reach the Python override with options")
+
+
+# A subclass without a log_event override: the default C++ body of
+# log_event(record, options) reaches the pure log_event(record), which has
+# no override either. That must raise a Python exception, not crash.
+class NoOverride(m.StoryHandle):
+    pass
+
+
+try:
+    m.StoryHandle.log_event(NoOverride(), "x", m.LogEventOptions())
+    check(False, "log_event(record, options) without an override did not raise")
+except RuntimeError:
+    pass
 
 for failure in failures:
     print("FAIL: " + failure)
