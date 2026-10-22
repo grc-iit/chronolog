@@ -263,3 +263,24 @@ gtest_discover_tests(keeper_wal_conf_test TEST_PREFIX "Unit_ChronoKeeper_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_conf_test DESTINATION tests)
 endif()
+
+# WalMountCheck (GTest) — the warnings the keeper logs at startup about the WAL
+# directory's file system, device and free space, plus one real inspection.
+add_executable(keeper_wal_mount_check_test
+    chrono_keeper_wal_mount_check_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalMountCheck.cpp
+)
+
+target_include_directories(keeper_wal_mount_check_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+)
+
+target_link_libraries(keeper_wal_mount_check_test PRIVATE
+    GTest::gtest_main
+)
+
+set_target_properties(keeper_wal_mount_check_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-mount-check)
+gtest_discover_tests(keeper_wal_mount_check_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_mount_check_test DESTINATION tests)
+endif()
