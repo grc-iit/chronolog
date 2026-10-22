@@ -98,7 +98,7 @@ int chronolog::WalConf::parseJsonConf(json_object* wal_json_conf)
         }
         else if(strcmp(key, "durable_cap_mb") == 0)
         {
-            if(!readBounded(val, key, 1, max_int64, parsed))
+            if(!readBounded(val, key, 1, static_cast<int64_t>(MAX_DURABLE_CAP_MB), parsed))
                 return chl::CL_ERR_INVALID_CONF;
             durable_cap_mb = parsed;
         }

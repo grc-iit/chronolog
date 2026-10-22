@@ -7,6 +7,7 @@
 
 #include <json-c/json.h>
 
+#include <cstdint>
 #include <string>
 
 #include <ChronoKeeperConfiguration.h>
@@ -144,6 +145,35 @@ TEST(KeeperWalConf, ASizeOfZeroOrBelowIsRefused)
                     << key << " = " << value;
         }
     }
+}
+
+TEST(KeeperWalConf, ADurableCapThatOverflowsInBytesIsRefused)
+{
+    // INT64_MAX >> 20 MiB is the largest cap whose size in bytes fits in int64_t.
+    chl::KeeperConfiguration largest;
+    ASSERT_EQ(parseKeeper(largest, R"({"durable_cap_mb": 8796093022207})"), chl::CL_SUCCESS);
+    EXPECT_EQ(largest.WAL_CONF.durable_cap_mb, 8796093022207u);
+    EXPECT_EQ(largest.WAL_CONF.durableCapBytes(), 8796093022207u << 20);
+
+    chl::KeeperConfiguration above;
+    EXPECT_EQ(parseKeeper(above, R"({"durable_cap_mb": 8796093022208})"), chl::CL_ERR_INVALID_CONF);
+
+    // 2^44 MiB is 2^64 bytes, which a plain multiply wraps to a cap of 0.
+    chl::KeeperConfiguration wraps;
+    EXPECT_EQ(parseKeeper(wraps, R"({"durable_cap_mb": 17592186044416})"), chl::CL_ERR_INVALID_CONF);
+
+    chl::WalConf set_directly;
+    set_directly.durable_cap_mb = 17592186044416u;
+    EXPECT_EQ(set_directly.durableCapBytes(), chl::WalConf::MAX_DURABLE_CAP_MB << 20);
+}
+
+TEST(KeeperWalConf, TheReserveRoundsThePercentOfTheWholeTotal)
+{
+    // 10% of 199 bytes is 19.9: the reserve is 19, not the 10 of 199 / 100 * 10.
+    EXPECT_EQ(chl::walReserveBytes(199, 1, 10), 19u);
+    EXPECT_EQ(chl::walReserveBytes(199, 50, 10), 50u);
+    EXPECT_EQ(chl::walReserveBytes(UINT64_MAX, 1, 100), UINT64_MAX);
+    EXPECT_EQ(chl::walReserveBytes(1000, 1, 0), 1u);
 }
 
 TEST(KeeperWalConf, ThePercentIsBetweenZeroAndOneHundred)

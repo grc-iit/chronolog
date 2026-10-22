@@ -975,8 +975,7 @@ void KeeperWal::sampleFreeSpace()
         }
         return;
     }
-    uint64_t const share = total_bytes / 100 * reservePercent + total_bytes % 100 * reservePercent / 100;
-    uint64_t const reserve = std::max(reserveMinBytes, share);
+    uint64_t const reserve = walReserveBytes(total_bytes, reserveMinBytes, reservePercent);
     bool const low = free_bytes < reserve;
     if(low == belowReserve.exchange(low))
     {
