@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -155,6 +156,16 @@ public:
     std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
 };
 
+// The stories a keeper of `group` must start when it registers: those of
+// `active` recorded by that group, with the names held for them in `names`.
+// A keeper registering again after a restart has no pipeline for the stories
+// clients still hold, and the visor sends start_story_recording only when a
+// story is first acquired. A story with no names or no group is left out.
+std::vector<std::tuple<ChronicleName, StoryName, StoryId>>
+storiesToStartOnRegistration(std::map<StoryId, RecordingGroup*> const& active,
+                             std::map<StoryId, std::pair<ChronicleName, StoryName>> const& names,
+                             RecordingGroupId group);
+
 class KeeperRegistry
 {
     enum RegistryState
@@ -236,6 +247,10 @@ private:
                                            StoryId const&,
                                            uint64_t);
     int notifyKeepersOfStoryRecordingStop(RecordingGroup&, std::vector<KeeperIdCard> const&, StoryId const&);
+    // Called without registryLock once registerKeeperProcess has added the keeper.
+    void startHeldStoriesOnKeeper(KeeperIdCard const&,
+                                  DataStoreAdminClient*,
+                                  std::vector<std::tuple<ChronicleName, StoryName, StoryId>> const&);
 
     RegistryState registryState;
     std::mutex registryLock;
@@ -247,6 +262,9 @@ private:
     std::map<RecordingGroupId, RecordingGroup> recordingGroups;
     std::vector<RecordingGroup*> activeGroups;
     std::map<StoryId, RecordingGroup*> activeStories;
+    // the chronicle and story names of each entry in activeStories, set and
+    // erased with it, so a registering keeper can be told to start them
+    std::map<StoryId, std::pair<ChronicleName, StoryName>> activeStoryNames;
 };
 } // namespace chronolog
 
