@@ -2,7 +2,11 @@
 
 #include <chronolog_errcode.h>
 #include <chrono_monitor.h>
+#include <IngestionQueue.h>
+#include <KeeperChunkRetentionStore.h>
+#include <KeeperDataStore.h>
 #include <KeeperDurableWriter.h>
+#include <KeeperWal.h>
 
 namespace chl = chronolog;
 
@@ -68,10 +72,23 @@ int chronolog::KeeperDurableWriter::write(ChronicleName const& chronicle, StoryN
         return chl::CL_ERR_DURABILITY_FULL;
     }
 
-    int const pipeline_status = theDataStore.ensureStoryPipeline(chronicle, story, story_id);
-    if(pipeline_status != chl::CL_SUCCESS)
+    // Only a story without an ingestion handle goes to the data store, whose
+    // mutex the collector holds for a whole tick; a recorded story's write
+    // never waits on it.
+    if(!theIngestionQueue.hasStoryIngestionHandle(story_id))
     {
-        return pipeline_status;
+        int const pipeline_status = theDataStore.ensureStoryPipeline(chronicle, story, story_id);
+        if(pipeline_status != chl::CL_SUCCESS)
+        {
+            // nothing was stored, so the request may be sent again
+            LOG_ERROR("[KeeperDurableWriter] StoryId={} refused: no pipeline could be started for Chronicle={}, "
+                      "Story={} (error {})",
+                      story_id,
+                      chronicle,
+                      story,
+                      pipeline_status);
+            return chl::CL_ERR_DURABILITY_UNAVAILABLE;
+        }
     }
 
     int const status = theLog->appendDurable(chronicle, story, event);

@@ -5,13 +5,13 @@
 
 #include <chronolog_types.h>
 
-#include "IngestionQueue.h"
-#include "KeeperChunkRetentionStore.h"
-#include "KeeperDataStore.h"
-#include "KeeperWal.h"
-
 namespace chronolog
 {
+
+class DurableLog;
+class IngestionQueue;
+class KeeperChunkRetentionStore;
+class KeeperDataStore;
 
 // The keeper side of a durable write (record_event_durable). The event is
 // ingested only after the WAL synced it, and a refusal ingests nothing, so a
@@ -29,13 +29,21 @@ namespace chronolog
 //      system below the reserve: CL_ERR_DURABILITY_FULL;
 //   5. the retention store holds more than durable_cap_bytes:
 //      CL_ERR_DURABILITY_FULL;
-//   6. the story gets a pipeline if it has none (ensureStoryPipeline, which
-//      keeps the store's drop mark);
+//   6. a story with no ingestion handle gets a pipeline (ensureStoryPipeline,
+//      which keeps the store's drop mark); when none can be started:
+//      CL_ERR_DURABILITY_UNAVAILABLE;
 //   7. the WAL appends the event and waits for its group's sync; only on
 //      CL_SUCCESS is the event ingested.
 //
-// write may block the calling ULT for a group commit, on Argobots primitives
-// only, so an RPC handler yields its stream instead of blocking it.
+// Waiting for the WAL (the lookup's wait for an attempt in flight, and the
+// group commit) is on a tl::eventual, so the RPC handler's ULT yields its
+// stream. The other steps take std::mutex locks and block the stream's OS
+// thread while they wait: the WAL's and the retention store's locks are held
+// only for short updates, and the ingestion queue's handle map is shared.
+// Only a story with no ingestion handle takes the data store's mutex, which the
+// collector holds for a whole tick; that happens once per story after a keeper
+// restart, until a visor start or the first durable write creates the
+// pipeline.
 class KeeperDurableWriter
 {
 public:

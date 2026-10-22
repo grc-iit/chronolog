@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -35,6 +36,7 @@
 #include <KeeperWal.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
+#include <StoryIngestionHandle.h>
 #include <WalObserver.h>
 
 namespace chl = chronolog;
@@ -124,6 +126,10 @@ public:
     std::optional<int> lookupDurable(chl::StoryId story_id, chl::EventSequence const& identity) override
     {
         calls.push_back("lookup");
+        if(lookupAnswer.has_value())
+        {
+            return lookupAnswer;
+        }
         if(isDurable(story_id, identity))
         {
             return chl::CL_SUCCESS;
@@ -148,6 +154,9 @@ public:
     }
 
     chl::WalAdmit admitAnswer = chl::WalAdmit::Ok;
+    // when set, lookupDurable returns it for every identity: the result of an
+    // earlier attempt the request waited for
+    std::optional<int> lookupAnswer;
     int appendAnswer = chl::CL_SUCCESS;
     std::function<void()> onAppend;
 
@@ -188,7 +197,9 @@ TEST(KeeperDurableWriter, WalOffIsUnavailable)
 
 // A retry of an event the WAL already holds is answered from the WAL before
 // any other check, so a full or failed WAL does not refuse an event that is on
-// disk, and the event is not taken in again.
+// disk, and the event is not taken in again. The WAL holds the event from an
+// earlier attempt and the story has no pipeline, so an ingest here would show
+// as an orphan.
 TEST(KeeperDurableWriter, LookupPrecedesEveryOtherCheck)
 {
     ensureLogger();
@@ -197,8 +208,7 @@ TEST(KeeperDurableWriter, LookupPrecedesEveryOtherCheck)
     chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
 
     chl::LogEvent const event = makeEvent(0);
-    ASSERT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
-    ASSERT_EQ(keeper.ingested(kStory), 1u);
+    wal.durable.insert({kStory, identityOf(event)});
 
     for(chl::WalAdmit answer: {chl::WalAdmit::Full, chl::WalAdmit::Unavailable})
     {
@@ -207,12 +217,6 @@ TEST(KeeperDurableWriter, LookupPrecedesEveryOtherCheck)
         EXPECT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
         EXPECT_EQ(wal.calls, (std::vector<std::string>{"lookup"}));
     }
-    EXPECT_EQ(wal.appended.size(), 1u);
-
-    // nothing was handed to the ingestion queue a second time: the pipeline
-    // holds no new event and no orphan waits
-    keeper.data_store.collectIngestedEvents();
-    EXPECT_TRUE(keeper.ingestion_queue.orphanStoryIds().empty());
 
     // the same for a cap the retained data exceeds
     keeper.retention_store.ingestSealedChunk(77, sealedChunk(77, 1000));
@@ -220,7 +224,26 @@ TEST(KeeperDurableWriter, LookupPrecedesEveryOtherCheck)
     wal.calls.clear();
     EXPECT_EQ(capped.write("chron", "story", event), chl::CL_SUCCESS);
     EXPECT_EQ(wal.calls, (std::vector<std::string>{"lookup"}));
-    EXPECT_EQ(wal.appended.size(), 1u);
+
+    EXPECT_TRUE(wal.appended.empty());
+    EXPECT_EQ(keeper.ingested(kStory), 0u);
+}
+
+// An earlier attempt with the same identity failed while this request waited
+// for it: its answer is this request's answer, and nothing is admitted,
+// appended or ingested.
+TEST(KeeperDurableWriter, FailedEarlierAttemptIsReturned)
+{
+    ensureLogger();
+    Keeper keeper;
+    FakeDurableLog wal;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
+
+    wal.lookupAnswer = chl::CL_ERR_DURABILITY_UNAVAILABLE;
+    EXPECT_EQ(writer.write("chron", "story", makeEvent(0)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(wal.calls, (std::vector<std::string>{"lookup"}));
+    EXPECT_TRUE(wal.appended.empty());
+    EXPECT_EQ(keeper.ingested(kStory), 0u);
 }
 
 // Today the pipeline drops an empty record after answering, which would be a
@@ -344,6 +367,63 @@ TEST(KeeperDurableWriter, DurablePipelineRetiresUnlessAStartKeepsIt)
     EXPECT_EQ(keeper.ingested(kKept), 1u);
 }
 
+// ensureStoryPipeline leaves a pipeline that exists as it is: a stop that put
+// it on the waiting-for-exit list still retires it (here at once, with a zero
+// acceptance window), and a pipeline a visor start owns is not put on that
+// list.
+TEST(KeeperDurableWriter, EnsureStoryPipelineLeavesAnExistingPipelineAlone)
+{
+    ensureLogger();
+    constexpr chl::StoryId kStopped = kStory;
+    constexpr chl::StoryId kRecorded = kStory + 1;
+    Keeper keeper(/*acceptance_window_secs=*/0);
+
+    ASSERT_EQ(keeper.data_store.startStoryRecording("chron", "stopped", kStopped, now()), chl::CL_SUCCESS);
+    ASSERT_EQ(keeper.data_store.stopStoryRecording(kStopped), chl::CL_SUCCESS);
+    ASSERT_EQ(keeper.data_store.ensureStoryPipeline("chron", "stopped", kStopped), chl::CL_SUCCESS);
+
+    ASSERT_EQ(keeper.data_store.startStoryRecording("chron", "recorded", kRecorded, now()), chl::CL_SUCCESS);
+    ASSERT_EQ(keeper.data_store.ensureStoryPipeline("chron", "recorded", kRecorded), chl::CL_SUCCESS);
+
+    keeper.data_store.retireDecayedPipelines();
+
+    // the stopped story's pipeline is gone, so its next event is an orphan;
+    // the recorded story's event reaches its pipeline
+    keeper.ingestion_queue.ingestLogEvent(chl::LogEvent(kStopped, now(), /*client=*/9, 0, "payload"));
+    keeper.ingestion_queue.ingestLogEvent(chl::LogEvent(kRecorded, now(), /*client=*/9, 0, "payload"));
+    EXPECT_EQ(keeper.ingestion_queue.orphanStoryIds(), (std::unordered_set<chl::StoryId>{kStopped}));
+    EXPECT_EQ(keeper.ingested(kRecorded), 1u);
+}
+
+// The writer asks the ingestion queue, not the data store, whether the story
+// has a pipeline, so a durable write for a recorded story never waits on the
+// data store's mutex, which the collector holds for a whole tick. Here the
+// story has an ingestion handle and no pipeline: the write must not start one.
+// If it did, that pipeline would retire at once (zero acceptance window) and
+// take the handle out of the ingestion queue with it.
+TEST(KeeperDurableWriter, StoryWithAnIngestionHandleSkipsTheDataStore)
+{
+    ensureLogger();
+    Keeper keeper(/*acceptance_window_secs=*/0);
+    std::mutex handle_mutex;
+    chl::EventDeque active;
+    chl::EventDeque passive;
+    chl::StoryIngestionHandle handle(handle_mutex, &active, &passive);
+    keeper.ingestion_queue.addStoryIngestionHandle(kStory, &handle);
+
+    FakeDurableLog wal;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
+    ASSERT_EQ(writer.write("chron", "story", makeEvent(0)), chl::CL_SUCCESS);
+    EXPECT_EQ(active.size(), 1u);
+
+    keeper.data_store.retireDecayedPipelines();
+    keeper.ingestion_queue.ingestLogEvent(makeEvent(1));
+    EXPECT_TRUE(keeper.ingestion_queue.orphanStoryIds().empty());
+    EXPECT_EQ(active.size(), 2u);
+
+    keeper.ingestion_queue.removeIngestionHandle(kStory);
+}
+
 // A stale writer must not undo a destroy: the pipeline a durable write starts
 // leaves the retention store's drop mark, so a chunk of the destroyed story
 // that seals afterwards is still discarded (and its WAL records released).
@@ -389,11 +469,13 @@ TEST(KeeperDurableWriter, RecordEventDurableAnswersWithTheWalOff)
     chl::KeeperDurableWriter writer(nullptr, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
     tl::engine keeper_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
     tl::engine client_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
-    chl::KeeperRecordingService::CreateKeeperRecordingService(keeper_engine,
-                                                              kProvider,
-                                                              keeper.ingestion_queue,
-                                                              keeper.retention_store,
-                                                              writer);
+    chl::KeeperRecordingService::CreateKeeperRecordingService(
+            keeper_engine,
+            kProvider,
+            keeper.ingestion_queue,
+            keeper.retention_store,
+            [&writer](chl::ChronicleName const& chronicle, chl::StoryName const& story, chl::LogEvent const& event)
+            { return writer.write(chronicle, story, event); });
 
     {
         tl::remote_procedure record_event_durable = client_engine.define("record_event_durable");

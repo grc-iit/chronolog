@@ -25,8 +25,6 @@
 
 #include <IngestionQueue.h>
 #include <KeeperChunkRetentionStore.h>
-#include <KeeperDataStore.h>
-#include <KeeperDurableWriter.h>
 #include <KeeperRecordingService.h>
 
 #include <KeeperHotFetchClient.h>
@@ -110,11 +108,15 @@ protected:
         auto* chunk = new chl::StoryChunk("chron", "story", kStory, 100, 200);
         chunk->insertEvent(chl::LogEvent(kStory, 150, 1, 0, "event"));
         retentionStore.ingestSealedChunk(kStory, chunk);
-        chl::KeeperRecordingService::CreateKeeperRecordingService(*keeperEngine,
-                                                                  kLiveKeeperProvider,
-                                                                  ingestionQueue,
-                                                                  retentionStore,
-                                                                  durableWriter);
+        chl::KeeperRecordingService::CreateKeeperRecordingService(
+                *keeperEngine,
+                kLiveKeeperProvider,
+                ingestionQueue,
+                retentionStore,
+                // a keeper without a WAL; these tests make no
+                // durable writes
+                [](chl::ChronicleName const&, chl::StoryName const&, chl::LogEvent const&)
+                { return chl::CL_ERR_DURABILITY_UNAVAILABLE; });
         hungKeeper = std::make_unique<HungKeeper>(*keeperEngine, kHungKeeperProvider);
     }
 
@@ -149,9 +151,6 @@ protected:
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
     chl::KeeperChunkRetentionStore retentionStore{extractionQueue, 0};
-    chl::KeeperDataStore dataStore{ingestionQueue, extractionQueue, retentionStore};
-    // the WAL is off; these tests make no durable writes
-    chl::KeeperDurableWriter durableWriter{nullptr, ingestionQueue, retentionStore, dataStore, 0};
     std::unique_ptr<tl::engine> keeperEngine;
     std::unique_ptr<tl::engine> playerEngine;
     std::unique_ptr<HungKeeper> hungKeeper;

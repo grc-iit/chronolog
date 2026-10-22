@@ -79,6 +79,8 @@ public:
     // unless a start_story_recording keeps it. Unlike startStoryRecording it
     // leaves the retention store's drop mark for the id in place, so a stale
     // writer cannot undo a destroy. A pipeline that exists is left as it is.
+    // Takes dataStoreMutex, so KeeperDurableWriter calls it only for a story
+    // with no ingestion handle.
     int ensureStoryPipeline(ChronicleName const&, StoryName const&, StoryId const&);
 
     int stopStoryRecording(StoryId const&);

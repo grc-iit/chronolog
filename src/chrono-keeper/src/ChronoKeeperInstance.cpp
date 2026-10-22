@@ -313,12 +313,15 @@ int main(int argc, char** argv)
                  keeper_group_id,
                  s1.str(),
                  recording_service_provider_id);
-        keeperRecordingService =
-                chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
-                                                                                recording_service_provider_id,
-                                                                                ingestionQueue,
-                                                                                theTailStore,
-                                                                                theDurableWriter);
+        keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(
+                *recordingEngine,
+                recording_service_provider_id,
+                ingestionQueue,
+                theTailStore,
+                [&theDurableWriter](chl::ChronicleName const& chronicle,
+                                    chl::StoryName const& story,
+                                    chl::LogEvent const& event)
+                { return theDurableWriter.write(chronicle, story, event); });
     }
     catch(tl::exception const&)
     {

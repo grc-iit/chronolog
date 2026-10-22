@@ -2,7 +2,9 @@
 #define KEEPER_RECORDING_SERVICE_H
 
 #include <iostream>
+#include <functional>
 #include <string>
+#include <utility>
 #include <cstdint>
 #include <margo.h>
 #include <thallium.hpp>
@@ -17,12 +19,16 @@
 
 #include "IngestionQueue.h"
 #include "KeeperChunkRetentionStore.h"
-#include "KeeperDurableWriter.h"
 
 namespace tl = thallium;
 
 namespace chronolog
 {
+// Answers a durable write: KeeperDurableWriter::write in the keeper. Passed as
+// a function so this header, and a test that runs the service, need neither
+// the writer nor the WAL and the data store it calls.
+using DurableWriteFunction = std::function<int(ChronicleName const&, StoryName const&, LogEvent const&)>;
+
 class KeeperRecordingService: public tl::provider<KeeperRecordingService>
 {
 public:
@@ -31,9 +37,13 @@ public:
                                                                 uint16_t service_provider_id,
                                                                 IngestionQueue& ingestion_queue,
                                                                 KeeperChunkRetentionStore& tail_store,
-                                                                KeeperDurableWriter& durable_writer)
+                                                                DurableWriteFunction durable_write)
     {
-        return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store, durable_writer);
+        return new KeeperRecordingService(tl_engine,
+                                          service_provider_id,
+                                          ingestion_queue,
+                                          tail_store,
+                                          std::move(durable_write));
     }
 
     ~KeeperRecordingService()
@@ -74,7 +84,7 @@ public:
                   log_event.time(),
                   log_event.getClientId(),
                   log_event.index());
-        request.respond(theDurableWriter.write(chronicle, story, log_event));
+        request.respond(theDurableWrite(chronicle, story, log_event));
     }
 
     // Tail-read phase 1: return this keeper's most recent (up to n) event
@@ -119,11 +129,11 @@ private:
                            uint16_t service_provider_id,
                            IngestionQueue& ingestion_queue,
                            KeeperChunkRetentionStore& tail_store,
-                           KeeperDurableWriter& durable_writer)
+                           DurableWriteFunction durable_write)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
         , theTailStore(tail_store)
-        , theDurableWriter(durable_writer)
+        , theDurableWrite(std::move(durable_write))
     {
         define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
         define("record_event_durable", &KeeperRecordingService::record_event_durable, tl::ignore_return_value());
@@ -140,7 +150,7 @@ private:
 
     IngestionQueue& theIngestionQueue;
     KeeperChunkRetentionStore& theTailStore;
-    KeeperDurableWriter& theDurableWriter;
+    DurableWriteFunction theDurableWrite;
 };
 
 } // namespace chronolog
