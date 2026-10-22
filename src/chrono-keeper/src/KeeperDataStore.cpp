@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <algorithm>
 #include <map>
 #include <mutex>
 #include <chrono>
@@ -11,6 +12,7 @@
 
 #include <chronolog_errcode.h>
 #include <KeeperDataStore.h>
+#include <StoryIdOf.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -282,6 +284,91 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
             theTailStore.releaseStoryTail(story_id);
         }
     }
+}
+
+////////////////////////
+
+chronolog::StoryId chronolog::recoveredStoryId(chronolog::RecoveredStory const& story)
+{
+    return story.has_names ? chl::storyIdOf(story.chronicle, story.story) : story.wal_story_id;
+}
+
+std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::RecoveredState const& recovered)
+{
+    uint64_t const chunk_duration = uint64_t{std::max<uint32_t>(story_chunk_duration_secs, 1)} * 1000000000ULL;
+    std::size_t chunks_handed_over = 0;
+    for(auto const& [wal_story_id, story]: recovered.stories)
+    {
+        if(story.events.empty())
+        {
+            continue;
+        }
+        if(!story.has_names)
+        {
+            // only a bug writes an E record before its story's N record; the
+            // WAL keeps the events, but no name means no archive to ship to
+            LOG_WARNING("[KeeperDataStore] WAL replay: StoryID={} has {} recovered event(s) but no names; not "
+                        "shipping them",
+                        wal_story_id,
+                        story.events.size());
+            continue;
+        }
+
+        chl::StoryId const story_id = recoveredStoryId(story);
+        chl::StoryChunk* chunk = nullptr;
+        auto hand_over = [&]()
+        {
+            if(chunk->empty())
+            {
+                delete chunk;
+            }
+            else
+            {
+                theTailStore.ingestSealedChunk(story_id, chunk);
+                ++chunks_handed_over;
+            }
+            chunk = nullptr;
+        };
+        // events are ordered by time first, so each chunk is complete once an
+        // event falls past its end
+        for(auto const& [sequence, recovered_event]: story.events)
+        {
+            if(chunk != nullptr && recovered_event.time() >= chunk->getEndTime())
+            {
+                hand_over();
+            }
+            if(chunk == nullptr)
+            {
+                uint64_t const start_time = recovered_event.time() - (recovered_event.time() % chunk_duration);
+                chunk = new chl::StoryChunk(story.chronicle,
+                                            story.story,
+                                            story_id,
+                                            start_time,
+                                            start_time + chunk_duration);
+            }
+            chl::LogEvent event = recovered_event;
+            event.storyId = story_id;
+            if(chunk->insertEvent(event) == 0)
+            {
+                // a durable write never logs an empty record, so this is a bug too
+                LOG_WARNING("[KeeperDataStore] WAL replay: StoryID={} event {}:{}:{} could not be placed; dropping "
+                            "it",
+                            story_id,
+                            event.time(),
+                            event.getClientId(),
+                            event.index());
+                theTailStore.eventDiscarded(story_id, sequence);
+            }
+        }
+        if(chunk != nullptr)
+        {
+            hand_over();
+        }
+        // no pipeline reads these chunks' tail, and without the release they
+        // would never be freed (as in sealOrphanedEvents)
+        theTailStore.releaseStoryTail(story_id);
+    }
+    return chunks_handed_over;
 }
 
 ////////////////////////

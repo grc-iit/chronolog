@@ -15,10 +15,17 @@
 #include "IngestionQueue.h"
 #include "KeeperStoryPipeline.h"
 #include "StoryChunkExtractionQueue.h"
+#include "WalRecoveredState.h"
 
 
 namespace chronolog
 {
+
+// The id a story recovered from the WAL is recorded and released under: the
+// id computed from its names, the way the visor assigns it, so a WAL written by
+// a build that computed ids differently still joins the live story; the id the
+// WAL recorded when it has no names.
+StoryId recoveredStoryId(RecoveredStory const&);
 
 
 class KeeperDataStore
@@ -77,6 +84,13 @@ public:
     // StoryChunks handed to the extraction queue, so they are archived instead
     // of stranded in the ingestion orphan queue and dropped at shutdown.
     void sealOrphanedEvents();
+
+    // At startup, before the keeper takes requests: hand the events WAL
+    // recovery read back to the retention store as sealed chunks aligned to
+    // story_chunk_duration_secs, under recoveredStoryId, and release their
+    // stories' tails as sealOrphanedEvents does. A story without names is
+    // logged and not shipped. Returns the number of chunks handed over.
+    std::size_t replayRecoveredEvents(RecoveredState const&);
 
     // Grapher watermark report: everything below w for the story is durable;
     // forwards to the retention store's confirmPersisted.

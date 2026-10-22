@@ -139,6 +139,34 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_story_retirement_test DESTINATION tests)
 endif()
 
+# WAL replay (GTest) — events read back from the WAL at startup become sealed
+# chunks in the retention store. Same in-process KeeperDataStore setup as the
+# data-loss test above.
+add_executable(keeper_wal_replay_test
+    chrono_keeper_wal_replay_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
+)
+
+target_include_directories(keeper_wal_replay_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_wal_replay_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_wal_replay_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-replay)
+gtest_discover_tests(keeper_wal_replay_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_replay_test DESTINATION tests)
+endif()
+
 # Orphan recovery (GTest) — IngestionQueue orphan helpers + seal-to-extraction flow
 add_executable(keeper_orphan_recovery_test
     chrono_keeper_orphan_recovery_test.cpp
