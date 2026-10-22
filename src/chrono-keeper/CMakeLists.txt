@@ -20,6 +20,7 @@ target_sources(chrono_keeper PRIVATE
     src/DualEndpointChunkExtractorRDMA.cpp
     src/WalFileSink.cpp
     src/WalReleaseTracker.cpp
+    src/WalFormat.cpp
 )
 
 target_link_libraries(chrono_keeper
