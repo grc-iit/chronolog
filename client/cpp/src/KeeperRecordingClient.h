@@ -2,6 +2,7 @@
 #define KEEPER_RECORDING_CLIENT_H
 
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <string>
 
@@ -21,6 +22,15 @@ namespace tl = thallium;
 namespace chronolog
 {
 
+// How one record_event_durable attempt ended. Only Answered carries a keeper
+// code; the caller retries TimedOut and TransportError with the same event.
+enum class DurableSendOutcome
+{
+    Answered,      // the keeper answered; keeper_code holds its status
+    TimedOut,      // no answer within the attempt's deadline
+    NotRegistered, // the keeper does not define record_event_durable (a 3.3.0 keeper)
+    TransportError // any other RPC failure
+};
 
 class KeeperRecordingClient
 {
@@ -59,6 +69,50 @@ public:
         return (chronolog::CL_ERR_UNKNOWN);
     }
 
+    // One attempt of a durable write: record_event_durable with a deadline of
+    // timeout_ms. A keeper that lacks the RPC answers the forward with
+    // HG_NO_MATCH, which thallium raises as a margo_exception; only that maps
+    // to NotRegistered, so the caller does not retry a call that cannot work.
+    DurableSendOutcome send_durable_event_msg(ChronicleName const& chronicle,
+                                              StoryName const& story,
+                                              LogEvent const& eventMsg,
+                                              uint32_t timeout_ms,
+                                              int& keeper_code)
+    {
+        try
+        {
+            keeper_code = record_event_durable.on(service_ph)
+                                  .timed(std::chrono::milliseconds(timeout_ms), chronicle, story, eventMsg);
+            return DurableSendOutcome::Answered;
+        }
+        catch(tl::timeout const&)
+        {
+            LOG_WARNING("[KeeperRecordingClient] Durable event to {} timed out after {} ms",
+                        to_string(recordingServiceId),
+                        timeout_ms);
+            return DurableSendOutcome::TimedOut;
+        }
+        catch(tl::margo_exception const& ex)
+        {
+            if(ex.error() == HG_NO_MATCH)
+            {
+                LOG_ERROR("[KeeperRecordingClient] Keeper {} does not define record_event_durable",
+                          to_string(recordingServiceId));
+                return DurableSendOutcome::NotRegistered;
+            }
+            LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {} exception: {}",
+                      to_string(recordingServiceId),
+                      ex.what());
+        }
+        catch(tl::exception const& ex)
+        {
+            LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {} exception: {}",
+                      to_string(recordingServiceId),
+                      ex.what());
+        }
+        return DurableSendOutcome::TransportError;
+    }
+
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
     // Per-RPC deadline (ms) for tail reads so a slow or hung keeper cannot block
@@ -92,6 +146,7 @@ public:
     ~KeeperRecordingClient()
     {
         record_event.deregister();
+        record_event_durable.deregister();
         tail_get_sequences.deregister();
         tail_get_events.deregister();
         LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(recordingServiceId));
@@ -101,6 +156,7 @@ private:
     ServiceId recordingServiceId;
     tl::provider_handle service_ph; //provider_handle for remote registry service
     tl::remote_procedure record_event;
+    tl::remote_procedure record_event_durable;
     tl::remote_procedure tail_get_sequences;
     tl::remote_procedure tail_get_events;
 
@@ -115,6 +171,7 @@ private:
         service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
 
         record_event = tl_engine.define("record_event");
+        record_event_durable = tl_engine.define("record_event_durable");
         tail_get_sequences = tl_engine.define("tail_get_sequences");
         tail_get_events = tl_engine.define("tail_get_events");
     }
