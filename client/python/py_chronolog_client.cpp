@@ -36,6 +36,21 @@ void BindChronologClientQueryServiceConf(pybind11::module& m)
 };
 
 
+using chronolog::Durability;
+using chronolog::LogEventOptions;
+void BindChronologDurability(pybind11::module& m)
+{
+    pybind11::enum_<Durability>(m, "Durability")
+            .value("Accepted", Durability::Accepted)
+            .value("Durable", Durability::Durable);
+
+    pybind11::class_<LogEventOptions>(m, "LogEventOptions")
+            .def(pybind11::init<>())
+            .def_readwrite("durability", &LogEventOptions::durability)
+            .def_readwrite("timeout_ms", &LogEventOptions::timeout_ms)
+            .def_readwrite("attempts", &LogEventOptions::attempts);
+};
+
 using chronolog::StoryHandle;
 class PyStoryHandle: public StoryHandle
 {
@@ -52,6 +67,25 @@ public:
                                log_event,   /* Name of function in C++ (must match Python name) */
                                event_string /* Argument(s) */
         );
+    }
+
+    // A Python override of log_event serves both overloads, as in Python:
+    // called here as log_event(record, options), it returns
+    // (status, event_time), the same pair the binding below returns.
+    // Without one, the default body runs and reaches log_event(record).
+    int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time) override
+    {
+        {
+            pybind11::gil_scoped_acquire gil;
+            pybind11::function override = pybind11::get_override(static_cast<StoryHandle const*>(this), "log_event");
+            if(override)
+            {
+                auto result = override(record, options).cast<std::pair<int, uint64_t>>();
+                event_time = result.second;
+                return result.first;
+            }
+        }
+        return StoryHandle::log_event(record, options, event_time);
     }
 
     int playback(size_t n, std::vector<chronolog::Event>& events) override
@@ -71,6 +105,23 @@ void BindChronologStoryHandle(pybind11::module& m)
             .def("log_event",
                  pybind11::overload_cast<std::string const&>(&StoryHandle::log_event),
                  pybind11::arg("log_string"))
+            // Write `log_string` and wait until it reached options.durability.
+            // Returns (status, event_time). A durable write can block for
+            // options.attempts x options.timeout_ms, so the GIL is released.
+            .def(
+                    "log_event",
+                    [](StoryHandle& self, std::string const& record, LogEventOptions const& options)
+                    {
+                        uint64_t event_time = 0;
+                        int status;
+                        {
+                            pybind11::gil_scoped_release release;
+                            status = self.log_event(record, options, event_time);
+                        }
+                        return std::make_pair(status, event_time);
+                    },
+                    pybind11::arg("log_string"),
+                    pybind11::arg("options"))
             // Tail read: fill `events` (an EventList) with the most recent `n`
             // events of this story, served from the keepers' in-memory tail.
             // Returns CL_SUCCESS on success; events are in ascending order.
@@ -121,6 +172,8 @@ PYBIND11_MODULE(py_chronolog_client, m)
 {
     BindChronologClientPortalServiceConf(m);
     BindChronologClientQueryServiceConf(m);
+    // Before StoryHandle, whose log_event(record, options) names LogEventOptions.
+    BindChronologDurability(m);
     // Event, then EventList (bind_vector needs Event registered), then anything
     // whose signature mentions EventList. pybind renders a parameter's type name
     // at .def() time, so a binding registered before EventList exists shows the
