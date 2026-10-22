@@ -79,13 +79,17 @@ public:
 // first, once nothing in it is pending.
 //
 // Threading. A request waits on a tl::eventual, so an RPC handler yields its
-// stream instead of blocking it. Every structure is guarded by one std::mutex
-// that is held only for queue and table updates: never across a write, a sync,
-// a wait or a log call, and never while calling out. The observer calls come
-// with the retention store's tailMutex held, so the lock order is tailMutex
-// first, then this mutex; the WAL never calls into the retention store or the
-// ingestion queue. The committer waits for work on a std::condition_variable,
-// which blocks only its own stream.
+// stream instead of blocking it. Every structure is guarded by one mutex (a
+// std::mutex that counts its waiters) that is held only for queue and table
+// updates: never across a write, a sync, a wait or a log call, and never while
+// calling out. Work that grows with a group, a chunk or a story's backlog
+// (registering a group, releasing a chunk's events, dropping a story at its D
+// record) is done a bounded batch per hold, and a waiting thread gets the
+// mutex between batches, so a waiting RPC stream is not held up for long.
+// The observer calls come with the retention store's tailMutex held, so the
+// lock order is tailMutex first, then this mutex; the WAL never calls into the
+// retention store or the ingestion queue. The committer waits for work on a
+// std::condition_variable_any, which blocks only its own stream.
 //
 // Failure latch. The first write or sync error fails the whole group with
 // CL_ERR_DURABILITY_UNAVAILABLE, registers none of it as pending, and leaves
@@ -195,6 +199,19 @@ private:
     // the identity is durable and pending (status is set to CL_SUCCESS).
     bool findIdentity(Identity const&, std::shared_ptr<Completion>& completion, int& status) const;
 
+    // Called with the mutex held, after the tracker's addCopy.
+    void noteAdded(StoryId, EventSequence const&);
+    // Called with the mutex held. Pops released identities off the front of
+    // the story's add order, at most budget of them, and forgets the add
+    // order once the story has nothing pending.
+    void pruneAddOrder(StoryId, std::size_t budget);
+    // releaseChunk for chunkWritten and chunkDiscarded, a batch per hold when
+    // both the chunk and the story's pending events are large.
+    void releaseChunkEvents(StoryId, StoryChunk const&);
+    // The committer, at a D record that synced: drops every copy of the story
+    // added before it, a batch per hold.
+    void dropStoryCopies(StoryId);
+
     void committerLoop();
     // Writes the group into the active segment (after a rotation if it does
     // not fit), syncs it and answers it.
@@ -231,20 +248,52 @@ private:
     std::unique_ptr<WalFileSink> sink;
     WalSegmentManager segmentFiles; // uses *sink, so declared after it
 
+    // The WAL's mutex: a std::mutex that counts the threads waiting for it.
+    // glibc's mutex is not fair: a loop that unlocks and locks again at once
+    // nearly always wins over the thread its unlock woke, so batches alone
+    // would not let anyone in. Between batches such a loop calls
+    // letWaitersIn, which gives a waiting thread a moment to take it first.
+    class WalMutex
+    {
+    public:
+        void lock()
+        {
+            ++waiting;
+            inner.lock();
+            --waiting;
+            ++acquired;
+        }
+        void unlock() { inner.unlock(); }
+        // Called without the mutex. While a thread waits for it, yields (the
+        // OS thread, never to Argobots: a caller may hold the retention
+        // store's tailMutex) until one has taken it, for at most a moment.
+        void letWaitersIn();
+
+    private:
+        std::mutex inner;
+        std::atomic<uint32_t> waiting{0};
+        std::atomic<uint64_t> acquired{0};
+    };
+
     // admit() reads these without the mutex
     std::atomic<bool> running{false};
     std::atomic<bool> failed{false};
     std::atomic<bool> belowReserve{false};
 
     // guarded by mutex
-    mutable std::mutex mutex;
-    std::condition_variable workReady;
+    mutable WalMutex mutex;
+    std::condition_variable_any workReady;
     State state = State::Created;
     std::deque<Queued> queue;
     uint64_t queuedBytes = 0;
     // every queued E, and the E records of the group being committed
     std::map<Identity, std::shared_ptr<Completion>> inFlight;
     WalReleaseTracker tracker;
+    // Per story with pending copies, the identities added to the tracker, in
+    // log order, released ones pruned from the front. Only lets a D drop a
+    // large backlog a batch at a time: the tracker can only drop a whole story
+    // at once, and it still does, after the batches, for anything missed here.
+    std::unordered_map<StoryId, std::deque<EventSequence>> addOrder;
     WalStats counters;
 
     // the committer's own, also used by start and stop before and after it runs

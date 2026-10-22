@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <cstring>
 #include <stdexcept>
+#include <thread>
 
 #include <sys/uio.h>
 
@@ -20,10 +21,33 @@ namespace
 constexpr std::chrono::milliseconds kPeriodicInterval(100);
 // how often a repeated warning is logged
 constexpr std::chrono::minutes kWarningInterval(1);
+// The most entries one hold of the mutex handles: group entries registered,
+// events released, identities pruned. Keeps each hold short whatever the size
+// of the group, the chunk or the story's backlog.
+constexpr std::size_t kLockBatch = 1024;
+// released identities pruned from a story's add order for each one added
+constexpr std::size_t kPruneOnAdd = 2;
+// the longest a batch loop waits for a waiting thread to take the mutex: a
+// woken thread takes it within microseconds, so this only bounds the wait
+constexpr std::chrono::microseconds kHandOffLimit(500);
 
 iovec iovOf(char const* data, std::size_t len) { return iovec{const_cast<char*>(data), len}; }
 
 } // namespace
+
+void KeeperWal::WalMutex::letWaitersIn()
+{
+    if(waiting.load() == 0)
+    {
+        return;
+    }
+    uint64_t const before = acquired.load();
+    auto const deadline = std::chrono::steady_clock::now() + kHandOffLimit;
+    while(waiting.load() != 0 && acquired.load() == before && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::yield();
+    }
+}
 
 KeeperWal::KeeperWal(WalConf const& conf,
                      std::string keeper_endpoint,
@@ -48,7 +72,7 @@ KeeperWal::~KeeperWal() { stop(); }
 int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(RecoveredStory const&)> id_of)
 {
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         if(state != State::Created)
         {
             LOG_ERROR("[KeeperWal] The WAL in {} was already started", walDirectory);
@@ -78,12 +102,13 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
     }
     std::size_t recovered_events = 0;
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         for(auto const& [story_id, story]: recovered_stories)
         {
             for(auto const& [identity, copies]: story->copies)
             {
                 for(auto const& [segment, bytes]: copies) { tracker.addCopy(story_id, identity, segment, bytes); }
+                noteAdded(story_id, identity);
                 ++recovered_events;
             }
         }
@@ -134,7 +159,7 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
     sampleFreeSpace();
 
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         counters.segments = segmentFiles.segments().size();
         state = State::Running;
     }
@@ -155,7 +180,7 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
 void KeeperWal::stop()
 {
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         if(state == State::Created)
         {
             state = State::Stopped;
@@ -183,7 +208,7 @@ void KeeperWal::stop()
 
     WalStats const last = stats();
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         state = State::Stopped;
     }
     LOG_INFO("[KeeperWal] Stopped the WAL in {}: groups={} events={} bytes={} pending_events={} pending_bytes={} "
@@ -208,7 +233,7 @@ WalAdmit KeeperWal::admit() const
 
 bool KeeperWal::isDurable(StoryId story_id, EventSequence const& event) const
 {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<WalMutex> lock(mutex);
     return tracker.isPending(story_id, event);
 }
 
@@ -233,7 +258,7 @@ std::optional<int> KeeperWal::lookupDurable(StoryId story_id, EventSequence cons
     std::shared_ptr<Completion> completion;
     int status = CL_SUCCESS;
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         if(!findIdentity(Identity{story_id, event}, completion, status))
         {
             return std::nullopt;
@@ -273,7 +298,7 @@ int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& st
     };
 
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         if(settled() && completion == nullptr)
         {
             return status;
@@ -304,7 +329,7 @@ int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& st
 
         bool queued = false;
         {
-            std::lock_guard<std::mutex> lock(mutex);
+            std::lock_guard<WalMutex> lock(mutex);
             // looked up again: while this one was encoded, an attempt with the
             // same identity may have been queued or synced, or the WAL stopped
             if(settled())
@@ -335,7 +360,7 @@ int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& st
 
 WalStats KeeperWal::stats() const
 {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<WalMutex> lock(mutex);
     WalStats current = counters;
     current.pending_events = tracker.pendingEvents();
     current.pending_bytes = tracker.pendingBytes();
@@ -343,22 +368,130 @@ WalStats KeeperWal::stats() const
     return current;
 }
 
-void KeeperWal::chunkWritten(StoryId story_id, StoryChunk const& chunk)
-{
-    std::lock_guard<std::mutex> lock(mutex);
-    tracker.releaseChunk(story_id, chunk);
-}
+void KeeperWal::chunkWritten(StoryId story_id, StoryChunk const& chunk) { releaseChunkEvents(story_id, chunk); }
 
-void KeeperWal::chunkDiscarded(StoryId story_id, StoryChunk const& chunk)
-{
-    std::lock_guard<std::mutex> lock(mutex);
-    tracker.releaseChunk(story_id, chunk);
-}
+void KeeperWal::chunkDiscarded(StoryId story_id, StoryChunk const& chunk) { releaseChunkEvents(story_id, chunk); }
 
 void KeeperWal::eventDiscarded(StoryId story_id, EventSequence const& event)
 {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<WalMutex> lock(mutex);
     tracker.releaseEvent(story_id, event);
+    pruneAddOrder(story_id, kLockBatch);
+}
+
+void KeeperWal::noteAdded(StoryId story_id, EventSequence const& event)
+{
+    std::deque<EventSequence>& order = addOrder[story_id];
+    order.push_back(event);
+    // a few per add, so released identities do not pile up behind a story
+    // that keeps writing; the one just added is pending and stops it
+    for(std::size_t pruned = 0; pruned < kPruneOnAdd && !tracker.isPending(story_id, order.front()); ++pruned)
+    {
+        order.pop_front();
+    }
+}
+
+void KeeperWal::pruneAddOrder(StoryId story_id, std::size_t budget)
+{
+    auto order = addOrder.find(story_id);
+    if(order == addOrder.end())
+    {
+        return;
+    }
+    if(tracker.pendingEvents(story_id) == 0)
+    {
+        addOrder.erase(order);
+        return;
+    }
+    std::deque<EventSequence>& events = order->second;
+    for(std::size_t pruned = 0; pruned < budget && !events.empty() && !tracker.isPending(story_id, events.front());
+        ++pruned)
+    {
+        events.pop_front();
+    }
+}
+
+void KeeperWal::releaseChunkEvents(StoryId story_id, StoryChunk const& chunk)
+{
+    if(chunk.empty())
+    {
+        return;
+    }
+    {
+        std::lock_guard<WalMutex> lock(mutex);
+        std::size_t const pending = tracker.pendingEvents(story_id);
+        if(pending == 0)
+        {
+            return;
+        }
+        // the tracker walks the smaller side, here at most a batch of events
+        if(std::min(pending, static_cast<std::size_t>(chunk.getEventCount())) <= kLockBatch)
+        {
+            tracker.releaseChunk(story_id, chunk);
+            pruneAddOrder(story_id, kLockBatch);
+            return;
+        }
+    }
+    // Both sides large: a batch of the chunk's events per hold. The chunk does
+    // not change meanwhile (the store holds its tailMutex). The tracker may:
+    // an event released by another call in between is skipped, and a copy
+    // the committer adds in between for an event of this chunk is released
+    // with it, which loses nothing: the grapher has the event, or for a
+    // discarded chunk has destroyed its story.
+    auto next = chunk.begin();
+    while(true)
+    {
+        {
+            std::lock_guard<WalMutex> lock(mutex);
+            if(tracker.pendingEvents(story_id) == 0)
+            {
+                pruneAddOrder(story_id, 0);
+                return;
+            }
+            for(std::size_t released = 0; released < kLockBatch && next != chunk.end(); ++released, ++next)
+            {
+                tracker.releaseEvent(story_id, next->first);
+            }
+            pruneAddOrder(story_id, kLockBatch);
+        }
+        if(next == chunk.end())
+        {
+            return;
+        }
+        mutex.letWaitersIn();
+    }
+}
+
+void KeeperWal::dropStoryCopies(StoryId story_id)
+{
+    // Only the committer adds copies (start does before it runs), and it is
+    // here, so every copy of the story in the tracker, between batches too,
+    // was written before the D: none of the story re-created after it is
+    // dropped.
+    while(true)
+    {
+        {
+            std::lock_guard<WalMutex> lock(mutex);
+            auto order = addOrder.find(story_id);
+            if(order == addOrder.end() || order->second.empty())
+            {
+                if(order != addOrder.end())
+                {
+                    addOrder.erase(order);
+                }
+                // whatever the add order missed; with nothing left this costs nothing
+                tracker.dropStory(story_id);
+                return;
+            }
+            std::deque<EventSequence>& events = order->second;
+            for(std::size_t released = 0; released < kLockBatch && !events.empty(); ++released)
+            {
+                tracker.releaseEvent(story_id, events.front());
+                events.pop_front();
+            }
+        }
+        mutex.letWaitersIn();
+    }
 }
 
 void KeeperWal::storyDropped(StoryId story_id)
@@ -369,7 +502,7 @@ void KeeperWal::storyDropped(StoryId story_id)
     entry.dropped_frame = wal::encodeDropped(wal::DroppedRecord{story_id});
     entry.queued_at = std::chrono::steady_clock::now();
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         // a stopped or failed WAL writes nothing; its copies of the story stay
         // pending, which only keeps their segments longer
         if(state != State::Running || failed.load())
@@ -389,7 +522,7 @@ void KeeperWal::committerLoop()
         std::vector<Queued> group;
         bool latched = false;
         {
-            std::unique_lock<std::mutex> lock(mutex);
+            std::unique_lock<WalMutex> lock(mutex);
             workReady.wait_until(lock,
                                  nextPeriodicWork,
                                  [this]() { return state != State::Running || !queue.empty(); });
@@ -541,7 +674,7 @@ int KeeperWal::rotate(uint64_t min_segment_bytes, std::string& what)
     activeSince = std::chrono::steady_clock::now();
     namedInActive.clear();
     segmentSizes[segment] = size;
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<WalMutex> lock(mutex);
     counters.segments = segmentFiles.segments().size();
     return 0;
 }
@@ -551,40 +684,53 @@ void KeeperWal::finishGroup(std::vector<Queued>& group, int status, uint64_t seg
     // In batches, so a group of many small events does not hold the mutex, and
     // the RPC streams waiting on it, for long. Each event is registered in the
     // same step as it leaves inFlight, and before any answer, so a retry finds
-    // its identity in one or the other.
-    constexpr std::size_t kBatch = 1024;
+    // its identity in one or the other. A D drops its story's copies at its
+    // place in log order, in batches of its own; the events after it are
+    // registered only then, so copies added after the D stay.
     uint64_t events = 0;
-    for(std::size_t first = 0; first < group.size(); first += kBatch)
+    std::size_t next = 0;
+    while(next < group.size())
     {
-        std::size_t const last = std::min(group.size(), first + kBatch);
-        std::lock_guard<std::mutex> lock(mutex);
-        for(std::size_t i = first; i < last; ++i)
+        std::optional<StoryId> dropped;
         {
-            Queued const& entry = group[i];
-            if(entry.dropped)
+            std::lock_guard<WalMutex> lock(mutex);
+            std::size_t const last = std::min(group.size(), next + kLockBatch);
+            while(next < last && !dropped)
             {
-                // at the D's place in log order: copies added later stay
+                Queued const& entry = group[next++];
+                if(entry.dropped)
+                {
+                    if(status == CL_SUCCESS)
+                    {
+                        dropped = entry.story_id;
+                    }
+                    continue;
+                }
                 if(status == CL_SUCCESS)
                 {
-                    tracker.dropStory(entry.story_id);
+                    tracker.addCopy(entry.story_id, entry.identity, segment, entry.event.size());
+                    noteAdded(entry.story_id, entry.identity);
                 }
-                continue;
+                auto queued = inFlight.find(Identity{entry.story_id, entry.identity});
+                if(queued != inFlight.end() && queued->second == entry.completion)
+                {
+                    inFlight.erase(queued);
+                }
+                ++events;
             }
-            if(status == CL_SUCCESS)
-            {
-                tracker.addCopy(entry.story_id, entry.identity, segment, entry.event.size());
-            }
-            auto queued = inFlight.find(Identity{entry.story_id, entry.identity});
-            if(queued != inFlight.end() && queued->second == entry.completion)
-            {
-                inFlight.erase(queued);
-            }
-            ++events;
+        }
+        if(dropped)
+        {
+            dropStoryCopies(*dropped);
+        }
+        if(next < group.size())
+        {
+            mutex.letWaitersIn();
         }
     }
     if(status == CL_SUCCESS)
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         ++counters.groups;
         counters.events += events;
         counters.bytes += bytes;
@@ -618,7 +764,7 @@ void KeeperWal::deleteReleasedSegments()
 {
     std::vector<uint64_t> released;
     {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard<WalMutex> lock(mutex);
         released = tracker.deletable(segmentFiles.segments(), activeSegment);
     }
     if(released.empty())
@@ -644,7 +790,7 @@ void KeeperWal::deleteReleasedSegments()
         segmentSizes.erase(segment);
         LOG_DEBUG("[KeeperWal] Deleted released WAL segment {} in {}", wal::segmentFileName(segment), walDirectory);
     }
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<WalMutex> lock(mutex);
     counters.segments = segmentFiles.segments().size();
 }
 
@@ -661,7 +807,7 @@ void KeeperWal::periodicWork()
     {
         bool idle = false;
         {
-            std::lock_guard<std::mutex> lock(mutex);
+            std::lock_guard<WalMutex> lock(mutex);
             idle = queue.empty() && tracker.outstanding(activeSegment) == 0;
         }
         if(idle)

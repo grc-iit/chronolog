@@ -201,6 +201,32 @@ protected:
                 });
     }
 
+    // Durable writes of every event from that many ULTs, each writing its
+    // share in order, so the groups are large and the run is short. True when
+    // every one got CL_SUCCESS.
+    bool appendAll(std::vector<chl::LogEvent> const& events, std::size_t writers = 64)
+    {
+        std::atomic<std::size_t> failures{0};
+        {
+            UltPool pool;
+            for(std::size_t writer = 0; writer < writers; ++writer)
+            {
+                pool.run(
+                        [&, writer]()
+                        {
+                            for(std::size_t i = writer; i < events.size(); i += writers)
+                            {
+                                if(append(events[i]) != chl::CL_SUCCESS)
+                                {
+                                    ++failures;
+                                }
+                            }
+                        });
+            }
+        }
+        return failures.load() == 0;
+    }
+
     std::vector<uint64_t> segmentNumbers()
     {
         std::vector<uint64_t> numbers;
@@ -1181,4 +1207,201 @@ TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
     wal->eventDiscarded(kStory, identityOf(event));
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+}
+
+// A group of more than one batch (1024 events) is registered across the batch
+// boundary: every event durable, and a retry of an event in the second batch
+// joins it.
+TEST_F(KeeperWalTest, GroupLargerThanABatchRegistersEveryEvent)
+{
+    constexpr uint64_t kEvents = 1500;
+    startWal();
+    sink->holdSyncs();
+
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    for(uint64_t i = 0; i < kEvents; ++i) { requests.emplace_back().event = makeEvent(kStory, 1000 + i); }
+    std::deque<Append> retry;
+    retry.emplace_back().event = requests[1400].event;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        for(std::size_t i = 1; i < requests.size(); ++i) { appendOn(pool, requests[i]); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == kEvents + 1; }, 20s));
+        appendOn(pool, retry[0]);
+        std::this_thread::sleep_for(50ms);
+        EXPECT_EQ(wal->stats().queued_events, kEvents + 1);
+        sink->releaseSyncs();
+    }
+    for(auto const& request: requests)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_TRUE(wal->isDurable(request.event.getStoryId(), identityOf(request.event)));
+    }
+    EXPECT_EQ(retry[0].status.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(copiesOnDisk(retry[0].event), 1u);
+    chl::WalStats const stats = wal->stats();
+    EXPECT_EQ(stats.events, kEvents + 1);
+    EXPECT_EQ(stats.pending_events, kEvents + 1);
+    EXPECT_GE(stats.max_events_per_group, kEvents);
+    EXPECT_EQ(stats.queued_events, 0u);
+}
+
+// A D record for a story with more pending copies than a batch drops them all
+// in batches, together with the story's events written before the D in the
+// same group, and keeps the events written after it in that group.
+TEST_F(KeeperWalTest, StoryDropAcrossBatchesKeepsTheEventsAfterIt)
+{
+    startWal();
+    std::vector<chl::LogEvent> backlog;
+    for(uint64_t i = 0; i < 3200; ++i) { backlog.push_back(makeEvent(kStory, 1000 + i)); }
+    ASSERT_TRUE(appendAll(backlog));
+    ASSERT_EQ(wal->stats().pending_events, backlog.size());
+
+    sink->holdSyncs();
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    std::deque<Append> before;
+    std::deque<Append> after;
+    for(uint64_t i = 0; i < 5; ++i)
+    {
+        before.emplace_back().event = makeEvent(kStory, 5000 + i);
+        after.emplace_back().event = makeEvent(kStory, 6000 + i);
+    }
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        // queued behind the blocker's held sync, so all in the next group, in this order
+        for(auto& request: before) { appendOn(pool, request); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 6; }));
+        wal->storyDropped(kStory);
+        for(auto& request: after) { appendOn(pool, request); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 11; }));
+        sink->releaseSyncs();
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    for(auto const& request: before)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_FALSE(wal->isDurable(kStory, identityOf(request.event)));
+    }
+    for(auto const& request: after)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_TRUE(wal->isDurable(kStory, identityOf(request.event)));
+    }
+    std::size_t still_pending = 0;
+    for(auto const& event: backlog) { still_pending += wal->isDurable(kStory, identityOf(event)) ? 1 : 0; }
+    EXPECT_EQ(still_pending, 0u);
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(blocker)));
+    EXPECT_EQ(wal->stats().pending_events, after.size() + 1);
+    EXPECT_EQ(droppedRecordsOnDisk(kStory), 1u);
+
+    // the copies after the D are still released by their chunk
+    std::vector<chl::LogEvent> kept;
+    for(auto const& request: after) { kept.push_back(request.event); }
+    wal->chunkWritten(kStory, chunkOf(kStory, kept));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+}
+
+// Chunks with more events than a batch, of a story with more pending events
+// than a batch, release exactly their own events: a chunk smaller than the
+// backlog, then one larger than what is left that also holds events the WAL
+// never had.
+TEST_F(KeeperWalTest, ChunkReleaseAcrossBatchesReleasesExactlyItsEvents)
+{
+    startWal();
+    std::vector<chl::LogEvent> backlog;
+    for(uint64_t i = 0; i < 3200; ++i) { backlog.push_back(makeEvent(kStory, 1000 + i)); }
+    ASSERT_TRUE(appendAll(backlog));
+    chl::LogEvent const other = makeEvent(kOtherStory, 1000);
+    ASSERT_EQ(append(other), chl::CL_SUCCESS);
+    ASSERT_EQ(wal->stats().pending_events, backlog.size() + 1);
+
+    // two of every three events, then the rest
+    std::vector<chl::LogEvent> first;
+    std::vector<chl::LogEvent> rest;
+    for(std::size_t i = 0; i < backlog.size(); ++i) { ((i % 3 != 2) ? first : rest).push_back(backlog[i]); }
+    ASSERT_GT(rest.size(), 1024u);
+    wal->chunkWritten(kStory, chunkOf(kStory, first));
+    EXPECT_EQ(wal->stats().pending_events, rest.size() + 1);
+    for(auto const& event: first) { EXPECT_FALSE(wal->isDurable(kStory, identityOf(event))); }
+    for(auto const& event: rest) { EXPECT_TRUE(wal->isDurable(kStory, identityOf(event))); }
+
+    std::vector<chl::LogEvent> larger = rest;
+    for(uint64_t i = 0; i < 4000; ++i) { larger.push_back(makeEvent(kStory, 100000 + i)); }
+    wal->chunkDiscarded(kStory, chunkOf(kStory, larger));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(other).size());
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
+}
+
+// A large chunk release and a large story drop go a batch at a time, and a
+// thread waiting for the WAL's mutex, as an RPC stream calling isDurable
+// would, gets it between batches: it sees the pending count part of the way
+// down. One long hold, or batches that take the mutex straight back (glibc's
+// mutex is not fair), would let it in only at the end.
+TEST_F(KeeperWalTest, BatchesLetAWaitingThreadIn)
+{
+    constexpr std::size_t kEvents = 50000;
+    conf.segment_bytes = 32 * kMiB;
+    startWal();
+
+    // the pending counts strictly between 0 and kEvents a thread polling
+    // stats() saw while work ran
+    auto seenPartWayDown = [&](std::function<void()> const& work) -> std::size_t
+    {
+        std::atomic<bool> working{true};
+        std::set<uint64_t> seen;
+        std::thread prober(
+                [&]()
+                {
+                    while(working.load())
+                    {
+                        uint64_t const pending = wal->stats().pending_events;
+                        if(pending > 1 && pending < kEvents + 1)
+                        {
+                            seen.insert(pending);
+                        }
+                        std::this_thread::sleep_for(20us);
+                    }
+                });
+        work();
+        working = false;
+        prober.join();
+        return seen.size();
+    };
+
+    chl::LogEvent const other = makeEvent(kOtherStory, 1000);
+    ASSERT_EQ(append(other), chl::CL_SUCCESS);
+    std::vector<chl::LogEvent> released;
+    std::vector<chl::LogEvent> dropped;
+    for(uint64_t i = 0; i < kEvents; ++i)
+    {
+        released.push_back(makeEvent(kStory, 1000 + i));
+        dropped.push_back(makeEvent(kStory, 1000000 + i));
+    }
+    chl::StoryChunk const chunk = chunkOf(kStory, released);
+
+    ASSERT_TRUE(appendAll(released, 512));
+    ASSERT_EQ(wal->stats().pending_events, kEvents + 1);
+    std::size_t const during_release = seenPartWayDown([&]() { wal->chunkWritten(kStory, chunk); });
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    // about 49 batches
+    EXPECT_GE(during_release, 5u);
+
+    ASSERT_TRUE(appendAll(dropped, 512));
+    ASSERT_EQ(wal->stats().pending_events, kEvents + 1);
+    std::size_t const during_drop = seenPartWayDown(
+            [&]()
+            {
+                wal->storyDropped(kStory);
+                EXPECT_TRUE(waitFor([&]() { return wal->stats().pending_events == 1; }, 30s));
+            });
+    EXPECT_GE(during_drop, 5u);
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
 }
