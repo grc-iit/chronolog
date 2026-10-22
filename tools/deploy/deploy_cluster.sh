@@ -66,6 +66,9 @@ JOB_ID=""
 start=false
 stop=false
 clean=false
+restart=false
+force=false
+RESTART_KEEPER_HOST=""
 
 # The keeper WAL is on with --wal, --wal-dir or WAL_ENABLED=1 in the environment.
 # WAL_DIR_LIST, from --wal-dir, replaces the discovery in wal_dir_probe.sh.
@@ -82,6 +85,9 @@ usage() {
   echo "  -d|--start          Start ChronoLog deployment"
   echo "  -s|--stop           Stop ChronoLog deployment"
   echo "  -c|--clean          Clean ChronoLog logging artifacts and generated files"
+  echo "  --restart-keeper <host>  Relaunch the keeper on <host> with the configuration start generated for it;"
+  echo "                           it relaunches every keeper conf for <host>, so it cannot restart one of two"
+  echo "                           keepers on one host (two cannot run there today: every conf has the same ports)"
   echo ""
   echo "Deployment Options:"
   echo "  -r|--record-groups <number>      Number of RecordingGroups/ChronoGraphers"
@@ -110,6 +116,8 @@ usage() {
   echo "                                   on a local non-OS drive with an existing <mount>/\$USER, chosen by wal_dir_probe.sh"
   echo "  --wal-dir <A[:B:...]>            Turn the keeper WAL on and try these bases in order instead; a single path is"
   echo "                                   used as given. <hash of work_dir>/<recording group> is appended to the base"
+  echo "  --force                          With --clean, remove keeper WAL directories whose exit-summary is missing or"
+  echo "                                   shows events the grapher has not confirmed"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output"
@@ -123,6 +131,9 @@ usage() {
   echo ""
   echo "  Stop deployment using defaults:"
   echo "    $0 --stop"
+  echo ""
+  echo "  Relaunch the keeper on one host after it crashed, so it replays its WAL:"
+  echo "    $0 --restart-keeper <host>"
   echo ""
   exit 1
 }
@@ -270,9 +281,10 @@ check_op_validity() {
   [[ $start == true ]] && count=$((count + 1))
   [[ $stop == true ]] && count=$((count + 1))
   [[ $clean == true ]] && count=$((count + 1))
+  [[ $restart == true ]] && count=$((count + 1))
 
   if [[ $count -ne 1 ]]; then
-    echo -e "${ERR}Error: Please select exactly one operation in start (-d), stop (-s), and clean (-c).${NC}" >&2
+    echo -e "${ERR}Error: Please select exactly one operation in start (-d), stop (-s), clean (-c) and restart-keeper.${NC}" >&2
     usage
   fi
 }
@@ -681,6 +693,166 @@ parallel_remote_check_all() {
   done
 }
 
+# Prints "<host> <group> <WAL dir>" for each keeper conf start generated with the
+# WAL on. <host> is the name the keeper host's `hostname` printed.
+list_keeper_wal_dirs() {
+  local conf host group
+  for conf in "${CONF_FILE}".*.keeper.*; do
+    [[ -f "${conf}" ]] || continue
+    [[ "$(jq -r '.chrono_keeper.WAL.enabled // false' "${conf}")" == "true" ]] || continue
+    host=${conf##*.keeper.}
+    group=${conf#"${CONF_FILE}".}
+    group=${group%%.keeper.*}
+    echo "${host} ${group} $(jq -r '.chrono_keeper.WAL.dir' "${conf}")"
+  done
+}
+
+# Prints a command for every keeper host to run. It runs $1, with g set to the
+# recording group and d to the WAL directory, for each line of $2 (as printed by
+# list_keeper_wal_dirs) that names the host it runs on.
+keeper_wal_remote_cmd() {
+  local body=$1 entries=$2 cmd="" host group dir
+  while read -r host group dir; do
+    [[ -n "${host}" ]] || continue
+    printf -v cmd '%sif [ "$(hostname)" = %q ]; then g=%q; d=%q; %s; fi; ' "${cmd}" "${host}" "${group}" "${dir}" "${body}"
+  done <<<"${entries}"
+  printf 'bash -c %q' "${cmd}"
+}
+
+# Reads, over parallel-ssh, the exit-summary each keeper with the WAL on writes in
+# its WAL directory as it exits, and prints "<host> <group> <state> <pending events>
+# <pending bytes> <WAL dir>" per keeper. The state is clean, pending (events the
+# grapher has not confirmed), missing (a WAL directory with files but no readable
+# exit-summary: the keeper crashed or was killed), empty (no WAL directory, or an
+# empty one) or unreachable (no answer from the host).
+collect_keeper_wal_states() {
+  local entries replies body host group dir tag rhost rgroup rstate rest state events bytes
+  entries=$(list_keeper_wal_dirs)
+  [[ -n "${entries}" ]] || return 0
+  body='if [ -f "$d/exit-summary" ]; then echo "EXIT_SUMMARY $(hostname) $g summary $(head -n 1 "$d/exit-summary")"; '
+  body+='elif [ -n "$(ls -A "$d" 2>/dev/null)" ]; then echo "EXIT_SUMMARY $(hostname) $g missing"; '
+  body+='else echo "EXIT_SUMMARY $(hostname) $g empty"; fi'
+  replies=$(parallel-ssh -h "${KEEPER_HOSTS}" -i "$(keeper_wal_remote_cmd "${body}" "${entries}")" 2>/dev/null |
+    grep '^EXIT_SUMMARY ' || true)
+  while read -r host group dir; do
+    state=unreachable events=- bytes=-
+    while read -r tag rhost rgroup rstate rest; do
+      [[ "${tag}" == "EXIT_SUMMARY" && "${rhost}" == "${host}" && "${rgroup}" == "${group}" ]] || continue
+      state=${rstate}
+      if [[ "${rstate}" == "summary" ]]; then
+        events=$(sed -n 's/.*pending_events=\([0-9][0-9]*\).*/\1/p' <<<"${rest}")
+        bytes=$(sed -n 's/.*pending_bytes=\([0-9][0-9]*\).*/\1/p' <<<"${rest}")
+        # Compare as strings: bash arithmetic wraps a count of 2^63 or more.
+        if [[ -z "${events}" || -z "${bytes}" ]]; then
+          state=missing events=- bytes=-
+        elif [[ "${events}" =~ ^0+$ ]]; then
+          state=clean
+        else
+          state=pending
+        fi
+      fi
+      break
+    done <<<"${replies}"
+    echo "${host} ${group} ${state} ${events} ${bytes} ${dir}"
+  done <<<"${entries}"
+}
+
+# Prints a table of every keeper WAL's exit-summary. Returns 1 when any keeper's
+# is not clean: missing, unreachable, or showing events the grapher has not
+# confirmed, which only that keeper's next start replays.
+report_keeper_wal_exit_summaries() {
+  local states status=0 host group state events bytes dir
+  states=$(collect_keeper_wal_states)
+  [[ -n "${states}" ]] || return 0
+  printf '%-24s %-6s %-14s %-14s %-11s %s\n' "HOST" "GROUP" "PENDING_EVENTS" "PENDING_BYTES" "STATE" "WAL_DIR"
+  while read -r host group state events bytes dir; do
+    printf '%-24s %-6s %-14s %-14s %-11s %s\n' "${host}" "${group}" "${events}" "${bytes}" "${state}" "${dir}"
+    [[ "${state}" == "clean" ]] || status=1
+  done <<<"${states}"
+  return ${status}
+}
+
+# Removes the keeper WAL directories on their hosts. Refuses, removing nothing,
+# when a keeper's exit-summary is missing or shows pending events, or its host does
+# not answer, unless $1 is true: those events are durable but the grapher has not
+# confirmed them, and only that keeper's next start replays them. A directory whose
+# name does not end in <hash of work_dir>/<group> is not one this script chose and
+# is left alone.
+clean_keeper_wal_dirs() {
+  local force=$1
+  local states refused=() remove="" host group state events bytes dir
+  states=$(collect_keeper_wal_states)
+  [[ -n "${states}" ]] || return 0
+  while read -r host group state events bytes dir; do
+    case "${state}" in
+    pending) refused+=("${host}: ${dir} (${events} pending events)") ;;
+    missing) refused+=("${host}: ${dir} (no exit-summary)") ;;
+    unreachable) refused+=("${host}: ${dir} (host did not answer)") ;;
+    esac
+  done <<<"${states}"
+  if ((${#refused[@]} > 0)); then
+    if [[ "${force}" != "true" ]]; then
+      echo -e "${ERR}Refusing to remove keeper WAL directories with unconfirmed events:${NC}" >&2
+      printf '  %s\n' "${refused[@]}" >&2
+      echo -e "${ERR}Restart those keepers (--restart-keeper <host>) to replay them, or pass --force to discard them.${NC}" >&2
+      return 1
+    fi
+    echo -e "${DEBUG}--force: discarding unconfirmed events in:${NC}"
+    printf '  %s\n' "${refused[@]}"
+  fi
+  while read -r host group state events bytes dir; do
+    if [[ "${state}" == "unreachable" ]]; then
+      echo -e "${WARN}WARNING: ${host} did not answer; ${dir} is not removed${NC}" >&2
+    elif [[ "${dir}" != /*/"$(work_dir_hash)/${group}" ]]; then
+      echo -e "${WARN}WARNING: ${host}: ${dir} does not end in $(work_dir_hash)/${group}; not removed${NC}" >&2
+    else
+      remove+="${host} ${group} ${dir}"$'\n'
+    fi
+  done <<<"${states}"
+  [[ -n "${remove}" ]] || return 0
+  echo -e "${DEBUG}Removing keeper WAL directories ...${NC}"
+  # The <hash> directory above each goes too once it is empty.
+  parallel-ssh -h "${KEEPER_HOSTS}" -i "$(keeper_wal_remote_cmd 'rm -rf -- "$d"; rmdir -- "${d%/*}" 2>/dev/null; true' "${remove}")" >/dev/null 2>&1 || true
+}
+
+# Relaunches the keeper on host $1 with the conf start generated for it, so it
+# reuses its ports and its WAL directory and replays what that holds. Regenerates
+# nothing.
+restart_keeper() {
+  local host=$1
+  local remote_hostname conf confs=() running probe launch
+  remote_hostname=$(get_remote_hostname "${host}" || true)
+  if [[ -z "${remote_hostname}" ]]; then
+    echo -e "${ERR}Cannot get hostname from ${host}, exiting ...${NC}" >&2
+    return 1
+  fi
+  for conf in "${CONF_FILE}".*.keeper."${remote_hostname}"; do
+    [[ -f "${conf}" ]] && confs+=("${conf}")
+  done
+  if ((${#confs[@]} == 0)); then
+    echo -e "${ERR}No generated keeper configuration for ${host} (${CONF_FILE}.<group>.keeper.${remote_hostname}); start the deployment first.${NC}" >&2
+    return 1
+  fi
+  for conf in "${confs[@]}"; do
+    printf -v probe 'pgrep -f %q' "${KEEPER_BIN} --config ${conf}"
+    running=$(ssh -n "${host}" "${probe}" || true)
+    if [[ -n "${running}" ]]; then
+      echo -e "${ERR}The keeper on ${host} with ${conf} is still running; stop it before restarting it.${NC}" >&2
+      return 1
+    fi
+  done
+  for conf in "${confs[@]}"; do
+    echo -e "${DEBUG}Relaunching ${KEEPER_BIN} --config ${conf} on ${host} ...${NC}"
+    # Append, so the launch log of the run that died is kept.
+    printf -v launch 'cd %q && nohup %q --config %q >> %q 2>&1 < /dev/null &' "${KEEPER_BIN_DIR}" "${KEEPER_BIN}" "${conf}" \
+      "${MONITOR_DIR}/${KEEPER_BIN_FILE_NAME}-${remote_hostname}.launch.log"
+    if ! ssh -n "${host}" "${launch}"; then
+      echo -e "${ERR}Cannot launch the keeper on ${host}, exiting ...${NC}" >&2
+      return 1
+    fi
+  done
+}
+
 start() {
   check_work_dir
 
@@ -759,6 +931,11 @@ stop() {
 
   wait
 
+  # Each keeper with the WAL on writes exit-summary in its WAL directory as it
+  # exits. Read them now, but stop the rest before failing on them.
+  local wal_status=0
+  report_keeper_wal_exit_summaries || wal_status=$?
+
   echo -e "${DEBUG}Stopping ChronoGrapher ...${NC}"
   parallel_remote_stop_processes ${GRAPHER_HOSTS} ${GRAPHER_BIN}
 
@@ -769,7 +946,20 @@ stop() {
 
   parallel_remote_check_all
 
+  if ((wal_status != 0)); then
+    echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed, or its host did not answer) or holds unconfirmed events; see the table above. Restart that keeper with --restart-keeper <host> to replay them.${NC}" >&2
+    exit 1
+  fi
+
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Stop done${NC}" || true
+}
+
+restart() {
+  check_work_dir
+
+  echo -e "${INFO}Restarting the keeper on ${RESTART_KEEPER_HOST} ...${NC}"
+  restart_keeper "${RESTART_KEEPER_HOST}" || exit 1
+  echo -e "${INFO}Keeper on ${RESTART_KEEPER_HOST} relaunched; its launch log is in ${MONITOR_DIR}${NC}"
 }
 
 clean() {
@@ -788,6 +978,9 @@ clean() {
     [[ -n $(parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN}) ]] && echo -e "${ERR}ChronoKeeper is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
     [[ -n $(parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN}) ]] && echo -e "${ERR}ChronoPlayer is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
   done
+
+  # First, so a refusal leaves the generated confs and hosts files a restart needs.
+  clean_keeper_wal_dirs "${force}" || exit 1
 
   echo -e "${DEBUG}Removing conf and hosts files ...${NC}"
   rm -f ${KEEPER_HOSTS}*.*
@@ -813,7 +1006,7 @@ clean_output_dir() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,restart-keeper:,force,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -927,6 +1120,15 @@ parse_args() {
       WAL_DIR_LIST="$2"
       shift 2
       ;;
+    --restart-keeper)
+      restart=true
+      RESTART_KEEPER_HOST="$2"
+      shift 2
+      ;;
+    --force)
+      force=true
+      shift
+      ;;
     -h | --help)
       usage
       shift 2
@@ -979,6 +1181,8 @@ elif ${stop}; then
   stop
 elif ${clean}; then
   clean
+elif ${restart}; then
+  restart
 fi
 
 echo -e "${INFO}Done${NC}"
