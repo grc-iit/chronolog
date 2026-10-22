@@ -1611,6 +1611,43 @@ TEST_F(KeeperWalTest, IdleRotationWithoutASpareKeepsTheActiveSegment)
     EXPECT_GT(segmentOf(fourth), two);
 }
 
+// After a released segment is removed but the directory sync fails, no newer
+// segment is deleted until a directory sync succeeds: after a crash the
+// removed segment may come back, and the newer segments hold the D records
+// that apply to it.
+TEST_F(KeeperWalTest, FailedDirectorySyncHoldsBackNewerDeletions)
+{
+    startWal();
+    // three 300 KiB events fill a 1 MiB segment
+    std::vector<chl::LogEvent> events;
+    for(uint64_t i = 0; i < 7; ++i)
+    {
+        events.push_back(makeEvent(kStory, 1000 + i, 300 * 1024));
+        ASSERT_EQ(append(events.back()), chl::CL_SUCCESS);
+    }
+    uint64_t const first = segmentOf(events[0]);
+    uint64_t const second = segmentOf(events[3]);
+    uint64_t const active = segmentOf(events[6]);
+    ASSERT_LT(first, second);
+    ASSERT_LT(second, active);
+    // the preparer's next spare is ready, so nothing else syncs the directory
+    ASSERT_TRUE(waitFor([&]() { return segmentNumbers().back() == active + 1; }));
+
+    sink->failDirectorySyncsWith(EIO);
+    uint64_t const directory_syncs_before = sink->directorySyncCount();
+    wal->chunkWritten(kStory, chunkOf(kStory, {events[0], events[1], events[2], events[3], events[4], events[5]}));
+    ASSERT_TRUE(waitFor([&]() { return !exists(first); }, 3s));
+    std::this_thread::sleep_for(400ms);
+    EXPECT_TRUE(exists(second));
+    // the sync is tried again
+    EXPECT_GT(sink->directorySyncCount(), directory_syncs_before + 1);
+
+    sink->failDirectorySyncsWith(0);
+    ASSERT_TRUE(waitFor([&]() { return !exists(second); }, 3s));
+    EXPECT_TRUE(exists(active));
+    EXPECT_TRUE(waitFor([&]() { return wal->stats().segments == 1; }));
+}
+
 // When the committer's stream cannot be created, start returns CL_ERR_UNKNOWN
 // instead of throwing, leaves the WAL not started with no recovered copy
 // pending, refuses a write at once instead of queuing it for a committer that

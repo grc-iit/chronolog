@@ -241,6 +241,9 @@ private:
     // Latches the failure, logs it and fails the group.
     void failGroup(std::vector<Queued>& group, int err, std::string const& what);
     // Deletes the oldest segments with nothing pending, never the active one.
+    // After a removal whose directory sync failed, deletes nothing newer until
+    // a directory sync succeeds: a segment that came back after a crash must
+    // still find the D records of the newer segments.
     void deleteReleasedSegments();
     // Every 100 ms: the free-space sample, the idle rotation and the max_bytes
     // warning.
@@ -322,6 +325,7 @@ private:
     std::chrono::steady_clock::time_point lastSizeWarning;
     std::chrono::steady_clock::time_point lastFreeSpaceWarning;
     std::chrono::steady_clock::time_point lastDeleteWarning;
+    bool directorySyncOwed = false; // a segment was removed, but the directory sync after it failed
 
     thallium::managed<thallium::xstream> committerStream;
     thallium::managed<thallium::thread> committerThread;

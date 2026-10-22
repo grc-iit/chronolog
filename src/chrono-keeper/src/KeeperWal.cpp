@@ -822,6 +822,25 @@ void KeeperWal::failGroup(std::vector<Queued>& group, int err, std::string const
 
 void KeeperWal::deleteReleasedSegments()
 {
+    if(directorySyncOwed)
+    {
+        if(int err = sink->syncDirectory())
+        {
+            auto const now = std::chrono::steady_clock::now();
+            if(now - lastDeleteWarning >= kWarningInterval)
+            {
+                lastDeleteWarning = now;
+                LOG_WARNING("[KeeperWal] Still cannot sync WAL directory {} after removing a released segment: {}. No "
+                            "newer segment is deleted until it syncs",
+                            walDirectory,
+                            std::strerror(err));
+            }
+            return;
+        }
+        directorySyncOwed = false;
+        LOG_INFO("[KeeperWal] Synced WAL directory {} after the removal of a released segment", walDirectory);
+    }
+
     std::vector<uint64_t> released;
     {
         std::lock_guard<WalMutex> lock(mutex);
@@ -836,11 +855,26 @@ void KeeperWal::deleteReleasedSegments()
     {
         if(int err = segmentFiles.deleteSegment(segment))
         {
+            std::vector<uint64_t> const& listed = segmentFiles.segments();
+            if(std::find(listed.begin(), listed.end(), segment) == listed.end())
+            {
+                // Removed, but the removal may not survive a crash. A newer
+                // segment can hold the D record that applies to this one, so
+                // it stays until the directory sync succeeds.
+                segmentSizes.erase(segment);
+                directorySyncOwed = true;
+                LOG_ERROR("[KeeperWal] Removed released WAL segment {} in {}, but the directory sync after it failed: "
+                          "{}. No newer segment is deleted until a directory sync succeeds",
+                          wal::segmentFileName(segment),
+                          walDirectory,
+                          std::strerror(err));
+                break;
+            }
             auto const now = std::chrono::steady_clock::now();
             if(now - lastDeleteWarning >= kWarningInterval)
             {
                 lastDeleteWarning = now;
-                LOG_WARNING("[KeeperWal] Cannot delete released WAL segment {} in {}: {}",
+                LOG_WARNING("[KeeperWal] Cannot remove released WAL segment {} in {}: {}",
                             wal::segmentFileName(segment),
                             walDirectory,
                             std::strerror(err));
