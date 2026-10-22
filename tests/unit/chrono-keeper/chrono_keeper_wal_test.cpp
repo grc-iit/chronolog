@@ -16,12 +16,16 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
 #include <cerrno>
+#include <sys/resource.h>
 
 #include <thallium.hpp>
 
@@ -116,6 +120,108 @@ struct Append
     std::atomic<int> status{1};
 };
 
+// One lookupDurable made from a ULT; answer is set before done.
+struct Lookup
+{
+    chl::LogEvent event;
+    std::atomic<bool> done{false};
+    std::optional<int> answer;
+};
+
+// Forwards to another sink. Fails rename, which only the preparation of a
+// spare uses, when told to, and counts the renames tried.
+class RenameFailingSink: public chl::WalFileSink
+{
+public:
+    explicit RenameFailingSink(std::unique_ptr<chl::WalFileSink> inner)
+        : inner(std::move(inner))
+    {}
+
+    void failRenamesWith(int err) { renameError = err; }
+    uint64_t renameCount() const { return renames.load(); }
+
+    int openDirectory(std::string const& dir) override { return inner->openDirectory(dir); }
+    int lockDirectory() override { return inner->lockDirectory(); }
+    int createZeroed(std::string const& name, uint64_t bytes) override { return inner->createZeroed(name, bytes); }
+    int openForWrite(std::string const& name, int& fd) override { return inner->openForWrite(name, fd); }
+    int writeAt(int fd, uint64_t offset, iovec const* iov, int iovcnt) override
+    {
+        return inner->writeAt(fd, offset, iov, iovcnt);
+    }
+    int syncData(int fd) override { return inner->syncData(fd); }
+    int rename(std::string const& from, std::string const& to) override
+    {
+        ++renames;
+        if(int err = renameError.load())
+        {
+            return err;
+        }
+        return inner->rename(from, to);
+    }
+    int remove(std::string const& name) override { return inner->remove(name); }
+    int syncDirectory() override { return inner->syncDirectory(); }
+    int readFile(std::string const& name, std::string& out) override { return inner->readFile(name, out); }
+    int list(std::vector<std::string>& names) override { return inner->list(names); }
+    int freeSpace(uint64_t& free_bytes, uint64_t& total_bytes) override
+    {
+        return inner->freeSpace(free_bytes, total_bytes);
+    }
+    int closeFile(int fd) override { return inner->closeFile(fd); }
+
+private:
+    std::unique_ptr<chl::WalFileSink> inner;
+    std::atomic<int> renameError{0};
+    std::atomic<uint64_t> renames{0};
+};
+
+// Sets RLIMIT_NPROC to 0 while it lives, so pthread_create fails with EAGAIN
+// and no Argobots stream can be created. refused() is false when threads are
+// still created under the limit (a privileged user).
+class NoNewThreads
+{
+public:
+    NoNewThreads()
+    {
+        if(getrlimit(RLIMIT_NPROC, &saved) != 0)
+        {
+            return;
+        }
+        rlimit none = saved;
+        none.rlim_cur = 0;
+        if(setrlimit(RLIMIT_NPROC, &none) != 0)
+        {
+            return;
+        }
+        limited = true;
+        try
+        {
+            std::thread([] {}).join();
+        }
+        catch(std::system_error const&)
+        {
+            threadsRefused = true;
+        }
+    }
+
+    ~NoNewThreads() { restore(); }
+
+    void restore()
+    {
+        if(limited)
+        {
+            setrlimit(RLIMIT_NPROC, &saved);
+            limited = false;
+        }
+    }
+
+    bool refused() const { return threadsRefused; }
+
+private:
+    rlimit saved{};
+    bool limited = false;
+    bool threadsRefused = false;
+};
+
 // A record read back from a segment file.
 struct OnDisk
 {
@@ -146,21 +252,30 @@ protected:
     }
 
     // The sink reports plenty of free space unless a test says otherwise, so
-    // the reserve does not depend on the disk the tests run on.
-    void makeWal(std::chrono::milliseconds idle_rotation = 1min)
+    // the reserve does not depend on the disk the tests run on. With
+    // rename_failures the WAL writes through a RenameFailingSink around it.
+    void makeWal(std::chrono::milliseconds idle_rotation = 1min, bool rename_failures = false)
     {
         auto owned = std::make_unique<chl::FaultInjectingWalFileSink>(chl::makePosixWalFileSink());
         sink = owned.get();
         sink->setFreeSpace(1000 * kMiB * 1024, 2000 * kMiB * 1024);
-        wal = std::make_unique<chl::KeeperWal>(conf, kEndpoint, std::move(owned), idle_rotation);
+        std::unique_ptr<chl::WalFileSink> top = std::move(owned);
+        renameSink = nullptr;
+        if(rename_failures)
+        {
+            auto wrapped = std::make_unique<RenameFailingSink>(std::move(top));
+            renameSink = wrapped.get();
+            top = std::move(wrapped);
+        }
+        wal = std::make_unique<chl::KeeperWal>(conf, kEndpoint, std::move(top), idle_rotation);
     }
 
     // In a fresh directory start takes segment 1 and the preparer makes
     // segment 2. Waiting for it keeps the preparer's sync out of the tests'
     // held syncs and sync counts.
-    void startWal(std::chrono::milliseconds idle_rotation = 1min)
+    void startWal(std::chrono::milliseconds idle_rotation = 1min, bool rename_failures = false)
     {
-        makeWal(idle_rotation);
+        makeWal(idle_rotation, rename_failures);
         ASSERT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_SUCCESS);
         ASSERT_TRUE(waitFor([this]() { return segmentNumbers().size() == 2; }));
     }
@@ -179,6 +294,76 @@ protected:
                     request.status = append(request.event);
                     request.done = true;
                 });
+    }
+
+    // Starts a lookupDurable of the request's event on a ULT of the pool.
+    void lookupOn(UltPool& pool, Lookup& request)
+    {
+        pool.run(
+                [this, &request]()
+                {
+                    request.answer = wal->lookupDurable(request.event.getStoryId(), identityOf(request.event));
+                    request.done = true;
+                });
+    }
+
+    // Durable writes of every event from that many ULTs, each writing its
+    // share in order, so the groups are large and the run is short. True when
+    // every one got CL_SUCCESS.
+    bool appendAll(std::vector<chl::LogEvent> const& events, std::size_t writers = 64)
+    {
+        std::atomic<std::size_t> failures{0};
+        {
+            UltPool pool;
+            for(std::size_t writer = 0; writer < writers; ++writer)
+            {
+                pool.run(
+                        [&, writer]()
+                        {
+                            for(std::size_t i = writer; i < events.size(); i += writers)
+                            {
+                                if(append(events[i]) != chl::CL_SUCCESS)
+                                {
+                                    ++failures;
+                                }
+                            }
+                        });
+            }
+        }
+        return failures.load() == 0;
+    }
+
+    // Writes the segment a crashed keeper would have left: its H record, then
+    // an N and an E record for each event, zeros to segment_bytes. Returns
+    // the recovered state recovery would make of it: one copy of each event,
+    // in that segment, pending under the event's story id.
+    chl::RecoveredState writeRecoveredSegment(uint64_t segment, std::vector<chl::LogEvent> const& events)
+    {
+        fs::create_directories(dir);
+        chl::RecoveredState recovered;
+        recovered.segments = {segment};
+        std::string bytes = wal::encodeHeader(wal::HeaderRecord{wal::kFormatVersion, segment, 1, kEndpoint});
+        for(auto const& event: events)
+        {
+            chl::StoryId const story_id = event.getStoryId();
+            bytes += wal::encodeNames(wal::NamesRecord{story_id, kChronicle, storyName(story_id)});
+            wal::EventFrame frame = wal::encodeEvent(event);
+            bytes.append(frame.frame_header.data(), frame.frame_header.size());
+            bytes += frame.head;
+            bytes.append(frame.record.data(), frame.record.size());
+            bytes += frame.tail;
+
+            chl::RecoveredStory& story = recovered.stories[story_id];
+            story.wal_story_id = story_id;
+            story.has_names = true;
+            story.chronicle = kChronicle;
+            story.story = storyName(story_id);
+            story.events[identityOf(event)] = event;
+            story.copies[identityOf(event)].push_back({segment, frame.size()});
+        }
+        bytes.resize(conf.segment_bytes, '\0');
+        std::ofstream(fs::path(dir) / wal::segmentFileName(segment), std::ios::binary) << bytes;
+        return recovered;
     }
 
     std::vector<uint64_t> segmentNumbers()
@@ -289,6 +474,7 @@ protected:
     std::string dir;
     chl::WalConf conf;
     chl::FaultInjectingWalFileSink* sink = nullptr; // owned by wal
+    RenameFailingSink* renameSink = nullptr;        // owned by wal, when makeWal was asked for it
     std::unique_ptr<chl::KeeperWal> wal;
 };
 
@@ -1063,4 +1249,502 @@ TEST_F(KeeperWalTest, ManyWritersAcrossRotationsWriteEachEventOnce)
     EXPECT_EQ(wal->stats().pending_events, 0u);
     EXPECT_EQ(wal->stats().pending_bytes, 0u);
     ASSERT_TRUE(waitFor([&]() { return wal->stats().segments == 1; }, 3s));
+}
+
+// A2: a retry is answered by its first attempt before any other check. With
+// the reserve full, so W14 would refuse a new write, a lookup of an attempt in
+// its group's sync and of one queued behind it waits for them and gets their
+// CL_SUCCESS, instead of reporting the identity unknown.
+TEST_F(KeeperWalTest, LookupWaitsForAQueuedAttemptWhileTheReserveIsFull)
+{
+    conf.reserve_min_bytes = 4 * kMiB;
+    startWal();
+    // full first: the free space is sampled by the committer, which a held
+    // sync stops
+    sink->setFreeSpace(kMiB, 100 * kMiB);
+    ASSERT_TRUE(waitFor([&]() { return wal->admit() == chl::WalAdmit::Full; }, 2s));
+    sink->holdSyncs();
+
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    requests.emplace_back().event = event;
+    std::deque<Lookup> lookups;
+    lookups.emplace_back().event = blocker; // in its group's sync
+    lookups.emplace_back().event = event;   // queued behind it
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        appendOn(pool, requests[1]);
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 2; }));
+
+        for(auto& lookup: lookups) { lookupOn(pool, lookup); }
+        std::this_thread::sleep_for(100ms);
+        for(auto const& lookup: lookups) { EXPECT_FALSE(lookup.done.load()); }
+        EXPECT_EQ(wal->admit(), chl::WalAdmit::Full);
+        EXPECT_EQ(wal->stats().queued_events, 2u);
+        // an identity the WAL does not hold is answered at once
+        EXPECT_EQ(wal->lookupDurable(kStory, chl::EventSequence{5, 1, 0}), std::nullopt);
+        sink->releaseSyncs();
+    }
+    for(auto const& request: requests) { EXPECT_EQ(request.status.load(), chl::CL_SUCCESS); }
+    for(auto const& lookup: lookups) { EXPECT_EQ(lookup.answer, std::optional<int>(chl::CL_SUCCESS)); }
+    EXPECT_EQ(copiesOnDisk(event), 1u);
+    EXPECT_EQ(wal->stats().events, 2u);
+    // durable now: answered at once, the reserve still full
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Full);
+}
+
+// A lookup that joined an attempt whose group failed gets that failure; once
+// answered, the identity is unknown to the WAL.
+TEST_F(KeeperWalTest, LookupOfAFailedAttemptGetsItsFailure)
+{
+    startWal();
+    sink->holdSyncs();
+    sink->failSyncsWith(EIO);
+
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    std::deque<Append> requests;
+    requests.emplace_back().event = event;
+    std::deque<Lookup> lookups;
+    lookups.emplace_back().event = event;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(event) == 1; }));
+        lookupOn(pool, lookups[0]);
+        std::this_thread::sleep_for(50ms);
+        EXPECT_FALSE(lookups[0].done.load());
+        sink->releaseSyncs();
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(lookups[0].answer, std::optional<int>(chl::CL_ERR_DURABILITY_UNAVAILABLE));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+}
+
+// A durable event is answered CL_SUCCESS by the lookup whether the WAL runs,
+// has failed or has stopped; an unknown or released one is std::nullopt.
+TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
+{
+    makeWal();
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt); // not started
+
+    ASSERT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_SUCCESS);
+    ASSERT_EQ(append(event), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    EXPECT_EQ(wal->lookupDurable(kOtherStory, identityOf(event)), std::nullopt);
+
+    sink->failSyncsWith(EIO);
+    EXPECT_EQ(append(makeEvent(kStory, 2000)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    ASSERT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+
+    wal->stop();
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    wal->eventDiscarded(kStory, identityOf(event));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+}
+
+// An event too large for a WAL record (a body over 256 MiB) is refused with
+// CL_ERR_INVALID_ARG before anything is queued or written, and the WAL goes
+// on. Needs one 256 MiB allocation.
+TEST_F(KeeperWalTest, EventTooLargeForARecordIsInvalid)
+{
+    startWal();
+    chl::LogEvent event = makeEvent(kStory, 1000, 0);
+    // the record alone fills a body; the event's type byte and header push it over
+    event.logRecord.assign(wal::kMaxBodyBytes, 'x');
+    uint64_t const syncs_before = sink->syncCount();
+    EXPECT_EQ(append(event), chl::CL_ERR_INVALID_ARG);
+    EXPECT_EQ(wal->stats().queued_events, 0u);
+    EXPECT_EQ(wal->stats().events, 0u);
+    EXPECT_EQ(sink->syncCount(), syncs_before);
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(event)));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    event.logRecord.clear();
+    event.logRecord.shrink_to_fit();
+
+    chl::LogEvent const next = makeEvent(kStory, 1001);
+    EXPECT_EQ(append(next), chl::CL_SUCCESS);
+    EXPECT_EQ(copiesOnDisk(next), 1u);
+}
+
+// A group of more than one batch (1024 events) is registered across the batch
+// boundary: every event durable, and a retry of an event in the second batch
+// joins it.
+TEST_F(KeeperWalTest, GroupLargerThanABatchRegistersEveryEvent)
+{
+    constexpr uint64_t kEvents = 1500;
+    startWal();
+    sink->holdSyncs();
+
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    for(uint64_t i = 0; i < kEvents; ++i) { requests.emplace_back().event = makeEvent(kStory, 1000 + i); }
+    std::deque<Append> retry;
+    retry.emplace_back().event = requests[1400].event;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        for(std::size_t i = 1; i < requests.size(); ++i) { appendOn(pool, requests[i]); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == kEvents + 1; }, 20s));
+        appendOn(pool, retry[0]);
+        std::this_thread::sleep_for(50ms);
+        EXPECT_EQ(wal->stats().queued_events, kEvents + 1);
+        sink->releaseSyncs();
+    }
+    for(auto const& request: requests)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_TRUE(wal->isDurable(request.event.getStoryId(), identityOf(request.event)));
+    }
+    EXPECT_EQ(retry[0].status.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(copiesOnDisk(retry[0].event), 1u);
+    chl::WalStats const stats = wal->stats();
+    EXPECT_EQ(stats.events, kEvents + 1);
+    EXPECT_EQ(stats.pending_events, kEvents + 1);
+    EXPECT_GE(stats.max_events_per_group, kEvents);
+    EXPECT_EQ(stats.queued_events, 0u);
+}
+
+// A D record for a story with more pending copies than a batch drops them all
+// in batches, together with the story's events written before the D in the
+// same group, and keeps the events written after it in that group.
+TEST_F(KeeperWalTest, StoryDropAcrossBatchesKeepsTheEventsAfterIt)
+{
+    startWal();
+    std::vector<chl::LogEvent> backlog;
+    for(uint64_t i = 0; i < 3200; ++i) { backlog.push_back(makeEvent(kStory, 1000 + i)); }
+    ASSERT_TRUE(appendAll(backlog));
+    ASSERT_EQ(wal->stats().pending_events, backlog.size());
+
+    sink->holdSyncs();
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    std::deque<Append> before;
+    std::deque<Append> after;
+    for(uint64_t i = 0; i < 5; ++i)
+    {
+        before.emplace_back().event = makeEvent(kStory, 5000 + i);
+        after.emplace_back().event = makeEvent(kStory, 6000 + i);
+    }
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        // queued behind the blocker's held sync, so all in the next group, in this order
+        for(auto& request: before) { appendOn(pool, request); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 6; }));
+        wal->storyDropped(kStory);
+        for(auto& request: after) { appendOn(pool, request); }
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 11; }));
+        sink->releaseSyncs();
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    for(auto const& request: before)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_FALSE(wal->isDurable(kStory, identityOf(request.event)));
+    }
+    for(auto const& request: after)
+    {
+        EXPECT_EQ(request.status.load(), chl::CL_SUCCESS);
+        EXPECT_TRUE(wal->isDurable(kStory, identityOf(request.event)));
+    }
+    std::size_t still_pending = 0;
+    for(auto const& event: backlog) { still_pending += wal->isDurable(kStory, identityOf(event)) ? 1 : 0; }
+    EXPECT_EQ(still_pending, 0u);
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(blocker)));
+    EXPECT_EQ(wal->stats().pending_events, after.size() + 1);
+    EXPECT_EQ(droppedRecordsOnDisk(kStory), 1u);
+
+    // the copies after the D are still released by their chunk
+    std::vector<chl::LogEvent> kept;
+    for(auto const& request: after) { kept.push_back(request.event); }
+    wal->chunkWritten(kStory, chunkOf(kStory, kept));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+}
+
+// Chunks with more events than a batch, of a story with more pending events
+// than a batch, release exactly their own events: a chunk smaller than the
+// backlog, then one larger than what is left that also holds events the WAL
+// never had.
+TEST_F(KeeperWalTest, ChunkReleaseAcrossBatchesReleasesExactlyItsEvents)
+{
+    startWal();
+    std::vector<chl::LogEvent> backlog;
+    for(uint64_t i = 0; i < 3200; ++i) { backlog.push_back(makeEvent(kStory, 1000 + i)); }
+    ASSERT_TRUE(appendAll(backlog));
+    chl::LogEvent const other = makeEvent(kOtherStory, 1000);
+    ASSERT_EQ(append(other), chl::CL_SUCCESS);
+    ASSERT_EQ(wal->stats().pending_events, backlog.size() + 1);
+
+    // two of every three events, then the rest
+    std::vector<chl::LogEvent> first;
+    std::vector<chl::LogEvent> rest;
+    for(std::size_t i = 0; i < backlog.size(); ++i) { ((i % 3 != 2) ? first : rest).push_back(backlog[i]); }
+    ASSERT_GT(rest.size(), 1024u);
+    wal->chunkWritten(kStory, chunkOf(kStory, first));
+    EXPECT_EQ(wal->stats().pending_events, rest.size() + 1);
+    for(auto const& event: first) { EXPECT_FALSE(wal->isDurable(kStory, identityOf(event))); }
+    for(auto const& event: rest) { EXPECT_TRUE(wal->isDurable(kStory, identityOf(event))); }
+
+    std::vector<chl::LogEvent> larger = rest;
+    for(uint64_t i = 0; i < 4000; ++i) { larger.push_back(makeEvent(kStory, 100000 + i)); }
+    wal->chunkDiscarded(kStory, chunkOf(kStory, larger));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(other).size());
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
+}
+
+// A large chunk release and a large story drop go a batch at a time, and a
+// thread waiting for the WAL's mutex, as an RPC stream calling isDurable
+// would, gets it between batches: it sees the pending count part of the way
+// down. One long hold, or batches that take the mutex straight back (glibc's
+// mutex is not fair), would let it in only at the end.
+TEST_F(KeeperWalTest, BatchesLetAWaitingThreadIn)
+{
+    constexpr std::size_t kEvents = 50000;
+    conf.segment_bytes = 32 * kMiB;
+    startWal();
+
+    // the pending counts strictly between 0 and kEvents a thread polling
+    // stats() saw while work ran
+    auto seenPartWayDown = [&](std::function<void()> const& work) -> std::size_t
+    {
+        std::atomic<bool> working{true};
+        std::set<uint64_t> seen;
+        std::thread prober(
+                [&]()
+                {
+                    while(working.load())
+                    {
+                        uint64_t const pending = wal->stats().pending_events;
+                        if(pending > 1 && pending < kEvents + 1)
+                        {
+                            seen.insert(pending);
+                        }
+                        std::this_thread::sleep_for(20us);
+                    }
+                });
+        work();
+        working = false;
+        prober.join();
+        return seen.size();
+    };
+
+    chl::LogEvent const other = makeEvent(kOtherStory, 1000);
+    ASSERT_EQ(append(other), chl::CL_SUCCESS);
+    std::vector<chl::LogEvent> released;
+    std::vector<chl::LogEvent> dropped;
+    for(uint64_t i = 0; i < kEvents; ++i)
+    {
+        released.push_back(makeEvent(kStory, 1000 + i));
+        dropped.push_back(makeEvent(kStory, 1000000 + i));
+    }
+    chl::StoryChunk const chunk = chunkOf(kStory, released);
+
+    ASSERT_TRUE(appendAll(released, 512));
+    ASSERT_EQ(wal->stats().pending_events, kEvents + 1);
+    std::size_t const during_release = seenPartWayDown([&]() { wal->chunkWritten(kStory, chunk); });
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    // about 49 batches
+    EXPECT_GE(during_release, 5u);
+
+    ASSERT_TRUE(appendAll(dropped, 512));
+    ASSERT_EQ(wal->stats().pending_events, kEvents + 1);
+    std::size_t const during_drop = seenPartWayDown(
+            [&]()
+            {
+                wal->storyDropped(kStory);
+                EXPECT_TRUE(waitFor([&]() { return wal->stats().pending_events == 1; }, 30s));
+            });
+    EXPECT_GE(during_drop, 5u);
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
+}
+
+// A failed sync of the active segment before an idle rotation latches the WAL
+// like a failed group sync, and the segment is not replaced.
+TEST_F(KeeperWalTest, IdleRotationSyncFailureLatches)
+{
+    startWal(200ms);
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(event), chl::CL_SUCCESS);
+    uint64_t const segment = segmentOf(event);
+    ASSERT_NE(segment, 0u);
+
+    sink->failSyncsWith(EIO);
+    wal->eventDiscarded(kStory, identityOf(event));
+    ASSERT_TRUE(waitFor([&]() { return wal->admit() == chl::WalAdmit::Unavailable; }, 3s));
+    std::this_thread::sleep_for(300ms);
+    EXPECT_TRUE(exists(segment));
+
+    sink->failSyncsWith(0);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+}
+
+// When only the spare for an idle rotation cannot be made, the synced active
+// segment stays in use and the WAL keeps taking durable writes; the rotation
+// is tried again an interval later and goes through once spares can be made.
+TEST_F(KeeperWalTest, IdleRotationWithoutASpareKeepsTheActiveSegment)
+{
+    startWal(200ms, true);
+    ASSERT_NE(renameSink, nullptr);
+    // the ready spare is taken by the first rotation; every later spare fails
+    // at its rename
+    renameSink->failRenamesWith(EIO);
+
+    chl::LogEvent const first = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(first), chl::CL_SUCCESS);
+    uint64_t const one = segmentOf(first);
+    wal->eventDiscarded(kStory, identityOf(first));
+    ASSERT_TRUE(waitFor([&]() { return !exists(one); }, 3s));
+
+    chl::LogEvent const second = makeEvent(kStory, 2000);
+    ASSERT_EQ(append(second), chl::CL_SUCCESS);
+    uint64_t const two = segmentOf(second);
+    ASSERT_GT(two, one);
+    uint64_t const renames_before = renameSink->renameCount();
+    wal->eventDiscarded(kStory, identityOf(second));
+    // the preparer's attempt and the committer's own
+    ASSERT_TRUE(waitFor([&]() { return renameSink->renameCount() >= renames_before + 2; }, 3s));
+    std::this_thread::sleep_for(100ms);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    EXPECT_TRUE(exists(two));
+
+    chl::LogEvent const third = makeEvent(kStory, 3000);
+    EXPECT_EQ(append(third), chl::CL_SUCCESS);
+    EXPECT_EQ(segmentOf(third), two);
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(third)));
+
+    renameSink->failRenamesWith(0);
+    wal->eventDiscarded(kStory, identityOf(third));
+    ASSERT_TRUE(waitFor([&]() { return !exists(two); }, 3s));
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    chl::LogEvent const fourth = makeEvent(kStory, 4000);
+    EXPECT_EQ(append(fourth), chl::CL_SUCCESS);
+    EXPECT_GT(segmentOf(fourth), two);
+}
+
+// After a released segment is removed but the directory sync fails, no newer
+// segment is deleted until a directory sync succeeds: after a crash the
+// removed segment may come back, and the newer segments hold the D records
+// that apply to it.
+TEST_F(KeeperWalTest, FailedDirectorySyncHoldsBackNewerDeletions)
+{
+    startWal();
+    // three 300 KiB events fill a 1 MiB segment
+    std::vector<chl::LogEvent> events;
+    for(uint64_t i = 0; i < 7; ++i)
+    {
+        events.push_back(makeEvent(kStory, 1000 + i, 300 * 1024));
+        ASSERT_EQ(append(events.back()), chl::CL_SUCCESS);
+    }
+    uint64_t const first = segmentOf(events[0]);
+    uint64_t const second = segmentOf(events[3]);
+    uint64_t const active = segmentOf(events[6]);
+    ASSERT_LT(first, second);
+    ASSERT_LT(second, active);
+    // the preparer's next spare is ready, so nothing else syncs the directory
+    ASSERT_TRUE(waitFor([&]() { return segmentNumbers().back() == active + 1; }));
+
+    sink->failDirectorySyncsWith(EIO);
+    uint64_t const directory_syncs_before = sink->directorySyncCount();
+    wal->chunkWritten(kStory, chunkOf(kStory, {events[0], events[1], events[2], events[3], events[4], events[5]}));
+    ASSERT_TRUE(waitFor([&]() { return !exists(first); }, 3s));
+    std::this_thread::sleep_for(400ms);
+    EXPECT_TRUE(exists(second));
+    // the sync is tried again
+    EXPECT_GT(sink->directorySyncCount(), directory_syncs_before + 1);
+
+    sink->failDirectorySyncsWith(0);
+    ASSERT_TRUE(waitFor([&]() { return !exists(second); }, 3s));
+    EXPECT_TRUE(exists(active));
+    EXPECT_TRUE(waitFor([&]() { return wal->stats().segments == 1; }));
+}
+
+// When the committer's stream cannot be created, start returns CL_ERR_UNKNOWN
+// instead of throwing, leaves the WAL not started with no recovered copy
+// pending, refuses a write at once instead of queuing it for a committer that
+// does not exist, and can be called again; the second start adds the
+// recovered copies once.
+TEST_F(KeeperWalTest, StartThatCannotCreateItsCommitterCanBeRetried)
+{
+    chl::LogEvent const recovered_event = makeEvent(kStory, 1000);
+    chl::RecoveredState const recovered = writeRecoveredSegment(1, {recovered_event});
+    makeWal();
+
+    int status = chl::CL_SUCCESS;
+    {
+        NoNewThreads limit;
+        if(!limit.refused())
+        {
+            limit.restore();
+            GTEST_SKIP() << "threads are still created under RLIMIT_NPROC 0 (a privileged user)";
+        }
+        EXPECT_NO_THROW(status = wal->start(recovered, {}));
+    }
+    ASSERT_EQ(status, chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(recovered_event)));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(recovered_event)), std::nullopt);
+    std::atomic<int> answer{1};
+    std::thread writer([&]() { answer = append(makeEvent(kStory, 2000)); });
+    if(!waitFor([&]() { return answer.load() != 1; }))
+    {
+        // left waiting for a committer: the WAL cannot be destroyed under it
+        writer.detach();
+        std::abort();
+    }
+    writer.join();
+    EXPECT_EQ(answer.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+
+    ASSERT_EQ(wal->start(recovered, {}), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(recovered_event).size());
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(recovered_event)));
+    chl::LogEvent const fresh = makeEvent(kStory, 3000);
+    EXPECT_EQ(append(fresh), chl::CL_SUCCESS);
+
+    // the recovered copy was its segment's only one: released, the segment goes
+    wal->chunkWritten(kStory, chunkOf(kStory, {recovered_event}));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_TRUE(waitFor([&]() { return !exists(1); }, 3s));
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(fresh)));
+}
+
+// A start that fails because no spare can be made adds no recovered copy, so
+// the start that follows adds each of them once.
+TEST_F(KeeperWalTest, StartRetriedAfterAFailedSpareAddsRecoveredCopiesOnce)
+{
+    chl::LogEvent const recovered_event = makeEvent(kStory, 1000);
+    chl::RecoveredState const recovered = writeRecoveredSegment(1, {recovered_event});
+    makeWal();
+
+    sink->failWritesWith(ENOSPC); // the spare cannot be zero-filled
+    EXPECT_EQ(wal->start(recovered, {}), chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_EQ(wal->stats().pending_bytes, 0u);
+
+    sink->failWritesWith(0);
+    ASSERT_EQ(wal->start(recovered, {}), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(recovered_event).size());
+    wal->chunkWritten(kStory, chunkOf(kStory, {recovered_event}));
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_EQ(wal->stats().pending_bytes, 0u);
+    EXPECT_TRUE(waitFor([&]() { return !exists(1); }, 3s));
 }
