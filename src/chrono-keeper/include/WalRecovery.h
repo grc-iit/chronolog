@@ -27,8 +27,23 @@ namespace chronolog
 //     end of the segment and data-synced: a torn group can leave a later page
 //     written after a missing one. In any other segment a bad frame, or
 //     anything but zeros after its end of data, refuses.
-// Every check runs before anything is written, so a refused recovery changes
-// no segment. Stories left with no events are not returned.
+//   - Before it returns, every segment is data-synced, then the directory. The
+//     keeper that wrote them may have died between writing a group and its
+//     sync: on the same boot that group reads back whole from the page cache
+//     without being on disk, and the WAL treats every returned copy as
+//     durable. The directory sync covers a spare renamed into place just
+//     before the crash, which the WAL may then write into.
+// Every check runs before anything is synced or written, so a refusal for a
+// bad segment changes no file. A failed sync refuses too: of an untorn
+// segment, before the torn tail is zeroed; of the torn segment or the
+// directory, after it. Stories left with no events are not returned.
+//
+// In `out`, bytes_read is the size of the segment files read, the pre-zeroed
+// space after their records included, so about the segment count times the
+// segment size rather than the bytes of records. oldest_segment_age_secs is
+// the time since the oldest segment's H was written, which is when it was
+// prepared as a spare and can be well before its first record. Both are for
+// the replay log.
 //
 // The sink must have its directory open, and the manager must be built on that
 // sink and not yet opened. Returns CL_SUCCESS, or CL_ERR_UNKNOWN with `error`

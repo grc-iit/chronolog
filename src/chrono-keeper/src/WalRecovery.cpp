@@ -193,6 +193,7 @@ bool readSegment(WalFileSink& sink,
         error = "cannot read " + where + ": " + std::strerror(err);
         return false;
     }
+    // the whole file, the pre-zeroed space after its records included
     state.bytes_read += bytes.size();
     wal::ScanResult const scan = wal::scanSegment(bytes);
 
@@ -286,6 +287,19 @@ int zeroTail(WalFileSink& sink, std::string const& name, uint64_t from, uint64_t
     return err;
 }
 
+// Data-syncs a segment without changing it.
+int syncSegment(WalFileSink& sink, std::string const& name)
+{
+    int fd = -1;
+    if(int err = sink.openForWrite(name, fd))
+    {
+        return err;
+    }
+    int err = sink.syncData(fd);
+    sink.closeFile(fd);
+    return err;
+}
+
 } // namespace
 
 int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& out, std::string& error)
@@ -350,11 +364,40 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
         }
     }
 
+    // The keeper that wrote these segments may have died after writing its last
+    // group and before that group's data sync returned. On the same boot the
+    // group then reads back whole from the page cache, with good CRCs and a
+    // clean tail, but is not on disk; yet the WAL treats every copy returned
+    // here as durable and answers a retry of it CL_SUCCESS. So every segment
+    // is synced before anything is returned. Only the newest segment with data
+    // should hold such a group (each group is synced before the next is
+    // written, and a rotation syncs first), but syncing a clean file costs one
+    // flush and does not depend on that order. The torn segment, if any, is
+    // synced with its zeros, after the others, so a failed sync refuses before
+    // any file is changed.
+    std::optional<std::size_t> torn;
     if(newest && ends[*newest].after_end)
+    {
+        torn = newest;
+    }
+    for(std::size_t i = 0; i < ends.size(); ++i)
+    {
+        if(torn && i == *torn)
+        {
+            continue;
+        }
+        if(int err = syncSegment(sink, ends[i].name))
+        {
+            error = "cannot sync " + segmentText(ends[i].name, directory) + ": " + std::strerror(err);
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
+    if(torn)
     {
         // A torn group can leave a later page written after a missing one, so
         // everything from the end of the data goes, not just the bad frame.
-        SegmentEnd& end = ends[*newest];
+        SegmentEnd& end = ends[*torn];
         std::string const where = segmentText(end.name, directory);
         if(int err = zeroTail(sink, end.name, end.data_end, end.size))
         {
@@ -370,6 +413,17 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
         end.after_end.reset();
     }
 
+    // A spare renamed into place just before the crash may lack its directory
+    // sync, and the WAL is about to write into it.
+    if(!ends.empty())
+    {
+        if(int err = sink.syncDirectory())
+        {
+            error = "cannot sync WAL directory " + directory + ": " + std::strerror(err);
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
     if(!ends.empty() && !ends.back().dataAfterHeader())
     {
         state.reusable_spare = ends.back().segment;
@@ -380,6 +434,8 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
         story = story->second.events.empty() ? state.stories.erase(story) : std::next(story);
     }
 
+    // from the oldest H, written when that segment was prepared as a spare,
+    // which can be well before its first record
     if(!state.segments.empty())
     {
         uint64_t const now_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(

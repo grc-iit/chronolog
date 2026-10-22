@@ -3,8 +3,10 @@
 // copy of it, so the WAL keeps each segment until the grapher confirms what is
 // in it. It may zero only the torn tail of the newest segment with data, and
 // must refuse, changing no file, on a bad record anywhere else, an unknown
-// format or codec version, or an unknown record type. Runs against a temporary
-// directory through the fault-injecting sink.
+// format or codec version, or an unknown record type. Before it returns it must
+// sync every segment and the directory, since the keeper that wrote them may
+// have died before its last sync. Runs against a temporary directory through
+// the fault-injecting sink.
 
 #include <gtest/gtest.h>
 
@@ -109,6 +111,96 @@ public:
     std::string bytes;
 };
 
+// Wraps the real sink and logs which file each write and data sync was for, so
+// a test can tell which segments recovery made durable and in what order. It
+// can also fail the data syncs of one file.
+class SyncRecordingSink: public chl::WalFileSink
+{
+public:
+    explicit SyncRecordingSink(std::unique_ptr<chl::WalFileSink> inner)
+        : inner(std::move(inner))
+    {}
+
+    // "write <name>", "sync <name>" and "syncdir", for the calls that succeeded
+    std::vector<std::string> ops;
+
+    // later syncData calls on `name` return err without syncing
+    void failSyncsOf(std::string const& name, int err)
+    {
+        failName = name;
+        failError = err;
+    }
+
+    int openDirectory(std::string const& dir) override { return inner->openDirectory(dir); }
+    int lockDirectory() override { return inner->lockDirectory(); }
+    int createZeroed(std::string const& name, uint64_t bytes) override { return inner->createZeroed(name, bytes); }
+    int openForWrite(std::string const& name, int& fd) override
+    {
+        int err = inner->openForWrite(name, fd);
+        if(err == 0)
+        {
+            names[fd] = name;
+        }
+        return err;
+    }
+    int writeAt(int fd, uint64_t offset, iovec const* iov, int iovcnt) override
+    {
+        int err = inner->writeAt(fd, offset, iov, iovcnt);
+        if(err == 0 && (ops.empty() || ops.back() != "write " + names[fd]))
+        {
+            ops.push_back("write " + names[fd]);
+        }
+        return err;
+    }
+    int syncData(int fd) override
+    {
+        if(failError != 0 && names[fd] == failName)
+        {
+            return failError;
+        }
+        int err = inner->syncData(fd);
+        if(err == 0)
+        {
+            ops.push_back("sync " + names[fd]);
+        }
+        return err;
+    }
+    int rename(std::string const& from, std::string const& to) override { return inner->rename(from, to); }
+    int remove(std::string const& name) override { return inner->remove(name); }
+    int syncDirectory() override
+    {
+        int err = inner->syncDirectory();
+        if(err == 0)
+        {
+            ops.push_back("syncdir");
+        }
+        return err;
+    }
+    int readFile(std::string const& name, std::string& out) override { return inner->readFile(name, out); }
+    int list(std::vector<std::string>& names) override { return inner->list(names); }
+    int freeSpace(uint64_t& free_bytes, uint64_t& total_bytes) override
+    {
+        return inner->freeSpace(free_bytes, total_bytes);
+    }
+    int closeFile(int fd) override
+    {
+        names.erase(fd);
+        return inner->closeFile(fd);
+    }
+
+private:
+    std::unique_ptr<chl::WalFileSink> inner;
+    std::map<int, std::string> names;
+    std::string failName;
+    int failError = 0;
+};
+
+std::string syncOf(uint64_t segment) { return "sync " + wal::segmentFileName(segment); }
+
+std::string writeOf(uint64_t segment) { return "write " + wal::segmentFileName(segment); }
+
+using Ops = std::vector<std::string>;
+
 bool allZero(std::string const& bytes, std::size_t from)
 {
     for(std::size_t i = from; i < bytes.size(); ++i)
@@ -144,7 +236,9 @@ protected:
     void open()
     {
         close();
-        sink = std::make_unique<chl::FaultInjectingWalFileSink>(chl::makePosixWalFileSink());
+        auto recording = std::make_unique<SyncRecordingSink>(chl::makePosixWalFileSink());
+        recorder = recording.get();
+        sink = std::make_unique<chl::FaultInjectingWalFileSink>(std::move(recording));
         ASSERT_EQ(sink->openDirectory(dir), 0);
         manager = std::make_unique<chl::WalSegmentManager>(*sink, kSegmentBytes, kEndpoint, dir);
     }
@@ -153,7 +247,11 @@ protected:
     {
         manager.reset();
         sink.reset();
+        recorder = nullptr;
     }
+
+    // the writes and syncs that reached the disk since open()
+    Ops const& ops() const { return recorder->ops; }
 
     int run()
     {
@@ -217,6 +315,7 @@ protected:
         EXPECT_TRUE(state.stories.empty());
         EXPECT_TRUE(state.segments.empty());
         EXPECT_EQ(sink->syncCount(), 0u);
+        EXPECT_TRUE(ops().empty()) << "a refused recovery wrote or synced before its checks";
         EXPECT_TRUE(snapshot() == before) << "a refused recovery changed a file";
     }
 
@@ -273,6 +372,7 @@ protected:
     std::string root;
     std::string dir;
     std::unique_ptr<chl::FaultInjectingWalFileSink> sink;
+    SyncRecordingSink* recorder = nullptr; // owned by sink
     std::unique_ptr<chl::WalSegmentManager> manager;
     chl::RecoveredState state;
     std::string error;
@@ -314,8 +414,9 @@ TEST_F(WalRecoveryTest, EventsNamesAndCopiesAreRecoveredInLogOrder)
     EXPECT_EQ(state.stories.at(kOther).story, "other");
     EXPECT_EQ(eventsOf(kOther), (std::vector<chl::EventSequence>{seqOf(c)}));
     expectConsistent();
-    // nothing torn: nothing written
-    EXPECT_EQ(sink->syncCount(), 0u);
+    // nothing torn: nothing written, but every segment is synced, oldest first,
+    // then the directory
+    EXPECT_EQ(ops(), (Ops{syncOf(1), syncOf(2), "syncdir"}));
 }
 
 TEST_F(WalRecoveryTest, EmptyDirectoryRecoversNothing)
@@ -369,7 +470,8 @@ TEST_F(WalRecoveryTest, TornTailIsZeroedAndSynced)
     ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
     EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a), seqOf(b)}));
     expectConsistent();
-    EXPECT_GE(sink->syncCount(), 1u);
+    // the older segment is synced before the newest one is zeroed
+    EXPECT_EQ(ops(), (Ops{syncOf(1), writeOf(2), syncOf(2), "syncdir"}));
 
     std::string const after = readSegment(2);
     ASSERT_EQ(after.size(), newest.size());
@@ -378,10 +480,13 @@ TEST_F(WalRecoveryTest, TornTailIsZeroedAndSynced)
     EXPECT_EQ(readSegment(1), older);
     EXPECT_FALSE(state.reusable_spare.has_value());
 
-    // a second start finds a clean tail: the same events, nothing written
-    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    // a second start finds a clean tail: the same events, nothing written,
+    // every segment synced again
+    open();
+    sink->failWritesWith(EIO);
+    ASSERT_EQ(run(), chl::CL_SUCCESS) << error;
     EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a), seqOf(b)}));
-    EXPECT_EQ(sink->syncCount(), 0u);
+    EXPECT_EQ(ops(), (Ops{syncOf(1), syncOf(2), "syncdir"}));
     EXPECT_EQ(readSegment(2), after);
 }
 
@@ -404,6 +509,7 @@ TEST_F(WalRecoveryTest, TornTailBeforeAHeaderOnlySpareIsZeroed)
     EXPECT_EQ(readSegment(2), spare);
     ASSERT_TRUE(state.reusable_spare.has_value());
     EXPECT_EQ(*state.reusable_spare, 2u);
+    EXPECT_EQ(ops(), (Ops{syncOf(2), writeOf(1), syncOf(1), "syncdir"}));
     expectConsistent();
 }
 
@@ -429,7 +535,7 @@ TEST_F(WalRecoveryTest, TornWriteWithALaterPageWritten)
     ASSERT_EQ(after.size(), before.size());
     EXPECT_EQ(after.substr(0, hole), before.substr(0, hole));
     EXPECT_TRUE(allZero(after, hole));
-    EXPECT_GE(sink->syncCount(), 1u);
+    EXPECT_EQ(ops(), (Ops{writeOf(1), syncOf(1), "syncdir"}));
     expectConsistent();
 }
 
@@ -459,6 +565,7 @@ TEST_F(WalRecoveryTest, HoleRightAfterTheHeaderIsZeroed)
     // it now holds only its header, so the WAL can write into it
     ASSERT_TRUE(state.reusable_spare.has_value());
     EXPECT_EQ(*state.reusable_spare, 2u);
+    EXPECT_EQ(ops(), (Ops{syncOf(1), writeOf(2), syncOf(2), "syncdir"}));
     int fd = -1;
     uint64_t data_offset = 0;
     EXPECT_EQ(manager->adoptExisting(2, fd, data_offset), 0) << manager->error();
@@ -481,11 +588,128 @@ TEST_F(WalRecoveryTest, CleanTailIsNotRewritten)
 
     open();
     sink->failWritesWith(EIO);
-    sink->failSyncsWith(EIO);
     ASSERT_EQ(run(), chl::CL_SUCCESS) << error;
     EXPECT_EQ(state.stories.at(kStory).events.size(), 2u);
-    EXPECT_EQ(sink->syncCount(), 0u);
+    // no write, and exactly one sync: the segment is still synced
+    EXPECT_EQ(sink->syncCount(), 1u);
+    EXPECT_EQ(ops(), (Ops{syncOf(1), "syncdir"}));
     EXPECT_TRUE(snapshot() == before);
+}
+
+TEST_F(WalRecoveryTest, CleanNewestSegmentIsSyncedBeforeItsEventsAreReturned)
+{
+    // The keeper wrote its last group and died before the data sync returned.
+    // On the same boot the group reads back from the page cache whole, with
+    // good CRCs and a clean tail, yet is not on disk. The WAL treats every
+    // copy recovery returns as durable and answers a retry of it CL_SUCCESS,
+    // so the segment must be synced first.
+    chl::LogEvent const a = eventOf(kStory, 100);
+    chl::LogEvent const b = eventOf(kStory, 200);
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(a);
+    Segment two(2);
+    two.names(kStory, "chronicle", "story");
+    two.event(b);
+    write(one);
+    write(two);
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a), seqOf(b)}));
+    EXPECT_EQ(ops(), (Ops{syncOf(1), syncOf(2), "syncdir"}));
+}
+
+TEST_F(WalRecoveryTest, CleanNewestSegmentWhoseSyncFailsRefusesAndChangesNothing)
+{
+    for(uint64_t failing: {2u, 1u})
+    {
+        SCOPED_TRACE("sync of segment " + std::to_string(failing) + " fails");
+        for(auto const& entry: fs::directory_iterator(dir)) { fs::remove(entry.path()); }
+        Segment one(1);
+        one.names(kStory, "chronicle", "story");
+        one.event(eventOf(kStory, 100));
+        Segment two(2);
+        two.names(kStory, "chronicle", "story");
+        two.event(eventOf(kStory, 200));
+        write(one);
+        write(two);
+        auto const before = snapshot();
+
+        open();
+        recorder->failSyncsOf(wal::segmentFileName(failing), EIO);
+        EXPECT_EQ(run(), chl::CL_ERR_UNKNOWN);
+        EXPECT_NE(error.find(dir), std::string::npos) << error;
+        EXPECT_NE(error.find(wal::segmentFileName(failing)), std::string::npos) << error;
+        EXPECT_NE(error.find("sync"), std::string::npos) << error;
+        EXPECT_TRUE(state.stories.empty());
+        EXPECT_TRUE(state.segments.empty());
+        EXPECT_TRUE(snapshot() == before) << "a refused recovery changed a file";
+        // nothing after the failed sync, and no directory sync
+        EXPECT_EQ(ops(), failing == 2 ? Ops{syncOf(1)} : Ops{});
+    }
+    // the single-segment case, through the fault sink
+    for(auto const& entry: fs::directory_iterator(dir)) { fs::remove(entry.path()); }
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(eventOf(kStory, 100));
+    write(one);
+    auto const before = snapshot();
+    open();
+    sink->failSyncsWith(EIO);
+    EXPECT_EQ(run(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find(wal::segmentFileName(1)), std::string::npos) << error;
+    EXPECT_TRUE(state.stories.empty());
+    EXPECT_TRUE(snapshot() == before);
+}
+
+TEST_F(WalRecoveryTest, FailedSyncOfAnOlderSegmentRefusesBeforeTheTornTailIsZeroed)
+{
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(eventOf(kStory, 100));
+    Segment two(2);
+    two.names(kStory, "chronicle", "story");
+    two.event(eventOf(kStory, 200));
+    std::string const torn = frameOf(eventOf(kStory, 300));
+    two.raw(torn.substr(0, torn.size() / 2));
+    write(one);
+    write(two);
+    auto const before = snapshot();
+
+    open();
+    recorder->failSyncsOf(wal::segmentFileName(1), EIO);
+    EXPECT_EQ(run(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find(wal::segmentFileName(1)), std::string::npos) << error;
+    EXPECT_TRUE(state.stories.empty());
+    EXPECT_TRUE(snapshot() == before) << "the torn tail was zeroed before the refusal";
+    EXPECT_TRUE(ops().empty());
+}
+
+TEST_F(WalRecoveryTest, DirectoryIsSyncedAndItsFailureRefuses)
+{
+    // A spare renamed into place just before the crash may lack its directory
+    // sync, and the WAL is about to write into it: its name must reach the
+    // disk before recovery returns it as reusable.
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(eventOf(kStory, 100));
+    write(one);
+    write(Segment(2));
+    auto const before = snapshot();
+
+    open();
+    sink->failDirectorySyncsWith(EIO);
+    EXPECT_EQ(run(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find(dir), std::string::npos) << error;
+    EXPECT_NE(error.find("sync"), std::string::npos) << error;
+    EXPECT_TRUE(state.stories.empty());
+    EXPECT_FALSE(state.reusable_spare.has_value());
+    EXPECT_TRUE(snapshot() == before);
+    EXPECT_EQ(sink->directorySyncCount(), 1u);
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    ASSERT_TRUE(state.reusable_spare.has_value());
+    EXPECT_EQ(ops(), (Ops{syncOf(1), syncOf(2), "syncdir"}));
 }
 
 TEST_F(WalRecoveryTest, ZeroingFailureRefuses)
@@ -788,6 +1012,8 @@ TEST_F(WalRecoveryTest, HeaderOnlyNewestSegmentIsReusable)
     ASSERT_TRUE(state.reusable_spare.has_value());
     EXPECT_EQ(*state.reusable_spare, 2u);
     EXPECT_EQ(state.segments, (std::vector<uint64_t>{1, 2}));
+    // the spare is synced too, and the directory after it
+    EXPECT_EQ(ops(), (Ops{syncOf(1), syncOf(2), "syncdir"}));
     // the manager recovery opened can hand it to the WAL
     int fd = -1;
     uint64_t data_offset = 0;
