@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -58,6 +59,15 @@ public:
     virtual ~DurableLog() = default;
     virtual WalAdmit admit() const = 0;
     virtual bool isDurable(StoryId, EventSequence const&) const = 0;
+    // The first check of a durable request, before admit() and the cap, so a
+    // retry is answered by its first attempt and never refused while that
+    // attempt is on disk or on its way there. CL_SUCCESS when the event's
+    // group synced and the event is still pending. When an attempt with the
+    // event's identity is queued or in its group's write or sync, waits for it
+    // (a ULT yields on its tl::eventual) and returns its result: CL_SUCCESS or
+    // CL_ERR_DURABILITY_UNAVAILABLE. std::nullopt when the WAL holds neither;
+    // only then may the request be refused or written.
+    virtual std::optional<int> lookupDurable(StoryId, EventSequence const&) = 0;
     virtual int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&) = 0;
 };
 
@@ -120,6 +130,10 @@ public:
     WalAdmit admit() const override;
     // The event's group synced and the event is still pending.
     bool isDurable(StoryId, EventSequence const&) const override;
+    // See DurableLog. Answers the same way whether the WAL is running, failed
+    // or stopped: a durable event stays durable, and an attempt that was
+    // queued gets its answer from the committer or from stop().
+    std::optional<int> lookupDurable(StoryId, EventSequence const&) override;
     // Blocks the calling thread (a ULT yields) on a tl::eventual until the
     // event's group synced, and returns CL_SUCCESS or
     // CL_ERR_DURABILITY_UNAVAILABLE. The identity is looked up first: a request
@@ -175,6 +189,11 @@ private:
         Stopping,
         Stopped
     };
+
+    // Called with the mutex held. True when an attempt with the identity is
+    // queued or in the group being committed (completion is set to it), or
+    // the identity is durable and pending (status is set to CL_SUCCESS).
+    bool findIdentity(Identity const&, std::shared_ptr<Completion>& completion, int& status) const;
 
     void committerLoop();
     // Writes the group into the active segment (after a rotation if it does

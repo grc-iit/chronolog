@@ -16,6 +16,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -116,6 +117,14 @@ struct Append
     std::atomic<int> status{1};
 };
 
+// One lookupDurable made from a ULT; answer is set before done.
+struct Lookup
+{
+    chl::LogEvent event;
+    std::atomic<bool> done{false};
+    std::optional<int> answer;
+};
+
 // A record read back from a segment file.
 struct OnDisk
 {
@@ -177,6 +186,17 @@ protected:
                 [this, &request]()
                 {
                     request.status = append(request.event);
+                    request.done = true;
+                });
+    }
+
+    // Starts a lookupDurable of the request's event on a ULT of the pool.
+    void lookupOn(UltPool& pool, Lookup& request)
+    {
+        pool.run(
+                [this, &request]()
+                {
+                    request.answer = wal->lookupDurable(request.event.getStoryId(), identityOf(request.event));
                     request.done = true;
                 });
     }
@@ -1063,4 +1083,102 @@ TEST_F(KeeperWalTest, ManyWritersAcrossRotationsWriteEachEventOnce)
     EXPECT_EQ(wal->stats().pending_events, 0u);
     EXPECT_EQ(wal->stats().pending_bytes, 0u);
     ASSERT_TRUE(waitFor([&]() { return wal->stats().segments == 1; }, 3s));
+}
+
+// A2: a retry is answered by its first attempt before any other check. With
+// the reserve full, so W14 would refuse a new write, a lookup of an attempt in
+// its group's sync and of one queued behind it waits for them and gets their
+// CL_SUCCESS, instead of reporting the identity unknown.
+TEST_F(KeeperWalTest, LookupWaitsForAQueuedAttemptWhileTheReserveIsFull)
+{
+    conf.reserve_min_bytes = 4 * kMiB;
+    startWal();
+    // full first: the free space is sampled by the committer, which a held
+    // sync stops
+    sink->setFreeSpace(kMiB, 100 * kMiB);
+    ASSERT_TRUE(waitFor([&]() { return wal->admit() == chl::WalAdmit::Full; }, 2s));
+    sink->holdSyncs();
+
+    chl::LogEvent const blocker = makeEvent(kOtherStory, 900);
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    std::deque<Append> requests;
+    requests.emplace_back().event = blocker;
+    requests.emplace_back().event = event;
+    std::deque<Lookup> lookups;
+    lookups.emplace_back().event = blocker; // in its group's sync
+    lookups.emplace_back().event = event;   // queued behind it
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(blocker) == 1; }));
+        appendOn(pool, requests[1]);
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 2; }));
+
+        for(auto& lookup: lookups) { lookupOn(pool, lookup); }
+        std::this_thread::sleep_for(100ms);
+        for(auto const& lookup: lookups) { EXPECT_FALSE(lookup.done.load()); }
+        EXPECT_EQ(wal->admit(), chl::WalAdmit::Full);
+        EXPECT_EQ(wal->stats().queued_events, 2u);
+        // an identity the WAL does not hold is answered at once
+        EXPECT_EQ(wal->lookupDurable(kStory, chl::EventSequence{5, 1, 0}), std::nullopt);
+        sink->releaseSyncs();
+    }
+    for(auto const& request: requests) { EXPECT_EQ(request.status.load(), chl::CL_SUCCESS); }
+    for(auto const& lookup: lookups) { EXPECT_EQ(lookup.answer, std::optional<int>(chl::CL_SUCCESS)); }
+    EXPECT_EQ(copiesOnDisk(event), 1u);
+    EXPECT_EQ(wal->stats().events, 2u);
+    // durable now: answered at once, the reserve still full
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Full);
+}
+
+// A lookup that joined an attempt whose group failed gets that failure; once
+// answered, the identity is unknown to the WAL.
+TEST_F(KeeperWalTest, LookupOfAFailedAttemptGetsItsFailure)
+{
+    startWal();
+    sink->holdSyncs();
+    sink->failSyncsWith(EIO);
+
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    std::deque<Append> requests;
+    requests.emplace_back().event = event;
+    std::deque<Lookup> lookups;
+    lookups.emplace_back().event = event;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return copiesOnDisk(event) == 1; }));
+        lookupOn(pool, lookups[0]);
+        std::this_thread::sleep_for(50ms);
+        EXPECT_FALSE(lookups[0].done.load());
+        sink->releaseSyncs();
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(lookups[0].answer, std::optional<int>(chl::CL_ERR_DURABILITY_UNAVAILABLE));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+}
+
+// A durable event is answered CL_SUCCESS by the lookup whether the WAL runs,
+// has failed or has stopped; an unknown or released one is std::nullopt.
+TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
+{
+    makeWal();
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt); // not started
+
+    ASSERT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_SUCCESS);
+    ASSERT_EQ(append(event), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    EXPECT_EQ(wal->lookupDurable(kOtherStory, identityOf(event)), std::nullopt);
+
+    sink->failSyncsWith(EIO);
+    EXPECT_EQ(append(makeEvent(kStory, 2000)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    ASSERT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+
+    wal->stop();
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
+    wal->eventDiscarded(kStory, identityOf(event));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
 }

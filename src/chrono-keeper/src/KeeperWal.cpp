@@ -212,6 +212,41 @@ bool KeeperWal::isDurable(StoryId story_id, EventSequence const& event) const
     return tracker.isPending(story_id, event);
 }
 
+bool KeeperWal::findIdentity(Identity const& identity, std::shared_ptr<Completion>& completion, int& status) const
+{
+    auto queued = inFlight.find(identity);
+    if(queued != inFlight.end())
+    {
+        completion = queued->second;
+        return true;
+    }
+    if(tracker.isPending(identity.first, identity.second))
+    {
+        status = CL_SUCCESS;
+        return true;
+    }
+    return false;
+}
+
+std::optional<int> KeeperWal::lookupDurable(StoryId story_id, EventSequence const& event)
+{
+    std::shared_ptr<Completion> completion;
+    int status = CL_SUCCESS;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if(!findIdentity(Identity{story_id, event}, completion, status))
+        {
+            return std::nullopt;
+        }
+    }
+    if(completion == nullptr)
+    {
+        return status;
+    }
+    // a ULT yields here; every queued attempt is answered, by stop() too
+    return completion->result.wait();
+}
+
 int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& story, LogEvent const& event)
 {
     Identity const identity{event.getStoryId(), EventSequence{event.time(), event.getClientId(), event.index()}};
@@ -225,15 +260,8 @@ int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& st
     // its way there.
     auto settled = [&]() -> bool
     {
-        auto queued = inFlight.find(identity);
-        if(queued != inFlight.end())
+        if(findIdentity(identity, completion, status))
         {
-            completion = queued->second;
-            return true;
-        }
-        if(tracker.isPending(identity.first, identity.second))
-        {
-            status = CL_SUCCESS;
             return true;
         }
         if(state != State::Running || failed.load())
