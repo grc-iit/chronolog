@@ -166,6 +166,13 @@ storiesToStartOnRegistration(std::map<StoryId, RecordingGroup*> const& active,
                              std::map<StoryId, std::pair<ChronicleName, StoryName>> const& names,
                              RecordingGroupId group);
 
+// Whether `group` still records `story_id` according to `active`. The visor
+// checks it before and after starting a held story on a registering keeper:
+// a story released or rolled back while the start was in flight has already
+// been sent its stops, which may have reached the keeper before the start, so
+// the keeper must be sent another stop.
+bool storyRecordedByGroup(std::map<StoryId, RecordingGroup*> const& active, StoryId story_id, RecordingGroupId group);
+
 class KeeperRegistry
 {
     enum RegistryState
