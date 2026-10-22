@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <mutex>
 
 #include <sys/uio.h>
@@ -60,8 +61,8 @@ int WalSegmentManager::open()
 {
     if(opened)
     {
-        lastError = "WAL directory " + directory + " is already open";
-        return EBUSY;
+        // listing again would remove a partial file the preparer is making
+        return 0;
     }
 
     int err = sink.lockDirectory();
@@ -135,12 +136,49 @@ void WalSegmentManager::startPreparer()
     {
         return;
     }
+    if(!opened)
+    {
+        // nextSegment is not known yet: a spare numbered from it could be
+        // renamed over a segment holding pending events. A failed open() has
+        // already said why the directory is not open; keep that reason.
+        if(lastError.empty())
+        {
+            lastError = "WAL directory " + directory + " is not open";
+        }
+        LOG_ERROR("[WalSegmentManager] Segment preparer not started: {}", lastError);
+        return;
+    }
     {
         std::lock_guard<thallium::mutex> lock(mutex);
-        stopping = false;
+        preparerActive = true;
     }
-    preparerStream = thallium::xstream::create();
-    preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
+    try
+    {
+        preparerStream = thallium::xstream::create();
+        preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
+    }
+    catch(std::exception const& e)
+    {
+        // takeSpare would otherwise wait for a preparer that never runs
+        {
+            std::lock_guard<thallium::mutex> lock(mutex);
+            preparerActive = false;
+            changed.notify_all();
+        }
+        if(!preparerStream->is_null())
+        {
+            try
+            {
+                preparerStream->join();
+            }
+            catch(std::exception const&)
+            {}
+            preparerStream = thallium::managed<thallium::xstream>();
+        }
+        lastError = "cannot start the WAL segment preparer for " + directory + ": " + e.what();
+        LOG_ERROR("[WalSegmentManager] {}; spares are prepared on the taker's thread", lastError);
+        return;
+    }
     preparerRunning = true;
 }
 
@@ -152,7 +190,7 @@ void WalSegmentManager::stopPreparer()
     }
     {
         std::lock_guard<thallium::mutex> lock(mutex);
-        stopping = true;
+        preparerActive = false;
         changed.notify_all();
     }
     // a preparation under way finishes first
@@ -168,8 +206,8 @@ void WalSegmentManager::preparerLoop()
     std::unique_lock<thallium::mutex> lock(mutex);
     while(true)
     {
-        changed.wait(lock, [this]() { return stopping || (!spare && !preparing && !preparerFailed); });
-        if(stopping)
+        changed.wait(lock, [this]() { return !preparerActive || (!spare && !preparing && !preparerFailed); });
+        if(!preparerActive)
         {
             return;
         }
@@ -283,7 +321,10 @@ int WalSegmentManager::takeSpare(uint64_t min_bytes,
     }
 
     std::unique_lock<thallium::mutex> lock(mutex);
-    changed.wait(lock, [this]() { return spare.has_value() || !preparing; });
+    // while the preparer runs and has not failed, wait for it even when it has
+    // not started on the next spare yet, so the zero-fill and its sync stay
+    // off the caller's stream
+    changed.wait(lock, [this]() { return spare.has_value() || (!preparing && (!preparerActive || preparerFailed)); });
     if(!spare)
     {
         // no preparer, or its last attempt failed: prepare on this thread so
