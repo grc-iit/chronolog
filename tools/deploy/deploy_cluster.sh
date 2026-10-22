@@ -67,6 +67,11 @@ start=false
 stop=false
 clean=false
 
+# The keeper WAL is on with --wal, --wal-dir or WAL_ENABLED=1 in the environment.
+# WAL_DIR_LIST, from --wal-dir, replaces the discovery in wal_dir_probe.sh.
+WAL_ENABLED="${WAL_ENABLED:-0}"
+WAL_DIR_LIST=""
+
 # Verbose flag
 verbose=false
 
@@ -100,6 +105,12 @@ usage() {
   echo "  -f|--conf-file <path>            Main configuration file (default: work_dir/conf/default-chrono-conf.json)"
   echo "  -n|--client-conf-file <path>     Client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
   echo ""
+  echo "Keeper WAL Settings:"
+  echo "  --wal                            Turn the keeper WAL on (also WAL_ENABLED=1); each keeper host gets a directory"
+  echo "                                   on a local non-OS drive with an existing <mount>/\$USER, chosen by wal_dir_probe.sh"
+  echo "  --wal-dir <A[:B:...]>            Turn the keeper WAL on and try these bases in order instead; a single path is"
+  echo "                                   used as given. <hash of work_dir>/<recording group> is appended to the base"
+  echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output"
   echo ""
@@ -117,7 +128,7 @@ usage() {
 }
 
 check_dependencies() {
-  local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+  local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath" "sha256sum")
 
   echo -e "${DEBUG}Checking required dependencies...${NC}"
   for dep in "${dependencies[@]}"; do
@@ -380,9 +391,55 @@ update_client_monitor_file_path() {
   jq ".chrono_client.Monitoring.monitor.file = \"${MONITOR_DIR}/chrono-client.log\"" "${CLIENT_CONF_FILE}" >tmp.json && mv tmp.json "${CLIENT_CONF_FILE}"
 }
 
+wal_enabled() {
+  [[ "${WAL_ENABLED}" == "1" || "${WAL_ENABLED}" == "true" ]]
+}
+
+# Prints the first 12 hex digits of the sha256 of the absolute work dir. Every
+# deploy from this work dir appends it to the WAL base, so a restart or a later job
+# finds the same directory and another install never does.
+work_dir_hash() {
+  printf '%s' "${WORK_DIR}" | sha256sum | cut -c1-12
+}
+
+# Runs wal_dir_probe.sh on keeper_host over ssh, prints the directory it chose and
+# its warnings, and writes the directory into the keeper's conf. Exits when the
+# probe fails or prints no directory.
+assign_keeper_wal_dir() {
+  local keeper_host=$1
+  local group=$2
+  local keeper_conf=$3
+  local max_bytes reserve_min reserve_percent probe_cmd probe_output line wal_dir=""
+
+  max_bytes=$(jq -r '.chrono_keeper.WAL.max_bytes // 1073741824' "${keeper_conf}")
+  reserve_min=$(jq -r '.chrono_keeper.WAL.reserve_min_bytes // 268435456' "${keeper_conf}")
+  reserve_percent=$(jq -r '.chrono_keeper.WAL.reserve_percent // 10' "${keeper_conf}")
+  printf -v probe_cmd 'bash %q --work-dir-hash %q --group %q --max-bytes %q --reserve-min %q --reserve-percent %q' \
+    "${SCRIPT_DIR}/wal_dir_probe.sh" "$(work_dir_hash)" "${group}" "${max_bytes}" "${reserve_min}" "${reserve_percent}"
+  [[ -n "${WAL_DIR_LIST}" ]] && printf -v probe_cmd '%s --wal-dir %q' "${probe_cmd}" "${WAL_DIR_LIST}"
+  if ! probe_output=$(ssh -n "${keeper_host}" "${probe_cmd}"); then
+    echo -e "${ERR}Cannot choose a WAL directory on ${keeper_host}, exiting ...${NC}" >&2
+    exit 1
+  fi
+  while IFS= read -r line; do
+    case "${line}" in
+    WAL_DIR=*) wal_dir=${line#WAL_DIR=} ;;
+    WARNING:*) echo -e "${WARN}WARNING: ${keeper_host}: ${line#WARNING: }${NC}" >&2 ;;
+    esac
+  done <<<"${probe_output}"
+  if [[ "${wal_dir}" != /* ]]; then
+    echo -e "${ERR}wal_dir_probe.sh on ${keeper_host} chose no WAL directory, exiting ...${NC}" >&2
+    exit 1
+  fi
+  echo -e "${INFO}ChronoKeeper ${keeper_host} WAL directory: ${wal_dir}${NC}"
+  jq --arg wal_dir "${wal_dir}" '.chrono_keeper.WAL.enabled = true | .chrono_keeper.WAL.dir = $wal_dir' \
+    "${keeper_conf}" >"${CONF_DIR}/temp.json" && mv "${CONF_DIR}/temp.json" "${keeper_conf}"
+}
+
 generate_conf_for_each_keeper() {
   local base_conf_file=$1
   local keeper_hosts_file=$2
+  local group=$3
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generating conf files for all ChronoKeepers in ${keeper_hosts_file} based on conf file ${base_conf_file} ...${NC}" || true
   while IFS= read -r keeper_host; do
     remote_keeper_hostname=$(get_remote_hostname ${keeper_host})
@@ -392,6 +449,9 @@ generate_conf_for_each_keeper() {
     keeper_ip=$(get_host_ip ${keeper_host})
     jq ".chrono_keeper.KeeperRecordingService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
     jq ".chrono_keeper.KeeperDataStoreAdminService.rpc.service_ip = \"${keeper_ip}\"" "${base_conf_file}.keeper.${remote_keeper_hostname}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${base_conf_file}.keeper.${remote_keeper_hostname}"
+    if wal_enabled; then
+      assign_keeper_wal_dir "${keeper_host}" "${group}" "${base_conf_file}.keeper.${remote_keeper_hostname}"
+    fi
   done <${keeper_hosts_file}
 
   [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Generate conf file for ChronoKeepers in ${keeper_hosts_file} done${NC}" || true
@@ -461,7 +521,7 @@ generate_conf_for_each_recording_group() {
     jq ".chrono_player.PlayerRecordingService.rpc.service_ip = \"${player_ip}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
     jq ".chrono_player.ArchiveReaders.story_files_dir = \"${OUTPUT_DIR}\"" "${CONF_FILE}.${i}" >${CONF_DIR}/temp.json && mv ${CONF_DIR}/temp.json "${CONF_FILE}.${i}"
 
-    generate_conf_for_each_keeper "${CONF_FILE}.${i}" "${keeper_hosts_file}"
+    generate_conf_for_each_keeper "${CONF_FILE}.${i}" "${keeper_hosts_file}" "${i}"
     generate_conf_for_each_grapher "${CONF_FILE}.${i}" "${grapher_hosts_file}"
     generate_conf_for_each_player "${CONF_FILE}.${i}" "${player_hosts_file}"
   done
@@ -753,7 +813,7 @@ clean_output_dir() {
 }
 
 parse_args() {
-  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o w:m:u:v:g:p:a:q:k:o:f:n:j:r:hdsce --long work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,help,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -856,6 +916,15 @@ parse_args() {
       ;;
     -r | --record-groups)
       NUM_RECORDING_GROUP="$2"
+      shift 2
+      ;;
+    --wal)
+      WAL_ENABLED=1
+      shift
+      ;;
+    --wal-dir)
+      WAL_ENABLED=1
+      WAL_DIR_LIST="$2"
       shift 2
       ;;
     -h | --help)
