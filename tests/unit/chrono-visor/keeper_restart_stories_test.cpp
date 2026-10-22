@@ -12,6 +12,7 @@ using chronolog::RecordingGroup;
 using chronolog::storiesToStartOnRegistration;
 using chronolog::StoryId;
 using chronolog::StoryName;
+using chronolog::storyRecordedByGroup;
 
 namespace
 {
@@ -75,4 +76,40 @@ TEST(KeeperRestartStories, StoryWithoutNamesOrGroupIsNotListed)
                                                                        {30, {"chronicle_a", "story_3"}}};
 
     EXPECT_EQ(storiesToStartOnRegistration(active, names, 1), (StoryList{{"chronicle_a", "story_1", 10}}));
+}
+
+// After start_story_recording reaches a registering keeper, the visor checks
+// the story again: a story still recorded by the keeper's group is stopped by
+// whoever later erases it, but one released (or rolled back) while the start
+// was in flight must be stopped right away, or the keeper keeps a pipeline
+// that no stop notification reaches.
+TEST(KeeperRestartStories, StoryStillRecordedByTheGroupNeedsNoStop)
+{
+    RecordingGroup group_one(1);
+
+    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}};
+
+    EXPECT_TRUE(storyRecordedByGroup(active, 10, 1));
+}
+
+TEST(KeeperRestartStories, StoryReleasedDuringTheStartNeedsStop)
+{
+    RecordingGroup group_one(1);
+
+    std::map<StoryId, RecordingGroup*> const active{{10, &group_one}};
+
+    EXPECT_FALSE(storyRecordedByGroup(active, 20, 1));
+    EXPECT_FALSE(storyRecordedByGroup(std::map<StoryId, RecordingGroup*>{}, 10, 1));
+}
+
+// Released and acquired again by another group while the start was in flight:
+// the keeper's group no longer records the story, so its keeper must stop it.
+TEST(KeeperRestartStories, StoryNowRecordedByAnotherGroupNeedsStop)
+{
+    RecordingGroup group_two(2);
+
+    std::map<StoryId, RecordingGroup*> const active{{10, &group_two}, {30, nullptr}};
+
+    EXPECT_FALSE(storyRecordedByGroup(active, 10, 1));
+    EXPECT_FALSE(storyRecordedByGroup(active, 30, 1));
 }
