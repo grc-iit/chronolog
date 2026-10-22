@@ -43,7 +43,13 @@ CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
 start=false
 stop=false
 clean=false
+restart=false
+force=false
 EXEC_MODE_COUNT=0
+RESTART_KEEPER_INDEX=""
+# The keeper WAL is on with --wal or WAL_ENABLED=1 in the environment, so the
+# integration scripts can run with it without passing a new flag.
+WAL_ENABLED="${WAL_ENABLED:-0}"
 
 # Helper Methods -----------------------------------------------------------------------------------
 start_service() {
@@ -129,6 +135,9 @@ generate_config_files() {
     local num_recording_groups=$5
     local monitor_dir=$6
     local client_conf_file=$7
+    # The keepers' WAL root, absolute; empty when the WAL is off, which leaves
+    # the template's WAL block as it is.
+    local wal_root=$8
 
     mkdir -p "${monitor_dir}"
 
@@ -252,6 +261,15 @@ generate_config_files() {
             .chrono_keeper.RecordingGroup = $grapher_index |
             .chrono_keeper.Monitoring.monitor.file = ($monitor_dir + "/chrono-keeper-" + ($keeper_index | tostring) + ".log")' "$default_conf" > "$keeper_output_file"
         echo "Generated $keeper_output_file with ports $new_port_keeper_record, $new_port_keeper_datastore, drain $new_port_keeper_drain"
+
+        if [[ -n "${wal_root}" ]]; then
+            local keeper_wal_dir="${wal_root}/keeper-${keeper_index}"
+            jq --arg wal_dir "$keeper_wal_dir" \
+                '.chrono_keeper.WAL.enabled = true | .chrono_keeper.WAL.dir = $wal_dir' \
+                "$keeper_output_file" > "${keeper_output_file}.tmp"
+            mv -f "${keeper_output_file}.tmp" "$keeper_output_file"
+            echo "Keeper ${keeper_index} WAL directory: ${keeper_wal_dir}"
+        fi
     done
 
     echo "Generating visor configuration file ..."
@@ -357,6 +375,107 @@ check_work_dir() {
     fi
 }
 
+# Prints "<pending_events> <pending_bytes>" from the exit-summary the keeper
+# writes in its WAL directory at exit. Returns 1 when the file is missing or
+# does not hold both counts: the keeper did not exit cleanly.
+read_exit_summary() {
+    local summary_file="$1/exit-summary"
+    [[ -f "${summary_file}" ]] || return 1
+    local line events bytes
+    line=$(head -n 1 "${summary_file}")
+    events=$(sed -n 's/.*pending_events=\([0-9][0-9]*\).*/\1/p' <<< "${line}")
+    bytes=$(sed -n 's/.*pending_bytes=\([0-9][0-9]*\).*/\1/p' <<< "${line}")
+    [[ -n "${events}" && -n "${bytes}" ]] || return 1
+    echo "${events} ${bytes}"
+}
+
+# Prints a table of the exit-summary of every keeper whose generated conf in
+# $1 has the WAL on. Returns 1 when any summary is missing (the keeper crashed
+# or was killed) or shows events the grapher has not confirmed.
+report_wal_exit_summaries() {
+    local conf_dir="$1"
+    local status=0 printed_header=false
+    local conf wal_dir keeper counts events bytes state
+    for conf in "${conf_dir}"/chrono-keeper-conf-*.json; do
+        [[ -f "${conf}" ]] || continue
+        [[ "$(jq -r '.chrono_keeper.WAL.enabled // false' "${conf}")" == "true" ]] || continue
+        wal_dir=$(jq -r '.chrono_keeper.WAL.dir' "${conf}")
+        keeper=$(basename "${conf}" .json)
+        keeper="keeper-${keeper##*-}"
+        if [[ "${printed_header}" == "false" ]]; then
+            printf '%-12s %-14s %-14s %-8s %s\n' "KEEPER" "PENDING_EVENTS" "PENDING_BYTES" "STATE" "WAL_DIR"
+            printed_header=true
+        fi
+        if counts=$(read_exit_summary "${wal_dir}"); then
+            read -r events bytes <<< "${counts}"
+            state=clean
+            if (( events > 0 )); then
+                state=pending
+                status=1
+            fi
+        else
+            events=- bytes=- state=missing
+            status=1
+        fi
+        printf '%-12s %-14s %-14s %-8s %s\n' "${keeper}" "${events}" "${bytes}" "${state}" "${wal_dir}"
+    done
+    return ${status}
+}
+
+# Removes the keeper WAL directories under $1. Refuses, removing nothing, when
+# any of them has no exit-summary or one with pending events, unless $2 is
+# true: those events are durable but the grapher has not confirmed them, and
+# only that keeper's next start replays them. An empty directory holds nothing
+# to lose and is removed.
+clean_wal_dirs() {
+    local wal_root="$1"
+    local force="$2"
+    [[ -d "${wal_root}" ]] || return 0
+    local refused=() dir counts events
+    for dir in "${wal_root}"/keeper-*; do
+        [[ -d "${dir}" ]] || continue
+        [[ -n "$(ls -A "${dir}")" ]] || continue
+        if counts=$(read_exit_summary "${dir}"); then
+            events=${counts%% *}
+            (( events == 0 )) && continue
+            refused+=("${dir} (${events} pending events)")
+        else
+            refused+=("${dir} (no exit-summary)")
+        fi
+    done
+    if (( ${#refused[@]} > 0 )); then
+        if [[ "${force}" != "true" ]]; then
+            echo -e "${ERR}Refusing to remove keeper WAL directories with unconfirmed events:${NC}" >&2
+            printf '  %s\n' "${refused[@]}" >&2
+            echo -e "${ERR}Start the keepers again to replay them, or pass --force to discard them.${NC}" >&2
+            return 1
+        fi
+        echo -e "${DEBUG}--force: discarding unconfirmed events in:${NC}"
+        printf '  %s\n' "${refused[@]}"
+    fi
+    echo -e "${DEBUG}Removing keeper WAL directories under ${wal_root}${NC}"
+    rm -rf -- "${wal_root}"/keeper-*
+    rmdir -- "${wal_root}" 2>/dev/null || true
+}
+
+# Relaunches keeper $1 with the conf start generated for it, so it reuses the
+# same ports and WAL directory. Regenerates nothing.
+restart_keeper() {
+    local n="$1"
+    local conf="${CONF_DIR}/chrono-keeper-conf-${n}.json"
+    if [[ ! -f "${conf}" ]]; then
+        echo -e "${ERR}No generated configuration ${conf}; start the deployment first.${NC}" >&2
+        return 1
+    fi
+    if pgrep -f "${KEEPER_BIN} --config ${conf}" >/dev/null; then
+        echo -e "${ERR}Keeper ${n} is still running; stop it before restarting it.${NC}" >&2
+        return 1
+    fi
+    echo -e "${DEBUG}Relaunching ${KEEPER_BIN} --config ${conf} ...${NC}"
+    # Append, so the launch log of the run that died is kept.
+    nohup "${KEEPER_BIN}" --config "${conf}" >> "${MONITOR_DIR}/chrono-keeper-${n}.launch.log" 2>&1 &
+}
+
 check_execution_stopped() {
     echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
     local active_processes
@@ -378,7 +497,11 @@ start() {
     check_work_dir
     mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
     check_installation
-    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
+    local wal_root=""
+    if wal_enabled; then
+        wal_root=$(realpath -m "${WORK_DIR}/wal")
+    fi
+    generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}" "${wal_root}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
     start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor.launch.log"
     sleep 2
@@ -410,16 +533,33 @@ stop() {
     # returns as soon as the process is gone -- so a fast shutdown still costs
     # about a second.
     stop_service "${KEEPER_BIN}" 240
+    # Each keeper with the WAL on writes exit-summary as it exits. Read them now,
+    # but stop the rest before failing on them.
+    local wal_status=0
+    report_wal_exit_summaries "${CONF_DIR}" || wal_status=$?
     stop_service "${PLAYER_BIN}" 30
     stop_service "${GRAPHER_BIN}" 30
     stop_service "${VISOR_BIN}" 30
     echo -e "${INFO}All ChronoLog processes stopped.${NC}"
+    if (( wal_status != 0 )); then
+        echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed) or holds unconfirmed events; see the table above.${NC}"
+        exit 1
+    fi
+}
+
+restart() {
+    echo -e "${INFO}Restarting keeper ${RESTART_KEEPER_INDEX}...${NC}"
+    check_work_dir
+    restart_keeper "${RESTART_KEEPER_INDEX}" || exit 1
+    echo -e "${INFO}Keeper ${RESTART_KEEPER_INDEX} relaunched.${NC}"
 }
 
 clean() {
     echo -e "${INFO}Cleaning ChronoLog...${NC}"
     check_work_dir
     check_execution_stopped
+    # First, so a refusal leaves the generated confs a restart needs.
+    clean_wal_dirs "${WORK_DIR}/wal" "${force}" || exit 1
     echo -e "${DEBUG}Removing config files${NC}"
     rm -f "${CONF_DIR}/chrono-grapher-conf"*.json
     rm -f "${CONF_DIR}/chrono-player-conf"*.json
@@ -442,6 +582,10 @@ clean_output_dir() {
     bash "${SCRIPT_DIR}/archive_cleanup.sh" "$1"
 }
 
+wal_enabled() {
+    [[ "${WAL_ENABLED}" == "1" || "${WAL_ENABLED}" == "true" ]]
+}
+
 usage() {
     echo "Usage: $0 [options]"
     echo ""
@@ -449,10 +593,13 @@ usage() {
     echo "  -d|--start          Start ChronoLog Deployment"
     echo "  -s|--stop           Stop ChronoLog Deployment"
     echo "  -c|--clean          Clean ChronoLog logging artifacts"
+    echo "  --restart-keeper <n>  Relaunch keeper n with its generated configuration"
     echo ""
     echo "Deployment Options:"
     echo "  -k|--keepers <number>            Total number of keeper processes (default: 1)"
     echo "  -r|--record-groups <number>      Number of recording groups/graphers (default: 1)"
+    echo "  --wal                            Turn the keeper WAL on, in work_dir/wal/keeper-<n> (also WAL_ENABLED=1)"
+    echo "  --force                          With --clean, remove keeper WAL directories that hold unconfirmed events"
     echo ""
     echo "Directory Settings:"
     echo "  -w|--work-dir <path>             Working directory (default: script_dir/..)"
@@ -496,6 +643,21 @@ parse_args() {
             -c|--clean)
                 clean=true
                 ((++EXEC_MODE_COUNT))
+                shift ;;
+            --restart-keeper)
+                if [[ ! "${2:-}" =~ ^[1-9][0-9]*$ ]]; then
+                    echo -e "${ERR}--restart-keeper needs a keeper number starting at 1, got '${2:-}'${NC}"
+                    usage
+                fi
+                restart=true
+                RESTART_KEEPER_INDEX="$2"
+                ((++EXEC_MODE_COUNT))
+                shift 2 ;;
+            --wal)
+                WAL_ENABLED=1
+                shift ;;
+            --force)
+                force=true
                 shift ;;
             -k|--keepers)
                 NUM_KEEPERS="$2"
@@ -547,7 +709,7 @@ parse_args() {
         echo -e "${ERR}Error: Only one execution mode can be selected at a time.${NC}"
         usage
     elif [[ $EXEC_MODE_COUNT -eq 0 ]]; then
-        echo -e "${ERR}Error: Please specify an execution mode (start, stop, or clean).${NC}"
+        echo -e "${ERR}Error: Please specify an execution mode (start, stop, clean or restart-keeper).${NC}"
         usage
     fi
 }
@@ -561,6 +723,8 @@ elif ${stop}; then
     stop
 elif ${clean}; then
     clean
+elif ${restart}; then
+    restart
 else
     echo -e "${ERR}Please select start, stop or clean mode${NC}"
     usage
