@@ -20,6 +20,10 @@ int chl::archiveFsync(int fd)
 
 void chl::setArchiveFsyncForTest(FsyncFn fn) { installedFsync.store(fn); }
 
+// Every error counts, EINVAL from a directory too. ext4, xfs, NFS and Lustre
+// sync directories; a file system that answers EINVAL instead cannot be shown
+// to keep a new name, so its window writes fail, each with a logged error,
+// rather than being reported written.
 int chl::fsyncPath(std::string const& path)
 {
     int const fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);

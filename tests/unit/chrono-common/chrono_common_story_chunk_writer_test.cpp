@@ -401,22 +401,25 @@ TEST_F(ChunkWriter, AMissingArchiveDirectoryIsNotCreated)
 // The grapher reports a window written, and keepers drop their copies of its
 // events, only once the window survives a power loss: its file is synced before
 // it is moved into place, and the story directory after, so the new name is on
-// disk too. A sync that fails counts as a failed write and leaves no file.
+// disk too. The first window in a story directory also syncs the chronicle
+// directory and the archive directory, which may hold the names of directories
+// just created. A sync that fails counts as a failed write and leaves no file.
 
 namespace
 {
-enum class Synced
-{
-    PartialFile,
-    OtherFile,
-    Directory
-};
+// A sync of the window file under its partial name, of any other file, or of a
+// directory, named by its path relative to the archive directory ("." for the
+// archive directory itself).
+std::string const kPartialFile = "partial file";
+std::string const kOtherFile = "other file";
 
+// the running test's archive directory, which directory names are relative to
+fs::path syncRoot;
 // what each sync was called on, in order
-std::vector<Synced> syncs;
+std::vector<std::string> syncs;
 std::mutex syncsMutex;
-// the sync of this kind fails with EIO
-std::optional<Synced> failing;
+// the sync of this one fails with EIO
+std::optional<std::string> failing;
 
 int recordingFsync(int fd)
 {
@@ -427,19 +430,23 @@ int recordingFsync(int fd)
     {
         return -1;
     }
-    Synced kind = Synced::Directory;
-    if(!S_ISDIR(st.st_mode))
+    char target[4096] = {};
+    ssize_t const len = ::readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), target, sizeof(target) - 1);
+    std::string const path(target, len > 0 ? len : 0);
+    std::string synced;
+    if(S_ISDIR(st.st_mode))
     {
-        char target[4096] = {};
-        ssize_t const len = ::readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), target, sizeof(target) - 1);
-        std::string const path(target, len > 0 ? len : 0);
-        kind = path.find(".partial.") != std::string::npos ? Synced::PartialFile : Synced::OtherFile;
+        synced = fs::path(path).lexically_relative(syncRoot).string();
+    }
+    else
+    {
+        synced = path.find(".partial.") != std::string::npos ? kPartialFile : kOtherFile;
     }
     {
         std::lock_guard<std::mutex> lock(syncsMutex);
-        syncs.push_back(kind);
+        syncs.push_back(synced);
     }
-    if(failing && *failing == kind)
+    if(failing && *failing == synced)
     {
         errno = EIO;
         return -1;
@@ -453,6 +460,7 @@ protected:
     void SetUp() override
     {
         ChunkWriter::SetUp();
+        syncRoot = fs::canonical(dir);
         syncs.clear();
         failing.reset();
         chl::setArchiveFsyncForTest(&recordingFsync);
@@ -474,14 +482,41 @@ TEST_F(ChunkWriterSync, WindowFileIsSyncedBeforeRename)
     ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
 
     // the file while it still has its partial name, then the directory that
-    // received its own name
-    EXPECT_EQ(syncs, (std::vector<Synced>{Synced::PartialFile, Synced::Directory}));
+    // received its own name, then, for a new story, the directories above it
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, "C/S", "C", "."}));
     EXPECT_EQ(windows(), (std::vector<std::string>{"C/S/60"}));
+}
+
+TEST_F(ChunkWriterSync, LaterWindowsOfAStorySyncOnlyTheStoryDirectory)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk first = window(60, 4, 16);
+    chl::StoryChunk second = window(90, 4, 16);
+    ASSERT_GT(writer.writeStoryChunk(first), 0u);
+    syncs.clear();
+
+    ASSERT_GT(writer.writeStoryChunk(second), 0u);
+
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, "C/S"}));
+    EXPECT_EQ(windows(), (std::vector<std::string>{"C/S/60", "C/S/90"}));
+}
+
+TEST_F(ChunkWriterSync, AnotherStoryOfTheChronicleSyncsTheParentsToo)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk first = window(60, 4, 16);
+    chl::StoryChunk other = window(60, 4, 16, "C", "T");
+    ASSERT_GT(writer.writeStoryChunk(first), 0u);
+    syncs.clear();
+
+    ASSERT_GT(writer.writeStoryChunk(other), 0u);
+
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, "C/T", "C", "."}));
 }
 
 TEST_F(ChunkWriterSync, FileSyncFailureLeavesNoFile)
 {
-    failing = Synced::PartialFile;
+    failing = kPartialFile;
     chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
     chl::StoryChunk chunk = window(60, 4, 16);
 
@@ -489,12 +524,12 @@ TEST_F(ChunkWriterSync, FileSyncFailureLeavesNoFile)
 
     EXPECT_TRUE(fileNames().empty()) << "left behind: " << fileNames().front();
     // never moved into place, so there was no directory to sync
-    EXPECT_EQ(syncs, (std::vector<Synced>{Synced::PartialFile}));
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile}));
 }
 
 TEST_F(ChunkWriterSync, DirectorySyncFailureLeavesNoFile)
 {
-    failing = Synced::Directory;
+    failing = "C/S";
     chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
     chl::StoryChunk chunk = window(60, 4, 16);
     std::string published = "unchanged";
@@ -503,6 +538,54 @@ TEST_F(ChunkWriterSync, DirectorySyncFailureLeavesNoFile)
 
     EXPECT_TRUE(fileNames().empty()) << "left behind: " << fileNames().front();
     EXPECT_EQ(published, "unchanged");
+    // the write stopped at the story directory's sync
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, "C/S"}));
+}
+
+TEST_F(ChunkWriterSync, ParentSyncFailureLeavesNoFileAndIsRetried)
+{
+    // a chronicle of its own for each parent that fails
+    for(auto const& [chronicle, parent]: {std::pair<std::string, std::string>{"C", "C"}, {"D", "."}})
+    {
+        SCOPED_TRACE("failing sync of " + parent);
+        std::string const story_dir = chronicle + "/S";
+        syncs.clear();
+        failing = parent;
+        chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+        chl::StoryChunk chunk = window(60, 4, 16, chronicle);
+        std::string published = "unchanged";
+
+        EXPECT_EQ(writer.writeStoryChunk(chunk, &published), 0u);
+
+        EXPECT_TRUE(fs::is_empty(dir / story_dir));
+        EXPECT_EQ(published, "unchanged");
+        std::vector<std::string> expected{kPartialFile, story_dir, chronicle, "."};
+        expected.resize(parent == "." ? 4 : 3);
+        EXPECT_EQ(syncs, expected);
+
+        // the next window of the story syncs both again
+        failing.reset();
+        syncs.clear();
+        ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+        EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, story_dir, chronicle, "."}));
+        EXPECT_EQ(std::distance(fs::directory_iterator(dir / story_dir), fs::directory_iterator()), 1);
+    }
+}
+
+TEST_F(ChunkWriterSync, ARecreatedStoryDirectorySyncsTheParentsAgain)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 4, 16);
+    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+    // The chronicle's directories are moved away, and the next window creates
+    // new ones whose names must reach the disk too. Moved rather than removed,
+    // so the new story directory cannot get the old one's inode number.
+    fs::rename(dir / "C", dir / "old");
+    syncs.clear();
+
+    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+
+    EXPECT_EQ(syncs, (std::vector<std::string>{kPartialFile, "C/S", "C", "."}));
 }
 
 TEST(FileSync, APathThatCannotBeOpenedReturnsItsErrno)
