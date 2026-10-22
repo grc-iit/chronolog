@@ -10,11 +10,15 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <mutex>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
 #include <cerrno>
+#include <sys/resource.h>
 
 #include <thallium.hpp>
 
@@ -264,14 +268,18 @@ TEST_F(WalSegmentManagerTest, TakeSpareLargerThanSegmentCreatesOneOfThatSize)
     }
     ASSERT_TRUE(exists(next));
 
+    // stopped, so the preparer does not sync segment n+2 while the count is
+    // taken; the spare it made stays ready
+    manager->stopPreparer();
     uint64_t const big = 3 * kSegmentBytes + 4096;
     uint64_t const syncs_before = sink->syncCount();
     take(big);
     ASSERT_EQ(taken.size(), 2u);
     EXPECT_EQ(taken[1], taken[0] + 1);
     // the grown size is committed before anything is written there
-    EXPECT_GT(sink->syncCount(), syncs_before);
+    EXPECT_EQ(sink->syncCount(), syncs_before + 1);
 
+    manager->startPreparer();
     take(kSegmentBytes);
     manager->stopPreparer();
     // numbers keep log order across the oversized one
@@ -487,6 +495,9 @@ TEST_F(WalSegmentManagerTest, StartPreparerRefusesBeforeOpen)
     auto manager = makeManager();
     EXPECT_FALSE(manager->isOpen());
     manager->startPreparer();
+    EXPECT_FALSE(manager->isOpen());
+    EXPECT_NE(manager->error().find("is not open"), std::string::npos) << manager->error();
+    EXPECT_NE(manager->error().find(dir), std::string::npos) << manager->error();
     // long enough for a preparer to replace a 1 MiB segment
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     manager->stopPreparer();
@@ -512,7 +523,11 @@ TEST_F(WalSegmentManagerTest, StartPreparerRefusesAfterAFailedOpen)
     auto manager = makeManager();
     ASSERT_EQ(manager->open(), EWOULDBLOCK);
     EXPECT_FALSE(manager->isOpen());
+    std::string const reason = manager->error();
     manager->startPreparer();
+    EXPECT_FALSE(manager->isOpen());
+    // still names the lock holder, not only that the directory is not open
+    EXPECT_EQ(manager->error(), reason);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     manager->stopPreparer();
 
@@ -545,15 +560,218 @@ TEST_F(WalSegmentManagerTest, SecondOpenChangesNothing)
     EXPECT_EQ(segment, 2u);
 }
 
-// The sink already holds the lock for the first manager, so a second manager
-// on the same sink opens too.
-TEST_F(WalSegmentManagerTest, SecondManagerOnTheSameSinkOpens)
+namespace
 {
-    writeHeaderOnlySegment(3);
-    auto first = makeManager();
-    ASSERT_EQ(first->open(), 0);
-    auto second = makeManager();
-    ASSERT_EQ(second->open(), 0) << second->error();
-    EXPECT_TRUE(second->isOpen());
-    EXPECT_EQ(second->segments(), (std::vector<uint64_t>{3}));
+
+// Forwards to another sink and records the Argobots stream each file was
+// zero-filled on, which is where the zero-fill and its fdatasync ran.
+class StreamRecordingSink: public chl::WalFileSink
+{
+public:
+    explicit StreamRecordingSink(chl::WalFileSink& inner)
+        : inner(inner)
+    {}
+
+    // file name -> rank of the stream that called createZeroed
+    std::map<std::string, int> zeroedOn()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return ranks;
+    }
+
+    // After the next syncDirectory, a ULT queued on the calling stream blocks
+    // that stream for `stall` once the caller yields, so a ULT woken there
+    // meanwhile does not run until it ends.
+    void stallStreamAfterNextDirectorySync(std::chrono::milliseconds stall)
+    {
+        stallMs = stall.count();
+        stallArmed = true;
+    }
+
+    int openDirectory(std::string const& dir) override { return inner.openDirectory(dir); }
+    int lockDirectory() override { return inner.lockDirectory(); }
+    int createZeroed(std::string const& name, uint64_t bytes) override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            ranks[name] = thallium::xstream::self_rank();
+        }
+        return inner.createZeroed(name, bytes);
+    }
+    int openForWrite(std::string const& name, int& fd) override { return inner.openForWrite(name, fd); }
+    int writeAt(int fd, uint64_t offset, iovec const* iov, int iovcnt) override
+    {
+        return inner.writeAt(fd, offset, iov, iovcnt);
+    }
+    int syncData(int fd) override { return inner.syncData(fd); }
+    int rename(std::string const& from, std::string const& to) override { return inner.rename(from, to); }
+    int remove(std::string const& name) override { return inner.remove(name); }
+    int syncDirectory() override
+    {
+        int err = inner.syncDirectory();
+        if(stallArmed.exchange(false))
+        {
+            std::chrono::milliseconds const stall(stallMs.load());
+            thallium::xstream::self().make_thread([stall] { std::this_thread::sleep_for(stall); },
+                                                  thallium::anonymous());
+        }
+        return err;
+    }
+    int readFile(std::string const& name, std::string& out) override { return inner.readFile(name, out); }
+    int list(std::vector<std::string>& names) override { return inner.list(names); }
+    int freeSpace(uint64_t& free_bytes, uint64_t& total_bytes) override
+    {
+        return inner.freeSpace(free_bytes, total_bytes);
+    }
+    int closeFile(int fd) override { return inner.closeFile(fd); }
+
+private:
+    chl::WalFileSink& inner;
+    std::mutex mutex;
+    std::map<std::string, int> ranks;
+    std::atomic<bool> stallArmed{false};
+    std::atomic<int64_t> stallMs{0};
+};
+
+} // namespace
+
+// A take issued right after another, before the preparer has woken to make
+// the next spare, waits for the preparer rather than zero-filling and syncing
+// a whole segment on the taker's stream, where it would stall the durable
+// writers waiting on the committer. The preparer's stream is kept busy after it
+// makes segment 1, so the second take always comes before it wakes.
+TEST_F(WalSegmentManagerTest, TakeSpareRightAfterATakeWaitsForThePreparer)
+{
+    StreamRecordingSink recording(*sink);
+    chl::WalSegmentManager manager(recording, kSegmentBytes, kEndpoint, dir);
+    ASSERT_EQ(manager.open(), 0);
+    recording.stallStreamAfterNextDirectorySync(std::chrono::milliseconds(500));
+    manager.startPreparer();
+    // the stall starts once segment 1 is renamed into place and handed over
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while(!exists(wal::segmentFileName(1)) && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_TRUE(exists(wal::segmentFileName(1)));
+
+    std::vector<uint64_t> taken;
+    std::vector<int> fds;
+    int result = 0;
+    int takerRank = -1;
+    {
+        thallium::managed<thallium::xstream> stream = thallium::xstream::create();
+        thallium::managed<thallium::thread> taker = stream->make_thread(
+                [&]
+                {
+                    takerRank = thallium::xstream::self_rank();
+                    for(int i = 0; i < 2 && result == 0; ++i)
+                    {
+                        uint64_t segment = 0;
+                        uint64_t data_offset = 0;
+                        int fd = -1;
+                        if((result = manager.takeSpare(kSegmentBytes, segment, fd, data_offset)) == 0)
+                        {
+                            taken.push_back(segment);
+                            fds.push_back(fd);
+                        }
+                    }
+                });
+        taker->join();
+        stream->join();
+    }
+    manager.stopPreparer();
+    for(int fd: fds) { EXPECT_EQ(sink->closeFile(fd), 0); }
+
+    ASSERT_EQ(result, 0);
+    ASSERT_EQ(taken, (std::vector<uint64_t>{1, 2}));
+    std::map<std::string, int> const zeroed = recording.zeroedOn();
+    std::string const first = wal::segmentFileName(1) + ".partial";
+    std::string const second = wal::segmentFileName(2) + ".partial";
+    ASSERT_EQ(zeroed.count(first), 1u);
+    ASSERT_EQ(zeroed.count(second), 1u);
+    EXPECT_NE(zeroed.at(first), takerRank);
+    // made by the preparer, as segment 1 was, not on the taker's stream
+    EXPECT_EQ(zeroed.at(second), zeroed.at(first));
+    EXPECT_NE(zeroed.at(second), takerRank) << "segment 2 was zero-filled on the taker's stream";
+}
+
+// When the preparer's stream cannot be created, startPreparer reports it and
+// leaves the manager as if it had not been called: a take prepares on its own
+// thread instead of waiting for a preparer that does not exist, and a later
+// startPreparer starts it.
+TEST_F(WalSegmentManagerTest, PreparerThatCannotStartLeavesTakeSpareWorking)
+{
+    auto manager = makeManager();
+    ASSERT_EQ(manager->open(), 0);
+
+    // with RLIMIT_NPROC at 0, pthread_create fails with EAGAIN, and so does
+    // the creation of the preparer's stream
+    rlimit saved{};
+    ASSERT_EQ(getrlimit(RLIMIT_NPROC, &saved), 0);
+    rlimit none = saved;
+    none.rlim_cur = 0;
+    ASSERT_EQ(setrlimit(RLIMIT_NPROC, &none), 0);
+    bool threadsRefused = false;
+    try
+    {
+        std::thread([] {}).join();
+    }
+    catch(std::system_error const&)
+    {
+        threadsRefused = true;
+    }
+    if(!threadsRefused)
+    {
+        ASSERT_EQ(setrlimit(RLIMIT_NPROC, &saved), 0);
+        GTEST_SKIP() << "threads are still created under RLIMIT_NPROC 0 (a privileged user)";
+    }
+    EXPECT_NO_THROW(manager->startPreparer());
+    ASSERT_EQ(setrlimit(RLIMIT_NPROC, &saved), 0);
+    EXPECT_NE(manager->error().find("preparer"), std::string::npos) << manager->error();
+    EXPECT_NE(manager->error().find(dir), std::string::npos) << manager->error();
+
+    // taken on another stream so that a take waiting forever fails the test
+    // instead of hanging it
+    std::atomic<int> result{-1};
+    uint64_t segment = 0;
+    {
+        thallium::managed<thallium::xstream> stream = thallium::xstream::create();
+        thallium::managed<thallium::thread> taker = stream->make_thread(
+                [&]
+                {
+                    uint64_t data_offset = 0;
+                    int fd = -1;
+                    int err = manager->takeSpare(kSegmentBytes, segment, fd, data_offset);
+                    if(err == 0)
+                    {
+                        sink->closeFile(fd);
+                    }
+                    result = err;
+                });
+        auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while(result.load() == -1 && std::chrono::steady_clock::now() < deadline)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        EXPECT_NE(result.load(), -1) << "takeSpare waits for a preparer that never started";
+        if(result.load() == -1)
+        {
+            // a preparer that does start hands the waiting take its spare
+            manager->startPreparer();
+        }
+        taker->join();
+        stream->join();
+    }
+    EXPECT_EQ(result.load(), 0);
+    EXPECT_EQ(segment, 1u);
+
+    manager->startPreparer();
+    uint64_t data_offset = 0;
+    int fd = -1;
+    ASSERT_EQ(manager->takeSpare(kSegmentBytes, segment, fd, data_offset), 0);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+    manager->stopPreparer();
+    EXPECT_EQ(segment, 2u);
+    EXPECT_EQ(manager->segments(), (std::vector<uint64_t>{1, 2}));
 }

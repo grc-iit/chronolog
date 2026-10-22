@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <mutex>
 
 #include <sys/uio.h>
@@ -138,17 +139,46 @@ void WalSegmentManager::startPreparer()
     if(!opened)
     {
         // nextSegment is not known yet: a spare numbered from it could be
-        // renamed over a segment holding pending events
-        lastError = "WAL directory " + directory + " is not open: the segment preparer is not started";
-        LOG_ERROR("[WalSegmentManager] {}", lastError);
+        // renamed over a segment holding pending events. A failed open() has
+        // already said why the directory is not open; keep that reason.
+        if(lastError.empty())
+        {
+            lastError = "WAL directory " + directory + " is not open";
+        }
+        LOG_ERROR("[WalSegmentManager] Segment preparer not started: {}", lastError);
         return;
     }
     {
         std::lock_guard<thallium::mutex> lock(mutex);
         preparerActive = true;
     }
-    preparerStream = thallium::xstream::create();
-    preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
+    try
+    {
+        preparerStream = thallium::xstream::create();
+        preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
+    }
+    catch(std::exception const& e)
+    {
+        // takeSpare would otherwise wait for a preparer that never runs
+        {
+            std::lock_guard<thallium::mutex> lock(mutex);
+            preparerActive = false;
+            changed.notify_all();
+        }
+        if(!preparerStream->is_null())
+        {
+            try
+            {
+                preparerStream->join();
+            }
+            catch(std::exception const&)
+            {}
+            preparerStream = thallium::managed<thallium::xstream>();
+        }
+        lastError = "cannot start the WAL segment preparer for " + directory + ": " + e.what();
+        LOG_ERROR("[WalSegmentManager] {}; spares are prepared on the taker's thread", lastError);
+        return;
+    }
     preparerRunning = true;
 }
 

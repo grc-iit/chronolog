@@ -29,6 +29,10 @@ namespace chronolog
 // adoptExisting and deleteSegment are for one thread at a time (recovery, then
 // the committer); the preparer only touches the spare, under the manager's
 // Argobots mutex.
+//
+// One manager per sink. The sink's lock does not keep out a second manager on
+// the same sink: its open() would remove the first one's partial spare, and
+// its spares would take the same segment numbers.
 class WalSegmentManager
 {
 public:
@@ -57,7 +61,10 @@ public:
 
     // A ULT on its own tl::xstream keeps one spare ready. After a failed
     // preparation it waits for the next takeSpare instead of retrying. Not
-    // started, with the reason logged and in error(), unless open() succeeded.
+    // started, with the reason logged and in error(), unless open() succeeded;
+    // after a failed open() error() keeps open()'s reason. When its stream or
+    // ULT cannot be created, that is logged and in error(), and takeSpare
+    // prepares on the caller's thread as if it had not been called.
     void startPreparer();
     // Joins the preparer. A spare it already prepared stays ready.
     void stopPreparer();
