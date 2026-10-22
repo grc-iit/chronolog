@@ -346,3 +346,37 @@ gtest_discover_tests(keeper_wal_recovery_test TEST_PREFIX "Unit_ChronoKeeper_" P
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_recovery_test DESTINATION tests)
 endif()
+
+# KeeperWal (GTest) — the keeper WAL's committer: group commit on its own
+# Argobots stream, the answer only after the sync, the failure latch, the
+# free-space reserve, N records per segment, oversized records, retries that
+# join a write in flight, releases and D records, and stop. Runs in a temporary
+# directory through the fault-injecting sink, with requests from ULTs.
+add_executable(keeper_wal_test
+    chrono_keeper_wal_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperWal.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalSegmentManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalReleaseTracker.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFileSink.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFormat.cpp
+)
+
+target_include_directories(keeper_wal_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_wal_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_wal_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal)
+# a waiter that is never answered shows as a hang
+gtest_discover_tests(keeper_wal_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 120)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_test DESTINATION tests)
+endif()
