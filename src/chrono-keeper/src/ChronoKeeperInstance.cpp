@@ -1,8 +1,14 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <sys/uio.h>
+#include <algorithm>
+#include <cerrno>
+#include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -15,6 +21,10 @@
 #include <KeeperChunkRetentionStore.h>
 #include <KeeperDataStore.h>
 #include <KeeperDurableWriter.h>
+#include <KeeperWal.h>
+#include <WalFileSink.h>
+#include <WalMountCheck.h>
+#include <WalRecovery.h>
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
@@ -24,6 +34,210 @@
 
 namespace chl = chronolog;
 namespace tl = thallium;
+
+// The file a keeper with the WAL on leaves in its WAL directory when it exits:
+// "pending_events=<n> pending_bytes=<b>", the durable events the grapher had
+// not confirmed. The deploy scripts read it after a stop; a missing file means
+// the keeper crashed or was killed. Removed at startup.
+static std::string const WAL_EXIT_SUMMARY = "exit-summary";
+
+// Logs where the WAL directory lives and every warning about it: a shared or
+// network file system, tmpfs, overlayfs, the root device, free space below the
+// reserve. The keeper starts either way.
+static void check_wal_mount(chl::WalConf const& wal_conf)
+{
+    chl::WalMountInfo info;
+    int err = chl::inspectWalDirectory(wal_conf.dir, info);
+    if(err != 0)
+    {
+        LOG_WARNING("[ChronoKeeperInstance] Cannot inspect the file system of WAL directory {}: {}",
+                    wal_conf.dir,
+                    std::strerror(err));
+        return;
+    }
+    uint64_t const reserve_bytes =
+            std::max<uint64_t>(wal_conf.reserve_min_bytes, info.total_bytes / 100 * wal_conf.reserve_percent);
+    LOG_INFO("[ChronoKeeperInstance] WAL directory {} is on {}: {} bytes free of {}, reserve {} bytes",
+             wal_conf.dir,
+             info.fs_name,
+             info.free_bytes,
+             info.total_bytes,
+             reserve_bytes);
+    for(std::string const& warning: chl::walMountWarnings(info, reserve_bytes))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] WAL directory {}: {}", wal_conf.dir, warning);
+    }
+}
+
+static void log_wal_replay(std::string const& dir,
+                           chl::RecoveredState const& recovered,
+                           std::size_t chunks,
+                           std::chrono::steady_clock::duration elapsed)
+{
+    std::size_t events = 0;
+    for(auto const& [wal_story_id, story]: recovered.stories)
+    {
+        events += story.events.size();
+        if(story.events.empty())
+        {
+            continue;
+        }
+        // events are ordered by time first
+        LOG_INFO("[ChronoKeeperInstance] WAL replay: StoryID={} {}/{} (WAL StoryID={}): {} events from {} to {}",
+                 chl::recoveredStoryId(story),
+                 story.has_names ? story.chronicle : std::string("<no names>"),
+                 story.has_names ? story.story : std::string("<no names>"),
+                 wal_story_id,
+                 story.events.size(),
+                 story.events.begin()->second.time(),
+                 story.events.rbegin()->second.time());
+    }
+    LOG_INFO("[ChronoKeeperInstance] WAL replay from {}: {} segments, {} bytes read, oldest segment {} s old, "
+             "{} stories, {} events in {} chunks, took {} ms",
+             dir,
+             recovered.segments.size(),
+             recovered.bytes_read,
+             recovered.oldest_segment_age_secs,
+             recovered.stories.size(),
+             events,
+             chunks,
+             std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+}
+
+// Opens the WAL directory, checks its mount, reads it back, starts the WAL on
+// what it holds, makes it the retention store's WalObserver and hands the
+// recovered events to the retention store as sealed chunks. nullptr, with the
+// reason logged, when the keeper must not start.
+static std::unique_ptr<chl::KeeperWal> start_keeper_wal(chl::WalConf const& wal_conf,
+                                                        std::string const& keeper_endpoint,
+                                                        chl::KeeperChunkRetentionStore& tail_store,
+                                                        chl::KeeperDataStore& data_store)
+{
+    auto const started_at = std::chrono::steady_clock::now();
+    auto wal = std::make_unique<chl::KeeperWal>(wal_conf, keeper_endpoint, chl::makePosixWalFileSink());
+
+    int err = wal->fileSink().openDirectory(wal_conf.dir);
+    if(err != 0)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] Cannot open WAL directory {}: {}", wal_conf.dir, std::strerror(err));
+        return nullptr;
+    }
+    check_wal_mount(wal_conf);
+
+    chl::RecoveredState recovered;
+    std::string error;
+    int const recovery_status = chl::recoverWal(wal->fileSink(), wal->segmentManager(), recovered, error);
+    if(wal->segmentManager().isOpen())
+    {
+        // This keeper holds the lock now, so a summary left by the last one is
+        // stale. It goes even when recovery refuses, so a stop after a failed
+        // start does not read the last clean exit's counts.
+        err = wal->fileSink().remove(WAL_EXIT_SUMMARY);
+        if(err == 0)
+        {
+            err = wal->fileSink().syncDirectory();
+        }
+        if(err != 0 && err != ENOENT)
+        {
+            LOG_WARNING("[ChronoKeeperInstance] Cannot remove {} from WAL directory {}: {}",
+                        WAL_EXIT_SUMMARY,
+                        wal_conf.dir,
+                        std::strerror(err));
+        }
+    }
+    if(recovery_status != chl::CL_SUCCESS)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] WAL recovery failed: {}. Exiting.", error);
+        return nullptr;
+    }
+
+    // The WAL starts and becomes the observer before the replay, so an event
+    // the replay cannot place is released like any other discarded event.
+    if(wal->start(recovered, chl::recoveredStoryId) != chl::CL_SUCCESS)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] Cannot start the WAL in {}. Exiting.", wal_conf.dir);
+        return nullptr;
+    }
+    tail_store.setWalObserver(wal.get());
+    std::size_t const chunks = data_store.replayRecoveredEvents(recovered);
+    log_wal_replay(wal_conf.dir, recovered, chunks, std::chrono::steady_clock::now() - started_at);
+    return wal;
+}
+
+// Writes the exit summary as <name>.partial, data-syncs it, renames it into
+// place and syncs the directory, so a reader finds the whole line or no file.
+// 0, or the errno of the step `what` names.
+static int write_wal_exit_summary(chl::WalFileSink& sink, chl::WalStats const& stats, std::string& what)
+{
+    std::string const line = "pending_events=" + std::to_string(stats.pending_events) +
+                             " pending_bytes=" + std::to_string(stats.pending_bytes) + "\n";
+    // WalSegmentManager::open removes a leftover *.partial at the next start
+    std::string const partial = WAL_EXIT_SUMMARY + ".partial";
+    what = "create " + partial;
+    int err = sink.createZeroed(partial, 0);
+    int fd = -1;
+    if(err == 0)
+    {
+        what = "open " + partial;
+        err = sink.openForWrite(partial, fd);
+    }
+    if(err == 0)
+    {
+        iovec iov{const_cast<char*>(line.data()), line.size()};
+        what = "write " + partial;
+        err = sink.writeAt(fd, 0, &iov, 1);
+        if(err == 0)
+        {
+            what = "fdatasync " + partial;
+            err = sink.syncData(fd);
+        }
+        sink.closeFile(fd);
+    }
+    if(err == 0)
+    {
+        what = "rename " + partial;
+        err = sink.rename(partial, WAL_EXIT_SUMMARY);
+    }
+    if(err == 0)
+    {
+        what = "fsync the directory";
+        err = sink.syncDirectory();
+    }
+    return err;
+}
+
+// Called once the recording service takes no more requests: commits and
+// answers what is queued, stops the WAL, and leaves the exit summary.
+static void stop_keeper_wal(chl::KeeperWal& wal)
+{
+    wal.stop();
+    chl::WalStats const stats = wal.stats();
+    std::string what;
+    int err = write_wal_exit_summary(wal.fileSink(), stats, what);
+    if(err != 0)
+    {
+        LOG_ERROR("[ChronoKeeperInstance] Cannot write {} in WAL directory {}: {} failed: {}",
+                  WAL_EXIT_SUMMARY,
+                  wal.directory(),
+                  what,
+                  std::strerror(err));
+    }
+    if(stats.pending_events > 0)
+    {
+        LOG_WARNING("[ChronoKeeperInstance] Exiting with {} unconfirmed durable events ({} bytes) in WAL directory {}; "
+                    "a keeper started on that directory replays them",
+                    stats.pending_events,
+                    stats.pending_bytes,
+                    wal.directory());
+    }
+    else
+    {
+        LOG_INFO("[ChronoKeeperInstance] Exiting with {} unconfirmed durable events ({} bytes) in WAL directory {}",
+                 stats.pending_events,
+                 stats.pending_bytes,
+                 wal.directory());
+    }
+}
 
 // we will be using a combination of the uint32_t representation of the service IP address
 // and uint16_t representation of the port number
@@ -227,6 +441,10 @@ int main(int argc, char** argv)
     // reports a chunk written the store keeps it and serves it as unconfirmed,
     // so a player that has not listed the new archive file yet still replays it.
     const int archive_visibility_delay_secs = KEEPER_CONF.DATA_STORE_CONF.archive_visibility_delay_secs;
+    // The keeper's WAL for durable writes, when WAL.enabled. Declared before
+    // the retention store, which keeps a pointer to it as its WalObserver, so
+    // it outlives the store on every return from main.
+    std::unique_ptr<chl::KeeperWal> theWal;
     chronolog::KeeperChunkRetentionStore theTailStore(theExtractionModule.getExtractionQueue(),
                                                       keeper_tail_capacity,
                                                       keeper_retention_cap_mb,
@@ -247,6 +465,27 @@ int main(int argc, char** argv)
                                             KEEPER_CONF.DATA_STORE_CONF.acceptance_window_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
                                             KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs);
+
+    // Recover the WAL before any service takes a request or the keeper
+    // registers: the recovered events become sealed chunks the extraction
+    // module ships once it starts, and their WAL records stay pending until
+    // the grapher confirms them.
+    if(KEEPER_CONF.WAL_CONF.enabled)
+    {
+        theWal = start_keeper_wal(KEEPER_CONF.WAL_CONF, KEEPER_RECORDING_SERVICE_NA_STRING, theTailStore, theDataStore);
+        if(theWal == nullptr)
+        {
+            return (-1);
+        }
+    }
+    // Every return from here stops the WAL and leaves its exit summary.
+    auto stop_wal = [&theWal]()
+    {
+        if(theWal != nullptr)
+        {
+            stop_keeper_wal(*theWal);
+        }
+    };
 
     // Instantiate KeeperRecordingService
     tl::engine* dataAdminEngine = nullptr;
@@ -285,12 +524,13 @@ int main(int argc, char** argv)
         {
             delete dataAdminEngine;
         }
+        stop_wal();
         return (-1);
     }
 
     // The keeper side of record_event_durable. With no WAL it answers every
     // durable write CL_ERR_DURABILITY_UNAVAILABLE and ingests nothing.
-    chronolog::KeeperDurableWriter theDurableWriter(nullptr,
+    chronolog::KeeperDurableWriter theDurableWriter(theWal.get(),
                                                     ingestionQueue,
                                                     theTailStore,
                                                     theDataStore,
@@ -332,6 +572,7 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
         delete keeperDataAdminService;
+        stop_wal();
         return (-1);
     }
 
@@ -353,6 +594,7 @@ int main(int argc, char** argv)
         LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
         delete keeperRecordingService;
         delete keeperDataAdminService;
+        stop_wal();
         return (-1);
     }
 
@@ -387,6 +629,7 @@ int main(int argc, char** argv)
         delete keeperRegistryClient;
         delete keeperRecordingService;
         delete keeperDataAdminService;
+        stop_wal();
         return (-1);
     }
     LOG_INFO("[ChronoKeeperInstance] Successfully registered with ChronoVisor.");
@@ -408,6 +651,19 @@ int main(int argc, char** argv)
     while(keep_running)
     {
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
+        if(theWal != nullptr)
+        {
+            chl::WalStats const wal_stats = theWal->stats();
+            LOG_INFO("[KeeperWal] stats groups={} events={} bytes={} max_events_per_group={} pending_events={} "
+                     "pending_bytes={} segments={}",
+                     wal_stats.groups,
+                     wal_stats.events,
+                     wal_stats.bytes,
+                     wal_stats.max_events_per_group,
+                     wal_stats.pending_events,
+                     wal_stats.pending_bytes,
+                     wal_stats.segments);
+        }
         sleep(10);
     }
 
@@ -452,9 +708,17 @@ int main(int argc, char** argv)
                     shutdown_confirm_timeout_secs);
     }
     delete keeperDataAdminService;
+    // No request and no confirmation reaches the WAL any more: commit and
+    // answer what is queued, and leave the exit summary with the events the
+    // grapher did not confirm. A keeper started on the directory replays them.
+    stop_wal();
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();
+    // Nothing calls into the retention store now, so its observer can go, and
+    // the WAL with it while Argobots is still up.
+    theTailStore.setWalObserver(nullptr);
+    theWal.reset();
 
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
