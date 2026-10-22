@@ -72,6 +72,15 @@ public:
                             uint32_t time_chunk_ranularity = 30,
                             uint32_t access_window = 60);
 
+    // A durable write for a story this keeper has no pipeline for (it
+    // restarted while a client held the story, and the visor's start has not
+    // reached it yet): starts one with the keeper's own durations and now as
+    // its start time, and lets it decay as a stopped story's pipeline does
+    // unless a start_story_recording keeps it. Unlike startStoryRecording it
+    // leaves the retention store's drop mark for the id in place, so a stale
+    // writer cannot undo a destroy. A pipeline that exists is left as it is.
+    int ensureStoryPipeline(ChronicleName const&, StoryName const&, StoryId const&);
+
     int stopStoryRecording(StoryId const&);
 
     void collectIngestedEvents();
@@ -110,6 +119,11 @@ private:
     KeeperDataStore(KeeperDataStore const&) = delete;
 
     KeeperDataStore& operator=(KeeperDataStore const&) = delete;
+
+    // Creates the story's pipeline and engages it with the ingestion queue.
+    // Caller holds dataStoreMutex and has checked the story has none. Returns
+    // the pipeline, or nullptr when it could not be added.
+    KeeperStoryPipeline* addStoryPipeline(ChronicleName const&, StoryName const&, StoryId const&, uint64_t start_time);
 
     DataStoreState state;
     std::mutex dataStoreStateMutex;

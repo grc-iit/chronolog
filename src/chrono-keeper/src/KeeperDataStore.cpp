@@ -57,6 +57,17 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
         return chronolog::CL_SUCCESS;
     }
 
+    return (addStoryPipeline(chronicle, story, story_id, start_time) != nullptr) ? chronolog::CL_SUCCESS
+                                                                                 : chronolog::CL_ERR_UNKNOWN;
+}
+
+////////////////////////
+
+chronolog::KeeperStoryPipeline* chronolog::KeeperDataStore::addStoryPipeline(std::string const& chronicle,
+                                                                             std::string const& story,
+                                                                             chronolog::StoryId const& story_id,
+                                                                             uint64_t start_time)
+{
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::KeeperStoryPipeline*>(story_id,
                                                                new chl::KeeperStoryPipeline(theExtractionQueue,
@@ -71,20 +82,54 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     if(result.second)
     {
         LOG_INFO("[KeeperDataStore] New KeeperStoryPipeline created successfully. StoryID: {}", story_id);
-        pipeline_iter = result.first;
         //engage KeeperStoryPipeline with the IngestionQueue
-        StoryIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        StoryIngestionHandle* ingestionHandle = (*result.first).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
-        return chronolog::CL_SUCCESS;
+        return (*result.first).second;
     }
     else
     {
         LOG_ERROR("[KeeperDataStore] Failed to create KeeperStoryPipeline for StoryID: {}. Possible memory or resource "
                   "issue.",
                   story_id);
-        return chronolog::CL_ERR_UNKNOWN;
+        return nullptr;
     }
 }
+
+////////////////////////
+
+int chronolog::KeeperDataStore::ensureStoryPipeline(std::string const& chronicle,
+                                                    std::string const& story,
+                                                    chronolog::StoryId const& story_id)
+{
+    // No clearDroppedStory here: only a start_story_recording from the visor
+    // says the id belongs to a new story. A durable write may come from a
+    // client that has not learnt of a destroy yet.
+    std::lock_guard storeLock(dataStoreMutex);
+    if(theMapOfStoryPipelines.find(story_id) != theMapOfStoryPipelines.end())
+    {
+        return chronolog::CL_SUCCESS;
+    }
+
+    LOG_INFO("[KeeperDataStore] Durable write starts a pipeline for a story not recorded here: Chronicle={}, "
+             "Story={}, StoryID={}",
+             chronicle,
+             story,
+             story_id);
+    uint64_t const current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    KeeperStoryPipeline* pipeline = addStoryPipeline(chronicle, story, story_id, current_time);
+    if(pipeline == nullptr)
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+    // Nothing on this keeper will stop the story, so it waits for exit as a
+    // stopped story's pipeline does: it retires an acceptance window from now
+    // unless a start_story_recording takes it off the list first. A later
+    // durable write for the retired story starts a new one.
+    pipelinesWaitingForExit[story_id] = std::make_pair(pipeline, current_time + pipeline->getAcceptanceWindow());
+    return chronolog::CL_SUCCESS;
+}
+
 ////////////////////////
 
 int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& story_id)

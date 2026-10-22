@@ -25,6 +25,8 @@
 
 #include <IngestionQueue.h>
 #include <KeeperChunkRetentionStore.h>
+#include <KeeperDataStore.h>
+#include <KeeperDurableWriter.h>
 #include <KeeperRecordingService.h>
 
 #include <KeeperHotFetchClient.h>
@@ -111,7 +113,8 @@ protected:
         chl::KeeperRecordingService::CreateKeeperRecordingService(*keeperEngine,
                                                                   kLiveKeeperProvider,
                                                                   ingestionQueue,
-                                                                  retentionStore);
+                                                                  retentionStore,
+                                                                  durableWriter);
         hungKeeper = std::make_unique<HungKeeper>(*keeperEngine, kHungKeeperProvider);
     }
 
@@ -146,6 +149,9 @@ protected:
     chl::IngestionQueue ingestionQueue;
     chl::StoryChunkExtractionQueue extractionQueue;
     chl::KeeperChunkRetentionStore retentionStore{extractionQueue, 0};
+    chl::KeeperDataStore dataStore{ingestionQueue, extractionQueue, retentionStore};
+    // the WAL is off; these tests make no durable writes
+    chl::KeeperDurableWriter durableWriter{nullptr, ingestionQueue, retentionStore, dataStore, 0};
     std::unique_ptr<tl::engine> keeperEngine;
     std::unique_ptr<tl::engine> playerEngine;
     std::unique_ptr<HungKeeper> hungKeeper;

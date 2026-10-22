@@ -71,9 +71,13 @@ endif()
 
 # KeeperHotFetchClient (GTest) — the hot fetch against the keeper's real
 # recording service and against a keeper that never answers, over
-# ofi+sockets on 127.0.0.1
+# ofi+sockets on 127.0.0.1. The recording service takes the keeper's durable
+# writer, which needs the keeper's data store.
 add_executable(keeper_hot_fetch_client_test
     chrono_player_keeper_hot_fetch_client_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDurableWriter.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
 )
 
 target_include_directories(keeper_hot_fetch_client_test PRIVATE
