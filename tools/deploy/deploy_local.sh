@@ -409,7 +409,8 @@ report_wal_exit_summaries() {
         if counts=$(read_exit_summary "${wal_dir}"); then
             read -r events bytes <<< "${counts}"
             state=clean
-            if (( events > 0 )); then
+            # Compare as strings: bash arithmetic wraps a count of 2^63 or more.
+            if [[ ! "${events}" =~ ^0+$ ]]; then
                 state=pending
                 status=1
             fi
@@ -437,7 +438,7 @@ clean_wal_dirs() {
         [[ -n "$(ls -A "${dir}")" ]] || continue
         if counts=$(read_exit_summary "${dir}"); then
             events=${counts%% *}
-            (( events == 0 )) && continue
+            [[ "${events}" =~ ^0+$ ]] && continue
             refused+=("${dir} (${events} pending events)")
         else
             refused+=("${dir} (no exit-summary)")

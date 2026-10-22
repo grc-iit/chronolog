@@ -85,7 +85,9 @@ usage() {
   echo "  -d|--start          Start ChronoLog deployment"
   echo "  -s|--stop           Stop ChronoLog deployment"
   echo "  -c|--clean          Clean ChronoLog logging artifacts and generated files"
-  echo "  --restart-keeper <host>  Relaunch the keeper on <host> with the configuration start generated for it"
+  echo "  --restart-keeper <host>  Relaunch the keeper on <host> with the configuration start generated for it;"
+  echo "                           it relaunches every keeper conf for <host>, so it cannot restart one of two"
+  echo "                           keepers on one host (two cannot run there today: every conf has the same ports)"
   echo ""
   echo "Deployment Options:"
   echo "  -r|--record-groups <number>      Number of RecordingGroups/ChronoGraphers"
@@ -740,12 +742,13 @@ collect_keeper_wal_states() {
       if [[ "${rstate}" == "summary" ]]; then
         events=$(sed -n 's/.*pending_events=\([0-9][0-9]*\).*/\1/p' <<<"${rest}")
         bytes=$(sed -n 's/.*pending_bytes=\([0-9][0-9]*\).*/\1/p' <<<"${rest}")
+        # Compare as strings: bash arithmetic wraps a count of 2^63 or more.
         if [[ -z "${events}" || -z "${bytes}" ]]; then
           state=missing events=- bytes=-
-        elif ((events > 0)); then
-          state=pending
-        else
+        elif [[ "${events}" =~ ^0+$ ]]; then
           state=clean
+        else
+          state=pending
         fi
       fi
       break

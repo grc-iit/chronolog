@@ -106,16 +106,25 @@ summary() { # HOST EVENTS BYTES
 }
 all_clean() { summary nodeA 0 0 && summary nodeB 0 0 && summary nodeC 0 0; }
 
-# --stop: the processes are stopped by no-op stand-ins that log their order.
-parallel_remote_stop_processes() { echo "stop $(basename "$2")" >> "$fixture/stop-order"; }
+# --stop: the processes are stopped by no-op stand-ins that print a line into
+# stop's output, so the table's place among the stops shows.
+parallel_remote_stop_processes() { echo "stop $(basename "$2")"; }
 parallel_remote_check_all() { :; }
 check_hosts_files() { :; }
 check_work_dir() { :; }
 run_stop() { # prints the output; returns stop's status
-    rm -f "$fixture/stop-order"
     (stop) > "$fixture/stop-out" 2>&1
 }
 row() { grep -E "^$1 +$2 +" "$fixture/stop-out"; }
+in_order() { # PATTERN...: the first line matching each comes after the first matching the one before
+    local prev=0 n
+    while [[ $# -gt 0 ]]; do
+        n=$(grep -n -m 1 -E "$1" "$fixture/stop-out" | cut -d: -f1)
+        [[ -n "$n" ]] && ((n > prev)) || return 1
+        prev=$n
+        shift
+    done
+}
 
 setup
 all_clean
@@ -132,9 +141,24 @@ summary nodeC 0 0
 if run_stop; then fail "stop: pending events exit nonzero"; else pass "stop: pending events exit nonzero"; fi
 row nodeB 1 | grep -qE ' 7 +4096 +pending ' && pass "stop: pending counts shown" ||
     fail "stop: pending counts shown: $(cat "$fixture/stop-out")"
-[[ "$(tr '\n' ' ' < "$fixture/stop-order")" == "stop chrono-player stop chrono-keeper stop chrono-grapher stop chrono-visor " ]] &&
-    pass "stop: graphers and visor stopped before failing" ||
-    fail "stop: graphers and visor stopped before failing: $(cat "$fixture/stop-order")"
+# The players and the keepers stop together, in either order.
+grep -q '^stop chrono-player$' "$fixture/stop-out" && pass "stop: players stopped" || fail "stop: players stopped"
+in_order '^stop chrono-keeper$' '^stop chrono-grapher$' '^stop chrono-visor$' &&
+    pass "stop: keepers, graphers, then visor stopped before failing" ||
+    fail "stop: keepers, graphers, then visor stopped before failing: $(cat "$fixture/stop-out")"
+in_order '^stop chrono-keeper$' '^HOST +GROUP +PENDING_EVENTS' '^stop chrono-grapher$' &&
+    pass "stop: the table is printed after the keepers stop and before the graphers do" ||
+    fail "stop: the table is printed after the keepers stop and before the graphers do: $(cat "$fixture/stop-out")"
+
+# A count of 2^64 wraps to 0 in bash arithmetic; it is still pending.
+setup
+all_clean
+summary nodeB 18446744073709551616 4096
+if run_stop; then fail "stop: a 2^64 pending count exits nonzero"; else pass "stop: a 2^64 pending count exits nonzero"; fi
+row nodeB 1 | grep -qE ' 18446744073709551616 +4096 +pending ' && pass "stop: a 2^64 pending count shown as pending" ||
+    fail "stop: a 2^64 pending count shown as pending: $(cat "$fixture/stop-out")"
+summary nodeB 000 0
+if run_stop; then pass "stop: an all-zero count is clean"; else fail "stop: an all-zero count is clean: $(cat "$fixture/stop-out")"; fi
 
 setup
 summary nodeA 0 0
@@ -175,11 +199,12 @@ if run_clean; then pass "clean: clean summaries exit 0"; else fail "clean: clean
 [[ -d "$fixture/hosts/nodeA/mnt nvme/$USER" ]] && pass "clean: the base directory is kept" || fail "clean: the base directory is kept"
 compgen -G "$CONF_FILE.*" > /dev/null && fail "clean: generated confs removed" || pass "clean: generated confs removed"
 
-for case_ in pending missing unreachable; do
+for case_ in pending pending-2^64 missing unreachable; do
     setup
     all_clean
     case $case_ in
     pending) summary nodeB 3 300 ;;
+    pending-2^64) summary nodeB 18446744073709551616 300 ;;
     missing) rm -f "$(wal_dir_of nodeB)/exit-summary" ;;
     unreachable) down=nodeB ;;
     esac

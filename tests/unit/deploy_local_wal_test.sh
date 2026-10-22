@@ -112,6 +112,15 @@ if report_wal_exit_summaries "$conf_dir" > "$fixture/missing.out"; then rc=0; el
 check "stop: a missing summary exits nonzero" test "$rc" -ne 0
 check "stop: the table marks the missing summary" grep -q 'keeper-2.*missing' "$fixture/missing.out"
 
+# 2^64 wraps to 0 in bash arithmetic; it is still a pending count.
+conf_dir=$(stop_case huge 'pending_events=0 pending_bytes=0' 'pending_events=18446744073709551616 pending_bytes=4096')
+if report_wal_exit_summaries "$conf_dir" > "$fixture/huge.out"; then rc=0; else rc=$?; fi
+check "stop: a 2^64 pending count exits nonzero" test "$rc" -ne 0
+check "stop: the table marks a 2^64 count pending" grep -q 'keeper-2 .*18446744073709551616 .*pending' "$fixture/huge.out"
+
+conf_dir=$(stop_case zeros 'pending_events=000 pending_bytes=0')
+check "stop: an all-zero count is clean" quiet report_wal_exit_summaries "$conf_dir"
+
 conf_dir="$fixture/stop-off/conf"
 mkdir -p "$conf_dir"
 generate_config_files 1 "$template" "$conf_dir" "$fixture/output" 1 "$fixture/monitor" "$client_template" "" > /dev/null
@@ -128,6 +137,11 @@ if clean_wal_dirs "$wal_root" false > /dev/null 2>&1; then rc=0; else rc=$?; fi
 check "clean: pending events refuse the clean" test "$rc" -ne 0
 check "clean: a refused clean removes no WAL directory" test -f "$wal_root/keeper-1/00000001.wal"
 check "clean: the pending WAL is kept" test -f "$wal_root/keeper-2/00000001.wal"
+
+printf 'pending_events=18446744073709551616 pending_bytes=100\n' > "$wal_root/keeper-2/exit-summary"
+if clean_wal_dirs "$wal_root" false > /dev/null 2>&1; then rc=0; else rc=$?; fi
+check "clean: a 2^64 pending count refuses the clean" test "$rc" -ne 0
+check "clean: the WAL with a 2^64 pending count is kept" test -f "$wal_root/keeper-2/00000001.wal"
 
 rm -f "$wal_root/keeper-2/exit-summary"
 if clean_wal_dirs "$wal_root" false > /dev/null 2>&1; then rc=0; else rc=$?; fi
