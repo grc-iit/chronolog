@@ -16,6 +16,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -127,6 +128,52 @@ struct Lookup
     std::optional<int> answer;
 };
 
+// Forwards to another sink. Fails rename, which only the preparation of a
+// spare uses, when told to, and counts the renames tried.
+class RenameFailingSink: public chl::WalFileSink
+{
+public:
+    explicit RenameFailingSink(std::unique_ptr<chl::WalFileSink> inner)
+        : inner(std::move(inner))
+    {}
+
+    void failRenamesWith(int err) { renameError = err; }
+    uint64_t renameCount() const { return renames.load(); }
+
+    int openDirectory(std::string const& dir) override { return inner->openDirectory(dir); }
+    int lockDirectory() override { return inner->lockDirectory(); }
+    int createZeroed(std::string const& name, uint64_t bytes) override { return inner->createZeroed(name, bytes); }
+    int openForWrite(std::string const& name, int& fd) override { return inner->openForWrite(name, fd); }
+    int writeAt(int fd, uint64_t offset, iovec const* iov, int iovcnt) override
+    {
+        return inner->writeAt(fd, offset, iov, iovcnt);
+    }
+    int syncData(int fd) override { return inner->syncData(fd); }
+    int rename(std::string const& from, std::string const& to) override
+    {
+        ++renames;
+        if(int err = renameError.load())
+        {
+            return err;
+        }
+        return inner->rename(from, to);
+    }
+    int remove(std::string const& name) override { return inner->remove(name); }
+    int syncDirectory() override { return inner->syncDirectory(); }
+    int readFile(std::string const& name, std::string& out) override { return inner->readFile(name, out); }
+    int list(std::vector<std::string>& names) override { return inner->list(names); }
+    int freeSpace(uint64_t& free_bytes, uint64_t& total_bytes) override
+    {
+        return inner->freeSpace(free_bytes, total_bytes);
+    }
+    int closeFile(int fd) override { return inner->closeFile(fd); }
+
+private:
+    std::unique_ptr<chl::WalFileSink> inner;
+    std::atomic<int> renameError{0};
+    std::atomic<uint64_t> renames{0};
+};
+
 // Sets RLIMIT_NPROC to 0 while it lives, so pthread_create fails with EAGAIN
 // and no Argobots stream can be created. refused() is false when threads are
 // still created under the limit (a privileged user).
@@ -205,21 +252,30 @@ protected:
     }
 
     // The sink reports plenty of free space unless a test says otherwise, so
-    // the reserve does not depend on the disk the tests run on.
-    void makeWal(std::chrono::milliseconds idle_rotation = 1min)
+    // the reserve does not depend on the disk the tests run on. With
+    // rename_failures the WAL writes through a RenameFailingSink around it.
+    void makeWal(std::chrono::milliseconds idle_rotation = 1min, bool rename_failures = false)
     {
         auto owned = std::make_unique<chl::FaultInjectingWalFileSink>(chl::makePosixWalFileSink());
         sink = owned.get();
         sink->setFreeSpace(1000 * kMiB * 1024, 2000 * kMiB * 1024);
-        wal = std::make_unique<chl::KeeperWal>(conf, kEndpoint, std::move(owned), idle_rotation);
+        std::unique_ptr<chl::WalFileSink> top = std::move(owned);
+        renameSink = nullptr;
+        if(rename_failures)
+        {
+            auto wrapped = std::make_unique<RenameFailingSink>(std::move(top));
+            renameSink = wrapped.get();
+            top = std::move(wrapped);
+        }
+        wal = std::make_unique<chl::KeeperWal>(conf, kEndpoint, std::move(top), idle_rotation);
     }
 
     // In a fresh directory start takes segment 1 and the preparer makes
     // segment 2. Waiting for it keeps the preparer's sync out of the tests'
     // held syncs and sync counts.
-    void startWal(std::chrono::milliseconds idle_rotation = 1min)
+    void startWal(std::chrono::milliseconds idle_rotation = 1min, bool rename_failures = false)
     {
-        makeWal(idle_rotation);
+        makeWal(idle_rotation, rename_failures);
         ASSERT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_SUCCESS);
         ASSERT_TRUE(waitFor([this]() { return segmentNumbers().size() == 2; }));
     }
@@ -418,6 +474,7 @@ protected:
     std::string dir;
     chl::WalConf conf;
     chl::FaultInjectingWalFileSink* sink = nullptr; // owned by wal
+    RenameFailingSink* renameSink = nullptr;        // owned by wal, when makeWal was asked for it
     std::unique_ptr<chl::KeeperWal> wal;
 };
 
@@ -1487,6 +1544,71 @@ TEST_F(KeeperWalTest, BatchesLetAWaitingThreadIn)
             });
     EXPECT_GE(during_drop, 5u);
     EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
+}
+
+// A failed sync of the active segment before an idle rotation latches the WAL
+// like a failed group sync, and the segment is not replaced.
+TEST_F(KeeperWalTest, IdleRotationSyncFailureLatches)
+{
+    startWal(200ms);
+    chl::LogEvent const event = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(event), chl::CL_SUCCESS);
+    uint64_t const segment = segmentOf(event);
+    ASSERT_NE(segment, 0u);
+
+    sink->failSyncsWith(EIO);
+    wal->eventDiscarded(kStory, identityOf(event));
+    ASSERT_TRUE(waitFor([&]() { return wal->admit() == chl::WalAdmit::Unavailable; }, 3s));
+    std::this_thread::sleep_for(300ms);
+    EXPECT_TRUE(exists(segment));
+
+    sink->failSyncsWith(0);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+}
+
+// When only the spare for an idle rotation cannot be made, the synced active
+// segment stays in use and the WAL keeps taking durable writes; the rotation
+// is tried again an interval later and goes through once spares can be made.
+TEST_F(KeeperWalTest, IdleRotationWithoutASpareKeepsTheActiveSegment)
+{
+    startWal(200ms, true);
+    ASSERT_NE(renameSink, nullptr);
+    // the ready spare is taken by the first rotation; every later spare fails
+    // at its rename
+    renameSink->failRenamesWith(EIO);
+
+    chl::LogEvent const first = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(first), chl::CL_SUCCESS);
+    uint64_t const one = segmentOf(first);
+    wal->eventDiscarded(kStory, identityOf(first));
+    ASSERT_TRUE(waitFor([&]() { return !exists(one); }, 3s));
+
+    chl::LogEvent const second = makeEvent(kStory, 2000);
+    ASSERT_EQ(append(second), chl::CL_SUCCESS);
+    uint64_t const two = segmentOf(second);
+    ASSERT_GT(two, one);
+    uint64_t const renames_before = renameSink->renameCount();
+    wal->eventDiscarded(kStory, identityOf(second));
+    // the preparer's attempt and the committer's own
+    ASSERT_TRUE(waitFor([&]() { return renameSink->renameCount() >= renames_before + 2; }, 3s));
+    std::this_thread::sleep_for(100ms);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    EXPECT_TRUE(exists(two));
+
+    chl::LogEvent const third = makeEvent(kStory, 3000);
+    EXPECT_EQ(append(third), chl::CL_SUCCESS);
+    EXPECT_EQ(segmentOf(third), two);
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(third)));
+
+    renameSink->failRenamesWith(0);
+    wal->eventDiscarded(kStory, identityOf(third));
+    ASSERT_TRUE(waitFor([&]() { return !exists(two); }, 3s));
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    chl::LogEvent const fourth = makeEvent(kStory, 4000);
+    EXPECT_EQ(append(fourth), chl::CL_SUCCESS);
+    EXPECT_GT(segmentOf(fourth), two);
 }
 
 // When the committer's stream cannot be created, start returns CL_ERR_UNKNOWN

@@ -94,7 +94,10 @@ public:
 // Failure latch. The first write or sync error fails the whole group with
 // CL_ERR_DURABILITY_UNAVAILABLE, registers none of it as pending, and leaves
 // the WAL failed until the keeper restarts: after a failed fdatasync Linux may
-// have dropped the dirty pages, so a later sync proves nothing.
+// have dropped the dirty pages, so a later sync proves nothing. A failed sync
+// of the active segment before an idle rotation latches the same way; when
+// only the spare for that rotation cannot be had, the committer keeps writing
+// to the active segment and tries again an interval later.
 class KeeperWal
     : public WalObserver
     , public DurableLog
@@ -229,6 +232,9 @@ private:
     // Syncs the active segment and switches to a spare of at least
     // min_segment_bytes. 0 or an errno value; what names the failed step.
     int rotate(uint64_t min_segment_bytes, std::string& what);
+    // The switch alone: takes a spare of at least min_segment_bytes and makes
+    // it the active segment. The active segment is unchanged on failure.
+    int switchToSpare(uint64_t min_segment_bytes, std::string& what);
     // Registers a synced group (or drops a failed one) and sets every
     // completion in it.
     void finishGroup(std::vector<Queued>& group, int status, uint64_t segment, uint64_t bytes);

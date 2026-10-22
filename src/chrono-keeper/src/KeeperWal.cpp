@@ -711,6 +711,11 @@ int KeeperWal::rotate(uint64_t min_segment_bytes, std::string& what)
         what = "the fdatasync of segment " + wal::segmentFileName(activeSegment) + " before rotation";
         return err;
     }
+    return switchToSpare(min_segment_bytes, what);
+}
+
+int KeeperWal::switchToSpare(uint64_t min_segment_bytes, std::string& what)
+{
     int fd = -1;
     uint64_t segment = 0;
     uint64_t data_offset = 0;
@@ -867,16 +872,32 @@ void KeeperWal::periodicWork()
         }
         if(idle)
         {
+            // its records were synced with their groups; synced once more so
+            // nothing written to it can be left behind the switch
             std::string what;
-            if(int err = rotate(segmentBytes, what))
+            int err = sink->syncData(activeFd);
+            if(err != 0)
             {
                 failed = true;
-                LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}). The WAL refuses durable "
-                             "writes until the keeper restarts",
-                             what,
+                LOG_CRITICAL("[KeeperWal] The fdatasync of segment {} before rotation failed in WAL directory {}: {} "
+                             "(errno {}). The WAL refuses durable writes until the keeper restarts",
+                             wal::segmentFileName(activeSegment),
                              walDirectory,
                              std::strerror(err),
                              err);
+            }
+            else if((err = switchToSpare(segmentBytes, what)) != 0)
+            {
+                // the active segment is synced and still has room: write on
+                // to it, and try again an interval later
+                activeSince = now;
+                // what names the directory
+                LOG_WARNING("[KeeperWal] Cannot replace released WAL segment {}: {} (errno {}). Writing on to it and "
+                            "trying again in {} ms",
+                            wal::segmentFileName(activeSegment),
+                            what,
+                            err,
+                            idleRotationInterval.count());
             }
             else
             {
