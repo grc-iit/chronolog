@@ -46,8 +46,17 @@ struct WalConf
 
     static constexpr uint64_t MIN_SEGMENT_BYTES = 1048576;
     static constexpr uint32_t MAX_GROUP_COMMIT_WINDOW_US = 10000;
+    // The largest durable_cap_mb whose size in bytes fits in int64_t.
+    static constexpr uint64_t MAX_DURABLE_CAP_MB = static_cast<uint64_t>(INT64_MAX) >> 20;
 
     int parseJsonConf(json_object*);
+
+    // durable_cap_mb in bytes. parseJsonConf refuses a cap above MAX_DURABLE_CAP_MB;
+    // one set directly is clamped to it rather than wrapped.
+    [[nodiscard]] uint64_t durableCapBytes() const
+    {
+        return (durable_cap_mb < MAX_DURABLE_CAP_MB ? durable_cap_mb : MAX_DURABLE_CAP_MB) << 20;
+    }
 
     [[nodiscard]] std::string to_String() const
     {
@@ -60,6 +69,16 @@ struct WalConf
                ", durable_cap_mb: " + std::to_string(durable_cap_mb) + "]";
     }
 };
+
+// The free space the WAL directory keeps: reserve_percent of total_bytes, rounded
+// down, and at least reserve_min_bytes. The keeper's startup check and the WAL's
+// admission both use it, so the reserve they log is the one durable writes see.
+inline uint64_t walReserveBytes(uint64_t total_bytes, uint64_t reserve_min_bytes, uint32_t reserve_percent)
+{
+    // split so total_bytes * reserve_percent cannot overflow
+    uint64_t const share = total_bytes / 100 * reserve_percent + total_bytes % 100 * reserve_percent / 100;
+    return share > reserve_min_bytes ? share : reserve_min_bytes;
+}
 
 struct KeeperConfiguration
 {

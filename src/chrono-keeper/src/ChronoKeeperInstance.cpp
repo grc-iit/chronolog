@@ -56,7 +56,7 @@ static void check_wal_mount(chl::WalConf const& wal_conf)
         return;
     }
     uint64_t const reserve_bytes =
-            std::max<uint64_t>(wal_conf.reserve_min_bytes, info.total_bytes / 100 * wal_conf.reserve_percent);
+            chl::walReserveBytes(info.total_bytes, wal_conf.reserve_min_bytes, wal_conf.reserve_percent);
     LOG_INFO("[ChronoKeeperInstance] WAL directory {} is on {}: {} bytes free of {}, reserve {} bytes",
              wal_conf.dir,
              info.fs_name,
@@ -534,7 +534,7 @@ int main(int argc, char** argv)
                                                     ingestionQueue,
                                                     theTailStore,
                                                     theDataStore,
-                                                    KEEPER_CONF.WAL_CONF.durable_cap_mb * 1024 * 1024);
+                                                    KEEPER_CONF.WAL_CONF.durableCapBytes());
 
     // Instantiate KeeperRecordingService
     tl::engine* recordingEngine = nullptr;
