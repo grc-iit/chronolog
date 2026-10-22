@@ -1,11 +1,13 @@
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <stdexcept>
 #include <unistd.h>
 
 #include <ArchiveLayout.h>
+#include <FileSync.h>
 #include <HDF5FileAccess.h>
 #include <StoryChunkWriter.h>
 
@@ -46,6 +48,19 @@ void removePartialFile(std::string const& partial_name)
     if(ec)
     {
         LOG_ERROR("[StoryChunkWriter] Could not remove the partial file {}: {}", partial_name, ec.message());
+    }
+}
+
+// A published window whose directory could not be synced: its name may not
+// survive a power loss, so it counts as not written and the keepers send it
+// again.
+void removeWindowFile(std::string const& file_name)
+{
+    std::error_code ec;
+    fs::remove(file_name, ec);
+    if(ec)
+    {
+        LOG_ERROR("[StoryChunkWriter] Could not remove the unsynced window file {}: {}", file_name, ec.message());
     }
 }
 
@@ -266,10 +281,31 @@ hsize_t StoryChunkWriter::writeWindow(std::string const& chronicle_name,
         // closed here so that a failed close counts as a failed write
         file->close();
 
+        // The grapher reports the window written once this returns, and the
+        // keepers then drop their copies of its events, so the file and its
+        // name must be on disk first: the file before it gets its name, the
+        // directory after. A failed sync is a failed write.
+        if(int const error = fsyncPath(partial_name); error != 0)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not sync {}: {}", partial_name, std::strerror(error));
+            removePartialFile(partial_name);
+            return 0;
+        }
+
         // the window appears under its own name complete or not at all
         if(!publishFile(partial_name, story_dir, base_file_name, file_name))
         {
             removePartialFile(partial_name);
+            return 0;
+        }
+
+        if(int const error = fsyncPath(story_dir.string()); error != 0)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not sync {} after adding {}: {}",
+                      story_dir.string(),
+                      file_name,
+                      std::strerror(error));
+            removeWindowFile(file_name);
             return 0;
         }
 

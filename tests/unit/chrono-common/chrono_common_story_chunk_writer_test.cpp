@@ -17,10 +17,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -30,6 +35,7 @@
 
 #include <ArchiveLayout.h>
 #include <chrono_monitor.h>
+#include <FileSync.h>
 #include <HDF5FileAccess.h>
 #include <StoryChunk.h>
 #include <StoryChunkWriter.h>
@@ -388,4 +394,129 @@ TEST_F(ChunkWriter, AMissingArchiveDirectoryIsNotCreated)
 
     EXPECT_EQ(writer.writeStoryChunk(chunk), 0u);
     EXPECT_FALSE(fs::exists(dir / "unmounted"));
+}
+
+// ---- fsync before a window is reported written -------------------------------
+//
+// The grapher reports a window written, and keepers drop their copies of its
+// events, only once the window survives a power loss: its file is synced before
+// it is moved into place, and the story directory after, so the new name is on
+// disk too. A sync that fails counts as a failed write and leaves no file.
+
+namespace
+{
+enum class Synced
+{
+    PartialFile,
+    OtherFile,
+    Directory
+};
+
+// what each sync was called on, in order
+std::vector<Synced> syncs;
+std::mutex syncsMutex;
+// the sync of this kind fails with EIO
+std::optional<Synced> failing;
+
+int recordingFsync(int fd)
+{
+    struct stat st
+    {
+    };
+    if(::fstat(fd, &st) != 0)
+    {
+        return -1;
+    }
+    Synced kind = Synced::Directory;
+    if(!S_ISDIR(st.st_mode))
+    {
+        char target[4096] = {};
+        ssize_t const len = ::readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), target, sizeof(target) - 1);
+        std::string const path(target, len > 0 ? len : 0);
+        kind = path.find(".partial.") != std::string::npos ? Synced::PartialFile : Synced::OtherFile;
+    }
+    {
+        std::lock_guard<std::mutex> lock(syncsMutex);
+        syncs.push_back(kind);
+    }
+    if(failing && *failing == kind)
+    {
+        errno = EIO;
+        return -1;
+    }
+    return ::fsync(fd);
+}
+
+class ChunkWriterSync: public ChunkWriter
+{
+protected:
+    void SetUp() override
+    {
+        ChunkWriter::SetUp();
+        syncs.clear();
+        failing.reset();
+        chl::setArchiveFsyncForTest(&recordingFsync);
+    }
+
+    void TearDown() override
+    {
+        chl::setArchiveFsyncForTest(nullptr);
+        ChunkWriter::TearDown();
+    }
+};
+} // namespace
+
+TEST_F(ChunkWriterSync, WindowFileIsSyncedBeforeRename)
+{
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 4, 16);
+
+    ASSERT_GT(writer.writeStoryChunk(chunk), 0u);
+
+    // the file while it still has its partial name, then the directory that
+    // received its own name
+    EXPECT_EQ(syncs, (std::vector<Synced>{Synced::PartialFile, Synced::Directory}));
+    EXPECT_EQ(windows(), (std::vector<std::string>{"C/S/60"}));
+}
+
+TEST_F(ChunkWriterSync, FileSyncFailureLeavesNoFile)
+{
+    failing = Synced::PartialFile;
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 4, 16);
+
+    EXPECT_EQ(writer.writeStoryChunk(chunk), 0u);
+
+    EXPECT_TRUE(fileNames().empty()) << "left behind: " << fileNames().front();
+    // never moved into place, so there was no directory to sync
+    EXPECT_EQ(syncs, (std::vector<Synced>{Synced::PartialFile}));
+}
+
+TEST_F(ChunkWriterSync, DirectorySyncFailureLeavesNoFile)
+{
+    failing = Synced::Directory;
+    chl::StoryChunkWriter writer(dir.string(), "story_chunks", "data");
+    chl::StoryChunk chunk = window(60, 4, 16);
+    std::string published = "unchanged";
+
+    EXPECT_EQ(writer.writeStoryChunk(chunk, &published), 0u);
+
+    EXPECT_TRUE(fileNames().empty()) << "left behind: " << fileNames().front();
+    EXPECT_EQ(published, "unchanged");
+}
+
+TEST(FileSync, APathThatCannotBeOpenedReturnsItsErrno)
+{
+    EXPECT_EQ(chl::fsyncPath("/nonexistent/chronolog_file_sync_test"), ENOENT);
+}
+
+TEST(FileSync, FilesAndDirectoriesAreSyncedWithTheDefaultFunction)
+{
+    fs::path const dir = fs::temp_directory_path() / ("chronolog_file_sync_test_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    std::ofstream(dir / "f") << "x";
+
+    EXPECT_EQ(chl::fsyncPath((dir / "f").string()), 0);
+    EXPECT_EQ(chl::fsyncPath(dir.string()), 0);
+    fs::remove_all(dir);
 }
