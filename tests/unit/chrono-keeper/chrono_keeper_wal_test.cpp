@@ -1349,6 +1349,31 @@ TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
 }
 
+// An event too large for a WAL record (a body over 256 MiB) is refused with
+// CL_ERR_INVALID_ARG before anything is queued or written, and the WAL goes
+// on. Needs one 256 MiB allocation.
+TEST_F(KeeperWalTest, EventTooLargeForARecordIsInvalid)
+{
+    startWal();
+    chl::LogEvent event = makeEvent(kStory, 1000, 0);
+    // the record alone fills a body; the event's type byte and header push it over
+    event.logRecord.assign(wal::kMaxBodyBytes, 'x');
+    uint64_t const syncs_before = sink->syncCount();
+    EXPECT_EQ(append(event), chl::CL_ERR_INVALID_ARG);
+    EXPECT_EQ(wal->stats().queued_events, 0u);
+    EXPECT_EQ(wal->stats().events, 0u);
+    EXPECT_EQ(sink->syncCount(), syncs_before);
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(event)));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    event.logRecord.clear();
+    event.logRecord.shrink_to_fit();
+
+    chl::LogEvent const next = makeEvent(kStory, 1001);
+    EXPECT_EQ(append(next), chl::CL_SUCCESS);
+    EXPECT_EQ(copiesOnDisk(next), 1u);
+}
+
 // A group of more than one batch (1024 events) is registered across the batch
 // boundary: every event durable, and a retry of an event in the second batch
 // joins it.
