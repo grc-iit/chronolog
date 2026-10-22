@@ -104,6 +104,7 @@ int KeeperRegistry::ShutdownRegistryService()
 
     activeGroups.clear();
     activeStories.clear();
+    activeStoryNames.clear();
 
     while(!recordingGroups.empty())
     {
@@ -221,6 +222,29 @@ KeeperRegistry::~KeeperRegistry()
 /////////////////
 
 
+std::vector<std::tuple<ChronicleName, StoryName, StoryId>>
+storiesToStartOnRegistration(std::map<StoryId, RecordingGroup*> const& active,
+                             std::map<StoryId, std::pair<ChronicleName, StoryName>> const& names,
+                             RecordingGroupId group)
+{
+    std::vector<std::tuple<ChronicleName, StoryName, StoryId>> stories;
+    for(auto const& [story_id, recording_group]: active)
+    {
+        if(recording_group == nullptr || recording_group->groupId != group)
+        {
+            continue;
+        }
+        auto names_iter = names.find(story_id);
+        if(names_iter == names.end())
+        {
+            continue;
+        }
+        stories.emplace_back((*names_iter).second.first, (*names_iter).second.second, story_id);
+    }
+    return stories;
+}
+/////////////////
+
 int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_reg_msg)
 {
 
@@ -229,7 +253,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    std::lock_guard<std::mutex> lock(registryLock);
+    std::unique_lock<std::mutex> lock(registryLock);
     //re-check state after ther lock is aquired
     if(is_shutting_down())
     {
@@ -362,7 +386,99 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
     {
         registryState = RUNNING;
     }
+
+    // A keeper registering again after a restart has no pipeline for the stories
+    // clients still hold: start_story_recording goes out only when a story is first acquired.
+    std::vector<std::tuple<ChronicleName, StoryName, StoryId>> held_stories =
+            storiesToStartOnRegistration(activeStories, activeStoryNames, recording_group.groupId);
+    lock.unlock();
+
+    if(!held_stories.empty())
+    {
+        startHeldStoriesOnKeeper(keeper_id_card, collectionClient, held_stories);
+    }
     return chronolog::CL_SUCCESS;
+}
+/////////////////
+
+void KeeperRegistry::startHeldStoriesOnKeeper(
+        KeeperIdCard const& keeper_id_card,
+        DataStoreAdminClient* keeper_admin_client,
+        std::vector<std::tuple<ChronicleName, StoryName, StoryId>> const& held_stories)
+{
+    LOG_INFO("[ChronoProcessRegistry] Starting {} held stories on keeper {}",
+             held_stories.size(),
+             to_string(keeper_id_card));
+
+    size_t started_count = 0;
+    for(auto const& [chronicle, story, story_id]: held_stories)
+    {
+        {
+            // NOTE: we release the registryLock before sending rpc request so that we do not hold it for the duration
+            // of rpc communication. The delayed exit of keeperProcessEntries keeps keeper_admin_client alive if the
+            // keeper unregisters on another thread while this one waits for the rpc response.
+            std::lock_guard<std::mutex> lock(registryLock);
+            if(is_shutting_down())
+            {
+                return;
+            }
+
+            auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
+            if(group_iter == recordingGroups.end())
+            {
+                return;
+            }
+            auto& keeper_processes = (*group_iter).second.keeperProcesses;
+            auto keeper_process_iter =
+                    keeper_processes.find(keeper_id_card.getRecordingServiceId().get_service_endpoint());
+            if(keeper_process_iter == keeper_processes.end() || !(*keeper_process_iter).second.active ||
+               (*keeper_process_iter).second.keeperAdminClient != keeper_admin_client)
+            {
+                LOG_WARNING("[ChronoProcessRegistry] Keeper {} is no longer registered; held stories not started",
+                            to_string(keeper_id_card));
+                return;
+            }
+
+            // the story may have been released since the list was made
+            auto story_iter = activeStories.find(story_id);
+            if(story_iter == activeStories.end() || (*story_iter).second != &((*group_iter).second))
+            {
+                continue;
+            }
+        }
+
+        uint64_t story_start_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        int rpc_return = chronolog::CL_ERR_UNKNOWN;
+        try
+        {
+            rpc_return = keeper_admin_client->send_start_story_recording(chronicle, story, story_id, story_start_time);
+        }
+        catch(thallium::exception const& ex)
+        {}
+
+        if(rpc_return != chronolog::CL_SUCCESS)
+        {
+            // registration still succeeds: a durable write for the story starts its pipeline on the keeper
+            LOG_WARNING("[ChronoProcessRegistry] Registry failed to start held StoryID={} on keeper {} : err_code {}",
+                        story_id,
+                        to_string(keeper_id_card),
+                        rpc_return);
+        }
+        else
+        {
+            LOG_INFO("[ChronoProcessRegistry] Registry notified {} to start recording held StoryID={} with "
+                     "StartTime={}",
+                     to_string(keeper_id_card),
+                     story_id,
+                     story_start_time);
+            ++started_count;
+        }
+    }
+
+    LOG_INFO("[ChronoProcessRegistry] Started {} of {} held stories on keeper {}",
+             started_count,
+             held_stories.size(),
+             to_string(keeper_id_card));
 }
 /////////////////
 
@@ -600,7 +716,22 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             return chronolog::CL_ERR_NO_KEEPERS;
         }
         activeStories[story_id] = recording_group;
+        activeStoryNames[story_id] = std::make_pair(chronicle, story);
     }
+
+    // A start that fails part way leaves the story to no one: the client's acquire is rolled back. Erase its
+    // entry, or the next acquire would find it and skip the notifications, and a registering keeper of the
+    // group would be told to start a story nobody holds.
+    auto forget_story = [this, &story_id, recording_group]()
+    {
+        std::lock_guard<std::mutex> lock(registryLock);
+        auto story_iter = activeStories.find(story_id);
+        if(story_iter != activeStories.end() && (*story_iter).second == recording_group)
+        {
+            activeStories.erase(story_iter);
+            activeStoryNames.erase(story_id);
+        }
+    };
 
     LOG_DEBUG("[ChronoProcessRegistry] selected RecordingGroup {} for story {}", recording_group->groupId, story_id);
 
@@ -618,6 +749,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                 recording_group->groupId,
                 story_id,
                 rpc_return);
+        forget_story();
         return rpc_return;
     }
 
@@ -642,6 +774,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         vectorOfKeepers.clear();
 
         notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
+        forget_story();
         return rpc_return;
     }
 
@@ -679,6 +812,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             notifyGrapherOfStoryRecordingStop(*recording_group, story_id);
             notifyKeepersOfStoryRecordingStop(*recording_group, vectorOfKeepers, story_id);
             vectorOfKeepers.clear();
+            forget_story();
             return rpc_return;
         }
     }
@@ -1081,6 +1215,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& stor
         }
 
         activeStories.erase(story_iter);
+        activeStoryNames.erase(story_id);
     }
 
     if(recording_group != nullptr)
