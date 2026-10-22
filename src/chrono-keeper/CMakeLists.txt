@@ -21,6 +21,7 @@ target_sources(chrono_keeper PRIVATE
     src/WalFileSink.cpp
     src/WalReleaseTracker.cpp
     src/WalFormat.cpp
+    src/WalSegmentManager.cpp
 )
 
 target_link_libraries(chrono_keeper

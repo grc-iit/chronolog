@@ -233,3 +233,32 @@ gtest_discover_tests(keeper_wal_format_test TEST_PREFIX "Unit_ChronoKeeper_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_format_test DESTINATION tests)
 endif()
+
+# WalSegmentManager (GTest) — the keeper WAL directory's lock, partial-file
+# cleanup, pre-zeroed spares with their H record, and segment deletion, in a
+# temporary directory. Thallium for the preparer's Argobots stream.
+add_executable(keeper_wal_segment_manager_test
+    chrono_keeper_wal_segment_manager_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalSegmentManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFileSink.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFormat.cpp
+)
+
+target_include_directories(keeper_wal_segment_manager_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_wal_segment_manager_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_wal_segment_manager_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-segment-manager)
+gtest_discover_tests(keeper_wal_segment_manager_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_segment_manager_test DESTINATION tests)
+endif()
