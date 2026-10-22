@@ -14,6 +14,7 @@
 #include <StoryChunkExtractionQueue.h>
 #include <KeeperChunkRetentionStore.h>
 #include <KeeperDataStore.h>
+#include <KeeperDurableWriter.h>
 #include <DataStoreAdminService.h>
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
@@ -287,6 +288,14 @@ int main(int argc, char** argv)
         return (-1);
     }
 
+    // The keeper side of record_event_durable. With no WAL it answers every
+    // durable write CL_ERR_DURABILITY_UNAVAILABLE and ingests nothing.
+    chronolog::KeeperDurableWriter theDurableWriter(nullptr,
+                                                    ingestionQueue,
+                                                    theTailStore,
+                                                    theDataStore,
+                                                    KEEPER_CONF.WAL_CONF.durable_cap_mb * 1024 * 1024);
+
     // Instantiate KeeperRecordingService
     tl::engine* recordingEngine = nullptr;
     chronolog::KeeperRecordingService* keeperRecordingService = nullptr;
@@ -304,11 +313,15 @@ int main(int argc, char** argv)
                  keeper_group_id,
                  s1.str(),
                  recording_service_provider_id);
-        keeperRecordingService =
-                chronolog::KeeperRecordingService::CreateKeeperRecordingService(*recordingEngine,
-                                                                                recording_service_provider_id,
-                                                                                ingestionQueue,
-                                                                                theTailStore);
+        keeperRecordingService = chronolog::KeeperRecordingService::CreateKeeperRecordingService(
+                *recordingEngine,
+                recording_service_provider_id,
+                ingestionQueue,
+                theTailStore,
+                [&theDurableWriter](chl::ChronicleName const& chronicle,
+                                    chl::StoryName const& story,
+                                    chl::LogEvent const& event)
+                { return theDurableWriter.write(chronicle, story, event); });
     }
     catch(tl::exception const&)
     {

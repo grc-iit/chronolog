@@ -408,3 +408,34 @@ gtest_discover_tests(keeper_wal_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_test DESTINATION tests)
 endif()
+
+# KeeperDurableWriter (GTest) — the keeper side of record_event_durable: the
+# WAL lookup before every other check, no ingest unless the WAL took the event,
+# and the pipeline a durable write starts without clearing a drop mark. The
+# WAL is a fake DurableLog; the data path is the in-process KeeperDataStore of
+# the data-loss test above.
+add_executable(keeper_durable_writer_test
+    chrono_keeper_durable_writer_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDurableWriter.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperStoryPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperDataStore.cpp
+)
+
+target_include_directories(keeper_durable_writer_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(keeper_durable_writer_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(keeper_durable_writer_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-durable-writer)
+gtest_discover_tests(keeper_durable_writer_test TEST_PREFIX "Unit_ChronoKeeper_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_durable_writer_test DESTINATION tests)
+endif()

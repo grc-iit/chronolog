@@ -2,7 +2,9 @@
 #define KEEPER_RECORDING_SERVICE_H
 
 #include <iostream>
+#include <functional>
 #include <string>
+#include <utility>
 #include <cstdint>
 #include <margo.h>
 #include <thallium.hpp>
@@ -22,6 +24,11 @@ namespace tl = thallium;
 
 namespace chronolog
 {
+// Answers a durable write: KeeperDurableWriter::write in the keeper. Passed as
+// a function so this header, and a test that runs the service, need neither
+// the writer nor the WAL and the data store it calls.
+using DurableWriteFunction = std::function<int(ChronicleName const&, StoryName const&, LogEvent const&)>;
+
 class KeeperRecordingService: public tl::provider<KeeperRecordingService>
 {
 public:
@@ -29,9 +36,14 @@ public:
     static KeeperRecordingService* CreateKeeperRecordingService(tl::engine& tl_engine,
                                                                 uint16_t service_provider_id,
                                                                 IngestionQueue& ingestion_queue,
-                                                                KeeperChunkRetentionStore& tail_store)
+                                                                KeeperChunkRetentionStore& tail_store,
+                                                                DurableWriteFunction durable_write)
     {
-        return new KeeperRecordingService(tl_engine, service_provider_id, ingestion_queue, tail_store);
+        return new KeeperRecordingService(tl_engine,
+                                          service_provider_id,
+                                          ingestion_queue,
+                                          tail_store,
+                                          std::move(durable_write));
     }
 
     ~KeeperRecordingService()
@@ -52,6 +64,27 @@ public:
                   log_event.getRecord());
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
+    }
+
+    // A durable write: answered CL_SUCCESS only once the event is in the
+    // keeper's WAL and its group's fdatasync returned, and ingested only then
+    // (see KeeperDurableWriter). The handler's ULT yields while it waits, so
+    // the RPC streams keep serving other requests. Defined whether the WAL is
+    // on or off; with it off the answer is CL_ERR_DURABILITY_UNAVAILABLE.
+    void record_event_durable(tl::request const& request,
+                              ChronicleName const& chronicle,
+                              StoryName const& story,
+                              LogEvent const& log_event)
+    {
+        LOG_TRACE("[KeeperRecordingService] Recording durable event: Chronicle={}, Story={}, storyId={}, time={}, "
+                  "clientId={}, index={}",
+                  chronicle,
+                  story,
+                  log_event.getStoryId(),
+                  log_event.time(),
+                  log_event.getClientId(),
+                  log_event.index());
+        request.respond(theDurableWrite(chronicle, story, log_event));
     }
 
     // Tail-read phase 1: return this keeper's most recent (up to n) event
@@ -95,12 +128,15 @@ private:
     KeeperRecordingService(tl::engine& tl_engine,
                            uint16_t service_provider_id,
                            IngestionQueue& ingestion_queue,
-                           KeeperChunkRetentionStore& tail_store)
+                           KeeperChunkRetentionStore& tail_store,
+                           DurableWriteFunction durable_write)
         : tl::provider<KeeperRecordingService>(tl_engine, service_provider_id)
         , theIngestionQueue(ingestion_queue)
         , theTailStore(tail_store)
+        , theDurableWrite(std::move(durable_write))
     {
         define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
+        define("record_event_durable", &KeeperRecordingService::record_event_durable, tl::ignore_return_value());
         define("tail_get_sequences", &KeeperRecordingService::tail_get_sequences);
         define("tail_get_events", &KeeperRecordingService::tail_get_events);
         define("story_range_fetch", &KeeperRecordingService::story_range_fetch);
@@ -114,6 +150,7 @@ private:
 
     IngestionQueue& theIngestionQueue;
     KeeperChunkRetentionStore& theTailStore;
+    DurableWriteFunction theDurableWrite;
 };
 
 } // namespace chronolog
