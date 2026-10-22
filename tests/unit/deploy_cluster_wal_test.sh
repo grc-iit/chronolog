@@ -107,8 +107,13 @@ summary() { # HOST EVENTS BYTES
 all_clean() { summary nodeA 0 0 && summary nodeB 0 0 && summary nodeC 0 0; }
 
 # --stop: the processes are stopped by no-op stand-ins that print a line into
-# stop's output, so the table's place among the stops shows.
-parallel_remote_stop_processes() { echo "stop $(basename "$2")"; }
+# stop's output, so the table's place among the stops shows. The keepers' stand-in
+# prints only after a pause, as a keeper exits only after it writes its summary, so
+# the table comes first unless stop waits for the keepers to exit.
+parallel_remote_stop_processes() {
+    [[ "$(basename "$2")" == chrono-keeper ]] && sleep 0.3
+    echo "stop $(basename "$2")"
+}
 parallel_remote_check_all() { :; }
 check_hosts_files() { :; }
 check_work_dir() { :; }
@@ -178,6 +183,19 @@ all_clean
 down="nodeC"
 if run_stop; then fail "stop: an unreachable host exits nonzero"; else pass "stop: an unreachable host exits nonzero"; fi
 row nodeC 2 | grep -q ' unreachable ' && pass "stop: unreachable host shown" || fail "stop: unreachable host shown: $(cat "$fixture/stop-out")"
+
+# No summary was written, so stop cannot tell the keeper exited clean.
+setup
+summary nodeA 0 0
+summary nodeC 0 0
+if run_stop; then fail "stop: an empty WAL directory exits nonzero"; else pass "stop: an empty WAL directory exits nonzero"; fi
+row nodeB 1 | grep -q ' empty ' && pass "stop: empty WAL directory shown" || fail "stop: empty WAL directory shown: $(cat "$fixture/stop-out")"
+grep -q "absent or empty" "$fixture/stop-out" && pass "stop: the error names an absent or empty WAL directory" ||
+    fail "stop: the error names an absent or empty WAL directory: $(cat "$fixture/stop-out")"
+rmdir "$(wal_dir_of nodeB)"
+if run_stop; then fail "stop: an absent WAL directory exits nonzero"; else pass "stop: an absent WAL directory exits nonzero"; fi
+row nodeB 1 | grep -q ' empty ' && pass "stop: absent WAL directory shown as empty" ||
+    fail "stop: absent WAL directory shown as empty: $(cat "$fixture/stop-out")"
 
 setup
 for conf in "$CONF_FILE".*.keeper.*; do

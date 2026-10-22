@@ -87,7 +87,9 @@ usage() {
   echo "  -c|--clean          Clean ChronoLog logging artifacts and generated files"
   echo "  --restart-keeper <host>  Relaunch the keeper on <host> with the configuration start generated for it;"
   echo "                           it relaunches every keeper conf for <host>, so it cannot restart one of two"
-  echo "                           keepers on one host (two cannot run there today: every conf has the same ports)"
+  echo "                           keepers on one host (two cannot run there today: every conf has the same ports)."
+  echo "                           Like --stop and --clean, it needs the options start was given (--keeper-bin,"
+  echo "                           --work-dir, --conf-file, ...): it finds a running keeper by its binary and conf"
   echo ""
   echo "Deployment Options:"
   echo "  -r|--record-groups <number>      Number of RecordingGroups/ChronoGraphers"
@@ -758,8 +760,9 @@ collect_keeper_wal_states() {
 }
 
 # Prints a table of every keeper WAL's exit-summary. Returns 1 when any keeper's
-# is not clean: missing, unreachable, or showing events the grapher has not
-# confirmed, which only that keeper's next start replays.
+# is not clean: missing, unreachable, empty (no WAL directory or an empty one, so
+# no summary was written), or showing events the grapher has not confirmed, which
+# only that keeper's next start replays.
 report_keeper_wal_exit_summaries() {
   local states status=0 host group state events bytes dir
   states=$(collect_keeper_wal_states)
@@ -947,7 +950,7 @@ stop() {
   parallel_remote_check_all
 
   if ((wal_status != 0)); then
-    echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed, or its host did not answer) or holds unconfirmed events; see the table above. Restart that keeper with --restart-keeper <host> to replay them.${NC}" >&2
+    echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed, its host did not answer, or its WAL directory is absent or empty) or holds unconfirmed events; see the table above. Restart that keeper with --restart-keeper <host> to replay them.${NC}" >&2
     exit 1
   fi
 
