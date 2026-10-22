@@ -236,6 +236,14 @@ TEST(WalFormat, LengthOver256MiBIsBadFrameAtItsOffset)
     wal::ScanResult const max_length = wal::scanSegment(h + le(0xFFFFFFFFull, 4) + le(0, 4));
     EXPECT_EQ(wal::ScanEnd::BadFrame, max_length.end);
     EXPECT_EQ(h.size(), max_length.end_offset);
+
+    // a length of exactly kMaxBodyBytes is allowed: cut short, the frame is bad
+    // because it passes the end, not because of its length
+    std::string const at_limit = h + le(wal::kMaxBodyBytes, 4) + le(0, 4) + std::string(64, 'x');
+    wal::ScanResult const at_limit_scan = wal::scanSegment(at_limit);
+    EXPECT_EQ(wal::ScanEnd::BadFrame, at_limit_scan.end);
+    EXPECT_EQ(h.size(), at_limit_scan.end_offset);
+    EXPECT_NE(std::string::npos, at_limit_scan.reason.find("passes the end")) << at_limit_scan.reason;
 }
 
 TEST(WalFormat, SegmentOfOnlyZerosHasNoRecords)
@@ -280,9 +288,11 @@ TEST(WalFormat, EventFrameWrittenAsFourPiecesScansLikeAContiguousCopy)
     std::string const written((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     fs::remove(pattern);
 
-    EXPECT_EQ(h + contiguous, written);
+    // the scanned bodies point into the bytes scanned, so the copy must outlive the scan
+    std::string const copy = h + contiguous;
+    EXPECT_EQ(copy, written);
     wal::ScanResult const from_file = wal::scanSegment(written);
-    wal::ScanResult const from_copy = wal::scanSegment(h + contiguous);
+    wal::ScanResult const from_copy = wal::scanSegment(copy);
     ASSERT_EQ(2u, from_file.records.size());
     ASSERT_EQ(2u, from_copy.records.size());
     EXPECT_EQ(wal::ScanEnd::EndOfData, from_file.end);
@@ -314,6 +324,34 @@ TEST(WalFormat, EventBodyOverTheFrameLimitIsRefused)
     wal::EventFrame const largest = wal::encodeEvent(event);
     EXPECT_EQ(8u + wal::kMaxBodyBytes, largest.size());
     EXPECT_EQ(le(wal::kMaxBodyBytes, 4), std::string(largest.frame_header.data(), 4));
+
+    // the largest frame the writer produces must scan back as a whole record,
+    // or an event acknowledged as durable would be called corruption by recovery
+    std::string const segment = join(largest);
+    wal::ScanResult const scan = wal::scanSegment(segment);
+    EXPECT_EQ(wal::ScanEnd::EndOfData, scan.end) << scan.reason;
+    EXPECT_EQ(8u + wal::kMaxBodyBytes, scan.end_offset);
+    ASSERT_EQ(1u, scan.records.size());
+    EXPECT_EQ(wal::kMaxBodyBytes, scan.records[0].body.size());
+
+    std::string_view const e_body = scan.records[0].body;
+    chl::LogEvent event_out;
+    ASSERT_EQ(chl::CodecStatus::Ok, chl::decodeLogEvent(e_body.data() + 1, e_body.size() - 1, event_out));
+    expectSameEvent(event, event_out);
+}
+
+TEST(WalFormat, StringRecordBodyOverTheFrameLimitIsRefused)
+{
+    // an N body is the type byte, the story id and two strings with their
+    // lengths: 17 bytes plus the names
+    std::size_t const names_overhead = 1 + 8 + 4 + 4;
+    wal::NamesRecord names{1, std::string(wal::kMaxBodyBytes + 1 - names_overhead, 'c'), ""};
+    EXPECT_THROW(wal::encodeNames(names), std::length_error);
+
+    names.chronicle.resize(names.chronicle.size() - 1);
+    std::string const largest = wal::encodeNames(names);
+    EXPECT_EQ(8u + wal::kMaxBodyBytes, largest.size());
+    EXPECT_EQ(le(wal::kMaxBodyBytes, 4), largest.substr(0, 4));
 }
 
 TEST(WalFormat, DecodersRefuseTheWrongTypeAndCutBodies)
