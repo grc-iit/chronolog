@@ -184,3 +184,33 @@ gtest_discover_tests(keeper_wal_file_sink_test TEST_PREFIX "Unit_ChronoKeeper_" 
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_wal_file_sink_test DESTINATION tests)
 endif()
+
+# WalConf (GTest) — the keeper's "WAL" block: defaults, the shipped template's
+# block and the validation. ChronoKeeperConfiguration.cpp is only compiled into
+# the chrono_keeper executable, so the test pulls it in directly.
+add_executable(keeper_wal_conf_test
+    chrono_keeper_wal_conf_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/ChronoKeeperConfiguration.cpp
+)
+
+target_include_directories(keeper_wal_conf_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_compile_definitions(keeper_wal_conf_test PRIVATE
+    CHRONOLOG_CONF_TEMPLATE="${CMAKE_SOURCE_DIR}/conf/default_conf.json.in"
+)
+
+target_link_libraries(keeper_wal_conf_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+)
+
+set_target_properties(keeper_wal_conf_test PROPERTIES OUTPUT_NAME chronolog-test-keeper-wal-conf)
+gtest_discover_tests(keeper_wal_conf_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_wal_conf_test DESTINATION tests)
+endif()
