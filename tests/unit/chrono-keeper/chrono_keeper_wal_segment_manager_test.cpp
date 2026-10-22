@@ -233,9 +233,8 @@ TEST_F(WalSegmentManagerTest, TakeSpareLargerThanSegmentCreatesOneOfThatSize)
     ASSERT_EQ(manager->open(), 0);
     manager->startPreparer();
 
-    uint64_t const big = 3 * kSegmentBytes + 4096;
     std::vector<uint64_t> taken;
-    for(uint64_t min_bytes: {kSegmentBytes, big, kSegmentBytes})
+    auto take = [&](uint64_t min_bytes)
     {
         uint64_t segment = 0;
         uint64_t data_offset = 0;
@@ -250,10 +249,33 @@ TEST_F(WalSegmentManagerTest, TakeSpareLargerThanSegmentCreatesOneOfThatSize)
         EXPECT_EQ(bytes.size(), min_bytes);
         EXPECT_EQ(headerOf(bytes).segment_number, segment);
         EXPECT_TRUE(allZero(bytes, data_offset));
+    };
+
+    take(kSegmentBytes);
+    ASSERT_EQ(taken.size(), 1u);
+
+    // once the preparer has numbered and made the next regular spare, the
+    // oversized take must grow that spare in place rather than prepare one
+    std::string const next = wal::segmentFileName(taken[0] + 1);
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while(!exists(next) && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    ASSERT_TRUE(exists(next));
+
+    uint64_t const big = 3 * kSegmentBytes + 4096;
+    uint64_t const syncs_before = sink->syncCount();
+    take(big);
+    ASSERT_EQ(taken.size(), 2u);
+    EXPECT_EQ(taken[1], taken[0] + 1);
+    // the grown size is committed before anything is written there
+    EXPECT_GT(sink->syncCount(), syncs_before);
+
+    take(kSegmentBytes);
     manager->stopPreparer();
     // numbers keep log order across the oversized one
-    EXPECT_LT(taken[0], taken[1]);
+    ASSERT_EQ(taken.size(), 3u);
     EXPECT_LT(taken[1], taken[2]);
     EXPECT_EQ(manager->segments(), taken);
 }
@@ -439,4 +461,99 @@ TEST_F(WalSegmentManagerTest, TakeSpareWaitsForThePreparerOnArgobots)
     manager->stopPreparer();
     EXPECT_EQ(result.load(), 0);
     EXPECT_EQ(segment, 1u);
+}
+
+namespace
+{
+
+// segment 1 holding a D record after its header, as pending events would
+std::string segmentWithRecords()
+{
+    std::string data = wal::encodeHeader(wal::HeaderRecord{wal::kFormatVersion, 1, 1, kEndpoint});
+    data += wal::encodeDropped(wal::DroppedRecord{42});
+    data.resize(kSegmentBytes, '\0');
+    return data;
+}
+
+} // namespace
+
+// A preparer started on a manager that is not open would number its spare 1
+// and rename it over an existing segment 1.
+TEST_F(WalSegmentManagerTest, StartPreparerRefusesBeforeOpen)
+{
+    std::string const data = segmentWithRecords();
+    writeFile(wal::segmentFileName(1), data);
+
+    auto manager = makeManager();
+    EXPECT_FALSE(manager->isOpen());
+    manager->startPreparer();
+    // long enough for a preparer to replace a 1 MiB segment
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    manager->stopPreparer();
+
+    EXPECT_EQ(readFile(wal::segmentFileName(1)), data);
+    EXPECT_FALSE(exists(wal::segmentFileName(1) + ".partial"));
+    uint64_t segment = 0;
+    uint64_t data_offset = 0;
+    int fd = -1;
+    EXPECT_EQ(manager->takeSpare(kSegmentBytes, segment, fd, data_offset), EBADF);
+}
+
+TEST_F(WalSegmentManagerTest, StartPreparerRefusesAfterAFailedOpen)
+{
+    std::string const data = segmentWithRecords();
+    writeFile(wal::segmentFileName(1), data);
+
+    // another keeper holds the directory
+    auto other = chl::makePosixWalFileSink();
+    ASSERT_EQ(other->openDirectory(dir), 0);
+    ASSERT_EQ(other->lockDirectory(), 0);
+
+    auto manager = makeManager();
+    ASSERT_EQ(manager->open(), EWOULDBLOCK);
+    EXPECT_FALSE(manager->isOpen());
+    manager->startPreparer();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    manager->stopPreparer();
+
+    EXPECT_EQ(readFile(wal::segmentFileName(1)), data);
+    EXPECT_FALSE(exists(wal::segmentFileName(1) + ".partial"));
+    EXPECT_FALSE(exists(wal::segmentFileName(2)));
+}
+
+// A second open() on an open manager does not list the directory again or
+// remove partial files, which by then could be the preparer's.
+TEST_F(WalSegmentManagerTest, SecondOpenChangesNothing)
+{
+    writeHeaderOnlySegment(1);
+    auto manager = makeManager();
+    ASSERT_EQ(manager->open(), 0);
+    EXPECT_TRUE(manager->isOpen());
+
+    writeHeaderOnlySegment(7);
+    writeFile("00000000000000000002.wal.partial", std::string(4096, '\0'));
+    EXPECT_EQ(manager->open(), 0) << manager->error();
+    EXPECT_TRUE(manager->isOpen());
+    EXPECT_TRUE(exists("00000000000000000002.wal.partial"));
+    EXPECT_EQ(manager->segments(), (std::vector<uint64_t>{1}));
+
+    uint64_t segment = 0;
+    uint64_t data_offset = 0;
+    int fd = -1;
+    ASSERT_EQ(manager->takeSpare(kSegmentBytes, segment, fd, data_offset), 0);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+    EXPECT_EQ(segment, 2u);
+}
+
+// The sink already holds the lock for the first manager, so a second manager
+// on the same sink opens too.
+TEST_F(WalSegmentManagerTest, SecondManagerOnTheSameSinkOpens)
+{
+    writeHeaderOnlySegment(3);
+    auto first = makeManager();
+    ASSERT_EQ(first->open(), 0);
+    auto second = makeManager();
+    ASSERT_EQ(second->open(), 0) << second->error();
+    EXPECT_TRUE(second->isOpen());
+    EXPECT_EQ(second->segments(), (std::vector<uint64_t>{3}));
 }

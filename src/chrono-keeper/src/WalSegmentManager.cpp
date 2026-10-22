@@ -60,8 +60,8 @@ int WalSegmentManager::open()
 {
     if(opened)
     {
-        lastError = "WAL directory " + directory + " is already open";
-        return EBUSY;
+        // listing again would remove a partial file the preparer is making
+        return 0;
     }
 
     int err = sink.lockDirectory();
@@ -135,9 +135,17 @@ void WalSegmentManager::startPreparer()
     {
         return;
     }
+    if(!opened)
+    {
+        // nextSegment is not known yet: a spare numbered from it could be
+        // renamed over a segment holding pending events
+        lastError = "WAL directory " + directory + " is not open: the segment preparer is not started";
+        LOG_ERROR("[WalSegmentManager] {}", lastError);
+        return;
+    }
     {
         std::lock_guard<thallium::mutex> lock(mutex);
-        stopping = false;
+        preparerActive = true;
     }
     preparerStream = thallium::xstream::create();
     preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
@@ -152,7 +160,7 @@ void WalSegmentManager::stopPreparer()
     }
     {
         std::lock_guard<thallium::mutex> lock(mutex);
-        stopping = true;
+        preparerActive = false;
         changed.notify_all();
     }
     // a preparation under way finishes first
@@ -168,8 +176,8 @@ void WalSegmentManager::preparerLoop()
     std::unique_lock<thallium::mutex> lock(mutex);
     while(true)
     {
-        changed.wait(lock, [this]() { return stopping || (!spare && !preparing && !preparerFailed); });
-        if(stopping)
+        changed.wait(lock, [this]() { return !preparerActive || (!spare && !preparing && !preparerFailed); });
+        if(!preparerActive)
         {
             return;
         }
@@ -283,7 +291,10 @@ int WalSegmentManager::takeSpare(uint64_t min_bytes,
     }
 
     std::unique_lock<thallium::mutex> lock(mutex);
-    changed.wait(lock, [this]() { return spare.has_value() || !preparing; });
+    // while the preparer runs and has not failed, wait for it even when it has
+    // not started on the next spare yet, so the zero-fill and its sync stay
+    // off the caller's stream
+    changed.wait(lock, [this]() { return spare.has_value() || (!preparing && (!preparerActive || preparerFailed)); });
     if(!spare)
     {
         // no preparer, or its last attempt failed: prepare on this thread so

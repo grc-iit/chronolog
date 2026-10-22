@@ -45,8 +45,10 @@ public:
     // Takes the directory lock, removes every *.partial and lists the segments.
     // Returns 0 or an errno value; EWOULDBLOCK when another keeper holds the
     // lock, and then nothing in the directory is changed. error() names the
-    // directory and the reason.
+    // directory and the reason. On an instance already open it returns 0 and
+    // changes nothing.
     int open();
+    bool isOpen() const { return opened; }
     std::string const& error() const { return lastError; }
 
     // Oldest first: the segments open() found, plus those taken or adopted
@@ -54,7 +56,8 @@ public:
     std::vector<uint64_t> const& segments() const { return segmentList; }
 
     // A ULT on its own tl::xstream keeps one spare ready. After a failed
-    // preparation it waits for the next takeSpare instead of retrying.
+    // preparation it waits for the next takeSpare instead of retrying. Not
+    // started, with the reason logged and in error(), unless open() succeeded.
     void startPreparer();
     // Joins the preparer. A spare it already prepared stays ready.
     void stopPreparer();
@@ -104,7 +107,7 @@ private:
     std::optional<Spare> spare;
     bool preparing = false;      // a spare is being prepared, by the preparer or a takeSpare
     bool preparerFailed = false; // the last preparation by the preparer failed; cleared by takeSpare
-    bool stopping = false;
+    bool preparerActive = false; // started and not yet asked to stop
 
     bool preparerRunning = false;
     thallium::managed<thallium::xstream> preparerStream;
