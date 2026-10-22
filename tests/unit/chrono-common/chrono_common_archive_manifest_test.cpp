@@ -6,12 +6,14 @@
 #include <thread>
 #include <vector>
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <gtest/gtest.h>
 
 #include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
+#include <FileSync.h>
 
 namespace fs = std::filesystem;
 namespace chl = chronolog;
@@ -536,4 +538,159 @@ TEST_F(ArchiveManifestTest, AppendFailsWhenTheLogCannotBeWritten)
     fs::remove(writer.logPath());
     fs::create_directory(writer.logPath()); // a directory where the log should be
     EXPECT_NE(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_SUCCESS);
+}
+
+// ---- syncs ------------------------------------------------------------------
+//
+// The grapher reports a window written once its record is appended, and the
+// keepers then drop their copies of its events (and their WAL records), so the
+// record and the log's name must be on disk first. A failed sync latches the
+// writer: after one, Linux may have dropped the log's dirty pages, so no later
+// append to it can be shown to be on disk either.
+
+namespace
+{
+// the running test's archive root, which directory names are relative to
+fs::path syncRoot;
+// what each sync was called on, in order: "log" for a file, a directory by its
+// path relative to the archive root ("." for the root itself)
+std::vector<std::string> syncs;
+// the file's size at each sync of a file
+std::vector<uint64_t> syncedLogSizes;
+// the sync of this one fails with EIO
+std::string failing;
+
+int recordingFsync(int fd)
+{
+    struct stat st = {};
+    if(::fstat(fd, &st) != 0)
+    {
+        return -1;
+    }
+    std::string synced = "log";
+    if(S_ISDIR(st.st_mode))
+    {
+        char target[4096] = {};
+        ssize_t const len = ::readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), target, sizeof(target) - 1);
+        synced = fs::path(std::string(target, len > 0 ? len : 0)).lexically_relative(syncRoot).string();
+    }
+    else
+    {
+        syncedLogSizes.push_back(static_cast<uint64_t>(st.st_size));
+    }
+    syncs.push_back(synced);
+    if(synced == failing)
+    {
+        errno = EIO;
+        return -1;
+    }
+    return ::fsync(fd);
+}
+
+class ArchiveManifestSync: public ArchiveManifestTest
+{
+protected:
+    void SetUp() override
+    {
+        ArchiveManifestTest::SetUp();
+        syncRoot = fs::canonical(root);
+        syncs.clear();
+        syncedLogSizes.clear();
+        failing.clear();
+        chl::setArchiveFsyncForTest(&recordingFsync);
+    }
+
+    void TearDown() override
+    {
+        chl::setArchiveFsyncForTest(nullptr);
+        ArchiveManifestTest::TearDown();
+    }
+
+    std::string const manifestDir = chl::kArchiveManifestDirName;
+};
+} // namespace
+
+// A new log: the log with its header, then the directory holding its name, then
+// the archive root holding the manifest directory's name.
+TEST_F(ArchiveManifestSync, OpenSyncsTheDirectory)
+{
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+
+    EXPECT_EQ(syncs, (std::vector<std::string>{"log", manifestDir, "."}));
+    ASSERT_EQ(syncedLogSizes.size(), 1u);
+    EXPECT_EQ(syncedLogSizes[0], fs::file_size(writer.logPath()));
+    EXPECT_FALSE(writer.failed());
+}
+
+TEST_F(ArchiveManifestSync, ADirectorySyncFailureAtOpenLatches)
+{
+    failing = manifestDir;
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    EXPECT_EQ(writer.open(), chl::CL_ERR_UNKNOWN);
+    EXPECT_TRUE(writer.failed());
+
+    failing.clear();
+    EXPECT_EQ(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_ERR_UNKNOWN);
+}
+
+TEST_F(ArchiveManifestSync, AppendSyncsTheLogAfterWritingTheRecord)
+{
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+    syncs.clear();
+    syncedLogSizes.clear();
+
+    ASSERT_EQ(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_SUCCESS);
+
+    // the log already has its name on disk: only the log is synced, with the
+    // record in it
+    EXPECT_EQ(syncs, (std::vector<std::string>{"log"}));
+    ASSERT_EQ(syncedLogSizes.size(), 1u);
+    EXPECT_EQ(syncedLogSizes[0], fs::file_size(writer.logPath()));
+}
+
+TEST_F(ArchiveManifestSync, AppendSyncFailureLatches)
+{
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+    failing = "log";
+
+    EXPECT_EQ(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_ERR_UNKNOWN);
+    EXPECT_TRUE(writer.failed());
+
+    // syncs work again, but the next appends write nothing and sync nothing
+    failing.clear();
+    syncs.clear();
+    auto const size = fs::file_size(writer.logPath());
+    EXPECT_EQ(writer.append(publication("c", "s", "b.h5", 10, 20)), chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(writer.append(storyDeletion("c", "s")), chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(fs::file_size(writer.logPath()), size);
+    EXPECT_TRUE(syncs.empty());
+    EXPECT_TRUE(writer.failed());
+}
+
+// The manifest directory removed under a running grapher: the log made again
+// needs its name on disk too, as at open.
+TEST_F(ArchiveManifestSync, AppendThatCreatesTheLogAgainSyncsItsDirectories)
+{
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+    fs::remove_all(root / chl::kArchiveManifestDirName);
+    syncs.clear();
+
+    ASSERT_EQ(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_SUCCESS);
+    EXPECT_EQ(syncs, (std::vector<std::string>{"log", manifestDir, "."}));
+    EXPECT_FALSE(writer.failed());
+}
+
+TEST_F(ArchiveManifestSync, ADirectorySyncFailureOfALogCreatedAgainLatches)
+{
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+    fs::remove_all(root / chl::kArchiveManifestDirName);
+    failing = ".";
+
+    EXPECT_EQ(writer.append(publication("c", "s", "a.h5", 0, 10)), chl::CL_ERR_UNKNOWN);
+    EXPECT_TRUE(writer.failed());
 }

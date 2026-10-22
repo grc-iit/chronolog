@@ -97,6 +97,15 @@ private:
     // story_name is null, to the manifest if one is open
     int recordDeletion(std::string const& chronicle_name, std::string const* story_name, DestroyScope const& scope);
 
+    // true once the manifest failed a sync (ArchiveManifestWriter::failed).
+    // From then on until the grapher restarts no window counts as written: W
+    // does not move and no receipt settles, so the keepers keep their chunks
+    // and their WAL records.
+    bool manifestFailed() const;
+    // the window is not reported written because the manifest failed a sync:
+    // records the failure for the story and returns CL_ERR_UNKNOWN
+    int holdForFailedManifest(StoryChunk* story_chunk);
+
     std::string rootDirectory;
     // the writer part of the names of the files this extractor publishes (see
     // ArchiveLayout.h); its recording group once the manifest is open
