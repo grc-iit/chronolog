@@ -23,6 +23,7 @@ target_sources(chrono_keeper PRIVATE
     src/WalFormat.cpp
     src/WalMountCheck.cpp
     src/WalSegmentManager.cpp
+    src/WalRecovery.cpp
 )
 
 target_link_libraries(chrono_keeper
