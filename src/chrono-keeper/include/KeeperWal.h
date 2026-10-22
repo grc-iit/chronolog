@@ -124,7 +124,11 @@ public:
     // recovered.reusable_spare as the active segment when present, otherwise a
     // new spare; then starts the preparer and the committer. recovered may be
     // empty; id_of may be empty, which keeps each story's wal_story_id.
-    // Returns CL_SUCCESS, or CL_ERR_UNKNOWN with the reason logged.
+    // Returns CL_SUCCESS, or CL_ERR_UNKNOWN with the reason logged. A failed
+    // start leaves the WAL not started, with no recovered copy pending and
+    // every request made meanwhile answered CL_ERR_DURABILITY_UNAVAILABLE;
+    // the directory and the segment manager stay open, and start may be called
+    // again. Once started, or stopped, it refuses.
     int start(RecoveredState const& recovered, std::function<StoryId(RecoveredStory const&)> id_of);
     // Refuses new requests, commits what is queued, answers every waiter, then
     // joins the committer and the preparer. Safe to call more than once.
@@ -198,6 +202,9 @@ private:
     // queued or in the group being committed (completion is set to it), or
     // the identity is durable and pending (status is set to CL_SUCCESS).
     bool findIdentity(Identity const&, std::shared_ptr<Completion>& completion, int& status) const;
+    // Undoes a start whose committer could not be created: back to Created,
+    // with nothing pending and every request queued meanwhile refused.
+    void abandonStart(std::string const& reason);
 
     // Called with the mutex held, after the tracker's addCopy.
     void noteAdded(StoryId, EventSequence const&);

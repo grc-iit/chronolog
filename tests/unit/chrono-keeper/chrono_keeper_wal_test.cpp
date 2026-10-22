@@ -19,10 +19,12 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
 #include <cerrno>
+#include <sys/resource.h>
 
 #include <thallium.hpp>
 
@@ -125,6 +127,54 @@ struct Lookup
     std::optional<int> answer;
 };
 
+// Sets RLIMIT_NPROC to 0 while it lives, so pthread_create fails with EAGAIN
+// and no Argobots stream can be created. refused() is false when threads are
+// still created under the limit (a privileged user).
+class NoNewThreads
+{
+public:
+    NoNewThreads()
+    {
+        if(getrlimit(RLIMIT_NPROC, &saved) != 0)
+        {
+            return;
+        }
+        rlimit none = saved;
+        none.rlim_cur = 0;
+        if(setrlimit(RLIMIT_NPROC, &none) != 0)
+        {
+            return;
+        }
+        limited = true;
+        try
+        {
+            std::thread([] {}).join();
+        }
+        catch(std::system_error const&)
+        {
+            threadsRefused = true;
+        }
+    }
+
+    ~NoNewThreads() { restore(); }
+
+    void restore()
+    {
+        if(limited)
+        {
+            setrlimit(RLIMIT_NPROC, &saved);
+            limited = false;
+        }
+    }
+
+    bool refused() const { return threadsRefused; }
+
+private:
+    rlimit saved{};
+    bool limited = false;
+    bool threadsRefused = false;
+};
+
 // A record read back from a segment file.
 struct OnDisk
 {
@@ -225,6 +275,39 @@ protected:
             }
         }
         return failures.load() == 0;
+    }
+
+    // Writes the segment a crashed keeper would have left: its H record, then
+    // an N and an E record for each event, zeros to segment_bytes. Returns
+    // the recovered state recovery would make of it: one copy of each event,
+    // in that segment, pending under the event's story id.
+    chl::RecoveredState writeRecoveredSegment(uint64_t segment, std::vector<chl::LogEvent> const& events)
+    {
+        fs::create_directories(dir);
+        chl::RecoveredState recovered;
+        recovered.segments = {segment};
+        std::string bytes = wal::encodeHeader(wal::HeaderRecord{wal::kFormatVersion, segment, 1, kEndpoint});
+        for(auto const& event: events)
+        {
+            chl::StoryId const story_id = event.getStoryId();
+            bytes += wal::encodeNames(wal::NamesRecord{story_id, kChronicle, storyName(story_id)});
+            wal::EventFrame frame = wal::encodeEvent(event);
+            bytes.append(frame.frame_header.data(), frame.frame_header.size());
+            bytes += frame.head;
+            bytes.append(frame.record.data(), frame.record.size());
+            bytes += frame.tail;
+
+            chl::RecoveredStory& story = recovered.stories[story_id];
+            story.wal_story_id = story_id;
+            story.has_names = true;
+            story.chronicle = kChronicle;
+            story.story = storyName(story_id);
+            story.events[identityOf(event)] = event;
+            story.copies[identityOf(event)].push_back({segment, frame.size()});
+        }
+        bytes.resize(conf.segment_bytes, '\0');
+        std::ofstream(fs::path(dir) / wal::segmentFileName(segment), std::ios::binary) << bytes;
+        return recovered;
     }
 
     std::vector<uint64_t> segmentNumbers()
@@ -1404,4 +1487,80 @@ TEST_F(KeeperWalTest, BatchesLetAWaitingThreadIn)
             });
     EXPECT_GE(during_drop, 5u);
     EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(other)));
+}
+
+// When the committer's stream cannot be created, start returns CL_ERR_UNKNOWN
+// instead of throwing, leaves the WAL not started with no recovered copy
+// pending, refuses a write at once instead of queuing it for a committer that
+// does not exist, and can be called again; the second start adds the
+// recovered copies once.
+TEST_F(KeeperWalTest, StartThatCannotCreateItsCommitterCanBeRetried)
+{
+    chl::LogEvent const recovered_event = makeEvent(kStory, 1000);
+    chl::RecoveredState const recovered = writeRecoveredSegment(1, {recovered_event});
+    makeWal();
+
+    int status = chl::CL_SUCCESS;
+    {
+        NoNewThreads limit;
+        if(!limit.refused())
+        {
+            limit.restore();
+            GTEST_SKIP() << "threads are still created under RLIMIT_NPROC 0 (a privileged user)";
+        }
+        EXPECT_NO_THROW(status = wal->start(recovered, {}));
+    }
+    ASSERT_EQ(status, chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(recovered_event)));
+    EXPECT_EQ(wal->lookupDurable(kStory, identityOf(recovered_event)), std::nullopt);
+    std::atomic<int> answer{1};
+    std::thread writer([&]() { answer = append(makeEvent(kStory, 2000)); });
+    if(!waitFor([&]() { return answer.load() != 1; }))
+    {
+        // left waiting for a committer: the WAL cannot be destroyed under it
+        writer.detach();
+        std::abort();
+    }
+    writer.join();
+    EXPECT_EQ(answer.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+
+    ASSERT_EQ(wal->start(recovered, {}), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Ok);
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(recovered_event).size());
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(recovered_event)));
+    chl::LogEvent const fresh = makeEvent(kStory, 3000);
+    EXPECT_EQ(append(fresh), chl::CL_SUCCESS);
+
+    // the recovered copy was its segment's only one: released, the segment goes
+    wal->chunkWritten(kStory, chunkOf(kStory, {recovered_event}));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_TRUE(waitFor([&]() { return !exists(1); }, 3s));
+    EXPECT_TRUE(wal->isDurable(kStory, identityOf(fresh)));
+}
+
+// A start that fails because no spare can be made adds no recovered copy, so
+// the start that follows adds each of them once.
+TEST_F(KeeperWalTest, StartRetriedAfterAFailedSpareAddsRecoveredCopiesOnce)
+{
+    chl::LogEvent const recovered_event = makeEvent(kStory, 1000);
+    chl::RecoveredState const recovered = writeRecoveredSegment(1, {recovered_event});
+    makeWal();
+
+    sink->failWritesWith(ENOSPC); // the spare cannot be zero-filled
+    EXPECT_EQ(wal->start(recovered, {}), chl::CL_ERR_UNKNOWN);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_EQ(wal->stats().pending_bytes, 0u);
+
+    sink->failWritesWith(0);
+    ASSERT_EQ(wal->start(recovered, {}), chl::CL_SUCCESS);
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+    EXPECT_EQ(wal->stats().pending_bytes, wal::encodeEvent(recovered_event).size());
+    wal->chunkWritten(kStory, chunkOf(kStory, {recovered_event}));
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+    EXPECT_EQ(wal->stats().pending_bytes, 0u);
+    EXPECT_TRUE(waitFor([&]() { return !exists(1); }, 3s));
 }

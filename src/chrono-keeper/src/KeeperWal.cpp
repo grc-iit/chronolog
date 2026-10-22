@@ -71,13 +71,15 @@ KeeperWal::~KeeperWal() { stop(); }
 
 int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(RecoveredStory const&)> id_of)
 {
+    bool created = false;
     {
         std::lock_guard<WalMutex> lock(mutex);
-        if(state != State::Created)
-        {
-            LOG_ERROR("[KeeperWal] The WAL in {} was already started", walDirectory);
-            return CL_ERR_UNKNOWN;
-        }
+        created = (state == State::Created);
+    }
+    if(!created)
+    {
+        LOG_ERROR("[KeeperWal] The WAL in {} was already started", walDirectory);
+        return CL_ERR_UNKNOWN;
     }
 
     // recovery may have opened both through fileSink() and segmentManager()
@@ -93,27 +95,8 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
         return CL_ERR_UNKNOWN;
     }
 
-    // Recovered copies are pending under the story's live id: the grapher
-    // confirms the replayed chunks under that id.
-    std::vector<std::pair<StoryId, RecoveredStory const*>> recovered_stories;
-    for(auto const& [wal_story_id, story]: recovered.stories)
-    {
-        recovered_stories.emplace_back(id_of ? id_of(story) : wal_story_id, &story);
-    }
-    std::size_t recovered_events = 0;
-    {
-        std::lock_guard<WalMutex> lock(mutex);
-        for(auto const& [story_id, story]: recovered_stories)
-        {
-            for(auto const& [identity, copies]: story->copies)
-            {
-                for(auto const& [segment, bytes]: copies) { tracker.addCopy(story_id, identity, segment, bytes); }
-                noteAdded(story_id, identity);
-                ++recovered_events;
-            }
-        }
-    }
-
+    // Every step that can fail before the committer comes before the recovered
+    // copies are added, so a start that fails there can be made again.
     int fd = -1;
     uint64_t segment = 0;
     uint64_t data_offset = 0;
@@ -158,14 +141,44 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
     lastDeleteWarning = now - kWarningInterval;
     sampleFreeSpace();
 
+    // Recovered copies are pending under the story's live id: the grapher
+    // confirms the replayed chunks under that id.
+    std::vector<std::pair<StoryId, RecoveredStory const*>> recovered_stories;
+    for(auto const& [wal_story_id, story]: recovered.stories)
+    {
+        recovered_stories.emplace_back(id_of ? id_of(story) : wal_story_id, &story);
+    }
+    std::size_t recovered_events = 0;
     {
         std::lock_guard<WalMutex> lock(mutex);
+        for(auto const& [story_id, story]: recovered_stories)
+        {
+            for(auto const& [identity, copies]: story->copies)
+            {
+                for(auto const& [copy_segment, bytes]: copies)
+                {
+                    tracker.addCopy(story_id, identity, copy_segment, bytes);
+                }
+                noteAdded(story_id, identity);
+                ++recovered_events;
+            }
+        }
         counters.segments = segmentFiles.segments().size();
         state = State::Running;
     }
     segmentFiles.startPreparer();
-    committerStream = thallium::xstream::create();
-    committerThread = committerStream->make_thread([this]() { committerLoop(); });
+    try
+    {
+        committerStream = thallium::xstream::create();
+        committerThread = committerStream->make_thread([this]() { committerLoop(); });
+    }
+    catch(std::exception const& error)
+    {
+        // without a committer every request would wait forever, and stop
+        // would join a thread that does not exist
+        abandonStart(error.what());
+        return CL_ERR_UNKNOWN;
+    }
     running = true;
 
     LOG_INFO("[KeeperWal] Started the WAL in {}: writing segment {} ({}), {} segments, {} recovered events pending",
@@ -175,6 +188,48 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
              segmentFiles.segments().size(),
              recovered_events);
     return CL_SUCCESS;
+}
+
+void KeeperWal::abandonStart(std::string const& reason)
+{
+    std::deque<Queued> refused;
+    {
+        std::lock_guard<WalMutex> lock(mutex);
+        // as before start; a request queued meanwhile is refused below
+        state = State::Created;
+        refused.swap(queue);
+        queuedBytes = 0;
+        inFlight.clear();
+        tracker = WalReleaseTracker();
+        addOrder.clear();
+        counters = WalStats();
+    }
+    for(Queued& entry: refused)
+    {
+        if(entry.completion)
+        {
+            entry.completion->result.set_value(CL_ERR_DURABILITY_UNAVAILABLE);
+        }
+    }
+    if(!committerStream->is_null())
+    {
+        try
+        {
+            committerStream->join();
+        }
+        catch(std::exception const&)
+        {}
+    }
+    committerThread = thallium::managed<thallium::thread>();
+    committerStream = thallium::managed<thallium::xstream>();
+    segmentFiles.stopPreparer();
+    // the segment stays listed, header-only, and is deleted once a later start
+    // has taken a newer one
+    sink->closeFile(activeFd);
+    activeFd = -1;
+    namedInActive.clear();
+    segmentSizes.clear();
+    LOG_CRITICAL("[KeeperWal] Cannot start the WAL committer in {}: {}. The WAL is not started", walDirectory, reason);
 }
 
 void KeeperWal::stop()
