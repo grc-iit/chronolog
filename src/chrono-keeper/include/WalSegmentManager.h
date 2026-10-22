@@ -54,6 +54,8 @@ public:
     int open();
     bool isOpen() const { return opened; }
     std::string const& error() const { return lastError; }
+    // the directory as given to the constructor, for messages
+    std::string const& directoryName() const { return directory; }
 
     // Oldest first: the segments open() found, plus those taken or adopted
     // since, minus those deleted. A spare not yet taken is not listed.
