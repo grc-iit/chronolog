@@ -133,3 +133,12 @@ gtest_discover_tests(chronolog_client_durable_send_test TEST_PREFIX "Unit_Chrono
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_durable_send_test DESTINATION tests)
 endif()
+
+# Python binding of Durability, LogEventOptions and log_event(record, options)
+if(TARGET py_chronolog_client)
+    find_package(Python COMPONENTS Interpreter REQUIRED)
+    add_test(NAME Unit_PyClient_DurableBinding
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/py_client_durable_binding_test.py)
+    set_tests_properties(Unit_PyClient_DurableBinding PROPERTIES
+        ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+endif()
