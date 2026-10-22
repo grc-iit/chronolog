@@ -47,6 +47,8 @@ public:
     // lock, and then nothing in the directory is changed. error() names the
     // directory and the reason.
     int open();
+    // open() succeeded, so the lock is held and the segments are listed
+    bool isOpen() const { return opened; }
     std::string const& error() const { return lastError; }
 
     // Oldest first: the segments open() found, plus those taken or adopted
