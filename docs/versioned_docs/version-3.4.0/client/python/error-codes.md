@@ -26,7 +26,7 @@ All `Client` methods return a plain `int` status code. A return value of `0` mea
 | `CL_ERR_QUERY_TIMED_OUT` | -12 | Replay query or tail-read RPC timed out |
 | `CL_ERR_PROTOCOL_VERSION_MISMATCH` | -13 | Client and server disagree on the wire-protocol version |
 | `CL_ERR_PARTIAL_RESULT` | -18 | Query returned fewer records than it should: for a tail read, events left keeper memory between its two phases; for a replay, a keeper missed its fetch deadline or hit its event cap, or an archive file could not be read. The records that came back are valid |
-| `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, or it lacks the durable RPC. Nothing was stored |
+| `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, or it lacks the durable RPC. Nothing was stored, except possibly after a failed `fdatasync`: the records can still be in the page cache, and a keeper restarted on the same boot can recover them, so those events appear in reads |
 | `CL_ERR_DURABILITY_FULL` | -20 | Durable write: the keeper's WAL file system is below its reserve, or the keeper holds more data than `durable_cap_mb`. Nothing was stored |
 | `CL_ERR_DURABILITY_UNKNOWN` | -21 | Durable write: no attempt got an answer that settles it. The event may be stored |
 

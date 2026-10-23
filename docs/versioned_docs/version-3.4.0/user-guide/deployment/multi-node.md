@@ -137,9 +137,10 @@ finds the same directory and another install never sees it.
 
 `--wal-dir A:B:C` replaces the discovery with that list. An entry is used if it exists, is a
 writable directory and has `max_bytes` free above the reserve; there is no boot-disk check or media
-ranking. When no entry is usable on a keeper host, the deploy prints each entry's reason with the
-host name and stops before any daemon is launched. A single `--wal-dir` path is used as given, with
-a warning if it is on the boot disk.
+ranking. A leftover WAL of this install in a list entry or in `${TMPDIR:-/tmp}` is chosen before
+any entry is checked, as in step 1. When no entry is usable on a keeper host, the deploy prints each
+entry's reason with the host name and stops before any daemon is launched. A single `--wal-dir` path
+is used as given, with a warning if it is on the boot disk.
 
 The deploy, and each keeper at startup, warn when the WAL directory is on the boot disk or on NFS,
 Lustre, GPFS, BeeGFS, CIFS, Ceph, FUSE, overlay or tmpfs.
@@ -166,16 +167,26 @@ slower.
 - Run `--stop` before the job or allocation ends. Each keeper waits for ChronoGrapher to confirm its
   chunks, then writes an `exit-summary` in its WAL directory. `--stop` prints a table with each
   keeper's state: `clean`, `pending` (durable events the grapher has not confirmed), `missing` (no
-  `exit-summary`: the keeper crashed or was killed), `empty` or `unreachable`. It exits nonzero
+  `exit-summary`: the keeper crashed or was killed), `empty` (no WAL directory, or an empty one, so
+  no `exit-summary` was written) or `unreachable` (the host did not answer). It exits nonzero
   unless all are clean.
 - Events left in a WAL are replayed only when a keeper of the same install starts again on that
   node, possibly days later in another job. If `--stop` reports `pending` or `missing`, start the
   deployment again from the same install on the same nodes, so those keepers replay their WALs and
-  the graphers confirm the events, then stop again.
-- Run `--stop` and then `--clean` before installing a build with another WAL format version. A
-  keeper refuses to start on segments of a format it cannot read, and stopping does not remove
-  them. `--clean` removes the WAL directories once they are clean; `--force` removes them anyway and
-  discards the unconfirmed events.
+  the graphers confirm the events, then stop again. Start it with the same options as before,
+  including `--wal` or `--wal-dir`, and with the hosts in the same order. Without `--wal` the
+  keepers run with no WAL and the leftover events stay where they are. Another host order can put a
+  host in another recording group, and the probe then looks for `<hash>/<group>` of the new group
+  and does not find the old WAL.
+- A build with another WAL format version needs the WAL directories removed before it is installed.
+  A clean stop still leaves the active segment and a spare in each, and a keeper refuses to start on
+  segments of a format it cannot read. Run `--stop`, then either `--clean` or, after a clean
+  `--stop`, remove each keeper's `<base>/<hash>/<group>` directory by hand. `--clean` removes much
+  more than the WAL: the HDF5 archive in the output directory, the generated confs, the per-group
+  hosts files and the logs. It refuses, removing nothing, while a keeper's WAL state is `pending`,
+  `missing` or `unreachable`; `--force` removes the WAL directories anyway and discards those
+  events. Do either before the install: `--clean` finds the WAL directories through the generated
+  keeper confs.
 - After a crash, restart the keeper with `--restart-keeper <host>`. It replays its WAL, registers
   again, and the visor gives it the stories clients still hold.
 
@@ -185,8 +196,10 @@ The boot SSD is small, is wiped between jobs, and must not hold a WAL. Discovery
 `/mnt/nvme/$USER`, `/mnt/ssd/$USER` and `/mnt/hdd/$USER`, in that order, so create the per-user
 directory on the drives you want used. An NVMe that is nearly full, with less than `max_bytes` free
 above the reserve (the larger of 256 MiB and 10 % of the drive), is skipped, and the WAL goes on the
-SATA SSD instead. The NVMe drives there are shared, mostly full and mounted without `discard`: one
-measured 0.66 ms per small sync when quiet and about 5.4 ms after 10 GB of writes. If no drive
+SATA SSD instead. The NVMe drives there are shared, mostly full and mounted without `discard`: on
+one, a small append and its sync took 2.3 ms when the drive was quiet and about 5.4 ms after 10 GB
+of writes. A sync into a pre-zeroed segment, as the WAL does, took 0.66 ms on it when quiet; it was
+not measured after the writes. If no drive
 qualifies, the WAL goes to `/tmp`, on the boot disk, with a warning; pass
 `--wal-dir /mnt/nvme/$USER:/mnt/ssd/$USER` to fail the deploy instead. A leftover WAL of this
 install in `/tmp` is still chosen first, with or without a list.
@@ -199,8 +212,8 @@ Exactly one mode must be specified per invocation:
 |------|-------------|
 | `--start` | Start all ChronoLog processes across the cluster |
 | `--stop` | Stop all ChronoLog processes gracefully. Keepers stop first and get 4 minutes, since each waits for ChronoGrapher to confirm its chunks written; other processes are force-killed after 5 minutes. With the keeper WAL on, it then prints each keeper's WAL state and exits nonzero unless every one is clean (see [Keeper WAL](#keeper-wal)). |
-| `--clean` | Remove generated config files, per-group host files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. With the keeper WAL on, it also removes the keeper WAL directories, and refuses, removing nothing, while one holds unconfirmed events, unless `--force` is given. All processes must be stopped first. |
-| `--restart-keeper <host>` | Relaunch the keeper on `<host>` with the configuration `--start` generated for it, so it reuses its ports and its WAL directory and replays what the WAL holds. Give it the same options `--start` was given. |
+| `--clean` | Remove generated config files, per-group host files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. With the keeper WAL on, it also removes the keeper WAL directories, and refuses, removing nothing, while a keeper's state is `pending`, `missing` or `unreachable`, unless `--force` is given; an `empty` one does not stop it. All processes must be stopped first. |
+| `--restart-keeper <host>` | Relaunch the keeper on `<host>` with the configuration `--start` generated for it, so it reuses its ports and its WAL directory and replays what the WAL holds. Give it the same path and host options `--start` was given (`--work-dir`, `--keeper-bin`, `--conf-file`, the host files or `--job-id`). `--wal` is not needed: the generated conf already has the WAL on. |
 
 ## Options
 

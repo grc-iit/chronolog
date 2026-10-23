@@ -191,7 +191,9 @@ int StoryHandle::log_event(std::string const& event_record,
 ```
 
 Append a new event and return `CL_SUCCESS` once it has reached `options.durability`. On success
-`event_time` receives the event's timestamp; on any other return it is `0`.
+`event_time` receives the event's timestamp; on any other return the client library's handle sets
+it to `0`. The default `StoryHandle` implementation, for subclasses, returns
+`CL_ERR_DURABILITY_UNAVAILABLE` to Durable without touching `event_time`.
 
 - **`Durability::Accepted`** (the default) takes the same path as `log_event(event_record)`, and
   returns the keeper's status instead of discarding it. `CL_SUCCESS` means the keeper holds the
@@ -200,10 +202,13 @@ Append a new event and return `CL_SUCCESS` once it has reached `options.durabili
   write-ahead log (WAL) and `fdatasync` returned. What that survives depends on where the WAL is:
   on a local disk, a keeper crash and a node reboot; on tmpfs, a keeper crash only; it never
   survives losing the disk. See [Keeper WAL](../../user-guide/architecture/keeper-wal.md). A keeper
-  that cannot make the event durable answers with an error and does not store it. It never
-  downgrades the write to Accepted.
-- The default stays Accepted, so existing callers keep their cost: a durable write pays one RPC and
-  one sync per event, with no batching.
+  that cannot make the event durable answers with an error and does not store it, except in one
+  case after a failed `fdatasync`; see
+  [Durability error codes](./error-codes.md#durability-error-codes). It never downgrades the write
+  to Accepted.
+- The default stays Accepted, so existing callers keep their cost: a durable write pays one RPC per event
+  and waits for a sync. Concurrent durable writes to one keeper share a sync, but a single writer
+  waits for one per event.
 - The WAL is off by default on the keepers. A deployment must turn it on (`--wal` in the deploy
   scripts) before a durable write can succeed; with it off every durable write gets
   `CL_ERR_DURABILITY_UNAVAILABLE`.
@@ -240,8 +245,10 @@ Its default implementation sends Accepted through `log_event(record)` and answer
 the two `log_event` overloads adds `using StoryHandle::log_event;` so it does not hide the other.
 The new virtual changes the client library's ABI: code built against an earlier `libchronolog_client`
 that calls `log_event`, including the plugins, needs a rebuild but no source change.
-`CLIENT_PROTOCOL_VERSION` is unchanged; a durable write uses a new keeper RPC, and an older keeper
-answers it with `CL_ERR_DURABILITY_UNAVAILABLE`.
+`CLIENT_PROTOCOL_VERSION` is unchanged; a durable write uses a new keeper RPC, which an older
+keeper does not register. The client returns `CL_ERR_DURABILITY_UNAVAILABLE` for the resulting
+`HG_NO_MATCH` only while that keeper has never answered a durable call from this client; after
+that it counts as an unanswered attempt (see [Durability error codes](./error-codes.md#durability-error-codes)).
 
 ```cpp
 chronolog::LogEventOptions options;

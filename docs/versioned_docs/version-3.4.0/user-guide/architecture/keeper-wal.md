@@ -13,7 +13,10 @@ Without the WAL, an event reaches the HDF5 archive 60 to 90 seconds after its ti
 then it exists only in keeper memory (see [Durable Chunk Retention](./durable-retention.md)). A
 keeper crash in that interval loses it, and the writer is never told.
 
-The WAL is off by default. With it off, or with no durable writes, a keeper behaves as in 3.3.0.
+The WAL is off by default. With it off, a keeper behaves as in 3.3.0. With it on and no durable
+writes, a keeper still prepares two 64 MiB segments, writes a `D` record for every story destroyed,
+writes an `exit-summary` as it exits and logs a stats line every 10 seconds. The grapher syncs every
+window it writes in both cases (see [Grapher fsync](#grapher-fsync)).
 Only durable writes go into the WAL: an accepted write, `log_event(record)` or
 `Durability::Accepted`, takes the same path and costs the same as before. The client API is in
 [C++ API](../../client/cpp/api.md#storyhandle-class) and [Python API](../../client/python/api.md#storyhandle-class).
@@ -30,7 +33,8 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
 3. looks up the event's identity, `(time, client id, index)`, in the WAL. If the event is already
    synced and not yet released, it answers `CL_SUCCESS` and stores nothing; if an earlier attempt is
    still waiting for its sync, it waits for that attempt's result. This is how a client's retry gets
-   the first attempt's answer, before any other check can refuse it;
+   the first attempt's answer before any later check can refuse it; only the WAL-off and story-id
+   checks come first;
 4. answers `CL_ERR_INVALID_ARG` to an empty record, `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL has
    failed, and `CL_ERR_DURABILITY_FULL` if the WAL's file system is below its reserve or the keeper
    holds more than `durable_cap_mb` of chunks;
@@ -46,6 +50,9 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
 If the write or the sync fails, the whole group gets `CL_ERR_DURABILITY_UNAVAILABLE`, none of it is
 ingested, and the WAL stays failed until the keeper restarts: after a failed `fdatasync`, Linux may
 already have dropped the dirty pages, so a later sync proves nothing. Accepted writes continue.
+Whether those events are lost is not settled: the records may also still be in the page cache, and
+if the keeper restarts on the same boot, recovery can read them back and ship them, so events whose
+writers got `CL_ERR_DURABILITY_UNAVAILABLE` appear in reads.
 
 A handler waiting for its group yields its Argobots thread, so the keeper's RPC threads keep serving
 other requests, and a group can hold more writes than the keeper has RPC threads.
@@ -63,8 +70,8 @@ Each keeper owns one directory:
   yet confirmed.
 
 A segment is written full of zeros, given its header and synced before it is used, so a write
-overwrites zeros and a sync does not also commit a change of file size. That cut the sync time 2 to
-4.5 times on every drive measured. The keeper keeps one such spare ready and switches to it when
+overwrites zeros and a sync does not also commit a change of file size. That cut the sync time 1.7
+times on the Ares boot SSD and 2 to 4.5 times on the other drives measured. The keeper keeps one such spare ready and switches to it when
 the active segment is full.
 
 Each record is a frame with its length and a CRC32C. The records are a segment header (`H`, with a
@@ -169,8 +176,8 @@ burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 ## Configuration
 
 The WAL is the `WAL` block of the `chrono_keeper` section; see
-[Server Configuration](../configuration/server-configuration.md). The deploy scripts turn it on
-with `--wal` and choose the directory on each keeper host; see
+[Server Configuration](../configuration/server-configuration.md#wal--keeper-write-ahead-log). The
+deploy scripts turn it on with `--wal` and choose the directory on each keeper host; see
 [Multi-Node Deployment](../deployment/multi-node.md#keeper-wal).
 
 | Key | Default | Meaning |
