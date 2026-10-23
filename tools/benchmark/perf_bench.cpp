@@ -341,13 +341,6 @@ test_acquire_story(chronolog::Client& client, const std::string& chronicle_name,
     return client.AcquireStory(chronicle_name, story_name);
 }
 
-static uint64_t test_write_event(chronolog::StoryHandle* story_handle, const std::string& event_payload)
-{
-    uint64_t ret = story_handle->log_event(event_payload);
-    assert(ret > 0);
-    return ret;
-}
-
 static int test_replay_story(chronolog::Client& client,
                              const std::string& chronicle_name,
                              const std::string& story_name,
@@ -486,11 +479,11 @@ struct latency_stats
     uint64_t write_end_ns = 0;
 };
 
-// Per-rank accumulators for durable writes, reduced once at the end like
-// latency_stats.
+// Per-rank accumulators for write answers, accepted or durable, reduced once
+// at the end like latency_stats.
 struct durable_stats
 {
-    std::vector<double> ack_us;           // send -> answer of each durable log_event() call
+    std::vector<double> ack_us;           // send -> answer of each log_event() call
     std::map<int, uint64_t> return_codes; // answers by return code
     uint64_t acked = 0;                   // calls answered CL_SUCCESS
 
@@ -499,25 +492,34 @@ struct durable_stats
     uint64_t end_ns = 0;
 };
 
-// Write one event. With --durable it goes through log_event(record, options, t)
-// and the answer is counted in `stats` instead of asserted, since -19/-20/-21
-// are answers the bench reports. Returns the event time, or 0 on failure.
+// Write one event and time its answer in `stats`. With --durable it goes
+// through log_event(record, options, t) and the answer is counted instead of
+// asserted, since -19/-20/-21 are answers the bench reports. Returns the event
+// time, or 0 on failure.
 static uint64_t write_event(chronolog::StoryHandle* story_handle,
                             const std::string& event_payload,
                             const workload_conf_args& workload_args,
                             durable_stats& stats)
 {
-    if(!workload_args.durable)
-        return test_write_event(story_handle, event_payload);
-
-    chronolog::LogEventOptions options;
-    options.durability = chronolog::Durability::Durable;
-    options.timeout_ms = workload_args.durable_timeout_ms;
-    options.attempts = workload_args.durable_attempts;
-
     uint64_t event_time = 0;
+    int rc = chronolog::CL_SUCCESS;
     uint64_t t_start = now_ns();
-    int rc = story_handle->log_event(event_payload, options, event_time);
+    if(workload_args.durable)
+    {
+        chronolog::LogEventOptions options;
+        options.durability = chronolog::Durability::Durable;
+        options.timeout_ms = workload_args.durable_timeout_ms;
+        options.attempts = workload_args.durable_attempts;
+        rc = story_handle->log_event(event_payload, options, event_time);
+    }
+    else
+    {
+        // log_event() answers the event time, or 0 when the write failed;
+        // counted, not asserted, so a failure does not abort the rank
+        event_time = story_handle->log_event(event_payload);
+        if(event_time == 0)
+            rc = chronolog::CL_ERR_UNKNOWN;
+    }
     uint64_t t_end = now_ns();
 
     stats.ack_us.push_back(static_cast<double>(t_end - t_start) / 1e3);
@@ -850,11 +852,13 @@ static void report_latency(int rank, int size, const latency_stats& stats, const
     }
 }
 
-// Aggregate the durable write answers on rank 0 and print them: ack latency,
+// Aggregate the write answers on rank 0 and print them: ack latency,
 // acknowledged events per second, and how many calls got each return code.
+// The lines start with "Durable" under --durable and "Accepted" otherwise.
 // Runs MPI collectives on every rank.
 static void report_durable(int rank, int size, const durable_stats& stats, const workload_conf_args& workload_args)
 {
+    std::string const mode = workload_args.durable ? "Durable" : "Accepted";
     std::vector<int> ack_counts;
     std::vector<double> all_ack_us = gather_doubles(rank, size, stats.ack_us, ack_counts);
 
@@ -885,20 +889,24 @@ static void report_durable(int rank, int size, const durable_stats& stats, const
         code_totals[static_cast<int>(static_cast<int64_t>(all_codes[i]))] += all_codes[i + 1];
     }
 
-    std::cout << "Durable writes (timeout " << workload_args.durable_timeout_ms << " ms per attempt, "
-              << workload_args.durable_attempts << " attempts): " << all_ack_us.size() << " sent, " << total_acked
-              << " acknowledged" << std::endl;
-    print_distribution("Durable ack latency", all_ack_us, "us");
+    std::cout << mode << " writes";
+    if(workload_args.durable)
+    {
+        std::cout << " (timeout " << workload_args.durable_timeout_ms << " ms per attempt, "
+                  << workload_args.durable_attempts << " attempts)";
+    }
+    std::cout << ": " << all_ack_us.size() << " sent, " << total_acked << " acknowledged" << std::endl;
+    print_distribution((mode + " ack latency").c_str(), all_ack_us, "us");
     if(last_answer_ns > first_send_ns && first_send_ns != UINT64_MAX)
     {
         double span_s = static_cast<double>(last_answer_ns - first_send_ns) / 1e9;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "Durable acknowledged throughput: " << static_cast<double>(total_acked) / span_s
+        std::cout << mode << " acknowledged throughput: " << static_cast<double>(total_acked) / span_s
                   << " events/s over " << span_s << " s" << std::endl;
     }
     for(const auto& [code, count]: code_totals)
     {
-        std::cout << "Durable return code " << chronolog::to_string_client(code) << " (" << code << "): " << count
+        std::cout << mode << " return code " << chronolog::to_string_client(code) << " (" << code << "): " << count
                   << std::endl;
     }
 }
@@ -1368,9 +1376,9 @@ int main(int argc, char** argv)
         }
     }
 
-    // Durable answers are reported whether or not -p is given; with -p they
+    // Write answers are reported whether or not -p is given; with -p they
     // continue the performance results block above.
-    if(workload_args.durable && !workload_args.read)
+    if(!workload_args.read)
     {
         if(rank == 0 && !workload_args.perf_test)
         {
