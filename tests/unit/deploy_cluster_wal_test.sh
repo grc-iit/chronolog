@@ -60,7 +60,11 @@ parallel-ssh() { # -h HOSTS_FILE -i COMMAND, as deploy_cluster.sh calls it
 ssh() { # -n HOST COMMAND
     [[ "$1" == -n ]] || return 255
     [[ " $down " == *" $2 "* ]] && return 255
-    FAKE_HOSTNAME=$2 PATH="$fixture/shim:$PATH" bash -c "$3" < /dev/null
+    # Like ssh, return only once every remote process has closed the session's
+    # stdout and stderr: a process left in the background holding them keeps
+    # it open.
+    FAKE_HOSTNAME=$2 PATH="$fixture/shim:$PATH" bash -c "$3" < /dev/null 2>&1 | cat
+    return "${PIPESTATUS[0]}"
 }
 
 # No space here: clean's existing rm lines leave the work dir unquoted. The WAL
@@ -270,11 +274,17 @@ grep -q "$other" "$fixture/clean-out" && pass "clean: the directory left behind 
 
 # --restart-keeper
 mkdir -p "$KEEPER_BIN_DIR"
-printf '#!/usr/bin/env bash\necho "launched $*" >> "%s"\nexec sleep 30\n' "$fixture/launches" > "$KEEPER_BIN"
+# no exec: the fake keeper keeps "<bin> --config <conf>" as its command line for
+# restart_keeper's pgrep, and runs 30 s
+printf '#!/usr/bin/env bash\necho "launched $*" >> "%s"\nfor _ in $(seq 30); do sleep 1; done\n' "$fixture/launches" > "$KEEPER_BIN"
 chmod +x "$KEEPER_BIN"
 setup
 echo "old run" > "$MONITOR_DIR/chrono-keeper-nodeB.launch.log"
+restart_start=$SECONDS
 if (restart_keeper nodeB) > "$fixture/restart-out" 2>&1; then pass "restart: exits 0"; else fail "restart: exits 0: $(cat "$fixture/restart-out")"; fi
+# the fake keeper runs 30 s; a launch that keeps the ssh session open returns only then
+(( SECONDS - restart_start < 10 )) && pass "restart: returns while the relaunched keeper runs" ||
+    fail "restart: returns while the relaunched keeper runs (took $((SECONDS - restart_start)) s)"
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     [[ -s "$fixture/launches" ]] && break
     sleep 0.2
