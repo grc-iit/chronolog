@@ -116,8 +116,9 @@ usage() {
   echo "Keeper WAL Settings:"
   echo "  --wal                            Turn the keeper WAL on (also WAL_ENABLED=1); each keeper host gets a directory"
   echo "                                   on a local non-OS drive with an existing <mount>/\$USER, chosen by wal_dir_probe.sh"
-  echo "  --wal-dir <A[:B:...]>            Turn the keeper WAL on and try these bases in order instead; a single path is"
-  echo "                                   used as given. <hash of work_dir>/<recording group> is appended to the base"
+  echo "  --wal-dir <A[:B:...]>            Turn the keeper WAL on and try these bases in order instead; the deploy fails"
+  echo "                                   when no entry is usable on a keeper host. A single path is used as given."
+  echo "                                   <hash of work_dir>/<recording group> is appended to the base"
   echo "  --force                          With --clean, remove keeper WAL directories whose exit-summary is missing or"
   echo "                                   shows events the grapher has not confirmed"
   echo ""
@@ -423,7 +424,7 @@ assign_keeper_wal_dir() {
   local keeper_host=$1
   local group=$2
   local keeper_conf=$3
-  local max_bytes reserve_min reserve_percent probe_cmd probe_output line wal_dir=""
+  local max_bytes reserve_min reserve_percent probe_cmd probe_output probe_status line wal_dir=""
 
   max_bytes=$(jq -r '.chrono_keeper.WAL.max_bytes // 1073741824' "${keeper_conf}")
   reserve_min=$(jq -r '.chrono_keeper.WAL.reserve_min_bytes // 268435456' "${keeper_conf}")
@@ -431,16 +432,19 @@ assign_keeper_wal_dir() {
   printf -v probe_cmd 'bash %q --work-dir-hash %q --group %q --max-bytes %q --reserve-min %q --reserve-percent %q' \
     "${SCRIPT_DIR}/wal_dir_probe.sh" "$(work_dir_hash)" "${group}" "${max_bytes}" "${reserve_min}" "${reserve_percent}"
   [[ -n "${WAL_DIR_LIST}" ]] && printf -v probe_cmd '%s --wal-dir %q' "${probe_cmd}" "${WAL_DIR_LIST}"
-  if ! probe_output=$(ssh -n "${keeper_host}" "${probe_cmd}"); then
-    echo -e "${ERR}Cannot choose a WAL directory on ${keeper_host}, exiting ...${NC}" >&2
-    exit 1
-  fi
+  probe_status=0
+  probe_output=$(ssh -n "${keeper_host}" "${probe_cmd}") || probe_status=$?
   while IFS= read -r line; do
     case "${line}" in
     WAL_DIR=*) wal_dir=${line#WAL_DIR=} ;;
     WARNING:*) echo -e "${WARN}WARNING: ${keeper_host}: ${line#WARNING: }${NC}" >&2 ;;
+    ERROR:*) echo -e "${ERR}${keeper_host}: ${line}${NC}" >&2 ;;
     esac
   done <<<"${probe_output}"
+  if ((probe_status != 0)); then
+    echo -e "${ERR}Cannot choose a WAL directory on ${keeper_host}, exiting before any keeper is launched ...${NC}" >&2
+    exit 1
+  fi
   if [[ "${wal_dir}" != /* ]]; then
     echo -e "${ERR}wal_dir_probe.sh on ${keeper_host} chose no WAL directory, exiting ...${NC}" >&2
     exit 1

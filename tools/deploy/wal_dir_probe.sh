@@ -2,7 +2,9 @@
 # Picks the keeper WAL directory on this host; deploy_cluster.sh runs it on each
 # keeper host over ssh. Prints WAL_DIR=<dir> and zero or more "WARNING: ..." lines
 # on stdout, and creates <dir>. Exits nonzero, without a WAL_DIR line, on bad
-# arguments or when <dir> cannot be created.
+# arguments, when <dir> cannot be created, or when no entry of a --wal-dir list
+# is usable; in that last case it prints "ERROR: <entry>: <reason>" on stdout for
+# each entry.
 #
 # The base directory is, in this order:
 #  1. one whose <base>/<hash>/<group> already holds *.wal, among the candidates and
@@ -12,7 +14,8 @@
 #     (lsblk TRAN and ROTA), with free space minus the reserve at least max_bytes;
 #  3. ${TMPDIR:-/tmp} as resolved on this host, with a warning.
 # --wal-dir A:B:C replaces the discovered candidates with that ordered list (the
-# boot-disk and media checks do not apply to it). A single --wal-dir path is used
+# boot-disk and media checks do not apply to it) and has no fallback: when no
+# entry passes, the probe fails. A single --wal-dir path is used
 # as given. <hash>/<group> is appended to the chosen base in every case.
 #
 # "Boot disk" compares the physical disk under the directory (findmnt SOURCE, then
@@ -161,11 +164,22 @@ space_of() {
 }
 
 # Returns 0 when $1 is an existing, writable directory with free space minus the
-# reserve at least max_bytes.
+# reserve at least max_bytes. Otherwise sets UNUSABLE_REASON and returns 1.
 usable() {
-  [[ -d "$1" && -w "$1" && -x "$1" ]] || return 1
-  space_of "$1" || return 1
-  ((FREE_BYTES - RESERVE_BYTES >= max_bytes))
+  if [[ ! -e "$1" ]]; then
+    UNUSABLE_REASON="does not exist"
+  elif [[ ! -d "$1" ]]; then
+    UNUSABLE_REASON="is not a directory"
+  elif [[ ! -w "$1" || ! -x "$1" ]]; then
+    UNUSABLE_REASON="is not writable"
+  elif ! space_of "$1"; then
+    UNUSABLE_REASON="cannot read its free space"
+  elif ((FREE_BYTES - RESERVE_BYTES < max_bytes)); then
+    UNUSABLE_REASON="has ${FREE_BYTES} bytes free; above the ${RESERVE_BYTES} byte reserve that is less than max_bytes (${max_bytes})"
+  else
+    return 0
+  fi
+  return 1
 }
 
 # Fills discovered_bases with every existing <mount>/$USER on a local block-device
@@ -238,22 +252,26 @@ else
     if ${wal_dir_given}; then
       candidates_checked=("${wal_dir_entries[@]}")
     fi
+    entry_errors=()
     for candidate in "${candidates_checked[@]}"; do
       if usable "${candidate}"; then
         base=${candidate}
         break
       fi
+      entry_errors+=("${candidate}: ${UNUSABLE_REASON}")
     done
+  fi
+  if [[ -z "${base}" ]] && ${wal_dir_given}; then
+    # a list replaces the discovery and its fallback
+    for line in "${entry_errors[@]}"; do
+      echo "ERROR: ${line}"
+    done
+    exit 1
   fi
   if [[ -z "${base}" ]]; then
     base=${fallback}
-    if ${wal_dir_given}; then
-      warn "none of --wal-dir ${wal_dir_list} is an existing writable directory with ${max_bytes} bytes" \
-        "(max_bytes) free above the reserve; using ${fallback}"
-    else
-      warn "no local non-OS drive has an existing writable <mount>/${USER} with ${max_bytes} bytes" \
-        "(max_bytes) free above the reserve; using ${fallback}"
-    fi
+    warn "no local non-OS drive has an existing writable <mount>/${USER} with ${max_bytes} bytes" \
+      "(max_bytes) free above the reserve; using ${fallback}"
   fi
   # leftovers outside the list are only named
   if ${wal_dir_given}; then

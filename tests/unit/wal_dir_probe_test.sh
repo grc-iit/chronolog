@@ -315,9 +315,57 @@ expect "--wal-dir list names leftovers outside the list (two entries)" "$F/mnt/n
 
 reset_host
 nvme_disk
+hdd_disk
 add_mount nvme /dev/nvme0n1p1 xfs $((G / 2)) $BIG 66305
-expect "--wal-dir list with no usable entry falls back to TMPDIR" "$F/tmp/$H/2" "none of --wal-dir" \
-    "${STD_ARGS[@]}" --wal-dir "$F/mnt/nvme/$USER:$F/mnt/missing"
+add_mount hdd /dev/sdc1 ext4 $BIG $BIG 2081
+expect "--wal-dir list: a full first entry is skipped for the second" "$F/mnt/hdd/$USER/$H/2" 0 "${STD_ARGS[@]}" \
+    --wal-dir "$F/mnt/nvme/$USER:$F/mnt/hdd/$USER"
+
+# expect_refused LABEL ENTRY|REASON... -- PROBE_ARGS...: the probe exits nonzero
+# with no WAL_DIR line and one "ERROR: <entry>: <reason>" line per entry, in
+# order, and creates nothing under TMPDIR
+expect_refused() {
+    local label=$1 want=() out status got
+    shift
+    while [[ "$1" != -- ]]; do
+        want+=("$1")
+        shift
+    done
+    shift
+    out=$(run_probe "$@")
+    status=$?
+    got=$(grep '^ERROR: ' <<< "$out")
+    if ((status == 0)); then
+        fail "$label: probe exited 0: $out"
+    elif grep -q '^WAL_DIR=' <<< "$out"; then
+        fail "$label: printed WAL_DIR: $out"
+    elif [[ "$(grep -c '^ERROR: ' <<< "$out")" -ne ${#want[@]} ]]; then
+        fail "$label: expected ${#want[@]} ERROR lines: $out"
+    elif [[ -n "$(ls -A "$F/tmp")" ]]; then
+        fail "$label: created $(ls -A "$F/tmp") under TMPDIR"
+    else
+        local i=0 line
+        while IFS= read -r line; do
+            if [[ "$line" != "ERROR: ${want[i]%%|*}: "*"${want[i]#*|}"* ]]; then
+                fail "$label: ERROR line $((i + 1)) '$line', expected entry '${want[i]%%|*}' and '${want[i]#*|}'"
+                return
+            fi
+            i=$((i + 1))
+        done <<< "$got"
+        pass "$label"
+    fi
+}
+
+reset_host
+nvme_disk
+add_mount nvme /dev/nvme0n1p1 xfs $((G / 2)) $BIG 66305
+touch "$F/afile"
+expect_refused "--wal-dir list with no usable entry fails, one ERROR per entry" \
+    "$F/mnt/nvme/$USER|less than max_bytes" "$F/mnt/missing|does not exist" "$F/afile|not a directory" -- \
+    "${STD_ARGS[@]}" --wal-dir "$F/mnt/nvme/$USER:$F/mnt/missing:$F/afile"
+expect_refused "--wal-dir list of two missing entries fails" \
+    "$F/mnt/missing|does not exist" "$F/mnt/gone|does not exist" -- \
+    "${STD_ARGS[@]}" --wal-dir "$F/mnt/missing:$F/mnt/gone"
 
 reset_host
 nvme_disk
@@ -436,6 +484,18 @@ if (assign_keeper_wal_dir node7 3 "$conf" > /dev/null 2>&1); then
 else
     pass "deploy_cluster: a failed probe stops the deploy"
 fi
+
+reset_host
+WAL_DIR_LIST="$F/mnt/missing:$F/mnt/gone"
+if (assign_keeper_wal_dir node7 3 "$conf" > /dev/null 2> "$fixture/cluster-stderr"); then
+    fail "deploy_cluster: a --wal-dir list with no usable entry stops the deploy"
+else
+    pass "deploy_cluster: a --wal-dir list with no usable entry stops the deploy"
+fi
+grep -q "node7: ERROR: $F/mnt/missing: does not exist" "$fixture/cluster-stderr" &&
+    grep -q "node7: ERROR: $F/mnt/gone: does not exist" "$fixture/cluster-stderr" &&
+    pass "deploy_cluster: the probe's errors shown with the host" ||
+    fail "deploy_cluster: the probe's errors shown with the host: $(cat "$fixture/cluster-stderr")"
 
 # Arguments of deploy_cluster.sh and their pass-through from single_user_deploy.sh
 source <(sed -n '/^parse_args() {/,/^}/p' "$repo_root/tools/deploy/deploy_cluster.sh")
