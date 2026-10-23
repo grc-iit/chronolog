@@ -149,6 +149,9 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
                                                                       LogEventOptions const& options,
                                                                       uint64_t& event_time)
 {
+    // set once an attempt goes unanswered: that attempt may have stored the
+    // event, so no later answer can say that nothing was stored
+    bool may_be_stored = false;
     for(uint32_t attempt = 1; attempt <= options.attempts; ++attempt)
     {
         // chosen again on every attempt: the choice depends only on the
@@ -177,12 +180,20 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
                 {
                     event_time = event.time();
                 }
+                if(may_be_stored && (chronolog::CL_ERR_DURABILITY_UNAVAILABLE == keeper_code ||
+                                     chronolog::CL_ERR_DURABILITY_FULL == keeper_code))
+                {
+                    return chronolog::CL_ERR_DURABILITY_UNKNOWN;
+                }
                 return keeper_code;
             case DurableSendOutcome::NotRegistered:
-                // a keeper without the RPC stored nothing and never will
-                return chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
+                // a keeper without the RPC stored nothing and never will, but
+                // an earlier unanswered attempt may have reached a keeper that
+                // stored the event and then died
+                return may_be_stored ? chronolog::CL_ERR_DURABILITY_UNKNOWN : chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
             case DurableSendOutcome::TimedOut:
             case DurableSendOutcome::TransportError:
+                may_be_stored = true;
                 LOG_WARNING("[StoryHandleImpl] Durable event attempt {} of {} got no answer for Chronicle: {}, Story: "
                             "{}",
                             attempt,
