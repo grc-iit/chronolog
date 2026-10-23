@@ -158,12 +158,12 @@ Appears in `chrono_keeper` only. Parsed by `WalConf` (`src/chrono-keeper/include
 
 | Field                    | Type    | Default      | Description |
 | ------------------------ | ------- | ------------ | ----------- |
-| `enabled`                | boolean | `false`      | Turns the WAL on. The deploy scripts set it with `--wal` or `--wal-dir`. |
+| `enabled`                | boolean | `false`      | Turns the WAL on. `deploy_local.sh` sets it with `--wal`; `deploy_cluster.sh` and `single_user_deploy.sh` with `--wal` or `--wal-dir`. All three also read `WAL_ENABLED=1` from the environment. |
 | `dir`                    | string  | `""`         | Absolute path of the WAL directory. Required when `enabled` is true. The deploy scripts fill it in for each keeper. |
 | `segment_bytes`          | integer | `67108864`   | Size of one WAL segment file, 64 MiB. At least `1048576` (1 MiB). Checked even when the WAL is off. |
 | `max_bytes`              | integer | `1073741824` | Total size of the WAL segments above which the keeper logs a warning, at most once a minute, while it waits for ChronoGrapher to confirm events. Nothing is refused or dropped. |
 | `group_commit_max_bytes` | integer | `4194304`    | Largest group of queued events written and synced together, 4 MiB. A group always holds at least one event. |
-| `group_commit_window_us` | integer | `0`          | Microseconds the committer waits after the first queued event for more events before it syncs. `0` syncs as soon as the committer is free, so the group size follows the load. At most `10000`. |
+| `group_commit_window_us` | integer | `0`          | Microseconds the committer waits after the first queued event for more events before it syncs. `0` syncs as soon as the committer is free, so the group size follows the load. The wait also ends early when the queued bytes reach `group_commit_max_bytes`. At most `10000`. |
 | `reserve_min_bytes`      | integer | `268435456`  | Free space, in bytes, the WAL directory's file system keeps (256 MiB). The reserve is the larger of this and `reserve_percent` of the file system. |
 | `reserve_percent`        | integer | `10`         | Percentage of the WAL directory's file system kept free. `0` to `100`. Below the reserve, durable writes get `CL_ERR_DURABILITY_FULL` until space is back. |
 | `durable_cap_mb`         | integer | `4096`       | Retained-chunk memory, in MB, above which a durable write gets `CL_ERR_DURABILITY_FULL`. It is the same memory `retention_cap_mb` watches, but `retention_cap_mb` only warns. |
@@ -177,7 +177,9 @@ Validation runs when the keeper starts, and a refused value stops the keeper:
 - `durable_cap_mb` must not exceed the largest value whose size in bytes fits in a signed 64-bit integer.
 - A key the keeper does not know is printed to standard error and ignored.
 
-The longest durable event is 256 MiB minus 36 bytes. That limit is fixed and has no key.
+The keeper also exits at startup when it cannot open `dir` or when the recovery of the WAL fails.
+
+The longest durable event is 256 MiB minus 36 bytes. That limit is fixed and has no key. A longer durable event gets `CL_ERR_INVALID_ARG` and is not stored.
 
 ### `ExtractionModule`
 
