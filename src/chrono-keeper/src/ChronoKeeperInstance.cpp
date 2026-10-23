@@ -29,6 +29,7 @@
 #include <cmd_arg_parse.h>
 #include <StoryChunkExtractionModule.h>
 #include <KeeperExtractionChain.h>
+#include <KeeperExtractionEngine.h>
 #include <ConfigurationManager.h>
 #include <ChronoKeeperConfiguration.h>
 
@@ -388,7 +389,7 @@ int main(int argc, char** argv)
 
     try
     {
-        extractionEngine = new tl::engine(extraction_engine_protocol, THALLIUM_CLIENT_MODE);
+        extractionEngine = chl::createExtractionEngine(extraction_engine_protocol);
 
         std::stringstream s1;
         s1 << extractionEngine->self();
