@@ -36,6 +36,7 @@
 #include <KeeperWal.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
+#include <StoryIdOf.h>
 #include <StoryIngestionHandle.h>
 #include <WalObserver.h>
 
@@ -60,7 +61,8 @@ void ensureLogger() // and Argobots
 constexpr uint32_t kChunkDurationSecs = 30;
 constexpr std::size_t kTailCapacity = 1024;
 constexpr uint64_t kNoCap = UINT64_MAX;
-constexpr chl::StoryId kStory = 41;
+// the id the visor gives ("chron", "story"); the writer refuses any other
+chl::StoryId const kStory = chl::storyIdOf("chron", "story");
 
 uint64_t now() { return std::chrono::high_resolution_clock::now().time_since_epoch().count(); }
 
@@ -271,6 +273,39 @@ TEST(KeeperDurableWriter, EmptyRecordIsRefusedAfterTheLookup)
     EXPECT_EQ(keeper.ingested(kStory), 0u);
 }
 
+// The WAL's N record keeps the names and recovery recomputes the id from them,
+// so an event whose id is not the names' would be acknowledged under one id
+// and recovered under another. It is refused before the lookup, and a retry
+// of a stored event with the right id is still answered from the WAL.
+TEST(KeeperDurableWriter, StoryIdThatIsNotTheNamesIsRefused)
+{
+    ensureLogger();
+    Keeper keeper;
+    FakeDurableLog wal;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
+
+    chl::StoryId const other = chl::storyIdOf("chron", "other");
+    ASSERT_NE(other, kStory);
+    chl::LogEvent const mismatched(other, now(), /*client=*/9, /*index=*/0, "payload");
+    EXPECT_EQ(writer.write("chron", "story", mismatched), chl::CL_ERR_INVALID_ARG);
+    // the same names and id, with the names swapped between the two arguments
+    EXPECT_EQ(writer.write("story", "chron", makeEvent(1)), chl::CL_ERR_INVALID_ARG);
+    EXPECT_TRUE(wal.calls.empty());
+    EXPECT_TRUE(wal.appended.empty());
+    EXPECT_EQ(keeper.ingested(other), 0u);
+    EXPECT_EQ(keeper.ingested(kStory), 0u);
+
+    chl::LogEvent const event = makeEvent(2);
+    ASSERT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
+    EXPECT_EQ(wal.calls, (std::vector<std::string>{"lookup", "admit", "append"}));
+
+    wal.calls.clear();
+    EXPECT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
+    EXPECT_EQ(wal.calls, (std::vector<std::string>{"lookup"}));
+    EXPECT_EQ(wal.appended.size(), 1u);
+    EXPECT_EQ(keeper.ingested(kStory), 1u);
+}
+
 TEST(KeeperDurableWriter, FullAndCapAreFullAndNothingIngested)
 {
     ensureLogger();
@@ -354,7 +389,7 @@ TEST(KeeperDurableWriter, UnknownStoryGetsAPipeline)
 TEST(KeeperDurableWriter, DurablePipelineRetiresUnlessAStartKeepsIt)
 {
     ensureLogger();
-    constexpr chl::StoryId kKept = kStory + 1;
+    chl::StoryId const kKept = kStory + 1;
     Keeper keeper(/*acceptance_window_secs=*/0);
 
     ASSERT_EQ(keeper.data_store.ensureStoryPipeline("chron", "story", kStory), chl::CL_SUCCESS);
@@ -384,8 +419,8 @@ TEST(KeeperDurableWriter, DurablePipelineRetiresUnlessAStartKeepsIt)
 TEST(KeeperDurableWriter, EnsureStoryPipelineLeavesAnExistingPipelineAlone)
 {
     ensureLogger();
-    constexpr chl::StoryId kStopped = kStory;
-    constexpr chl::StoryId kRecorded = kStory + 1;
+    chl::StoryId const kStopped = kStory;
+    chl::StoryId const kRecorded = kStory + 1;
     Keeper keeper(/*acceptance_window_secs=*/0);
 
     ASSERT_EQ(keeper.data_store.startStoryRecording("chron", "stopped", kStopped, now()), chl::CL_SUCCESS);
