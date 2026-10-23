@@ -6,8 +6,7 @@
 # writes working.
 #
 # Phase 1, this tree's keeper with the WAL off (deploy_local.sh without --wal):
-#   1. The generated keeper conf has the WAL off and the keeper made no WAL
-#      directory.
+#   1. The generated keeper conf has the WAL off.
 #   2. Every one of DURABLE_EVENTS durable writes returns
 #      CL_ERR_DURABILITY_UNAVAILABLE, and the client log shows no retry.
 #   3. Every one of ACCEPTED_EVENTS accepted writes to the same story, from a
@@ -25,17 +24,19 @@
 #      that went unanswered, and the writes take less than one timeout_ms.
 #   7. Accepted writes from the same client to that keeper return CL_SUCCESS.
 #
-# deploy_local.sh -p <keeper> is passed in phase 2, but deploy_local.sh resets
-# KEEPER_BIN to work_dir/bin/chrono-keeper after parsing its options
-# (refresh_paths_for_work_dir), so it starts this tree's keeper anyway. The
-# script then stops that keeper and launches the v3.3.0 keeper itself with the
-# conf deploy_local.sh generated for keeper 1, and stops it itself at the end.
+# Phase 2 deploys with deploy_local.sh -p <v3.3.0 keeper>, which starts that
+# keeper with the conf it generates for keeper 1. The stop and the exit trap
+# pass the same -p, since deploy_local.sh -s stops only the keeper binary it is
+# given.
 #
 # The v3.3.0 keeper is V330_KEEPER. When that file does not exist, the script
-# extracts the v3.3.0 tag into V330_SRC with git archive, links the repo's
-# .spack-env (and spack.lock, when there is one) into it, and builds and
-# installs it with its own local_single_user_deploy.sh into V330_BUILD and
-# V330_INSTALL, which takes several minutes.
+# extracts the v3.3.0 tag with git archive into a temporary directory, renames
+# it to V330_SRC once the extraction is complete, copies the main checkout's
+# spack.lock (V330_SPACK_LOCK) into it, and builds and installs it with its own
+# local_single_user_deploy.sh into V330_BUILD and V330_INSTALL. The v3.3.0
+# build.sh then makes a .spack-env of its own in V330_SRC from that lock, out
+# of packages already in the spack store. The repo's .spack-env is never linked
+# there: build.sh would regenerate its view. This takes several minutes.
 #
 # Requires an installed tree (deploy_local.sh layout) and the build tree for
 # the probe. The script patches the *installed* conf template (never the source
@@ -58,6 +59,11 @@ V330_SRC="${V330_SRC:-$HOME/chronolog-build/v3.3.0-src}"
 V330_BUILD="${V330_BUILD:-$HOME/chronolog-build/v3.3.0}"
 V330_INSTALL="${V330_INSTALL:-$HOME/chronolog-install-v3.3.0}"
 V330_KEEPER="${V330_KEEPER:-$V330_INSTALL/chronolog/bin/chrono-keeper}"
+# the main checkout's lock: a worktree has none of its own, or a different one
+MAIN_CHECKOUT="$(dirname "$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)")"
+V330_SPACK_LOCK="${V330_SPACK_LOCK:-$MAIN_CHECKOUT/spack.lock}"
+# written into V330_SRC once the tag is completely extracted
+V330_MARKER=.keeper_wal_off_test_tag
 
 MONITOR_DIR="$WORK_DIR/monitor"
 OUTPUT_DIR="$WORK_DIR/output"
@@ -66,7 +72,6 @@ CLIENT_CONF="$WORK_DIR/conf/default-chrono-client-conf.json"
 KEEPER_CONF="$WORK_DIR/conf/chrono-keeper-conf-1.json"
 DEPLOY="$WORK_DIR/tools/deploy/deploy_local.sh"
 PROBE="$BUILD_DIR/tests/integration/keeper-wal/chronolog-test-durable-probe"
-WAL_ROOT="$(realpath -m "$WORK_DIR/wal")"
 
 CHRONICLE=KeeperWalOffChronicle
 STORY=MixedStory
@@ -105,20 +110,11 @@ kill_daemons() {
     pkill -9 -f "$V330_KEEPER --config" 2> /dev/null
 }
 
-# stop_old_keeper: SIGTERM, then SIGKILL after 60 s; deploy_local.sh --stop
-# looks only for work_dir/bin/chrono-keeper
-stop_old_keeper() {
-    pkill -TERM -f "$V330_KEEPER --config" 2> /dev/null || return 0
-    for _ in $(seq 1 60); do
-        pgrep -f "$V330_KEEPER --config" > /dev/null || return 0
-        sleep 1
-    done
-    pkill -9 -f "$V330_KEEPER --config" 2> /dev/null
-}
+# deploy_local.sh options naming the running keeper binary; phase 2 sets -p
+KEEPER_ARGS=()
 
 cleanup() {
-    stop_old_keeper
-    "$DEPLOY" -s -w "$WORK_DIR" > /dev/null 2>&1
+    "$DEPLOY" -s -w "$WORK_DIR" "${KEEPER_ARGS[@]}" > /dev/null 2>&1
     kill_daemons
 }
 
@@ -182,14 +178,28 @@ replay_story() {
 # script, which installs the whole v3.3.0 tree into V330_INSTALL.
 build_v330_keeper() {
     say "building the $V330_TAG keeper: source $V330_SRC, build $V330_BUILD, install $V330_INSTALL"
-    if [ ! -f "$V330_SRC/CMakeLists.txt" ]; then
-        mkdir -p "$V330_SRC" || return 1
-        git -C "$REPO_ROOT" archive "$V330_TAG" | tar -x -C "$V330_SRC" || return 1
+    if [ -e "$V330_SRC" ] && [ "$(cat "$V330_SRC/$V330_MARKER" 2> /dev/null)" != "$V330_TAG" ]; then
+        say "$V330_SRC exists but is not a complete extraction of $V330_TAG; remove it or set V330_SRC"
+        return 1
     fi
-    # the spack environment is the repo's; without its lock the build would
-    # concretize the environment again
-    [ -e "$V330_SRC/.spack-env" ] || ln -s "$(realpath "$REPO_ROOT/.spack-env")" "$V330_SRC/.spack-env" || return 1
-    [ -e "$V330_SRC/spack.lock" ] || [ ! -f "$REPO_ROOT/spack.lock" ] || cp "$REPO_ROOT/spack.lock" "$V330_SRC/spack.lock"
+    if [ -L "$V330_SRC/.spack-env" ]; then
+        say "$V330_SRC/.spack-env is a symlink; building there would regenerate the view of $(readlink -f "$V330_SRC/.spack-env"). Remove the link"
+        return 1
+    fi
+    if [ ! -e "$V330_SRC" ]; then
+        local tmp
+        mkdir -p "$(dirname "$V330_SRC")" || return 1
+        tmp=$(mktemp -d "$V330_SRC.partial.XXXXXX") || return 1
+        git -C "$REPO_ROOT" archive "$V330_TAG" | tar -x -C "$tmp" && echo "$V330_TAG" > "$tmp/$V330_MARKER" &&
+            mv "$tmp" "$V330_SRC" || { rm -rf "$tmp"; return 1; }
+    fi
+    # without a lock the v3.3.0 build.sh would concretize its environment anew
+    # and could build packages; with the main checkout's lock it only makes its
+    # own .spack-env and view from the spack store
+    if [ ! -e "$V330_SRC/spack.lock" ]; then
+        [ -f "$V330_SPACK_LOCK" ] || { say "no spack.lock at $V330_SPACK_LOCK; set V330_SPACK_LOCK"; return 1; }
+        command cp -f "$V330_SPACK_LOCK" "$V330_SRC/spack.lock" || return 1
+    fi
     "$V330_SRC/tools/deploy/local_single_user_deploy.sh" -b -t Debug -B "$V330_BUILD" -I "$V330_INSTALL" \
         > "$RUN_DIR/v330_build.out" 2>&1 &&
         "$V330_SRC/tools/deploy/local_single_user_deploy.sh" -i -t Debug -B "$V330_BUILD" -I "$V330_INSTALL" \
@@ -241,8 +251,6 @@ kill_daemons
 sleep 2
 rm -f "$MONITOR_DIR"/chrono-*.log
 rm -rf "${OUTPUT_DIR:?}/$CHRONICLE" "$OUTPUT_DIR"/"$CHRONICLE".*.h5
-# a WAL directory left by an earlier run would hide whether this keeper made one
-rm -rf "$WAL_ROOT/keeper-1"
 
 # the writers and the replay probe bind their query services on ports of their
 # own, so a probe never waits for the previous one's port to be released
@@ -275,12 +283,6 @@ if [ "$W_ACKED" -eq "$ACCEPTED_EVENTS" ]; then
     ok "WAL off: all $ACCEPTED_EVENTS accepted writes acknowledged"
 else
     bad "WAL off: $W_ACKED of $ACCEPTED_EVENTS accepted writes acknowledged ($W_CODES)"
-fi
-
-if [ ! -e "$WAL_ROOT/keeper-1" ]; then
-    ok "WAL off: the keeper made no WAL directory $WAL_ROOT/keeper-1"
-else
-    bad "WAL off: $WAL_ROOT/keeper-1 exists: $(ls -A "$WAL_ROOT/keeper-1" | paste -sd ' ' -)"
 fi
 
 say "waiting up to ${ARCHIVE_DEADLINE}s for $ACCEPTED_EVENTS events of $STORY in the archive, then ${ARCHIVE_SETTLE_SECS}s for any more"
@@ -323,17 +325,8 @@ sleep 2
 
 # --------------------------------------------- phase 2: v3.3.0 keeper ----
 say "phase 2: deploying with -p $V330_KEEPER"
-deploy -p "$V330_KEEPER"
-pid=$(keeper_pid)
-if [ -n "$pid" ] && [ "$(readlink -f "/proc/$pid/exe")" != "$V330_KEEPER" ]; then
-    # see the header: deploy_local.sh ignores -p
-    say "deploy_local.sh started $(readlink -f "/proc/$pid/exe"), not the $V330_TAG keeper; relaunching keeper 1 with $V330_KEEPER"
-    kill -TERM "$pid"
-    for _ in $(seq 1 60); do kill -0 "$pid" 2> /dev/null || break; sleep 1; done
-    kill -9 "$pid" 2> /dev/null
-    nohup "$V330_KEEPER" --config "$KEEPER_CONF" >> "$MONITOR_DIR/chrono-keeper-1.launch.log" 2>&1 &
-    sleep 3
-fi
+KEEPER_ARGS=(-p "$V330_KEEPER")
+deploy "${KEEPER_ARGS[@]}"
 pid=$(keeper_pid)
 running=$([ -n "$pid" ] && readlink -f "/proc/$pid/exe")
 if [ "$running" = "$V330_KEEPER" ]; then
@@ -365,8 +358,11 @@ else
 fi
 
 say "stopping phase 2"
-stop_old_keeper
-"$DEPLOY" -s -w "$WORK_DIR" > "$RUN_DIR/stop2.out" 2>&1 || { bad "phase 2 stop failed"; tail -5 "$RUN_DIR/stop2.out"; }
+"$DEPLOY" -s -w "$WORK_DIR" "${KEEPER_ARGS[@]}" > "$RUN_DIR/stop2.out" 2>&1 ||
+    { bad "phase 2 stop failed"; tail -5 "$RUN_DIR/stop2.out"; }
+if pgrep -f "$V330_KEEPER --config" > /dev/null; then
+    bad "phase 2 stop: the $V330_TAG keeper still runs"
+fi
 
 # ------------------------------------------------------------------ report ----
 say "${PASS} passed, ${FAIL} failed"
