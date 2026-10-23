@@ -235,7 +235,7 @@ The other five functional tests are disabled (see above).
 
 ## Integration Scripts
 
-These deploy real daemons on one host, run a scenario and stop the daemons. They take minutes and are not in CI; run them by hand before a pull request that touches the keeper's retention store, the watermark protocol, the replay path or the player.
+These deploy real daemons on one host, run a scenario and stop the daemons. They take minutes and are not in CI; run them by hand before a pull request that touches the keeper's retention store, the watermark protocol, the replay path, the player or the keeper's write-ahead log.
 
 ```bash
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
@@ -246,7 +246,17 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/replay_fanout_timing_test.sh    # ~3 min, expect 4/4
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/watermark_exact_split_test.sh   # ~3 min, expect 20/20
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_wal_crash_test.sh        # ~3 min, expect 8/8
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_wal_off_test.sh          # ~3 min, expect 8/8
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_restart_held_test.sh     # ~8 min, expect 11/11 on ofi+sockets, 8/11 on ofi+tcp
+WORK_DIR=~/chronolog-install/chronolog \
+  tests/integration/keeper_wal_group_test.sh        # ~2 min, expect 2/2
 ```
+
+The first three `keeper_*` scripts run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations of the four are estimates from the scripts' timing settings.
 
 | Script | What it protects |
 |---|---|
@@ -254,6 +264,10 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 | `watermark_replay_split_test.sh` | A replay returns the same events whether they are on the keepers, archived, or split across both, with no duplicates. |
 | `replay_fanout_timing_test.sh` | The player fetches from its keepers together: two keepers frozen with SIGSTOP cost one deadline, not two. |
 | `watermark_exact_split_test.sh` | A replay splits exactly where the watermark puts it, while the data is on the keepers, archived, split, with the grapher stopped and after it resumes; one archive file per window, none rewritten. |
+| `keeper_wal_crash_test.sh` | A keeper killed with SIGKILL right after it acknowledged durable writes ships every one of them to the archive once restarted, each exactly once in a replay, and the WAL segment is deleted after the grapher confirms. Accepted writes made just before the same kill are lost, which is the negative control. |
+| `keeper_wal_off_test.sh` | A durable write to a keeper with the WAL off, and to a v3.3.0 keeper, gets `CL_ERR_DURABILITY_UNAVAILABLE` at once with no retry and stores nothing, while accepted writes to the same keepers still work. The v3.3.0 keeper is `V330_KEEPER`; if that file is missing, the script builds the `v3.3.0` tag on first use, which takes several minutes. |
+| `keeper_restart_held_test.sh` | A keeper restarted while clients hold stories gets its pipelines back from the visor, accepts and durably stores new writes, is reached by the player's hot fetch, and the client reconnects at the same address; the durable events it acknowledged before the kill are recovered from its WAL. It runs once per protocol (the template's, then `ofi+tcp`). On `ofi+tcp` 3 of the 11 checks fail until two missing RPC deadlines are fixed: an accepted `record_event` to a dead keeper, and the visor's `start_story_recording` to it, wait without a deadline. |
+| `keeper_wal_group_test.sh` | One `fdatasync` covers many durable writes: with 64 MPI ranks writing to one keeper whose RPC pool has 4 streams, a synced group holds more than 4 events. |
 
 Run them one at a time; each deploys its own cluster on the same ports. Each restores the configuration it patched and stops its daemons on exit. If one is interrupted, check for leftover daemons and for a `*.backup` file in `~/chronolog-install/chronolog/conf/`.
 
@@ -268,6 +282,8 @@ docker/local_distributed_ci.sh -i IMAGE                 # the same topology as C
 docker/local_distributed_ci.sh -i IMAGE -k 1 -g 1 -p 1  # 4 containers, faster
 docker/local_distributed_ci.sh -i IMAGE --keep          # leave the containers up
 docker/local_distributed_ci.sh -i IMAGE --nfs           # also run the NFS pass (needs sudo)
+docker/local_distributed_ci.sh -i IMAGE --wal-restart      # also run stage 11c, the keeper WAL kill and restart
+docker/local_distributed_ci.sh -i IMAGE --wal-restart-only # run stage 11c alone, skipping stages 7-11
 ```
 
 `IMAGE` is the base image with Spack and the dependencies, as CI builds it (`ghcr.io/grc-iit/chronolog-base:sha-<hash>`). A full run with `--nfs` takes about 22 minutes. See [CI/CD](../guidelines/ci-cd.md#distributed-pipeline) for what each stage checks and what the NFS pass expects.
