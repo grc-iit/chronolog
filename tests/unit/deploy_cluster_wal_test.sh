@@ -306,6 +306,72 @@ fi
 down=nodeB
 if (restart_keeper nodeB) > /dev/null 2>&1; then fail "restart: refuses an unreachable host"; else pass "restart: refuses an unreachable host"; fi
 
+# --start with --wal-dir: each keeper host runs the real wal_dir_probe.sh over
+# the fake ssh while its conf is generated, before anything is launched
+for fn in start generate_conf_for_each_recording_group generate_conf_for_each_keeper \
+    generate_conf_for_each_grapher generate_conf_for_each_player assign_keeper_wal_dir wal_enabled; do
+    source <(sed -n "/^${fn}() {/,/^}/p" "$script")
+done
+SCRIPT_DIR="$repo_root/tools/deploy"
+LIB_DIR="$fixture/lib"
+VISOR_BIN_DIR="$fixture/bin" GRAPHER_BIN_DIR="$fixture/bin" PLAYER_BIN_DIR="$fixture/bin"
+VISOR_BIN_FILE_NAME=chrono-visor GRAPHER_BIN_FILE_NAME=chrono-grapher PLAYER_BIN_FILE_NAME=chrono-player
+prepare_hosts() { :; }
+check_bin_files() { :; }
+update_visor_ip() { :; }
+update_visor_monitor_file_path() { :; }
+update_client_monitor_file_path() { :; }
+check_rpc_comm_conf() { :; }
+check_archive_mount() { :; }
+get_host_ip() { echo 127.0.0.1; }
+parallel_remote_launch_processes() { echo "launch $4 from $3" >> "$fixture/start-launches"; }
+run_start() { # WAL_DIR_LIST: prints start's output into start-out; returns start's status
+    setup
+    rm -f -- "$CONF_FILE".*.keeper.* "$fixture/start-launches"
+    printf 'nodeV\n' > "$GRAPHER_HOSTS.1"
+    printf 'nodeV\n' > "$GRAPHER_HOSTS.2"
+    printf 'nodeV\n' > "$PLAYER_HOSTS.1"
+    printf 'nodeV\n' > "$PLAYER_HOSTS.2"
+    NUM_RECORDING_GROUP=2 WAL_ENABLED=1 WAL_DIR_LIST=$1
+    # the probe's fallback, so a probe that falls back writes into the fixture
+    rm -rf -- "$fixture/tmp"
+    mkdir -p "$fixture/tmp"
+    (
+        export TMPDIR="$fixture/tmp"
+        start
+    ) > "$fixture/start-out" 2>&1
+    local status=$?
+    NUM_RECORDING_GROUP=1 WAL_ENABLED=0 WAL_DIR_LIST=""
+    return "$status"
+}
+
+if run_start "$fixture/missing:$fixture/gone"; then
+    fail "start: a --wal-dir list with no usable entry fails the deploy"
+else
+    pass "start: a --wal-dir list with no usable entry fails the deploy"
+fi
+[[ ! -e "$fixture/start-launches" ]] && pass "start: no process launched when a probe fails" ||
+    fail "start: no process launched when a probe fails: $(cat "$fixture/start-launches")"
+grep -q "nodeA: ERROR: $fixture/missing: does not exist" "$fixture/start-out" &&
+    grep -q "nodeA: ERROR: $fixture/gone: does not exist" "$fixture/start-out" &&
+    pass "start: the failure names the host and each entry's error" ||
+    fail "start: the failure names the host and each entry's error: $(cat "$fixture/start-out")"
+grep -q "nodeB\|nodeC" "$fixture/start-out" && fail "start: stops at the first host whose probe fails" ||
+    pass "start: stops at the first host whose probe fails"
+[[ -z "$(ls -A "$fixture/tmp")" ]] && pass "start: no fallback directory created" ||
+    fail "start: no fallback directory created: $(ls -A "$fixture/tmp")"
+
+mkdir -p "$fixture/usable"
+if run_start "$fixture/missing:$fixture/usable"; then
+    pass "start: a --wal-dir list whose second entry is usable deploys"
+else
+    fail "start: a --wal-dir list whose second entry is usable deploys: $(cat "$fixture/start-out")"
+fi
+[[ "$(wal_dir_of nodeC)" == "$fixture/usable/$hash/2" ]] && pass "start: the usable entry is written into the conf" ||
+    fail "start: the usable entry is written into the conf: $(wal_dir_of nodeC)"
+grep -q "launch chrono-keeper from $KEEPER_HOSTS.2" "$fixture/start-launches" && pass "start: keepers launched" ||
+    fail "start: keepers launched: $(cat "$fixture/start-launches")"
+
 # Arguments, and their pass-through from single_user_deploy.sh
 reset_args() { start=false stop=false clean=false restart=false force=false RESTART_KEEPER_HOST=""; }
 reset_args
