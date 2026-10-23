@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root=${1:?repository root required}
 script="$repo_root/tools/deploy/deploy_local.sh"
 fixture=$(mktemp -d /tmp/chronolog-deploy-wal-test.XXXXXX)
-trap 'rm -rf -- "$fixture"' EXIT
+trap 'pkill -f "$fixture/" || true; rm -rf -- "$fixture"' EXIT
 failures=0
 
 check() {
@@ -176,6 +176,53 @@ check "restart: keeper 2 runs with its generated conf" \
 check "restart: no conf regenerated" test "$(md5sum "$restart_conf"/*.json)" = "$before"
 if restart_keeper 3 > /dev/null 2>&1; then rc=0; else rc=$?; fi
 check "restart: a keeper without a generated conf is refused" test "$rc" -ne 0
+
+# Given binaries -------------------------------------------------------------------------------------
+# Runs the whole script on a work dir whose bin/ holds the "installed" binaries,
+# with -v/-g/-p/-a naming others: start, stop and --restart-keeper must use the
+# given ones. Every fake appends "<its path> <args>" to runs.log; the given
+# keeper stays up until SIGTERM so stop has something to stop.
+given_work="$fixture/given/work"
+given_bin="$fixture/given/bin"
+runs="$fixture/given/runs.log"
+mkdir -p "$given_work/bin" "$given_work/lib" "$given_work/conf" "$given_bin"
+cp "$template" "$given_work/conf/default-chrono-conf.json"
+cp "$client_template" "$given_work/conf/default-chrono-client-conf.json"
+for name in chrono-visor chrono-grapher chrono-player chrono-keeper; do
+    for dir in "$given_work/bin" "$given_bin"; do
+        printf '#!/bin/sh\necho "$0 $*" >> "%s"\n' "$runs" > "$dir/$name"
+        chmod +x "$dir/$name"
+    done
+done
+cat > "$given_bin/chrono-keeper" << EOF
+#!/bin/sh
+echo "\$0 \$*" >> "$runs"
+trap 'echo "\$0 stopped" >> "$runs"; exit 0' TERM
+while :; do sleep 0.1; done
+EOF
+given_args=(-w "$given_work" -v "$given_bin/chrono-visor" -g "$given_bin/chrono-grapher"
+    -p "$given_bin/chrono-keeper" -a "$given_bin/chrono-player")
+keeper_run="$given_bin/chrono-keeper --config $given_work/conf/chrono-keeper-conf-1.json"
+runs_of() { grep -cxF "$1" "$runs" 2> /dev/null || true; }
+ran() { test "$(runs_of "$1")" -ge 1; }
+wait_runs_of() { for _ in $(seq 50); do [[ $(runs_of "$1") -ge $2 ]] && break; sleep 0.1; done; }
+
+bash "$script" -d "${given_args[@]}" > "$fixture/given/start.out" 2>&1 || true
+wait_runs_of "$keeper_run" 1
+check "given binaries: start runs the given keeper" ran "$keeper_run"
+check "given binaries: start runs the given visor" \
+    ran "$given_bin/chrono-visor --config $given_work/conf/chrono-visor-conf.json"
+check "given binaries: start runs the given grapher" \
+    ran "$given_bin/chrono-grapher --config $given_work/conf/chrono-grapher-conf-1.json"
+check "given binaries: start runs the given player" \
+    ran "$given_bin/chrono-player --config $given_work/conf/chrono-player-conf-1.json"
+bash "$script" -s "${given_args[@]}" > "$fixture/given/stop.out" 2>&1 || true
+check "given binaries: stop stops the given keeper" ran "$given_bin/chrono-keeper stopped"
+bash "$script" --restart-keeper 1 "${given_args[@]}" > "$fixture/given/restart.out" 2>&1 || true
+wait_runs_of "$keeper_run" 2
+check "given binaries: --restart-keeper runs the given keeper" test "$(runs_of "$keeper_run")" -eq 2
+bash "$script" -s "${given_args[@]}" > /dev/null 2>&1 || true
+check "given binaries: the installed binaries never ran" test "$(grep -c "^$given_work/bin/" "$runs")" -eq 0
 
 echo "$failures deploy_local WAL checks failed"
 test "$failures" -eq 0
