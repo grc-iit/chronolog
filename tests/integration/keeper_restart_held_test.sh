@@ -26,12 +26,16 @@
 #      at keeper 1's time parity and fail at keeper 2's, no call takes over
 #      5 s, every failure the clients log names keeper 2, and nothing fails
 #      once keeper 2 is back. Story B can be acquired while keeper 2 is down.
+#      Writer A's durable calls to keeper 2 in that time return
+#      CL_ERR_DURABILITY_UNKNOWN (or succeed once it is restarted), since
+#      keeper 2 had answered them before the kill, and its accepted calls to
+#      keeper 2 fail.
 #   2. The client reconnects: after the restart, accepted and durable events of
 #      keeper 2's parity succeed, and nothing fails after that.
 #   3. A replay of A while its post-restart events are on the keepers only
 #      (sealed, but not yet written by the grapher) returns every acked event
 #      of keeper 2 in that range: the player reached the restarted keeper. A
-#      replay of B returns every sealed post-restart event of B.
+#      replay of B returns every sealed event of B.
 #   4. The archive holds every acked post-restart event, accepted and durable,
 #      of both stories, every durable event keeper 2 acked before the kill
 #      (recovered from its WAL), and every event keeper 1 acked.
@@ -39,6 +43,11 @@
 #      durable events.
 #   6. The restarted keeper's log shows the visor's start_story_recording for
 #      A and B, and the visor's log shows it started every held story on it.
+#
+# Story B is acquired while keeper 2 is down, and whether its keeper list then
+# holds keeper 2 is not settled yet. The script prints the keepers the visor
+# gave writer B and B's post-restart successes at keeper 2's parity, without
+# judging them.
 #
 # The scenario runs once with the template's protocol and once with ofi+tcp if
 # the template uses another one (PROTOCOLS="..." overrides the list). The
@@ -112,6 +121,17 @@ stop_writers() {
     local pid
     for pid in ${WRITER_PIDS:-}; do kill -9 "$pid" 2> /dev/null; done
     WRITER_PIDS=""
+}
+
+# true once every writer process has exited, false after $1 seconds
+writers_exited() {
+    local deadline=$((SECONDS + $1)) pid
+    for pid in ${WRITER_PIDS:-}; do
+        while kill -0 "$pid" 2> /dev/null; do
+            [ $SECONDS -ge $deadline ] && return 1
+            sleep 0.5
+        done
+    done
 }
 
 cleanup() {
@@ -331,10 +351,33 @@ run_scenario() {
     else
         bad "$PROTO: down: $a_fails failed call(s) of A ($fails_outside outside the down time) and $b_fails of B; while keeper 2 was down $k1_up_while_down of A's events reached keeper 1 and $k2_up_while_down succeeded at keeper 2's parity; the longest call of A took ${longest_call} ms; client failure log lines per keeper port: $(echo $log_ports)"
     fi
-    # The spec answers a durable call that got no answer with
-    # CL_ERR_DURABILITY_UNKNOWN; the codes are printed, not judged, here.
     say "$PROTO: codes of the failed calls: $(cat "$RUN_DIR"/writer[AB].out | sed -n 's/^EVENT //p' |
         awk '$2 != "CL_SUCCESS" { c[$1 " " $2]++ } END { for(k in c) printf "%s=%d ", k, c[k] }')"
+    # Writer A's calls at keeper 2's parity while it is down. Keeper 2 answered
+    # writer A's durable calls before the kill, so a durable call to it now got
+    # no answer: it may have been stored, and the client returns
+    # CL_ERR_DURABILITY_UNKNOWN, never CL_ERR_DURABILITY_UNAVAILABLE ("nothing
+    # was stored"). After the restart a durable call may also succeed. An
+    # accepted call sent before the restart fails with some error code. A failed
+    # call prints event time 0, so its parity says nothing; the calls of keeper 2
+    # are all but the successes at keeper 1's parity (the check above ties every
+    # failure to keeper 2 through the client log).
+    local down_calls durable_down durable_bad accepted_down accepted_bad down_summary
+    down_calls=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v rec="$reconnect_ns" -v p="$K2_PARITY" \
+        '$6 > kill + 1e9 && $6 < rec && !($2 == "CL_SUCCESS" && $7 != p)')
+    durable_down=$(echo "$down_calls" | awk '$1 == "durable"' | wc -l)
+    durable_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
+        '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > restart)' | wc -l)
+    accepted_down=$(echo "$down_calls" | awk -v restart="$RESTART_NS" '$1 == "accepted" && $6 < restart' | wc -l)
+    accepted_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
+        '$1 == "accepted" && $6 < restart && $2 == "CL_SUCCESS"' | wc -l)
+    down_summary=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
+        'NF { c[$1 " " $2 " " (($6 > restart) ? "after" : "before")]++ } END { for(k in c) printf "%s=%d, ", k, c[k] }')
+    if [ "$durable_down" -gt 0 ] && [ "$durable_bad" -eq 0 ] && [ "$accepted_down" -gt 0 ] && [ "$accepted_bad" -eq 0 ]; then
+        ok "$PROTO: codes: writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect returned CL_ERR_DURABILITY_UNKNOWN or, after the restart, CL_SUCCESS, and its $accepted_down accepted call(s) to keeper 2 before the restart failed (mode code before/after the restart: ${down_summary%, })"
+    else
+        bad "$PROTO: codes: of writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect, $durable_bad returned neither CL_ERR_DURABILITY_UNKNOWN nor a post-restart CL_SUCCESS; $accepted_bad of its $accepted_down accepted call(s) to keeper 2 before the restart succeeded (mode code before/after the restart: ${down_summary%, })"
+    fi
 
     # ------------------------------------------------------ hot replay ----
     local last_ns
@@ -380,9 +423,15 @@ run_scenario() {
 
     # --------------------------------------------------------- archive ----
     touch "$RUN_DIR/release"
-    wait_for_line "$RUN_DIR/writerA.out" '^RELEASED' 30 && wait_for_line "$RUN_DIR/writerB.out" '^RELEASED' 30 ||
-        bad "$PROTO: a writer did not release its story"
-    WRITER_PIDS=""
+    # a writer stuck in ReleaseStory or Disconnect would keep its query port
+    # into the next protocol's run, so it is killed here
+    if wait_for_line "$RUN_DIR/writerA.out" '^RELEASED' 30 && wait_for_line "$RUN_DIR/writerB.out" '^RELEASED' 30 &&
+       writers_exited 30; then
+        WRITER_PIDS=""
+    else
+        bad "$PROTO: a writer did not release its story and exit"
+        stop_writers
+    fi
 
     # post-restart events of each story and mode; keeper 2's durable events from
     # before the kill; and the rest except keeper 2's accepted events from
@@ -425,6 +474,17 @@ run_scenario() {
     else
         bad "$PROTO: archive: post-restart events missing (story/mode archived/acked:$post_summary; $k2_post on keeper 2)"
     fi
+    # Informational: the keepers the visor gave writer B, from the client's
+    # "Response from AcquireStory" line (keepers, then the player), and B's
+    # post-restart events at keeper 2's parity, which reach keeper 2 only if
+    # B's keeper list holds it. The writers have exited, so the log is flushed.
+    local b_keepers b_k2_acked b_k2_archived
+    b_keepers=$(cat "$RUN_DIR"/writerB.client.log* 2> /dev/null | grep 'Response from AcquireStory' | tail -1 |
+        sed 's/.*{story_id:[0-9]*}//' | grep -o 'ServiceId{[^}]*}' | sed '$d' |
+        sed -n 's/ServiceId{[^:]*:[^:]*:\([0-9]*\):.*/\1/p' | paste -sd ' ')
+    b_k2_acked=$(acked_ids "$RUN_DIR/writerB.out" '$6 > restart && $7 == p' | tee "$RUN_DIR/b_post_k2.ids" | wc -l)
+    b_k2_archived=$(comm -12 "$RUN_DIR/b_post_k2.ids" "$RUN_DIR/archive_all.ids" | wc -l)
+    say "$PROTO: info: $STORY_B got $(echo $b_keepers | wc -w) keeper(s) at acquire (ports: ${b_keepers:-none}; keeper 2 is port $k2_port); $b_k2_acked of B's post-restart events at keeper 2's parity succeeded, $b_k2_archived of them archived"
     n=$(wc -l < "$RUN_DIR/expect_recovered.ids")
     c=$(missing "$RUN_DIR/expect_recovered.ids" "$RUN_DIR/archive_all.ids")
     if [ "$n" -gt 0 ] && [ "$c" -eq 0 ]; then
@@ -480,6 +540,13 @@ command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$PROBE" ] || { say "probe not found at $PROBE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 [ -x "$DEPLOY" ] || { say "deploy script not found at $DEPLOY"; exit 2; }
+# a backup left by an interrupted run holds the real template, and the template
+# may still be that run's patched copy
+if [ -e "$CONF_TEMPLATE.restart_held_backup" ]; then
+    say "$CONF_TEMPLATE.restart_held_backup exists, left by an interrupted run; restore the template from it" \
+        "(mv -f $CONF_TEMPLATE.restart_held_backup $CONF_TEMPLATE) or remove it, then run again"
+    exit 2
+fi
 
 TEMPLATE_PROTO=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "$CONF_TEMPLATE")
 if [ -z "${PROTOCOLS:-}" ]; then
