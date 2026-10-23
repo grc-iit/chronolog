@@ -22,6 +22,10 @@ DEFAULT_INSTALL_WORK_DIR="$HOME/chronolog-install/chronolog"
 WORK_DIR_USER_SET=false
 OUTPUT_DIR_USER_SET=false
 MONITOR_DIR_USER_SET=false
+VISOR_BIN_USER_SET=false
+KEEPER_BIN_USER_SET=false
+GRAPHER_BIN_USER_SET=false
+PLAYER_BIN_USER_SET=false
 
 # Directories (initialize with defaults; may be overridden via CLI)
 WORK_DIR="${DEFAULT_WORK_DIR}"
@@ -65,7 +69,7 @@ kill_service() {
     local name
     name=$(basename "$bin")
     echo -e "${DEBUG}Killing ${name} ...${NC}"
-    pkill -9 -f "${bin}"
+    pkill -9 -f "${bin} --config"
 }
 
 stop_service() {
@@ -78,16 +82,19 @@ stop_service() {
     # Poll interval (seconds). Kept small so that a fast graceful shutdown is
     # detected almost immediately instead of being rounded up to the interval.
     local poll_interval=1
+    # Match the launched command line, "<bin> --config ...". The binary path
+    # alone also matches this script when it was given with -v/-g/-p/-a.
+    local pattern="${bin} --config"
 
     # Nothing to do if the service is not running.
-    if ! pgrep -f "${bin}" >/dev/null; then
+    if ! pgrep -f "${pattern}" >/dev/null; then
         echo -e "${DEBUG}${name} is not running.${NC}"
         echo ""
         return 0
     fi
 
     echo -e "${DEBUG}Stopping ${name} (SIGTERM, up to ${timeout}s) ...${NC}"
-    pkill -f "${bin}" || true
+    pkill -f "${pattern}" || true
 
     # Wait for graceful shutdown, polling frequently and giving up after the
     # grace period. Using an elapsed-time bound (rather than a fixed number of
@@ -95,7 +102,7 @@ stop_service() {
     # expected.
     local waited=0
     while (( waited < timeout )); do
-        if ! pgrep -f "${bin}" >/dev/null; then
+        if ! pgrep -f "${pattern}" >/dev/null; then
             echo -e "${DEBUG}All ${name} processes stopped gracefully.${NC}"
             echo ""
             return 0
@@ -111,7 +118,7 @@ stop_service() {
 
     local kill_waited=0
     while (( kill_waited < 5 )); do
-        if ! pgrep -f "${bin}" >/dev/null; then
+        if ! pgrep -f "${pattern}" >/dev/null; then
             echo -e "${DEBUG}Killed: ${name}.${NC}"
             echo ""
             return 0
@@ -345,10 +352,11 @@ refresh_paths_for_work_dir() {
     if [[ "${OUTPUT_DIR_USER_SET}" == "false" ]]; then
         OUTPUT_DIR="${WORK_DIR}/output"
     fi
-    VISOR_BIN="${BIN_DIR}/chrono-visor"
-    KEEPER_BIN="${BIN_DIR}/chrono-keeper"
-    GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
-    PLAYER_BIN="${BIN_DIR}/chrono-player"
+    # Likewise keep a binary given with -v/-g/-p/-a.
+    [[ "${VISOR_BIN_USER_SET}" == "false" ]] && VISOR_BIN="${BIN_DIR}/chrono-visor"
+    [[ "${KEEPER_BIN_USER_SET}" == "false" ]] && KEEPER_BIN="${BIN_DIR}/chrono-keeper"
+    [[ "${GRAPHER_BIN_USER_SET}" == "false" ]] && GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
+    [[ "${PLAYER_BIN_USER_SET}" == "false" ]] && PLAYER_BIN="${BIN_DIR}/chrono-player"
     CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
     CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
 }
@@ -683,15 +691,19 @@ parse_args() {
                 shift 2 ;;
             -v|--visor-bin)
                 VISOR_BIN=$(realpath -m "$2")
+                VISOR_BIN_USER_SET=true
                 shift 2 ;;
             -g|--grapher-bin)
                 GRAPHER_BIN=$(realpath -m "$2")
+                GRAPHER_BIN_USER_SET=true
                 shift 2 ;;
             -p|--keeper-bin)
                 KEEPER_BIN=$(realpath -m "$2")
+                KEEPER_BIN_USER_SET=true
                 shift 2 ;;
             -a|--player-bin)
                 PLAYER_BIN=$(realpath -m "$2")
+                PLAYER_BIN_USER_SET=true
                 shift 2 ;;
             -f|--conf-file)
                 CONF_FILE=$(realpath -m "$2")
