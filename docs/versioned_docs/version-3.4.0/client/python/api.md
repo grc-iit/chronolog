@@ -184,6 +184,52 @@ StoryHandle.log_event(event_string: str) -> int
 
 - Append a new event with the log record `event_string`.
 - Returns the `uint64_t` timestamp (as a Python `int`) assigned to the event by the client library.
+- The keeper's answer is discarded; a keeper crash before ChronoGrapher writes the event loses it.
+  Use the overload below with `Durability.Durable` when the call must not return until the event is
+  on the keeper's disk.
+
+```python
+StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, int]
+```
+
+- Append a new event and wait until it has reached `options.durability`. Returns a tuple
+  `(status, event_time)`. `status` is `0` (`CL_SUCCESS`) once the event got there; `event_time` is
+  the event's timestamp on success and `0` otherwise.
+- With `Durability.Accepted` (the default) it takes the same path as `log_event(event_string)` and
+  returns the keeper's status instead of discarding it.
+- With `Durability.Durable` it returns `0` only after the keeper wrote the event to its write-ahead
+  log (WAL) and `fdatasync` returned. A keeper that cannot make the event durable answers with an
+  error and stores nothing; the write is never downgraded to Accepted. The WAL is off by default on
+  the keepers, and with it off every durable write returns `-19`
+  (`CL_ERR_DURABILITY_UNAVAILABLE`). See [Keeper WAL](../../user-guide/architecture/keeper-wal.md).
+- A durable call can block for up to `options.attempts × options.timeout_ms` (30 s with the
+  defaults). It releases the GIL while it waits, so other Python threads keep running. Do not change
+  the `options` object from another thread during the call.
+- Retries, at-least-once storage and the return codes are the same as in C++: see
+  [the C++ API](../cpp/api.md#storyhandle-class) and [Error Codes](./error-codes.md#durability-error-codes).
+  In short, every retry carries the same `(time, client id, index)`, copies collapse on read, so a
+  reader sees the event once; `-2` means a bad argument (an empty record, `attempts` or
+  `timeout_ms` of 0), `-7` no keepers, and `-19`, `-20`, `-21` are the durability codes.
+
+```python
+options = py_chronolog_client.LogEventOptions()
+options.durability = py_chronolog_client.Durability.Durable
+
+status, event_time = story.log_event("sensor reading 42", options)
+if status == 0:
+    pass                      # on the keeper's disk
+elif status == -20:
+    pass                      # nothing stored; back off and write again
+elif status == -21:
+    pass                      # may be stored; a new log_event creates a second event
+else:
+    print(f"durable write failed: {status}")   # nothing stored
+```
+
+A Python subclass of `StoryHandle` that overrides `log_event` serves both forms with one method, so
+the override must accept an optional `options` argument and, when given one, return the
+`(status, event_time)` pair. An override that takes only `event_string` raises `TypeError` when
+called as `log_event(record, options)`.
 
 ```python
 StoryHandle.playback(n: int, events: EventList) -> int
@@ -194,6 +240,31 @@ StoryHandle.playback(n: int, events: EventList) -> int
 - Returns `0` (`CL_SUCCESS`) on success, `-7` (`CL_ERR_NO_KEEPERS`), `-12` (`CL_ERR_QUERY_TIMED_OUT`), `-18` (`CL_ERR_PARTIAL_RESULT`), or `-1` (`CL_ERR_UNKNOWN`).
 - Supported in writer-only client mode (`ClientPortalServiceConf` only).
 
+
+---
+
+## `Durability` Enum
+
+How far an event must get before `StoryHandle.log_event(log_string, options)` returns `0`.
+
+| Value | Meaning |
+|-------|---------|
+| `Durability.Accepted` | In keeper memory; what `log_event(event_string)` gives. The default. |
+| `Durability.Durable` | Written to the keeper's WAL and `fdatasync`'d. |
+
+---
+
+## `LogEventOptions` Class
+
+```python
+options = py_chronolog_client.LogEventOptions()
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `durability` | `Durability` | `Durability.Accepted` | Level the call waits for |
+| `timeout_ms` | `int` | `10000` | Durable writes only: deadline of each attempt, in milliseconds |
+| `attempts` | `int` | `3` | Durable writes only: attempts before `-21` (`CL_ERR_DURABILITY_UNKNOWN`) |
 
 ---
 

@@ -165,6 +165,115 @@ uint64_t StoryHandle::log_event(std::string const& event_record);
 
 - Append a new event with the log record `event_record`.
 - Returns the `uint64_t` timestamp assigned to the event by the client library.
+- The keeper's answer is discarded. A keeper crash before ChronoGrapher writes the event loses it
+  without the caller being told. Use the overload below with `Durability::Durable` when the call
+  must not return until the event is on the keeper's disk.
+
+```cpp
+enum class Durability : uint8_t
+{
+    Accepted = 1, // in keeper memory; what log_event(record) gives
+    Durable = 2   // fsync'd in the keeper's WAL
+};
+
+struct LogEventOptions
+{
+    Durability durability = Durability::Accepted;
+    // durable writes only: deadline per RPC attempt, and how many attempts
+    // before CL_ERR_DURABILITY_UNKNOWN
+    uint32_t timeout_ms = 10000;
+    uint32_t attempts = 3;
+};
+
+int StoryHandle::log_event(std::string const& event_record,
+                           LogEventOptions const& options,
+                           uint64_t& event_time);
+```
+
+Append a new event and return `CL_SUCCESS` once it has reached `options.durability`. On success
+`event_time` receives the event's timestamp; on any other return the client library's handle sets
+it to `0`. The default `StoryHandle` implementation, for subclasses, returns
+`CL_ERR_DURABILITY_UNAVAILABLE` to Durable without touching `event_time`.
+
+- **`Durability::Accepted`** (the default) takes the same path as `log_event(event_record)`, and
+  returns the keeper's status instead of discarding it. `CL_SUCCESS` means the keeper holds the
+  event in memory. There is no deadline and no retry, as with `log_event(event_record)`.
+- **`Durability::Durable`** returns `CL_SUCCESS` only after the keeper wrote the event to its
+  write-ahead log (WAL) and `fdatasync` returned. What that survives depends on where the WAL is:
+  on a local disk, a keeper crash and a node reboot; on tmpfs, a keeper crash only; it never
+  survives losing the disk. See [Keeper WAL](../../user-guide/architecture/keeper-wal.md). A keeper
+  that cannot make the event durable answers with an error and does not store it, except in one
+  case after a failed `fdatasync`; see
+  [Durability error codes](./error-codes.md#durability-error-codes). It never downgrades the write
+  to Accepted.
+- The default stays Accepted, so existing callers keep their cost: a durable write pays one RPC per event
+  and waits for a sync. Concurrent durable writes to one keeper share a sync, but a single writer
+  waits for one per event.
+- The WAL is off by default on the keepers. A deployment must turn it on (`--wal` in the deploy
+  scripts) before a durable write can succeed; with it off every durable write gets
+  `CL_ERR_DURABILITY_UNAVAILABLE`.
+
+**Retries.** A durable write builds the event once and sends it to the keeper chosen by its
+timestamp, with a deadline of `timeout_ms`. When an attempt gets no answer (a timeout or a transport
+error), the client sends the identical event again, at once and with no backoff, up to `attempts`
+times. The retry budget is therefore `attempts × timeout_ms`, 30 s with the defaults, and the call
+can block that long. Every attempt carries the same identity, `(time, client id, index)`. The
+keeper choice depends only on the timestamp, so a retry reaches the same keeper while the story's
+keeper list is unchanged, and the keeper answers a retry of an event it already holds with
+`CL_SUCCESS` without storing it again, also after a crash and restart.
+
+**Storage is at-least-once; reads see each event once.** If a keeper left the story's keeper list
+between attempts, the retry lands on another keeper and both may store the event. Copies with the
+same identity collapse in the keeper's chunk, in `playback` and in `ReplayStory`, so a reader sees
+the event once. A crash can also leave a second copy of some events in the HDF5 archive; reads drop
+it the same way.
+
+**Return values for `Durability::Durable`:**
+
+- `CL_SUCCESS` (`0`): the event is in the keeper's WAL and synced.
+- `CL_ERR_INVALID_ARG` (`-2`): nothing was sent or nothing was stored. The client refuses an empty
+  record, `attempts` or `timeout_ms` of 0, and a `durability` value other than the two above (these
+  three argument checks apply to Accepted too, apart from the empty record). The keeper refuses an
+  event larger than its WAL record limit (256 MiB minus 36 bytes).
+- `CL_ERR_NO_KEEPERS` (`-7`): the story has no keepers. Nothing was sent.
+- `CL_ERR_DURABILITY_UNAVAILABLE` (`-19`), `CL_ERR_DURABILITY_FULL` (`-20`),
+  `CL_ERR_DURABILITY_UNKNOWN` (`-21`): see [Durability error codes](./error-codes.md#durability-error-codes).
+
+**Subclasses and ABI.** `log_event(record, options, event_time)` is a new virtual of `StoryHandle`.
+Its default implementation sends Accepted through `log_event(record)` and answers
+`CL_ERR_DURABILITY_UNAVAILABLE` to Durable, sending nothing. A subclass that overrides only one of
+the two `log_event` overloads adds `using StoryHandle::log_event;` so it does not hide the other.
+The new virtual changes the client library's ABI: code built against an earlier `libchronolog_client`
+that calls `log_event`, including the plugins, needs a rebuild but no source change.
+`CLIENT_PROTOCOL_VERSION` is unchanged; a durable write uses a new keeper RPC, which an older
+keeper does not register. The client returns `CL_ERR_DURABILITY_UNAVAILABLE` for the resulting
+`HG_NO_MATCH` only while that keeper has never answered a durable call from this client; after
+that it counts as an unanswered attempt (see [Durability error codes](./error-codes.md#durability-error-codes)).
+
+```cpp
+chronolog::LogEventOptions options;
+options.durability = chronolog::Durability::Durable;
+
+uint64_t event_time = 0;
+int ret = story->log_event("sensor reading 42", options, event_time);
+if(ret == chronolog::CL_SUCCESS)
+{
+    // on the keeper's disk; event_time is its timestamp
+}
+else if(ret == chronolog::CL_ERR_DURABILITY_FULL)
+{
+    // nothing stored; back off and call log_event again
+}
+else if(ret == chronolog::CL_ERR_DURABILITY_UNKNOWN)
+{
+    // may be stored; calling log_event again creates a second event
+}
+else
+{
+    // nothing stored (-19, -2, -7): retrying will not help
+    std::cerr << chronolog::to_string_client(ret) << "\n";
+}
+```
 
 ```cpp
 int StoryHandle::playback(size_t n, std::vector<Event>& events);
