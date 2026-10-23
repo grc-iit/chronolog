@@ -81,7 +81,7 @@ private:
     ChronologTimer& theTimer;
     thallium::engine& client_engine;
     ClientId clientId;
-    std::atomic<int> atomic_index;
+    std::atomic<int> atomic_index{0};
 
     std::mutex recordingClientMapMutex;
     std::mutex acquiredStoryMapMutex;
