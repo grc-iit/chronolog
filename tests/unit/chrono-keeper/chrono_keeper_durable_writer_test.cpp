@@ -66,10 +66,11 @@ uint64_t now() { return std::chrono::high_resolution_clock::now().time_since_epo
 
 // The keeper's data store and the queues it works on, with no services. Live
 // tail reads are on so an event a pipeline collected is visible before its
-// chunk seals.
+// chunk seals. The acceptance window is 0 so the pipelines a test leaves
+// behind retire at once when the Keeper goes away.
 struct Keeper
 {
-    explicit Keeper(uint32_t acceptance_window_secs = 60)
+    explicit Keeper(uint32_t acceptance_window_secs = 0)
         : data_store(ingestion_queue,
                      extraction_queue,
                      retention_store,
@@ -78,6 +79,15 @@ struct Keeper
                      acceptance_window_secs,
                      /*inactive_pipeline_delay_secs=*/300)
     {}
+
+    // The keeper's shutdown puts every pipeline on the waiting-for-exit list
+    // and its collection threads retire them, which deletes them. No
+    // collection thread runs here, so retire them the way one would.
+    ~Keeper()
+    {
+        data_store.shutdownDataCollection();
+        data_store.retireDecayedPipelines();
+    }
 
     chl::IngestionQueue ingestion_queue;
     chl::StoryChunkExtractionQueue extraction_queue;
