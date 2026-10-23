@@ -19,20 +19,23 @@ class KeeperDataStore;
 //
 // The checks run in this order:
 //   1. no WAL (log is nullptr): CL_ERR_DURABILITY_UNAVAILABLE;
-//   2. the event's identity is looked up in the WAL: a durable and pending
+//   2. the event's story id is not storyIdOf(chronicle, story):
+//      CL_ERR_INVALID_ARG. The WAL keeps the names and recovery recomputes
+//      the id from them, so the event would be recovered under another id;
+//   3. the event's identity is looked up in the WAL: a durable and pending
 //      event gets CL_SUCCESS without a write or an ingest, and an attempt in
 //      flight gives its own result, so a retry is never refused by a later
 //      check while its first attempt is on disk or on its way there;
-//   3. an empty record: CL_ERR_INVALID_ARG (the pipeline would drop it after a
+//   4. an empty record: CL_ERR_INVALID_ARG (the pipeline would drop it after a
 //      durable answer);
-//   4. the WAL failed or stopped: CL_ERR_DURABILITY_UNAVAILABLE; its file
+//   5. the WAL failed or stopped: CL_ERR_DURABILITY_UNAVAILABLE; its file
 //      system below the reserve: CL_ERR_DURABILITY_FULL;
-//   5. the retention store holds more than durable_cap_bytes:
+//   6. the retention store holds more than durable_cap_bytes:
 //      CL_ERR_DURABILITY_FULL;
-//   6. a story with no ingestion handle gets a pipeline (ensureStoryPipeline,
+//   7. a story with no ingestion handle gets a pipeline (ensureStoryPipeline,
 //      which keeps the store's drop mark); when none can be started:
 //      CL_ERR_DURABILITY_UNAVAILABLE;
-//   7. the WAL appends the event and waits for its group's sync; only on
+//   8. the WAL appends the event and waits for its group's sync; only on
 //      CL_SUCCESS is the event ingested.
 //
 // Waiting for the WAL (the lookup's wait for an attempt in flight, and the

@@ -7,6 +7,7 @@
 #include <KeeperDataStore.h>
 #include <KeeperDurableWriter.h>
 #include <KeeperWal.h>
+#include <StoryIdOf.h>
 
 namespace chl = chronolog;
 
@@ -30,6 +31,21 @@ int chronolog::KeeperDurableWriter::write(ChronicleName const& chronicle, StoryN
     }
 
     StoryId const story_id = event.getStoryId();
+
+    // The WAL keeps the names and recovery recomputes the id from them, so an
+    // event under another id would be acknowledged under one id and recovered
+    // under another.
+    StoryId const named_id = storyIdOf(chronicle, story);
+    if(story_id != named_id)
+    {
+        LOG_ERROR("[KeeperDurableWriter] StoryId={} refused: Chronicle={}, Story={} have StoryId={}",
+                  story_id,
+                  chronicle,
+                  story,
+                  named_id);
+        return chl::CL_ERR_INVALID_ARG;
+    }
+
     EventSequence const identity{event.time(), event.getClientId(), event.index()};
 
     // A retry is answered by its first attempt before anything may refuse it:
