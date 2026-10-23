@@ -846,8 +846,10 @@ restart_keeper() {
   done
   for conf in "${confs[@]}"; do
     echo -e "${DEBUG}Relaunching ${KEEPER_BIN} --config ${conf} on ${host} ...${NC}"
-    # Append, so the launch log of the run that died is kept.
-    printf -v launch 'cd %q && nohup %q --config %q >> %q 2>&1 < /dev/null &' "${KEEPER_BIN_DIR}" "${KEEPER_BIN}" "${conf}" \
+    # Append, so the launch log of the run that died is kept. Only nohup goes to
+    # the background: "cd && nohup &" would background a subshell that holds the
+    # session's stdout, and ssh would not return until the keeper exits.
+    printf -v launch 'cd %q && { nohup %q --config %q >> %q 2>&1 < /dev/null & }' "${KEEPER_BIN_DIR}" "${KEEPER_BIN}" "${conf}" \
       "${MONITOR_DIR}/${KEEPER_BIN_FILE_NAME}-${remote_hostname}.launch.log"
     if ! ssh -n "${host}" "${launch}"; then
       echo -e "${ERR}Cannot launch the keeper on ${host}, exiting ...${NC}" >&2
