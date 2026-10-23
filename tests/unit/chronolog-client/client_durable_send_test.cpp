@@ -82,7 +82,7 @@ public:
         define("record_event", &FakeKeeper::record_event);
         if(with_durable_rpc)
         {
-            define("record_event_durable", &FakeKeeper::record_event_durable);
+            durableRpc = define("record_event_durable", &FakeKeeper::record_event_durable);
         }
     }
 
@@ -106,7 +106,15 @@ public:
             durableEvents.push_back(event);
             durableNames.emplace_back(chronicle, story);
         }
-        if(hold)
+        if(dropAndDeregister.exchange(false))
+        {
+            // no answer, so the client times out; its retry finds no
+            // record_event_durable here
+            durableRpc.deregister();
+            active--;
+            return;
+        }
+        if(hold || holdOne.exchange(false))
         {
             // yields the ULT, so held requests do not block the handler xstreams
             auto const until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -137,11 +145,15 @@ public:
     std::atomic<int> acceptedCode{chl::CL_SUCCESS};
     std::atomic<int> durableCode{chl::CL_SUCCESS};
     std::atomic<bool> hold{false};
+    std::atomic<bool> holdOne{false}; // hold only the next request
     std::atomic<bool> released{false};
     std::atomic<int> active{0};
+    // the next record_event_durable request gets no answer and removes the RPC
+    std::atomic<bool> dropAndDeregister{false};
 
 private:
     tl::engine& theEngine;
+    tl::remote_procedure durableRpc;
     mutable std::mutex mutex;
     std::vector<chl::LogEvent> acceptedEvents;
     std::vector<chl::LogEvent> durableEvents;
@@ -169,8 +181,11 @@ protected:
     void TearDown() override
     {
         // let held requests answer while the client engine is still up
-        keeper->released = true;
-        while(keeper->active > 0) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+        if(keeper)
+        {
+            keeper->released = true;
+            while(keeper->active > 0) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+        }
         if(storyteller)
         {
             storyteller->removeAcquiredStoryHandle(kChronicle, kStoryName);
@@ -181,8 +196,19 @@ protected:
         clientEngine->finalize();
         keeper.reset();
         oldKeeper.reset();
-        keeperEngine->finalize();
+        if(keeperEngine)
+        {
+            keeperEngine->finalize();
+        }
         oldKeeperEngine->finalize();
+    }
+
+    // stops the keeper that defines record_event_durable, as a crash would
+    void stopKeeper()
+    {
+        keeper.reset();
+        keeperEngine->finalize();
+        keeperEngine.reset();
     }
 
     static chl::ServiceId serviceIdOf(tl::engine& engine)
@@ -345,6 +371,88 @@ TEST_F(DurableSend, UnregisteredRpcIsUnavailableWithoutRetry)
     EXPECT_EQ(event_time, 0u);
     EXPECT_TRUE(oldKeeper->durable().empty());
     EXPECT_TRUE(oldKeeper->accepted().empty());
+}
+
+// A forward to a dead keeper fails with HG_NOENTRY, which is HG_NO_MATCH.
+// Once the keeper has answered record_event_durable that is a transport
+// error, not a missing RPC.
+TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
+{
+    chl::ServiceId const keeper_id = serviceIdOf(*keeperEngine);
+    rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, keeper_id));
+    ASSERT_NE(rawClient, nullptr);
+    chl::LogEvent event(kStory, 100, kClientId, 1, "record");
+
+    int code = 99;
+    EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
+              chl::DurableSendOutcome::Answered);
+    EXPECT_EQ(code, chl::CL_SUCCESS);
+
+    stopKeeper();
+    EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
+              chl::DurableSendOutcome::TransportError);
+
+    // a client that never got an answer reads the dead keeper as one without
+    // the RPC; the old client goes first, since its destructor deregisters
+    // the RPC names
+    rawClient.reset();
+    rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, keeper_id));
+    ASSERT_NE(rawClient, nullptr);
+    EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
+              chl::DurableSendOutcome::NotRegistered);
+}
+
+// The keeper answers one durable write, then dies. The next call must not
+// claim that nothing was stored: a keeper that fsynced and died before
+// answering recovers the event from its WAL.
+TEST_F(DurableSend, KeeperThatAnsweredThenDiedIsUnknown)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+
+    uint64_t event_time = 0;
+    ASSERT_EQ(handle->log_event("first", durable(), event_time), chl::CL_SUCCESS);
+
+    stopKeeper();
+    event_time = 55;
+    EXPECT_EQ(handle->log_event("second", durable(1000, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
+    EXPECT_EQ(event_time, 0u);
+}
+
+// The first attempt reaches the keeper and times out; the second finds no
+// record_event_durable there. The first attempt may have stored the event.
+TEST_F(DurableSend, UnregisteredRpcAfterATimeoutIsUnknown)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+    keeper->dropAndDeregister = true;
+
+    uint64_t event_time = 0;
+    EXPECT_EQ(handle->log_event("record", durable(300, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
+    EXPECT_EQ(keeper->durable().size(), 1u);
+}
+
+// After a timeout, a keeper that answers "nothing stored" may be answering a
+// retry of an event an earlier attempt stored.
+TEST_F(DurableSend, NothingStoredAfterATimeoutIsUnknown)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+
+    for(int code: {static_cast<int>(chl::CL_ERR_DURABILITY_UNAVAILABLE), static_cast<int>(chl::CL_ERR_DURABILITY_FULL)})
+    {
+        keeper->durableCode = code;
+        keeper->released = false;
+        // the first attempt is held past its deadline, the second answers
+        keeper->holdOne = true;
+        size_t const before = keeper->durable().size();
+        uint64_t event_time = 55;
+        EXPECT_EQ(handle->log_event("record", durable(300, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
+        EXPECT_EQ(event_time, 0u);
+        keeper->released = true;
+        while(keeper->active > 0) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+        EXPECT_EQ(keeper->durable().size(), before + 2);
+    }
 }
 
 TEST_F(DurableSend, EmptyRecordRefusedBeforeSending)

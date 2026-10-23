@@ -1,6 +1,7 @@
 #ifndef KEEPER_RECORDING_CLIENT_H
 #define KEEPER_RECORDING_CLIENT_H
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -28,7 +29,8 @@ enum class DurableSendOutcome
 {
     Answered,      // the keeper answered; keeper_code holds its status
     TimedOut,      // no answer within the attempt's deadline
-    NotRegistered, // the keeper does not define record_event_durable (a 3.3.0 keeper)
+    NotRegistered, // the keeper does not define record_event_durable (a 3.3.0 keeper), or is
+                   // dead and never answered this client
     TransportError // any other RPC failure
 };
 
@@ -73,6 +75,10 @@ public:
     // timeout_ms. A keeper that lacks the RPC answers the forward with
     // HG_NO_MATCH, which thallium raises as a margo_exception; only that maps
     // to NotRegistered, so the caller does not retry a call that cannot work.
+    // HG_NO_MATCH is HG_NOENTRY, which a forward to a dead keeper also gets
+    // over ofi+sockets. Once this keeper has answered record_event_durable, it
+    // defines the RPC, so HG_NO_MATCH from it is a TransportError: the caller
+    // retries and may reach the keeper restarted at the same address.
     DurableSendOutcome send_durable_event_msg(ChronicleName const& chronicle,
                                               StoryName const& story,
                                               LogEvent const& eventMsg,
@@ -83,6 +89,7 @@ public:
         {
             keeper_code = record_event_durable.on(service_ph)
                                   .timed(std::chrono::milliseconds(timeout_ms), chronicle, story, eventMsg);
+            answeredDurable = true;
             return DurableSendOutcome::Answered;
         }
         catch(tl::timeout const&)
@@ -94,7 +101,7 @@ public:
         }
         catch(tl::margo_exception const& ex)
         {
-            if(ex.error() == HG_NO_MATCH)
+            if(ex.error() == HG_NO_MATCH && !answeredDurable)
             {
                 LOG_ERROR("[KeeperRecordingClient] Keeper {} does not define record_event_durable",
                           to_string(recordingServiceId));
@@ -159,6 +166,8 @@ private:
     tl::remote_procedure record_event_durable;
     tl::remote_procedure tail_get_sequences;
     tl::remote_procedure tail_get_events;
+    // set by the first answer to record_event_durable; never cleared
+    std::atomic<bool> answeredDurable{false};
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     KeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
