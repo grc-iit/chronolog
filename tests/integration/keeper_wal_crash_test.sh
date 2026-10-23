@@ -8,18 +8,24 @@
 # events to one story and then EVENTS durable events to another, recording the
 # identity (time, client id, index) of every event the keeper acknowledged.
 # The keeper is killed with SIGKILL within KILL_WITHIN_SECS of the last durable
-# ack, long before its 10 s chunks can seal (chunk end + 15 s acceptance), so
-# nothing it held in memory has reached the grapher. It is restarted with
-# deploy_local.sh --restart-keeper 1, which reuses its conf and WAL directory.
+# ack. The keeper conf is pinned to K_CHUNK_SECS chunks and a K_ACCEPT_SECS
+# acceptance window: a keeper chunk ships once now >= chunk end + window, and
+# the ReleaseStory after the accepted writes finalizes that story at release +
+# window, so as long as the kill comes less than K_ACCEPT_SECS after the first
+# accepted event, nothing the keeper held in memory has reached the grapher.
+# It is restarted with deploy_local.sh --restart-keeper 1, which reuses its conf
+# and WAL directory.
 #
-#   1. The kill came within KILL_WITHIN_SECS of the last durable ack, and the
-#      killed keeper left no exit-summary.
+#   1. The kill came within KILL_WITHIN_SECS of the last durable ack and less
+#      than K_ACCEPT_SECS after the first accepted event, and the killed keeper
+#      left no exit-summary.
 #   2. The restarted keeper recovers the WAL and ships the durable events: the
-#      archive holds at least EVENTS events of the durable story.
+#      archive holds at least EVENTS events of the durable story, and the
+#      segment that held their records stays until it does.
 #   3. A replay of the durable story returns every acknowledged identity
 #      exactly once (no identity missing, no (time, client id) twice).
-#   4. Negative control: a replay of the accepted story misses at least one
-#      acknowledged event.
+#   4. Negative control: a replay of the accepted story, answered CL_SUCCESS,
+#      misses at least one acknowledged event.
 #   5. Once the grapher confirmed the recovered chunks, the segment that held
 #      the durable records is deleted and the WAL directory holds at most two
 #      *.wal files: the active segment and the spare.
@@ -31,9 +37,9 @@
 #
 # Requires an installed tree (deploy_local.sh layout) and the build tree for
 # the probe. The script patches the *installed* conf template (never the source
-# tree), shortens the grapher windows so the archive is written quickly,
-# deploys 1 keeper / 1 recording group, runs the scenario, stops the
-# deployment and restores the template.
+# tree), pins the keeper's chunk and acceptance times, shortens the grapher
+# windows so the archive is written quickly, deploys 1 keeper / 1 recording
+# group, runs the scenario, stops the deployment and restores the template.
 #
 # Usage: WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 #        ./keeper_wal_crash_test.sh
@@ -60,8 +66,11 @@ ACCEPTED_STORY=AcceptedStory
 EVENTS=200
 KILL_WITHIN_SECS=2
 
-# grapher windows patched small so the archive is written soon after the
-# restart; the keeper keeps the template's 10 s chunks and 15 s acceptance
+# keeper chunks and acceptance window pinned so the kill is known to come
+# before any accepted chunk ships (see above)
+K_CHUNK_SECS=10
+K_ACCEPT_SECS=15
+# grapher windows patched small so the archive is written soon after the restart
 G_CHUNK_SECS=10
 G_ACCEPT_SECS=15
 REPORT_SECS=1
@@ -120,7 +129,7 @@ write_story() {
 # replay <story> <label>: sets R_STATUS; the returned identities go to $RUN_DIR/replay_<label>.ids
 replay_story() {
     local out="$RUN_DIR/replay_$2.out"
-    "$PROBE" --config "$PROBE_CLIENT_CONF" --chronicle "$CHRONICLE" --story "$1" --replay > "$out" 2>&1
+    "$PROBE" --config "$RUN_DIR/$2_client_conf.json" --chronicle "$CHRONICLE" --story "$1" --replay > "$out" 2>&1
     R_STATUS=$(sed -n 's/^REPLAY_STATUS \(.*\)$/\1/p' "$out")
     grep -E '^[0-9]+ [0-9]+ [0-9]+$' "$out" > "$RUN_DIR/replay_$2.ids"
     say "replay of $1: status ${R_STATUS:-?}, $(wc -l < "$RUN_DIR/replay_$2.ids") event(s)"
@@ -132,11 +141,13 @@ command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 [ -x "$DEPLOY" ] || { say "deploy script not found at $DEPLOY"; exit 2; }
 
-say "patching installed conf template: grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows, report ${REPORT_SECS}s, keeper visibility ${VISIBILITY_SECS}s"
+say "patching installed conf template: keeper ${K_CHUNK_SECS}s/${K_ACCEPT_SECS}s chunks, grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows, report ${REPORT_SECS}s, keeper visibility ${VISIBILITY_SECS}s"
 # jq writes to a side file that replaces the template only on success, so a failed
 # patch leaves the template intact (the restore trap below is not set up yet)
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.wal_crash_backup"
-jq ".chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
+jq ".chrono_keeper.DataStoreInternals.story_chunk_duration_secs = $K_CHUNK_SECS |
+    .chrono_keeper.DataStoreInternals.acceptance_window_secs = $K_ACCEPT_SECS |
+    .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs = 30 |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
@@ -162,24 +173,26 @@ sleep 3
 if [ "$(pgrep -c -f "$WORK_DIR/bin/chrono-")" -lt 4 ]; then
     say "expected 4 daemons up"; exit 2
 fi
-# writer and replay probe bind their query services on ports of their own
-jq ".chrono_client.ClientQueryService.rpc.service_base_port = ${PROBE_QUERY_PORT:-5563}" \
-    "$CLIENT_CONF" > "$RUN_DIR/probe_client_conf.json" || { say "probe conf patch failed"; exit 2; }
-jq ".chrono_client.ClientQueryService.rpc.service_base_port = ${WRITER_QUERY_PORT:-5564}" \
-    "$CLIENT_CONF" > "$RUN_DIR/writer_client_conf.json" || { say "writer conf patch failed"; exit 2; }
-PROBE_CLIENT_CONF="$RUN_DIR/probe_client_conf.json"
+# the writer and each replay probe bind their query services on ports of their
+# own, so a probe never waits for the previous one's port to be released
+for client in writer:${WRITER_QUERY_PORT:-5564} durable:${PROBE_QUERY_PORT:-5563} accepted:${ACCEPTED_QUERY_PORT:-5565}; do
+    jq ".chrono_client.ClientQueryService.rpc.service_base_port = ${client#*:}" \
+        "$CLIENT_CONF" > "$RUN_DIR/${client%%:*}_client_conf.json" || { say "${client%%:*} client conf patch failed"; exit 2; }
+done
 WRITER_CLIENT_CONF="$RUN_DIR/writer_client_conf.json"
 
 # ------------------------------------------------- write, then kill ----
 write_story "$ACCEPTED_STORY" accepted || { bad "accepted writes: not every event was acknowledged"; exit 1; }
 write_story "$DURABLE_STORY" durable || { bad "durable writes: not every event was acknowledged"; exit 1; }
 last_ack_ns=$(sed -n 's/^LAST_ACK_NS //p' "$RUN_DIR/write_durable.out")
+first_accepted_ns=$(cut -d' ' -f1 "$RUN_DIR/acked_accepted" | sort -n | head -1)
 
 pid=$(keeper_pid)
 [ -n "$pid" ] || { bad "kill: no keeper running after the writes"; exit 1; }
 kill -9 "$pid"
 kill_ns=$(now_ns)
 gap_ms=$(((kill_ns - last_ack_ns) / 1000000))
+span_ms=$(((kill_ns - first_accepted_ns) / 1000000))
 for _ in $(seq 1 50); do kill -0 "$pid" 2> /dev/null || break; sleep 0.1; done
 if kill -0 "$pid" 2> /dev/null; then
     bad "kill: keeper $pid still running after SIGKILL"; exit 1
@@ -187,6 +200,13 @@ elif [ "$gap_ms" -lt $((KILL_WITHIN_SECS * 1000)) ]; then
     ok "kill: keeper $pid killed ${gap_ms} ms after the last durable ack"
 else
     bad "kill: keeper killed ${gap_ms} ms after the last durable ack, over ${KILL_WITHIN_SECS}s"
+fi
+# a later kill could come after the first accepted chunk shipped, and the
+# negative control would then not show what it claims
+if [ "$span_ms" -lt $((K_ACCEPT_SECS * 1000)) ]; then
+    ok "kill: ${span_ms} ms after the first accepted event, under the ${K_ACCEPT_SECS}s acceptance window"
+else
+    bad "kill: ${span_ms} ms after the first accepted event, not under the ${K_ACCEPT_SECS}s acceptance window; accepted chunks may have shipped"
 fi
 # the oldest segment holds the durable records; the newer one is the spare
 held_segment=$(oldest_segment)
@@ -203,14 +223,24 @@ say "restarting keeper 1"
 restart_ns=$(now_ns)
 
 say "waiting up to ${ARCHIVE_DEADLINE}s for $EVENTS events of $DURABLE_STORY in the archive"
+# The keeper may delete the held segment only after the grapher confirmed the
+# recovered chunks, which it does after writing them. The segment is looked at
+# before the archive is counted, so a segment gone while the count is short was
+# deleted before the archive held the events.
+held_present() { [ -z "$held_segment" ] || [ -e "$WAL_DIR/$held_segment" ]; }
+early_release=0
 deadline=$((SECONDS + ARCHIVE_DEADLINE))
+held_present || early_release=1
 archived=$(h5_story_events "$DURABLE_STORY")
-while [ "$archived" -lt "$EVENTS" ] && [ $SECONDS -lt $deadline ]; do
+while [ "$archived" -lt "$EVENTS" ] && [ $early_release -eq 0 ] && [ $SECONDS -lt $deadline ]; do
     [ -n "$(keeper_pid)" ] || break
     sleep 5
+    held_present || early_release=1
     archived=$(h5_story_events "$DURABLE_STORY")
 done
-if [ -z "$(keeper_pid)" ]; then
+if [ $early_release -eq 1 ] && [ "$archived" -lt "$EVENTS" ]; then
+    bad "recovery: $held_segment deleted while only $archived of $EVENTS durable event(s) were in the archive"
+elif [ -z "$(keeper_pid)" ]; then
     bad "recovery: the restarted keeper exited; see $MONITOR_DIR/chrono-keeper-1.launch.log"; exit 1
 elif [ "$archived" -ge "$EVENTS" ]; then
     ok "recovery: $archived event(s) of $DURABLE_STORY in the archive $(((($(now_ns) - restart_ns) / 1000000000)))s after the restart"
@@ -254,10 +284,15 @@ else
     bad "durable replay: $missing acknowledged identities missing, $twice returned more than once"
 fi
 
+# a failed replay returns no identities, which must not count as lost events;
+# an empty but complete replay returns CL_SUCCESS
 replay_story "$ACCEPTED_STORY" accepted
 lost=$(comm -23 "$RUN_DIR/acked_accepted" <(sort -u "$RUN_DIR/replay_accepted.ids") | wc -l)
-if [ "$lost" -ge 1 ]; then
-    ok "negative control: $lost of $EVENTS acknowledged accepted events lost in the kill (replay status ${R_STATUS:-?})"
+if [ "$R_STATUS" != "CL_SUCCESS" ]; then
+    bad "negative control: accepted replay status ${R_STATUS:-none}"
+    grep -Ev '^[0-9]+ [0-9]+ [0-9]+$' "$RUN_DIR/replay_accepted.out" | tail -5 | sed 's/^/    /'
+elif [ "$lost" -ge 1 ]; then
+    ok "negative control: $lost of $EVENTS acknowledged accepted events lost in the kill"
 else
     bad "negative control: every acknowledged accepted event survived the kill; the kill did not test the WAL"
 fi

@@ -19,9 +19,10 @@
 //                      (--write <n> --mode durable|accepted | --replay)
 //
 // The client API does not return an event's index. This client is new and logs
-// nothing else, and every call it makes reaches the point where the client
-// takes the next index (the probe stops at the first call that returns before
-// it), so the i-th call (from 1) carries index i.
+// nothing else, and every call that returns CL_SUCCESS or a keeper's error took
+// the next index, so the i-th call (from 1) carries index i. CL_ERR_INVALID_ARG
+// returns before the index is taken, and CL_ERR_NO_KEEPERS before or after it,
+// so the probe stops at the first call that returns either.
 
 #include <chrono>
 #include <cstdlib>
@@ -184,7 +185,9 @@ int main(int argc, char** argv)
         }
         else if(code == chronolog::CL_ERR_NO_KEEPERS || code == chronolog::CL_ERR_INVALID_ARG)
         {
-            // returned before the client took an index: later indexes would be off by one
+            // CL_ERR_INVALID_ARG returns before the client takes an index, and
+            // CL_ERR_NO_KEEPERS before it (no keepers for the story) or after it
+            // (no keeper chosen): later indexes would be unknown
             stopped_early = true;
             break;
         }
