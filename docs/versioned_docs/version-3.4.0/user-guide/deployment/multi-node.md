@@ -112,6 +112,85 @@ the keeper's `archive_visibility_delay_secs`. The deployment goes ahead either w
 
 Lustre keeps client caches coherent through its lock manager, so this section is specific to NFS.
 
+## Keeper WAL
+
+With `--wal`, every keeper runs with a write-ahead log, so clients can make durable writes (see
+[Keeper WAL and Durable Writes](../architecture/keeper-wal.md)). The WAL is set for the whole
+deployment: in a recording group where some keepers have it off, durable writes to those keepers
+fail with `CL_ERR_DURABILITY_UNAVAILABLE`.
+
+### Where the WAL goes
+
+`--start` runs `wal_dir_probe.sh` on each keeper host over ssh and prints the directory it chose.
+The base directory is, in this order:
+
+1. one that already holds WAL segments of this install, wherever it ranks, so a restarted keeper or
+   a later job on the same node finds what an earlier keeper left;
+2. the first existing, writable `<mount point>/$USER` on a local drive other than the boot disk,
+   NVMe first, then SATA SSD, then HDD, whose free space minus the reserve is at least `max_bytes`
+   (1 GiB). Only a mount with a per-user directory is considered, which keeps discovery off disks
+   the site did not hand to users;
+3. `${TMPDIR:-/tmp}` on that host, with a warning.
+
+`<hash of the work dir>/<recording group>` is appended to the base, so every deploy from one install
+finds the same directory and another install never sees it.
+
+`--wal-dir A:B:C` replaces the discovery with that list. An entry is used if it exists, is a
+writable directory and has `max_bytes` free above the reserve; there is no boot-disk check or media
+ranking. When no entry is usable on a keeper host, the deploy prints each entry's reason with the
+host name and stops before any daemon is launched. A single `--wal-dir` path is used as given, with
+a warning if it is on the boot disk.
+
+The deploy, and each keeper at startup, warn when the WAL directory is on the boot disk or on NFS,
+Lustre, GPFS, BeeGFS, CIFS, Ceph, FUSE, overlay or tmpfs.
+
+### What a durable write survives
+
+| WAL on | Survives |
+|---|---|
+| A local disk | A keeper crash and a node reboot. The events are replayed when a keeper starts again on that node with the same install. |
+| tmpfs | A keeper crash only; a reboot or the end of the job loses them. |
+| NFS | Also the loss of the node, if someone restarts a keeper on that directory, but only as durable as the server's export (`sync`) and its storage cache. `flock` there depends on the server's lock service. |
+
+No WAL survives losing its disk.
+
+NFS is a fallback, not the recommendation: every sync is a round trip to the server, and the
+archive usually shares the same server. Prefer a local NVMe or SATA SSD.
+
+Trim SSDs that hold a WAL, with `fstrim` on a timer or a `discard` mount: the WAL creates and
+deletes 64 MiB segments all the time, and an untrimmed, nearly full drive syncs several times
+slower.
+
+### Stopping, restarting and cleaning
+
+- Run `--stop` before the job or allocation ends. Each keeper waits for ChronoGrapher to confirm its
+  chunks, then writes an `exit-summary` in its WAL directory. `--stop` prints a table with each
+  keeper's state: `clean`, `pending` (durable events the grapher has not confirmed), `missing` (no
+  `exit-summary`: the keeper crashed or was killed), `empty` or `unreachable`. It exits nonzero
+  unless all are clean.
+- Events left in a WAL are replayed only when a keeper of the same install starts again on that
+  node, possibly days later in another job. If `--stop` reports `pending` or `missing`, start the
+  deployment again from the same install on the same nodes, so those keepers replay their WALs and
+  the graphers confirm the events, then stop again.
+- Run `--stop` and then `--clean` before installing a build with another WAL format version. A
+  keeper refuses to start on segments of a format it cannot read, and stopping does not remove
+  them. `--clean` removes the WAL directories once they are clean; `--force` removes them anyway and
+  discards the unconfirmed events.
+- After a crash, restart the keeper with `--restart-keeper <host>`. It replays its WAL, registers
+  again, and the visor gives it the stories clients still hold.
+
+### On Ares
+
+The boot SSD is small, is wiped between jobs, and must not hold a WAL. Discovery finds
+`/mnt/nvme/$USER`, `/mnt/ssd/$USER` and `/mnt/hdd/$USER`, in that order, so create the per-user
+directory on the drives you want used. An NVMe that is nearly full, with less than `max_bytes` free
+above the reserve (the larger of 256 MiB and 10 % of the drive), is skipped, and the WAL goes on the
+SATA SSD instead. The NVMe drives there are shared, mostly full and mounted without `discard`: one
+measured 0.66 ms per small sync when quiet and about 5.4 ms after 10 GB of writes. If no drive
+qualifies, the WAL goes to `/tmp`, on the boot disk, with a warning; pass
+`--wal-dir /mnt/nvme/$USER:/mnt/ssd/$USER` to fail the deploy instead. A leftover WAL of this
+install in `/tmp` is still chosen first, with or without a list.
+
 ## Execution Modes
 
 Exactly one mode must be specified per invocation:
@@ -119,8 +198,9 @@ Exactly one mode must be specified per invocation:
 | Mode | Description |
 |------|-------------|
 | `--start` | Start all ChronoLog processes across the cluster |
-| `--stop` | Stop all ChronoLog processes gracefully. Keepers stop first and get 4 minutes, since each waits for ChronoGrapher to confirm its chunks written; other processes are force-killed after 5 minutes. |
-| `--clean` | Remove generated config files, per-group host files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. All processes must be stopped first. |
+| `--stop` | Stop all ChronoLog processes gracefully. Keepers stop first and get 4 minutes, since each waits for ChronoGrapher to confirm its chunks written; other processes are force-killed after 5 minutes. With the keeper WAL on, it then prints each keeper's WAL state and exits nonzero unless every one is clean (see [Keeper WAL](#keeper-wal)). |
+| `--clean` | Remove generated config files, per-group host files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. With the keeper WAL on, it also removes the keeper WAL directories, and refuses, removing nothing, while one holds unconfirmed events, unless `--force` is given. All processes must be stopped first. |
+| `--restart-keeper <host>` | Relaunch the keeper on `<host>` with the configuration `--start` generated for it, so it reuses its ports and its WAL directory and replays what the WAL holds. Give it the same options `--start` was given. |
 
 ## Options
 
@@ -140,6 +220,9 @@ Exactly one mode must be specified per invocation:
 | `-q, --visor-hosts <path>` | `<work-dir>/conf/hosts_visor` | Override path to visor host file |
 | `-k, --grapher-hosts <path>` | `<work-dir>/conf/hosts_grapher` | Override path to grapher host file |
 | `-o, --keeper-hosts <path>` | `<work-dir>/conf/hosts_keeper` | Override path to keeper host file |
+| `--wal` | off | Turn the keeper WAL on (`WAL_ENABLED=1` in the environment does the same); each keeper host gets a WAL directory chosen as described in [Keeper WAL](#keeper-wal) |
+| `--wal-dir <A[:B:...]>` | _(none)_ | Turn the keeper WAL on and try these base directories in order instead of the discovery |
+| `--force` | `false` | With `--clean`, also remove keeper WAL directories that hold unconfirmed events |
 | `-e, --verbose` | `false` | Enable verbose output |
 
 ## Examples
@@ -172,6 +255,13 @@ Stop using a Slurm job (re-derives hosts from job):
 
 ```bash
 ./deploy_cluster.sh --stop --job-id $SLURM_JOB_ID
+```
+
+Start with the keeper WAL on, then relaunch one keeper after it crashed:
+
+```bash
+./deploy_cluster.sh --start --job-id $SLURM_JOB_ID --wal
+./deploy_cluster.sh --restart-keeper node03 --job-id $SLURM_JOB_ID
 ```
 
 Clean up generated files (run after stopping):
