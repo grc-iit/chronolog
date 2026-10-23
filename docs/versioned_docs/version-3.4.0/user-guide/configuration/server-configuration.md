@@ -104,7 +104,7 @@ Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `Da
 | `inactive_story_delay_secs` | integer | `180`   | Idle time before an in-memory story is evicted.                       |
 | `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. A chunk with events in the index stays in memory; the index is released when the story retires. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
-| `retention_cap_mb`          | integer | `4096`  | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. Set it above the memory a healthy keeper holds, or the warning fires in normal operation: about `3 × 125 s × peak per-keeper MB/s` with the template's windows. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). |
+| `retention_cap_mb`          | integer | `4096`  | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. Set it above the memory a healthy keeper holds, or the warning fires in normal operation: about `3 × 125 s × peak per-keeper MB/s` with the template's windows. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). The keeper's [`WAL`](#wal--keeper-write-ahead-log) block has its own cap, `durable_cap_mb`, on the same retained memory. |
 | `watermark_resend_timeout_secs` | integer | `300` | *(Keeper only)* Seconds a keeper waits for ChronoGrapher to confirm a chunk written before sending it again. Keep it at least twice ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`; see [Timing rules across components](#timing-rules-across-components). Must be positive. |
 | `archive_visibility_delay_secs` | integer | `10` | *(Keeper only)* Seconds a keeper keeps a chunk after ChronoGrapher confirms it written, serving its events to replays meanwhile. ChronoGrapher records the file in the [archive manifest](../architecture/hdf5-archive.md#archive-manifest) before it confirms, and a player reads the manifest before each archive read, so this only covers a replay already under way when the confirmation arrives; see [Timing rules across components](#timing-rules-across-components). `0` frees on confirmation. See [Durable Chunk Retention](../architecture/durable-retention.md). |
 | `shutdown_confirm_timeout_secs` | integer | `150` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`; see [Timing rules across components](#timing-rules-across-components). `0` exits without waiting. |
@@ -137,6 +137,47 @@ It also helps to make the grapher's `story_chunk_duration_secs` a multiple of th
 
 A client waits up to 180 s for a replay (fixed in the client library). A player gives each keeper
 5 s to answer before it returns a partial result, so this leaves the archive read most of that time.
+
+### `WAL` — keeper write-ahead log {#wal--keeper-write-ahead-log}
+
+Appears in `chrono_keeper` only. Parsed by `WalConf` (`src/chrono-keeper/include/ChronoKeeperConfiguration.h`). The WAL holds the events of durable writes on the keeper's disk until ChronoGrapher confirms the chunks that contain them. With `enabled` false, which is the default, a durable `log_event` is refused with `CL_ERR_DURABILITY_UNAVAILABLE` and the keeper behaves as it did before the WAL existed. A missing `WAL` block leaves every field at its default.
+
+```json
+"WAL": {
+  "enabled": false,
+  "dir": "",
+  "segment_bytes": 67108864,
+  "max_bytes": 1073741824,
+  "group_commit_max_bytes": 4194304,
+  "group_commit_window_us": 0,
+  "reserve_min_bytes": 268435456,
+  "reserve_percent": 10,
+  "durable_cap_mb": 4096
+}
+```
+
+| Field                    | Type    | Default      | Description |
+| ------------------------ | ------- | ------------ | ----------- |
+| `enabled`                | boolean | `false`      | Turns the WAL on. The deploy scripts set it with `--wal` or `--wal-dir`. |
+| `dir`                    | string  | `""`         | Absolute path of the WAL directory. Required when `enabled` is true. The deploy scripts fill it in for each keeper. |
+| `segment_bytes`          | integer | `67108864`   | Size of one WAL segment file, 64 MiB. At least `1048576` (1 MiB). Checked even when the WAL is off. |
+| `max_bytes`              | integer | `1073741824` | Total size of the WAL segments above which the keeper logs a warning, at most once a minute, while it waits for ChronoGrapher to confirm events. Nothing is refused or dropped. |
+| `group_commit_max_bytes` | integer | `4194304`    | Largest group of queued events written and synced together, 4 MiB. A group always holds at least one event. |
+| `group_commit_window_us` | integer | `0`          | Microseconds the committer waits after the first queued event for more events before it syncs. `0` syncs as soon as the committer is free, so the group size follows the load. At most `10000`. |
+| `reserve_min_bytes`      | integer | `268435456`  | Free space, in bytes, the WAL directory's file system keeps (256 MiB). The reserve is the larger of this and `reserve_percent` of the file system. |
+| `reserve_percent`        | integer | `10`         | Percentage of the WAL directory's file system kept free. `0` to `100`. Below the reserve, durable writes get `CL_ERR_DURABILITY_FULL` until space is back. |
+| `durable_cap_mb`         | integer | `4096`       | Retained-chunk memory, in MB, above which a durable write gets `CL_ERR_DURABILITY_FULL`. It is the same memory `retention_cap_mb` watches, but `retention_cap_mb` only warns. |
+
+Validation runs when the keeper starts, and a refused value stops the keeper:
+
+- `enabled` must be a boolean, `dir` a string, and the numeric fields integers.
+- With `enabled` true, `dir` must be non-empty and begin with `/`.
+- Every size (`segment_bytes`, `max_bytes`, `group_commit_max_bytes`, `reserve_min_bytes`, `durable_cap_mb`) must be at least 1.
+- `segment_bytes` must be at least 1 MiB, `group_commit_window_us` at most 10000, and `reserve_percent` between 0 and 100.
+- `durable_cap_mb` must not exceed the largest value whose size in bytes fits in a signed 64-bit integer.
+- A key the keeper does not know is printed to standard error and ignored.
+
+The longest durable event is 256 MiB minus 36 bytes. That limit is fixed and has no key.
 
 ### `ExtractionModule`
 
@@ -208,6 +249,7 @@ Parsed by `KeeperConfiguration` (`src/chrono-keeper/include/ChronoKeeperConfigur
 | `Monitoring`                  | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`          | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
 | `ExtractionModule`            | object  | See [`ExtractionModule`](#extractionmodule).                                               |
+| `WAL`                         | object  | Write-ahead log for durable writes. Optional; off by default. See [`WAL`](#wal--keeper-write-ahead-log). |
 
 `KeeperRecordingService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
