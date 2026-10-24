@@ -155,6 +155,14 @@ grep -q '^stop chrono-player$' "$fixture/stop-out" && pass "stop: players stoppe
 in_order '^stop chrono-keeper$' '^stop chrono-grapher$' '^stop chrono-visor$' &&
     pass "stop: keepers, graphers, then visor stopped before failing" ||
     fail "stop: keepers, graphers, then visor stopped before failing: $(cat "$fixture/stop-out")"
+restart_advice() { # FILE: the advice after a WAL that is not clean, whole deployment restarted with the same options
+    local text
+    text=$(tr -s ' \n' ' ' < "$1")
+    [[ "$text" == *"Start the deployment again with the same options, including --wal or --wal-dir, and the same host order"*"then stop it again"* &&
+        "$text" == *"--restart-keeper <host> is only for a deployment whose visor and graphers still run"* ]]
+}
+restart_advice "$fixture/stop-out" && pass "stop: the error says to start again with the same options and host order" ||
+    fail "stop: the error says to start again with the same options and host order: $(cat "$fixture/stop-out")"
 in_order '^stop chrono-keeper$' '^HOST +GROUP +PENDING_EVENTS' '^stop chrono-grapher$' &&
     pass "stop: the table is printed after the keepers stop and before the graphers do" ||
     fail "stop: the table is printed after the keepers stop and before the graphers do: $(cat "$fixture/stop-out")"
@@ -237,6 +245,8 @@ for case_ in pending pending-2^64 missing unreachable; do
         fail "clean: $case_ refusal keeps the confs"
     grep -q "nodeB" "$fixture/clean-out" && grep -q -- --force "$fixture/clean-out" &&
         pass "clean: $case_ refusal names the host and --force" || fail "clean: $case_ refusal names the host and --force: $(cat "$fixture/clean-out")"
+    restart_advice "$fixture/clean-out" && pass "clean: $case_ refusal says to start again with the same options" ||
+        fail "clean: $case_ refusal says to start again with the same options: $(cat "$fixture/clean-out")"
 done
 
 setup

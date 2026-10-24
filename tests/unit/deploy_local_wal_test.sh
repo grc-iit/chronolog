@@ -224,5 +224,57 @@ check "given binaries: --restart-keeper runs the given keeper" test "$(runs_of "
 bash "$script" -s "${given_args[@]}" > /dev/null 2>&1 || true
 check "given binaries: the installed binaries never ran" test "$(grep -c "^$given_work/bin/" "$runs")" -eq 0
 
+# Given confs with -w --------------------------------------------------------------------------------
+# -f and -n name templates outside work_dir/conf, which holds none: start must
+# generate the confs next to the -f template from both, and stop, restart and
+# clean must read them there.
+alt_work="$fixture/alt/work"
+alt_conf="$fixture/alt/conf"
+mkdir -p "$alt_work/bin" "$alt_work/lib" "$alt_work/conf" "$alt_conf" "$fixture/alt/client"
+cp "$template" "$alt_conf/my-conf.json"
+jq '.chrono_client.marker = "alt"' "$client_template" > "$fixture/alt/client/my-client.json"
+alt_args=(-w "$alt_work" -f "$alt_conf/my-conf.json" -n "$fixture/alt/client/my-client.json"
+    -v "$given_bin/chrono-visor" -g "$given_bin/chrono-grapher" -p "$given_bin/chrono-keeper" -a "$given_bin/chrono-player")
+alt_keeper_run="$given_bin/chrono-keeper --config $alt_conf/chrono-keeper-conf-1.json"
+bash "$script" -d --wal "${alt_args[@]}" > "$fixture/alt/start.out" 2>&1 || true
+wait_runs_of "$alt_keeper_run" 1
+check "-f with -w: start runs the keeper with a conf generated next to the -f template" ran "$alt_keeper_run"
+check "-f with -w: start runs the visor with a conf generated next to the -f template" \
+    ran "$given_bin/chrono-visor --config $alt_conf/chrono-visor-conf.json"
+check "-n with -w: the client conf is generated from the -n template" \
+    test "$(jq -r '.chrono_client.marker' "$alt_conf/chrono-client-conf.json" 2> /dev/null)" = alt
+check "-f with -w: nothing generated in work_dir/conf" test -z "$(ls -A "$alt_work/conf")"
+# The fake keeper writes no exit-summary, so stop reports keeper 1 as missing:
+# only a stop that reads the -f conf directory finds that keeper's WAL.
+bash "$script" -s "${alt_args[@]}" > "$fixture/alt/stop.out" 2>&1 || true
+check "-f with -w: stop stops the keeper" ran "$given_bin/chrono-keeper stopped"
+check "-f with -w: stop reads the keeper WAL from the -f conf directory" grep -q 'keeper-1 .*missing' "$fixture/alt/stop.out"
+bash "$script" --restart-keeper 1 "${alt_args[@]}" > "$fixture/alt/restart.out" 2>&1 || true
+wait_runs_of "$alt_keeper_run" 2
+check "-f with -w: --restart-keeper relaunches the keeper with the -f conf directory's conf" \
+    test "$(runs_of "$alt_keeper_run")" -eq 2
+bash "$script" -s "${alt_args[@]}" > /dev/null 2>&1 || true
+# clean refuses while any chrono process runs on the host, so run its function
+# with that check left out. The confs start generated are there whether or not
+# start honored -f.
+for name in chrono-visor-conf.json chrono-keeper-conf-1.json chrono-client-conf.json; do
+    [[ -f "$alt_conf/$name" ]] || echo '{}' > "$alt_conf/$name"
+done
+(
+    for fn in clean check_work_dir refresh_paths_for_work_dir; do
+        source <(sed -n "/^${fn}() {/,/^}/p" "$script")
+    done
+    check_execution_stopped() { :; }
+    clean_output_dir() { :; }
+    WORK_DIR_USER_SET=false OUTPUT_DIR_USER_SET=false MONITOR_DIR_USER_SET=false
+    VISOR_BIN_USER_SET=false KEEPER_BIN_USER_SET=false GRAPHER_BIN_USER_SET=false PLAYER_BIN_USER_SET=false
+    CONF_FILE_USER_SET=false CLIENT_CONF_FILE_USER_SET=false
+    reset_args
+    parse_args -c --force "${alt_args[@]}"
+    clean
+) > "$fixture/alt/clean.out" 2>&1 || true
+check "-f with -w: clean removes the confs generated next to the -f template" test "$(ls -A "$alt_conf")" = my-conf.json
+check "-f with -w: clean keeps the -n template" test -f "$fixture/alt/client/my-client.json"
+
 echo "$failures deploy_local WAL checks failed"
 test "$failures" -eq 0
