@@ -402,13 +402,16 @@ if(CHRONOLOG_INSTALL_TESTS)
 endif()
 
 # KeeperWal (GTest) — the keeper WAL's committer: group commit on its own
-# Argobots stream, the answer only after the sync, the failure latch, the
-# free-space reserve, N records per segment, oversized records, retries that
-# join a write in flight, releases and D records, and stop. Runs in a temporary
-# directory through the fault-injecting sink, with requests from ULTs.
+# Argobots stream, the answer only after the sync, the failure latch and the
+# erase of a failed group, the free-space reserve, N records per segment,
+# oversized records, retries that join a write in flight, releases and D
+# records, and stop. Runs in a temporary directory through the fault-injecting
+# sink, with requests from ULTs; WalRecovery reads the directory back after a
+# failure.
 add_executable(keeper_wal_test
     chrono_keeper_wal_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/KeeperWal.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalRecovery.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalSegmentManager.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalReleaseTracker.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/WalFileSink.cpp

@@ -1,13 +1,15 @@
 // Unit tests for KeeperWal, the keeper's write-ahead log for durable writes:
 // group commit on the committer's own stream, the answer only after the sync,
-// the failure latch, the free-space reserve, N records per segment, records
-// larger than a segment, retries that join a write in flight, releases from
-// the retention store, D records and stop. Runs against a temporary directory
-// through the fault-injecting sink, with requests made from ULTs on a pool of
-// four streams, the size of the keeper's RPC pool in the shipped template.
+// the failure latch and the erase of a failed group, the free-space reserve,
+// N records per segment, records larger than a segment, retries that join a
+// write in flight, releases from the retention store, D records and stop.
+// Runs against a temporary directory through the fault-injecting sink, with
+// requests made from ULTs on a pool of four streams, the size of the keeper's
+// RPC pool in the shipped template.
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -36,6 +38,8 @@
 #include <StoryChunk.h>
 #include <WalFileSink.h>
 #include <WalFormat.h>
+#include <WalRecovery.h>
+#include <WalSegmentManager.h>
 
 namespace chl = chronolog;
 namespace wal = chronolog::wal;
@@ -52,6 +56,7 @@ std::string const kEndpoint = "ofi+sockets://127.0.0.1:6666";
 std::string const kChronicle = "chronicle";
 constexpr chl::StoryId kStory = 7;
 constexpr chl::StoryId kOtherStory = 8;
+constexpr chl::StoryId kThirdStory = 9;
 
 std::string storyName(chl::StoryId story) { return "story-" + std::to_string(story); }
 
@@ -119,6 +124,11 @@ struct Append
     std::atomic<bool> done{false};
     std::atomic<int> status{1};
 };
+
+bool allDone(std::deque<Append> const& requests)
+{
+    return std::all_of(requests.begin(), requests.end(), [](Append const& request) { return request.done.load(); });
+}
 
 // One lookupDurable made from a ULT; answer is set before done.
 struct Lookup
@@ -461,6 +471,41 @@ protected:
         return count;
     }
 
+    // Where a scan of the segment finds the end of its records; true when the
+    // data ends cleanly and only zeros follow.
+    bool zerosAfterData(uint64_t segment, uint64_t& data_end)
+    {
+        std::string const bytes = readFile(wal::segmentFileName(segment));
+        wal::ScanResult const scan = wal::scanSegment(bytes);
+        data_end = scan.end_offset;
+        return scan.end == wal::ScanEnd::EndOfData &&
+               std::all_of(bytes.begin() + static_cast<std::ptrdiff_t>(scan.end_offset),
+                           bytes.end(),
+                           [](char c) { return c == '\0'; });
+    }
+
+    // Reads the directory back as a restarted keeper does. The WAL, and the
+    // sink with it, is destroyed first, so the directory lock is free.
+    chl::RecoveredState recoverDirectory()
+    {
+        wal.reset();
+        sink = nullptr;
+        renameSink = nullptr;
+        chl::RecoveredState state;
+        auto reader = chl::makePosixWalFileSink();
+        EXPECT_EQ(reader->openDirectory(dir), 0);
+        chl::WalSegmentManager manager(*reader, conf.segment_bytes, kEndpoint, dir);
+        std::string error;
+        EXPECT_EQ(chl::recoverWal(*reader, manager, state, error), chl::CL_SUCCESS) << error;
+        return state;
+    }
+
+    static bool isRecovered(chl::RecoveredState const& state, chl::LogEvent const& event)
+    {
+        auto story = state.stories.find(event.getStoryId());
+        return story != state.stories.end() && story->second.events.count(identityOf(event)) == 1;
+    }
+
     static chl::StoryChunk chunkOf(chl::StoryId story, std::vector<chl::LogEvent> const& events)
     {
         chl::StoryChunk chunk(kChronicle, storyName(story), story, 0, UINT64_MAX);
@@ -549,12 +594,13 @@ TEST_F(KeeperWalTest, GroupCommitWindowGathersLaterRequests)
     EXPECT_EQ(wal->stats().events, 8u);
 }
 
-// Port of JournalContract.FsyncFailureFailsTheGroup.
+// Port of JournalContract.FsyncFailureFailsTheGroup. The failed group is
+// erased, so none of the requests' records is left in the segment.
 TEST_F(KeeperWalTest, FsyncFailureFailsTheGroup)
 {
     startWal();
     sink->holdSyncs();
-    sink->failSyncsWith(EIO);
+    sink->failNextSyncsWith(EIO);
 
     std::deque<Append> requests;
     for(uint64_t i = 0; i < 3; ++i) { requests.emplace_back().event = makeEvent(kStory, 1000 + i); }
@@ -568,20 +614,23 @@ TEST_F(KeeperWalTest, FsyncFailureFailsTheGroup)
     {
         EXPECT_EQ(request.status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
         EXPECT_FALSE(wal->isDurable(kStory, identityOf(request.event)));
+        EXPECT_EQ(copiesOnDisk(request.event), 0u);
     }
     EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
     EXPECT_EQ(wal->stats().pending_events, 0u);
     EXPECT_EQ(wal->stats().events, 0u);
 
     // the latch holds after the device recovers: nothing more is written
-    sink->failSyncsWith(0);
     chl::LogEvent const later = makeEvent(kStory, 2000);
     EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_EQ(copiesOnDisk(later), 0u);
     EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
 }
 
-TEST_F(KeeperWalTest, WriteEnospcFailsTheGroup)
+// A write that fails on a device where the zeros cannot be written over it
+// either: the group may be in the segment, so it gets
+// CL_ERR_DURABILITY_UNKNOWN.
+TEST_F(KeeperWalTest, FailedWriteThatCannotBeErasedAnswersUnknown)
 {
     startWal();
     sink->failWritesWith(ENOSPC);
@@ -605,12 +654,18 @@ TEST_F(KeeperWalTest, WriteEnospcFailsTheGroup)
                     return true;
                 }));
     }
+    // The first group's write and the zeros over it failed: -21. A request
+    // queued behind it was never written: -19.
+    std::size_t unknown = 0;
     for(auto const& request: requests)
     {
-        EXPECT_EQ(request.status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+        int const status = request.status.load();
+        EXPECT_TRUE(status == chl::CL_ERR_DURABILITY_UNKNOWN || status == chl::CL_ERR_DURABILITY_UNAVAILABLE) << status;
+        unknown += (status == chl::CL_ERR_DURABILITY_UNKNOWN) ? 1 : 0;
         EXPECT_FALSE(wal->isDurable(kStory, identityOf(request.event)));
-        EXPECT_EQ(copiesOnDisk(request.event), 0u);
+        EXPECT_EQ(copiesOnDisk(request.event), 0u); // the test sink wrote nothing
     }
+    EXPECT_GE(unknown, 1u);
     // a failed write is never followed by a sync that could pass for success
     EXPECT_EQ(sink->syncCount(), syncs_before);
     EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
@@ -620,6 +675,364 @@ TEST_F(KeeperWalTest, WriteEnospcFailsTheGroup)
     chl::LogEvent const later = makeEvent(kStory, 2000);
     EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_EQ(copiesOnDisk(later), 0u);
+}
+
+// A12. After a failed writeback Linux marks the pages clean and keeps them, so
+// a group whose sync failed would read back whole on the same boot and be
+// recovered as durable. The committer overwrites it with zeros and syncs
+// before it answers; then every record of the group gets
+// CL_ERR_DURABILITY_UNAVAILABLE. Read back as a restarted keeper reads it,
+// the directory holds none of the group's events and every event of the
+// groups synced before it.
+TEST_F(KeeperWalTest, FailedSyncErasesTheGroupBeforeAnsweringUnavailable)
+{
+    startWal();
+    chl::LogEvent const earlier = makeEvent(kStory, 900);
+    ASSERT_EQ(append(earlier), chl::CL_SUCCESS);
+    uint64_t const segment = segmentOf(earlier);
+
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kOtherStory, 950); // its group syncs
+    requests.emplace_back().event = makeEvent(kStory, 1000);
+    requests.emplace_back().event = makeEvent(kStory, 1001);
+    requests.emplace_back().event = makeEvent(kThirdStory, 1002); // its N record is in the failed group too
+    uint64_t group_start = 0;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(
+                waitFor([&]() { return copiesOnDisk(requests[0].event) == 1 && sink->syncCount() > syncs_before; }));
+        // the next group goes where the data written so far ends
+        ASSERT_TRUE(zerosAfterData(segment, group_start));
+        for(std::size_t i = 1; i < requests.size(); ++i)
+        {
+            appendOn(pool, requests[i]);
+            ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == i + 1; }));
+        }
+        // the held sync started before this, so only the next group's fails
+        sink->failNextSyncsWith(EIO);
+        sink->releaseSyncs();
+        ASSERT_TRUE(waitFor([&]() { return allDone(requests); }));
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    for(std::size_t i = 1; i < requests.size(); ++i)
+    {
+        EXPECT_EQ(requests[i].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+        EXPECT_FALSE(wal->isDurable(requests[i].event.getStoryId(), identityOf(requests[i].event)));
+        EXPECT_EQ(copiesOnDisk(requests[i].event), 0u);
+    }
+    // the first group's sync, the failed group's sync, the sync of the zeros
+    EXPECT_EQ(sink->syncCount(), syncs_before + 3);
+    uint64_t data_end = 0;
+    EXPECT_TRUE(zerosAfterData(segment, data_end));
+    EXPECT_EQ(data_end, group_start);
+
+    // latched
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+    EXPECT_EQ(wal->stats().events, 2u);
+
+    chl::RecoveredState const recovered = recoverDirectory();
+    EXPECT_TRUE(isRecovered(recovered, earlier));
+    EXPECT_TRUE(isRecovered(recovered, requests[0].event));
+    for(std::size_t i = 1; i < requests.size(); ++i) { EXPECT_FALSE(isRecovered(recovered, requests[i].event)); }
+    EXPECT_EQ(recovered.stories.count(kThirdStory), 0u);
+}
+
+// A write that fails partway can leave whole records of the group, with good
+// CRCs, in the segment. Everything from the group's start to the end of what
+// it would have written is overwritten with zeros and synced, and every
+// record gets CL_ERR_DURABILITY_UNAVAILABLE.
+TEST_F(KeeperWalTest, WriteFailingPartwayErasesTheGroupBeforeAnsweringUnavailable)
+{
+    startWal();
+    chl::LogEvent const earlier = makeEvent(kStory, 900);
+    ASSERT_EQ(append(earlier), chl::CL_SUCCESS);
+    uint64_t const segment = segmentOf(earlier);
+
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kOtherStory, 950); // its group syncs
+    requests.emplace_back().event = makeEvent(kStory, 1000);
+    requests.emplace_back().event = makeEvent(kStory, 1001);
+    uint64_t group_start = 0;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(
+                waitFor([&]() { return copiesOnDisk(requests[0].event) == 1 && sink->syncCount() > syncs_before; }));
+        ASSERT_TRUE(zerosAfterData(segment, group_start));
+        for(std::size_t i = 1; i < requests.size(); ++i)
+        {
+            appendOn(pool, requests[i]);
+            ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == i + 1; }));
+        }
+        // the story is named in the segment already, so the group is the two
+        // E records: the first reaches the file whole, the second half
+        uint64_t const partial =
+                wal::encodeEvent(requests[1].event).size() + wal::encodeEvent(requests[2].event).size() / 2;
+        sink->failNextWriteAt(group_start, partial, EIO);
+        sink->releaseSyncs();
+        ASSERT_TRUE(waitFor([&]() { return allDone(requests); }));
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    for(std::size_t i = 1; i < requests.size(); ++i)
+    {
+        EXPECT_EQ(requests[i].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+        EXPECT_FALSE(wal->isDurable(kStory, identityOf(requests[i].event)));
+        EXPECT_EQ(copiesOnDisk(requests[i].event), 0u);
+    }
+    // the first group's sync and the sync of the zeros; the failed write is
+    // not followed by a sync of its own
+    EXPECT_EQ(sink->syncCount(), syncs_before + 2);
+    uint64_t data_end = 0;
+    EXPECT_TRUE(zerosAfterData(segment, data_end));
+    EXPECT_EQ(data_end, group_start);
+
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+
+    chl::RecoveredState const recovered = recoverDirectory();
+    EXPECT_TRUE(isRecovered(recovered, earlier));
+    EXPECT_TRUE(isRecovered(recovered, requests[0].event));
+    EXPECT_FALSE(isRecovered(recovered, requests[1].event));
+    EXPECT_FALSE(isRecovered(recovered, requests[2].event));
+}
+
+// When the zeros cannot be written over a group whose sync failed, its record
+// stays in the segment and may be on disk: CL_ERR_DURABILITY_UNKNOWN. No sync
+// follows the failed write of the zeros.
+TEST_F(KeeperWalTest, FailedSyncWhoseGroupCannotBeErasedAnswersUnknown)
+{
+    startWal();
+    chl::LogEvent const earlier = makeEvent(kStory, 900);
+    ASSERT_EQ(append(earlier), chl::CL_SUCCESS);
+
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kStory, 1000);
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(
+                waitFor([&]() { return copiesOnDisk(requests[0].event) == 1 && sink->syncCount() > syncs_before; }));
+        // both while the group's sync is held: it fails, and so does every write after it
+        sink->failSyncsWith(EIO);
+        sink->failWritesWith(EIO);
+        sink->releaseSyncs();
+        ASSERT_TRUE(waitFor([&]() { return allDone(requests); }));
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNKNOWN);
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(requests[0].event)));
+    EXPECT_EQ(copiesOnDisk(requests[0].event), 1u);
+    EXPECT_EQ(sink->syncCount(), syncs_before + 1);
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+
+    // latched, also once the device works again
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    sink->failSyncsWith(0);
+    sink->failWritesWith(0);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+}
+
+// When the zeros are written but their sync fails, the group may still be on
+// disk: every record of it gets CL_ERR_DURABILITY_UNKNOWN.
+TEST_F(KeeperWalTest, FailedSyncWhoseZerosCannotBeSyncedAnswersUnknown)
+{
+    startWal();
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kOtherStory, 950); // its group syncs
+    requests.emplace_back().event = makeEvent(kStory, 1000);
+    requests.emplace_back().event = makeEvent(kStory, 1001);
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(
+                waitFor([&]() { return copiesOnDisk(requests[0].event) == 1 && sink->syncCount() > syncs_before; }));
+        for(std::size_t i = 1; i < requests.size(); ++i)
+        {
+            appendOn(pool, requests[i]);
+            ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == i + 1; }));
+        }
+        // the group's sync and the sync of the zeros
+        sink->failNextSyncsWith(EIO, 2);
+        sink->releaseSyncs();
+        ASSERT_TRUE(waitFor([&]() { return allDone(requests); }));
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    for(std::size_t i = 1; i < requests.size(); ++i)
+    {
+        EXPECT_EQ(requests[i].status.load(), chl::CL_ERR_DURABILITY_UNKNOWN);
+        EXPECT_FALSE(wal->isDurable(kStory, identityOf(requests[i].event)));
+        // the zeros were written, so the file reads back without them
+        EXPECT_EQ(copiesOnDisk(requests[i].event), 0u);
+    }
+    EXPECT_EQ(sink->syncCount(), syncs_before + 3);
+
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+    chl::LogEvent const later = makeEvent(kStory, 2000);
+    EXPECT_EQ(append(later), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(later), 0u);
+}
+
+// The erase runs on the committer's stream without the WAL's mutex. While the
+// sync of the zeros is held, a new request is refused at once, a durable event
+// is answered at once, the observer calls return, and a retry of the failed
+// event waits with it for the group's answer.
+TEST_F(KeeperWalTest, EraseDoesNotHoldUpOtherCallers)
+{
+    startWal();
+    chl::LogEvent const earlier = makeEvent(kStory, 900);
+    ASSERT_EQ(append(earlier), chl::CL_SUCCESS);
+    uint64_t group_start = 0;
+    ASSERT_TRUE(zerosAfterData(segmentOf(earlier), group_start));
+
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    // the write fails at once, so the first sync is the one after the zeros
+    sink->failNextWriteAt(group_start, 0, EIO);
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kStory, 1000);
+    std::deque<Lookup> lookups;
+    lookups.emplace_back().event = requests[0].event;
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return sink->syncCount() > syncs_before; }));
+        lookupOn(pool, lookups[0]);
+
+        auto const started = std::chrono::steady_clock::now();
+        EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+        chl::LogEvent const other = makeEvent(kOtherStory, 1100);
+        EXPECT_EQ(append(other), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+        EXPECT_EQ(wal->lookupDurable(kStory, identityOf(earlier)), std::optional<int>(chl::CL_SUCCESS));
+        wal->chunkWritten(kStory, chunkOf(kStory, {earlier}));
+        wal->storyDropped(kOtherStory);
+        EXPECT_EQ(wal->stats().queued_events, 1u);
+        EXPECT_LT(std::chrono::steady_clock::now() - started, 1s);
+        std::this_thread::sleep_for(50ms);
+        EXPECT_FALSE(requests[0].done.load());
+        EXPECT_FALSE(lookups[0].done.load());
+        EXPECT_EQ(copiesOnDisk(other), 0u);
+        sink->releaseSyncs();
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(lookups[0].answer, std::optional<int>(chl::CL_ERR_DURABILITY_UNAVAILABLE));
+    EXPECT_EQ(copiesOnDisk(requests[0].event), 0u);
+    EXPECT_EQ(droppedRecordsOnDisk(kOtherStory), 0u);
+    EXPECT_EQ(wal->stats().pending_events, 0u);
+}
+
+// After a rotation the group goes into the new segment, right after its H
+// record. A write that fails there after all its bytes reached the file is
+// erased in that segment: the full segment before it keeps every record, and
+// the new one reads back as holding only its H.
+TEST_F(KeeperWalTest, WriteFailingAfterARotationErasesTheGroupInTheNewSegment)
+{
+    startWal();
+    // three 300 KiB events fill a 1 MiB segment
+    std::vector<chl::LogEvent> earlier;
+    for(uint64_t i = 0; i < 3; ++i)
+    {
+        earlier.push_back(makeEvent(kStory, 1000 + i, 300 * 1024));
+        ASSERT_EQ(append(earlier.back()), chl::CL_SUCCESS);
+    }
+    uint64_t const full = segmentOf(earlier[0]);
+    ASSERT_EQ(segmentOf(earlier[2]), full);
+    std::vector<uint64_t> const listed = segmentNumbers();
+    ASSERT_EQ(listed.size(), 2u);
+    uint64_t const spare = listed.back();
+    ASSERT_GT(spare, full);
+
+    // the preparer writes the next spare's H at offset 0, so only the group's
+    // write is at the end of the new segment's H
+    uint64_t const header_bytes = wal::encodeHeader(wal::HeaderRecord{wal::kFormatVersion, spare, 0, kEndpoint}).size();
+    chl::LogEvent const failed = makeEvent(kStory, 2000, 300 * 1024);
+    uint64_t const group_bytes = wal::encodeNames(wal::NamesRecord{kStory, kChronicle, storyName(kStory)}).size() +
+                                 wal::encodeEvent(failed).size();
+    sink->failNextWriteAt(header_bytes, group_bytes, EIO);
+    EXPECT_EQ(append(failed), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(failed), 0u);
+    uint64_t data_end = 0;
+    EXPECT_TRUE(zerosAfterData(spare, data_end));
+    EXPECT_EQ(data_end, header_bytes);
+    EXPECT_TRUE(zerosAfterData(full, data_end));
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+
+    chl::RecoveredState const recovered = recoverDirectory();
+    for(auto const& event: earlier) { EXPECT_TRUE(isRecovered(recovered, event)); }
+    EXPECT_FALSE(isRecovered(recovered, failed));
+}
+
+// A rotation whose sync of the full segment fails fails the group before any
+// of it is written: there is nothing to erase, the group gets
+// CL_ERR_DURABILITY_UNAVAILABLE, and the spare keeps only its H.
+TEST_F(KeeperWalTest, FailedSyncBeforeARotationWritesNothingOfTheGroup)
+{
+    startWal();
+    std::vector<chl::LogEvent> earlier;
+    for(uint64_t i = 0; i < 3; ++i)
+    {
+        earlier.push_back(makeEvent(kStory, 1000 + i, 300 * 1024));
+        ASSERT_EQ(append(earlier.back()), chl::CL_SUCCESS);
+    }
+    std::vector<uint64_t> const listed = segmentNumbers();
+    ASSERT_EQ(listed.size(), 2u);
+    uint64_t const spare = listed.back();
+
+    uint64_t const syncs_before = sink->syncCount();
+    sink->failNextSyncsWith(EIO);
+    chl::LogEvent const failed = makeEvent(kStory, 2000, 300 * 1024);
+    EXPECT_EQ(append(failed), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(failed), 0u);
+    // the rotation's sync only: no zeros were written, so none were synced
+    EXPECT_EQ(sink->syncCount(), syncs_before + 1);
+    uint64_t data_end = 0;
+    EXPECT_TRUE(zerosAfterData(spare, data_end));
+    EXPECT_EQ(data_end, wal::encodeHeader(wal::HeaderRecord{wal::kFormatVersion, spare, 0, kEndpoint}).size());
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+
+    chl::RecoveredState const recovered = recoverDirectory();
+    for(auto const& event: earlier) { EXPECT_TRUE(isRecovered(recovered, event)); }
+    EXPECT_FALSE(isRecovered(recovered, failed));
+}
+
+// A rotation that cannot get a spare also fails the group before any of it is
+// written: CL_ERR_DURABILITY_UNAVAILABLE, and the events before it recover.
+TEST_F(KeeperWalTest, SpareFailureAtARotationWritesNothingOfTheGroup)
+{
+    startWal(1min, true);
+    ASSERT_NE(renameSink, nullptr);
+    // the ready spare is taken by the first rotation; every later one fails
+    renameSink->failRenamesWith(EIO);
+    std::vector<chl::LogEvent> earlier;
+    for(uint64_t i = 0; i < 6; ++i)
+    {
+        earlier.push_back(makeEvent(kStory, 1000 + i, 300 * 1024));
+        ASSERT_EQ(append(earlier.back()), chl::CL_SUCCESS);
+    }
+    ASSERT_LT(segmentOf(earlier[0]), segmentOf(earlier[5]));
+
+    chl::LogEvent const failed = makeEvent(kStory, 2000, 300 * 1024);
+    EXPECT_EQ(append(failed), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_EQ(copiesOnDisk(failed), 0u);
+    EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+
+    chl::RecoveredState const recovered = recoverDirectory();
+    for(auto const& event: earlier) { EXPECT_TRUE(isRecovered(recovered, event)); }
+    EXPECT_FALSE(isRecovered(recovered, failed));
 }
 
 TEST_F(KeeperWalTest, BelowReserveIsFullAndRecovers)
@@ -812,7 +1225,7 @@ TEST_F(KeeperWalTest, RetryJoinsAFailedAppendAndGetsItsFailure)
 {
     startWal();
     sink->holdSyncs();
-    sink->failSyncsWith(EIO);
+    sink->failNextSyncsWith(EIO);
 
     std::deque<Append> requests;
     chl::LogEvent const event = makeEvent(kStory, 1000);
@@ -830,7 +1243,7 @@ TEST_F(KeeperWalTest, RetryJoinsAFailedAppendAndGetsItsFailure)
     EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_EQ(requests[1].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_FALSE(wal->isDurable(kStory, identityOf(event)));
-    EXPECT_EQ(copiesOnDisk(event), 1u); // written, never synced, never counted
+    EXPECT_EQ(copiesOnDisk(event), 0u); // written once, erased before the answer
 }
 
 // A retry of an event already durable gets CL_SUCCESS without a second copy,
@@ -845,7 +1258,7 @@ TEST_F(KeeperWalTest, RetryOfADurableEventIsNotWrittenAgain)
     EXPECT_EQ(wal->stats().events, 1u);
 
     // fail the WAL with another event
-    sink->failSyncsWith(EIO);
+    sink->failNextSyncsWith(EIO);
     EXPECT_EQ(append(makeEvent(kStory, 2000)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
     EXPECT_EQ(append(event), chl::CL_SUCCESS);
@@ -1050,7 +1463,7 @@ TEST_F(KeeperWalTest, StopAnswersEveryWaiterWhenTheSyncFails)
 {
     startWal();
     sink->holdSyncs();
-    sink->failSyncsWith(EIO);
+    sink->failNextSyncsWith(EIO);
 
     std::deque<Append> requests;
     for(uint64_t i = 0; i < 16; ++i) { requests.emplace_back().event = makeEvent(kStory, 1000 + i); }
@@ -1299,7 +1712,9 @@ TEST_F(KeeperWalTest, LookupWaitsForAQueuedAttemptWhileTheReserveIsFull)
 }
 
 // A lookup that joined an attempt whose group failed gets that failure; once
-// answered, the identity is unknown to the WAL.
+// answered, the identity is unknown to the WAL. Every sync fails here, the
+// one after the zeros too, so the failure is CL_ERR_DURABILITY_UNKNOWN: the
+// retry is told that its first attempt may be on disk.
 TEST_F(KeeperWalTest, LookupOfAFailedAttemptGetsItsFailure)
 {
     startWal();
@@ -1320,8 +1735,8 @@ TEST_F(KeeperWalTest, LookupOfAFailedAttemptGetsItsFailure)
         EXPECT_FALSE(lookups[0].done.load());
         sink->releaseSyncs();
     }
-    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
-    EXPECT_EQ(lookups[0].answer, std::optional<int>(chl::CL_ERR_DURABILITY_UNAVAILABLE));
+    EXPECT_EQ(requests[0].status.load(), chl::CL_ERR_DURABILITY_UNKNOWN);
+    EXPECT_EQ(lookups[0].answer, std::optional<int>(chl::CL_ERR_DURABILITY_UNKNOWN));
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt);
 }
 
@@ -1338,7 +1753,7 @@ TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
     EXPECT_EQ(wal->lookupDurable(kOtherStory, identityOf(event)), std::nullopt);
 
-    sink->failSyncsWith(EIO);
+    sink->failNextSyncsWith(EIO);
     EXPECT_EQ(append(makeEvent(kStory, 2000)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     ASSERT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
