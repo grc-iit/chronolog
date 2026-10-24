@@ -369,6 +369,66 @@ expect_refused "--wal-dir list of two missing entries fails" \
 
 reset_host
 nvme_disk
+add_mount nvme /dev/nvme0n1p1 xfs $((G / 2)) $BIG 66305
+out=$(run_probe "${STD_ARGS[@]}" --wal-dir "$F/mnt/nvme/$USER:$F/mnt/missing")
+if [[ "$(sed -n '1s/^ERROR: //p' <<< "$out")" == "$F/mnt/nvme/$USER: has $((G / 2)) bytes free, which leaves less than max_bytes ($G) above the $((BIG / 10)) byte reserve" ]]; then
+    pass "--wal-dir list: the low-space reason names the free bytes, max_bytes and the reserve"
+else
+    fail "--wal-dir list: the low-space reason names the free bytes, max_bytes and the reserve: $out"
+fi
+
+# A list's leftover search covers only its entries: a leftover in TMPDIR is
+# named, not chosen
+reset_host
+nvme_disk
+add_mount nvme /dev/nvme0n1p1 xfs $((G / 2)) $BIG 66305
+mkdir -p "$F/tmp/$H/2"
+touch "$F/tmp/$H/2/00000000000000000001.wal"
+out=$(run_probe "${STD_ARGS[@]}" --wal-dir "$F/mnt/nvme/$USER:$F/mnt/missing")
+status=$?
+if ((status == 0)) || grep -q '^WAL_DIR=' <<< "$out"; then
+    fail "--wal-dir list with a leftover only in TMPDIR fails: $out"
+elif [[ "$(grep -c '^ERROR: ' <<< "$out")" -ne 3 ]] ||
+    ! grep -q "^ERROR: $F/mnt/nvme/$USER: .*less than max_bytes" <<< "$out" ||
+    ! grep -q "^ERROR: $F/mnt/missing: does not exist" <<< "$out" ||
+    ! grep -q "^ERROR: $F/tmp/$H/2: holds WAL segments of this install" <<< "$out"; then
+    fail "--wal-dir list with a leftover only in TMPDIR names each entry and the leftover: $out"
+elif [[ -e "$F/mnt/nvme/$USER/$H" || "$(ls -A "$F/tmp/$H/2")" != 00000000000000000001.wal ]]; then
+    fail "--wal-dir list with a leftover only in TMPDIR changes nothing"
+else
+    pass "--wal-dir list with a leftover only in TMPDIR fails, naming the leftover"
+fi
+
+reset_host
+nvme_disk
+add_mount nvme /dev/nvme0n1p1 xfs $BIG $BIG 66305
+mkdir -p "$F/tmp/$H/2"
+touch "$F/tmp/$H/2/00000000000000000001.wal"
+expect "--wal-dir list: a usable entry wins over a leftover in TMPDIR, which is named" "$F/mnt/nvme/$USER/$H/2" \
+    "$F/tmp/$H/2 holds" "${STD_ARGS[@]}" --wal-dir "$F/mnt/nvme/$USER:$F/mnt/missing"
+expect "--wal-dir list: TMPDIR given as an entry still finds its leftover" "$F/tmp/$H/2" "boot disk" \
+    "${STD_ARGS[@]}" --wal-dir "$F/mnt/missing:$F/tmp"
+
+# An empty entry is refused, not dropped
+reset_host
+nvme_disk
+add_mount nvme /dev/nvme0n1p1 xfs $BIG $BIG 66305
+for list in "$F/mnt/nvme/$USER:" ":$F/mnt/nvme/$USER" "$F/mnt/nvme/$USER::$F/tmp" ":" ""; do
+    out=$(run_probe "${STD_ARGS[@]}" --wal-dir "$list")
+    status=$?
+    if ((status == 0)) || grep -q '^WAL_DIR=' <<< "$out"; then
+        fail "--wal-dir '$list' with an empty entry refused: $out"
+    elif ! grep -q "empty entry" "$fixture/stderr"; then
+        fail "--wal-dir '$list': the error names the empty entry: $(cat "$fixture/stderr")"
+    elif [[ -e "$F/mnt/nvme/$USER/$H" ]]; then
+        fail "--wal-dir '$list' with an empty entry creates nothing"
+    else
+        pass "--wal-dir '$list' with an empty entry refused"
+    fi
+done
+
+reset_host
+nvme_disk
 add_mount nvme /dev/nvme0n1p1 xfs $BIG $BIG 66305
 mkdir -p "$F/rootdir"
 expect "single --wal-dir on the boot disk used as given, with a warning" "$F/rootdir/$H/2" "boot disk" \
@@ -507,6 +567,13 @@ WAL_ENABLED=0 WAL_DIR_LIST=""
 parse_args --start --wal-dir /a:/b > /dev/null
 [[ "$WAL_ENABLED" == 1 && "$WAL_DIR_LIST" == /a:/b ]] && pass "deploy_cluster: --wal-dir turns the WAL on with its list" ||
     fail "deploy_cluster: --wal-dir turns the WAL on with its list"
+for list in "/a:" ":/a" "/a::/b" ""; do
+    if (parse_args --start --wal-dir "$list" > /dev/null 2>&1); then
+        fail "deploy_cluster: --wal-dir '$list' with an empty entry refused"
+    else
+        pass "deploy_cluster: --wal-dir '$list' with an empty entry refused"
+    fi
+done
 
 source <(sed -n '/^delegate_to_deploy_cluster() {/,/^}/p; /^parse_args() {/,/^}/p' \
     "$repo_root/tools/deploy/single_user_deploy.sh")
@@ -535,6 +602,11 @@ delegated() { # MODE ARGS...: runs single_user_deploy.sh's parse_args and delega
 [[ "$(delegated --stop --stop --wal --wal-dir /z)" != *"--wal"* ]] &&
     pass "single_user_deploy: WAL options not passed on stop" ||
     fail "single_user_deploy: WAL options not passed on stop"
+source <(sed -n '/^usage() {/,/^}/p' "$repo_root/tools/deploy/single_user_deploy.sh")
+help=$( (usage) 2>&1 | tr -s ' \n' ' ')
+[[ "$help" == *"--wal-dir <A[:B:...]>"*"the deploy fails when no entry is usable on a keeper host"* ]] &&
+    pass "single_user_deploy: --wal-dir help says the deploy fails when no entry is usable" ||
+    fail "single_user_deploy: --wal-dir help says the deploy fails when no entry is usable: $help"
 
 echo "$failures WAL directory probe checks failed"
 test "$failures" -eq 0

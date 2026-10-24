@@ -26,6 +26,8 @@ VISOR_BIN_USER_SET=false
 KEEPER_BIN_USER_SET=false
 GRAPHER_BIN_USER_SET=false
 PLAYER_BIN_USER_SET=false
+CONF_FILE_USER_SET=false
+CLIENT_CONF_FILE_USER_SET=false
 
 # Directories (initialize with defaults; may be overridden via CLI)
 WORK_DIR="${DEFAULT_WORK_DIR}"
@@ -342,7 +344,6 @@ check_installation() {
 
 refresh_paths_for_work_dir() {
     LIB_DIR="${WORK_DIR}/lib"
-    CONF_DIR="${WORK_DIR}/conf"
     BIN_DIR="${WORK_DIR}/bin"
     # Preserve user-set --output-dir / --monitor-dir; only re-derive from WORK_DIR
     # when the user didn't override them explicitly.
@@ -357,8 +358,15 @@ refresh_paths_for_work_dir() {
     [[ "${KEEPER_BIN_USER_SET}" == "false" ]] && KEEPER_BIN="${BIN_DIR}/chrono-keeper"
     [[ "${GRAPHER_BIN_USER_SET}" == "false" ]] && GRAPHER_BIN="${BIN_DIR}/chrono-grapher"
     [[ "${PLAYER_BIN_USER_SET}" == "false" ]] && PLAYER_BIN="${BIN_DIR}/chrono-player"
-    CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
-    CLIENT_CONF_FILE="${CONF_DIR}/default-chrono-client-conf.json"
+    # Keep a conf given with -f/-n too. The generated confs go next to the -f
+    # one, where stop, restart and clean look for them.
+    if [[ "${CONF_FILE_USER_SET}" == "false" ]]; then
+        CONF_DIR="${WORK_DIR}/conf"
+        CONF_FILE="${CONF_DIR}/default-chrono-conf.json"
+    fi
+    if [[ "${CLIENT_CONF_FILE_USER_SET}" == "false" ]]; then
+        CLIENT_CONF_FILE="${WORK_DIR}/conf/default-chrono-client-conf.json"
+    fi
 }
 
 check_work_dir() {
@@ -622,7 +630,8 @@ usage() {
     echo "  -a|--player-bin <path>           Path to ChronoPlayer binary (default: work_dir/bin/chrono-player)"
     echo ""
     echo "Configuration Settings:"
-    echo "  -f|--conf-file <path>            Path to configuration file (default: work_dir/conf/default-chrono-conf.json)"
+    echo "  -f|--conf-file <path>            Path to configuration file (default: work_dir/conf/default-chrono-conf.json);"
+    echo "                                   the generated confs go in its directory. Give stop, restart and clean the same -f"
     echo "  -n|--client-conf-file <path>     Path to client configuration file (default: work_dir/conf/default-chrono-client-conf.json)"
     echo ""
     echo "Examples:"
@@ -708,9 +717,11 @@ parse_args() {
             -f|--conf-file)
                 CONF_FILE=$(realpath -m "$2")
                 CONF_DIR=$(dirname "${CONF_FILE}")
+                CONF_FILE_USER_SET=true
                 shift 2 ;;
             -n|--client-conf-file)
                 CLIENT_CONF_FILE=$(realpath -m "$2")
+                CLIENT_CONF_FILE_USER_SET=true
                 shift 2 ;;
             *)
                 echo -e "${ERR}Unknown option: $1${NC}"

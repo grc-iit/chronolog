@@ -4,7 +4,8 @@
 # on stdout, and creates <dir>. Exits nonzero, without a WAL_DIR line, on bad
 # arguments, when <dir> cannot be created, or when no entry of a --wal-dir list
 # is usable; in that last case it prints "ERROR: <entry>: <reason>" on stdout for
-# each entry.
+# each entry, and one "ERROR: <dir>: ..." line when ${TMPDIR:-/tmp}/<hash>/<group>
+# holds *.wal.
 #
 # The base directory is, in this order:
 #  1. one whose <base>/<hash>/<group> already holds *.wal, among the candidates and
@@ -14,9 +15,12 @@
 #     (lsblk TRAN and ROTA), with free space minus the reserve at least max_bytes;
 #  3. ${TMPDIR:-/tmp} as resolved on this host, with a warning.
 # --wal-dir A:B:C replaces the discovered candidates with that ordered list (the
-# boot-disk and media checks do not apply to it) and has no fallback: when no
-# entry passes, the probe fails. A single --wal-dir path is used
-# as given. <hash>/<group> is appended to the chosen base in every case.
+# boot-disk and media checks do not apply to it) and the fallback with nothing:
+# step 1 looks only in the list's entries, and when no entry passes step 2 the
+# probe fails. Leftovers elsewhere, ${TMPDIR:-/tmp} included, are only named. A
+# list with an empty entry (/a:, :/a, /a::/b) is refused. A single --wal-dir
+# path is used as given. <hash>/<group> is appended to the chosen base in every
+# case.
 #
 # "Boot disk" compares the physical disk under the directory (findmnt SOURCE, then
 # lsblk PKNAME up to the whole disk) with the one under /. When either is not a
@@ -73,8 +77,10 @@ done
 [[ "${reserve_percent}" =~ ^[0-9]+$ ]] && ((10#${reserve_percent} <= 100)) || usage
 wal_dir_entries=()
 if ${wal_dir_given}; then
+  # read -a drops a trailing empty field, so look for empty entries in the string
+  [[ -n "${wal_dir_list}" && "${wal_dir_list}" != :* && "${wal_dir_list}" != *: && "${wal_dir_list}" != *::* ]] ||
+    die "--wal-dir '${wal_dir_list}' has an empty entry"
   IFS=: read -ra wal_dir_entries <<<"${wal_dir_list}"
-  [[ ${#wal_dir_entries[@]} -gt 0 ]] || usage
   for entry in "${wal_dir_entries[@]}"; do
     [[ "${entry}" == /* ]] || die "--wal-dir entry '${entry}' is not an absolute path"
   done
@@ -175,7 +181,7 @@ usable() {
   elif ! space_of "$1"; then
     UNUSABLE_REASON="cannot read its free space"
   elif ((FREE_BYTES - RESERVE_BYTES < max_bytes)); then
-    UNUSABLE_REASON="has ${FREE_BYTES} bytes free; above the ${RESERVE_BYTES} byte reserve that is less than max_bytes (${max_bytes})"
+    UNUSABLE_REASON="has ${FREE_BYTES} bytes free, which leaves less than max_bytes (${max_bytes}) above the ${RESERVE_BYTES} byte reserve"
   else
     return 0
   fi
@@ -239,13 +245,13 @@ if ${wal_dir_given} && [[ ${#wal_dir_entries[@]} -eq 1 ]]; then
   find_leftovers "${discovered_bases[@]}" "${fallback}"
 else
   if ${wal_dir_given}; then
-    search=("${wal_dir_entries[@]}")
+    # a list replaces the discovery and its fallback
+    find_leftovers "${wal_dir_entries[@]}"
   else
     discover
-    search=("${discovered_bases[@]}")
     candidates_checked=("${candidates[@]}")
+    find_leftovers "${discovered_bases[@]}" "${fallback}"
   fi
-  find_leftovers "${search[@]}" "${fallback}"
   if [[ ${#leftovers[@]} -gt 0 ]]; then
     base=${leftovers[0]%/"${wal_suffix}"}
   else
@@ -262,9 +268,13 @@ else
     done
   fi
   if [[ -z "${base}" ]] && ${wal_dir_given}; then
-    # a list replaces the discovery and its fallback
     for line in "${entry_errors[@]}"; do
       echo "ERROR: ${line}"
+    done
+    find_leftovers "${fallback}"
+    for dir in "${leftovers[@]}"; do
+      echo "ERROR: ${dir}: holds WAL segments of this install, which a --wal-dir list does not use;" \
+        "move them into a list entry's ${wal_suffix} or remove them"
     done
     exit 1
   fi
@@ -276,7 +286,7 @@ else
   # leftovers outside the list are only named
   if ${wal_dir_given}; then
     discover
-    find_leftovers "${discovered_bases[@]}"
+    find_leftovers "${discovered_bases[@]}" "${fallback}"
   fi
 fi
 
@@ -316,8 +326,8 @@ if space_of "${wal_dir}"; then
     warn "WAL directory ${wal_dir} has ${FREE_BYTES} bytes free, below the ${RESERVE_BYTES} byte reserve:" \
       "the keeper refuses durable writes until space is freed"
   elif ((FREE_BYTES - RESERVE_BYTES < max_bytes)); then
-    warn "WAL directory ${wal_dir} has ${FREE_BYTES} bytes free; above the ${RESERVE_BYTES} byte reserve" \
-      "that is less than max_bytes (${max_bytes})"
+    warn "WAL directory ${wal_dir} has ${FREE_BYTES} bytes free, which leaves less than max_bytes (${max_bytes})" \
+      "above the ${RESERVE_BYTES} byte reserve"
   fi
 fi
 

@@ -801,7 +801,9 @@ clean_keeper_wal_dirs() {
     if [[ "${force}" != "true" ]]; then
       echo -e "${ERR}Refusing to remove keeper WAL directories with unconfirmed events:${NC}" >&2
       printf '  %s\n' "${refused[@]}" >&2
-      echo -e "${ERR}Restart those keepers (--restart-keeper <host>) to replay them, or pass --force to discard them.${NC}" >&2
+      # A keeper finds its WAL directory again only with the same WAL options
+      # and the same host order, which gives it the same recording group.
+      echo -e "${ERR}Start the deployment again with the same options, including --wal or --wal-dir, and the same host order, so the keepers replay their WAL, then stop it again. --restart-keeper <host> is only for a deployment whose visor and graphers still run. Or pass --force to discard them.${NC}" >&2
       return 1
     fi
     echo -e "${DEBUG}--force: discarding unconfirmed events in:${NC}"
@@ -956,7 +958,7 @@ stop() {
   parallel_remote_check_all
 
   if ((wal_status != 0)); then
-    echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed, its host did not answer, or its WAL directory is absent or empty) or holds unconfirmed events; see the table above. Restart that keeper with --restart-keeper <host> to replay them.${NC}" >&2
+    echo -e "${ERR}A keeper WAL has no exit-summary (the keeper crashed or was killed, its host did not answer, or its WAL directory is absent or empty) or holds unconfirmed events; see the table above. Start the deployment again with the same options, including --wal or --wal-dir, and the same host order, so the keepers replay their WAL, then stop it again. --restart-keeper <host> is only for a deployment whose visor and graphers still run.${NC}" >&2
     exit 1
   fi
 
@@ -1125,6 +1127,10 @@ parse_args() {
       shift
       ;;
     --wal-dir)
+      if [[ -z "$2" || "$2" == :* || "$2" == *: || "$2" == *::* ]]; then
+        echo -e "${ERR}--wal-dir '$2' has an empty entry${NC}" >&2
+        exit 1
+      fi
       WAL_ENABLED=1
       WAL_DIR_LIST="$2"
       shift 2
