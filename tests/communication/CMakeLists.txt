@@ -79,3 +79,13 @@ add_test(NAME Communication_Thallium_ClientMpi COMMAND thallium_client_mpi)
 # Thallium protocol multi-node script (SLURM/squeue; run manually)
 add_test(NAME Communication_Thallium_ProtocolScript COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/thallium_protocol_test.sh)
 set_tests_properties(Communication_Thallium_ProtocolScript PROPERTIES MANUAL TRUE)
+
+# Self-contained bounded-RPC capability peers; unsupported transports fail.
+add_executable(rpc_deadline_capability_probe rpc_deadline_capability_probe.cpp)
+target_link_libraries(rpc_deadline_capability_probe PRIVATE thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    add_test(NAME Communication_RpcDeadlineCapability_${transport}
+        COMMAND rpc_deadline_capability_probe --primitives ofi+${transport})
+    set_tests_properties(Communication_RpcDeadlineCapability_${transport}
+        PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+endforeach()
