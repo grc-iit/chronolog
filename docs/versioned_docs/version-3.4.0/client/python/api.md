@@ -194,14 +194,15 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
 
 - Append a new event and wait until it has reached `options.durability`. Returns a tuple
   `(status, event_time)`. `status` is `0` (`CL_SUCCESS`) once the event got there; `event_time` is
-  the event's timestamp on success and `0` otherwise.
+  the event's timestamp on success and with `-21`, and `0` with every other status.
 - With `Durability.Accepted` (the default) it takes the same path as `log_event(event_string)` and
   returns the keeper's status instead of discarding it.
 - With `Durability.Durable` it returns `0` only after the keeper wrote the event to its write-ahead
   log (WAL) and `fdatasync` returned. A keeper that cannot make the event durable answers with an
-  error and stores nothing; the write is never downgraded to Accepted. The WAL is off by default on
-  the keepers, and with it off every durable write returns `-19`
-  (`CL_ERR_DURABILITY_UNAVAILABLE`). See [Keeper WAL](../../user-guide/architecture/keeper-wal.md).
+  error and stores nothing, except that `-21` means it may be stored; the write is never downgraded
+  to Accepted. The WAL is off by default on the keepers, and with it off every durable write
+  returns `-19` (`CL_ERR_DURABILITY_UNAVAILABLE`). See
+  [Keeper WAL](../../user-guide/architecture/keeper-wal.md).
 - A durable call can block for up to `options.attempts × options.timeout_ms` (30 s with the
   defaults). It releases the GIL while it waits, so other Python threads keep running. Do not change
   the `options` object from another thread during the call.
@@ -221,7 +222,9 @@ if status == 0:
 elif status == -20:
     pass                      # nothing stored; back off and write again
 elif status == -21:
-    pass                      # may be stored; a new log_event creates a second event
+    pass                      # may be stored; a new log_event creates a second event.
+                              # event_time is the event's timestamp: replay the story
+                              # around it to see whether the event is there
 else:
     print(f"durable write failed: {status}")   # nothing stored
 ```
@@ -264,7 +267,7 @@ options = py_chronolog_client.LogEventOptions()
 |-------|------|---------|-------------|
 | `durability` | `Durability` | `Durability.Accepted` | Level the call waits for |
 | `timeout_ms` | `int` | `10000` | Durable writes only: deadline of each attempt, in milliseconds |
-| `attempts` | `int` | `3` | Durable writes only: attempts before `-21` (`CL_ERR_DURABILITY_UNKNOWN`) |
+| `attempts` | `int` | `3` | Durable writes only: attempts to send before giving up; an attempt that gets no answer is retried |
 
 ---
 

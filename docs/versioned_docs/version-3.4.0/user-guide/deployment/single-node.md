@@ -68,7 +68,7 @@ Exactly one mode must be specified per invocation:
 | `-g, --grapher-bin <path>` | `<work-dir>/bin/chrono-grapher` | Path to the ChronoGrapher binary |
 | `-p, --keeper-bin <path>` | `<work-dir>/bin/chrono-keeper` | Path to the ChronoKeeper binary |
 | `-a, --player-bin <path>` | `<work-dir>/bin/chrono-player` | Path to the ChronoPlayer binary |
-| `-f, --conf-file <path>` | `<work-dir>/conf/default-chrono-conf.json` | Main configuration template |
+| `-f, --conf-file <path>` | `<work-dir>/conf/default-chrono-conf.json` | Main configuration template. The generated per-component confs go in its directory, also with `--work-dir`; give `--stop`, `--restart-keeper` and `--clean` the same `-f` |
 | `-n, --client-conf-file <path>` | `<work-dir>/conf/default-chrono-client-conf.json` | Client configuration template |
 
 ## Process Startup Order

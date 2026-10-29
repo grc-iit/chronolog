@@ -180,7 +180,7 @@ struct LogEventOptions
 {
     Durability durability = Durability::Accepted;
     // durable writes only: deadline per RPC attempt, and how many attempts
-    // before CL_ERR_DURABILITY_UNKNOWN
+    // to send before giving up; an attempt that gets no answer is retried
     uint32_t timeout_ms = 10000;
     uint32_t attempts = 3;
 };
@@ -191,8 +191,9 @@ int StoryHandle::log_event(std::string const& event_record,
 ```
 
 Append a new event and return `CL_SUCCESS` once it has reached `options.durability`. On success
-`event_time` receives the event's timestamp; on any other return the client library's handle sets
-it to `0`. The default `StoryHandle` implementation, for subclasses, returns
+`event_time` receives the event's timestamp. It also receives it with `CL_ERR_DURABILITY_UNKNOWN`,
+so the caller can check later whether the event was stored; on any other return the client
+library's handle sets it to `0`. The default `StoryHandle` implementation, for subclasses, returns
 `CL_ERR_DURABILITY_UNAVAILABLE` to Durable without touching `event_time`.
 
 - **`Durability::Accepted`** (the default) takes the same path as `log_event(event_record)`, and
@@ -203,7 +204,8 @@ it to `0`. The default `StoryHandle` implementation, for subclasses, returns
   on a local disk, a keeper crash and a node reboot; on tmpfs, a keeper crash only; it never
   survives losing the disk. See [Keeper WAL](../../user-guide/architecture/keeper-wal.md). A keeper
   that cannot make the event durable answers with an error and does not store it, except in one
-  case after a failed `fdatasync`; see
+  case, when the keeper cannot erase a group whose write or `fdatasync` failed and answers
+  `CL_ERR_DURABILITY_UNKNOWN`; see
   [Durability error codes](./error-codes.md#durability-error-codes). It never downgrades the write
   to Accepted.
 - The default stays Accepted, so existing callers keep their cost: a durable write pays one RPC per event
@@ -266,7 +268,9 @@ else if(ret == chronolog::CL_ERR_DURABILITY_FULL)
 }
 else if(ret == chronolog::CL_ERR_DURABILITY_UNKNOWN)
 {
-    // may be stored; calling log_event again creates a second event
+    // may be stored; calling log_event again creates a second event.
+    // event_time is the event's timestamp: replay the story around it to
+    // see whether the event is there
 }
 else
 {
