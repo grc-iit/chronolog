@@ -154,7 +154,8 @@ void WalSegmentManager::startPreparer()
     }
     try
     {
-        preparerStream = thallium::xstream::create();
+        preparerPool = thallium::pool::create(thallium::pool::access::mpmc, thallium::pool::kind::fifo_wait);
+        preparerStream = thallium::xstream::create(thallium::scheduler::predef::basic_wait, *preparerPool);
         preparerThread = preparerStream->make_thread([this]() { preparerLoop(); });
     }
     catch(std::exception const& e)
@@ -175,6 +176,7 @@ void WalSegmentManager::startPreparer()
             {}
             preparerStream = thallium::managed<thallium::xstream>();
         }
+        preparerPool = thallium::managed<thallium::pool>();
         lastError = "cannot start the WAL segment preparer for " + directory + ": " + e.what();
         LOG_ERROR("[WalSegmentManager] {}; spares are prepared on the taker's thread", lastError);
         return;
@@ -198,6 +200,7 @@ void WalSegmentManager::stopPreparer()
     preparerStream->join();
     preparerThread = thallium::managed<thallium::thread>();
     preparerStream = thallium::managed<thallium::xstream>();
+    preparerPool = thallium::managed<thallium::pool>();
     preparerRunning = false;
 }
 
