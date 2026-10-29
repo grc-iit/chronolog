@@ -1,484 +1,374 @@
-#include <string>
-#include <vector>
-#include <map>
-#include <sstream>
-#include <sys/types.h>
-#include <unistd.h>
-
-#include <ConfigurationBlocks.h>
-#include <chronolog_types.h>
 #include <VisorClientPortal.h>
 #include <KeeperRegistry.h>
-#include <ClientRegistryManager.h>
-#include <ChronicleMetaDirectory.h>
 #include <ClientPortalService.h>
-
-namespace tl = thallium;
-namespace chl = chronolog;
-
-/////////////////
-chronolog::VisorClientPortal::VisorClientPortal()
-    : clientPortalState(chl::VisorClientPortal::UNKNOWN)
-    , clientPortalEngine(nullptr)
-    , clientPortalService(nullptr)
-    , theKeeperRegistry(nullptr) //TODO: revisit later ...
+#include <ConnectResponseMsg.h>
+#include <chronolog_client.h>
+#include <thallium/serialization/stl/pair.hpp>
+#include <thread>
+#include <optional>
+namespace chronolog
 {
-    // TODO: revisit the construction of registries ....
-    LOG_DEBUG("[VisorClientPortal] Constructor is called. Object created at {} in thread PID={}",
-              static_cast<const void*>(this),
-              getpid());
-    //clientManager = ChronoLog::Singleton<ClientRegistryManager>::GetInstance();
-    //chronicleMetaDirectory = ChronoLog::Singleton<ChronicleMetaDirectory>::GetInstance();
-    clientManager.setChronicleMetaDirectory(&chronicleMetaDirectory);
-    chronicleMetaDirectory.set_client_registry_manager(&clientManager);
-}
-
-////////////////
-int chronolog::VisorClientPortal::StartServices(chronolog::RPCProviderConf const& VISOR_CLIENT_PORTAL_SERVICE_CONF,
-                                                chl::KeeperRegistry* keeperRegistry)
+namespace
 {
-    int return_status = chronolog::CL_ERR_UNKNOWN;
-
-    // check if already started
-    if(clientPortalState != UNKNOWN)
+using namespace std::chrono_literals;
+struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
+{
+    std::shared_ptr<VisorClientPortal::Core> core;
+    VisorControlAction action;
+    ClientId client;
+    std::string chronicle, story;
+    uint32_t account, protocol;
+    std::optional<thallium::request> request;
+    PortalWork(std::shared_ptr<VisorClientPortal::Core> c,
+               VisorControlAction a,
+               ClientId id,
+               std::string const& cn,
+               std::string const& sn,
+               uint32_t account,
+               uint32_t protocol,
+               thallium::request const* req)
+        : core(std::move(c))
+        , action(a)
+        , client(id)
+        , chronicle(cn)
+        , story(sn)
+        , account(account)
+        , protocol(protocol)
     {
-        return chronolog::CL_SUCCESS;
-    }
-
-    // TODO : keeper registry can be a member ...
-    theKeeperRegistry = keeperRegistry;
-
-    try
-    {
-        // initialise thalium engine for KeeperRegistryService
-        std::string CLIENT_PORTAL_SERVICE_NA_STRING = VISOR_CLIENT_PORTAL_SERVICE_CONF.PROTO_CONF + "://" +
-                                                      VISOR_CLIENT_PORTAL_SERVICE_CONF.IP + ":" +
-                                                      std::to_string(VISOR_CLIENT_PORTAL_SERVICE_CONF.BASE_PORT);
-
-        uint16_t provider_id = VISOR_CLIENT_PORTAL_SERVICE_CONF.SERVICE_PROVIDER_ID;
-        margo_instance_id margo_id = margo_init(CLIENT_PORTAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 2);
-
-        if(MARGO_INSTANCE_NULL == margo_id)
+        if(req)
         {
-            LOG_ERROR("[VisorClientPortal] Failed to initialize margo_instance.");
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-
-        LOG_INFO("[VisorClientPortal] margo_instance initialized with NA_STRING {}", CLIENT_PORTAL_SERVICE_NA_STRING);
-
-        clientPortalEngine = new tl::engine(margo_id);
-        clientPortalService =
-                chl::ClientPortalService::CreateClientPortalService(*clientPortalEngine, provider_id, *this);
-        clientPortalState = INITIALIZED;
-        return_status = chronolog::CL_SUCCESS;
+            request.emplace(*req);
+            ++core->incomingRequests;
+        } // margo_ref_incr; only after admission.
     }
-    catch(tl::exception const& ex)
+    ~PortalWork() override
     {
-        LOG_ERROR("[VisorClientPortal] Failed to start ClientPortal services.");
-    }
-
-    return return_status;
-}
-
-void chronolog::VisorClientPortal::ShutdownServices() { clientPortalState = SHUTTING_DOWN; }
-
-/////////////////
-chronolog::VisorClientPortal::~VisorClientPortal()
-{
-    LOG_DEBUG("[VisorClientPortal] Destructor is called.");
-
-    ShutdownServices();
-
-    if(clientPortalService != nullptr)
-    {
-        delete clientPortalService;
-    }
-
-    if(clientPortalEngine != nullptr)
-    {
-        delete clientPortalEngine;
-    }
-}
-
-/**
- * Admin APIs
- */
-int chronolog::VisorClientPortal::ClientConnect(uint32_t client_euid, chl::ClientId& client_id, uint64_t& clock_offset)
-{
-    chronolog::ClientIdentity identity = chronolog::ClientIdentity::unpack(client_id);
-    LOG_INFO("New Client Connected. ClientEUID={}, ClientID={} (ip={}, port={}, instance={})",
-             client_euid,
-             client_id,
-             identity.ip,
-             identity.port,
-             identity.instance);
-    ClientInfo record;
-
-    if(!is_client_authenticated(client_euid))
-    {
-        LOG_ERROR("client_euid={} is invalid", client_euid);
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    return clientManager.add_client_record(client_id, record);
-}
-
-int chronolog::VisorClientPortal::ClientDisconnect(chronolog::ClientId const& client_id)
-{
-    LOG_INFO("Client Disconnected. ClientID={}", client_id);
-
-    // Auto-release any stories the client is still holding so the client
-    // record can always be cleaned up. Without this, remove_client_record
-    // refuses to remove a client that has acquired stories and the client
-    // would have to call ReleaseStory for every acquisition before Disconnect.
-    //
-    // release_all_acquired_stories reports back only the stories whose last
-    // acquirer was this client; stories still held by other clients keep
-    // recording.
-    std::vector<StoryId> released_with_no_acquirers_left;
-    chronicleMetaDirectory.release_all_acquired_stories(client_id, released_with_no_acquirers_left);
-    if(theKeeperRegistry != nullptr)
-    {
-        for(StoryId const& released_id: released_with_no_acquirers_left)
+        if(request)
         {
-            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+            request.reset();
+            --core->incomingRequests;
         }
     }
-
-    return clientManager.remove_client_record(client_id);
-}
-
-/**
- * Metadata APIs
- */
-int chronolog::VisorClientPortal::CreateChronicle(chl::ClientId const& client_id, std::string const& chronicle_name)
-{
-    if(chronicle_name.empty())
+    rpc::RpcResult<std::shared_ptr<VisorControlReply>> run(rpc::OperationContext& context) override
     {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    if(!chronicle_action_is_authorized(client_id, chronicle_name))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    int return_code = chronicleMetaDirectory.create_chronicle(chronicle_name);
-    if(return_code == chronolog::CL_SUCCESS)
-    {
-        LOG_INFO("[VisorClientPortal] Chronicle created: PID={}, ClientID={}, Name={}",
-                 getpid(),
-                 client_id,
-                 chronicle_name.c_str());
-    }
-    return (return_code);
-}
-
-int chronolog::VisorClientPortal::DestroyChronicle(chl::ClientId const& client_id,
-                                                   chl::ChronicleName const& chronicle_name)
-{
-    if(chronicle_name.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    if(!chronicle_action_is_authorized(client_id, chronicle_name))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    // Destroy rule: refuse if any story is held by a client other than the
-    // requester. If the requester is the sole acquirer of some stories, auto-
-    // release them first (the same Release path drives the sync flush so any
-    // in-flight events are persisted before the data is destroyed).
-    std::vector<std::pair<StoryId, std::string>> stories_to_auto_release;
-    int eligibility =
-            chronicleMetaDirectory.evaluate_chronicle_destroy(chronicle_name, client_id, stories_to_auto_release);
-    if(eligibility != chronolog::CL_SUCCESS)
-    {
-        return eligibility;
-    }
-
-    for(auto const& [sid, story_name]: stories_to_auto_release)
-    {
-        StoryId released_id{0};
-        bool was_last_acquirer = false;
-        int release_rc = chronicleMetaDirectory.release_story(client_id,
-                                                              chronicle_name,
-                                                              story_name,
-                                                              released_id,
-                                                              was_last_acquirer);
-        if(release_rc != chronolog::CL_SUCCESS)
+        if(!context.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+        auto reply = core->Execute(action, client, chronicle, story, account, protocol, context.deadline());
+        if(request)
         {
-            LOG_WARNING("[VisorClientPortal] DestroyChronicle: auto-release of StoryName={} failed rc={}",
-                        story_name,
-                        release_rc);
-            // Continue; metadata removal below will report any inconsistency.
+            // request carries a native handle ref; Core retains engine/provider.
+            // Native response, serialization and handle destruction are charged
+            // to this same worker slot, including a response that settles late.
+            switch(action)
+            {
+                case VisorControlAction::Connect:
+                    request->respond(
+                            ConnectResponseMsg(reply->status, reply->status == CL_SUCCESS ? client : ClientId{0}));
+                    break;
+                case VisorControlAction::Acquire:
+                    request->respond(reply->acquisition);
+                    break;
+                case VisorControlAction::ShowChronicles:
+                case VisorControlAction::ShowStories:
+                    request->respond(std::make_pair(reply->status, reply->names));
+                    break;
+                default:
+                    request->respond(reply->status);
+                    break;
+            }
         }
-        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        return {reply->status, true, std::move(reply)};
+    }
+};
+std::shared_ptr<VisorControlReply> failure(int status)
+{
+    auto r = std::make_shared<VisorControlReply>();
+    r->status = status;
+    r->acquisition = AcquireStoryResponseMsg(status, 0, {});
+    return r;
+}
+} // namespace
+VisorClientPortal::Core::Core()
+{
+    clients.setChronicleMetaDirectory(&directory);
+    directory.set_client_registry_manager(&clients);
+}
+VisorClientPortal::VisorClientPortal()
+    : core_(std::make_shared<Core>())
+{}
+VisorClientPortal::~VisorClientPortal() { ShutdownServices(); }
+void VisorClientPortal::ShutdownServices() { core_->shuttingDown.store(true, std::memory_order_release); }
+int VisorClientPortal::StartServices(RPCProviderConf const& conf, std::shared_ptr<KeeperRegistry> registry)
+{
+    return core_->StartServices(conf, std::move(registry));
+}
+int VisorClientPortal::Core::StartServices(RPCProviderConf const& conf, std::shared_ptr<KeeperRegistry> r)
+{
+    if(engine)
+        return CL_SUCCESS;
+    registry = std::move(r);
+    auto address = conf.PROTO_CONF + "://" + conf.IP + ":" + std::to_string(conf.BASE_PORT);
+    auto mid = margo_init(address.c_str(), MARGO_SERVER_MODE, 1, 2);
+    if(mid == MARGO_INSTANCE_NULL)
+        return CL_ERR_UNKNOWN;
+    engine = std::make_shared<thallium::engine>(mid);
+    provider = ClientPortalService::CreateClientPortalService(*engine, conf.SERVICE_PROVIDER_ID, shared_from_this());
+    // Provider roots Core through daemon lifetime. B12 must prove incoming and
+    // outgoing settlement before breaking this lease and finalizing engines.
+    return CL_SUCCESS;
+}
+std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Invoke(VisorControlAction action,
+                                                                   ClientId client,
+                                                                   std::string const& chronicle,
+                                                                   std::string const& story,
+                                                                   uint32_t account)
+{
+    auto started = rpc::RpcDeadline::Clock::now();
+    if(!registry || shuttingDown.load(std::memory_order_acquire))
+        return failure(CL_ERR_SHUTDOWN_INCOMPLETE);
+    auto owner = registry->adminOwner();
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.control_ms));
+    auto token = owner->runtime.reserve(deadline);
+    if(!token)
+        return failure(token.status());
+    auto work = std::make_shared<PortalWork>(shared_from_this(),
+                                             action,
+                                             client,
+                                             chronicle,
+                                             story,
+                                             account,
+                                             CLIENT_PROTOCOL_VERSION,
+                                             nullptr);
+    auto result = owner->runtime.invoke<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+    return result.reply ? std::move(*result.reply) : failure(result.status);
+}
+void VisorClientPortal::Core::Dispatch(thallium::request const& request,
+                                       VisorControlAction action,
+                                       ClientId client,
+                                       std::string const& chronicle,
+                                       std::string const& story,
+                                       uint32_t account,
+                                       uint32_t protocol)
+{
+    auto started = rpc::RpcDeadline::Clock::now();
+    if(!registry || shuttingDown.load(std::memory_order_acquire))
+        return;
+    auto owner = registry->adminOwner();
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.control_ms));
+    auto token = owner->runtime.reserve(deadline);
+    // At saturation no request copy, argument ownership, response context or
+    // mutation is created. The unchanged-wire client must bound its own wait.
+    if(!token)
+        return;
+    auto work = std::make_shared<PortalWork>(shared_from_this(),
+                                             action,
+                                             client,
+                                             chronicle,
+                                             story,
+                                             account,
+                                             protocol,
+                                             &request);
+    owner->runtime.invoke<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+}
+std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControlAction action,
+                                                                    ClientId client,
+                                                                    std::string const& chronicle,
+                                                                    std::string const& story,
+                                                                    uint32_t account,
+                                                                    uint32_t protocol,
+                                                                    rpc::RpcDeadline const& deadline)
+{
+    std::unique_lock<std::mutex> lock(operationMutex, std::defer_lock);
+    while(!deadline.expired() && !lock.try_lock())
+        std::this_thread::sleep_for(std::min(deadline.remaining(), rpc::RpcDeadline::Clock::duration(1ms)));
+    if(!lock.owns_lock() || deadline.expired())
+        return failure(CL_ERR_DEADLINE_EXCEEDED);
+    auto r = failure(CL_ERR_UNKNOWN);
+    StoryId id = 0;
+    bool last = false;
+    switch(action)
+    {
+        case VisorControlAction::Connect:
         {
-            // Stop the recording group from accepting new events for this
-            // story (notification is async; the Grapher will drain on its
-            // own when destroy lands below).
-            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+            if(protocol != CLIENT_PROTOCOL_VERSION)
+            {
+                r->status = CL_ERR_PROTOCOL_VERSION_MISMATCH;
+                break;
+            }
+            ClientInfo info;
+            r->status = clients.add_client_record(client, info);
+            break;
         }
-    }
-
-    // Destroy metadata FIRST so that any concurrent Acquire fails before it
-    // can hand out a recording group binding for stories in this chronicle.
-    int return_code = chronicleMetaDirectory.destroy_chronicle(chronicle_name);
-    if(return_code != chronolog::CL_SUCCESS)
-    {
-        return return_code;
-    }
-
-    if(theKeeperRegistry != nullptr)
-    {
-        // Broadcast destroy_chronicle to every Grapher so HDF5 files written
-        // by any group during the chronicle's lifetime are removed. The
-        // Grapher destroy is async internally.
-        theKeeperRegistry->notifyAllGraphersOfChronicleDestruction(chronicle_name);
-    }
-
-    LOG_INFO("[VisorClientPortal] Chronicle destroyed: ClientID={}, ChronicleName={}",
-             client_id,
-             chronicle_name.c_str());
-    return (return_code);
-}
-
-
-int chronolog::VisorClientPortal::DestroyStory(chl::ClientId const& client_id,
-                                               std::string const& chronicle_name,
-                                               std::string const& story_name)
-{
-    LOG_INFO("[VisorClientPortal] Story destroy requested: PID={}, ChronicleName={}, StoryName={}",
-             getpid(),
-             chronicle_name.c_str(),
-             story_name.c_str());
-    if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    if(chronicle_name.empty() || story_name.empty())
-    {
-        return chronolog::CL_ERR_INVALID_ARG;
-    }
-
-    StoryId story_id{0};
-    bool caller_holds_it = false;
-    int eligibility = chronicleMetaDirectory.evaluate_story_destroy(chronicle_name,
-                                                                    story_name,
-                                                                    client_id,
-                                                                    story_id,
-                                                                    caller_holds_it);
-    if(eligibility != chronolog::CL_SUCCESS)
-    {
-        return eligibility;
-    }
-
-    if(caller_holds_it)
-    {
-        // Auto-release on behalf of the caller. Release is async; the
-        // notification just stops the recording group from accepting new
-        // events for this story.
-        StoryId released_id{0};
-        bool was_last_acquirer = false;
-        int release_rc = chronicleMetaDirectory.release_story(client_id,
-                                                              chronicle_name,
-                                                              story_name,
-                                                              released_id,
-                                                              was_last_acquirer);
-        if(release_rc != chronolog::CL_SUCCESS)
+        case VisorControlAction::CreateChronicle:
+            r->status = chronicle.empty() ? CL_ERR_INVALID_ARG : directory.create_chronicle(chronicle);
+            break;
+        case VisorControlAction::Acquire:
         {
-            LOG_WARNING("[VisorClientPortal] DestroyStory: auto-release of StoryName={} failed rc={}",
-                        story_name,
-                        release_rc);
+            if(chronicle.empty() || story.empty())
+            {
+                r->status = CL_ERR_INVALID_ARG;
+                break;
+            }
+            if(!registry->is_running())
+            {
+                r->status = CL_ERR_NO_KEEPERS;
+                break;
+            }
+            r->status = directory.acquire_story(client, chronicle, story, id);
+            if(r->status != CL_SUCCESS)
+                break;
+            std::vector<KeeperIdCard> keepers;
+            ServiceId player;
+            bool locallyRejectedBeforeSetup = false;
+            r->status = registry->notifyRecordingGroupOfStoryRecordingStart(chronicle,
+                                                                            story,
+                                                                            id,
+                                                                            keepers,
+                                                                            player,
+                                                                            &deadline,
+                                                                            &locallyRejectedBeforeSetup);
+            // This local proof is set only before roster admission/insertion and
+            // child submission, never from a remote error code. Core exclusion
+            // preserves this operation's acquisition until the checked rollback.
+            if(r->status != CL_SUCCESS && locallyRejectedBeforeSetup)
+            {
+                StoryId released = 0;
+                bool wasLast = false;
+                if(directory.release_story(client, chronicle, story, released, wasLast, id) != CL_SUCCESS)
+                    r->status = CL_ERR_OUTCOME_UNCONFIRMED;
+            }
+            // Dispatched/possibly dispatched setup retains acquisition. A lost
+            // reply or remote -22/-24 must still leave duplicate acquire ACQUIRED.
+            if(r->status == CL_SUCCESS)
+            {
+                std::vector<ServiceId> services;
+                for(auto const& k: keepers) services.push_back(k.getRecordingServiceId());
+                r->acquisition = AcquireStoryResponseMsg(CL_SUCCESS, id, services, player);
+            }
+            break;
         }
-        if(was_last_acquirer && theKeeperRegistry != nullptr)
+        case VisorControlAction::Release:
+            r->status = directory.release_story(client, chronicle, story, id, last);
+            if(r->status == CL_SUCCESS && last)
+                r->status = registry->notifyRecordingGroupOfStoryRecordingStop(id, &deadline);
+            break;
+        case VisorControlAction::DestroyStory:
         {
-            theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(released_id);
+            bool held = false;
+            r->status = directory.evaluate_story_destroy(chronicle, story, client, id, held);
+            if(r->status != CL_SUCCESS)
+                break;
+            if(held)
+            {
+                r->status = directory.release_story(client, chronicle, story, id, last);
+                if(r->status != CL_SUCCESS)
+                    break;
+                if(last)
+                {
+                    r->status = registry->notifyRecordingGroupOfStoryRecordingStop(id, &deadline);
+                    if(r->status != CL_SUCCESS)
+                        break;
+                }
+            }
+            r->status = registry->notifyAllGraphersOfStoryDestruction(chronicle, story, id, &deadline);
+            if(r->status == CL_SUCCESS)
+                r->status = directory.destroy_story(chronicle, story);
+            break;
         }
+        case VisorControlAction::DestroyChronicle:
+        {
+            std::vector<std::pair<StoryId, std::string>> held;
+            r->status = directory.evaluate_chronicle_destroy(chronicle, client, held);
+            if(r->status != CL_SUCCESS)
+                break;
+            for(auto const& item: held)
+            {
+                r->status = directory.release_story(client, chronicle, item.second, id, last);
+                if(r->status != CL_SUCCESS)
+                    break;
+                if(last)
+                {
+                    r->status = registry->notifyRecordingGroupOfStoryRecordingStop(id, &deadline);
+                    if(r->status != CL_SUCCESS)
+                        break;
+                }
+            }
+            if(r->status != CL_SUCCESS)
+                break;
+            r->status = registry->notifyAllGraphersOfChronicleDestruction(chronicle, &deadline);
+            if(r->status == CL_SUCCESS)
+                r->status = directory.destroy_chronicle(chronicle);
+            break;
+        }
+        case VisorControlAction::Disconnect:
+        {
+            std::vector<StoryId> released;
+            r->status = directory.release_all_acquired_stories(client, released);
+            if(r->status != CL_SUCCESS)
+                break;
+            for(auto sid: released)
+            {
+                auto status = registry->notifyRecordingGroupOfStoryRecordingStop(sid, &deadline);
+                if(status != CL_SUCCESS)
+                    r->status = status;
+            }
+            auto status = clients.remove_client_record(client);
+            if(r->status == CL_SUCCESS)
+                r->status = status;
+            break;
+        }
+        case VisorControlAction::ShowChronicles:
+            r->status = directory.show_chronicles(r->names);
+            break;
+        case VisorControlAction::ShowStories:
+            r->status = directory.show_stories(chronicle, r->names);
+            break;
     }
-
-    // Destroy metadata FIRST. This closes the TOCTOU window where a
-    // concurrent AcquireStory from another client could land between the
-    // Grapher-side destroy broadcast and metadata removal: with metadata
-    // gone, any concurrent Acquire fails before it can hand out a recording
-    // group binding for the story.
-    int return_code = chronicleMetaDirectory.destroy_story(chronicle_name, story_name);
-    if(return_code != chronolog::CL_SUCCESS)
-    {
-        return return_code;
-    }
-
-    if(theKeeperRegistry != nullptr)
-    {
-        // Broadcast destroy_story to every Grapher. The Grapher's destroy is
-        // async (it enqueues the work and returns immediately), so this
-        // RPC is fire-and-forget from the Visor's POV. Each Grapher filters
-        // by filename and no-ops on stories it never persisted.
-        theKeeperRegistry->notifyAllGraphersOfStoryDestruction(chronicle_name, story_name, story_id);
-    }
-
-    LOG_INFO("[VisorClientPortal] Story destroyed: ChronicleName={}, StoryName={}",
-             chronicle_name.c_str(),
-             story_name.c_str());
-    return return_code;
+    if(action == VisorControlAction::Acquire && r->status != CL_SUCCESS)
+        r->acquisition = AcquireStoryResponseMsg(r->status, id, {});
+    return r;
 }
-
-///////////////////
-
-chl::AcquireStoryResponseMsg chronolog::VisorClientPortal::AcquireStory(chl::ClientId const& client_id,
-                                                                        std::string const& chronicle_name,
-                                                                        std::string const& story_name)
+int VisorClientPortal::ClientConnect(uint32_t account, ClientId& client, uint64_t& offset)
 {
-    chronolog::StoryId story_id{0};
-    // recording_keepers is the server-internal view (full KeeperIdCards, used by the
-    // notify call below). The client-facing AcquireStoryResponseMsg only carries each
-    // Keeper's ServiceId — the RecordingGroup membership is server-internal.
-    std::vector<chronolog::KeeperIdCard> recording_keepers;
-    chl::ServiceId player; //ServiceID of ChronoPlayer providing playback service for this story
-    std::vector<chronolog::ServiceId> const empty_keeper_service_ids;
-
-    if(!theKeeperRegistry->is_running())
-    {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
-    }
-
-    if(chronicle_name.empty() || story_name.empty())
-    {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_INVALID_ARG, story_id, empty_keeper_service_ids);
-    }
-
-    if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    {
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NOT_AUTHORIZED, story_id, empty_keeper_service_ids);
-    }
-
-    int ret = chronolog::CL_ERR_UNKNOWN;
-
-    ret = chronicleMetaDirectory.acquire_story(client_id, chronicle_name, story_name, story_id);
-
-    if(ret != chronolog::CL_SUCCESS)
-    {
-        // return the error with the empty recording_keepers vector
-        return chronolog::AcquireStoryResponseMsg(ret, story_id, empty_keeper_service_ids);
-    }
-    else
-    {
-        LOG_INFO("[VisorClientPortal] Story acquired: PID={}, ClientID={}, ChronicleName={}, StoryName={}",
-                 getpid(),
-                 client_id,
-                 chronicle_name.c_str(),
-                 story_name.c_str());
-    }
-
-    // if this is the first client to acquire this story we need to choose an active recording group
-    // for the new story and notify the recording Keepers & Graphers
-    // so that they are ready to start recording this story
-
-    if(chronolog::CL_SUCCESS != theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStart(chronicle_name,
-                                                                                             story_name,
-                                                                                             story_id,
-                                                                                             recording_keepers,
-                                                                                             player))
-    {
-        // RPC notification to the keepers might have failed, release the newly acquired story
-        bool was_last_acquirer = false;
-        chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
-        //we do know that there's no need notify keepers of the story ending in this case as it hasn't started...
-        return chronolog::AcquireStoryResponseMsg(chronolog::CL_ERR_NO_KEEPERS, story_id, empty_keeper_service_ids);
-    }
-
-    // Project the server-internal vector<KeeperIdCard> down to the client-facing
-    // vector<ServiceId> the client needs to address each Keeper for recording.
-    std::vector<chronolog::ServiceId> keeper_service_ids;
-    keeper_service_ids.reserve(recording_keepers.size());
-    for(chronolog::KeeperIdCard const& keeper_card: recording_keepers)
-    {
-        keeper_service_ids.push_back(keeper_card.getRecordingServiceId());
-    }
-
-    return chronolog::AcquireStoryResponseMsg(chronolog::CL_SUCCESS, story_id, keeper_service_ids, player);
+    offset = 0;
+    return core_->Invoke(VisorControlAction::Connect, client, "", "", account)->status;
 }
-
-
-int chronolog::VisorClientPortal::ReleaseStory(chl::ClientId const& client_id,
-                                               std::string const& chronicle_name,
-                                               std::string const& story_name)
+int VisorClientPortal::ClientDisconnect(ClientId const& c)
 {
-    LOG_INFO("[VisorClientPortal] Story released: PID={}, ChronicleName={}, StoryName={}",
-             getpid(),
-             chronicle_name.c_str(),
-             story_name.c_str());
-
-    if(!story_action_is_authorized(client_id, chronicle_name, story_name))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    StoryId story_id(0);
-    bool was_last_acquirer = false;
-    auto return_code =
-            chronicleMetaDirectory.release_story(client_id, chronicle_name, story_name, story_id, was_last_acquirer);
-    if(chronolog::CL_SUCCESS != return_code)
-    {
-        return return_code;
-    }
-
-    // Only stop the recording group if no other client still holds the story.
-    if(was_last_acquirer)
-    {
-        theKeeperRegistry->notifyRecordingGroupOfStoryRecordingStop(story_id);
-    }
-
-    return chronolog::CL_SUCCESS;
+    return core_->Invoke(VisorControlAction::Disconnect, c)->status;
 }
-
-int chronolog::VisorClientPortal::ShowChronicles(chl::ClientId const& client_id, std::vector<std::string>& chronicles)
+int VisorClientPortal::CreateChronicle(ClientId const& c, ChronicleName const& n)
 {
-    LOG_DEBUG("[VisorClientPortal] Show Chronicles: PID={}, ClientID={}", getpid(), client_id);
-
-    // Listing chronicles is a client-scoped metadata read; route through the
-    // chronicle authorization predicate with no specific chronicle name. All
-    // authorization predicates currently return true (tracked in #637).
-    if(!chronicle_action_is_authorized(client_id, ""))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    return chronicleMetaDirectory.show_chronicles(chronicles);
+    return core_->Invoke(VisorControlAction::CreateChronicle, c, n)->status;
 }
-
-int chronolog::VisorClientPortal::ShowStories(chl::ClientId const& client_id,
-                                              std::string const& chronicle_name,
-                                              std::vector<std::string>& stories)
+int VisorClientPortal::DestroyChronicle(ClientId const& c, ChronicleName const& n)
 {
-    LOG_DEBUG("[VisorClientPortal] Show Stories: PID={}, ChronicleName={}", getpid(), chronicle_name.c_str());
-
-    if(!chronicle_action_is_authorized(client_id, chronicle_name))
-    {
-        return chronolog::CL_ERR_NOT_AUTHORIZED;
-    }
-
-    return chronicleMetaDirectory.show_stories(chronicle_name, stories);
+    return core_->Invoke(VisorControlAction::DestroyChronicle, c, n)->status;
 }
-
-bool chronolog::VisorClientPortal::is_client_authenticated(uint32_t client_account) { return true; }
-
-///////////////
-
-bool chronolog::VisorClientPortal::chronicle_action_is_authorized(chl::ClientId const& client_id,
-                                                                  chl::ChronicleName const&)
+int VisorClientPortal::DestroyStory(ClientId const& c, std::string const& n, std::string const& s)
 {
-    return true;
+    return core_->Invoke(VisorControlAction::DestroyStory, c, n, s)->status;
 }
-////////////////
-
-bool chronolog::VisorClientPortal::story_action_is_authorized(chronolog::ClientId const& client_id,
-                                                              chl::ChronicleName const& chronicle,
-                                                              chl::StoryName const& story_name)
+AcquireStoryResponseMsg VisorClientPortal::AcquireStory(ClientId const& c, std::string const& n, std::string const& s)
 {
-    return true;
+    return core_->Invoke(VisorControlAction::Acquire, c, n, s)->acquisition;
 }
+int VisorClientPortal::ReleaseStory(ClientId const& c, std::string const& n, std::string const& s)
+{
+    return core_->Invoke(VisorControlAction::Release, c, n, s)->status;
+}
+int VisorClientPortal::ShowChronicles(ClientId const& c, std::vector<std::string>& n)
+{
+    auto r = core_->Invoke(VisorControlAction::ShowChronicles, c);
+    if(r->status == CL_SUCCESS)
+        n = std::move(r->names);
+    return r->status;
+}
+int VisorClientPortal::ShowStories(ClientId const& c, std::string const& n, std::vector<std::string>& s)
+{
+    auto r = core_->Invoke(VisorControlAction::ShowStories, c, n);
+    if(r->status == CL_SUCCESS)
+        s = std::move(r->names);
+    return r->status;
+}
+} // namespace chronolog

@@ -65,7 +65,8 @@ public:
                       const std::string& chronicle_name,
                       const std::string& story_name,
                       StoryId&,
-                      bool& was_last_acquirer);
+                      bool& was_last_acquirer,
+                      StoryId expected_story_id = 0);
 
     // Release every story currently acquired by client_id. Returns the StoryIds
     // of stories whose last acquirer was this client, so the caller can notify

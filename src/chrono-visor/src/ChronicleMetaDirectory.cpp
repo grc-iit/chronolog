@@ -266,7 +266,8 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
                                           const std::string& chronicle_name,
                                           const std::string& story_name,
                                           StoryId& story_id,
-                                          bool& was_last_acquirer)
+                                          bool& was_last_acquirer,
+                                          StoryId expected_story_id)
 {
     was_last_acquirer = false;
     LOG_DEBUG("[ChronicleMetaDirectory] ClientID={} releasing StoryName={} in ChronicleName={}",
@@ -284,6 +285,8 @@ int ChronicleMetaDirectory::release_story(chl::ClientId const& client_id,
         Chronicle* pChronicle = chronicleRecord->second;
         /* Then check if Story exists, fail if false */
         uint64_t sid = pChronicle->getStoryId(story_name);
+        if(expected_story_id != 0 && sid != expected_story_id)
+            return chronolog::CL_ERR_OUTCOME_UNCONFIRMED;
         if(sid == 0)
         {
             return chronolog::CL_ERR_NOT_EXIST;

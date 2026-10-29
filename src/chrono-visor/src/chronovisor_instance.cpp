@@ -68,12 +68,12 @@ int main(int argc, char** argv)
     LOG_INFO("chronovisor_instance] VISOR CONFIGURATION {}", VISOR_CONF.to_String());
 
     chronolog::VisorClientPortal theChronoVisorPortal;
-    chronolog::KeeperRegistry keeperRegistry;
+    auto keeperRegistry = std::make_shared<chronolog::KeeperRegistry>(VISOR_CONF.RPC_POLICY);
 
-    keeperRegistry.InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
-                                             VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);
+    keeperRegistry->InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
+                                              VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);
 
-    theChronoVisorPortal.StartServices(VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF, &keeperRegistry);
+    theChronoVisorPortal.StartServices(VISOR_CONF.VISOR_CLIENT_PORTAL_SERVICE_CONF, keeperRegistry);
 
     // If services do not start successfully there should a graceful exit(-1) here
     /////
@@ -81,7 +81,7 @@ int main(int argc, char** argv)
     while(keep_running) { sleep(10); }
 
     theChronoVisorPortal.ShutdownServices();
-    keeperRegistry.ShutdownRegistryService();
+    keeperRegistry->ShutdownRegistryService();
     LOG_INFO("[chronovisor_instance] ChronoVisor shutdown.");
     return 0;
 }

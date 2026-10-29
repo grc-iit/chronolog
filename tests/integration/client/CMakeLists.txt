@@ -199,3 +199,20 @@ if(CHRONOLOG_INSTALL_TESTS)
         chronolog_install_target(${client} DESTINATION tests)
     endforeach()
 endif()
+
+find_package(GTest REQUIRED)
+find_package(Thallium REQUIRED)
+include(GoogleTest)
+add_executable(client_acquire_deadline_test
+    client_acquire_deadline_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/KeeperRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/VisorAdminRuntime.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/VisorClientPortal.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/ClientRegistryManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/ChronicleMetaDirectory.cpp)
+target_include_directories(client_acquire_deadline_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(client_acquire_deadline_test PRIVATE GTest::gtest_main chrono_rpc chrono_common chronolog_client thallium)
+gtest_discover_tests(client_acquire_deadline_test TEST_PREFIX "Integration_ClientAcquireDeadline_")

@@ -24,6 +24,10 @@
 #include "PlayerRegistrationMsg.h"
 #include "PlayerStatsMsg.h"
 #include "ConfigurationBlocks.h"
+#include <RpcPolicy.h>
+#include <VisorAdminRuntime.h>
+#include <memory>
+#include <atomic>
 
 namespace chronolog
 {
@@ -56,16 +60,16 @@ public:
     }
 
     KeeperProcessEntry(KeeperProcessEntry const& other) = default;
-    ~KeeperProcessEntry() = default; // Registry is reponsible for creating & deleting keeperAdminClient
+    ~KeeperProcessEntry() = default; // Shared descriptors retain in-flight admin work.
 
     KeeperIdCard idCard;
     ServiceId adminServiceId;
     std::string idCardString;
-    DataStoreAdminClient* keeperAdminClient;
+    std::shared_ptr<DataStoreAdminClient> keeperAdminClient;
     bool active;
     uint64_t lastStatsTime;
     uint32_t activeStoryCount;
-    std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitClients;
+    std::list<std::pair<std::time_t, std::shared_ptr<DataStoreAdminClient>>> delayedExitClients;
 };
 
 class GrapherProcessEntry
@@ -83,16 +87,16 @@ public:
     }
 
     GrapherProcessEntry(GrapherProcessEntry const& other) = default;
-    ~GrapherProcessEntry() = default; // Registry is reponsible for creating & deleting keeperAdminClient
+    ~GrapherProcessEntry() = default; // Shared descriptors retain in-flight admin work.
 
     GrapherIdCard idCard;
     ServiceId adminServiceId;
     std::string idCardString;
-    DataStoreAdminClient* adminClient;
+    std::shared_ptr<DataStoreAdminClient> adminClient;
     bool active;
     uint64_t lastStatsTime;
     uint32_t activeStoryCount;
-    std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitGrapherClients;
+    std::list<std::pair<std::time_t, std::shared_ptr<DataStoreAdminClient>>> delayedExitGrapherClients;
 };
 
 
@@ -110,16 +114,16 @@ public:
     }
 
     PlayerProcessEntry(PlayerProcessEntry const& other) = default;
-    ~PlayerProcessEntry() = default; // Registry is reponsible for creating & deleting AdminClient
+    ~PlayerProcessEntry() = default; // Shared descriptors retain in-flight admin work.
 
     PlayerIdCard idCard;
     ServiceId adminServiceId;
     std::string idCardString;
-    DataStoreAdminClient* adminClient;
+    std::shared_ptr<DataStoreAdminClient> adminClient;
     bool active;
     uint64_t lastStatsTime;
     uint32_t activeStoryCount;
-    std::list<std::pair<std::time_t, DataStoreAdminClient*>> delayedExitPlayerClients;
+    std::list<std::pair<std::time_t, std::shared_ptr<DataStoreAdminClient>>> delayedExitPlayerClients;
 };
 
 
@@ -128,11 +132,11 @@ class RecordingGroup
 public:
     RecordingGroup(RecordingGroupId group_id,
                    GrapherProcessEntry* grapher_ptr = nullptr,
-                   PlayerProcessEntry* player_ptr = nullptr)
+                   std::shared_ptr<PlayerProcessEntry> player_ptr = nullptr)
         : groupId(group_id)
         , activeKeeperCount(0)
         , grapherProcess(grapher_ptr)
-        , playerProcess(player_ptr)
+        , playerProcess(std::move(player_ptr))
     {}
 
     RecordingGroup(RecordingGroup const& other) = default;
@@ -151,11 +155,11 @@ public:
     RecordingGroupId groupId;
     size_t activeKeeperCount;
     GrapherProcessEntry* grapherProcess;
-    PlayerProcessEntry* playerProcess;
+    std::shared_ptr<PlayerProcessEntry> playerProcess;
     std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
 };
 
-class KeeperRegistry
+class KeeperRegistry: public std::enable_shared_from_this<KeeperRegistry>
 {
     enum RegistryState
     {
@@ -167,8 +171,11 @@ class KeeperRegistry
 
 public:
     KeeperRegistry();
+    explicit KeeperRegistry(RpcTimeoutPolicy const&, std::size_t control_capacity = 32);
 
     ~KeeperRegistry();
+
+    std::shared_ptr<VisorAdminRuntime> adminOwner() const { return adminRuntime; }
 
     bool is_initialized() const { return (INITIALIZED == registryState); }
 
@@ -188,8 +195,10 @@ public:
                                                   StoryName const&,
                                                   StoryId const&,
                                                   std::vector<KeeperIdCard>&,
-                                                  ServiceId&);
-    int notifyRecordingGroupOfStoryRecordingStop(StoryId const&);
+                                                  ServiceId&,
+                                                  rpc::RpcDeadline const* = nullptr,
+                                                  bool* locally_rejected_before_setup = nullptr);
+    int notifyRecordingGroupOfStoryRecordingStop(StoryId const&, rpc::RpcDeadline const* = nullptr);
 
     // Broadcast destroy_story to every active Grapher in the registry.
     // A story may have been recorded by several recording groups over its
@@ -199,10 +208,13 @@ public:
     // HDF5 files for the same story can therefore live on Graphers other than
     // the one currently recording it. Each Grapher filters by filename and
     // no-ops on stories it never saw.
-    int notifyAllGraphersOfStoryDestruction(ChronicleName const&, StoryName const&, StoryId const&);
+    int notifyAllGraphersOfStoryDestruction(ChronicleName const&,
+                                            StoryName const&,
+                                            StoryId const&,
+                                            rpc::RpcDeadline const* = nullptr);
 
     // Broadcast destroy_chronicle to every active Grapher in the registry.
-    int notifyAllGraphersOfChronicleDestruction(ChronicleName const&);
+    int notifyAllGraphersOfChronicleDestruction(ChronicleName const&, rpc::RpcDeadline const* = nullptr);
 
     int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
     int unregisterGrapherProcess(GrapherIdCard const& id_card);
@@ -213,40 +225,23 @@ public:
     void updatePlayerProcessStats(PlayerStatsMsg const&);
 
 private:
+    friend struct KeeperRegistryTestAccess;
     KeeperRegistry(KeeperRegistry const&) = delete; //disable copying
     KeeperRegistry& operator=(KeeperRegistry const&) = delete;
 
-    int notifyGrapherOfStoryRecordingStart(RecordingGroup&,
-                                           ChronicleName const&,
-                                           StoryName const&,
-                                           StoryId const&,
-                                           uint64_t);
-    int notifyGrapherOfStoryRecordingStop(RecordingGroup&, StoryId const&);
-    int notifyPlayerOfStoryRecordingStart(RecordingGroup&,
-                                          ChronicleName const&,
-                                          StoryName const&,
-                                          StoryId const&,
-                                          uint64_t,
-                                          std::vector<KeeperIdCard> const& story_keepers);
-    int notifyPlayerOfStoryRecordingStop(RecordingGroup&, StoryId const&);
-    int notifyKeepersOfStoryRecordingStart(RecordingGroup&,
-                                           std::vector<KeeperIdCard>&,
-                                           ChronicleName const&,
-                                           StoryName const&,
-                                           StoryId const&,
-                                           uint64_t);
-    int notifyKeepersOfStoryRecordingStop(RecordingGroup&, std::vector<KeeperIdCard> const&, StoryId const&);
-
-    RegistryState registryState;
+    std::atomic<RegistryState> registryState;
+    std::shared_ptr<VisorAdminRuntime> adminRuntime;
+    uint64_t nextGeneration = 0;
+    std::map<std::string, bool> chronicleDestructions;
     std::mutex registryLock;
-    thallium::engine* registryEngine;
+    std::shared_ptr<thallium::engine> registryEngine;
     KeeperRegistryService* keeperRegistryService;
     std::string dataStoreAdminServiceProtocol;
     size_t delayedDataAdminExitSeconds;
 
     std::map<RecordingGroupId, RecordingGroup> recordingGroups;
     std::vector<RecordingGroup*> activeGroups;
-    std::map<StoryId, RecordingGroup*> activeStories;
+    std::map<StoryId, std::shared_ptr<StoryRecording>> activeStories;
 };
 } // namespace chronolog
 

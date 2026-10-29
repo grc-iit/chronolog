@@ -1,134 +1,24 @@
 #ifndef CLIENT_PORTAL_SERVICE_H
 #define CLIENT_PORTAL_SERVICE_H
-
-#include <cstdint>
-#include <map>
-
-#include <thallium.hpp>
+#include <VisorClientPortal.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
-#include <thallium/serialization/stl/unordered_map.hpp>
-#include <thallium/serialization/stl/pair.hpp>
-
-#include <chronolog_client.h>
-#include <chronolog_types.h>
-#include <KeeperIdCard.h>
-#include <ConnectResponseMsg.h>
-#include <AcquireStoryResponseMsg.h>
-
-#include "VisorClientPortal.h"
-
-namespace tl = thallium;
-
 namespace chronolog
 {
-
 class ClientPortalService: public thallium::provider<ClientPortalService>
 {
 public:
-    static ClientPortalService* CreateClientPortalService(thallium::engine& tl_engine,
-                                                          uint16_t service_provider_id,
-                                                          VisorClientPortal& visor_portal)
+    static ClientPortalService*
+    CreateClientPortalService(thallium::engine& engine, uint16_t id, std::shared_ptr<VisorClientPortal::Core> core)
     {
-        return new ClientPortalService(tl_engine, service_provider_id, visor_portal);
+        return new ClientPortalService(engine, id, std::move(core));
     }
-
-    ~ClientPortalService()
-    {
-        LOG_DEBUG("[ClientPortalService] Destructor is called.");
-        get_engine().pop_finalize_callback(this);
-    }
-
-    void Connect(tl::request const& request,
-                 uint32_t client_account,
-                 ClientId proposed_client_id,
-                 uint32_t client_protocol_version)
-    {
-        if(client_protocol_version != chronolog::CLIENT_PROTOCOL_VERSION)
-        {
-            LOG_ERROR("[ClientPortalService] Connect rejected: client protocol version {} does not match server {}",
-                      client_protocol_version,
-                      chronolog::CLIENT_PROTOCOL_VERSION);
-            request.respond(ConnectResponseMsg(chronolog::CL_ERR_PROTOCOL_VERSION_MISMATCH, ClientId{0}));
-            return;
-        }
-
-        ClientId client_id = proposed_client_id;
-        uint64_t clock_offset;
-        int return_code = theVisorClientPortal.ClientConnect(client_account, client_id, clock_offset);
-        if(chronolog::CL_SUCCESS == return_code)
-        {
-            request.respond(ConnectResponseMsg(chronolog::CL_SUCCESS, client_id));
-        }
-        else
-        {
-            request.respond(ConnectResponseMsg(return_code, ClientId{0}));
-        }
-    }
-
-    void Disconnect(tl::request const& request, ClientId const& client_token)
-    {
-        int return_code = theVisorClientPortal.ClientDisconnect(client_token);
-        request.respond(return_code);
-    }
-
-    void CreateChronicle(tl::request const& request, ClientId const& client_id, std::string const& chronicle_name)
-    {
-        int return_code = theVisorClientPortal.CreateChronicle(client_id, chronicle_name);
-        request.respond(return_code);
-    }
-
-    void DestroyChronicle(tl::request const& request, ClientId const& client_id, ChronicleName const& chronicle_name)
-    {
-        int return_code = theVisorClientPortal.DestroyChronicle(client_id, chronicle_name);
-        request.respond(return_code);
-    }
-
-    void AcquireStory(tl::request const& request,
-                      ClientId const& client_id,
-                      std::string const& chronicle_name,
-                      std::string const& story_name)
-    {
-        AcquireStoryResponseMsg acquire_response =
-                theVisorClientPortal.AcquireStory(client_id, chronicle_name, story_name);
-        request.respond(acquire_response);
-    }
-
-    void ReleaseStory(tl::request const& request,
-                      ClientId const& client_id,
-                      std::string const& chronicle_name,
-                      std::string const& story_name)
-    {
-        int return_code = theVisorClientPortal.ReleaseStory(client_id, chronicle_name, story_name);
-        request.respond(return_code);
-    }
-
-    void DestroyStory(tl::request const& request,
-                      ClientId const& client_id,
-                      std::string const& chronicle_name,
-                      std::string const& story_name)
-    {
-        request.respond(theVisorClientPortal.DestroyStory(client_id, chronicle_name, story_name));
-    }
-
-    void ShowChronicles(tl::request const& request, ClientId const& client_id)
-    {
-        std::vector<std::string> chronicles;
-        int return_code = theVisorClientPortal.ShowChronicles(client_id, chronicles);
-        request.respond(std::make_pair(return_code, std::move(chronicles)));
-    }
-
-    void ShowStories(tl::request const& request, ClientId const& client_id, const std::string& chronicle_name)
-    {
-        std::vector<std::string> stories;
-        int return_code = theVisorClientPortal.ShowStories(client_id, chronicle_name, stories);
-        request.respond(std::make_pair(return_code, std::move(stories)));
-    }
+    ~ClientPortalService() { get_engine().pop_finalize_callback(this); }
 
 private:
-    ClientPortalService(tl::engine& tl_engine, uint16_t service_provider_id, VisorClientPortal& visorPortal)
-        : thallium::provider<ClientPortalService>(tl_engine, service_provider_id)
-        , theVisorClientPortal(visorPortal)
+    ClientPortalService(thallium::engine& engine, uint16_t id, std::shared_ptr<VisorClientPortal::Core> c)
+        : thallium::provider<ClientPortalService>(engine, id)
+        , core_(std::move(c))
     {
         define("Connect", &ClientPortalService::Connect);
         define("Disconnect", &ClientPortalService::Disconnect);
@@ -139,19 +29,42 @@ private:
         define("DestroyStory", &ClientPortalService::DestroyStory);
         define("ShowChronicles", &ClientPortalService::ShowChronicles);
         define("ShowStories", &ClientPortalService::ShowStories);
-        //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
-        std::stringstream ss;
-        ss << get_engine().self();
-        LOG_INFO("[ClientPortalService] Started at address {} with provider id {}", ss.str(), service_provider_id);
-        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
+        get_engine().push_finalize_callback(this, [this]() { delete this; });
     }
-
-    ClientPortalService(ClientPortalService const&) = delete;
-
-    ClientPortalService& operator=(ClientPortalService const&) = delete;
-
-    VisorClientPortal& theVisorClientPortal;
+    void Connect(thallium::request const& r, uint32_t account, ClientId id, uint32_t version)
+    {
+        core_->Dispatch(r, VisorControlAction::Connect, id, "", "", account, version);
+    }
+    void Disconnect(thallium::request const& r, ClientId id) { core_->Dispatch(r, VisorControlAction::Disconnect, id); }
+    void CreateChronicle(thallium::request const& r, ClientId id, std::string const& name)
+    {
+        core_->Dispatch(r, VisorControlAction::CreateChronicle, id, name);
+    }
+    void DestroyChronicle(thallium::request const& r, ClientId id, std::string const& name)
+    {
+        core_->Dispatch(r, VisorControlAction::DestroyChronicle, id, name);
+    }
+    void AcquireStory(thallium::request const& r, ClientId id, std::string const& name, std::string const& story)
+    {
+        core_->Dispatch(r, VisorControlAction::Acquire, id, name, story);
+    }
+    void ReleaseStory(thallium::request const& r, ClientId id, std::string const& name, std::string const& story)
+    {
+        core_->Dispatch(r, VisorControlAction::Release, id, name, story);
+    }
+    void DestroyStory(thallium::request const& r, ClientId id, std::string const& name, std::string const& story)
+    {
+        core_->Dispatch(r, VisorControlAction::DestroyStory, id, name, story);
+    }
+    void ShowChronicles(thallium::request const& r, ClientId id)
+    {
+        core_->Dispatch(r, VisorControlAction::ShowChronicles, id);
+    }
+    void ShowStories(thallium::request const& r, ClientId id, std::string const& name)
+    {
+        core_->Dispatch(r, VisorControlAction::ShowStories, id, name);
+    }
+    std::shared_ptr<VisorClientPortal::Core> core_;
 };
 } // namespace chronolog
-
 #endif

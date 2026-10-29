@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(GTest REQUIRED)
+find_package(Thallium REQUIRED)
 include(GoogleTest)
 
 #------------------------------------------------------------------------------
@@ -64,3 +65,17 @@ gtest_discover_tests(visor_rpc_policy_configuration_test TEST_PREFIX "Unit_Chron
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(visor_rpc_policy_configuration_test DESTINATION tests)
 endif()
+
+add_executable(visor_admin_deadline_test
+    admin_deadline_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/KeeperRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/VisorAdminRuntime.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/VisorClientPortal.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/ClientRegistryManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/ChronicleMetaDirectory.cpp)
+target_include_directories(visor_admin_deadline_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(visor_admin_deadline_test PRIVATE GTest::gtest_main chrono_rpc chrono_common chronolog_client thallium)
+gtest_discover_tests(visor_admin_deadline_test TEST_PREFIX "Unit_ChronoVisor_")
