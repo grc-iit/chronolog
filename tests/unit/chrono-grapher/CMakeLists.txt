@@ -215,3 +215,18 @@ gtest_discover_tests(grapher_configuration_test TEST_PREFIX "Unit_ChronoGrapher_
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(grapher_configuration_test DESTINATION tests)
 endif()
+
+add_executable(grapher_rpc_policy_configuration_test
+    rpc_policy_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/ChronoGrapherConfiguration.cpp
+)
+target_include_directories(grapher_rpc_policy_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(grapher_rpc_policy_configuration_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(grapher_rpc_policy_configuration_test TEST_PREFIX "Unit_ChronoGrapher_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(grapher_rpc_policy_configuration_test DESTINATION tests)
+endif()

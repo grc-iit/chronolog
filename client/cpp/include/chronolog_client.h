@@ -172,6 +172,14 @@ public:
 
     ~Client();
 
+    // Shared by Client wrappers using the existing process singleton and its
+    // cached StoryHandles. Invalid values return CL_ERR_INVALID_ARG; admitted
+    // work or policy-lock contention returns CL_ERR_RPC_CAPACITY. Configure
+    // before the first Connect: entering Connect permanently freezes this
+    // context's policy, even if Connect fails or Disconnect later succeeds.
+    // Existing RPC/StoryHandle paths do not yet consume these budgets.
+    int SetRpcTimeoutPolicy(RpcTimeoutPolicy const&);
+
     int Connect();
 
     int Disconnect();

@@ -26,6 +26,7 @@ struct KeeperGrapherDrainServiceConf
 
 struct GrapherConfiguration
 {
+    RpcTimeoutPolicy RPC_POLICY;
     uint32_t RECORDING_GROUP{};
     KeeperGrapherDrainServiceConf KEEPER_GRAPHER_DRAIN_SERVICE_CONF;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;

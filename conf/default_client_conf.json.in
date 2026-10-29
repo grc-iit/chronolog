@@ -1,5 +1,15 @@
 {
   "chrono_client": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "VisorClientPortalService": {
       "rpc": {
         "protocol_conf": "ofi+sockets",

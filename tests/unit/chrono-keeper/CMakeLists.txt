@@ -161,3 +161,18 @@ gtest_discover_tests(keeper_orphan_recovery_test TEST_PREFIX "Unit_ChronoKeeper_
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_orphan_recovery_test DESTINATION tests)
 endif()
+
+add_executable(keeper_rpc_policy_configuration_test
+    rpc_policy_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/src/ChronoKeeperConfiguration.cpp
+)
+target_include_directories(keeper_rpc_policy_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(keeper_rpc_policy_configuration_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(keeper_rpc_policy_configuration_test TEST_PREFIX "Unit_ChronoKeeper_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(keeper_rpc_policy_configuration_test DESTINATION tests)
+endif()

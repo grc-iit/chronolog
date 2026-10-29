@@ -16,6 +16,7 @@
 #include <chronolog_types.h>
 #include <chronolog_client.h>
 
+#include "RpcPolicyContext.h"
 #include "rpcVisorClient.h"
 #include "StorytellerClient.h"
 #include "ClientQueryService.h"
@@ -58,6 +59,8 @@ public:
 
     ~ChronologClientImpl();
 
+    int SetRpcTimeoutPolicy(RpcTimeoutPolicy const&);
+
     int Connect();
 
     int Disconnect();
@@ -83,6 +86,7 @@ public:
     replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
 
 private:
+    std::shared_ptr<RpcPolicyContext> rpcPolicyContext;
     ClientMode clientMode;
     ChronologClientState clientState;
     std::string clientLogin;

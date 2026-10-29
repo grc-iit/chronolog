@@ -48,7 +48,8 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
 chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServiceConf const& clientPortalServiceConf,
                                                     chronolog::ClientMode const& clientMode,
                                                     chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
-    : clientMode(clientMode)
+    : rpcPolicyContext(std::make_shared<RpcPolicyContext>(clientPortalServiceConf.RPC_POLICY))
+    , clientMode(clientMode)
     , clientState(UNKNOWN)
     , clientLogin("")
     , clientIdentity{}
@@ -177,8 +178,14 @@ chronolog::ChronologClientImpl::~ChronologClientImpl()
     }
 }
 
+int chronolog::ChronologClientImpl::SetRpcTimeoutPolicy(RpcTimeoutPolicy const& policy)
+{
+    return rpcPolicyContext->setPolicy(policy);
+}
+
 int chronolog::ChronologClientImpl::Connect()
 {
+    rpcPolicyContext->freeze();
     std::lock_guard<std::mutex> lock_client(chronologClientMutex);
     // if already connected return success
     // if disconencting return failure....

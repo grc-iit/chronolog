@@ -302,3 +302,18 @@ gtest_discover_tests(player_pipeline_retirement_test TEST_PREFIX "Unit_ChronoPla
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(player_pipeline_retirement_test DESTINATION tests)
 endif()
+
+add_executable(player_rpc_policy_configuration_test
+    rpc_policy_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ChronoPlayerConfiguration.cpp
+)
+target_include_directories(player_rpc_policy_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(player_rpc_policy_configuration_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(player_rpc_policy_configuration_test TEST_PREFIX "Unit_ChronoPlayer_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(player_rpc_policy_configuration_test DESTINATION tests)
+endif()

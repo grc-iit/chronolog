@@ -17,6 +17,7 @@ namespace chronolog
 
 struct VisorConfiguration
 {
+    RpcTimeoutPolicy RPC_POLICY;
     RPCProviderConf VISOR_CLIENT_PORTAL_SERVICE_CONF;
     RPCProviderConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
     LogConf VISOR_LOG_CONF;

@@ -25,6 +25,7 @@ struct RpcServiceConf
 
 struct PlayerConfiguration
 {
+    RpcTimeoutPolicy RPC_POLICY;
     uint32_t RECORDING_GROUP;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;
     RpcServiceConf PLAYBACK_SERVICE_CONF;

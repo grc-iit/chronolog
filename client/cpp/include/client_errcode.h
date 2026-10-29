@@ -25,7 +25,14 @@ enum ClientErrorCode
     // collision-policy work being developed in parallel already assigns them, and
     // reusing a value here would silently change what a code means once the two
     // meet. Leaving the gap keeps both sets stable across that merge.
-    CL_ERR_PARTIAL_RESULT = -18 // Query returned fewer records than it had promised
+    CL_ERR_PARTIAL_RESULT = -18, // Query returned fewer records than it had promised
+    // -19..-21 are reserved for the parallel keeper-WAL work.
+    CL_ERR_DEADLINE_EXCEEDED = -22,   // The local operation budget expired
+    CL_ERR_OUTCOME_UNCONFIRMED = -23, // A dispatched operation has no confirmed outcome
+    CL_ERR_RPC_CAPACITY = -24,        // Owned RPC work or policy admission is unavailable
+    CL_ERR_CLOCK_UNAVAILABLE = -25,   // Event time could not be read
+    CL_ERR_TIMESTAMP_EXHAUSTED = -26, // No larger local timestamp can be assigned
+    CL_ERR_SHUTDOWN_INCOMPLETE = -27  // Shutdown expired while owned work remains
 };
 
 // Convert enum value to its name (for logging)
@@ -63,6 +70,18 @@ inline const char* to_string(ClientErrorCode e)
             return "CL_ERR_PROTOCOL_VERSION_MISMATCH";
         case CL_ERR_PARTIAL_RESULT:
             return "CL_ERR_PARTIAL_RESULT";
+        case CL_ERR_DEADLINE_EXCEEDED:
+            return "CL_ERR_DEADLINE_EXCEEDED";
+        case CL_ERR_OUTCOME_UNCONFIRMED:
+            return "CL_ERR_OUTCOME_UNCONFIRMED";
+        case CL_ERR_RPC_CAPACITY:
+            return "CL_ERR_RPC_CAPACITY";
+        case CL_ERR_CLOCK_UNAVAILABLE:
+            return "CL_ERR_CLOCK_UNAVAILABLE";
+        case CL_ERR_TIMESTAMP_EXHAUSTED:
+            return "CL_ERR_TIMESTAMP_EXHAUSTED";
+        case CL_ERR_SHUTDOWN_INCOMPLETE:
+            return "CL_ERR_SHUTDOWN_INCOMPLETE";
         default:
             return "UnknownClientErrorCode";
     }
@@ -87,6 +106,12 @@ inline const char* to_string_client(int code)
         case CL_ERR_QUERY_TIMED_OUT:
         case CL_ERR_PROTOCOL_VERSION_MISMATCH:
         case CL_ERR_PARTIAL_RESULT:
+        case CL_ERR_DEADLINE_EXCEEDED:
+        case CL_ERR_OUTCOME_UNCONFIRMED:
+        case CL_ERR_RPC_CAPACITY:
+        case CL_ERR_CLOCK_UNAVAILABLE:
+        case CL_ERR_TIMESTAMP_EXHAUSTED:
+        case CL_ERR_SHUTDOWN_INCOMPLETE:
             return to_string(static_cast<chronolog::ClientErrorCode>(code));
         default:
             return "UnknownClientErrorCode";

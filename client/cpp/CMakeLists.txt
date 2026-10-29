@@ -76,6 +76,7 @@ endif()
 set(PUBLIC_HEADER_FILES
     include/chronolog_client.h
     include/ClientConfiguration.h
+    include/RpcPolicy.h
     include/client_errcode.h
     include/log_level.h
     include/chrono_monitor.h

@@ -29,6 +29,7 @@ struct KeeperRecordingServiceConf
 
 struct KeeperConfiguration
 {
+    RpcTimeoutPolicy RPC_POLICY;
     uint32_t RECORDING_GROUP;
     KeeperRecordingServiceConf KEEPER_RECORDING_SERVICE_CONF;
     RPCProviderConf DATA_STORE_ADMIN_SERVICE_CONF;

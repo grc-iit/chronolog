@@ -18,6 +18,11 @@ chronolog::Client::Client(chronolog::ClientPortalServiceConf const& visorClientP
 
 chronolog::Client::~Client() { delete chronologClientImpl; }
 
+int chronolog::Client::SetRpcTimeoutPolicy(RpcTimeoutPolicy const& policy)
+{
+    return chronologClientImpl->SetRpcTimeoutPolicy(policy);
+}
+
 int chronolog::Client::Connect() { return chronologClientImpl->Connect(); }
 
 int chronolog::Client::Disconnect() { return chronologClientImpl->Disconnect(); }

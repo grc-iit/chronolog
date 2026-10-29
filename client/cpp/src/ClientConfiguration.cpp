@@ -23,9 +23,20 @@ bool ClientConfiguration::load_from_file(const std::string& path)
     json_object* chrono_client;
     if(!json_object_object_get_ex(root, "chrono_client", &chrono_client))
     {
+        json_object_put(root);
         std::cerr << "[ClientConfiguration] Missing 'chrono_client' section." << std::endl;
         return false;
     }
+
+    RpcTimeoutPolicy policy;
+    json_object* policy_object = nullptr;
+    if(json_object_object_get_ex(chrono_client, "RpcPolicy", &policy_object) &&
+       parseRpcTimeoutPolicy(policy_object, policy) != CL_SUCCESS)
+    {
+        json_object_put(root);
+        return false;
+    }
+    PORTAL_CONF.RPC_POLICY = policy;
 
     json_object* portal_service;
     if(json_object_object_get_ex(chrono_client, "VisorClientPortalService", &portal_service))

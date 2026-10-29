@@ -1,3 +1,4 @@
+#include <ClientConfiguration.h>
 #include <ConfigurationBlocks.h>
 
 
@@ -414,3 +415,10 @@ int chronolog::DataStoreConf::parseJsonConf(json_object* data_store_json_conf)
 }
 
 ///////////////////
+
+int chronolog::parseRpcPolicyConf(json_object* object, RpcTimeoutPolicy& policy) noexcept
+{
+    if(parseRpcTimeoutPolicy(object, policy) != CL_SUCCESS)
+        return CL_ERR_INVALID_CONF;
+    return CL_SUCCESS;
+}

@@ -10,11 +10,15 @@
 #include <sstream>
 
 #include <log_level.h>
+#include <RpcPolicy.h>
 
 #include "chronolog_errcode.h"
 
 namespace chronolog
 {
+
+// Maps shared policy validation failures to the service configuration error.
+int parseRpcPolicyConf(json_object*, RpcTimeoutPolicy&) noexcept;
 
 enum ClocksourceType
 {

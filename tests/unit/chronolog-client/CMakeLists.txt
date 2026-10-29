@@ -68,3 +68,11 @@ gtest_discover_tests(chronolog_client_login_name_test TEST_PREFIX "Unit_Chronolo
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chronolog_client_login_name_test DESTINATION tests)
 endif()
+
+add_executable(chronolog_rpc_policy_test rpc_policy_test.cpp)
+target_include_directories(chronolog_rpc_policy_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/include ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(chronolog_rpc_policy_test PRIVATE GTest::gtest_main chronolog_client)
+gtest_discover_tests(chronolog_rpc_policy_test TEST_PREFIX "Unit_ChronologRpc_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_rpc_policy_test DESTINATION tests)
+endif()

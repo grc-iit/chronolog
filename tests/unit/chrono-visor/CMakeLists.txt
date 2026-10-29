@@ -49,3 +49,18 @@ gtest_discover_tests(story_group_selection_test TEST_PREFIX "Unit_ChronoVisor_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(story_group_selection_test DESTINATION tests)
 endif()
+
+add_executable(visor_rpc_policy_configuration_test
+    rpc_policy_configuration_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/src/ChronoVisorConfiguration.cpp
+)
+target_include_directories(visor_rpc_policy_configuration_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(visor_rpc_policy_configuration_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(visor_rpc_policy_configuration_test TEST_PREFIX "Unit_ChronoVisor_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(visor_rpc_policy_configuration_test DESTINATION tests)
+endif()

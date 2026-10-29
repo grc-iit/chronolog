@@ -13,8 +13,17 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
         return chl::CL_ERR_INVALID_CONF;
     }
 
+    RpcTimeoutPolicy policy;
+    json_object* policy_object = nullptr;
+    if(json_object_object_get_ex(json_conf, "RpcPolicy", &policy_object) &&
+       parseRpcPolicyConf(policy_object, policy) != chl::CL_SUCCESS)
+        return chl::CL_ERR_INVALID_CONF;
+    RPC_POLICY = policy;
+
     json_object_object_foreach(json_conf, key, val)
     {
+        if(strcmp(key, "RpcPolicy") == 0)
+            continue;
         if(strcmp(key, "VisorClientPortalService") == 0)
         {
             if(!json_object_is_type(val, json_type_object))

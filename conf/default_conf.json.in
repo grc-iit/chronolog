@@ -9,6 +9,16 @@
     "module_location": "/path/to/auth_module"
   },
   "chrono_visor": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "VisorClientPortalService": {
       "rpc": {
         "protocol_conf": "ofi+sockets",
@@ -39,6 +49,16 @@
     "delayed_data_admin_exit_in_secs": 3
   },
   "chrono_keeper": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "KeeperRecordingService": {
       "IngestionThreadCount": 4,
@@ -113,6 +133,16 @@
     }
   },
   "chrono_grapher": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
       "IngestionThreadCount": 1,
@@ -169,6 +199,16 @@
     }
   },
   "chrono_player": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "RecordingGroup": 7,
     "PlayerStoreAdminService": {
       "rpc": {
