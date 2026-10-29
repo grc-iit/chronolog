@@ -63,9 +63,11 @@ group back as no records and ships none of its events.
 - A segment switch that fails before any of the group is written has nothing to erase, and the group
   gets `CL_ERR_DURABILITY_UNAVAILABLE`.
 
-One case remains: the keeper crashes after the failed sync and before the zeros are synced. The
-writers then got no answer at all, so they see -21, not -19, and a restart on the same boot can
-read the group back and ship it.
+One case remains: the keeper crashes after the failed write or sync, before the zeros are synced.
+The writers got no answer at all, so they see -21. If a retry reaches the restarted keeper within
+the client's retry window, the keeper has read the group back from the page cache, the retry finds
+the event, and the writer sees `CL_SUCCESS`, although the group may not be on the disk. A restart
+on the same boot can read the group back and ship it.
 
 A handler waiting for its group yields its Argobots thread, so the keeper's RPC threads keep serving
 other requests, and a group can hold more writes than the keeper has RPC threads.

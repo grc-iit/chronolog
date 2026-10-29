@@ -30,7 +30,7 @@ All Client API methods return an `int` status code. Check the return value again
 | `CL_ERR_QUERY_TIMED_OUT` | -12 | Replay query or tail-read RPC timed out |
 | `CL_ERR_PROTOCOL_VERSION_MISMATCH` | -13 | Client and server disagree on the wire-protocol version |
 | `CL_ERR_PARTIAL_RESULT` | -18 | Query returned fewer records than it should: for a tail read, events left keeper memory between its two phases; for a replay, a keeper missed its fetch deadline or hit its event cap, or an archive file could not be read. The records that came back are valid |
-| `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, or it lacks the durable RPC. Nothing was stored |
+| `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, or it lacks the durable RPC. Nothing was stored, except in the case in the last paragraph of [Durability error codes](#durability-error-codes) |
 | `CL_ERR_DURABILITY_FULL` | -20 | Durable write: the keeper's WAL file system is below its reserve, or the keeper holds more data than `durable_cap_mb`. Nothing was stored |
 | `CL_ERR_DURABILITY_UNKNOWN` | -21 | Durable write: the event may be stored. `event_time` holds its timestamp (see [Durability error codes](#durability-error-codes)) |
 
@@ -58,15 +58,16 @@ syncs them before it answers, so a keeper restarted on the same boot does not re
 Every writer in the group then gets -19. When the keeper cannot erase the group, it answers -21,
 because the records may be on disk. It cannot tell a write that failed before writing anything from
 one that wrote part of the group, so a failed write whose erase also fails gets -21 as well. If the
-keeper crashes between the failed sync and the sync of the zeros, the writers got no answer at all
-and see -21, not -19.
+keeper crashes after the failed write or sync, before the zeros are synced, the writers got no
+answer at all and see -21. If a retry reaches the restarted keeper within the client's retry window
+(3 attempts of 10 s by default), the keeper has read the group back from the page cache, the retry
+finds the event, and the writer sees `CL_SUCCESS`, although the group may not be on the disk.
 
 ### Checking whether a -21 event was stored
 
 With -21, `event_time` is the event's timestamp, and with every other failure it is 0. The
 timestamp is the first part of the event's identity. To check whether the event was stored, wait
-until the event could have reached the archive (the keeper ships a chunk once ChronoGrapher
-confirms it, and a restarted keeper must have replayed its WAL), then replay the story over a short
+until a restarted keeper has replayed its WAL, then replay the story over a short
 range around `event_time` with `ReplayStory` and look for a record that matches yours. Put an
 identifier of your own in the record to make the match certain. If a matching record is there,
 the event was stored; do not write it again. If none is there after the keepers have recovered,

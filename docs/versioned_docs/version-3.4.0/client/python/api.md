@@ -200,8 +200,9 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
 - With `Durability.Durable` it returns `0` only after the keeper wrote the event to its write-ahead
   log (WAL) and `fdatasync` returned. A keeper that cannot make the event durable answers with an
   error and stores nothing, except that `-21` means it may be stored; the write is never downgraded
-  to Accepted. The WAL is off by default on the keepers, and with it off every durable write returns `-19`
-  (`CL_ERR_DURABILITY_UNAVAILABLE`). See [Keeper WAL](../../user-guide/architecture/keeper-wal.md).
+  to Accepted. The WAL is off by default on the keepers, and with it off every durable write
+  returns `-19` (`CL_ERR_DURABILITY_UNAVAILABLE`). See
+  [Keeper WAL](../../user-guide/architecture/keeper-wal.md).
 - A durable call can block for up to `options.attempts × options.timeout_ms` (30 s with the
   defaults). It releases the GIL while it waits, so other Python threads keep running. Do not change
   the `options` object from another thread during the call.

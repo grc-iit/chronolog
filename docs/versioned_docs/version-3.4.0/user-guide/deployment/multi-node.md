@@ -208,8 +208,10 @@ of writes. A sync into a pre-zeroed segment, as the WAL does, took 0.66 ms on it
 not measured after the writes. If no drive
 qualifies, the WAL goes to `/tmp`, on the boot disk, with a warning; pass
 `--wal-dir /mnt/nvme/$USER:/mnt/ssd/$USER` to fail the deploy instead. A leftover WAL of this
-install in `/tmp` is chosen first when no list is given. With a list, it is not used: the deploy
-fails and names that directory, so you can move the segments into an entry's `<hash>/<group>`.
+install in `/tmp` is chosen first when no list is given. With a list, it is not used. If an entry is
+usable, the deploy prints a warning naming the leftover and goes ahead; if no entry is usable, the
+deploy fails and names that directory, so you can move the segments into an entry's
+`<hash>/<group>`.
 
 ## Execution Modes
 
