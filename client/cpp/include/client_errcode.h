@@ -31,8 +31,11 @@ enum ClientErrorCode
                                          // Nothing was stored; retrying will not help until an operator acts
     CL_ERR_DURABILITY_FULL = -20,        // The WAL file system is below its reserve, or the keeper holds more
                                          // unconfirmed data than durable_cap_mb. Nothing was stored; retry later
-    CL_ERR_DURABILITY_UNKNOWN = -21      // No answer after every attempt. The event may be stored; a new
-                                         // log_event call creates a second event with a new identity
+    CL_ERR_DURABILITY_UNKNOWN = -21      // The event may be stored: no attempt was answered, an attempt went
+                                         // unanswered and a later answer could not rule out that it stored the
+                                         // event, or the keeper's WAL failed while writing it and could not
+                                         // erase it. A new log_event call creates a second event with a new
+                                         // identity. event_time holds the event's timestamp
 };
 
 // Convert enum value to its name (for logging)

@@ -172,7 +172,14 @@ public:
 
     // Write `record` and return CL_SUCCESS once the event reached
     // options.durability; event_time receives the event's timestamp. Accepted
-    // returns the keeper's status, which log_event(record) discards. The
+    // returns the keeper's status, which log_event(record) discards.
+    // CL_ERR_DURABILITY_UNKNOWN means the event may be stored: no attempt was
+    // answered, an attempt went unanswered and a later answer could not rule
+    // out that it stored the event, or the keeper's WAL failed while writing
+    // it and could not erase it. A new log_event call creates a second event
+    // with a new identity. With that code event_time is still the event's
+    // timestamp, so the caller can check later whether it was stored; every
+    // other failure leaves event_time 0. The
     // default implementation sends Accepted through log_event(record) and
     // answers CL_ERR_DURABILITY_UNAVAILABLE to Durable, sending nothing.
     // A subclass that overrides only one log_event overload adds

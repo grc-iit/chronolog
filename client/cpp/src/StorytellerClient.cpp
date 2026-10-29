@@ -176,21 +176,28 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
         switch(keeperRecordingClient->send_durable_event_msg(chronicle, story, event, options.timeout_ms, keeper_code))
         {
             case DurableSendOutcome::Answered:
-                if(chronolog::CL_SUCCESS == keeper_code)
-                {
-                    event_time = event.time();
-                }
                 if(may_be_stored && (chronolog::CL_ERR_DURABILITY_UNAVAILABLE == keeper_code ||
                                      chronolog::CL_ERR_DURABILITY_FULL == keeper_code))
                 {
-                    return chronolog::CL_ERR_DURABILITY_UNKNOWN;
+                    keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
+                }
+                // a keeper answers CL_ERR_DURABILITY_UNKNOWN itself when its WAL
+                // failed while writing the event and could not erase it
+                if(chronolog::CL_SUCCESS == keeper_code || chronolog::CL_ERR_DURABILITY_UNKNOWN == keeper_code)
+                {
+                    event_time = event.time();
                 }
                 return keeper_code;
             case DurableSendOutcome::NotRegistered:
                 // a keeper without the RPC stored nothing and never will, but
                 // an earlier unanswered attempt may have reached a keeper that
                 // stored the event and then died
-                return may_be_stored ? chronolog::CL_ERR_DURABILITY_UNKNOWN : chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
+                if(!may_be_stored)
+                {
+                    return chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
+                }
+                event_time = event.time();
+                return chronolog::CL_ERR_DURABILITY_UNKNOWN;
             case DurableSendOutcome::TimedOut:
             case DurableSendOutcome::TransportError:
                 may_be_stored = true;
@@ -203,7 +210,9 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
                 break;
         }
     }
-    // the event may be stored; a new log_event call would give it a new identity
+    // the event may be stored; a new log_event call would give it a new
+    // identity, so the caller gets the timestamp to look for it later
+    event_time = event.time();
     return chronolog::CL_ERR_DURABILITY_UNKNOWN;
 }
 /////////////////////
@@ -428,3 +437,7 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
 }
 
 /////////////////
+
+// instantiates every member, including removeRecordingClient, which nothing in
+// the library calls yet; the unit tests do
+template class chronolog::StoryHandleImpl<chronolog::RoundRobinKeeperChoice>;
