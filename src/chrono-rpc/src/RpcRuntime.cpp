@@ -1,8 +1,5 @@
 #include <RpcRuntime.h>
 #include <thallium/timeout.hpp>
-#include <array>
-#include <cerrno>
-#include <condition_variable>
 #include <mutex>
 #include <pthread.h>
 #include <system_error>
@@ -13,8 +10,7 @@ namespace chronolog::rpc
 {
 namespace
 {
-constexpr std::size_t Capacity = 2;
-constexpr std::size_t WorkerCount = 2;
+constexpr std::size_t DefaultCapacity = 2;
 constexpr unsigned Closed = 1u << 8;
 constexpr unsigned CountMask = Closed - 1;
 constexpr auto PollInterval = std::chrono::milliseconds(1);
@@ -85,6 +81,12 @@ bool JobBase::wait() noexcept
     }
 }
 
+void JobBase::abandonCaller() noexcept
+{
+    context.abandon();
+    callerDone.store(true, std::memory_order_release);
+}
+
 RpcResult<int> JobBase::expiredResult() const noexcept
 {
     bool dispatched = context.dispatched();
@@ -109,22 +111,31 @@ struct Slot
 
 struct RuntimeState
 {
-    std::array<Slot, Capacity> slots;
+    explicit RuntimeState(std::size_t count)
+        : capacity(count)
+        , slots(count)
+        , workers(count)
+        , exited(std::make_unique<std::atomic<bool>[]>(count))
+        , joined(count, false)
+        , arguments(count)
+    {
+        for(std::size_t i = 0; i != capacity; ++i) exited[i].store(false, std::memory_order_relaxed);
+    }
+    std::size_t const capacity;
+    std::vector<Slot> slots;
     std::atomic<unsigned> admissions{0};
-    std::array<pthread_t, WorkerCount> workers{};
-    std::array<std::atomic<bool>, WorkerCount> exited{};
-    std::array<bool, WorkerCount> joined{};
+    std::vector<pthread_t> workers;
+    std::unique_ptr<std::atomic<bool>[]> exited;
+    std::vector<bool> joined;
     std::size_t started = 0;
     std::atomic<bool> starting{true};
     std::atomic<bool> reaped{false};
-    std::mutex sleepMutex;
-    std::condition_variable wake;
     struct WorkerArgument
     {
         RuntimeState* owner;
         std::size_t index;
     };
-    std::array<WorkerArgument, WorkerCount> arguments{};
+    std::vector<WorkerArgument> arguments;
 
     void queue(std::size_t index, std::shared_ptr<JobBase> job) noexcept
     {
@@ -132,14 +143,9 @@ struct RuntimeState
             job->context.abandon();
         slots[index].job = std::move(job);
         slots[index].phase.store(Phase::Queued, std::memory_order_release);
-        wake.notify_all();
     }
 
-    void close() noexcept
-    {
-        admissions.fetch_or(Closed, std::memory_order_acq_rel);
-        wake.notify_all();
-    }
+    void close() noexcept { admissions.fetch_or(Closed, std::memory_order_acq_rel); }
 
     void release(Slot& slot) noexcept
     {
@@ -188,7 +194,7 @@ struct RuntimeState
             }
             catch(thallium::timeout const&)
             {
-                // This type does not derive from std::exception on this stack.
+                // This type derives from std::exception, not thallium::exception.
                 job->fail(CL_ERR_DEADLINE_EXCEEDED);
             }
             catch(...)
@@ -218,10 +224,9 @@ struct RuntimeState
                 break;
             if(!progressed)
             {
-                std::unique_lock<std::mutex> lock(sleepMutex);
-                // Producers never take this mutex. The finite poll also covers
-                // a notification between the atomic scan and wait enrollment.
-                wake.wait_for(lock, PollInterval);
+                // No caller notification: condition-variable broadcast itself
+                // can take an untimed internal lock. Only workers sleep here.
+                std::this_thread::sleep_for(PollInterval);
             }
         }
         exited[index].store(true, std::memory_order_release);
@@ -258,7 +263,7 @@ struct RuntimeState
 // Process-lifetime ownership is deliberate. An ambiguous transfer has no safe
 // forced-exit/reclamation primitive. Keeping this root alive prevents static
 // destruction from finalizing its engines or destroying joinable live workers.
-// There is exactly ONE process reaper, in addition to two workers per owner.
+// There is exactly ONE process reaper, in addition to C fixed workers per owner.
 class ProcessOwners
 {
 public:
@@ -361,10 +366,17 @@ void RpcReservation::reset() noexcept
 }
 
 RpcRuntime::RpcRuntime()
-    : state_(std::make_shared<detail::RuntimeState>())
+    : RpcRuntime(DefaultCapacity)
+{}
+
+RpcRuntime::RpcRuntime(std::size_t capacity)
 {
+    // Validate before allocating state, creating the process reaper or workers.
+    if(capacity == 0 || capacity > CountMask)
+        throw std::invalid_argument("Invalid RPC runtime capacity");
+    state_ = std::make_shared<detail::RuntimeState>(capacity);
     detail::ProcessOwners::instance().add(state_);
-    for(std::size_t i = 0; i != WorkerCount; ++i)
+    for(std::size_t i = 0; i != state_->capacity; ++i)
     {
         state_->arguments[i] = {state_.get(), i};
         int error =
@@ -387,13 +399,13 @@ RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
     if(deadline.expired())
         return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
     auto observed = state_->admissions.load(std::memory_order_acquire);
-    while(!(observed & Closed) && (observed & CountMask) < Capacity)
+    while(!(observed & Closed) && (observed & CountMask) < state_->capacity)
     {
         if(deadline.expired())
             return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
         if(state_->admissions.compare_exchange_weak(observed, observed + 1, std::memory_order_acq_rel))
         {
-            for(std::size_t i = 0; i != Capacity; ++i)
+            for(std::size_t i = 0; i != state_->capacity; ++i)
             {
                 auto phase = detail::Phase::Empty;
                 if(state_->slots[i].phase.compare_exchange_strong(phase,

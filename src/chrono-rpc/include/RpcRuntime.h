@@ -115,6 +115,7 @@ struct JobBase
     virtual void normalize() noexcept = 0;
     virtual void releaseWork() noexcept = 0;
     bool wait() noexcept;
+    void abandonCaller() noexcept;
     RpcResult<int> expiredResult() const noexcept;
     OperationContext context;
     std::atomic<bool> callerDone{false};
@@ -147,9 +148,79 @@ std::shared_ptr<void> reservedWork(std::shared_ptr<RuntimeState> const&, std::si
 void queueReservedWork(std::shared_ptr<RuntimeState> const&, std::size_t, std::shared_ptr<JobBase>) noexcept;
 } // namespace detail
 
+// One result consumer. Moving transfers that consumer; wait consumes it and
+// always uses the submitted deadline. Drop abandons/acknowledges without waiting,
+// waking workers, or releasing native work outside its charged slot.
+template <class Reply>
+class RpcPending
+{
+public:
+    RpcPending() noexcept = default;
+    RpcPending(RpcPending const&) = delete;
+    RpcPending& operator=(RpcPending const&) = delete;
+    RpcPending(RpcPending&& other) noexcept
+        : job_(std::move(other.job_))
+        , status_(std::exchange(other.status_, CL_ERR_INVALID_ARG))
+    {}
+    RpcPending& operator=(RpcPending&& other) noexcept
+    {
+        if(this != &other)
+        {
+            reset();
+            job_ = std::move(other.job_);
+            status_ = std::exchange(other.status_, CL_ERR_INVALID_ARG);
+        }
+        return *this;
+    }
+    ~RpcPending() { reset(); }
+
+    RpcResult<Reply> wait()
+    {
+        int status = std::exchange(status_, CL_ERR_INVALID_ARG);
+        if(!job_)
+            return {status, false, std::nullopt};
+        auto job = std::move(job_);
+        if(!job->wait())
+        {
+            auto expired = job->expiredResult();
+            job->abandonCaller();
+            return {expired.status, expired.may_have_dispatched, std::nullopt};
+        }
+        auto result = std::move(*job->result_);
+        job->abandonCaller();
+        return result;
+    }
+
+private:
+    friend class RpcRuntime;
+    explicit RpcPending(int status) noexcept
+        : status_(status)
+    {}
+    explicit RpcPending(std::shared_ptr<detail::Job<Reply>> job) noexcept
+        : job_(std::move(job))
+        , status_(CL_SUCCESS)
+    {}
+    void reset() noexcept
+    {
+        if(job_)
+        {
+            job_->abandonCaller();
+            job_.reset();
+        }
+        status_ = CL_ERR_INVALID_ARG;
+    }
+    std::shared_ptr<detail::Job<Reply>> job_;
+    int status_ = CL_ERR_INVALID_ARG;
+};
+
 // Create one runtime owner per real component/client engine context, before its
-// bounded entries. Construction creates exactly two fixed joinable workers; it
-// creates no engine. Do not replace a saturated runtime to bypass its cap.
+// bounded entries. Construction creates no engine. Default capacity is two;
+// an explicit control capacity 1..255 fixes BOTH slots and joinable workers.
+// No resizing or replacement owner may bypass saturation. Control fanout must
+// reserve its whole roster before submitting any child, then collect under one
+// shared deadline. A coordinator must not occupy a needed child worker slot.
+// Larger control capacity does not raise the two bulk source/registration or
+// incoming receive permits; adapters must enforce those within this same owner.
 // The process owner roots live states independently of this public handle.
 // Dropping the handle requests quiescence, never joins/finalizes native work.
 // One process-wide reaper collects fully settled/exited owners. Incomplete or
@@ -158,6 +229,7 @@ class RpcRuntime
 {
 public:
     RpcRuntime();
+    explicit RpcRuntime(std::size_t capacity);
     RpcRuntime(RpcRuntime const&) = delete;
     RpcRuntime& operator=(RpcRuntime const&) = delete;
     ~RpcRuntime();
@@ -175,15 +247,15 @@ public:
         return invoke<Reply>(std::move(reservation), std::move(work));
     }
 
-    // Requires a valid token obtained from this owner. Ownership is queued even
-    // if its original deadline or close already won. No fresh operation budget.
+    // Requires a valid token obtained from this owner. Submission queues ownership
+    // even if its original deadline or close won; it never waits for native work.
     // Prepare large/engine state in owned work; captures must own their storage.
     template <class Reply>
-    RpcResult<Reply> invoke(RpcReservation&& reservation, std::shared_ptr<OwnedRpcWork<Reply>> work)
+    RpcPending<Reply> submit(RpcReservation&& reservation, std::shared_ptr<OwnedRpcWork<Reply>> work)
     {
         static_assert(std::is_nothrow_move_constructible_v<Reply>, "RPC reply must be nothrow movable");
         if(!reservation)
-            return {CL_ERR_INVALID_ARG, false, std::nullopt};
+            return RpcPending<Reply>(CL_ERR_INVALID_ARG);
         auto owner = reservation.state_;
         auto slot = reservation.slot_;
         auto deadline = *reservation.deadline_;
@@ -199,19 +271,17 @@ public:
         {
             detail::queueReservedWork(owner, slot, {});
             reservation.state_.reset();
-            return {CL_ERR_RPC_CAPACITY, false, std::nullopt};
+            return RpcPending<Reply>(CL_ERR_RPC_CAPACITY);
         }
         detail::queueReservedWork(owner, slot, job);
         reservation.state_.reset();
-        if(!job->wait())
-        {
-            auto expired = job->expiredResult();
-            job->callerDone.store(true, std::memory_order_release);
-            return {expired.status, expired.may_have_dispatched, std::nullopt};
-        }
-        auto result = std::move(*job->result_);
-        job->callerDone.store(true, std::memory_order_release);
-        return result;
+        return RpcPending<Reply>(std::move(job));
+    }
+
+    template <class Reply>
+    RpcResult<Reply> invoke(RpcReservation&& reservation, std::shared_ptr<OwnedRpcWork<Reply>> work)
+    {
+        return submit<Reply>(std::move(reservation), std::move(work)).wait();
     }
 
     int drain(RpcDeadline const&);
