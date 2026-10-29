@@ -363,9 +363,25 @@ FaultInjectingWalFileSink::FaultInjectingWalFileSink(std::unique_ptr<WalFileSink
 
 void FaultInjectingWalFileSink::failSyncsWith(int err) { syncError = err; }
 
+void FaultInjectingWalFileSink::failNextSyncsWith(int err, uint64_t count)
+{
+    std::lock_guard<std::mutex> lock(nextFaultMutex);
+    nextSyncError = err;
+    nextSyncFailures = count;
+}
+
 void FaultInjectingWalFileSink::failDirectorySyncsWith(int err) { directorySyncError = err; }
 
 void FaultInjectingWalFileSink::failWritesWith(int err) { writeError = err; }
+
+void FaultInjectingWalFileSink::failNextWriteAt(uint64_t offset, uint64_t bytes, int err)
+{
+    std::lock_guard<std::mutex> lock(nextFaultMutex);
+    nextWriteArmed = true;
+    nextWriteOffset = offset;
+    nextWriteBytes = bytes;
+    nextWriteError = err;
+}
 
 void FaultInjectingWalFileSink::setFreeSpace(uint64_t free_bytes, uint64_t total_bytes)
 {
@@ -404,13 +420,58 @@ int FaultInjectingWalFileSink::writeAt(int fd, uint64_t offset, iovec const* iov
     {
         return err;
     }
-    return inner->writeAt(fd, offset, iov, iovcnt);
+    int err = 0;
+    uint64_t limit = 0;
+    {
+        std::lock_guard<std::mutex> lock(nextFaultMutex);
+        if(nextWriteArmed && nextWriteOffset == offset)
+        {
+            nextWriteArmed = false;
+            err = nextWriteError;
+            limit = nextWriteBytes;
+        }
+    }
+    if(err == 0)
+    {
+        return inner->writeAt(fd, offset, iov, iovcnt);
+    }
+    // the first limit bytes of the buffers reach the file, then the failure
+    std::vector<iovec> part;
+    for(int i = 0; i < iovcnt && limit > 0; ++i)
+    {
+        std::size_t const len = static_cast<std::size_t>(std::min<uint64_t>(iov[i].iov_len, limit));
+        part.push_back(iovec{iov[i].iov_base, len});
+        limit -= len;
+    }
+    if(!part.empty())
+    {
+        if(int inner_err = inner->writeAt(fd, offset, part.data(), static_cast<int>(part.size())))
+        {
+            return inner_err;
+        }
+    }
+    return err;
 }
 
 int FaultInjectingWalFileSink::syncData(int fd)
 {
+    int next_error = 0;
+    {
+        std::lock_guard<std::mutex> lock(nextFaultMutex);
+        if(nextSyncFailures > 0)
+        {
+            --nextSyncFailures;
+            next_error = nextSyncError;
+        }
+    }
+    // counted after the choice above: a caller that saw the count go up knows
+    // this call is not one of the next ones it sets up after that
     ++syncs;
     while(syncsHeld.load()) { waitBriefly(); }
+    if(next_error != 0)
+    {
+        return next_error;
+    }
     if(int err = syncError.load())
     {
         return err;

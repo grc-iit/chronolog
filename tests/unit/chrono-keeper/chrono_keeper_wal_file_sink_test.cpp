@@ -309,6 +309,86 @@ TEST_F(WalFileSinkTest, FailSyncsWithEioReturnsItOnEveryLaterSync)
     EXPECT_EQ(sink->closeFile(fd), 0);
 }
 
+TEST_F(WalFileSinkTest, FailNextSyncsWithFailsOnlyThatMany)
+{
+    auto sink = openFaultSink();
+    ASSERT_EQ(sink->createZeroed("seg", 4096), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    sink->failNextSyncsWith(EIO, 2);
+    EXPECT_EQ(sink->syncData(fd), EIO);
+    EXPECT_EQ(sink->syncData(fd), EIO);
+    EXPECT_EQ(sink->syncData(fd), 0);
+
+    // they come before failSyncsWith, which applies again after them
+    sink->failSyncsWith(ENOSPC);
+    sink->failNextSyncsWith(EIO);
+    EXPECT_EQ(sink->syncData(fd), EIO);
+    EXPECT_EQ(sink->syncData(fd), ENOSPC);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+}
+
+// A sync that started before failNextSyncsWith, and waits in holdSyncs, is not
+// one of the next ones: the KeeperWal tests fail the group after a held one.
+TEST_F(WalFileSinkTest, FailNextSyncsWithSparesASyncAlreadyHeld)
+{
+    auto sink = openFaultSink();
+    ASSERT_EQ(sink->createZeroed("seg", 4096), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    sink->holdSyncs();
+    std::atomic<int> held_result{-1};
+    std::thread held([&]() { held_result = sink->syncData(fd); });
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while(sink->syncCount() == 0 && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(sink->syncCount(), 1u);
+    sink->failNextSyncsWith(EIO);
+    sink->releaseSyncs();
+    held.join();
+    EXPECT_EQ(held_result.load(), 0);
+    EXPECT_EQ(sink->syncData(fd), EIO);
+    EXPECT_EQ(sink->syncData(fd), 0);
+    EXPECT_EQ(sink->closeFile(fd), 0);
+}
+
+// The first bytes of the buffers reach the file, the rest do not, and the
+// call fails; once, and only at that offset.
+TEST_F(WalFileSinkTest, FailNextWriteAtWritesItsFirstBytesThenFails)
+{
+    auto sink = openFaultSink();
+    ASSERT_EQ(sink->createZeroed("seg", 64), 0);
+    int fd = -1;
+    ASSERT_EQ(sink->openForWrite("seg", fd), 0);
+
+    sink->failNextWriteAt(8, 6, EIO);
+    std::string const first = "abcd";
+    std::string const second = "efgh";
+    iovec iov[2] = {iovOf(first), iovOf(second)};
+    EXPECT_EQ(sink->writeAt(fd, 0, iov, 2), 0);
+    EXPECT_EQ(sink->writeAt(fd, 8, iov, 2), EIO);
+    std::string content;
+    ASSERT_EQ(sink->readFile("seg", content), 0);
+    EXPECT_EQ(content.substr(0, 8), "abcdefgh");
+    EXPECT_EQ(content.substr(8, 6), "abcdef");
+    EXPECT_TRUE(allZero(content, 14, content.size()));
+
+    EXPECT_EQ(sink->writeAt(fd, 8, iov, 2), 0);
+    ASSERT_EQ(sink->readFile("seg", content), 0);
+    EXPECT_EQ(content.substr(8, 8), "abcdefgh");
+
+    // with no bytes the call writes nothing
+    sink->failNextWriteAt(32, 0, ENOSPC);
+    EXPECT_EQ(sink->writeAt(fd, 32, iov, 2), ENOSPC);
+    ASSERT_EQ(sink->readFile("seg", content), 0);
+    EXPECT_TRUE(allZero(content, 16, content.size()));
+    EXPECT_EQ(sink->closeFile(fd), 0);
+}
+
 TEST_F(WalFileSinkTest, DirectorySyncsAreCountedApartFromDataSyncs)
 {
     auto sink = openFaultSink();

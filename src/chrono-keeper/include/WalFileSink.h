@@ -62,11 +62,19 @@ public:
     // Every later syncData returns err without syncing; 0 turns it off.
     // syncDirectory is not affected.
     void failSyncsWith(int err);
+    // The next count syncData calls return err without syncing; the ones after
+    // them sync, or follow failSyncsWith. A call is counted when it starts, so
+    // a sync already waiting in holdSyncs is not one of them.
+    void failNextSyncsWith(int err, uint64_t count = 1);
     // Every later syncDirectory returns err without syncing; 0 turns it off.
     void failDirectorySyncsWith(int err);
     // Every later writeAt and createZeroed returns err without writing (e.g.
     // ENOSPC); 0 turns it off.
     void failWritesWith(int err);
+    // The next writeAt that starts at offset writes at most bytes of its
+    // buffers, then returns err: a write that fails partway. Writes at other
+    // offsets, and those after it, are not affected; failWritesWith comes first.
+    void failNextWriteAt(uint64_t offset, uint64_t bytes, int err);
     // Later freeSpace calls report these values instead of the real ones.
     void setFreeSpace(uint64_t free_bytes, uint64_t total_bytes);
     // Later syncData calls wait until releaseSyncs; syncDirectory is not held.
@@ -102,6 +110,14 @@ private:
     std::atomic<bool> syncsHeld{false};
     std::atomic<uint64_t> syncs{0};
     std::atomic<uint64_t> directorySyncs{0};
+    // guarded by nextFaultMutex
+    std::mutex nextFaultMutex;
+    int nextSyncError = 0;
+    uint64_t nextSyncFailures = 0;
+    bool nextWriteArmed = false;
+    uint64_t nextWriteOffset = 0;
+    uint64_t nextWriteBytes = 0;
+    int nextWriteError = 0;
     std::mutex freeSpaceMutex;
     bool freeSpaceSet = false;
     uint64_t fakeFreeBytes = 0;

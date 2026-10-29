@@ -30,6 +30,8 @@ constexpr std::size_t kPruneOnAdd = 2;
 // the longest a batch loop waits for a waiting thread to take the mutex: a
 // woken thread takes it within microseconds, so this only bounds the wait
 constexpr std::chrono::microseconds kHandOffLimit(500);
+// the most zeros one write of a failed group's erase carries
+constexpr std::size_t kZeroWriteBytes = 1u << 20;
 
 iovec iovOf(char const* data, std::size_t len) { return iovec{const_cast<char*>(data), len}; }
 
@@ -655,7 +657,8 @@ void KeeperWal::commitGroup(std::vector<Queued>& group)
         uint64_t const needed = headerBytes + groupBytes(group, {});
         if(int err = rotate(std::max(segmentBytes, needed), what))
         {
-            failGroup(group, err, what);
+            // before any of the group was written: nothing to erase
+            failGroup(group, err, what, 0);
             return;
         }
         bytes = groupBytes(group, namedInActive);
@@ -683,18 +686,21 @@ void KeeperWal::commitGroup(std::vector<Queued>& group)
         iov.push_back(iovOf(entry.event.tail.data(), entry.event.tail.size()));
     }
 
+    // From here a failure may leave the group's bytes in the segment, whole
+    // records with good CRCs among them, so failGroup erases them.
     if(int err = sink->writeAt(activeFd, writeOffset, iov.data(), static_cast<int>(iov.size())))
     {
         failGroup(group,
                   err,
                   "the write of " + std::to_string(bytes) + " bytes at offset " + std::to_string(writeOffset) +
-                          " of segment " + wal::segmentFileName(activeSegment));
+                          " of segment " + wal::segmentFileName(activeSegment),
+                  bytes);
         return;
     }
     // a durable answer means this returned, not that the write did
     if(int err = sink->syncData(activeFd))
     {
-        failGroup(group, err, "the fdatasync of segment " + wal::segmentFileName(activeSegment));
+        failGroup(group, err, "the fdatasync of segment " + wal::segmentFileName(activeSegment), bytes);
         return;
     }
     writeOffset += bytes;
@@ -806,18 +812,86 @@ void KeeperWal::finishGroup(std::vector<Queued>& group, int status, uint64_t seg
     }
 }
 
-void KeeperWal::failGroup(std::vector<Queued>& group, int err, std::string const& what)
+void KeeperWal::failGroup(std::vector<Queued>& group, int err, std::string const& what, uint64_t written)
 {
-    // set before any answer, so a retry after it is refused
+    // Set before the erase and any answer: a new request is refused at once,
+    // a retry of an event in the group still finds it in flight and waits for
+    // its answer, and a retry after the answer is refused.
     failed = true;
-    LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}). Its {} records get "
-                 "CL_ERR_DURABILITY_UNAVAILABLE and the WAL refuses durable writes until the keeper restarts",
+    if(written == 0)
+    {
+        LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}). Nothing of the group was written; its "
+                     "{} records get CL_ERR_DURABILITY_UNAVAILABLE and the WAL refuses durable writes until the "
+                     "keeper restarts",
+                     what,
+                     walDirectory,
+                     std::strerror(err),
+                     err,
+                     group.size());
+        finishGroup(group, CL_ERR_DURABILITY_UNAVAILABLE, 0, 0);
+        return;
+    }
+
+    // After a failed writeback Linux may mark the pages clean and keep them,
+    // and a later sync returns 0 without writing them: a keeper restarted on
+    // the same boot would read the group back whole and answer a retry of it
+    // CL_SUCCESS. Zeros over it read back as the end of the segment's data,
+    // from the page cache and from the disk. Only when they are synced is the
+    // group known not to be on disk.
+    std::string erase_what;
+    int const erase_err = eraseRange(writeOffset, written, erase_what);
+    if(erase_err == 0)
+    {
+        LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}). The group's {} bytes at offset {} of "
+                     "segment {} were overwritten with zeros and synced; its {} records get "
+                     "CL_ERR_DURABILITY_UNAVAILABLE and the WAL refuses durable writes until the keeper restarts",
+                     what,
+                     walDirectory,
+                     std::strerror(err),
+                     err,
+                     written,
+                     writeOffset,
+                     wal::segmentFileName(activeSegment),
+                     group.size());
+        finishGroup(group, CL_ERR_DURABILITY_UNAVAILABLE, 0, 0);
+        return;
+    }
+    LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}), and so did {} over the group's {} bytes at "
+                 "offset {} of segment {}: {} (errno {}). The group may be on disk: its {} records get "
+                 "CL_ERR_DURABILITY_UNKNOWN and the WAL refuses durable writes until the keeper restarts",
                  what,
                  walDirectory,
                  std::strerror(err),
                  err,
+                 erase_what,
+                 written,
+                 writeOffset,
+                 wal::segmentFileName(activeSegment),
+                 std::strerror(erase_err),
+                 erase_err,
                  group.size());
-    finishGroup(group, CL_ERR_DURABILITY_UNAVAILABLE, 0, 0);
+    finishGroup(group, CL_ERR_DURABILITY_UNKNOWN, 0, 0);
+}
+
+int KeeperWal::eraseRange(uint64_t offset, uint64_t bytes, std::string& what)
+{
+    static std::string const zeros(kZeroWriteBytes, '\0');
+    for(uint64_t done = 0; done < bytes;)
+    {
+        iovec iov = iovOf(zeros.data(), static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), bytes - done)));
+        if(int err = sink->writeAt(activeFd, offset + done, &iov, 1))
+        {
+            what = "the write of zeros at offset " + std::to_string(offset + done);
+            return err;
+        }
+        done += iov.iov_len;
+    }
+    if(int err = sink->syncData(activeFd))
+    {
+        what = "the fdatasync of the zeros";
+        return err;
+    }
+    return 0;
 }
 
 void KeeperWal::deleteReleasedSegments()

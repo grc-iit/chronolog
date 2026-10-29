@@ -64,9 +64,10 @@ public:
     // attempt is on disk or on its way there. CL_SUCCESS when the event's
     // group synced and the event is still pending. When an attempt with the
     // event's identity is queued or in its group's write or sync, waits for it
-    // (a ULT yields on its tl::eventual) and returns its result: CL_SUCCESS or
-    // CL_ERR_DURABILITY_UNAVAILABLE. std::nullopt when the WAL holds neither;
-    // only then may the request be refused or written.
+    // (a ULT yields on its tl::eventual) and returns its result: CL_SUCCESS,
+    // CL_ERR_DURABILITY_UNAVAILABLE, or CL_ERR_DURABILITY_UNKNOWN when its
+    // group failed and could not be erased. std::nullopt when the WAL holds
+    // neither; only then may the request be refused or written.
     virtual std::optional<int> lookupDurable(StoryId, EventSequence const&) = 0;
     virtual int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&) = 0;
 };
@@ -91,13 +92,19 @@ public:
 // retention store or the ingestion queue. The committer waits for work on a
 // std::condition_variable_any, which blocks only its own stream.
 //
-// Failure latch. The first write or sync error fails the whole group with
-// CL_ERR_DURABILITY_UNAVAILABLE, registers none of it as pending, and leaves
-// the WAL failed until the keeper restarts: after a failed fdatasync Linux may
-// have dropped the dirty pages, so a later sync proves nothing. A failed sync
-// of the active segment before an idle rotation latches the same way; when
-// only the spare for that rotation cannot be had, the committer keeps writing
-// to the active segment and tries again an interval later.
+// Failure latch. The first write or sync error fails the whole group,
+// registers none of it as pending, and leaves the WAL failed until the keeper
+// restarts: after a failed fdatasync Linux may mark the dirty pages clean and
+// keep them, so a later sync proves nothing. Before any record of the group
+// is answered, the bytes its write started on are overwritten with zeros and
+// synced, so a keeper restarted on the same boot does not read the group back
+// as durable; the group then gets CL_ERR_DURABILITY_UNAVAILABLE. When the
+// zeros cannot be written or synced, the group may be on disk and gets
+// CL_ERR_DURABILITY_UNKNOWN. A rotation that fails before the group is written
+// has nothing to erase. A failed sync of the active segment before an idle
+// rotation latches the same way; when only the spare for that rotation cannot
+// be had, the committer keeps writing to the active segment and tries again
+// an interval later.
 class KeeperWal
     : public WalObserver
     , public DurableLog
@@ -147,7 +154,9 @@ public:
     std::optional<int> lookupDurable(StoryId, EventSequence const&) override;
     // Blocks the calling thread (a ULT yields) on a tl::eventual until the
     // event's group synced, and returns CL_SUCCESS or
-    // CL_ERR_DURABILITY_UNAVAILABLE. The identity is looked up first: a request
+    // CL_ERR_DURABILITY_UNAVAILABLE; CL_ERR_DURABILITY_UNKNOWN when the
+    // group's write or sync failed and its bytes could not be erased (see the
+    // failure latch above). The identity is looked up first: a request
     // whose identity is already queued waits for that request's result instead
     // of queuing a copy, and one whose identity is already durable and pending
     // gets CL_SUCCESS at once; only then is a failed or stopped WAL refused.
@@ -238,8 +247,16 @@ private:
     // Registers a synced group (or drops a failed one) and sets every
     // completion in it.
     void finishGroup(std::vector<Queued>& group, int status, uint64_t segment, uint64_t bytes);
-    // Latches the failure, logs it and fails the group.
-    void failGroup(std::vector<Queued>& group, int err, std::string const& what);
+    // Latches the failure, logs it and fails the group. written is the length
+    // of the range from writeOffset of the active segment that the group's
+    // write started on, 0 when it failed before the write. Before any answer
+    // that range is erased: CL_ERR_DURABILITY_UNAVAILABLE when nothing was
+    // written or the erase succeeded, CL_ERR_DURABILITY_UNKNOWN when it failed
+    // and the group may be on disk.
+    void failGroup(std::vector<Queued>& group, int err, std::string const& what, uint64_t written);
+    // Overwrites [offset, offset + bytes) of the active segment with zeros
+    // and data-syncs it. 0 or an errno value; what names the failed step.
+    int eraseRange(uint64_t offset, uint64_t bytes, std::string& what);
     // Deletes the oldest segments with nothing pending, never the active one.
     // After a removal whose directory sync failed, deletes nothing newer until
     // a directory sync succeeds: a segment that came back after a crash must

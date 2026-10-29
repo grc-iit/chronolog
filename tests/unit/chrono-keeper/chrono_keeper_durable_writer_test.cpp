@@ -348,12 +348,14 @@ TEST(KeeperDurableWriter, FailedAppendIsNotIngested)
     FakeDurableLog wal;
     chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
 
-    for(int answer: {chl::CL_ERR_DURABILITY_UNAVAILABLE, chl::CL_ERR_INVALID_ARG})
+    // -21: the WAL could not erase the failed group, so the event may be on
+    // disk, but it was not synced and is not ingested either
+    for(int answer: {chl::CL_ERR_DURABILITY_UNAVAILABLE, chl::CL_ERR_INVALID_ARG, chl::CL_ERR_DURABILITY_UNKNOWN})
     {
         wal.appendAnswer = answer;
         EXPECT_EQ(writer.write("chron", "story", makeEvent(0)), answer);
     }
-    EXPECT_EQ(wal.appended.size(), 2u);
+    EXPECT_EQ(wal.appended.size(), 3u);
     EXPECT_EQ(keeper.ingested(kStory), 0u);
 }
 
