@@ -210,6 +210,12 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
                 break;
         }
     }
+    if(!may_be_stored)
+    {
+        // no attempt was sent: the keeper list emptied or no keeper was
+        // chosen before the first one
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
     // the event may be stored; a new log_event call would give it a new
     // identity, so the caller gets the timestamp to look for it later
     event_time = event.time();

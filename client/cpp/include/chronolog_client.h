@@ -145,7 +145,7 @@ struct LogEventOptions
 {
     Durability durability = Durability::Accepted;
     // durable writes only: deadline per RPC attempt, and how many attempts
-    // before CL_ERR_DURABILITY_UNKNOWN
+    // to send before giving up; an attempt that gets no answer is retried
     uint32_t timeout_ms = 10000;
     uint32_t attempts = 3;
 };

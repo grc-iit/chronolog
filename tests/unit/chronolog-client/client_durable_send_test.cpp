@@ -374,7 +374,7 @@ TEST_F(DurableSend, UnregisteredRpcIsUnavailableWithoutRetry)
     ASSERT_NE(handle, nullptr);
 
     auto const start = std::chrono::steady_clock::now();
-    uint64_t event_time = 0;
+    uint64_t event_time = 55;
     EXPECT_EQ(handle->log_event("record", durable(5000, 3), event_time), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     auto const elapsed = std::chrono::steady_clock::now() - start;
     // a timeout-driven retry would take at least one 5 s deadline
