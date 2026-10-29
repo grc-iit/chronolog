@@ -12,6 +12,8 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <map>
+#include <sstream>
 #include <mutex>
 #include <optional>
 #include <poll.h>
@@ -33,6 +35,7 @@ constexpr auto caller_budget = 200ms;
 constexpr auto scheduling_limit = 650ms;
 constexpr auto peer_limit = 12s;
 constexpr std::size_t work_capacity = 2;
+constexpr unsigned receive_capacity = 2;
 constexpr std::size_t bulk_bytes = 64 * 1024 * 1024;
 
 void require(bool condition, std::string const& message)
@@ -90,10 +93,120 @@ std::uint64_t checksum(std::vector<char> const& bytes)
     return value;
 }
 
+void update_peak(std::atomic<unsigned>& peak, unsigned value)
+{
+    auto old = peak.load();
+    while(old < value && !peak.compare_exchange_weak(old, value)) {}
+}
+
+struct ReceiverCounters
+{
+    std::atomic<unsigned> contexts{0}, contexts_peak{0}, admitted{0};
+    std::atomic<unsigned> buffers{0}, allocations{0}, registrations{0}, registrations_total{0};
+    std::atomic<unsigned> deferred{0}, pull_work{0}, pull_work_peak{0}, pulls_started{0}, pulls_finished{0};
+    std::atomic<unsigned> rejecting{0}, rejecting_peak{0}, rejected{0}, receipts{0};
+    std::atomic<std::uint64_t> received_bytes{0};
+
+    std::string snapshot() const
+    {
+        return "contexts=" + std::to_string(contexts) + " contexts_peak=" + std::to_string(contexts_peak) +
+               " admitted=" + std::to_string(admitted) + " buffers=" + std::to_string(buffers) +
+               " allocations=" + std::to_string(allocations) + " registrations=" + std::to_string(registrations) +
+               " registrations_total=" + std::to_string(registrations_total) + " deferred=" + std::to_string(deferred) +
+               " pull_work=" + std::to_string(pull_work) + " pull_work_peak=" + std::to_string(pull_work_peak) +
+               " pulls_started=" + std::to_string(pulls_started) + " pulls_finished=" + std::to_string(pulls_finished) +
+               " rejecting=" + std::to_string(rejecting) + " rejecting_peak=" + std::to_string(rejecting_peak) +
+               " rejected=" + std::to_string(rejected) + " receipts=" + std::to_string(receipts) +
+               " received_bytes=" + std::to_string(received_bytes);
+    }
+};
+
+struct HandlerLifetime
+{
+    std::atomic<unsigned>& handlers;
+    explicit HandlerLifetime(std::atomic<unsigned>& value)
+        : handlers(value)
+    {
+        ++handlers;
+    }
+    ~HandlerLifetime() { --handlers; }
+};
+
+struct ReceiveLease
+{
+    ReceiverCounters& counters;
+    bool admitted = false;
+    bool allocated = false;
+    bool registered = false;
+    bool deferred = false;
+    bool pull_work = false;
+
+    explicit ReceiveLease(ReceiverCounters& value)
+        : counters(value)
+    {
+        auto live = counters.contexts.load();
+        do {
+            if(live >= receive_capacity)
+                return;
+        } while(!counters.contexts.compare_exchange_weak(live, live + 1));
+        admitted = true;
+        ++counters.admitted;
+        update_peak(counters.contexts_peak, live + 1);
+    }
+
+    void allocated_target()
+    {
+        allocated = true;
+        ++counters.buffers;
+        ++counters.allocations;
+    }
+
+    void registered_target()
+    {
+        registered = true;
+        ++counters.registrations;
+        ++counters.registrations_total;
+        deferred = true;
+        ++counters.deferred;
+    }
+
+    void started_pull()
+    {
+        deferred = false;
+        --counters.deferred;
+        pull_work = true;
+        update_peak(counters.pull_work_peak, ++counters.pull_work);
+        ++counters.pulls_started;
+    }
+
+    void finished_pull()
+    {
+        pull_work = false;
+        --counters.pull_work;
+        ++counters.pulls_finished;
+    }
+
+    ~ReceiveLease()
+    {
+        if(pull_work)
+            --counters.pull_work;
+        if(deferred)
+            --counters.deferred;
+        if(registered)
+            --counters.registrations;
+        if(allocated)
+            --counters.buffers;
+        if(admitted)
+            --counters.contexts;
+    }
+};
+
 int peer_main(std::string const& transport, int command_fd, int event_fd)
 {
     tl::engine engine(transport + "://127.0.0.1:0", THALLIUM_SERVER_MODE, true, 2);
     std::atomic<bool> allow_pull{false};
+    std::atomic<bool> allow_complete{true};
+    ReceiverCounters receiver;
     std::atomic<unsigned> handlers{0};
     std::mutex events;
     auto emit = [&](std::string const& message)
@@ -122,9 +235,21 @@ int peer_main(std::string const& transport, int command_fd, int event_fd)
             engine.define("deadline_probe_pull",
                           [&](tl::request const& request, tl::bulk remote, int token, bool delayed)
                           {
-                              ++handlers;
+                              HandlerLifetime handler(handlers);
+                              ReceiveLease receive(receiver);
+                              if(!receive.admitted)
+                              {
+                                  ++receiver.rejected;
+                                  update_peak(receiver.rejecting_peak, ++receiver.rejecting);
+                                  request.respond(std::uint64_t{0});
+                                  --receiver.rejecting;
+                                  emit("bulk_rejected " + std::to_string(token));
+                                  return;
+                              }
                               std::vector<char> target(remote.size(), 0);
+                              receive.allocated_target();
                               auto local = engine.expose({{target.data(), target.size()}}, tl::bulk_mode::write_only);
+                              receive.registered_target();
                               emit("bulk_ready " + std::to_string(token));
                               while(delayed && !allow_pull.load()) margo_thread_sleep(engine.get_margo_instance(), 2.0);
                               margo_request transfer = MARGO_REQUEST_NULL;
@@ -138,34 +263,48 @@ int peer_main(std::string const& transport, int command_fd, int event_fd)
                                                              target.size(),
                                                              &transfer);
                               require(rc == HG_SUCCESS, "margo_bulk_itransfer failed");
+                              receive.started_pull();
                               int complete = 0;
                               require(margo_test(transfer, &complete) == HG_SUCCESS, "margo_test failed");
                               emit("pull_started " + std::to_string(token) + " pending=" + std::to_string(!complete));
                               if(token == 21)
                                   ::raise(SIGSTOP); // Pause the receiver at the native in-flight barrier.
+                              while(!allow_complete.load()) margo_thread_sleep(engine.get_margo_instance(), 2.0);
                               require(margo_wait(transfer) == HG_SUCCESS, "margo_wait bulk failed");
+                              receive.finished_pull();
                               auto value = checksum(target);
                               emit("pull_finished " + std::to_string(token) + " checksum=" + std::to_string(value));
                               try
                               {
                                   request.respond(value);
+                                  ++receiver.receipts;
+                                  receiver.received_bytes += target.size();
                               }
                               catch(std::exception const& error)
                               {
                                   std::cerr << "late bulk reply: " << error.what() << std::endl;
                               }
-                              --handlers;
                           });
+    auto receive_stats = engine.define("deadline_probe_receive_stats",
+                                       [&](tl::request const& request) { request.respond(receiver.snapshot()); });
     emit("address " + std::string(engine.self()));
     for(;;)
     {
         auto command = read_line(command_fd, Clock::now() + 45s);
         if(command == "pull")
             allow_pull = true;
+        else if(command == "hold_completion")
+        {
+            allow_complete = false;
+            emit("completion_held");
+        }
+        else if(command == "complete")
+            allow_complete = true;
         else if(command == "reset")
         {
             while(handlers.load() != 0) std::this_thread::sleep_for(2ms);
             allow_pull = false;
+            allow_complete = true;
             emit("reset");
         }
         else if(command == "stop")
@@ -176,6 +315,7 @@ int peer_main(std::string const& transport, int command_fd, int event_fd)
     while(handlers.load() != 0) std::this_thread::sleep_for(2ms);
     slow.deregister();
     pull.deregister();
+    receive_stats.deregister();
     engine.finalize();
     return 0;
 }
@@ -238,6 +378,7 @@ public:
             return;
         ::kill(pid, SIGCONT);
         write_line(commands, "pull");
+        write_line(commands, "complete");
         write_line(commands, "stop");
         int status = 0;
         auto result = ::waitpid(pid, &status, 0);
@@ -275,6 +416,12 @@ public:
     }
 
     void allow_pull() { write_line(commands, "pull"); }
+    void hold_pull_completion()
+    {
+        write_line(commands, "hold_completion");
+        expect("completion_held");
+    }
+    void complete_pulls() { write_line(commands, "complete"); }
     void reset_pull()
     {
         write_line(commands, "reset");
@@ -464,12 +611,14 @@ struct EngineOwner
     tl::engine engine;
     tl::remote_procedure slow;
     tl::remote_procedure pull;
+    tl::remote_procedure receive_stats;
 
     EngineOwner(std::string const& transport, std::shared_ptr<Counters> stats)
         : counters(std::move(stats))
         , engine(transport, THALLIUM_CLIENT_MODE, true, 1)
         , slow(engine.define("deadline_probe_slow"))
         , pull(engine.define("deadline_probe_pull"))
+        , receive_stats(engine.define("deadline_probe_receive_stats"))
     {
         margo_push_finalize_callback(
                 engine.get_margo_instance(),
@@ -482,6 +631,7 @@ struct EngineOwner
         require(counters->registrations == 0, "finalization attempted with live source registrations");
         slow.deregister();
         pull.deregister();
+        receive_stats.deregister();
         margo_finalize_and_wait(engine.get_margo_instance());
     }
 };
@@ -664,10 +814,163 @@ public:
     }
 };
 
+std::map<std::string, std::uint64_t>
+receiver_snapshot(std::shared_ptr<EngineOwner> const& owner, std::string const& address, std::string const& phase)
+{
+    auto endpoint = owner->engine.lookup(address);
+    auto raw = owner->receive_stats.on(endpoint).timed(caller_budget).as<std::string>();
+    std::cout << "receiver: phase=" << phase << " " << raw << std::endl;
+    std::istringstream fields(raw);
+    std::map<std::string, std::uint64_t> values;
+    for(std::string field; fields >> field;)
+    {
+        auto equal = field.find('=');
+        require(equal != std::string::npos, "bad receiver snapshot");
+        values.emplace(field.substr(0, equal), std::stoull(field.substr(equal + 1)));
+    }
+    return values;
+}
+
+void receiver_admission(Peer& peer, std::string const& transport)
+{
+    constexpr unsigned admitted_receives = 2;
+    constexpr unsigned extra_per_phase = 16;
+    constexpr std::size_t admitted_bytes = 64 * 1024 * 1024;
+    std::vector<std::shared_ptr<EngineOwner>> owners;
+    std::vector<std::unique_ptr<OwnedWorkers>> pools;
+    for(unsigned i = 0; i != 4; ++i)
+    {
+        owners.push_back(std::make_shared<EngineOwner>(transport, std::make_shared<Counters>()));
+        pools.push_back(std::make_unique<OwnedWorkers>([] {}));
+    }
+    std::vector<std::shared_ptr<Work>> accepted;
+    std::vector<std::shared_ptr<SourceObservation>> accepted_sources;
+    struct ReleaseOnFailure
+    {
+        Peer& peer;
+        bool armed = true;
+        ~ReleaseOnFailure()
+        {
+            if(armed)
+            {
+                peer.allow_pull();
+                peer.complete_pulls();
+            }
+        }
+    } release{peer};
+    peer.hold_pull_completion();
+    for(unsigned i = 0; i != admitted_receives; ++i)
+    {
+        accepted_sources.push_back(std::make_shared<SourceObservation>());
+        accepted.push_back(pools[i]->submit(
+                bulk_work(owners[i], peer.address, accepted_sources.back(), 1000 + i, admitted_bytes, false)));
+        peer.expect("bulk_ready " + std::to_string(1000 + i));
+    }
+    auto stats = receiver_snapshot(owners[0], peer.address, "two_deferred");
+    require(stats.at("contexts") == 2 && stats.at("buffers") == 2 && stats.at("registrations") == 2 &&
+                    stats.at("deferred") == 2 && stats.at("pull_work") == 0,
+            "two receives were not retained before pull");
+    unsigned rejected = 0;
+    long rejection_max_ms = 0;
+    auto reject_extras = [&](std::string const& phase)
+    {
+        for(unsigned i = 0; i != extra_per_phase; ++i)
+        {
+            unsigned sender = 2 + (i % 2);
+            unsigned token = 1100 + rejected;
+            auto observation = std::make_shared<SourceObservation>();
+            auto start = Clock::now();
+            auto work = pools[sender]->submit(
+                    bulk_work(owners[sender], peer.address, observation, token, 1024 * 1024, false));
+            bool done = wait_until(work, start + caller_budget);
+            auto elapsed = elapsed_ms(start);
+            rejection_max_ms = std::max(rejection_max_ms, elapsed);
+            if(!done)
+            {
+                peer.next();
+                auto over = receiver_snapshot(owners[0], peer.address, "RED_extra_waiting");
+                std::cout << "RED receiver_capacity contexts=" << over.at("contexts")
+                          << " buffers=" << over.at("buffers") << " registrations=" << over.at("registrations")
+                          << " extra_caller_elapsed_ms=" << elapsed << std::endl;
+            }
+            require(done, "receiver failed to reject an independent sender before allocating/pulling");
+            peer.expect("bulk_rejected " + std::to_string(token));
+            require(work->result.value == 0 && !work->result.quarantine && !observation->alive(),
+                    "rejection acknowledged delivery or retained the source");
+            require(Clock::now() - start <= scheduling_limit, "receiver rejection exceeded scheduling limit");
+            ++rejected;
+        }
+        auto now = receiver_snapshot(owners[0], peer.address, phase);
+        require(now.at("contexts") == 2 && now.at("contexts_peak") == 2 && now.at("buffers") == 2 &&
+                        now.at("allocations") == 2 && now.at("registrations") == 2 &&
+                        now.at("registrations_total") == 2 && now.at("admitted") == 2 &&
+                        now.at("rejected") == rejected && now.at("rejecting") == 0 && now.at("receipts") == 0 &&
+                        now.at("received_bytes") == 0,
+                "rejected work allocated, retained receive state or advanced receipt/progress");
+        return now;
+    };
+    stats = reject_extras("rejected_while_deferred");
+    require(stats.at("deferred") == 2 && stats.at("pull_work") == 0 && stats.at("pulls_started") == 0,
+            "deferred rejection started transfer work");
+    peer.allow_pull();
+    for(unsigned i = 0; i != admitted_receives; ++i)
+    {
+        auto event = peer.next();
+        require((event.rfind("pull_started 1000 pending=1", 0) == 0 ||
+                 event.rfind("pull_started 1001 pending=1", 0) == 0),
+                "actual admitted pull was not pending at initiation");
+    }
+    stats = reject_extras("rejected_while_pull_work_retained");
+    require(stats.at("deferred") == 0 && stats.at("pull_work") == 2 && stats.at("pull_work_peak") == 2 &&
+                    stats.at("pulls_started") == 2 && stats.at("pulls_finished") == 0,
+            "rejection changed retained pull work");
+    peer.complete_pulls();
+    for(unsigned i = 0; i != admitted_receives; ++i)
+    {
+        auto event = peer.next();
+        require((event.rfind("pull_finished 1000 checksum=" + std::to_string(90ULL * admitted_bytes), 0) == 0 ||
+                 event.rfind("pull_finished 1001 checksum=" + std::to_string(90ULL * admitted_bytes), 0) == 0),
+                "admitted receiver payload did not survive saturation");
+    }
+    for(unsigned i = 0; i != admitted_receives; ++i)
+    {
+        settled(accepted[i]);
+        require(accepted[i]->result.value == 90ULL * admitted_bytes && !accepted_sources[i]->alive(),
+                "admitted transfer failed positive-reply settlement");
+    }
+    peer.reset_pull();
+    release.armed = false;
+    stats = receiver_snapshot(owners[0], peer.address, "settled");
+    require(stats.at("contexts") == 0 && stats.at("buffers") == 0 && stats.at("registrations") == 0 &&
+                    stats.at("deferred") == 0 && stats.at("pull_work") == 0 && stats.at("contexts_peak") == 2 &&
+                    stats.at("allocations") == 2 && stats.at("registrations_total") == 2 && stats.at("admitted") == 2 &&
+                    stats.at("pulls_started") == 2 && stats.at("pulls_finished") == 2 && stats.at("receipts") == 2 &&
+                    stats.at("received_bytes") == 2ULL * admitted_bytes && stats.at("rejected") == rejected,
+            "receiver accounting after settlement is incorrect");
+    for(unsigned i = 0; i != owners.size(); ++i)
+    {
+        require(pools[i]->drain(Clock::now() + caller_budget), "independent sender failed to drain");
+        auto finalizer = pools[i]->submit(
+                [owner = owners[i]]
+                {
+                    owner->finalize();
+                    return WorkResult{1, false, "independent sender finalized"};
+                },
+                true);
+        settled(finalizer);
+    }
+    std::cout << "PASS receiver_admission transport=" << transport
+              << " independent_senders=4 admitted=2 rejected=" << rejected
+              << " rejected_reply=0 rejection_max_ms=" << rejection_max_ms
+              << " target_allocations=2 registrations_total=2 contexts_peak=2 pull_work_peak=2 receipts=2"
+              << " received_bytes=" << 2ULL * admitted_bytes << std::endl;
+}
+
 int primitives(std::string const& executable, std::string const& transport)
 {
     UnreachableObservation unreachable(executable, transport);
     Peer peer(executable, transport); // All fork/exec happens before any local engine/worker.
+    receiver_admission(peer, transport);
     auto counters = std::make_shared<Counters>();
     auto owner = std::make_shared<EngineOwner>(transport, counters);
     OwnedWorkers workers([&] { peer.finish(); });
@@ -867,8 +1170,17 @@ int main(int argc, char** argv)
             return unreachable_main(argv[2], std::stoi(argv[3]));
         if(argc == 5 && std::string(argv[1]) == "--peer")
             return peer_main(argv[2], std::stoi(argv[3]), std::stoi(argv[4]));
-        require(argc == 3, "usage: rpc_deadline_capability_probe --baseline|--primitives ofi+sockets|ofi+tcp");
+        require(argc == 3,
+                "usage: rpc_deadline_capability_probe --baseline|--primitives|--receiver-admission "
+                "ofi+sockets|ofi+tcp");
         require(std::string(argv[2]) == "ofi+sockets" || std::string(argv[2]) == "ofi+tcp", "unsupported transport");
+        if(std::string(argv[1]) == "--receiver-admission")
+        {
+            Peer peer(argv[0], argv[2]);
+            receiver_admission(peer, argv[2]);
+            peer.finish();
+            return 0;
+        }
         if(std::string(argv[1]) == "--baseline")
             return baseline(argv[0], argv[2]);
         require(std::string(argv[1]) == "--primitives", "unknown probe mode");
