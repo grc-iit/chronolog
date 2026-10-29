@@ -57,6 +57,7 @@ target_link_directories(chronolog_client
 
 target_link_libraries(chronolog_client
     PRIVATE
+        $<BUILD_INTERFACE:chrono_rpc>
         thallium
         ${JSON-C_LIBRARIES}
 )

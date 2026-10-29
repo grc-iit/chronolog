@@ -270,6 +270,7 @@ endif()
 #------------------------------------------------------------------------------
 # ChronoLog Components
 #------------------------------------------------------------------------------
+add_subdirectory(src/chrono-rpc)
 add_subdirectory(src/chrono-common)
 add_subdirectory(client)
 add_subdirectory(src/chrono-visor)

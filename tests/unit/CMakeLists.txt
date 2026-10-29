@@ -21,6 +21,7 @@ add_test(NAME Unit_LocalCI_BadNfsProfile
 #------------------------------------------------------------------------------
 # Unit test subdirectories (one component per folder)
 #------------------------------------------------------------------------------
+add_subdirectory(chrono-rpc)
 add_subdirectory(chrono-common)
 add_subdirectory(chrono-grapher)
 add_subdirectory(chrono-keeper)

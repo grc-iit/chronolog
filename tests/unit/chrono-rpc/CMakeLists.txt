@@ -1,0 +1,15 @@
+find_package(GTest REQUIRED)
+find_package(Thallium REQUIRED)
+include(GoogleTest)
+
+add_executable(rpc_deadline_test rpc_deadline_test.cpp)
+target_link_libraries(rpc_deadline_test PRIVATE chrono_rpc GTest::gtest_main)
+gtest_discover_tests(rpc_deadline_test TEST_PREFIX "Unit_ChronologRpc_" PROPERTIES TIMEOUT 20)
+
+add_executable(rpc_runtime_test rpc_runtime_test.cpp)
+target_link_libraries(rpc_runtime_test PRIVATE chrono_rpc GTest::gtest_main thallium)
+gtest_discover_tests(rpc_runtime_test TEST_PREFIX "Unit_ChronologRpc_" PROPERTIES TIMEOUT 20)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rpc_deadline_test DESTINATION tests)
+    chronolog_install_target(rpc_runtime_test DESTINATION tests)
+endif()

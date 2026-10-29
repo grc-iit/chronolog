@@ -28,6 +28,7 @@ target_include_directories(chrono_common
 
 target_link_libraries(chrono_common
     PRIVATE
+        $<BUILD_INTERFACE:chrono_rpc>
         thallium
 )
 
