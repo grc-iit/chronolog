@@ -19,7 +19,7 @@ public:
     }
     rpc::RpcResult<int> execute(rpc::OperationContext& context, AdminArguments const& args)
     {
-        auto endpoint = owner_->engine->lookup(address_);
+        auto endpoint = owner_->lookup->resolve(*owner_->engine, address_);
         auto remote = owner_->procedures[static_cast<std::size_t>(args.action)];
         thallium::provider_handle handle(endpoint, provider_);
         auto call = remote.on(handle);
@@ -52,9 +52,10 @@ public:
         // registration belongs to the engine and is never deregistered per call.
         return {reply, true, reply};
     }
-    int shutdown_collection();
+    int shutdown_collection(std::shared_ptr<KeeperRegistry> registry, rpc::RpcDeadline const& deadline);
 
 private:
+    friend class AdminWork;
     DataStoreAdminClient(std::shared_ptr<VisorAdminRuntime> owner, std::string address, uint16_t provider)
         : owner_(std::move(owner))
         , address_(std::move(address))

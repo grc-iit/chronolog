@@ -68,7 +68,7 @@ int main(int argc, char** argv)
     LOG_INFO("chronovisor_instance] VISOR CONFIGURATION {}", VISOR_CONF.to_String());
 
     chronolog::VisorClientPortal theChronoVisorPortal;
-    auto keeperRegistry = std::make_shared<chronolog::KeeperRegistry>(VISOR_CONF.RPC_POLICY);
+    auto keeperRegistry = chronolog::KeeperRegistry::Create(VISOR_CONF.RPC_POLICY);
 
     keeperRegistry->InitializeRegistryService(VISOR_CONF.VISOR_KEEPER_REGISTRY_SERVICE_CONF,
                                               VISOR_CONF.DELAYED_DATA_ADMIN_EXIT_IN_SECS);

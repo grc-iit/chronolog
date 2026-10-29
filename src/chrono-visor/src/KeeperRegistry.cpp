@@ -81,13 +81,16 @@ int KeeperRegistry::InitializeRegistryService(chl::RPCProviderConf const& VISOR_
     return status;
 }
 
-KeeperRegistry::KeeperRegistry()
-    : KeeperRegistry(RpcTimeoutPolicy{}, 32)
-{}
+std::shared_ptr<KeeperRegistry> KeeperRegistry::Create(RpcTimeoutPolicy const& policy, std::size_t capacity)
+{
+    return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(policy, capacity));
+}
 
-KeeperRegistry::KeeperRegistry(RpcTimeoutPolicy const& policy, std::size_t capacity)
+KeeperRegistry::KeeperRegistry(RpcTimeoutPolicy const& policy,
+                               std::size_t capacity,
+                               std::shared_ptr<AdminLookup> lookup)
     : registryState(UNKNOWN)
-    , adminRuntime(std::make_shared<VisorAdminRuntime>(policy, capacity))
+    , adminRuntime(std::make_shared<VisorAdminRuntime>(policy, capacity, std::move(lookup)))
     , registryEngine(nullptr)
     , keeperRegistryService(nullptr)
     , delayedDataAdminExitSeconds(3)
@@ -99,15 +102,26 @@ int KeeperRegistry::ShutdownRegistryService()
 {
 
 
+    auto started = rpc::RpcDeadline::Clock::now();
+    // Acquire the real state owner before any timed work can outlive this call.
+    auto registryLease = shared_from_this();
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(adminRuntime->policy.shutdown_ms));
     std::lock_guard<std::mutex> lock(registryLock);
 
     if(is_shutting_down())
     {
         LOG_INFO("[ChronoProcessRegistry] Shutdown");
-        return chronolog::CL_SUCCESS;
+        return shutdownStatus;
     }
 
     registryState = SHUTTING_DOWN;
+    shutdownStatus = CL_ERR_SHUTDOWN_INCOMPLETE;
+    int aggregate = CL_SUCCESS;
+    auto shutdown = [&](std::shared_ptr<DataStoreAdminClient> const& client)
+    {
+        if(!client || client->shutdown_collection(registryLease, deadline) != CL_SUCCESS)
+            aggregate = CL_ERR_SHUTDOWN_INCOMPLETE;
+    };
     LOG_INFO("[ChronoProcessRegistry] Shutting down...");
 
     activeGroups.clear();
@@ -129,13 +143,13 @@ int KeeperRegistry::ShutdownRegistryService()
                 std::stringstream id_string;
                 id_string << recording_group.grapherProcess->idCard;
 
-                chl::GrapherProcessEntry* grapher_process = recording_group.grapherProcess;
+                auto grapher_process = recording_group.grapherProcess;
                 if(grapher_process->active)
                 {
                     LOG_INFO("[ChronoProcessRegistry] Sending shutdown to grapher {}", id_string.str());
                     if(grapher_process->adminClient != nullptr)
                     {
-                        grapher_process->adminClient->shutdown_collection();
+                        shutdown(grapher_process->adminClient);
                     }
 
                     // start delayed destruction for the lingering Adminclient to be safe...
@@ -150,7 +164,7 @@ int KeeperRegistry::ShutdownRegistryService()
                 if(grapher_process->delayedExitGrapherClients.empty())
                 {
                     LOG_INFO("[ChronoProcessRegistry] shudown: destroyed old entry for grapher {}", id_string.str());
-                    delete grapher_process;
+                    grapher_process.reset();
                     recording_group.grapherProcess = nullptr;
                 }
             }
@@ -166,7 +180,7 @@ int KeeperRegistry::ShutdownRegistryService()
                 if((*process_iter).second.active)
                 {
                     LOG_INFO("[ChronoProcessRegistry] Sending shutdown to keeper {}", id_string.str());
-                    (*process_iter).second.keeperAdminClient->shutdown_collection();
+                    shutdown((*process_iter).second.keeperAdminClient);
 
                     LOG_INFO("[ChronoProcessRegistry] shutdown: starting delayedExit for keeper {} delayedExitTime={}",
                              id_string.str(),
@@ -215,12 +229,22 @@ int KeeperRegistry::ShutdownRegistryService()
 
     // The existing engine-finalize callback is the provider's deletion owner.
     // Shared registry/engine leases keep admitted work alive until settlement.
-    return chronolog::CL_SUCCESS;
+    shutdownStatus = aggregate;
+    return shutdownStatus;
 }
 
 KeeperRegistry::~KeeperRegistry()
 {
-    ShutdownRegistryService();
+    // Destruction never starts remote work. Every admitted AdminWork owns this
+    // registry, so this point cannot be reached by a Running/quarantined job.
+    // Remote shutdown is explicit while a real shared owner is still alive.
+    {
+        std::lock_guard<std::mutex> lock(registryLock);
+        registryState = SHUTTING_DOWN;
+        activeGroups.clear();
+        activeStories.clear();
+        recordingGroups.clear();
+    }
     if(registryEngine)
         registryEngine->finalize();
     keeperRegistryService = nullptr;
@@ -645,7 +669,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                                                             std::make_shared<AdminWork>(recording->clients[i],
                                                                                         std::move(args),
                                                                                         recording->starts[i],
-                                                                                        weak_from_this().lock())));
+                                                                                        shared_from_this())));
     }
     // Completion flags expose only private owned scalar state. Do not wait on
     // silent A/B before noticing responsive C or starting the reserved Player.
@@ -682,7 +706,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                                                                 std::make_shared<AdminWork>(recording->clients[i],
                                                                                             std::move(args),
                                                                                             recording->starts[i],
-                                                                                            weak_from_this().lock())));
+                                                                                            shared_from_this())));
             playerSubmitted = true;
         }
         if(playerSubmitted && complete(recording->starts.back()))
@@ -756,7 +780,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
                 std::make_shared<AdminWork>(recording->clients[targets[i]],
                                             AdminArguments{AdminAction::Stop, "", "", id, 0, {}},
                                             c,
-                                            weak_from_this().lock())));
+                                            shared_from_this())));
     }
     int status = CL_SUCCESS;
     for(auto& p: pending)
@@ -817,7 +841,7 @@ int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chr
                 std::make_shared<AdminWork>(clients[i],
                                             AdminArguments{AdminAction::DestroyStory, chronicle, story, id, 0, {}},
                                             std::make_shared<AdminCompletion>(),
-                                            weak_from_this().lock())));
+                                            shared_from_this())));
     int status = CL_SUCCESS;
     for(auto& p: pending)
     {
@@ -869,7 +893,7 @@ int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const&
                 std::make_shared<AdminWork>(clients[i],
                                             AdminArguments{AdminAction::DestroyChronicle, chronicle, "", 0, 0, {}},
                                             std::make_shared<AdminCompletion>(),
-                                            weak_from_this().lock())));
+                                            shared_from_this())));
     int status = CL_SUCCESS;
     for(auto& p: pending)
     {
@@ -933,7 +957,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg
     {
         // start delayed destruction for the lingering Adminclient to be safe...
 
-        chl::GrapherProcessEntry* grapher_process = recording_group.grapherProcess;
+        auto grapher_process = recording_group.grapherProcess;
         if(grapher_process->active)
         {
             // start delayed destruction for the lingering Adminclient to be safe...
@@ -955,7 +979,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg
         {
             LOG_INFO("[ChronoProcessRegistry] registerGrapherProcess has destroyed old entry for grapher {}",
                      chl::to_string(grapher_id_card));
-            delete grapher_process;
+            grapher_process.reset();
             recording_group.grapherProcess = nullptr;
         }
         else
@@ -986,7 +1010,7 @@ int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg
     }
 
     //now create a new GrapherProcessEntry with the new DataAdminclient
-    recording_group.grapherProcess = new GrapherProcessEntry(grapher_id_card, admin_service_id);
+    recording_group.grapherProcess = std::make_shared<GrapherProcessEntry>(grapher_id_card, admin_service_id);
     recording_group.grapherProcess->adminClient = collectionClient;
     recording_group.grapherProcess->active = true;
 

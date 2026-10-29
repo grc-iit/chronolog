@@ -2,6 +2,7 @@
 #define CHRONOLOG_ADMIN_TEST_FIXTURE_H
 #include <gtest/gtest.h>
 #include <KeeperRegistry.h>
+#include <KeeperRegistryService.h>
 #include <VisorClientPortal.h>
 #include <DataStoreAdminClient.h>
 #include <chrono_monitor.h>
@@ -15,14 +16,37 @@ namespace tl = thallium;
 using namespace chronolog;
 using namespace std::chrono_literals;
 
+namespace chronolog
+{
+struct KeeperRegistryTestAccess
+{
+    static std::unique_lock<std::mutex> lock(KeeperRegistry& registry)
+    {
+        return std::unique_lock<std::mutex>(registry.registryLock);
+    }
+    static std::shared_ptr<KeeperRegistry>
+    create(RpcTimeoutPolicy const& p, std::size_t n, std::shared_ptr<AdminLookup> lookup)
+    {
+        return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(p, n, std::move(lookup)));
+    }
+    static std::weak_ptr<void> provider(KeeperRegistry& registry)
+    {
+        return registry.keeperRegistryService->lifetimeToken_;
+    }
+};
+} // namespace chronolog
 class AdminDeadline: public ::testing::TestWithParam<std::string>
 {
 protected:
     std::unique_ptr<tl::engine> peers;
+    bool peerFinalized = false;
     std::shared_ptr<KeeperRegistry> registry;
     std::atomic<int> starts[5]{};
     std::atomic<int> stops[5]{};
     int stopDelays[5]{};
+    bool suppressShutdownReply[5]{};
+    std::atomic<unsigned> shutdownEntries[5]{};
+    virtual std::shared_ptr<AdminLookup> lookupDependency() { return {}; }
     std::mutex rosterMutex;
     int delays[5]{0, 300, 300, 0, 0};
     int replies[5]{0, 0, 0, 0, 0};
@@ -92,8 +116,11 @@ protected:
                     static_cast<uint16_t>(i + 1)));
             procedures.push_back(peers->define(
                     "shutdown_data_collection",
-                    [](tl::request const& req)
+                    [this, i](tl::request const& req)
                     {
+                        ++shutdownEntries[i];
+                        if(suppressShutdownReply[i])
+                            return;
                         try
                         {
                             req.respond(0);
@@ -107,11 +134,19 @@ protected:
         policy.control_ms = 120;
         policy.attempt_ms = 120;
         auto name = std::string(::testing::UnitTest::GetInstance()->current_test_info()->name());
+        if(name.find("Shutdown") != std::string::npos)
+        {
+            policy.shutdown_ms = 80;
+            policy.attempt_ms = 20;
+        }
         auto capacity = name.find("ThreeSlots") != std::string::npos
                                 ? 3u
                                 : (name.find("Saturation") != std::string::npos ? 32u : 8u);
-        registry = name.find("Saturation") != std::string::npos ? std::make_shared<KeeperRegistry>(policy)
-                                                                : std::make_shared<KeeperRegistry>(policy, capacity);
+        if(auto dependency = lookupDependency())
+            registry = KeeperRegistryTestAccess::create(policy, capacity, std::move(dependency));
+        else
+            registry = name.find("Saturation") != std::string::npos ? KeeperRegistry::Create(policy)
+                                                                    : KeeperRegistry::Create(policy, capacity);
         RPCProviderConf conf;
         conf.PROTO_CONF = protocol;
         conf.IP = "127.0.0.1";
@@ -166,8 +201,11 @@ protected:
     {
         std::this_thread::sleep_for(350ms);
         registry.reset();
-        for(auto& p: procedures) p.deregister();
-        peers->finalize();
+        if(!peerFinalized)
+        {
+            for(auto& p: procedures) p.deregister();
+            peers->finalize();
+        }
         peers.reset();
     }
 };

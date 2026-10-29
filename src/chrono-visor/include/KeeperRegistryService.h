@@ -28,6 +28,8 @@ class KeeperRegistryService: public tl::provider<KeeperRegistryService>
 {
 
 private:
+    friend struct KeeperRegistryTestAccess;
+    std::shared_ptr<char> lifetimeToken_ = std::make_shared<char>();
     KeeperRegistry& theKeeperProcessRegistry;
 
     void register_keeper(tl::request const& request, chronolog::KeeperRegistrationMsg const& keeperMsg)

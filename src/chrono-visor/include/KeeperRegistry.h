@@ -131,11 +131,11 @@ class RecordingGroup
 {
 public:
     RecordingGroup(RecordingGroupId group_id,
-                   GrapherProcessEntry* grapher_ptr = nullptr,
+                   std::shared_ptr<GrapherProcessEntry> grapher_ptr = nullptr,
                    std::shared_ptr<PlayerProcessEntry> player_ptr = nullptr)
         : groupId(group_id)
         , activeKeeperCount(0)
-        , grapherProcess(grapher_ptr)
+        , grapherProcess(std::move(grapher_ptr))
         , playerProcess(std::move(player_ptr))
     {}
 
@@ -154,7 +154,7 @@ public:
 
     RecordingGroupId groupId;
     size_t activeKeeperCount;
-    GrapherProcessEntry* grapherProcess;
+    std::shared_ptr<GrapherProcessEntry> grapherProcess;
     std::shared_ptr<PlayerProcessEntry> playerProcess;
     std::map<std::pair<uint32_t, uint16_t>, KeeperProcessEntry> keeperProcesses;
 };
@@ -170,8 +170,8 @@ class KeeperRegistry: public std::enable_shared_from_this<KeeperRegistry>
     };
 
 public:
-    KeeperRegistry();
-    explicit KeeperRegistry(RpcTimeoutPolicy const&, std::size_t control_capacity = 32);
+    static std::shared_ptr<KeeperRegistry> Create(RpcTimeoutPolicy const& policy = {},
+                                                  std::size_t control_capacity = 32);
 
     ~KeeperRegistry();
 
@@ -226,10 +226,14 @@ public:
 
 private:
     friend struct KeeperRegistryTestAccess;
+    explicit KeeperRegistry(RpcTimeoutPolicy const&,
+                            std::size_t control_capacity,
+                            std::shared_ptr<AdminLookup> lookup = {});
     KeeperRegistry(KeeperRegistry const&) = delete; //disable copying
     KeeperRegistry& operator=(KeeperRegistry const&) = delete;
 
     std::atomic<RegistryState> registryState;
+    int shutdownStatus = CL_SUCCESS;
     std::shared_ptr<VisorAdminRuntime> adminRuntime;
     uint64_t nextGeneration = 0;
     std::map<std::string, bool> chronicleDestructions;

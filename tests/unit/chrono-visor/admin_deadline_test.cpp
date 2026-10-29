@@ -1,14 +1,4 @@
 #include "admin_test_fixture.h"
-namespace chronolog
-{
-struct KeeperRegistryTestAccess
-{
-    static std::unique_lock<std::mutex> lock(KeeperRegistry& registry)
-    {
-        return std::unique_lock<std::mutex>(registry.registryLock);
-    }
-};
-} // namespace chronolog
 TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
 {
     std::vector<KeeperIdCard> roster;
@@ -252,4 +242,144 @@ TEST_P(AdminDeadline, ConfirmedRejectedKeeperSetupNeverReceivesStop)
     EXPECT_EQ(stops[3].load(), 1);
     EXPECT_EQ(stops[4].load(), 1);
 }
+
+namespace
+{
+struct ShutdownProbe
+{
+    std::weak_ptr<KeeperRegistry> registry;
+    std::weak_ptr<void> provider;
+    std::weak_ptr<tl::engine> engine;
+    std::atomic<unsigned> finalizers{0};
+};
+class ShutdownLookupGate final: public AdminLookup
+{
+public:
+    explicit ShutdownLookupGate(std::shared_ptr<ShutdownProbe> p)
+        : probe(std::move(p))
+    {}
+    std::atomic<bool> entered{false}, released{false};
+    std::shared_ptr<ShutdownProbe> probe;
+    tl::endpoint resolve(tl::engine& engine, std::string const& address) override
+    {
+        entered.store(true, std::memory_order_release);
+        while(!released.load(std::memory_order_acquire)) std::this_thread::sleep_for(1ms);
+        if(probe->finalizers.load() != 0)
+            throw std::runtime_error("RED engine finalized during lookup gate");
+        return engine.lookup(address);
+    }
+};
+template <class Predicate>
+bool eventually(Predicate predicate)
+{
+    auto until = std::chrono::steady_clock::now() + 3s;
+    while(!predicate() && std::chrono::steady_clock::now() < until)
+    {
+        ABT_thread_yield();
+        std::this_thread::sleep_for(1ms);
+    }
+    return predicate();
+}
+} // namespace
+class RegistryShutdownOwnership: public AdminDeadline
+{
+protected:
+    std::shared_ptr<ShutdownProbe> probe = std::make_shared<ShutdownProbe>();
+    std::shared_ptr<ShutdownLookupGate> gate;
+    std::shared_ptr<AdminObservation> observation;
+    std::shared_ptr<AdminLookup> lookupDependency() override { return gate; }
+    void SetUp() override
+    {
+        auto name = std::string(::testing::UnitTest::GetInstance()->current_test_info()->name());
+        if(name.find("Lookup") != std::string::npos)
+            gate = std::make_shared<ShutdownLookupGate>(probe);
+        AdminDeadline::SetUp();
+        probe->registry = registry;
+        probe->provider = KeeperRegistryTestAccess::provider(*registry);
+        probe->engine = registry->adminOwner()->engine;
+        observation = registry->adminOwner()->observation;
+        registry->adminOwner()->engine->push_finalize_callback(probe.get(), [p = probe]() { ++p->finalizers; });
+    }
+};
+TEST_P(RegistryShutdownOwnership, ShutdownLookupRetainsActualOwnerUntilNativeWorkSettles)
+{
+    std::atomic<int> result{CL_ERR_UNKNOWN};
+    std::atomic<bool> returned{false};
+    std::thread close(
+            [lease = registry, &result, &returned]()
+            {
+                result = lease->ShutdownRegistryService();
+                returned.store(true, std::memory_order_release);
+            });
+    EXPECT_TRUE(eventually([&]() { return gate->entered.load(std::memory_order_acquire); }));
+    registry.reset();
+    EXPECT_TRUE(eventually([&]() { return returned.load(std::memory_order_acquire); }));
+    close.join();
+    EXPECT_EQ(result.load(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_FALSE(probe->registry.expired());
+    EXPECT_FALSE(probe->provider.expired());
+    EXPECT_FALSE(probe->engine.expired());
+    EXPECT_EQ(probe->finalizers.load(), 0u);
+    gate->released.store(true, std::memory_order_release);
+    EXPECT_TRUE(eventually(
+            [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
+    EXPECT_EQ(probe->finalizers.load(), 1u);
+    for(auto const& count: shutdownEntries) EXPECT_EQ(count.load(), 0u);
+}
+TEST_P(RegistryShutdownOwnership, ShutdownNoReplyRetainsActualOwnerAfterWorkerReturn)
+{
+    suppressShutdownReply[0] = true;
+    for(int i = 1; i <= 3; ++i) ASSERT_EQ(registry->unregisterKeeperProcess(keeper(i)), CL_SUCCESS);
+    std::atomic<int> result{CL_ERR_UNKNOWN};
+    std::atomic<bool> returned{false};
+    std::thread close(
+            [lease = registry, &result, &returned]()
+            {
+                result = lease->ShutdownRegistryService();
+                returned.store(true, std::memory_order_release);
+            });
+    EXPECT_TRUE(eventually([&]() { return shutdownEntries[0].load() != 0; }));
+    EXPECT_TRUE(eventually([&]() { return returned.load(std::memory_order_acquire); }));
+    close.join();
+    // Closing only the mock peer creates a real native no-reply transport fault.
+    // It is not a proof of remote cancellation or registry-side settlement.
+    peers->finalize();
+    peerFinalized = true;
+    EXPECT_TRUE(eventually([&]() { return observation->shutdownNoReplyRunReturns.load() != 0; }));
+    EXPECT_EQ(probe->finalizers.load(), 0u);
+    EXPECT_GT(observation->shutdownExceptionKind.load(), 0);
+    std::cout << "native_shutdown_exception_kind=" << observation->shutdownExceptionKind.load()
+              << " hg_error=" << observation->nativeShutdownError.load() << " name="
+              << tl::translate_margo_error_code(static_cast<hg_return_t>(observation->nativeShutdownError.load()))
+              << std::endl;
+    registry.reset();
+    EXPECT_EQ(result.load(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_FALSE(probe->registry.expired());
+    EXPECT_FALSE(probe->provider.expired());
+    EXPECT_FALSE(probe->engine.expired());
+    EXPECT_EQ(probe->finalizers.load(), 0u);
+    if(auto lease = probe->registry.lock())
+        EXPECT_EQ(lease->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_FALSE(probe->registry.expired());
+    EXPECT_EQ(probe->finalizers.load(), 0u);
+}
+TEST_P(RegistryShutdownOwnership, ShutdownConfirmedReclaimsDirectRegistryAndProvider)
+{
+    EXPECT_EQ(registry->ShutdownRegistryService(), CL_SUCCESS);
+    registry.reset();
+    EXPECT_TRUE(eventually(
+            [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
+    EXPECT_EQ(probe->finalizers.load(), 1u);
+    EXPECT_EQ(shutdownEntries[0].load(), 1u);
+    for(int i = 1; i <= 3; ++i) EXPECT_EQ(shutdownEntries[i].load(), 1u);
+}
+TEST_P(RegistryShutdownOwnership, LocalDropStartsNoImplicitRemoteShutdown)
+{
+    registry.reset();
+    EXPECT_TRUE(eventually(
+            [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
+    EXPECT_EQ(probe->finalizers.load(), 1u);
+    for(auto const& count: shutdownEntries) EXPECT_EQ(count.load(), 0u);
+}
+INSTANTIATE_TEST_SUITE_P(Native, RegistryShutdownOwnership, ::testing::Values("ofi+sockets", "ofi+tcp"));
 INSTANTIATE_TEST_SUITE_P(Native, AdminDeadline, ::testing::Values("ofi+sockets", "ofi+tcp"));

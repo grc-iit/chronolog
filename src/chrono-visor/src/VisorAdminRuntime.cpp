@@ -4,9 +4,23 @@
 #include <stdexcept>
 namespace chronolog
 {
-VisorAdminRuntime::VisorAdminRuntime(RpcTimeoutPolicy const& p, std::size_t capacity)
+namespace
+{
+class NativeAdminLookup final: public AdminLookup
+{
+public:
+    thallium::endpoint resolve(thallium::engine& engine, std::string const& address) override
+    {
+        return engine.lookup(address);
+    }
+};
+} // namespace
+VisorAdminRuntime::VisorAdminRuntime(RpcTimeoutPolicy const& p,
+                                     std::size_t capacity,
+                                     std::shared_ptr<AdminLookup> dependency)
     : policy(p)
     , runtime(capacity)
+    , lookup(dependency ? std::move(dependency) : std::make_shared<NativeAdminLookup>())
 {
     if(validateRpcTimeoutPolicy(p) != CL_SUCCESS)
         throw std::invalid_argument("invalid Visor RPC policy");
@@ -24,9 +38,9 @@ void VisorAdminRuntime::initializeRpcDefinitions()
                                      "collection_service_available"};
     for(std::size_t i = 0; i < procedures.size(); ++i) procedures[i] = engine->define(names[i]);
 }
-int DataStoreAdminClient::shutdown_collection()
+int DataStoreAdminClient::shutdown_collection(std::shared_ptr<KeeperRegistry> registry,
+                                              rpc::RpcDeadline const& deadline)
 {
-    auto deadline = rpc::RpcDeadline::after(std::chrono::milliseconds(owner_->policy.shutdown_ms));
     auto token = owner_->runtime.reserve(deadline);
     if(!token)
         return token.status();
@@ -35,7 +49,7 @@ int DataStoreAdminClient::shutdown_collection()
             std::make_shared<AdminWork>(shared_from_this(),
                                         AdminArguments{AdminAction::Shutdown, "", "", 0, 0, {}},
                                         std::make_shared<AdminCompletion>(),
-                                        nullptr));
+                                        std::move(registry)));
     return result.reply ? *result.reply : result.status;
 }
 AdminWork::AdminWork(std::shared_ptr<DataStoreAdminClient> client,
@@ -46,21 +60,53 @@ AdminWork::AdminWork(std::shared_ptr<DataStoreAdminClient> client,
     , arguments_(std::move(args))
     , completion_(std::move(completion))
     , registry_(std::move(registry))
-{}
+{
+    if(!client_ || !registry_ || registry_->adminOwner().get() != client_->owner_.get())
+        throw std::invalid_argument("AdminWork requires its actual shared registry owner");
+}
 rpc::RpcResult<int> AdminWork::run(rpc::OperationContext& context)
 {
     rpc::RpcResult<int> result{CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
+    int exceptionKind = 0;
+    int nativeError = HG_SUCCESS;
     try
     {
         result = client_->execute(context, arguments_);
     }
     catch(thallium::timeout const&)
-    {}
+    {
+        exceptionKind = 1;
+        nativeError = HG_TIMEOUT;
+    }
+    catch(thallium::margo_exception const& error)
+    {
+        exceptionKind = 2;
+        nativeError = error.error();
+    }
+    catch(thallium::exception const&)
+    {
+        exceptionKind = 3;
+    }
+    catch(std::exception const&)
+    {
+        exceptionKind = 4;
+    }
     catch(...)
-    {}
+    {
+        exceptionKind = 5;
+    }
+    if(arguments_.action == AdminAction::Shutdown && !result.reply)
+    {
+        client_->owner_->observation->shutdownExceptionKind.store(exceptionKind, std::memory_order_relaxed);
+        client_->owner_->observation->nativeShutdownError.store(nativeError, std::memory_order_relaxed);
+    }
     completion_->status = result.reply ? *result.reply : result.status;
     completion_->confirmed = result.reply.has_value();
     completion_->done.store(true, std::memory_order_release);
+    // Last operation at adapter exit: native invocation and local preparation
+    // have returned; this is deliberately NOT a settlement assertion.
+    if(arguments_.action == AdminAction::Shutdown && !result.reply)
+        ++client_->owner_->observation->shutdownNoReplyRunReturns;
     return result;
 }
 } // namespace chronolog

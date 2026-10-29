@@ -15,11 +15,27 @@ namespace chronolog
 {
 class KeeperRegistry;
 class DataStoreAdminClient;
+class AdminLookup
+{
+public:
+    virtual ~AdminLookup() = default;
+    virtual thallium::endpoint resolve(thallium::engine&, std::string const&) = 0;
+};
+struct AdminObservation
+{
+    std::atomic<unsigned> shutdownNoReplyRunReturns{0};
+    std::atomic<int> shutdownExceptionKind{0};
+    std::atomic<int> nativeShutdownError{0};
+};
 struct VisorAdminRuntime
 {
-    explicit VisorAdminRuntime(RpcTimeoutPolicy const& policy, std::size_t capacity);
+    explicit VisorAdminRuntime(RpcTimeoutPolicy const& policy,
+                               std::size_t capacity,
+                               std::shared_ptr<AdminLookup> lookup = {});
     const RpcTimeoutPolicy policy;
     rpc::RpcRuntime runtime;
+    const std::shared_ptr<AdminLookup> lookup;
+    const std::shared_ptr<AdminObservation> observation = std::make_shared<AdminObservation>();
     std::shared_ptr<thallium::engine> engine;
     std::array<thallium::remote_procedure, 7> procedures;
     void initializeRpcDefinitions();
