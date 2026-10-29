@@ -119,6 +119,7 @@ private:
     bool preparerActive = false; // started and not yet asked to stop
 
     bool preparerRunning = false;
+    thallium::managed<thallium::pool> preparerPool; // outlives preparerStream
     thallium::managed<thallium::xstream> preparerStream;
     thallium::managed<thallium::thread> preparerThread;
 };

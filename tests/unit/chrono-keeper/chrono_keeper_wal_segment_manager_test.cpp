@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <cerrno>
+#include <ctime>
 #include <sys/resource.h>
 
 #include <thallium.hpp>
@@ -469,6 +470,36 @@ TEST_F(WalSegmentManagerTest, TakeSpareWaitsForThePreparerOnArgobots)
     manager->stopPreparer();
     EXPECT_EQ(result.load(), 0);
     EXPECT_EQ(segment, 1u);
+}
+
+namespace
+{
+
+double processCpuSeconds()
+{
+    timespec ts{};
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+    return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+} // namespace
+
+// Once its spare is ready the preparer waits on a condition variable. Its
+// stream must then sleep: a basic scheduler polls its empty pool and keeps a
+// core busy for as long as the keeper runs with the WAL on.
+TEST_F(WalSegmentManagerTest, IdlePreparerDoesNotSpin)
+{
+    auto manager = makeManager();
+    ASSERT_EQ(manager->open(), 0);
+    manager->startPreparer();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500)); // the spare is made
+
+    double const before = processCpuSeconds();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    double const used = processCpuSeconds() - before;
+    manager->stopPreparer();
+
+    EXPECT_LT(used, 0.3) << "the process used " << used << " s of CPU in 1 s while the preparer was idle";
 }
 
 namespace
