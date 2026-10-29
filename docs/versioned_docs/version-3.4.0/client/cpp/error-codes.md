@@ -60,7 +60,7 @@ because the records may be on disk. It cannot tell a write that failed before wr
 one that wrote part of the group, so a failed write whose erase also fails gets -21 as well. If the
 keeper crashes after the failed write or sync, before the zeros are synced, the writers got no
 answer at all and see -21. If a retry reaches the restarted keeper within the client's retry window
-(3 attempts of 10 s by default), the keeper has read the group back from the page cache, the retry
+(3 attempts of 10 s by default), the keeper may have read the group back from the page cache, the retry
 finds the event, and the writer sees `CL_SUCCESS`, although the group may not be on the disk.
 
 ### Checking whether a -21 event was stored

@@ -65,7 +65,7 @@ group back as no records and ships none of its events.
 
 One case remains: the keeper crashes after the failed write or sync, before the zeros are synced.
 The writers got no answer at all, so they see -21. If a retry reaches the restarted keeper within
-the client's retry window, the keeper has read the group back from the page cache, the retry finds
+the client's retry window, the keeper may have read the group back from the page cache, the retry finds
 the event, and the writer sees `CL_SUCCESS`, although the group may not be on the disk. A restart
 on the same boot can read the group back and ship it.
 
