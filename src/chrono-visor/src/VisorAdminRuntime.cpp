@@ -50,7 +50,11 @@ int DataStoreAdminClient::shutdown_collection(std::shared_ptr<KeeperRegistry> re
                                         AdminArguments{AdminAction::Shutdown, "", "", 0, 0, {}},
                                         std::make_shared<AdminCompletion>(),
                                         std::move(registry)));
-    return result.reply ? *result.reply : result.status;
+    // The shipped shutdown handlers acknowledge with wire value 1. Zero is a
+    // false ACK here, even though local status APIs use CL_SUCCESS == 0.
+    if(result.reply)
+        return *result.reply == 1 ? CL_SUCCESS : CL_ERR_SHUTDOWN_INCOMPLETE;
+    return result.status;
 }
 AdminWork::AdminWork(std::shared_ptr<DataStoreAdminClient> client,
                      AdminArguments args,

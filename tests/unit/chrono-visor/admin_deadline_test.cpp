@@ -300,6 +300,20 @@ protected:
         observation = registry->adminOwner()->observation;
         registry->adminOwner()->engine->push_finalize_callback(probe.get(), [p = probe]() { ++p->finalizers; });
     }
+    void checkIsolatedInvalidShutdownAck(int ack)
+    {
+        for(int i = 1; i <= 3; ++i) ASSERT_EQ(registry->unregisterKeeperProcess(keeper(i)), CL_SUCCESS);
+        ASSERT_EQ(registry->unregisterPlayerProcess(PlayerIdCard(1, service(5))), CL_SUCCESS);
+        shutdownAcks[0] = ack;
+        EXPECT_EQ(registry->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+        EXPECT_EQ(registry->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+        EXPECT_EQ(shutdownEntries[0].load(), 1u);
+        for(int i = 1; i < 5; ++i) EXPECT_EQ(shutdownEntries[i].load(), 0u);
+        registry.reset();
+        EXPECT_TRUE(eventually(
+                [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
+        EXPECT_EQ(probe->finalizers.load(), 1u);
+    }
 };
 TEST_P(RegistryShutdownOwnership, ShutdownLookupRetainsActualOwnerUntilNativeWorkSettles)
 {
@@ -320,6 +334,8 @@ TEST_P(RegistryShutdownOwnership, ShutdownLookupRetainsActualOwnerUntilNativeWor
     EXPECT_FALSE(probe->provider.expired());
     EXPECT_FALSE(probe->engine.expired());
     EXPECT_EQ(probe->finalizers.load(), 0u);
+    if(auto lease = probe->registry.lock())
+        EXPECT_EQ(lease->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
     gate->released.store(true, std::memory_order_release);
     EXPECT_TRUE(eventually(
             [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
@@ -366,6 +382,7 @@ TEST_P(RegistryShutdownOwnership, ShutdownNoReplyRetainsActualOwnerAfterWorkerRe
 TEST_P(RegistryShutdownOwnership, ShutdownConfirmedReclaimsDirectRegistryAndProvider)
 {
     EXPECT_EQ(registry->ShutdownRegistryService(), CL_SUCCESS);
+    EXPECT_EQ(registry->ShutdownRegistryService(), CL_SUCCESS);
     registry.reset();
     EXPECT_TRUE(eventually(
             [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
@@ -381,5 +398,8 @@ TEST_P(RegistryShutdownOwnership, LocalDropStartsNoImplicitRemoteShutdown)
     EXPECT_EQ(probe->finalizers.load(), 1u);
     for(auto const& count: shutdownEntries) EXPECT_EQ(count.load(), 0u);
 }
+TEST_P(RegistryShutdownOwnership, ShutdownFalseAckIsIncomplete) { checkIsolatedInvalidShutdownAck(0); }
+TEST_P(RegistryShutdownOwnership, ShutdownUnexpectedPositiveAckIsIncomplete) { checkIsolatedInvalidShutdownAck(2); }
+TEST_P(RegistryShutdownOwnership, ShutdownNegativeAckIsIncomplete) { checkIsolatedInvalidShutdownAck(CL_ERR_UNKNOWN); }
 INSTANTIATE_TEST_SUITE_P(Native, RegistryShutdownOwnership, ::testing::Values("ofi+sockets", "ofi+tcp"));
 INSTANTIATE_TEST_SUITE_P(Native, AdminDeadline, ::testing::Values("ofi+sockets", "ofi+tcp"));

@@ -45,6 +45,7 @@ protected:
     std::atomic<int> stops[5]{};
     int stopDelays[5]{};
     bool suppressShutdownReply[5]{};
+    int shutdownAcks[5]{1, 1, 1, 1, 1};
     std::atomic<unsigned> shutdownEntries[5]{};
     virtual std::shared_ptr<AdminLookup> lookupDependency() { return {}; }
     std::mutex rosterMutex;
@@ -123,7 +124,7 @@ protected:
                             return;
                         try
                         {
-                            req.respond(0);
+                            req.respond(shutdownAcks[i]);
                         }
                         catch(...)
                         {}
