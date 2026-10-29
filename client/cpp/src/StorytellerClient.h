@@ -4,6 +4,8 @@
 #include <atomic>
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -15,15 +17,12 @@
 #include <ServiceId.h>
 #include <chronolog_types.h>
 #include <chronolog_client.h>
+#include "ChronologTimer.h"
+#include "RpcPolicyContext.h"
 
 namespace chronolog
 {
 
-class ChronologTimer
-{
-public:
-    uint64_t getTimestamp();
-};
 
 class KeeperRecordingClient;
 class PlaybackQueryRpcClient;
@@ -42,10 +41,17 @@ public:
 class StorytellerClient
 {
 public:
-    StorytellerClient(ChronologTimer& chronolog_timer, thallium::engine& client_tl_engine, ClientId const& client_id)
+    StorytellerClient(
+            ChronologTimer& chronolog_timer,
+            thallium::engine& client_tl_engine,
+            ClientId const& client_id,
+            std::shared_ptr<RpcPolicyContext> policy_context = std::make_shared<RpcPolicyContext>(RpcTimeoutPolicy{}),
+            chrono_index initial_index = 0)
         : theTimer(chronolog_timer)
         , client_engine(client_tl_engine)
         , clientId(client_id)
+        , atomic_index(initial_index)
+        , policyContext(std::move(policy_context))
     {
         LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
@@ -65,11 +71,16 @@ public:
 
     void removeAcquiredStoryHandle(ChronicleName const&, StoryName const&);
 
-    uint64_t getTimestamp() { return theTimer.getTimestamp(); }
+    TimestampResult getTimestamp(std::chrono::steady_clock::time_point deadline) noexcept
+    {
+        return theTimer.next(deadline);
+    }
+
+    std::optional<RpcPolicyContext::Snapshot> acquirePolicy() { return policyContext->tryAcquire(); }
 
     ClientId const& getClientId() const { return clientId; }
 
-    int get_event_index();
+    chrono_index get_event_index() noexcept;
 
     //   ServiceId const& get_local_service_id() const    { return theClientQueryService.get_service_id(); }
 
@@ -81,7 +92,8 @@ private:
     ChronologTimer& theTimer;
     thallium::engine& client_engine;
     ClientId clientId;
-    std::atomic<int> atomic_index;
+    std::atomic<chrono_index> atomic_index{0};
+    std::shared_ptr<RpcPolicyContext> policyContext;
 
     std::mutex recordingClientMapMutex;
     std::mutex acquiredStoryMapMutex;

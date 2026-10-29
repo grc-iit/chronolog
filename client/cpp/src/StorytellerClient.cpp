@@ -1,6 +1,5 @@
 #include <atomic>
 #include <chrono>
-#include <climits>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -22,11 +21,6 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 /////////////////////
-
-uint64_t chronolog::ChronologTimer::getTimestamp()
-{
-    return std::chrono::high_resolution_clock::now().time_since_epoch().count();
-}
 
 /////////////////////
 chronolog::StoryHandle::~StoryHandle() {}
@@ -67,12 +61,28 @@ void chronolog::StoryHandleImpl<KeeperChoicePolicy>::removeRecordingClient(
 template <class KeeperChoicePolicy>
 uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record)
 {
+    // Timer assignment consumes the append budget from this entry. B05 owns
+    // bounding the legacy network send, which is still synchronous here.
+    using Clock = std::chrono::steady_clock;
+    auto started = Clock::now();
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return 0;
+    auto budget = std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(policy->policy().append_ms));
+    // Temporary checked absolute addition until B05 uses the shared deadline.
+    auto deadline = started > Clock::time_point::max() - budget ? Clock::time_point::max() : started + budget;
+    auto timestamp = theClient.getTimestamp(deadline);
+    if(timestamp.status != chronolog::CL_SUCCESS)
+        return 0;
+
     chronolog::LogEvent log_event(storyId,
-                                  theClient.getTimestamp(),
+                                  timestamp.timestamp,
                                   theClient.getClientId(),
                                   theClient.get_event_index(),
                                   event_record);
 
+    if(Clock::now() >= deadline)
+        return 0;
     auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
     if(nullptr == keeperRecordingClient) //very unlikely...
     {
@@ -118,21 +128,11 @@ chronolog::StorytellerClient::~StorytellerClient()
         recordingClientMap.clear();
 }
 
-int chronolog::StorytellerClient::get_event_index()
+chronolog::chrono_index chronolog::StorytellerClient::get_event_index() noexcept
 {
-    // we only aqcuire mutex in the rare case when
-    // the atomic index has reached INT_MAX value
-    // otherwise proceed lock-free
-    if((atomic_index == INT_MAX))
-    {
-        std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-        //recheck when mutex is acquired, only one thread changes the value
-        if(atomic_index == INT_MAX)
-        {
-            atomic_index = 0;
-        }
-    }
-    return ++atomic_index;
+    // Unsigned fetch_add wraps modulo 2^32; zero is a valid event index.
+    // This is an identity component, not a gapless writer sequence.
+    return atomic_index.fetch_add(1, std::memory_order_relaxed) + chrono_index{1};
 }
 ////////////////
 

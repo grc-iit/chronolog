@@ -17,6 +17,8 @@ add_library(chronolog_client
     src/KeeperRecordingClient.h
     src/KeeperTailReader.h
     src/KeeperTailReader.cpp
+    src/ChronologTimer.h
+    src/ChronologTimer.cpp
     src/StorytellerClient.h
     src/StorytellerClient.cpp
     src/PlaybackQueryRpcClient.cpp

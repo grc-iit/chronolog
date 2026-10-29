@@ -4,6 +4,7 @@
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
@@ -24,7 +25,8 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::chronologClientI
 chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplInstance(
         chronolog::ClientPortalServiceConf const& visorClientPortalServiceConf,
         chronolog::ClientMode const& clientMode,
-        chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
+        chronolog::ClientQueryServiceConf const& clientQueryServiceConf,
+        ChronologTimer::RawSource source)
 {
     chrono_monitor::initialize("file",
                                "/tmp/chrono_client.log",
@@ -38,22 +40,28 @@ chronolog::ChronologClientImpl* chronolog::ChronologClientImpl::GetClientImplIns
 
     if(chronologClientImplInstance == nullptr)
     {
-        chronologClientImplInstance =
-                new ChronologClientImpl(visorClientPortalServiceConf, clientMode, clientQueryServiceConf);
+        chronologClientImplInstance = new ChronologClientImpl(visorClientPortalServiceConf,
+                                                              clientMode,
+                                                              clientQueryServiceConf,
+                                                              std::move(source));
     }
 
+    else if(source)
+        throw std::invalid_argument("Cannot replace the clock source of an existing client context");
     return chronologClientImplInstance;
 }
 
 chronolog::ChronologClientImpl::ChronologClientImpl(chronolog::ClientPortalServiceConf const& clientPortalServiceConf,
                                                     chronolog::ClientMode const& clientMode,
-                                                    chronolog::ClientQueryServiceConf const& clientQueryServiceConf)
+                                                    chronolog::ClientQueryServiceConf const& clientQueryServiceConf,
+                                                    ChronologTimer::RawSource source)
     : rpcPolicyContext(std::make_shared<RpcPolicyContext>(clientPortalServiceConf.RPC_POLICY))
     , clientMode(clientMode)
     , clientState(UNKNOWN)
     , clientLogin("")
     , clientIdentity{}
     , clientId(0)
+    , clockProxy(std::move(source))
     , tlEngine(nullptr)
     , rpcVisorClient(nullptr)
     , storyteller(nullptr)
@@ -211,7 +219,7 @@ int chronolog::ChronologClientImpl::Connect()
         clientId = connectResponseMsg.getClientId();
         if(storyteller == nullptr)
         {
-            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId);
+            storyteller = new StorytellerClient(clockProxy, *tlEngine, clientId, rpcPolicyContext);
         }
     }
     else

@@ -48,9 +48,12 @@ public:
     static std::mutex chronologClientMutex;
     static ChronologClientImpl* chronologClientImplInstance;
 
+    // A source can be chosen only when creating the context; an explicit
+    // replacement for an existing context throws std::invalid_argument.
     static ChronologClientImpl* GetClientImplInstance(chronolog::ClientPortalServiceConf const&,
                                                       ClientMode const&,
-                                                      chronolog::ClientQueryServiceConf const&);
+                                                      chronolog::ClientQueryServiceConf const&,
+                                                      ChronologTimer::RawSource source = {});
 
     // the classs is non-copyable
     ChronologClientImpl(ChronologClientImpl const&) = delete;
@@ -99,7 +102,10 @@ private:
     StorytellerClient* storyteller;
     ClientQueryService* storyReaderService;
 
-    ChronologClientImpl(ClientPortalServiceConf const&, ClientMode const&, chronolog::ClientQueryServiceConf const&);
+    ChronologClientImpl(ClientPortalServiceConf const&,
+                        ClientMode const&,
+                        chronolog::ClientQueryServiceConf const&,
+                        ChronologTimer::RawSource);
 
     void defineClientIdentity(uint16_t query_service_port,
                               std::optional<std::string> const& listen_ip,
