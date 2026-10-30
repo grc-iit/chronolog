@@ -198,7 +198,8 @@ library's handle sets it to `0`. The default `StoryHandle` implementation, for s
 
 - **`Durability::Accepted`** (the default) takes the same path as `log_event(event_record)`, and
   returns the keeper's status instead of discarding it. `CL_SUCCESS` means the keeper holds the
-  event in memory. There is no deadline and no retry, as with `log_event(event_record)`.
+  event in memory; a keeper that is shutting down returns `CL_ERR_UNKNOWN` and stores nothing. There
+  is no deadline and no retry, as with `log_event(event_record)`.
 - **`Durability::Durable`** returns `CL_SUCCESS` only after the keeper wrote the event to its
   write-ahead log (WAL) and `fdatasync` returned. What that survives depends on where the WAL is:
   on a local disk, a keeper crash and a node reboot; on tmpfs, a keeper crash only; it never
@@ -217,12 +218,14 @@ library's handle sets it to `0`. The default `StoryHandle` implementation, for s
 
 **Retries.** A durable write builds the event once and sends it to the keeper chosen by its
 timestamp, with a deadline of `timeout_ms`. When an attempt gets no answer (a timeout or a transport
-error), the client sends the identical event again, at once and with no backoff, up to `attempts`
-times. The retry budget is therefore `attempts × timeout_ms`, 30 s with the defaults, and the call
-can block that long. Every attempt carries the same identity, `(time, client id, index)`. The
-keeper choice depends only on the timestamp, so a retry reaches the same keeper while the story's
-keeper list is unchanged, and the keeper answers a retry of an event it already holds with
-`CL_SUCCESS` without storing it again, also after a crash and restart.
+error), the client sends the identical event again, up to `attempts` times, with no other backoff.
+A timed-out attempt has already used its `timeout_ms`; one that failed sooner, such as a forward to
+a dead keeper, waits until `timeout_ms` has passed, so a keeper restarted at the same address can
+answer a later attempt. The retry budget is therefore `attempts × timeout_ms`, 30 s with the
+defaults, and the call can block that long. Every attempt carries the same identity,
+`(time, client id, index)`. The keeper choice depends only on the timestamp, so a retry reaches the
+same keeper while the story's keeper list is unchanged, and the keeper answers a retry of an event
+it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart.
 
 **Storage is at-least-once; reads see each event once.** If a keeper left the story's keeper list
 between attempts, the retry lands on another keeper and both may store the event. Copies with the
@@ -249,8 +252,8 @@ The new virtual changes the client library's ABI: code built against an earlier 
 that calls `log_event`, including the plugins, needs a rebuild but no source change.
 `CLIENT_PROTOCOL_VERSION` is unchanged; a durable write uses a new keeper RPC, which an older
 keeper does not register. The client returns `CL_ERR_DURABILITY_UNAVAILABLE` for the resulting
-`HG_NO_MATCH` only while that keeper has never answered a durable call from this client; after
-that it counts as an unanswered attempt (see [Durability error codes](./error-codes.md#durability-error-codes)).
+`HG_NO_MATCH` only while that keeper has never answered a durable call from this client and still
+answers a tail read of no story; otherwise it counts as an unanswered attempt (see [Durability error codes](./error-codes.md#durability-error-codes)).
 
 ```cpp
 chronolog::LogEventOptions options;
