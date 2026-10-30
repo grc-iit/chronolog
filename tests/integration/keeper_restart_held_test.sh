@@ -59,8 +59,11 @@
 # Requires an installed tree (deploy_local.sh layout) and the build tree for
 # the probe. The script patches the *installed* conf template (never the source
 # tree), deploys 2 keepers / 1 recording group per protocol, stops the
-# deployment and restores the template on exit. A failed run keeps its files
-# in the directory it prints.
+# deployment and restores the template on exit. The keepers' WALs live in
+# work_dir/wal/keeper-1 and keeper-2, where deploy_local.sh --wal puts them;
+# the test removes them before each protocol's scenario and again on exit, and
+# removes work_dir/wal too when nothing else is in it. A failed run keeps its
+# files in the directory it prints, with the last scenario's WALs in its wal/.
 #
 # Usage: WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 #        ./keeper_restart_held_test.sh
@@ -559,6 +562,17 @@ RUN_ROOT=$(mktemp -d /tmp/keeper_restart_held.XXXXXX)
 restore_conf() { mv -f "$CONF_TEMPLATE.restart_held_backup" "$CONF_TEMPLATE"; }
 finish() {
     cleanup
+    # the keepers' WALs leave work_dir/wal once the daemons are stopped: deleted
+    # after a clean run, moved next to the other files of a failed one
+    if [ $FAIL -eq 0 ]; then
+        rm -rf "$WORK_DIR/wal/keeper-1" "$WORK_DIR/wal/keeper-2"
+    else
+        mkdir -p "$RUN_ROOT/wal"
+        for wal in "$WORK_DIR/wal/keeper-1" "$WORK_DIR/wal/keeper-2"; do
+            [ -e "$wal" ] && command mv -f "$wal" "$RUN_ROOT/wal/"
+        done
+    fi
+    rmdir -- "$WORK_DIR/wal" 2> /dev/null || true
     restore_conf
     if [ $FAIL -eq 0 ]; then rm -rf "$RUN_ROOT"; else say "files of the failed run kept in $RUN_ROOT"; fi
 }
