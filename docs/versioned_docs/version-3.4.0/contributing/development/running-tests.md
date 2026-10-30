@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 527 CTest entries: 480 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 780 CTest entries: 733 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -81,6 +81,8 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoCommon_ConfTemplate` | 7 | `chrono_common_conf_template_test.cpp` | The shipped configuration template keeps the timing rules between components |
 | `Unit_ChronoCommon_DataStoreConf` | 6 | `chrono_common_data_store_conf_test.cpp` | Validation of the DataStoreInternals settings |
 | `Unit_ChronoCommon_ExtractionModule` | 5 | `chrono_common_extraction_module_test.cpp` | The drain loop shared by the keeper and the grapher |
+| `Unit_ChronoCommon_LogEventCodec` | 5 | `chrono_common_log_event_codec_test.cpp` | The byte layout of a keeper WAL event, and how a cut, oversized or newer-version encoding is refused |
+| `Unit_ChronoCommon_Crc32c` | 3 | `chrono_common_crc32c_test.cpp` | The SSE4.2 path and the boost fallback of CRC-32C agree |
 | `Unit_ChronoCommon_ChunkExtractorCSV` | 2 | `chrono_common_chunk_extractor_csv_test.cpp` | The CSV extractor and empty windows |
 | `Unit_ChronoCommon_ExtractionChainConfig` | 1 | `chrono_common_extraction_chain_config_test.cpp` | Parsing extraction chain configurations (custom `main`, not GTest) |
 
@@ -89,11 +91,22 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 64 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
+| `Unit_ChronoKeeper_KeeperWalTest` | 46 | `chrono_keeper_wal_test.cpp` | The WAL committer: group commit, a failed write or sync and the erase of the group, rotation, a retry joining an attempt, release and segment deletion, stop, and a destroy after the WAL failed |
+| `Unit_ChronoKeeper_WalRecoveryTest` | 31 | `chrono_keeper_wal_recovery_test.cpp` | Reading a WAL at startup: log order, torn tails, bad records, unknown versions, dropped stories and `dropped-unlogged` |
+| `Unit_ChronoKeeper_WalFileSinkTest` | 22 | `chrono_keeper_wal_file_sink_test.cpp` | The WAL's file layer and its fault-injecting test sink: `flock`, zeroed files, `writev`, renames, directory sync, held and failed syncs |
+| `Unit_ChronoKeeper_WalSegmentManagerTest` | 17 | `chrono_keeper_wal_segment_manager_test.cpp` | Segment headers, the spare prepared ahead on its own stream, adopting a header-only segment, and an idle preparer that does not spin |
+| `Unit_ChronoKeeper_KeeperDurableWriter` | 16 | `chrono_keeper_durable_writer_test.cpp` | The durable write path: its checks and their order, the pipeline it starts for an unknown story, ingestion only after the sync, a retry that joins an earlier attempt, and shutdown |
+| `Unit_ChronoKeeper_WalFormat` | 14 | `chrono_keeper_wal_format_test.cpp` | The record frames: length, CRC32C and segment header, and how a cut or flipped frame is read |
+| `Unit_ChronoKeeper_KeeperWalConf` | 12 | `chrono_keeper_wal_conf_test.cpp` | Parsing and validating the `WAL` configuration block |
+| `Unit_ChronoKeeper_WalMountCheck` | 11 | `chrono_keeper_wal_mount_check_test.cpp` | The startup warnings about the WAL directory: NFS, tmpfs, overlay, the root device and low space |
+| `Unit_ChronoKeeper_WalReleaseTracker` | 9 | `chrono_keeper_wal_release_tracker_test.cpp` | The table of pending durable events: release by a confirmed chunk, copies in two segments, and which segments can be deleted |
 | `Unit_ChronoKeeper_KeeperReleaseDataLoss`, `..._KeeperOrphanAtRetirementDataLoss` | 6 | `chrono_keeper_release_dataloss_test.cpp` | Releasing a story does not lose events still in its pipeline |
 | `Unit_ChronoKeeper_KeeperExtractionChain` | 4 | `chrono_keeper_extraction_chain_test.cpp` | The chain hands extracted chunks to the retention store instead of deleting them |
+| `Unit_ChronoKeeper_KeeperWalReplay` | 4 | `chrono_keeper_wal_replay_test.cpp` | Recovered events become sealed chunks aligned to the chunk duration, under the story id taken from the names, and stay retained until the grapher confirms them |
 | `Unit_ChronoKeeper_KeeperOrphanRecovery` | 3 | `chrono_keeper_orphan_recovery_test.cpp` | Events that arrive for a story with no pipeline are sealed and kept |
 | `Unit_ChronoKeeper_KeeperChunkRetentionCap` | 2 | `chrono_keeper_retention_cap_test.cpp` | The `retention_cap_mb` alarm |
 | `Unit_ChronoKeeper_KeeperStoryRetirement` | 2 | `chrono_keeper_story_retirement_test.cpp` | A retired story frees its chunks only when they are written and out of the tail |
+| `Unit_ChronoKeeper_KeeperExtractionEngine` | 1 | `chrono_keeper_extraction_engine_test.cpp` | The extraction engine ships a chunk while the main thread sleeps, so chunks leave as soon as they seal |
 
 ### ChronoGrapher (`tests/unit/chrono-grapher/`)
 
@@ -127,15 +140,20 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronoVisor_StoryGroupSelection`, `..._ActiveGroups`, `..._ActiveRecordingGroup` | 12 | `story_group_selection_test.cpp` | A story's recording group comes from its story id, stays the same when it is acquired again, and moves only when the groups change |
+| `Unit_ChronoVisor_KeeperRestartStories` | 7 | `keeper_restart_stories_test.cpp` | The stories the visor starts on a registering keeper: only its recording group's active stories, and a stop for one released or moved during the start |
 | `Unit_ChronoVisor_ChronicleStoryId` | 3 | `chronicle_story_id_test.cpp` | Name pairs that concatenate alike get different story ids |
 
 ### Client library (`tests/unit/chronolog-client/`)
 
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
+| `Unit_ChronologClient_DurableSend` | 18 | `client_durable_send_test.cpp` | A durable write against fake keepers: success, keeper codes, retries of the same event, a dead keeper, a keeper without the RPC, and -21 with `event_time` |
 | `Unit_ChronologClient_QueryServiceAddressTest` | 10 | `query_service_address_test.cpp` | The address a reader listens on when the visor is on another host |
 | `Unit_ChronologClient_ClientIdentityTest` | 5 | `chronolog_client_identity_test.cpp` | The `ClientId` layout |
 | `Unit_ChronologClient_ClientLoginName` | 4 | `client_login_name_test.cpp` | The logged user name when the process has no login name |
+| `Unit_ChronologClient_LogEventOptions` | 4 | `client_log_event_options_test.cpp` | The defaults of `LogEventOptions`, and the default `log_event(record, options, event_time)` of a `StoryHandle` subclass |
+| `Unit_ChronologClient_ClientErrcode` | 2 | `client_errcode_durability_test.cpp` | The durability error codes and the names of all codes; reserved codes keep their meaning |
+| `Unit_PyClient_DurableBinding` | 1 | `py_client_durable_binding_test.py` | The Python binding of `Durability`, `LogEventOptions` and `log_event(record, options)`; a Python script, registered only when the Python module is built |
 
 ### Plugins
 
@@ -153,6 +171,9 @@ Shell tests that check scripts without deploying anything. Each is one CTest ent
 | CTest Name | Source File | What it covers |
 |---|---|---|
 | `Unit_Deploy_ArchiveCleanup` | `deploy_archive_cleanup_test.sh` | `deploy_local.sh -c` cleans the archive through the manifest and leaves other data |
+| `Unit_Deploy_LocalWal` | `deploy_local_wal_test.sh` | `deploy_local.sh --wal` in the generated keeper confs, the checks on `--restart-keeper` and `--force`, and the `--stop` table of exit summaries |
+| `Unit_Deploy_ClusterWal` | `deploy_cluster_wal_test.sh` | The keeper WAL handling of `deploy_cluster.sh --stop`, `--clean` and `--restart-keeper` against made-up keeper hosts |
+| `Unit_Deploy_WalDirProbe` | `wal_dir_probe_test.sh` | `wal_dir_probe.sh` choosing a WAL directory on made-up hosts, and `deploy_cluster.sh` writing the choice into a keeper's conf |
 | `Unit_Performance_ArchiveCleanup` | `performance_archive_cleanup_test.sh` | The same cleanup as the performance scripts run it |
 | `Unit_NFS_ComposeOverride` | `nfs_compose_override_test.sh` | The compose override that mounts each NFS profile |
 | `Unit_NFS_ServerDryRun` | `nfs_server_dry_run_test.sh` | What `nfs_server.sh` would run, without sudo |
