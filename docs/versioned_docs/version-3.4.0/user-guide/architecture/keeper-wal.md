@@ -28,13 +28,14 @@ Only durable writes go into the WAL: an accepted write, `log_event(record)` or
 The client sends a durable write to the keeper chosen by the event's timestamp, through a separate
 RPC, `record_event_durable`, that also carries the chronicle and story names. The keeper:
 
-1. answers `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL is off;
+1. answers `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL is off or the keeper is shutting down (see
+   [Shutdown](#shutdown));
 2. answers `CL_ERR_INVALID_ARG` if the event's story id does not match the names;
 3. looks up the event's identity, `(time, client id, index)`, in the WAL. If the event is already
    synced and not yet released, it answers `CL_SUCCESS` and stores nothing; if an earlier attempt is
    still waiting for its sync, it waits for that attempt's result. This is how a client's retry gets
-   the first attempt's answer before any later check can refuse it; only the WAL-off and story-id
-   checks come first;
+   the first attempt's answer before any later check can refuse it; only the WAL-off, shutdown and
+   story-id checks come first;
 4. answers `CL_ERR_INVALID_ARG` to an empty record, `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL has
    failed, and `CL_ERR_DURABILITY_FULL` if the WAL's file system is below its reserve or the keeper
    holds more than `durable_cap_mb` of chunks;
@@ -45,7 +46,9 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
    concurrent durable writes share a sync;
 7. after the sync, puts the event into the ingestion queue like any accepted event, and answers
    `CL_SUCCESS`. From here on the event is sealed, shipped, archived, tail-read and replayed exactly
-   as an accepted event is.
+   as an accepted event is. Only the call that queued the event's record ingests it: a retry that
+   found the first attempt still on its way to the WAL, and joined it, does not ingest the event a
+   second time.
 
 If the write or the sync fails, none of the group is ingested and the WAL stays failed until the
 keeper restarts. Accepted writes continue. After a failed `fdatasync`, Linux may mark the dirty
@@ -82,7 +85,9 @@ Each keeper owns one directory:
 - numbered segments, `00000000000000000001.wal` and on, each `segment_bytes` long (64 MiB);
 - `<n>.wal.partial`, a segment being prepared, removed at startup;
 - `exit-summary`, written as the keeper exits, with the number of durable events the grapher had not
-  yet confirmed.
+  yet confirmed;
+- `dropped-unlogged`, present only after a story was destroyed while the WAL was failed (see
+  [Release](#release)): one `<story id> <segment>` line for each such story.
 
 A segment is written full of zeros, given its header and synced before it is used, so a write
 overwrites zeros and a sync does not also commit a change of file size. That cut the sync time 1.7
@@ -109,6 +114,14 @@ record of it. The story's earlier events can then come back after a restart, as 
 power loss before the `D` record synced; a grapher that still holds the story's tombstone refuses
 them.
 
+A WAL that has failed writes nothing more, so it cannot log a destroy as a `D` record. The keeper
+instead adds the story and the segment then active to `dropped-unlogged`, writes the file whole and
+syncs it, and drops the story's copies from its pending table. At startup, recovery discards the
+story's events whose copies all lie in segments up to the one named; a story created again after the
+restart has its events in newer segments only, so those stay. Entries whose segments are gone are
+removed from the file. If the keeper cannot write the file, it logs an error, and a keeper started
+on the directory replays the story's durable events.
+
 A segment is deleted, oldest first, once none of its events is pending. A healthy keeper holds about
 two minutes of durable writes, from the write to the grapher's confirmation, and the WAL directory
 usually holds the active segment and a spare.
@@ -133,13 +146,22 @@ registers with the visor:
    first bad record is a write the crash cut short: it ends the data, and the rest of the segment is
    zeroed. A bad record in any older segment stops startup with the segment and offset; move that
    segment aside to start without it.
-4. It syncs every segment and the directory, starts writing in a fresh segment, and rebuilds the
-   table of pending events, so a client retry of an event synced before the crash gets `CL_SUCCESS`
-   without a second copy.
-5. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
+4. It syncs every segment and the directory.
+5. It applies `dropped-unlogged`, if the file exists (see [Release](#release)). A line that does not
+   parse, or a read error such as EIO or EACCES, stops startup, after step 4: a torn tail has been
+   zeroed by then, and the next start repeats the recovery. Correct the line, which is two numbers
+   separated by a space, or the file's permissions. Deleting the file instead brings back the events
+   of the stories it names.
+6. It starts writing in a fresh segment and rebuilds the table of pending events, so a client retry
+   of an event synced before the crash gets `CL_SUCCESS` without a second copy.
+7. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
    normal extraction path sends them to the grapher. The grapher usually has no pipeline for those
    stories and adopts the chunks by their chronicle and story names. Its confirmations come back to
    this keeper and release the records.
+
+A story whose chronicle and story names the WAL does not hold cannot be replayed. The keeper logs an
+error naming the story and its segments, and its events do not keep their segments, so they cannot
+fill the WAL.
 
 The keeper logs what it replayed: the segments, each story with its event count and time range, the
 bytes and the time taken. Recovery reads the whole WAL, so startup takes longer the more it holds.
@@ -151,6 +173,23 @@ returns each event once.
 A restarted keeper registers with the visor again, retrying every 5 seconds while the visor still
 holds its old entry. The visor then starts a pipeline on it for every story its recording group's
 clients still hold, so accepted writes after the restart are kept too.
+
+---
+
+## Shutdown
+
+A keeper stopped with SIGTERM first unregisters from the visor, then stops taking writes: a new
+durable write gets `CL_ERR_DURABILITY_UNAVAILABLE` and a new accepted write `CL_ERR_UNKNOWN`, and
+neither is stored. The recording service and its RPCs stay up, so a durable write already waiting
+for its sync is still synced and answered, and a client that holds a story on this keeper gets that
+answer. The keeper then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its
+chunks, stops the WAL, which syncs and answers everything queued and writes `exit-summary`, and
+deletes the recording service once no write handler has run for 200 ms (waiting at most 10
+seconds).
+
+Deleting the service deregisters all its RPCs, including `tail_get_sequences`. From then on a
+durable write fails as it does against a dead keeper: the client's probe gets no answer, so it
+waits, retries and returns `CL_ERR_DURABILITY_UNKNOWN` (-21). An accepted write still gets -1.
 
 ---
 
@@ -186,8 +225,9 @@ burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 | Bad record in an older segment | The keeper refuses to start and names the segment and offset. |
 | WAL from a build with another format | The keeper refuses to start and names the segment and both versions. |
 | WAL directory locked | The keeper exits and names the directory. |
+| Keeper receives SIGTERM | New durable writes get `CL_ERR_DURABILITY_UNAVAILABLE` and new accepted writes `CL_ERR_UNKNOWN`, with nothing stored. Durable writes already queued are synced and answered. See [Shutdown](#shutdown). |
 | Keeper exits with unconfirmed durable events | It logs how many and writes them to `exit-summary`. `deploy_cluster.sh --stop` reads that file; a missing one means the keeper crashed. |
-| Story destroyed | The keeper writes a `D` record and releases the story's events. A grapher that restarted after the destroy, or a later job on the same node, can bring the story's events back from a WAL replay. So can a `D` record in a group whose write or sync failed, which is erased; a grapher that still holds the story's tombstone refuses them. |
+| Story destroyed | The keeper writes a `D` record and releases the story's events. A grapher that restarted after the destroy, or a later job on the same node, can bring the story's events back from a WAL replay. So can a `D` record in a group whose write or sync failed, which is erased; a grapher that still holds the story's tombstone refuses them. After the WAL has failed, the keeper cannot write a `D` record, so it records the destroy in `dropped-unlogged` and recovery discards the story's events from the segments up to the active one. |
 
 ---
 

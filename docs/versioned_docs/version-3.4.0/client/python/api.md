@@ -196,7 +196,8 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
   `(status, event_time)`. `status` is `0` (`CL_SUCCESS`) once the event got there; `event_time` is
   the event's timestamp on success and with `-21`, and `0` with every other status.
 - With `Durability.Accepted` (the default) it takes the same path as `log_event(event_string)` and
-  returns the keeper's status instead of discarding it.
+  returns the keeper's status instead of discarding it; a keeper that is shutting down returns `-1`
+  and stores nothing.
 - With `Durability.Durable` it returns `0` only after the keeper wrote the event to its write-ahead
   log (WAL) and `fdatasync` returned. A keeper that cannot make the event durable answers with an
   error and stores nothing, except that `-21` means it may be stored; the write is never downgraded
