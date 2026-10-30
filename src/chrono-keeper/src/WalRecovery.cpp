@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <optional>
@@ -427,6 +428,65 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
     if(!ends.empty() && !ends.back().dataAfterHeader())
     {
         state.reusable_spare = ends.back().segment;
+    }
+
+    // Destroys a failed WAL could not log as D records: each drops the
+    // story's events whose every copy lies in a segment up to the one it
+    // names. An entry whose segments are all gone has nothing left to drop.
+    std::vector<UnloggedDrop> drops;
+    if(int err = readUnloggedDrops(sink, drops))
+    {
+        error = "cannot read " + directory + "/" + kUnloggedDropsFile + ": " + std::strerror(err);
+        return CL_ERR_UNKNOWN;
+    }
+    if(!drops.empty())
+    {
+        uint64_t const oldest_segment = state.segments.empty() ? UINT64_MAX : state.segments.front();
+        std::vector<UnloggedDrop> still_needed;
+        for(UnloggedDrop const& drop: drops)
+        {
+            if(drop.last_segment >= oldest_segment)
+            {
+                still_needed.push_back(drop);
+            }
+            auto story = state.stories.find(drop.story_id);
+            if(story == state.stories.end())
+            {
+                continue;
+            }
+            std::size_t dropped = 0;
+            for(auto copies = story->second.copies.begin(); copies != story->second.copies.end();)
+            {
+                bool const before_the_drop = std::all_of(copies->second.begin(),
+                                                         copies->second.end(),
+                                                         [&drop](std::pair<uint64_t, uint64_t> const& copy)
+                                                         { return copy.first <= drop.last_segment; });
+                if(!before_the_drop)
+                {
+                    ++copies;
+                    continue;
+                }
+                story->second.events.erase(copies->first);
+                copies = story->second.copies.erase(copies);
+                ++dropped;
+            }
+            LOG_WARNING("[WalRecovery] StoryId={} was destroyed after the WAL failed: dropped {} of its events from "
+                        "segments up to {}",
+                        drop.story_id,
+                        dropped,
+                        drop.last_segment);
+        }
+        if(still_needed.size() != drops.size())
+        {
+            if(int err = writeUnloggedDrops(sink, still_needed))
+            {
+                // the stale entries only drop events from segments that are gone
+                LOG_WARNING("[WalRecovery] Could not prune {}/{}: {}",
+                            directory,
+                            kUnloggedDropsFile,
+                            std::strerror(err));
+            }
+        }
     }
 
     for(auto story = state.stories.begin(); story != state.stories.end();)

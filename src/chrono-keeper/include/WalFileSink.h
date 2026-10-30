@@ -50,6 +50,26 @@ public:
 
 std::unique_ptr<WalFileSink> makePosixWalFileSink();
 
+// A destroy the WAL could not log as a D record because it had latched failed
+// (see KeeperWal). Every event of the story in a segment up to last_segment
+// belongs to the destroyed story: a latched WAL writes nothing more, so a
+// story created again later has its events only in newer segments.
+struct UnloggedDrop
+{
+    uint64_t story_id = 0;
+    uint64_t last_segment = 0;
+};
+
+// The file in the WAL directory that holds them, one "<story id> <segment>"
+// line each. Recovery applies it and removes entries whose segments are gone.
+constexpr char kUnloggedDropsFile[] = "dropped-unlogged";
+
+// A missing file is no drops. EINVAL for a line that does not parse.
+int readUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop>& drops);
+// Replaces the file whole (written to a .partial, synced, renamed, directory
+// synced), or removes it when there are no drops.
+int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops);
+
 // Test sink: wraps a real one, injects failures and stalls. The failure and
 // hold settings may be changed from any thread while the sink is in use.
 // createZeroed fdatasyncs through the inner sink, so the syncData settings and

@@ -1,9 +1,12 @@
 #ifndef KEEPER_RECORDING_SERVICE_H
 #define KEEPER_RECORDING_SERVICE_H
 
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <functional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <cstdint>
 #include <margo.h>
@@ -49,11 +52,52 @@ public:
     ~KeeperRecordingService()
     {
         LOG_DEBUG("[KeeperRecordingService] Destructor called. Cleaning up...");
+        // thallium's provider does not deregister its RPCs: without this a
+        // request after the delete runs a handler on the freed object
+        for(tl::remote_procedure* rpc:
+            {&recordEventRpc, &recordEventDurableRpc, &tailGetSequencesRpc, &tailGetEventsRpc, &storyRangeFetchRpc})
+        {
+            rpc->deregister();
+        }
         get_engine().pop_finalize_callback(this);
+    }
+
+    // Shutdown, first step: take no new writes. A new durable write is
+    // answered CL_ERR_DURABILITY_UNAVAILABLE and an accepted one CL_ERR_UNKNOWN,
+    // both with nothing stored, instead of being taken after data collection
+    // stopped. The RPCs stay registered: a handler already running, such as a
+    // durable one waiting for its fdatasync, could not send its answer for an
+    // RPC that is gone. So the service must outlive those handlers: delete it
+    // only after waitForWriteHandlers.
+    void stopAcceptingWrites() { acceptingWrites = false; }
+
+    // Shutdown, second step, after the WAL has answered every queued durable
+    // write: returns true once no write handler has been running for `quiet`
+    // (so a request that arrived just before stopAcceptingWrites has started
+    // and finished), false if handlers are still running after `max_wait`.
+    bool waitForWriteHandlers(std::chrono::milliseconds quiet, std::chrono::milliseconds max_wait) const
+    {
+        auto const deadline = std::chrono::steady_clock::now() + max_wait;
+        auto idle_since = std::chrono::steady_clock::now();
+        while(std::chrono::steady_clock::now() < deadline)
+        {
+            auto const now = std::chrono::steady_clock::now();
+            if(activeWriteHandlers.load() != 0)
+            {
+                idle_since = now;
+            }
+            else if(now - idle_since >= quiet)
+            {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return activeWriteHandlers.load() == 0;
     }
 
     void record_event(tl::request const& request, LogEvent const& log_event)
     {
+        WriteHandlerGuard guard(activeWriteHandlers);
         //  ClientId teller_id,  StoryId story_id,
         //  ChronoTick const& chrono_tick, std::string const& record)
         LOG_TRACE("[KeeperRecordingService] Recording event: storyId={}, time={}, clientId={}, index={}, record={}",
@@ -62,6 +106,11 @@ public:
                   log_event.getClientId(),
                   log_event.index(),
                   log_event.getRecord());
+        if(!acceptingWrites)
+        {
+            request.respond(chronolog::CL_ERR_UNKNOWN);
+            return;
+        }
         theIngestionQueue.ingestLogEvent(log_event);
         request.respond(chronolog::CL_SUCCESS);
     }
@@ -76,6 +125,7 @@ public:
                               StoryName const& story,
                               LogEvent const& log_event)
     {
+        WriteHandlerGuard guard(activeWriteHandlers);
         LOG_TRACE("[KeeperRecordingService] Recording durable event: Chronicle={}, Story={}, storyId={}, time={}, "
                   "clientId={}, index={}",
                   chronicle,
@@ -84,6 +134,11 @@ public:
                   log_event.time(),
                   log_event.getClientId(),
                   log_event.index());
+        if(!acceptingWrites)
+        {
+            request.respond(chronolog::CL_ERR_DURABILITY_UNAVAILABLE);
+            return;
+        }
         request.respond(theDurableWrite(chronicle, story, log_event));
     }
 
@@ -135,11 +190,13 @@ private:
         , theTailStore(tail_store)
         , theDurableWrite(std::move(durable_write))
     {
-        define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
-        define("record_event_durable", &KeeperRecordingService::record_event_durable, tl::ignore_return_value());
-        define("tail_get_sequences", &KeeperRecordingService::tail_get_sequences);
-        define("tail_get_events", &KeeperRecordingService::tail_get_events);
-        define("story_range_fetch", &KeeperRecordingService::story_range_fetch);
+        recordEventRpc = define("record_event", &KeeperRecordingService::record_event, tl::ignore_return_value());
+        recordEventDurableRpc = define("record_event_durable",
+                                       &KeeperRecordingService::record_event_durable,
+                                       tl::ignore_return_value());
+        tailGetSequencesRpc = define("tail_get_sequences", &KeeperRecordingService::tail_get_sequences);
+        tailGetEventsRpc = define("tail_get_events", &KeeperRecordingService::tail_get_events);
+        storyRangeFetchRpc = define("story_range_fetch", &KeeperRecordingService::story_range_fetch);
         //set up callback for the case when the engine is being finalized while this provider is still alive
         get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
@@ -148,9 +205,28 @@ private:
 
     KeeperRecordingService& operator=(KeeperRecordingService const&) = delete;
 
+    // counts a write handler for as long as it runs (see waitForWriteHandlers)
+    struct WriteHandlerGuard
+    {
+        explicit WriteHandlerGuard(std::atomic<int>& count)
+            : theCount(count)
+        {
+            ++theCount;
+        }
+        ~WriteHandlerGuard() { --theCount; }
+        std::atomic<int>& theCount;
+    };
+
     IngestionQueue& theIngestionQueue;
     KeeperChunkRetentionStore& theTailStore;
     DurableWriteFunction theDurableWrite;
+    tl::remote_procedure recordEventRpc;
+    tl::remote_procedure recordEventDurableRpc;
+    tl::remote_procedure tailGetSequencesRpc;
+    tl::remote_procedure tailGetEventsRpc;
+    tl::remote_procedure storyRangeFetchRpc;
+    std::atomic<bool> acceptingWrites{true};
+    std::atomic<int> activeWriteHandlers{0};
 };
 
 } // namespace chronolog

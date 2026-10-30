@@ -58,7 +58,6 @@ class DurableLog
 public:
     virtual ~DurableLog() = default;
     virtual WalAdmit admit() const = 0;
-    virtual bool isDurable(StoryId, EventSequence const&) const = 0;
     // The first check of a durable request, before admit() and the cap, so a
     // retry is answered by its first attempt and never refused while that
     // attempt is on disk or on its way there. CL_SUCCESS when the event's
@@ -69,7 +68,11 @@ public:
     // group failed and could not be erased. std::nullopt when the WAL holds
     // neither; only then may the request be refused or written.
     virtual std::optional<int> lookupDurable(StoryId, EventSequence const&) = 0;
-    virtual int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&) = 0;
+    // Sets wrote when this call queued the event's record itself, so the
+    // caller ingests the event only then. It stays false when the call was
+    // answered by an earlier attempt with the same identity, which ingested
+    // the event when its own group synced.
+    virtual int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&, bool& wrote) = 0;
 };
 
 // The keeper's write-ahead log for durable writes: a group-commit committer on
@@ -146,8 +149,10 @@ public:
 
     // Unavailable when not started, stopped or failed; Full below the reserve.
     WalAdmit admit() const override;
-    // The event's group synced and the event is still pending.
-    bool isDurable(StoryId, EventSequence const&) const override;
+    // The event's group synced and the event is still pending. Not part of
+    // DurableLog: the write path asks lookupDurable, which also covers an
+    // attempt still on its way; this is for tests and diagnostics.
+    bool isDurable(StoryId, EventSequence const&) const;
     // See DurableLog. Answers the same way whether the WAL is running, failed
     // or stopped: a durable event stays durable, and an attempt that was
     // queued gets its answer from the committer or from stop().
@@ -161,8 +166,9 @@ public:
     // of queuing a copy, and one whose identity is already durable and pending
     // gets CL_SUCCESS at once; only then is a failed or stopped WAL refused.
     // CL_ERR_INVALID_ARG for an event too large for a WAL record. The event's
-    // record is written from the caller's LogEvent, not copied.
-    int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&) override;
+    // record is written from the caller's LogEvent, not copied. wrote is set
+    // only when this call queued the record (see DurableLog).
+    int appendDurable(ChronicleName const&, StoryName const&, LogEvent const&, bool& wrote) override;
 
     WalStats stats() const;
     std::string directory() const { return walDirectory; }
@@ -247,6 +253,10 @@ private:
     // Registers a synced group (or drops a failed one) and sets every
     // completion in it.
     void finishGroup(std::vector<Queued>& group, int status, uint64_t segment, uint64_t bytes);
+    // A latched WAL writes no D record, so the destroys in a latched group go
+    // to the unlogged-drops file for recovery, and their stories' copies are
+    // dropped here (committer thread only).
+    void recordUnloggedDrops(std::vector<Queued> const& group);
     // Latches the failure, logs it and fails the group. written is the length
     // of the range from writeOffset of the active segment that the group's
     // write started on, 0 when it failed before the write. Before any answer

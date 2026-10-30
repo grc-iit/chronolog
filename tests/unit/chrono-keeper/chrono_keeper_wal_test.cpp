@@ -123,6 +123,7 @@ struct Append
     chl::LogEvent event;
     std::atomic<bool> done{false};
     std::atomic<int> status{1};
+    std::atomic<bool> wrote{false}; // this request queued the record itself
 };
 
 bool allDone(std::deque<Append> const& requests)
@@ -292,7 +293,13 @@ protected:
 
     int append(chl::LogEvent const& event)
     {
-        return wal->appendDurable(kChronicle, storyName(event.getStoryId()), event);
+        bool wrote = false;
+        return wal->appendDurable(kChronicle, storyName(event.getStoryId()), event, wrote);
+    }
+
+    int append(chl::LogEvent const& event, bool& wrote)
+    {
+        return wal->appendDurable(kChronicle, storyName(event.getStoryId()), event, wrote);
     }
 
     // Starts a durable write of the request's event on a ULT of the pool.
@@ -301,7 +308,9 @@ protected:
         pool.run(
                 [this, &request]()
                 {
-                    request.status = append(request.event);
+                    bool wrote = false;
+                    request.status = append(request.event, wrote);
+                    request.wrote = wrote;
                     request.done = true;
                 });
     }
@@ -1185,6 +1194,9 @@ TEST_F(KeeperWalTest, RetryJoinsInFlightAppend)
     }
     EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
     EXPECT_EQ(requests[1].status.load(), chl::CL_SUCCESS);
+    // only the first attempt wrote the record, so only it may ingest
+    EXPECT_TRUE(requests[0].wrote.load());
+    EXPECT_FALSE(requests[1].wrote.load());
     EXPECT_EQ(copiesOnDisk(event), 1u);
     EXPECT_EQ(wal->stats().events, 1u);
     EXPECT_EQ(wal->stats().pending_events, 1u);
@@ -1485,6 +1497,32 @@ TEST_F(KeeperWalTest, StopAnswersEveryWaiterWhenTheSyncFails)
     EXPECT_EQ(wal->stats().pending_events, 0u);
 }
 
+// A destroy after the WAL latched failed cannot be a D record. It goes to the
+// unlogged-drops file, naming the active segment, so a keeper started on the
+// directory does not replay the destroyed story; its copies stop pinning
+// their segments now.
+TEST_F(KeeperWalTest, DestroyAfterTheLatchIsRecordedForRecovery)
+{
+    startWal();
+    chl::LogEvent const stored = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(stored), chl::CL_SUCCESS);
+    ASSERT_EQ(wal->stats().pending_events, 1u);
+
+    sink->failNextSyncsWith(EIO); // only this sync fails; the latch stays
+    EXPECT_EQ(append(makeEvent(kOtherStory, 1001)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    ASSERT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+
+    wal->storyDropped(kStory);
+    ASSERT_TRUE(waitFor([this]() { return fs::exists(fs::path(dir) / chl::kUnloggedDropsFile); }));
+    std::vector<chl::UnloggedDrop> drops;
+    ASSERT_EQ(chl::readUnloggedDrops(*sink, drops), 0);
+    ASSERT_EQ(drops.size(), 1u);
+    EXPECT_EQ(drops[0].story_id, kStory);
+    EXPECT_GE(drops[0].last_segment, 1u);
+    EXPECT_TRUE(waitFor([this]() { return wal->stats().pending_events == 0; }));
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(stored)));
+}
+
 TEST_F(KeeperWalTest, AppendBeforeStartOrAfterStopIsUnavailable)
 {
     makeWal();
@@ -1500,6 +1538,26 @@ TEST_F(KeeperWalTest, AppendBeforeStartOrAfterStopIsUnavailable)
     EXPECT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
     EXPECT_EQ(append(makeEvent(kStory, 1001)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
     EXPECT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_ERR_UNKNOWN);
+}
+
+// A recovered story without names is not replayed, so nothing would ever
+// confirm its copies. They are not pending: its segment does not stop the
+// deletion of every newer one.
+TEST_F(KeeperWalTest, RecoveredStoryWithoutNamesDoesNotPinItsSegment)
+{
+    constexpr chl::StoryId kNameless = 333;
+    chl::LogEvent const recovered_event = makeEvent(kNameless, 1000);
+    chl::RecoveredState recovered;
+    chl::RecoveredStory& story = recovered.stories[kNameless];
+    story.wal_story_id = kNameless;
+    story.has_names = false;
+    story.events[identityOf(recovered_event)] = recovered_event;
+    story.copies[identityOf(recovered_event)].push_back({1, wal::encodeEvent(recovered_event).size()});
+
+    makeWal();
+    ASSERT_EQ(wal->start(recovered, {}), chl::CL_SUCCESS);
+    EXPECT_FALSE(wal->isDurable(kNameless, identityOf(recovered_event)));
+    EXPECT_EQ(wal->stats().pending_events, 0u);
 }
 
 // After a restart the recovered copies are pending under the story's live id,

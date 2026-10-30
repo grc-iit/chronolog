@@ -3,6 +3,7 @@
 #include <chrono>
 #include <climits>
 #include <filesystem>
+#include <sstream>
 #include <thread>
 
 #include <dirent.h>
@@ -518,5 +519,83 @@ int FaultInjectingWalFileSink::freeSpace(uint64_t& free_bytes, uint64_t& total_b
 }
 
 int FaultInjectingWalFileSink::closeFile(int fd) { return inner->closeFile(fd); }
+
+int readUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop>& drops)
+{
+    drops.clear();
+    std::string text;
+    if(int err = sink.readFile(kUnloggedDropsFile, text))
+    {
+        return err == ENOENT ? 0 : err;
+    }
+    std::istringstream lines(text);
+    std::string line;
+    while(std::getline(lines, line))
+    {
+        if(line.empty())
+        {
+            continue;
+        }
+        std::istringstream fields(line);
+        UnloggedDrop drop;
+        std::string rest;
+        if(!(fields >> drop.story_id >> drop.last_segment) || (fields >> rest))
+        {
+            drops.clear();
+            return EINVAL;
+        }
+        drops.push_back(drop);
+    }
+    return 0;
+}
+
+int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops)
+{
+    std::string const name = kUnloggedDropsFile;
+    if(drops.empty())
+    {
+        int const err = sink.remove(name);
+        if(err != 0 && err != ENOENT)
+        {
+            return err;
+        }
+        return err == ENOENT ? 0 : sink.syncDirectory();
+    }
+    std::string text;
+    for(UnloggedDrop const& drop: drops)
+    {
+        text += std::to_string(drop.story_id) + " " + std::to_string(drop.last_segment) + "\n";
+    }
+    std::string const partial = name + ".partial";
+    if(int err = sink.createZeroed(partial, text.size()))
+    {
+        return err;
+    }
+    int fd = -1;
+    if(int err = sink.openForWrite(partial, fd))
+    {
+        return err;
+    }
+    iovec iov{const_cast<char*>(text.data()), text.size()};
+    int err = sink.writeAt(fd, 0, &iov, 1);
+    if(err == 0)
+    {
+        err = sink.syncData(fd);
+    }
+    int const close_err = sink.closeFile(fd);
+    if(err == 0)
+    {
+        err = close_err;
+    }
+    if(err == 0)
+    {
+        err = sink.rename(partial, name);
+    }
+    if(err == 0)
+    {
+        err = sink.syncDirectory();
+    }
+    return err;
+}
 
 } // namespace chronolog
