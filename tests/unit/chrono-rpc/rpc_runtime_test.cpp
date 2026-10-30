@@ -910,3 +910,107 @@ TEST(RpcRuntime, ConfiguredCapacityReapsEveryWorker)
     EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
     EXPECT_TRUE(eventually([&] { return threadCount() <= before + 1; }));
 }
+
+TEST(RpcRuntimeOwner, CallerDropCleansExactlyOnceOnExistingWorker)
+{
+    for(size_t capacity: {1u, 2u})
+    {
+        auto runtime = std::make_unique<RpcRuntime>(capacity);
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        auto owner = std::make_shared<int>(17);
+        std::weak_ptr<int> weak = owner;
+        auto caller = std::this_thread::get_id();
+        auto offCaller = std::make_shared<std::atomic<bool>>(false);
+        runtime->retainOwner(owner,
+                             [calls, offCaller, caller]
+                             {
+                                 *offCaller = std::this_thread::get_id() != caller;
+                                 ++*calls;
+                             });
+        owner.reset();
+        runtime.reset();
+        EXPECT_TRUE(eventually([&] { return calls->load() == 1 && weak.expired(); }));
+        EXPECT_TRUE(offCaller->load());
+        EXPECT_EQ(1u, calls->load());
+    }
+}
+TEST(RpcRuntimeOwner, BlockingCleanupStaysChargedAndDoesNotBlockCallerOrOtherOwners)
+{
+    RpcRuntime runtime(2);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates cleanup{{gate}};
+    auto owner = std::make_shared<int>(5);
+    std::weak_ptr<int> weak = owner;
+    runtime.retainOwner(owner, [gate] { gate->block(); });
+    owner.reset();
+    EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime.drain(RpcDeadline::after(20ms)));
+    EXPECT_TRUE(gate->waitForEntry());
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(CL_ERR_RPC_CAPACITY, runtime.reserve(RpcDeadline::after(1s)).status());
+    RpcRuntime independent;
+    EXPECT_EQ(CL_SUCCESS, independent.drain(RpcDeadline::after(1s)));
+    gate->release();
+    EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+    EXPECT_TRUE(weak.expired());
+}
+TEST(RpcRuntimeOwner, ThrowingCleanupRetainsOwnerAndReportsIncomplete)
+{
+    auto runtime = std::make_unique<RpcRuntime>(1);
+    auto owner = std::make_shared<int>(9);
+    std::weak_ptr<int> weak = owner;
+    auto calls = std::make_shared<std::atomic<unsigned>>(0);
+    runtime->retainOwner(owner,
+                         [calls]
+                         {
+                             ++*calls;
+                             throw std::runtime_error("not settled");
+                         });
+    owner.reset();
+    EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime->drain(RpcDeadline::after(20ms)));
+    EXPECT_TRUE(eventually([&] { return calls->load() == 1; }));
+    EXPECT_FALSE(weak.expired());
+    runtime.reset();
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(1u, calls->load());
+}
+TEST(RpcRuntimeOwner, CleanupWaitsForNormalWorkAndRepeatedDrainDoesNotRepeatCleanup)
+{
+    for(size_t capacity: {1u, 2u})
+    {
+        RpcRuntime runtime(capacity);
+        auto gate = std::make_shared<Gate>();
+        ReleaseGates cleanup{{gate}};
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        runtime.retainOwner(std::make_shared<int>(3), [calls] { ++*calls; });
+        auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                           work(
+                                                   [gate](OperationContext&)
+                                                   {
+                                                       gate->block();
+                                                       return RpcResult<int>{0, false, 1};
+                                                   }));
+        ASSERT_TRUE(gate->waitForEntry());
+        EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, runtime.drain(RpcDeadline::after(10ms)));
+        EXPECT_EQ(0u, calls->load());
+        gate->release();
+        pending.wait();
+        EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+        EXPECT_EQ(CL_SUCCESS, runtime.drain(RpcDeadline::after(1s)));
+        EXPECT_EQ(1u, calls->load());
+    }
+}
+
+TEST(RpcRuntimeOwner, ConcurrentDrainClaimsCleanupExactlyOnce)
+{
+    for(unsigned iteration = 0; iteration < 64; ++iteration)
+    {
+        RpcRuntime runtime(1 + iteration % 2);
+        auto calls = std::make_shared<std::atomic<unsigned>>(0);
+        runtime.retainOwner(std::make_shared<int>(1), [calls] { ++*calls; });
+        auto first = std::async(std::launch::async, [&] { return runtime.drain(RpcDeadline::after(1s)); });
+        auto second = std::async(std::launch::async, [&] { return runtime.drain(RpcDeadline::after(1s)); });
+        EXPECT_EQ(CL_SUCCESS, first.get());
+        EXPECT_EQ(CL_SUCCESS, second.get());
+        EXPECT_EQ(1u, calls->load());
+    }
+}

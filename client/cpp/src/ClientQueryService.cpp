@@ -25,8 +25,13 @@ namespace tl = thallium;
 namespace chl = chronolog;
 
 
-chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine, chl::ServiceId const& client_service_id)
+chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine,
+                                            chl::ServiceId const& client_service_id,
+                                            std::shared_ptr<ClientRpcProcedures> procedures,
+                                            std::weak_ptr<ClientRpcContext> context)
     : tl::provider<ClientQueryService>(tl_engine, client_service_id.getProviderId())
+    , procedures_(std::move(procedures))
+    , context_(std::move(context))
     , queryServiceEngine(tl_engine)
     , queryServiceId(client_service_id)
     , queryTimeoutInSecs(180) // 3 mins

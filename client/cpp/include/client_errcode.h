@@ -27,12 +27,13 @@ enum ClientErrorCode
     // meet. Leaving the gap keeps both sets stable across that merge.
     CL_ERR_PARTIAL_RESULT = -18, // Query returned fewer records than it had promised
     // -19..-21 are reserved for the parallel keeper-WAL work.
-    CL_ERR_DEADLINE_EXCEEDED = -22,   // The local operation budget expired
-    CL_ERR_OUTCOME_UNCONFIRMED = -23, // A dispatched operation has no confirmed outcome
-    CL_ERR_RPC_CAPACITY = -24,        // Owned RPC work or policy admission is unavailable
-    CL_ERR_CLOCK_UNAVAILABLE = -25,   // Event time could not be read
-    CL_ERR_TIMESTAMP_EXHAUSTED = -26, // No larger local timestamp can be assigned
-    CL_ERR_SHUTDOWN_INCOMPLETE = -27  // Shutdown expired while owned work remains
+    CL_ERR_DEADLINE_EXCEEDED = -22,         // The local operation budget expired
+    CL_ERR_OUTCOME_UNCONFIRMED = -23,       // A dispatched operation has no confirmed outcome
+    CL_ERR_RPC_CAPACITY = -24,              // Owned RPC work or policy admission is unavailable
+    CL_ERR_CLOCK_UNAVAILABLE = -25,         // Event time could not be read
+    CL_ERR_TIMESTAMP_EXHAUSTED = -26,       // No larger local timestamp can be assigned
+    CL_ERR_SHUTDOWN_INCOMPLETE = -27,       // Shutdown expired while owned work remains
+    CL_ERR_NATIVE_RUNTIME_UNSUPPORTED = -28 // Preexisting native runtime cannot be adopted
 };
 
 // Convert enum value to its name (for logging)
@@ -82,6 +83,8 @@ inline const char* to_string(ClientErrorCode e)
             return "CL_ERR_TIMESTAMP_EXHAUSTED";
         case CL_ERR_SHUTDOWN_INCOMPLETE:
             return "CL_ERR_SHUTDOWN_INCOMPLETE";
+        case CL_ERR_NATIVE_RUNTIME_UNSUPPORTED:
+            return "CL_ERR_NATIVE_RUNTIME_UNSUPPORTED";
         default:
             return "UnknownClientErrorCode";
     }
@@ -112,6 +115,7 @@ inline const char* to_string_client(int code)
         case CL_ERR_CLOCK_UNAVAILABLE:
         case CL_ERR_TIMESTAMP_EXHAUSTED:
         case CL_ERR_SHUTDOWN_INCOMPLETE:
+        case CL_ERR_NATIVE_RUNTIME_UNSUPPORTED:
             return to_string(static_cast<chronolog::ClientErrorCode>(code));
         default:
             return "UnknownClientErrorCode";

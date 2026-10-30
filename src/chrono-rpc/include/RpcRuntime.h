@@ -5,6 +5,7 @@
 #include <client_errcode.h>
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <type_traits>
@@ -284,6 +285,10 @@ public:
         return submit<Reply>(std::move(reservation), std::move(work)).wait();
     }
 
+    // Attach exactly once before exposure/admission. No strong owner->runtime
+    // backlink. Terminal cleanup releases native resources while rooted, on one
+    // existing charged worker; failed cleanup retains its owner and slot.
+    void retainOwner(std::shared_ptr<void> owner, std::function<void()> cleanup);
     int drain(RpcDeadline const&);
 
 private:

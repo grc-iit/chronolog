@@ -124,6 +124,7 @@ struct RuntimeState
     std::size_t const capacity;
     std::vector<Slot> slots;
     std::atomic<unsigned> admissions{0};
+    std::atomic<bool> admissionStarted{false};
     std::vector<pthread_t> workers;
     std::unique_ptr<std::atomic<bool>[]> exited;
     std::vector<bool> joined;
@@ -136,6 +137,17 @@ struct RuntimeState
         std::size_t index;
     };
     std::vector<WorkerArgument> arguments;
+    std::shared_ptr<void> retainedOwner;
+    std::function<void()> ownerCleanup;
+    enum class OwnerPhase
+    {
+        Unattached,
+        Attached,
+        Cleaning,
+        Complete,
+        Quarantined
+    };
+    std::atomic<OwnerPhase> ownerPhase{OwnerPhase::Unattached};
 
     void queue(std::size_t index, std::shared_ptr<JobBase> job) noexcept
     {
@@ -213,6 +225,48 @@ struct RuntimeState
         return true;
     }
 
+    bool cleanupOwner()
+    {
+        auto phase = ownerPhase.load(std::memory_order_acquire);
+        if(phase == OwnerPhase::Unattached || phase == OwnerPhase::Complete)
+            return true;
+        if(phase != OwnerPhase::Attached)
+            return false;
+        // Closed excludes new reservations. Count zero proves every normal
+        // slot, work/result destructor and registration cleanup has settled.
+        // Count is claimed BEFORE publishing Cleaning; no worker may exit
+        // merely because it observed zero while this claim was in flight.
+        unsigned idle = Closed;
+        if(!admissions.compare_exchange_strong(idle, Closed + 1, std::memory_order_acq_rel))
+            return false;
+        phase = OwnerPhase::Attached;
+        if(!ownerPhase.compare_exchange_strong(phase, OwnerPhase::Cleaning, std::memory_order_acq_rel))
+        {
+            admissions.fetch_sub(1, std::memory_order_acq_rel);
+            return phase == OwnerPhase::Complete;
+        }
+        auto& slot = slots.front();
+        slot.phase.store(Phase::Running, std::memory_order_release);
+        try
+        {
+            ownerCleanup();
+        }
+        catch(...)
+        {
+            ownerPhase.store(OwnerPhase::Quarantined, std::memory_order_release);
+            slot.phase.store(Phase::Quarantined, std::memory_order_release);
+            return false;
+        }
+        // Drop every native-bearing capture on THIS charged worker. The
+        // process reaper will see std-only state after all workers exit.
+        ownerCleanup = {};
+        retainedOwner.reset();
+        ownerPhase.store(OwnerPhase::Complete, std::memory_order_release);
+        slot.phase.store(Phase::Empty, std::memory_order_release);
+        admissions.fetch_sub(1, std::memory_order_acq_rel);
+        return true;
+    }
+
     void loop(std::size_t index)
     {
         for(;;)
@@ -220,7 +274,7 @@ struct RuntimeState
             bool progressed = false;
             for(auto& slot: slots) progressed |= process(slot);
             auto count = admissions.load(std::memory_order_acquire);
-            if((count & Closed) && !(count & CountMask))
+            if((count & Closed) && !(count & CountMask) && cleanupOwner())
                 break;
             if(!progressed)
             {
@@ -396,6 +450,7 @@ RpcRuntime::~RpcRuntime() { state_->close(); }
 
 RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
 {
+    state_->admissionStarted.store(true, std::memory_order_release);
     if(deadline.expired())
         return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
     auto observed = state_->admissions.load(std::memory_order_acquire);
@@ -420,6 +475,17 @@ RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
         }
     }
     return RpcReservation(CL_ERR_RPC_CAPACITY);
+}
+
+void RpcRuntime::retainOwner(std::shared_ptr<void> owner, std::function<void()> cleanup)
+{
+    if(!owner || !cleanup || state_->ownerPhase.load() != detail::RuntimeState::OwnerPhase::Unattached ||
+       state_->admissions.load(std::memory_order_acquire) != 0 ||
+       state_->admissionStarted.load(std::memory_order_acquire))
+        throw std::logic_error("RPC owner must attach once before admission");
+    state_->retainedOwner = std::move(owner);
+    state_->ownerCleanup = std::move(cleanup);
+    state_->ownerPhase.store(detail::RuntimeState::OwnerPhase::Attached, std::memory_order_release);
 }
 
 int RpcRuntime::drain(RpcDeadline const& deadline)

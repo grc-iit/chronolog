@@ -19,6 +19,7 @@
 #include <chronolog_client.h>
 #include "ChronologTimer.h"
 #include "RpcPolicyContext.h"
+#include "ClientRpcContext.h"
 
 namespace chronolog
 {
@@ -46,12 +47,16 @@ public:
             thallium::engine& client_tl_engine,
             ClientId const& client_id,
             std::shared_ptr<RpcPolicyContext> policy_context = std::make_shared<RpcPolicyContext>(RpcTimeoutPolicy{}),
-            chrono_index initial_index = 0)
+            chrono_index initial_index = 0,
+            std::weak_ptr<ClientRpcContext> context = {},
+            std::shared_ptr<ClientRpcProcedures> procedures = {})
         : theTimer(chronolog_timer)
         , client_engine(client_tl_engine)
         , clientId(client_id)
         , atomic_index(initial_index)
         , policyContext(std::move(policy_context))
+        , context_(std::move(context))
+        , procedures_(std::move(procedures))
     {
         LOG_DEBUG("[StorytellerClient] Initialized with ClientID: {}", clientId);
     }
@@ -70,6 +75,10 @@ public:
                                        ServiceId const&);
 
     void removeAcquiredStoryHandle(ChronicleName const&, StoryName const&);
+    void clearAcquiredStoryHandles();
+    size_t retainedHandleCount();
+    void quiesceNativeEntries();
+    std::weak_ptr<ClientRpcContext> context() const noexcept { return context_; }
 
     TimestampResult getTimestamp(std::chrono::steady_clock::time_point deadline) noexcept
     {
@@ -94,12 +103,16 @@ private:
     ClientId clientId;
     std::atomic<chrono_index> atomic_index{0};
     std::shared_ptr<RpcPolicyContext> policyContext;
+    std::weak_ptr<ClientRpcContext> context_;
+    std::shared_ptr<ClientRpcProcedures> procedures_;
 
     std::mutex recordingClientMapMutex;
     std::mutex acquiredStoryMapMutex;
 
     std::map<std::pair<uint32_t, uint16_t>, KeeperRecordingClient*> recordingClientMap;
     std::map<std::pair<std::string, std::string>, StoryHandle*> acquiredStoryHandles;
+    std::vector<std::unique_ptr<StoryHandle>> ownedHandles_;
+    void reapRetiredHandles();
 };
 
 
@@ -115,6 +128,8 @@ public:
                     StoryName const& a_story,
                     StoryId const& story_id)
         : theClient(client)
+        , context_(client.context())
+        , retainedContext_(!context_.expired())
         , chronicle(a_chronicle)
         , story(a_story)
         , storyId(story_id)
@@ -133,10 +148,48 @@ public:
     // virtual int log_event(size_t size, void*data);
 
     void addRecordingClient(KeeperRecordingClient*);
+    void invalidate() noexcept { entries_.fetch_or(Closed, std::memory_order_acq_rel); }
+    bool retiredAndIdle() const noexcept { return entries_.load(std::memory_order_acquire) == Closed; }
+    class EntryLease
+    {
+    public:
+        EntryLease(EntryLease const&) = delete;
+        EntryLease(EntryLease&& other) noexcept
+            : handle_(std::exchange(other.handle_, nullptr))
+            , native_(std::move(other.native_))
+        {}
+        ~EntryLease()
+        {
+            if(handle_)
+                handle_->entries_.fetch_sub(1, std::memory_order_acq_rel);
+            // Native lease releases AFTER the handle's final access above.
+        }
+        void retainNative(ClientRpcContext::NativeLease lease) { native_.emplace(std::move(lease)); }
+
+    private:
+        friend class StoryHandleImpl;
+        explicit EntryLease(StoryHandleImpl* handle)
+            : handle_(handle)
+        {}
+        StoryHandleImpl* handle_;
+        std::optional<ClientRpcContext::NativeLease> native_;
+    };
+    std::optional<EntryLease> tryEnter() noexcept
+    {
+        auto observed = entries_.load(std::memory_order_acquire);
+        while(!(observed & Closed) && observed != Closed - 1)
+            if(entries_.compare_exchange_weak(observed, observed + 1, std::memory_order_acq_rel))
+                return EntryLease(this);
+        return std::nullopt;
+    }
     void removeRecordingClient(ServiceId const&);
 
 private:
     StorytellerClient& theClient;
+    std::weak_ptr<ClientRpcContext> context_;
+    bool retainedContext_;
+    static constexpr unsigned Closed = 1u << 31;
+    std::atomic<unsigned> entries_{0};
     ChronicleName chronicle;
     StoryName story;
     StoryId storyId;

@@ -13,6 +13,7 @@
 #include <chronolog_types.h>
 #include <ServiceId.h>
 #include <chronolog_client.h>
+#include "ClientRpcContext.h"
 
 namespace tl = thallium;
 
@@ -87,11 +88,16 @@ class ClientQueryService: public tl::provider<ClientQueryService>
 {
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
-    static ClientQueryService* CreateClientQueryService(thallium::engine& tl_engine, ServiceId const& client_service_id)
+    static ClientQueryService* CreateClientQueryService(thallium::engine& tl_engine,
+                                                        ServiceId const& client_service_id,
+                                                        std::shared_ptr<ClientRpcProcedures> procedures,
+                                                        std::weak_ptr<ClientRpcContext> context = {})
     {
+        if(!procedures)
+            return nullptr;
         try
         {
-            return new ClientQueryService(tl_engine, client_service_id);
+            return new ClientQueryService(tl_engine, client_service_id, std::move(procedures), std::move(context));
         }
         catch(thallium::exception&)
         {
@@ -100,6 +106,9 @@ public:
     }
 
     ~ClientQueryService();
+
+    std::shared_ptr<ClientRpcProcedures> procedures() const { return procedures_; }
+    std::weak_ptr<ClientRpcContext> context() const noexcept { return context_; }
 
     tl::engine& get_service_engine() { return queryServiceEngine; }
 
@@ -120,7 +129,10 @@ public:
     replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
 
 private:
-    ClientQueryService(thallium::engine& tl_engine, ServiceId const&);
+    ClientQueryService(thallium::engine& tl_engine,
+                       ServiceId const&,
+                       std::shared_ptr<ClientRpcProcedures>,
+                       std::weak_ptr<ClientRpcContext>);
 
     ClientQueryService() = delete;
     ClientQueryService(ClientQueryService const&) = delete;
@@ -151,6 +163,8 @@ private:
     int dispatch_query(PlaybackQuery* query, PlaybackQueryRpcClient* playbackRpcClient);
 
     int deserializeResponse(char* buffer, size_t size, PlaybackQueryResponse& response);
+    std::shared_ptr<ClientRpcProcedures> procedures_;
+    std::weak_ptr<ClientRpcContext> context_;
     thallium::engine queryServiceEngine;
     ServiceId queryServiceId;
     std::mutex queryServiceMutex;

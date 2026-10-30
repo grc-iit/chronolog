@@ -125,7 +125,8 @@ TEST(RpcPolicy, PreservesExistingCodesAndNamesNewLocalResults)
                             {chronolog::CL_ERR_RPC_CAPACITY, -24, "CL_ERR_RPC_CAPACITY"},
                             {chronolog::CL_ERR_CLOCK_UNAVAILABLE, -25, "CL_ERR_CLOCK_UNAVAILABLE"},
                             {chronolog::CL_ERR_TIMESTAMP_EXHAUSTED, -26, "CL_ERR_TIMESTAMP_EXHAUSTED"},
-                            {chronolog::CL_ERR_SHUTDOWN_INCOMPLETE, -27, "CL_ERR_SHUTDOWN_INCOMPLETE"}};
+                            {chronolog::CL_ERR_SHUTDOWN_INCOMPLETE, -27, "CL_ERR_SHUTDOWN_INCOMPLETE"},
+                            {chronolog::CL_ERR_NATIVE_RUNTIME_UNSUPPORTED, -28, "CL_ERR_NATIVE_RUNTIME_UNSUPPORTED"}};
     for(auto const& value: values)
     {
         EXPECT_EQ(value.status, value.code);

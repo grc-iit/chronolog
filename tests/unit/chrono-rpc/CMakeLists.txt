@@ -13,3 +13,9 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(rpc_deadline_test DESTINATION tests)
     chronolog_install_target(rpc_runtime_test DESTINATION tests)
 endif()
+
+# Isolated native lifecycle feasibility only; each discovered case starts cold.
+add_executable(rpc_native_cold_lifecycle_probe rpc_native_cold_lifecycle_probe.cpp)
+target_link_libraries(rpc_native_cold_lifecycle_probe PRIVATE chrono_rpc GTest::gtest_main thallium)
+gtest_discover_tests(rpc_native_cold_lifecycle_probe
+    TEST_PREFIX "Integration_ChronologRpcColdLifecycle_" PROPERTIES TIMEOUT 30)

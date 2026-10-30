@@ -16,6 +16,7 @@ namespace chronolog
 // This class alone does not integrate the existing RPC or StoryHandle paths.
 class RpcPolicyContext
 {
+    friend struct RpcPolicyContextTestAccess;
     struct State
     {
         explicit State(RpcTimeoutPolicy const& initial)
@@ -24,7 +25,7 @@ class RpcPolicyContext
         std::mutex mutex;
         RpcTimeoutPolicy policy;
         std::atomic<size_t> active{0};
-        bool frozen = false;
+        std::atomic<bool> frozen{false};
     };
 
 public:
@@ -84,15 +85,8 @@ public:
         return Snapshot(state_);
     }
 
-    // Latch before the first legacy Connect enters any RPC path. No unfreeze:
-    // raw cached StoryHandles do not yet participate in snapshot admission.
-    // This mutex wait is not a bounded operation entry point; downstream runtime
-    // integration must replace it with deadline-aware admission if needed.
-    void freeze()
-    {
-        std::lock_guard<std::mutex> lock(state_->mutex);
-        state_->frozen = true;
-    }
+    // Atomic latch is permanent even when policy admission is contended.
+    void freeze() noexcept { state_->frozen.store(true, std::memory_order_release); }
 
 private:
     std::shared_ptr<State> state_;

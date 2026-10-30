@@ -1,4 +1,8 @@
 #include "ChronologClientImpl.h"
+#include "ClientNativePeer.h"
+#include "StorytellerClient.h"
+#include <ConnectResponseMsg.h>
+#include <AcquireStoryResponseMsg.h>
 #include "ChronologTimer.h"
 #include <algorithm>
 #include <array>
@@ -8,6 +12,7 @@
 #include <gtest/gtest.h>
 #include <limits>
 #include <thallium/serialization/stl/string.hpp>
+#include <thallium/serialization/stl/vector.hpp>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -184,65 +189,12 @@ TEST(ChronologTimer, ProductionSourceUsesUnixNanoseconds)
 }
 namespace
 {
-// Each test peer binds an OS-assigned port and owns its engine until all client
-// calls and returned replies have settled. No daemon or shared service port.
-class ClockPeers
+class ClockPeers: public test::NativePeer
 {
 public:
-    thallium::engine engine{"ofi+sockets://127.0.0.1:0", THALLIUM_SERVER_MODE, true, 1};
-    ClientPortalServiceConf portal;
-    std::array<std::unique_ptr<thallium::engine>, 3> keeper_engines;
-    std::mutex events_mutex;
-    std::vector<LogEvent> events;
-    std::vector<unsigned> routes;
     ClockPeers()
-    {
-        auto address = static_cast<std::string>(engine.self());
-        portal.PORT = static_cast<uint16_t>(std::stoul(address.substr(address.rfind(':') + 1)));
-        portal.PROVIDER_ID = 51;
-        engine.define(
-                "Connect",
-                [](thallium::request const& req, uint32_t, ClientId id, uint32_t)
-                { req.respond(ConnectResponseMsg(CL_SUCCESS, id)); },
-                51);
-        engine.define("Disconnect", [](thallium::request const& req, ClientId) { req.respond(CL_SUCCESS); }, 51);
-        engine.define(
-                "ReleaseStory",
-                [](thallium::request const& req, ClientId, std::string const&, std::string const&)
-                { req.respond(CL_SUCCESS); },
-                51);
-        std::vector<ServiceId> keepers;
-        for(unsigned i = 0; i < 3; ++i)
-        {
-            auto& keeper = keeper_engines[i];
-            keeper = std::make_unique<thallium::engine>("ofi+sockets://127.0.0.1:0", THALLIUM_SERVER_MODE, true, 1);
-            auto address = static_cast<std::string>(keeper->self());
-            auto port = static_cast<uint16_t>(std::stoul(address.substr(address.rfind(':') + 1)));
-            keepers.emplace_back("ofi+sockets", "127.0.0.1", port, 52);
-            keeper->define(
-                    "record_event",
-                    [this, i](thallium::request const& req, LogEvent const& event)
-                    {
-                        {
-                            std::lock_guard<std::mutex> lock(events_mutex);
-                            events.push_back(event);
-                            routes.push_back(i);
-                        }
-                        req.respond(CL_SUCCESS);
-                    },
-                    52);
-        }
-        engine.define(
-                "AcquireStory",
-                [keepers](thallium::request const& req, ClientId, std::string const&, std::string const& story)
-                { req.respond(AcquireStoryResponseMsg(CL_SUCCESS, story == "a" ? 1 : 2, keepers)); },
-                51);
-    }
-    ~ClockPeers()
-    {
-        for(auto& keeper: keeper_engines) keeper->finalize();
-        engine.finalize();
-    }
+        : NativePeer("ofi+sockets", true)
+    {}
 };
 } // namespace
 TEST(ChronologClockOwnership, SharesFloorAcrossStoriesAndActualReconnectAndStopsClockFailuresBeforeSend)
@@ -253,19 +205,18 @@ TEST(ChronologClockOwnership, SharesFloorAcrossStoriesAndActualReconnectAndStops
     std::atomic<bool> block{false};
     std::promise<void> entered, release;
     auto released = release.get_future().share();
-    auto* owner = ChronologClientImpl::GetClientImplInstance(peers.portal,
-                                                             WRITER_MODE,
-                                                             ClientQueryServiceConf{},
-                                                             [&]
-                                                             {
-                                                                 if(block.exchange(false))
-                                                                 {
-                                                                     entered.set_value();
-                                                                     released.wait();
-                                                                 }
-                                                                 return raw;
-                                                             });
-    std::unique_ptr<ChronologClientImpl> cleanup(owner);
+    auto owner = ChronologClientImpl::GetClientImplInstance(peers.portal,
+                                                            WRITER_MODE,
+                                                            ClientQueryServiceConf{},
+                                                            [&]
+                                                            {
+                                                                if(block.exchange(false))
+                                                                {
+                                                                    entered.set_value();
+                                                                    released.wait();
+                                                                }
+                                                                return raw;
+                                                            });
     ASSERT_EQ(CL_SUCCESS, owner->Connect());
     auto a = owner->AcquireStory("clock", "a");
     auto b = owner->AcquireStory("clock", "b");
@@ -307,17 +258,19 @@ TEST(ChronologClockOwnership, SharesFloorAcrossStoriesAndActualReconnectAndStops
     EXPECT_EQ(raw.timestamp, a.second->log_event("last"));
     EXPECT_EQ(0, a.second->log_event("exhausted"));
     {
-        std::lock_guard<std::mutex> lock(peers.events_mutex);
-        ASSERT_EQ(5, peers.events.size());
-        EXPECT_EQ((std::vector<unsigned>{1, 2, 0, 1, 0}), peers.routes);
-        EXPECT_EQ(1, peers.events[0].eventIndex);
-        EXPECT_EQ(2, peers.events[1].eventIndex);
-        EXPECT_EQ(3, peers.events[2].eventIndex);
-        EXPECT_EQ(4, peers.events[3].eventIndex);
-        EXPECT_EQ(5, peers.events[4].eventIndex);
-        EXPECT_EQ(1, peers.events[0].storyId);
-        EXPECT_EQ(2, peers.events[1].storyId);
-        EXPECT_EQ("after reconnect", peers.events[2].logRecord);
+        auto& state = peers.state();
+        ASSERT_EQ(5u, state.eventCount.load());
+        std::vector<unsigned> routes;
+        for(unsigned i = 0; i < 5; ++i) routes.push_back(state.events[i].route);
+        EXPECT_EQ((std::vector<unsigned>{1, 2, 0, 1, 0}), routes);
+        EXPECT_EQ(1, state.events[0].eventIndex);
+        EXPECT_EQ(2, state.events[1].eventIndex);
+        EXPECT_EQ(3, state.events[2].eventIndex);
+        EXPECT_EQ(4, state.events[3].eventIndex);
+        EXPECT_EQ(5, state.events[4].eventIndex);
+        EXPECT_EQ(1, state.events[0].storyId);
+        EXPECT_EQ(2, state.events[1].storyId);
+        EXPECT_STREQ("after reconnect", state.events[2].record);
     }
     EXPECT_EQ(CL_SUCCESS, owner->ReleaseStory("clock", "a"));
     EXPECT_EQ(CL_SUCCESS, owner->Disconnect());

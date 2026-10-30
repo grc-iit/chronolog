@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <thread>
 
 #include <thallium.hpp>
 
@@ -61,10 +62,19 @@ void chronolog::StoryHandleImpl<KeeperChoicePolicy>::removeRecordingClient(
 template <class KeeperChoicePolicy>
 uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record)
 {
-    // Timer assignment consumes the append budget from this entry. B05 owns
-    // bounding the legacy network send, which is still synchronous here.
     using Clock = std::chrono::steady_clock;
     auto started = Clock::now();
+    auto entry = tryEnter();
+    if(!entry)
+        return 0;
+    auto context = context_.lock();
+    auto nativeLease = context ? context->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(retainedContext_ && !nativeLease)
+        return 0;
+    if(nativeLease)
+        entry->retainNative(std::move(*nativeLease));
+    // Timer assignment consumes the append budget from this entry. B05 owns
+    // bounding the legacy network send, which is still synchronous here.
     auto policy = theClient.acquirePolicy();
     if(!policy)
         return 0;
@@ -105,27 +115,65 @@ uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string c
 template <class KeeperChoicePolicy>
 int chronolog::StoryHandleImpl<KeeperChoicePolicy>::playback(size_t n, std::vector<Event>& events)
 {
+    auto entry = tryEnter();
+    if(!entry)
+        return CL_ERR_NOT_ACQUIRED;
+    auto context = context_.lock();
+    auto nativeLease = context ? context->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(retainedContext_ && !nativeLease)
+        return CL_ERR_RPC_CAPACITY;
+    if(nativeLease)
+        entry->retainNative(std::move(*nativeLease));
     return gather_story_tail(storyKeepers, storyId, n, events);
 }
 /////////////////////
 
 chronolog::StorytellerClient::~StorytellerClient()
 {
-    LOG_DEBUG("[StorytellerClient] Destructor called.");
+    clearAcquiredStoryHandles();
+    for(auto const& keeper: recordingClientMap) delete keeper.second;
+}
+void chronolog::StorytellerClient::clearAcquiredStoryHandles()
+{
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    for(auto const& handle: acquiredStoryHandles)
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.second)->invalidate();
+    acquiredStoryHandles.clear();
+    reapRetiredHandles();
+}
+
+void chronolog::StorytellerClient::reapRetiredHandles()
+{
+    for(auto position = ownedHandles_.begin(); position != ownedHandles_.end();)
+        if(static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(position->get())->retiredAndIdle())
+            position = ownedHandles_.erase(position);
+        else
+            ++position;
+}
+size_t chronolog::StorytellerClient::retainedHandleCount()
+{
+    std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
+    return ownedHandles_.size();
+}
+
+void chronolog::StorytellerClient::quiesceNativeEntries()
+{
+    std::unique_lock<std::mutex> lock(acquiredStoryMapMutex);
+    for(auto const& handle: ownedHandles_)
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.get())->invalidate();
+    acquiredStoryHandles.clear();
+    for(;;)
     {
-        std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
-        /*
-        //TODO: investigate why the folowing lines were commented out in the previous version
-        for( auto story_record_iter : acquiredStoryHandles)
-        {
-            delete story_record_iter.second;
-        }
-        acquiredStoryHandles.clear();
-  */  }
-        // stop & delete keeperRecordingClients
-        std::lock_guard<std::mutex> lock(recordingClientMapMutex);
-        for(auto keeper_client: recordingClientMap) { delete keeper_client.second; }
-        recordingClientMap.clear();
+        bool settled = true;
+        for(auto const& handle: ownedHandles_)
+            settled &= static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(handle.get())->retiredAndIdle();
+        if(settled)
+            return;
+        lock.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        lock.lock();
+    }
 }
 
 chronolog::chrono_index chronolog::StorytellerClient::get_event_index() noexcept
@@ -144,14 +192,19 @@ int chronolog::StorytellerClient::addKeeperRecordingClient(chronolog::ServiceId 
     try
     {
         chronolog::KeeperRecordingClient* keeperRecordingClient =
-                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine, keeper_service_id);
+                chronolog::KeeperRecordingClient::CreateKeeperRecordingClient(client_engine,
+                                                                              keeper_service_id,
+                                                                              procedures_);
 
+        if(!keeperRecordingClient)
+            return 0;
         auto insert_return =
                 recordingClientMap.insert(std::pair<std::pair<uint32_t, uint16_t>, chronolog::KeeperRecordingClient*>(
                         keeper_service_id.get_service_endpoint(),
                         keeperRecordingClient));
         if(false == insert_return.second)
         {
+            delete keeperRecordingClient;
             LOG_ERROR("[StorytellerClient] Failed to create KeeperRecordingClient for {}",
                       to_string(keeper_service_id));
             return 0;
@@ -195,6 +248,7 @@ chronolog::StoryHandle* chronolog::StorytellerClient::findStoryHandle(ChronicleN
                                                                       StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
@@ -225,6 +279,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
 //INNA: TODO :KeeperChoicePolicy will have to be communicated here as well ....
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
@@ -236,8 +291,8 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
     }
 
     // create new StoryHandleImpl & initialize its keeperClients vector
-    chronolog::StoryHandleImpl<RoundRobinKeeperChoice>* storyHandle =
-            new StoryHandleImpl<RoundRobinKeeperChoice>(*this, chronicle, story, story_id);
+    auto ownedHandle = std::make_unique<StoryHandleImpl<RoundRobinKeeperChoice>>(*this, chronicle, story, story_id);
+    auto* storyHandle = ownedHandle.get();
 
     for(ServiceId const& keeper_service_id: vectorOfKeepers)
     {
@@ -250,7 +305,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
             {
                 LOG_WARNING("[StorytellerClient] Failed to add KeeperRecordingClient for {}",
                             to_string(keeper_service_id));
-                continue;
+                return nullptr;
             }
         }
         keeper_client_iter = recordingClientMap.find(keeper_service_id.get_service_endpoint());
@@ -258,6 +313,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
         storyHandle->addRecordingClient((*keeper_client_iter).second);
     }
 
+    ownedHandles_.push_back(std::move(ownedHandle));
     auto insert_return =
             acquiredStoryHandles.insert(std::pair<std::pair<std::string, std::string>, chronolog::StoryHandle*>(
                     std::pair<std::string, std::string>(chronicle, story),
@@ -267,7 +323,7 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
         LOG_ERROR("[StorytellerClient] Failed to insert StoryHandleImpl for Chronicle: '{}' and Story: '{}'.",
                   chronicle,
                   story);
-        delete storyHandle;
+        ownedHandles_.pop_back();
         return nullptr;
     }
 
@@ -292,12 +348,16 @@ chronolog::StorytellerClient::initializeStoryHandle(ChronicleName const& chronic
 void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const& chronicle, StoryName const& story)
 {
     std::lock_guard<std::mutex> lock(acquiredStoryMapMutex);
+    reapRetiredHandles();
 
     auto story_record_iter = acquiredStoryHandles.find(std::pair<std::string, std::string>(chronicle, story));
     if(story_record_iter != acquiredStoryHandles.end())
     {
-        delete(*story_record_iter).second;
+        static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(story_record_iter->second)->invalidate();
+        // Retain the borrowed object until owner cleanup has proved all entered
+        // legacy calls settled. B05/B08 replace these entries with owned work.
         acquiredStoryHandles.erase(story_record_iter);
+        reapRetiredHandles();
         LOG_INFO("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.",
                  chronicle,
                  story);

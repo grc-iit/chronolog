@@ -8,6 +8,7 @@
 #include <map>
 #include <cstdint>
 #include <fstream>
+#include <memory>
 
 #include "ClientConfiguration.h"
 #include "chronolog_types.h"
@@ -158,9 +159,28 @@ class ChronologClientImpl;
 
 // Top-level Chronolog Client. Implementation details in ChronologClientImpl.
 //
+// ChronoLog must establish the process Argobots/Margo runtime first. Connect
+// returns CL_ERR_NATIVE_RUNTIME_UNSUPPORTED if a native runtime already exists;
+// that local rejection is permanent for the process and sends no Connect RPC.
+// Applications must not independently initialize/finalize Argobots or Margo,
+// or retain native work beyond ChronoLog's owned lifetime. A fixed lifecycle
+// thread owns cold startup/finalization; main is not an Argobots execution stream.
+// Before cold ABT startup, Margo's public environment setup restores its shipped
+// 2MiB ULT stacks and eight-stack cache, overwriting those ABT environment values.
+// A failed or incomplete native lifecycle remains owned and prevents replacement.
+// The client library must remain loaded until process exit because its fixed
+// lifecycle infrastructure thread has process lifetime.
+// The old MultiArgobots/HybridArgobots test pattern (Connect, then main calls
+// ABT_init/ABT_xstream_self) is unsupported. Ordinary C++ and MPI callers remain
+// supported. Rebuild applications after this private ownership-layout change.
+// Startup, native lookup and metadata RPCs consume the original entry budget.
+// Expiry before dispatch returns CL_ERR_DEADLINE_EXCEEDED; a dispatched mutation
+// without a confirmed result returns CL_ERR_OUTCOME_UNCONFIRMED. Do not retry
+// ambiguous mutations. A closing/incomplete context cannot be replaced.
+//
 // Disconnect() auto-releases any stories still acquired by the client so the
 // caller never has to walk its own acquisitions to clean up. The destructor
-// calls Disconnect() as best-effort; the Client is always safe to delete.
+// drops this wrapper's shared context lease without waiting for remote work.
 class Client
 {
 public:
@@ -177,7 +197,7 @@ public:
     // work or policy-lock contention returns CL_ERR_RPC_CAPACITY. Configure
     // before the first Connect: entering Connect permanently freezes this
     // context's policy, even if Connect fails or Disconnect later succeeds.
-    // Existing RPC/StoryHandle paths do not yet consume these budgets.
+    // Metadata operations consume one total control budget.
     int SetRpcTimeoutPolicy(RpcTimeoutPolicy const&);
 
     int Connect();
@@ -235,7 +255,7 @@ public:
                     EventCallback callback);
 
 private:
-    ChronologClientImpl* chronologClientImpl;
+    std::shared_ptr<ChronologClientImpl> chronologClientImpl;
 };
 
 } //namespace chronolog

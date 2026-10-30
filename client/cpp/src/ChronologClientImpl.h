@@ -1,116 +1,75 @@
 #ifndef CHRONOLOG_CLIENT_IMPL_H
 #define CHRONOLOG_CLIENT_IMPL_H
-
-#include <cstdint>
-#include <map>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include <thallium.hpp>
-
-#include <client_errcode.h>
-#include <ClientConfiguration.h>
-#include <chronolog_types.h>
+#include "ClientRpcContext.h"
 #include <chronolog_client.h>
-
-#include "RpcPolicyContext.h"
-#include "rpcVisorClient.h"
-#include "StorytellerClient.h"
-#include "ClientQueryService.h"
-
+#include <memory>
+#include <mutex>
 namespace chronolog
 {
-
 enum ClientMode
 {
     WRITER_MODE = 0,
-    READER_MODE = 1,
+    READER_MODE = 1
 };
-
-enum ChronologClientState
-{
-    UNKNOWN = 0,
-    CONNECTED = 1,
-    READING = 2,
-    WRITING = 3,
-    SHUTTING_DOWN = 4
-};
-
+class AcquireStoryResponseMsg;
 class ChronologClientImpl
 {
 public:
-    // static mutex ensures that there'd be the single instance
-    // of ChronologClientImpl ever created regardless of the
-    // thread(s) GetClientImplInstance() is called from
-    static std::mutex chronologClientMutex;
-    static ChronologClientImpl* chronologClientImplInstance;
-
-    // A source can be chosen only when creating the context; an explicit
-    // replacement for an existing context throws std::invalid_argument.
-    static ChronologClientImpl* GetClientImplInstance(chronolog::ClientPortalServiceConf const&,
-                                                      ClientMode const&,
-                                                      chronolog::ClientQueryServiceConf const&,
-                                                      ChronologTimer::RawSource source = {});
-
-    // the classs is non-copyable
+    using Clock = rpc::RpcDeadline::Clock;
+    static std::shared_ptr<ChronologClientImpl> GetClientImplInstance(ClientPortalServiceConf const&,
+                                                                      ClientMode const&,
+                                                                      ClientQueryServiceConf const&,
+                                                                      ChronologTimer::RawSource = {});
     ChronologClientImpl(ChronologClientImpl const&) = delete;
-
     ChronologClientImpl& operator=(ChronologClientImpl const&) = delete;
-
     ~ChronologClientImpl();
-
     int SetRpcTimeoutPolicy(RpcTimeoutPolicy const&);
-
-    int Connect();
-
-    int Disconnect();
-
-    ClientId client_id() const { return clientId; }
-
-    int CreateChronicle(std::string const& chronicle_name);
-
-    int DestroyChronicle(std::string const& chronicle_name);
-
-    std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
-
-    int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);
-    int DestroyStory(std::string const& chronicle_name, std::string const& story_name);
-
-    std::pair<int, std::vector<std::string>> ShowChronicles();
-    std::pair<int, std::vector<std::string>> ShowStories(const std::string& chronicle_name);
-
-    int
-    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, std::vector<Event>& eventSeries);
-
-    int
-    replay_story(ChronicleName const&, StoryName const&, uint64_t start, uint64_t end, Client::EventCallback callback);
+    int Connect(Clock::time_point = Clock::now());
+    int Disconnect(Clock::time_point = Clock::now());
+    ClientId client_id() const { return context_->clientId.load(std::memory_order_acquire); }
+    int CreateChronicle(std::string const&, Clock::time_point = Clock::now());
+    int DestroyChronicle(std::string const&, Clock::time_point = Clock::now());
+    std::pair<int, StoryHandle*> AcquireStory(std::string const&, std::string const&, Clock::time_point = Clock::now());
+    int ReleaseStory(std::string const&, std::string const&, Clock::time_point = Clock::now());
+    int DestroyStory(std::string const&, std::string const&, Clock::time_point = Clock::now());
+    std::pair<int, std::vector<std::string>> ShowChronicles(Clock::time_point = Clock::now());
+    std::pair<int, std::vector<std::string>> ShowStories(std::string const&, Clock::time_point = Clock::now());
+    int replay_story(ChronicleName const&, StoryName const&, uint64_t, uint64_t, std::vector<Event>&);
+    int replay_story(ChronicleName const&, StoryName const&, uint64_t, uint64_t, Client::EventCallback);
+    // Private producers: acquire while this facade is alive. Work retains the
+    // actual context, never a facade/output buffer or an engine copy alone.
+    std::shared_ptr<ClientRpcContext> context() const noexcept { return context_; }
+    std::shared_ptr<rpc::RpcRuntime> runtime() const noexcept { return runtime_; }
 
 private:
-    std::shared_ptr<RpcPolicyContext> rpcPolicyContext;
-    ClientMode clientMode;
-    ChronologClientState clientState;
-    std::string clientLogin;
-    uint32_t euid;
-    ClientIdentity clientIdentity;
-    ClientId clientId;
-    ChronologTimer clockProxy;
-    thallium::engine* tlEngine;
-    RpcVisorClient* rpcVisorClient;
-    StorytellerClient* storyteller;
-    ClientQueryService* storyReaderService;
-
-    ChronologClientImpl(ClientPortalServiceConf const&,
-                        ClientMode const&,
-                        chronolog::ClientQueryServiceConf const&,
-                        ChronologTimer::RawSource);
-
-    void defineClientIdentity(uint16_t query_service_port,
-                              std::optional<std::string> const& listen_ip,
-                              std::optional<std::string> const& towards_visor);
+    enum class Action
+    {
+        Connect,
+        Disconnect,
+        CreateChronicle,
+        DestroyChronicle,
+        AcquireStory,
+        ReleaseStory,
+        DestroyStory,
+        ShowChronicles,
+        ShowStories
+    };
+    struct Reply
+    {
+        int status = CL_ERR_UNKNOWN;
+        StoryHandle* handle = nullptr;
+        std::vector<std::string> names;
+        ClientId id = 0;
+        std::shared_ptr<AcquireStoryResponseMsg> acquisition;
+    };
+    class Work;
+    ChronologClientImpl(std::shared_ptr<ClientRpcContext>, std::shared_ptr<rpc::RpcRuntime>, bool);
+    Reply invoke(Action, std::string const&, std::string const&, Clock::time_point);
+    static std::mutex factoryMutex_;
+    static std::weak_ptr<ClientRpcContext> instance_;
+    std::shared_ptr<ClientRpcContext> context_;
+    std::shared_ptr<rpc::RpcRuntime> runtime_;
+    bool facadeAdmitted_;
 };
-} //namespace chronolog
-
+} // namespace chronolog
 #endif

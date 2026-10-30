@@ -25,6 +25,8 @@ add_library(chronolog_client
     src/ClientQueryService.cpp
     src/ChronologClient.cpp
     src/ChronologClientImpl.cpp
+    src/ClientRpcContext.cpp
+    src/ClientNativeRuntime.cpp
     src/ClientConfiguration.cpp
     src/QueryServiceAddress.h
     src/QueryServiceAddress.cpp

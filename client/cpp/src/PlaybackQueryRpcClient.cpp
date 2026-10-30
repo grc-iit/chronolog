@@ -30,15 +30,11 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService& cli
     playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string),
                                                   playback_service_id.getProviderId());
 
-    playback_service_available = theClientQueryService.get_engine().define("playback_service_available");
-    story_playback_request = theClientQueryService.get_engine().define("story_playback_request");
+    playback_service_available = theClientQueryService.procedures()->calls[ClientRpcProcedures::PlaybackAvailable];
+    story_playback_request = theClientQueryService.procedures()->calls[ClientRpcProcedures::PlaybackRequest];
 }
 
-chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient()
-{
-    playback_service_available.deregister();
-    story_playback_request.deregister();
-}
+chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient() = default;
 //////////////
 
 int chl::PlaybackQueryRpcClient::is_playback_service_available()

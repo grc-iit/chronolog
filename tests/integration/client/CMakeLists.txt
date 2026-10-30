@@ -216,3 +216,13 @@ target_include_directories(client_acquire_deadline_test PRIVATE
     ${CMAKE_SOURCE_DIR}/client/cpp/include)
 target_link_libraries(client_acquire_deadline_test PRIVATE GTest::gtest_main chrono_rpc chrono_common chronolog_client thallium)
 gtest_discover_tests(client_acquire_deadline_test TEST_PREFIX "Integration_ClientAcquireDeadline_")
+
+add_executable(client_metadata_deadline_test client_metadata_deadline_test.cpp)
+target_include_directories(client_metadata_deadline_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(client_metadata_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+gtest_discover_tests(client_metadata_deadline_test TEST_PREFIX "Integration_ClientMetadataDeadline_" PROPERTIES TIMEOUT 30)
+
+target_include_directories(client_metadata_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/tests/support)
+target_compile_definitions(client_metadata_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+add_dependencies(client_metadata_deadline_test client_native_peer)

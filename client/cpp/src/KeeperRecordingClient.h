@@ -2,6 +2,7 @@
 #define KEEPER_RECORDING_CLIENT_H
 
 #include <chrono>
+#include "ClientRpcContext.h"
 #include <iostream>
 #include <string>
 
@@ -26,11 +27,15 @@ class KeeperRecordingClient
 {
 
 public:
-    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
+    static KeeperRecordingClient* CreateKeeperRecordingClient(tl::engine& tl_engine,
+                                                              ServiceId const& keeper_service_id,
+                                                              std::shared_ptr<ClientRpcProcedures> procedures)
     {
+        if(!procedures)
+            return nullptr;
         try
         {
-            return new KeeperRecordingClient(tl_engine, keeper_service_id);
+            return new KeeperRecordingClient(tl_engine, keeper_service_id, std::move(procedures));
         }
         catch(tl::exception const& ex)
         {
@@ -89,15 +94,10 @@ public:
                 .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
     }
 
-    ~KeeperRecordingClient()
-    {
-        record_event.deregister();
-        tail_get_sequences.deregister();
-        tail_get_events.deregister();
-        LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(recordingServiceId));
-    }
+    ~KeeperRecordingClient() = default;
 
 private:
+    std::shared_ptr<ClientRpcProcedures> procedures_;
     ServiceId recordingServiceId;
     tl::provider_handle service_ph; //provider_handle for remote registry service
     tl::remote_procedure record_event;
@@ -105,8 +105,11 @@ private:
     tl::remote_procedure tail_get_events;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    KeeperRecordingClient(tl::engine& tl_engine, ServiceId const& keeper_service_id)
-        : recordingServiceId(keeper_service_id)
+    KeeperRecordingClient(tl::engine& tl_engine,
+                          ServiceId const& keeper_service_id,
+                          std::shared_ptr<ClientRpcProcedures> procedures)
+        : procedures_(std::move(procedures))
+        , recordingServiceId(keeper_service_id)
     {
         LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_service_id));
         std::string service_addr_string;
@@ -114,9 +117,9 @@ private:
 
         service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
 
-        record_event = tl_engine.define("record_event");
-        tail_get_sequences = tl_engine.define("tail_get_sequences");
-        tail_get_events = tl_engine.define("tail_get_events");
+        record_event = procedures_->calls[ClientRpcProcedures::RecordEvent];
+        tail_get_sequences = procedures_->calls[ClientRpcProcedures::TailSequences];
+        tail_get_events = procedures_->calls[ClientRpcProcedures::TailEvents];
     }
 
 
