@@ -1,0 +1,322 @@
+// Client side of tests/integration/keeper_wal_crash_test.sh and
+// keeper_restart_held_test.sh: writes events durable or accepted and prints
+// the identity of each one the keeper acknowledged, or replays a story and
+// prints the identity of every event it returns, so the script can compare
+// the two.
+//
+//   --write <n> --mode durable|accepted
+//       acquires the story, logs <n> events through
+//       log_event(record, options, event_time) and prints
+//       "<time> <client id> <index>" for each one answered CL_SUCCESS. After
+//       the last call it prints LAST_ACK_NS <wall clock ns>, then releases the
+//       story and prints WRITE_ACKED <acked> <n> and one
+//       WRITE_CODE <CL_...> <count> per return code.
+//   --replay
+//       acquires the story, replays its whole range, releases it, and prints
+//       "<time> <client id> <index>" per returned event, then
+//       REPLAY_STATUS <CL_...> and REPLAY_COUNT <n>.
+//   --loop --stop-file <path> --release-file <path>
+//       acquires the story and prints ACQUIRED <CL_...>, then logs an event
+//       every --interval-ms (default 200) until <stop file> exists, odd calls
+//       accepted and even calls durable, and prints one line per call:
+//       "EVENT accepted|durable <CL_...> <time> <client id> <index> <wall ns>"
+//       (time is 0 when the call failed; wall ns is the clock before the
+//       call). Then it prints LOOP_STOPPED <calls>, holds the story until
+//       <release file> exists, releases it and prints RELEASED. --timeout-ms
+//       (default 1000) and --attempts (default 1) go into the durable calls'
+//       LogEventOptions, so a durable call to a keeper that is down returns
+//       after about timeout_ms.
+//
+// Usage: durable_probe --config <client conf> --chronicle <name> --story <name>
+//                      (--write <n> --mode durable|accepted | --replay |
+//                       --loop --stop-file <path> --release-file <path>
+//                       [--interval-ms <ms>] [--timeout-ms <ms>] [--attempts <n>])
+//
+// The client API does not return an event's index. This client is new and logs
+// nothing else, and every call that returns CL_SUCCESS or a keeper's error took
+// the next index, so the i-th call (from 1) carries index i. CL_ERR_INVALID_ARG
+// returns before the index is taken, and CL_ERR_NO_KEEPERS before or after it,
+// so the probe stops at the first call that returns either.
+
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <getopt.h>
+#include <iostream>
+#include <map>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <ClientConfiguration.h>
+#include <chronolog_client.h>
+#include <chrono_monitor.h>
+
+namespace
+{
+
+void usage(char const* name)
+{
+    std::cerr << "Usage: " << name
+              << " --config <client conf> --chronicle <name> --story <name>"
+                 " (--write <n> --mode durable|accepted | --replay |"
+                 " --loop --stop-file <path> --release-file <path>"
+                 " [--interval-ms <ms>] [--timeout-ms <ms>] [--attempts <n>])"
+              << std::endl;
+}
+
+uint64_t wall_clock_ns()
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
+}
+
+// --loop: logs events until stop_file exists, odd calls accepted and even
+// calls durable, then holds the story until release_file exists. Returns the
+// probe's exit code.
+int write_loop(chronolog::StoryHandle& story_handle,
+               chronolog::ClientId const& client_id,
+               std::string const& stop_file,
+               std::string const& release_file,
+               long interval_ms,
+               chronolog::LogEventOptions const& durable_options)
+{
+    chronolog::LogEventOptions accepted_options = durable_options;
+    accepted_options.durability = chronolog::Durability::Accepted;
+    long calls = 0;
+    int exit_code = EXIT_SUCCESS;
+    while(!std::filesystem::exists(stop_file))
+    {
+        ++calls;
+        bool const durable = (calls % 2 == 0);
+        std::string const mode = durable ? "durable" : "accepted";
+        uint64_t const wall_ns = wall_clock_ns();
+        uint64_t event_time = 0;
+        int const code = story_handle.log_event(mode + " loop event " + std::to_string(calls),
+                                                durable ? durable_options : accepted_options,
+                                                event_time);
+        std::cout << "EVENT " << mode << " " << chronolog::to_string_client(code) << " " << event_time << " "
+                  << client_id << " " << calls << " " << wall_ns << std::endl;
+        if(code == chronolog::CL_ERR_NO_KEEPERS || code == chronolog::CL_ERR_INVALID_ARG)
+        {
+            // later indexes would be unknown, as in the --write loop
+            exit_code = EXIT_FAILURE;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+    }
+    std::cout << "LOOP_STOPPED " << calls << std::endl;
+    while(!std::filesystem::exists(release_file)) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
+    return exit_code;
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    std::string conf_file_path;
+    std::string chronicle_name;
+    std::string story_name;
+    std::string mode;
+    std::string stop_file;
+    std::string release_file;
+    long write_count = -1;
+    long interval_ms = 200;
+    long timeout_ms = 1000;
+    long attempts = 1;
+    bool replay = false;
+    bool loop = false;
+
+    struct option long_options[] = {{"config", required_argument, nullptr, 'c'},
+                                    {"chronicle", required_argument, nullptr, 'r'},
+                                    {"story", required_argument, nullptr, 's'},
+                                    {"write", required_argument, nullptr, 'w'},
+                                    {"mode", required_argument, nullptr, 'm'},
+                                    {"replay", no_argument, nullptr, 'p'},
+                                    {"loop", no_argument, nullptr, 'l'},
+                                    {"stop-file", required_argument, nullptr, 'S'},
+                                    {"release-file", required_argument, nullptr, 'R'},
+                                    {"interval-ms", required_argument, nullptr, 'i'},
+                                    {"timeout-ms", required_argument, nullptr, 't'},
+                                    {"attempts", required_argument, nullptr, 'a'},
+                                    {nullptr, 0, nullptr, 0}};
+    int opt;
+    while((opt = getopt_long(argc, argv, "c:", long_options, nullptr)) != -1)
+    {
+        switch(opt)
+        {
+            case 'c':
+                conf_file_path = optarg;
+                break;
+            case 'r':
+                chronicle_name = optarg;
+                break;
+            case 's':
+                story_name = optarg;
+                break;
+            case 'w':
+                write_count = std::strtol(optarg, nullptr, 10);
+                break;
+            case 'm':
+                mode = optarg;
+                break;
+            case 'p':
+                replay = true;
+                break;
+            case 'l':
+                loop = true;
+                break;
+            case 'S':
+                stop_file = optarg;
+                break;
+            case 'R':
+                release_file = optarg;
+                break;
+            case 'i':
+                interval_ms = std::strtol(optarg, nullptr, 10);
+                break;
+            case 't':
+                timeout_ms = std::strtol(optarg, nullptr, 10);
+                break;
+            case 'a':
+                attempts = std::strtol(optarg, nullptr, 10);
+                break;
+            default:
+                usage(argv[0]);
+                return EXIT_FAILURE;
+        }
+    }
+    bool const write = (write_count >= 0);
+    if(chronicle_name.empty() || story_name.empty() || (int(write) + int(replay) + int(loop)) != 1 ||
+       (write && mode != "durable" && mode != "accepted") ||
+       (loop && (stop_file.empty() || release_file.empty() || interval_ms < 0 || timeout_ms <= 0 || attempts <= 0)))
+    {
+        usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    chronolog::ClientConfiguration confManager;
+    if(!conf_file_path.empty() && !confManager.load_from_file(conf_file_path))
+    {
+        std::cerr << "[DurableProbe] Failed to load configuration file '" << conf_file_path << "'" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(chronolog::chrono_monitor::initialize(confManager.LOG_CONF.LOGTYPE,
+                                             confManager.LOG_CONF.LOGFILE,
+                                             confManager.LOG_CONF.LOGLEVEL,
+                                             confManager.LOG_CONF.LOGNAME,
+                                             confManager.LOG_CONF.LOGFILESIZE,
+                                             confManager.LOG_CONF.LOGFILENUM,
+                                             confManager.LOG_CONF.FLUSHLEVEL) == 1)
+    {
+        return EXIT_FAILURE;
+    }
+
+    chronolog::ClientPortalServiceConf portalConf;
+    portalConf.PROTO_CONF = confManager.PORTAL_CONF.PROTO_CONF;
+    portalConf.IP = confManager.PORTAL_CONF.IP;
+    portalConf.PORT = confManager.PORTAL_CONF.PORT;
+    portalConf.PROVIDER_ID = confManager.PORTAL_CONF.PROVIDER_ID;
+
+    chronolog::ClientQueryServiceConf queryConf;
+    queryConf.PROTO_CONF = confManager.QUERY_CONF.PROTO_CONF;
+    queryConf.IP = confManager.QUERY_CONF.IP;
+    queryConf.PORT = confManager.QUERY_CONF.PORT;
+    queryConf.PROVIDER_ID = confManager.QUERY_CONF.PROVIDER_ID;
+
+    std::string const status_key = replay ? "REPLAY_STATUS " : "WRITE_STATUS ";
+    chronolog::Client client(portalConf, queryConf);
+    int ret = client.Connect();
+    if(ret != chronolog::CL_SUCCESS)
+    {
+        std::cout << status_key << chronolog::to_string_client(ret) << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    if(!replay)
+    {
+        // the chronicle may exist from an earlier run
+        client.CreateChronicle(chronicle_name);
+    }
+    auto acquire_result = client.AcquireStory(chronicle_name, story_name);
+    if(loop)
+    {
+        std::cout << "ACQUIRED " << chronolog::to_string_client(acquire_result.first) << std::endl;
+    }
+    if(acquire_result.first != chronolog::CL_SUCCESS)
+    {
+        std::cout << status_key << chronolog::to_string_client(acquire_result.first) << std::endl;
+        client.Disconnect();
+        return EXIT_FAILURE;
+    }
+
+    if(loop)
+    {
+        chronolog::LogEventOptions durable_options;
+        durable_options.durability = chronolog::Durability::Durable;
+        durable_options.timeout_ms = static_cast<uint32_t>(timeout_ms);
+        durable_options.attempts = static_cast<uint32_t>(attempts);
+        int const exit_code = write_loop(*acquire_result.second,
+                                         client.client_id(),
+                                         stop_file,
+                                         release_file,
+                                         interval_ms,
+                                         durable_options);
+        client.ReleaseStory(chronicle_name, story_name);
+        client.Disconnect();
+        std::cout << "RELEASED" << std::endl;
+        return exit_code;
+    }
+
+    if(replay)
+    {
+        std::vector<chronolog::Event> events;
+        ret = client.ReplayStory(chronicle_name, story_name, 1, 2000000000000000000ULL, events);
+        for(auto const& event: events)
+        {
+            std::cout << event.time() << " " << event.client_id() << " " << event.index() << std::endl;
+        }
+        std::cout << "REPLAY_STATUS " << chronolog::to_string_client(ret) << std::endl;
+        std::cout << "REPLAY_COUNT " << events.size() << std::endl;
+        client.ReleaseStory(chronicle_name, story_name);
+        client.Disconnect();
+        return (ret == chronolog::CL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+
+    chronolog::LogEventOptions options;
+    options.durability = (mode == "durable") ? chronolog::Durability::Durable : chronolog::Durability::Accepted;
+    chronolog::ClientId const client_id = client.client_id();
+    std::map<int, long> codes;
+    long acked = 0;
+    bool stopped_early = false;
+    for(long i = 1; i <= write_count; ++i)
+    {
+        uint64_t event_time = 0;
+        int const code = acquire_result.second->log_event(mode + " event " + std::to_string(i), options, event_time);
+        ++codes[code];
+        if(code == chronolog::CL_SUCCESS)
+        {
+            ++acked;
+            std::cout << event_time << " " << client_id << " " << i << std::endl;
+        }
+        else if(code == chronolog::CL_ERR_NO_KEEPERS || code == chronolog::CL_ERR_INVALID_ARG)
+        {
+            // CL_ERR_INVALID_ARG returns before the client takes an index, and
+            // CL_ERR_NO_KEEPERS before it (no keepers for the story) or after it
+            // (no keeper chosen): later indexes would be unknown
+            stopped_early = true;
+            break;
+        }
+    }
+    std::cout << "LAST_ACK_NS " << wall_clock_ns() << std::endl;
+
+    client.ReleaseStory(chronicle_name, story_name);
+    client.Disconnect();
+    std::cout << "WRITE_ACKED " << acked << " " << write_count << std::endl;
+    for(auto const& [code, count]: codes)
+    {
+        std::cout << "WRITE_CODE " << chronolog::to_string_client(code) << " " << count << std::endl;
+    }
+    std::cout << status_key << (stopped_early ? "STOPPED_EARLY" : "DONE") << std::endl;
+    return (!stopped_early && acked == write_count) ? EXIT_SUCCESS : EXIT_FAILURE;
+}

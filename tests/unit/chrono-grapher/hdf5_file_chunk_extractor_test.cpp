@@ -30,6 +30,7 @@
 #include <ArchiveLayout.h>
 #include <ArchiveManifest.h>
 #include <chronolog_errcode.h>
+#include <FileSync.h>
 #include <HDF5FileChunkExtractor.h>
 #include <StoryChunk.h>
 #include <StoryWatermarkRegistry.h>
@@ -525,6 +526,73 @@ TEST_F(HDF5FileChunkExtractorWatermark, WindowWhoseRecordCannotBeAppendedIsAFail
     EXPECT_EQ(snapshot.at(kStory).pending_receipts, (std::vector<uint64_t>{receipt}));
     // and the unrecorded file is not left behind
     EXPECT_EQ(archivedFileCount(), 0u);
+}
+
+namespace
+{
+// when set, a sync of a file in the manifest directory fails with EIO
+bool failManifestSyncs = false;
+
+int manifestFailingFsync(int fd)
+{
+    char target[4096] = {};
+    ssize_t const len = ::readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), target, sizeof(target) - 1);
+    fs::path const path(std::string(target, len > 0 ? len : 0));
+    if(failManifestSyncs && path.parent_path().filename() == chl::kArchiveManifestDirName)
+    {
+        errno = EIO;
+        return -1;
+    }
+    return ::fsync(fd);
+}
+} // namespace
+
+// After a failed manifest sync no window counts as written until the grapher
+// restarts: the keepers keep their chunks and their WAL records, because a later
+// record's durability is unknown. Neither W nor any receipt moves, for the
+// window whose sync failed, for a later window written while syncs work again,
+// or for an empty window.
+TEST_F(HDF5FileChunkExtractorWatermark, LatchedManifestStopsWatermarkAndReceipts)
+{
+    constexpr uint64_t T3 = 13 * NS;
+    ASSERT_EQ(extractor.openArchiveManifest("1"), chl::CL_SUCCESS);
+    chl::setArchiveFsyncForTest(&manifestFailingFsync);
+    failManifestSyncs = true;
+    std::vector<uint64_t> receipts;
+    for(int i = 0; i < 3; i++)
+    {
+        receipts.push_back(registry.assignReceipt(kStory));
+        registry.holdReceipt(kStory, receipts.back());
+        registry.receiptMerged(kStory, receipts.back());
+    }
+
+    chl::StoryChunk failed("C", "S", kStory, T0, T1);
+    addEvent(failed, T0 + 1, 0);
+    failed.carryReceipt(receipts[0]);
+    EXPECT_NE(extractor.process_chunk(&failed), chl::CL_SUCCESS);
+    std::size_t const records = manifestRecords(archiveDir).size();
+
+    failManifestSyncs = false;
+    chl::StoryChunk later("C", "S", kStory, T1, T2);
+    addEvent(later, T1 + 1, 0);
+    later.carryReceipt(receipts[1]);
+    EXPECT_NE(extractor.process_chunk(&later), chl::CL_SUCCESS);
+    chl::StoryChunk empty("C", "S", kStory, T2, T3);
+    empty.carryReceipt(receipts[2]);
+    EXPECT_NE(extractor.process_chunk(&empty), chl::CL_SUCCESS);
+    chl::setArchiveFsyncForTest(nullptr);
+
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
+    auto snapshot = registry.snapshotDirty();
+    ASSERT_EQ(snapshot.count(kStory), 1u);
+    EXPECT_EQ(snapshot.at(kStory).pending_receipts, receipts);
+    // no file is left that a player could not be told about, and nothing more
+    // was appended once the manifest latched
+    EXPECT_EQ(archivedFileCount(), 0u);
+    EXPECT_EQ(manifestRecords(archiveDir).size(), records);
+    // and a later re-registration of the story may not cover the gap
+    registry.registerStory(kStory, T3, /*fresh_pipeline=*/true);
+    EXPECT_EQ(registry.getPersisted(kStory), T0);
 }
 
 TEST_F(HDF5FileChunkExtractorWatermark, DestroyRejectsSymlinkedStoryAndChronicleDirectories)

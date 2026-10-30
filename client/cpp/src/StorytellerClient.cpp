@@ -5,6 +5,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -88,6 +89,150 @@ uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string c
     {
         return 0;
     }
+}
+
+//////////////////
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record,
+                                                              LogEventOptions const& options,
+                                                              uint64_t& event_time)
+{
+    event_time = 0;
+    if(options.attempts == 0 || options.timeout_ms == 0)
+    {
+        return chronolog::CL_ERR_INVALID_ARG;
+    }
+    if(options.durability != Durability::Accepted && options.durability != Durability::Durable)
+    {
+        return chronolog::CL_ERR_INVALID_ARG;
+    }
+    // the keeper drops an empty record after answering, which would make a
+    // durable success false
+    if(options.durability == Durability::Durable && event_record.empty())
+    {
+        return chronolog::CL_ERR_INVALID_ARG;
+    }
+    if(storyKeepers.empty())
+    {
+        LOG_WARNING("[StoryHandleImpl] No keepers for Chronicle: {}, Story: {}", chronicle, story);
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+
+    // built once: every attempt of a durable write carries the same identity
+    chronolog::LogEvent log_event(storyId,
+                                  theClient.getTimestamp(),
+                                  theClient.getClientId(),
+                                  theClient.get_event_index(),
+                                  event_record);
+
+    if(options.durability == Durability::Durable)
+    {
+        return log_durable_event(log_event, options, event_time);
+    }
+
+    auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
+    if(nullptr == keeperRecordingClient)
+    {
+        LOG_WARNING("[StoryHandleImpl] No keeper selected for logging event: {}", event_record);
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+    int const keeper_code = keeperRecordingClient->send_event_msg(log_event);
+    if(chronolog::CL_SUCCESS == keeper_code)
+    {
+        event_time = log_event.eventTime;
+    }
+    return keeper_code;
+}
+
+//////////////////
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent const& event,
+                                                                      LogEventOptions const& options,
+                                                                      uint64_t& event_time)
+{
+    // set once an attempt goes unanswered: that attempt may have stored the
+    // event, so no later answer can say that nothing was stored
+    bool may_be_stored = false;
+    for(uint32_t attempt = 1; attempt <= options.attempts; ++attempt)
+    {
+        // chosen again on every attempt: the choice depends only on the
+        // timestamp, so a retry reaches the same keeper unless the story's
+        // keeper list changed in between
+        if(storyKeepers.empty())
+        {
+            LOG_WARNING("[StoryHandleImpl] No keepers left for durable event of Chronicle: {}, Story: {} after {} "
+                        "attempts",
+                        chronicle,
+                        story,
+                        attempt - 1);
+            break;
+        }
+        auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, event.time());
+        if(nullptr == keeperRecordingClient)
+        {
+            break;
+        }
+
+        int keeper_code = chronolog::CL_ERR_UNKNOWN;
+        auto const attempt_start = std::chrono::steady_clock::now();
+        DurableSendOutcome const outcome =
+                keeperRecordingClient->send_durable_event_msg(chronicle, story, event, options.timeout_ms, keeper_code);
+        switch(outcome)
+        {
+            case DurableSendOutcome::Answered:
+                if(may_be_stored && (chronolog::CL_ERR_DURABILITY_UNAVAILABLE == keeper_code ||
+                                     chronolog::CL_ERR_DURABILITY_FULL == keeper_code))
+                {
+                    keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
+                }
+                // a keeper answers CL_ERR_DURABILITY_UNKNOWN itself when its WAL
+                // failed while writing the event and could not erase it
+                if(chronolog::CL_SUCCESS == keeper_code || chronolog::CL_ERR_DURABILITY_UNKNOWN == keeper_code)
+                {
+                    event_time = event.time();
+                }
+                return keeper_code;
+            case DurableSendOutcome::NotRegistered:
+                // a keeper without the RPC stored nothing and never will, but
+                // an earlier unanswered attempt may have reached a keeper that
+                // stored the event and then died
+                if(!may_be_stored)
+                {
+                    return chronolog::CL_ERR_DURABILITY_UNAVAILABLE;
+                }
+                event_time = event.time();
+                return chronolog::CL_ERR_DURABILITY_UNKNOWN;
+            case DurableSendOutcome::TimedOut:
+            case DurableSendOutcome::TransportError:
+                may_be_stored = true;
+                LOG_WARNING("[StoryHandleImpl] Durable event attempt {} of {} got no answer for Chronicle: {}, Story: "
+                            "{}",
+                            attempt,
+                            options.attempts,
+                            chronicle,
+                            story);
+                break;
+        }
+        // A forward to a dead keeper fails at once over ofi+sockets, so
+        // without a pause every attempt would be spent within milliseconds of
+        // a crash. Each attempt takes timeout_ms, as one that times out does,
+        // so the attempts span the time a restarted keeper needs to come back.
+        if(DurableSendOutcome::TransportError == outcome && attempt < options.attempts)
+        {
+            auto const attempt_end = attempt_start + std::chrono::milliseconds(options.timeout_ms);
+            std::this_thread::sleep_until(attempt_end);
+        }
+    }
+    if(!may_be_stored)
+    {
+        // no attempt was sent: the keeper list emptied or no keeper was
+        // chosen before the first one
+        return chronolog::CL_ERR_NO_KEEPERS;
+    }
+    // the event may be stored; a new log_event call would give it a new
+    // identity, so the caller gets the timestamp to look for it later
+    event_time = event.time();
+    return chronolog::CL_ERR_DURABILITY_UNKNOWN;
 }
 /////////////////////
 
@@ -311,3 +456,7 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
 }
 
 /////////////////
+
+// instantiates every member, including removeRecordingClient, which nothing in
+// the library calls yet; the unit tests do
+template class chronolog::StoryHandleImpl<chronolog::RoundRobinKeeperChoice>;

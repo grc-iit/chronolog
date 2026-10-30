@@ -1,11 +1,15 @@
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
+#include <map>
 #include <mutex>
 #include <stdexcept>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <ArchiveLayout.h>
+#include <FileSync.h>
 #include <HDF5FileAccess.h>
 #include <StoryChunkWriter.h>
 
@@ -46,6 +50,19 @@ void removePartialFile(std::string const& partial_name)
     if(ec)
     {
         LOG_ERROR("[StoryChunkWriter] Could not remove the partial file {}: {}", partial_name, ec.message());
+    }
+}
+
+// A published window whose directory could not be synced: its name may not
+// survive a power loss, so it counts as not written and the keepers send it
+// again.
+void removeWindowFile(std::string const& file_name)
+{
+    std::error_code ec;
+    fs::remove(file_name, ec);
+    if(ec)
+    {
+        LOG_ERROR("[StoryChunkWriter] Could not remove the unsynced window file {}: {}", file_name, ec.message());
     }
 }
 
@@ -180,6 +197,54 @@ bool createStoryDirectory(fs::path const& root_dir, fs::path const& story_dir)
     }
     return true;
 }
+
+// The story directories whose chronicle directory and archive root this process
+// has synced, each with the device and inode the story directory had then, so
+// that one removed and created again gets its parents synced again.
+std::mutex syncedParentsMutex;
+std::map<std::string, std::pair<dev_t, ino_t>> syncedParents;
+
+// Syncs the chronicle directory and the archive root before the first window in
+// a story directory is reported written: either may hold the name of a directory
+// createStoryDirectory made, and without it the story directory and its files
+// are gone after a power loss. Whether this process created them does not
+// matter; another thread or grapher may have created them without the syncs.
+// Returns false if a sync failed; the next window syncs both again.
+bool syncParentDirectories(fs::path const& root_dir, fs::path const& story_dir)
+{
+    std::string const key = story_dir.string();
+    struct stat st
+    {
+    };
+    bool const known = ::stat(key.c_str(), &st) == 0;
+    std::pair<dev_t, ino_t> const id{st.st_dev, st.st_ino};
+    if(known)
+    {
+        std::lock_guard<std::mutex> lock(syncedParentsMutex);
+        auto const synced = syncedParents.find(key);
+        if(synced != syncedParents.end() && synced->second == id)
+        {
+            return true;
+        }
+    }
+    for(fs::path const& parent: {story_dir.parent_path(), root_dir})
+    {
+        if(int const error = fsyncPath(parent.string()); error != 0)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not sync {} after creating {}: {}",
+                      parent.string(),
+                      key,
+                      std::strerror(error));
+            return false;
+        }
+    }
+    if(known)
+    {
+        std::lock_guard<std::mutex> lock(syncedParentsMutex);
+        syncedParents[key] = id;
+    }
+    return true;
+}
 } // namespace
 std::string StoryChunkWriter::writerTag(std::string const& recording_group)
 {
@@ -266,10 +331,38 @@ hsize_t StoryChunkWriter::writeWindow(std::string const& chronicle_name,
         // closed here so that a failed close counts as a failed write
         file->close();
 
+        // The grapher reports the window written once this returns, and the
+        // keepers then drop their copies of its events, so the file and its
+        // name must be on disk first: the file before it gets its name, the
+        // directory after, and for a story's first window the directories
+        // above it. A failed sync is a failed write.
+        if(int const error = fsyncPath(partial_name); error != 0)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not sync {}: {}", partial_name, std::strerror(error));
+            removePartialFile(partial_name);
+            return 0;
+        }
+
         // the window appears under its own name complete or not at all
         if(!publishFile(partial_name, story_dir, base_file_name, file_name))
         {
             removePartialFile(partial_name);
+            return 0;
+        }
+
+        if(int const error = fsyncPath(story_dir.string()); error != 0)
+        {
+            LOG_ERROR("[StoryChunkWriter] Could not sync {} after adding {}: {}",
+                      story_dir.string(),
+                      file_name,
+                      std::strerror(error));
+            removeWindowFile(file_name);
+            return 0;
+        }
+
+        if(!syncParentDirectories(rootDirectory, story_dir))
+        {
+            removeWindowFile(file_name);
             return 0;
         }
 

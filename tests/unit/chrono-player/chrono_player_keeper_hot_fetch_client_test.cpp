@@ -108,10 +108,15 @@ protected:
         auto* chunk = new chl::StoryChunk("chron", "story", kStory, 100, 200);
         chunk->insertEvent(chl::LogEvent(kStory, 150, 1, 0, "event"));
         retentionStore.ingestSealedChunk(kStory, chunk);
-        chl::KeeperRecordingService::CreateKeeperRecordingService(*keeperEngine,
-                                                                  kLiveKeeperProvider,
-                                                                  ingestionQueue,
-                                                                  retentionStore);
+        chl::KeeperRecordingService::CreateKeeperRecordingService(
+                *keeperEngine,
+                kLiveKeeperProvider,
+                ingestionQueue,
+                retentionStore,
+                // a keeper without a WAL; these tests make no
+                // durable writes
+                [](chl::ChronicleName const&, chl::StoryName const&, chl::LogEvent const&)
+                { return chl::CL_ERR_DURABILITY_UNAVAILABLE; });
         hungKeeper = std::make_unique<HungKeeper>(*keeperEngine, kHungKeeperProvider);
     }
 

@@ -9,6 +9,7 @@
 
 #include <json-c/json.h>
 
+#include <cstdint>
 #include <string>
 
 namespace
@@ -82,4 +83,34 @@ TEST(ConfTemplate, TheRetentionWarningIsAboveWhatAHealthyKeeperHolds)
                           knob("chrono_grapher", "watermark_report_interval_secs") +
                           knob("chrono_keeper", "archive_visibility_delay_secs");
     EXPECT_GE(knob("chrono_keeper", "retention_cap_mb"), 3 * held_secs * 10);
+}
+
+TEST(ConfTemplate, TheKeeperWalBlockIsOffAndHasTheDocumentedValues)
+{
+    json_object* keeper = json_object_object_get(conf(), "chrono_keeper");
+    ASSERT_NE(keeper, nullptr);
+    json_object* wal = json_object_object_get(keeper, "WAL");
+    ASSERT_NE(wal, nullptr);
+
+    auto number = [&](char const* key)
+    {
+        json_object* value = json_object_object_get(wal, key);
+        EXPECT_NE(value, nullptr) << key;
+        return value == nullptr ? int64_t(-1) : json_object_get_int64(value);
+    };
+
+    json_object* enabled = json_object_object_get(wal, "enabled");
+    ASSERT_NE(enabled, nullptr);
+    EXPECT_FALSE(json_object_get_boolean(enabled));
+    json_object* dir = json_object_object_get(wal, "dir");
+    ASSERT_NE(dir, nullptr);
+    EXPECT_STREQ(json_object_get_string(dir), "");
+    EXPECT_EQ(number("segment_bytes"), 67108864);
+    EXPECT_EQ(number("max_bytes"), 1073741824);
+    EXPECT_EQ(number("group_commit_max_bytes"), 4194304);
+    EXPECT_EQ(number("group_commit_window_us"), 0);
+    EXPECT_EQ(number("reserve_min_bytes"), 268435456);
+    EXPECT_EQ(number("reserve_percent"), 10);
+    // starts equal to the retention cap, so a durable write is refused no later than the cap's warning
+    EXPECT_EQ(number("durable_cap_mb"), knob("chrono_keeper", "retention_cap_mb"));
 }

@@ -1,6 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <Chronicle.h>
+#include <StoryIdOf.h>
+#include <city.h>
+
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -42,4 +48,23 @@ TEST(ChronicleStoryId, LookupAndRemovalUseTheSameId)
     EXPECT_EQ(Chronicle::storyIdOf("ab", "c"), sid);
     EXPECT_EQ(chronicle.removeStory("ab", "c"), chronolog::CL_SUCCESS);
     EXPECT_FALSE(chronicle.hasStory("c"));
+}
+
+// The keeper recomputes story ids with chronolog::storyIdOf during WAL
+// recovery, so it must give the id the visor assigned.
+TEST(ChronicleStoryId, SharedFunctionMatchesChronicle)
+{
+    std::vector<std::pair<std::string, std::string>> const names =
+            {{"ab", "c"}, {"a", "bc"}, {"", "story"}, {"chronicle", ""}, {"host-01", "cpu_usage"}, {"a:b", "c"}};
+
+    for(auto const& [chronicle_name, story_name]: names)
+    {
+        uint64_t const shared = chronolog::storyIdOf(chronicle_name, story_name);
+        EXPECT_EQ(shared, Chronicle::storyIdOf(chronicle_name, story_name));
+
+        std::string const hashed = std::to_string(chronicle_name.length()) + ":" + chronicle_name + story_name;
+        EXPECT_EQ(shared, CityHash64(hashed.c_str(), hashed.length()));
+    }
+
+    EXPECT_NE(chronolog::storyIdOf("ab", "c"), chronolog::storyIdOf("a", "bc"));
 }
