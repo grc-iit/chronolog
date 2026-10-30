@@ -161,10 +161,11 @@ mv -f "$CONF_TEMPLATE.wal_crash_patched" "$CONF_TEMPLATE"
 
 RUN_DIR=$(mktemp -d /tmp/keeper_wal_crash.XXXXXX)
 restore_conf() { mv -f "$CONF_TEMPLATE.wal_crash_backup" "$CONF_TEMPLATE"; }
-# the WAL goes once the daemons are stopped, and work_dir/wal with it if nothing else is in it
+# the WAL goes once the daemons are stopped, and work_dir/wal with it if
+# nothing else is in it
 remove_wal() {
     rm -rf "$WAL_DIR"
-    rmdir -- "$(dirname "$WAL_DIR")" 2> /dev/null || true
+    rmdir -- "$WORK_DIR/wal" 2> /dev/null || true
 }
 trap 'cleanup; remove_wal; restore_conf; rm -rf "$RUN_DIR"' EXIT
 

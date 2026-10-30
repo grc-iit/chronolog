@@ -63,7 +63,9 @@
 # work_dir/wal/keeper-1 and keeper-2, where deploy_local.sh --wal puts them;
 # the test removes them before each protocol's scenario and again on exit, and
 # removes work_dir/wal too when nothing else is in it. A failed run keeps its
-# files in the directory it prints, with the last scenario's WALs in its wal/.
+# files in the directory it prints. For the last scenario's WALs it keeps, in
+# wal/keeper-<n>/, every file but the segments (exit-summary among them) and
+# segments.txt, an ls -l of the WAL directory; the segments are deleted.
 #
 # Usage: WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 #        ./keeper_restart_held_test.sh
@@ -562,16 +564,25 @@ RUN_ROOT=$(mktemp -d /tmp/keeper_restart_held.XXXXXX)
 restore_conf() { mv -f "$CONF_TEMPLATE.restart_held_backup" "$CONF_TEMPLATE"; }
 finish() {
     cleanup
-    # the keepers' WALs leave work_dir/wal once the daemons are stopped: deleted
-    # after a clean run, moved next to the other files of a failed one
-    if [ $FAIL -eq 0 ]; then
-        rm -rf "$WORK_DIR/wal/keeper-1" "$WORK_DIR/wal/keeper-2"
-    else
-        mkdir -p "$RUN_ROOT/wal"
-        for wal in "$WORK_DIR/wal/keeper-1" "$WORK_DIR/wal/keeper-2"; do
-            [ -e "$wal" ] && command mv -f "$wal" "$RUN_ROOT/wal/"
-        done
-    fi
+    # the keepers' WALs leave work_dir/wal once the daemons are stopped; a failed
+    # run first keeps each one's small files and a listing of its segments
+    # (<n>.wal, and <n>.wal.partial for a spare being prepared), not the
+    # segments themselves, which are 64 MiB each
+    local wal kept f
+    for wal in "$WORK_DIR/wal/keeper-1" "$WORK_DIR/wal/keeper-2"; do
+        [ -d "$wal" ] || continue
+        if [ $FAIL -gt 0 ]; then
+            kept="$RUN_ROOT/wal/$(basename "$wal")"
+            mkdir -p "$kept"
+            for f in "$wal"/*; do
+                [ -f "$f" ] || continue
+                case "$f" in *.wal | *.wal.partial) continue ;; esac
+                command cp -f "$f" "$kept/"
+            done
+            ls -l "$wal" > "$kept/segments.txt" 2>&1
+        fi
+        rm -rf "$wal"
+    done
     rmdir -- "$WORK_DIR/wal" 2> /dev/null || true
     restore_conf
     if [ $FAIL -eq 0 ]; then rm -rf "$RUN_ROOT"; else say "files of the failed run kept in $RUN_ROOT"; fi
