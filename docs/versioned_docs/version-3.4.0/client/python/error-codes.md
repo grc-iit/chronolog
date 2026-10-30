@@ -40,7 +40,7 @@ Only `StoryHandle.log_event(log_string, options)` with `Durability.Durable` retu
 
 | Value | Was the event stored? | What to do |
 |------:|-----------------------|------------|
-| -19 | No | Retrying will not help until an operator acts: the keeper runs with the WAL off, its WAL failed and needs a restart, the keeper is shutting down, or the keeper predates 3.4.0. Returned at once, with no retry. |
+| -19 | No | Retrying will not help until an operator acts: the keeper runs with the WAL off, its WAL failed and needs a restart, the keeper is shutting down (wait until it has been restarted), or the keeper predates 3.4.0. Returned at once, with no retry. |
 | -20 | No | Retry later, with a backoff: the WAL's file system is below its reserve or the keeper holds more than `durable_cap_mb`, usually because ChronoGrapher is behind or down. |
 | -21 | Maybe | The caller decides. Every attempt went unanswered, or an unanswered attempt was followed by -19, -20 or a keeper without the RPC, or the story's keepers left between attempts, or the keeper's WAL failed while writing the event and could not erase it. `event_time` is the event's timestamp: replay the story over a range that includes it, once the keepers have recovered, and look for your record. A new `log_event` call creates a second event with a new identity; put your own identifier in the record if repeats must be dropped. |
 

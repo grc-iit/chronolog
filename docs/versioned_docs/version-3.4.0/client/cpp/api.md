@@ -218,11 +218,11 @@ library's handle sets it to `0`. The default `StoryHandle` implementation, for s
 
 **Retries.** A durable write builds the event once and sends it to the keeper chosen by its
 timestamp, with a deadline of `timeout_ms`. When an attempt gets no answer (a timeout or a transport
-error), the client sends the identical event again, up to `attempts` times, with no other backoff.
-A timed-out attempt has already used its `timeout_ms`; one that failed sooner, such as a forward to
-a dead keeper, waits until `timeout_ms` has passed, so a keeper restarted at the same address can
-answer a later attempt. The retry budget is therefore `attempts × timeout_ms`, 30 s with the
-defaults, and the call can block that long. Every attempt carries the same identity,
+error), the client sends the identical event again, up to `attempts` times, with no backoff besides
+the wait below. A timed-out attempt has already used its `timeout_ms`; one that failed sooner, such
+as a forward to a dead keeper, waits until `timeout_ms` has passed, so a keeper restarted at the
+same address can answer a later attempt. The retry budget is therefore `attempts × timeout_ms`, 30 s
+with the defaults, and the call can block that long. Every attempt carries the same identity,
 `(time, client id, index)`. The keeper choice depends only on the timestamp, so a retry reaches the
 same keeper while the story's keeper list is unchanged, and the keeper answers a retry of an event
 it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart.

@@ -146,12 +146,15 @@ registers with the visor:
    first bad record is a write the crash cut short: it ends the data, and the rest of the segment is
    zeroed. A bad record in any older segment stops startup with the segment and offset; move that
    segment aside to start without it.
-4. It applies `dropped-unlogged`, if the file exists (see [Release](#release)). A line that does not
-   parse stops startup like a bad record in an older segment.
-5. It syncs every segment and the directory, starts writing in a fresh segment, and rebuilds the
-   table of pending events, so a client retry of an event synced before the crash gets `CL_SUCCESS`
-   without a second copy.
-6. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
+4. It syncs every segment and the directory.
+5. It applies `dropped-unlogged`, if the file exists (see [Release](#release)). A line that does not
+   parse, or a read error such as EIO or EACCES, stops startup, after step 4: a torn tail has been
+   zeroed by then, and the next start repeats the recovery. Correct the line, which is two numbers
+   separated by a space, or the file's permissions. Deleting the file instead brings back the events
+   of the stories it names.
+6. It starts writing in a fresh segment and rebuilds the table of pending events, so a client retry
+   of an event synced before the crash gets `CL_SUCCESS` without a second copy.
+7. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
    normal extraction path sends them to the grapher. The grapher usually has no pipeline for those
    stories and adopts the chunks by their chronicle and story names. Its confirmations come back to
    this keeper and release the records.
@@ -175,13 +178,18 @@ clients still hold, so accepted writes after the restart are kept too.
 
 ## Shutdown
 
-A keeper stopped with SIGTERM first stops taking writes: a new durable write gets
-`CL_ERR_DURABILITY_UNAVAILABLE` and a new accepted write `CL_ERR_UNKNOWN`, and neither is stored.
-The recording service and its RPCs stay up, so a durable write already waiting for its sync is still
-synced and answered, and a client that holds a story on this keeper gets that answer. The keeper
-then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its chunks, stops the
-WAL, which syncs and answers everything queued and writes `exit-summary`, and deletes the recording
-service once no write handler has run for 200 ms (waiting at most 10 seconds).
+A keeper stopped with SIGTERM first unregisters from the visor, then stops taking writes: a new
+durable write gets `CL_ERR_DURABILITY_UNAVAILABLE` and a new accepted write `CL_ERR_UNKNOWN`, and
+neither is stored. The recording service and its RPCs stay up, so a durable write already waiting
+for its sync is still synced and answered, and a client that holds a story on this keeper gets that
+answer. The keeper then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its
+chunks, stops the WAL, which syncs and answers everything queued and writes `exit-summary`, and
+deletes the recording service once no write handler has run for 200 ms (waiting at most 10
+seconds).
+
+Deleting the service deregisters all its RPCs, including `tail_get_sequences`. From then on a
+durable write fails as it does against a dead keeper: the client's probe gets no answer, so it
+waits, retries and returns `CL_ERR_DURABILITY_UNKNOWN` (-21). An accepted write still gets -1.
 
 ---
 

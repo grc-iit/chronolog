@@ -76,9 +76,9 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 |---|---:|---|---|
 | `Unit_ChronoCommon_StoryChunk_` | 47 | `chrono_common_story_chunk_test.cpp` | Inserting, merging, erasing and extracting events in a StoryChunk, including window boundaries and duplicates |
 | `Unit_ChronoCommon_StoryPipeline_` | 37 | `chrono_common_story_pipeline_test.cpp` | The story pipeline's timeline: chunk allocation, ingestion, decay, prepend/append, finalize, receipts and incarnation numbers |
-| `Unit_ChronoCommon_ArchiveManifest` | 27 | `chrono_common_archive_manifest_test.cpp` | Manifest records, the writer's appends and the reader's tail, including a log replaced on the same inode |
-| `Unit_ChronoCommon_ChunkWriter`, `Unit_ChronoCommon_ArchiveLayout` | 14 | `chrono_common_story_chunk_writer_test.cpp` | Writing a window through a temporary name into its story directory; name encoding and file names |
-| `Unit_ChronoCommon_ConfTemplate` | 6 | `chrono_common_conf_template_test.cpp` | The shipped configuration template keeps the timing rules between components |
+| `Unit_ChronoCommon_ArchiveManifest` | 34 | `chrono_common_archive_manifest_test.cpp` | Manifest records, the writer's appends and the reader's tail, including a log replaced on the same inode |
+| `Unit_ChronoCommon_ChunkWriter`, `Unit_ChronoCommon_ArchiveLayout`, `Unit_ChronoCommon_FileSync` | 23 | `chrono_common_story_chunk_writer_test.cpp` | Writing a window through a temporary name into its story directory; name encoding and file names |
+| `Unit_ChronoCommon_ConfTemplate` | 7 | `chrono_common_conf_template_test.cpp` | The shipped configuration template keeps the timing rules between components |
 | `Unit_ChronoCommon_DataStoreConf` | 6 | `chrono_common_data_store_conf_test.cpp` | Validation of the DataStoreInternals settings |
 | `Unit_ChronoCommon_ExtractionModule` | 5 | `chrono_common_extraction_module_test.cpp` | The drain loop shared by the keeper and the grapher |
 | `Unit_ChronoCommon_ChunkExtractorCSV` | 2 | `chrono_common_chunk_extractor_csv_test.cpp` | The CSV extractor and empty windows |
@@ -88,8 +88,8 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
-| `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 57 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
-| `Unit_ChronoKeeper_KeeperReleaseDataLoss`, `..._KeeperOrphanAtRetirementDataLoss` | 5 | `chrono_keeper_release_dataloss_test.cpp` | Releasing a story does not lose events still in its pipeline |
+| `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 64 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
+| `Unit_ChronoKeeper_KeeperReleaseDataLoss`, `..._KeeperOrphanAtRetirementDataLoss` | 6 | `chrono_keeper_release_dataloss_test.cpp` | Releasing a story does not lose events still in its pipeline |
 | `Unit_ChronoKeeper_KeeperExtractionChain` | 4 | `chrono_keeper_extraction_chain_test.cpp` | The chain hands extracted chunks to the retention store instead of deleting them |
 | `Unit_ChronoKeeper_KeeperOrphanRecovery` | 3 | `chrono_keeper_orphan_recovery_test.cpp` | Events that arrive for a story with no pipeline are sealed and kept |
 | `Unit_ChronoKeeper_KeeperChunkRetentionCap` | 2 | `chrono_keeper_retention_cap_test.cpp` | The `retention_cap_mb` alarm |
@@ -100,7 +100,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronoGrapher_StoryWatermarkRegistry` | 31 | `story_watermark_registry_test.cpp` | The per-story persisted watermark W and the receipts of delivered keeper chunks |
-| `Unit_ChronoGrapher_HDF5FileChunkExtractorWatermark` | 26 | `hdf5_file_chunk_extractor_test.cpp` | The HDF5 extractor advances W and settles receipts only after a window and its manifest record are written |
+| `Unit_ChronoGrapher_HDF5FileChunkExtractorWatermark` | 27 | `hdf5_file_chunk_extractor_test.cpp` | The HDF5 extractor advances W and settles receipts only after a window and its manifest record are written |
 | `Unit_ChronoGrapher_GrapherConfiguration` | 8 | `grapher_configuration_test.cpp` | A grapher refuses a chain without the HDF5 extractor |
 | `Unit_ChronoGrapher_WatermarkReportTransport` | 7 | `watermark_report_transport_test.cpp` | Watermark reports from the grapher to the keepers over real engines on loopback |
 | `Unit_ChronoGrapher_GrapherDestroy`, `..._ExtractionQueue`, `..._GrapherExtractionChain` | 5 | `grapher_destroy_test.cpp` | A destroy waits for windows still being written |
@@ -127,7 +127,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronoVisor_StoryGroupSelection`, `..._ActiveGroups`, `..._ActiveRecordingGroup` | 12 | `story_group_selection_test.cpp` | A story's recording group comes from its story id, stays the same when it is acquired again, and moves only when the groups change |
-| `Unit_ChronoVisor_ChronicleStoryId` | 2 | `chronicle_story_id_test.cpp` | Name pairs that concatenate alike get different story ids |
+| `Unit_ChronoVisor_ChronicleStoryId` | 3 | `chronicle_story_id_test.cpp` | Name pairs that concatenate alike get different story ids |
 
 ### Client library (`tests/unit/chronolog-client/`)
 

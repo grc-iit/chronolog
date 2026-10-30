@@ -46,7 +46,7 @@ be stored, which decides what the caller does next.
 
 | Code | Was the event stored? | Cause | What to do |
 |------|-----------------------|-------|------------|
-| `CL_ERR_DURABILITY_UNAVAILABLE` (-19) | No | The keeper runs with the WAL off; its WAL hit a write or `fdatasync` error and stays failed until the keeper restarts; the keeper is shutting down; or the keeper is older than 3.4.0 and lacks the durable RPC. | Retrying will not help until an operator acts: turn the WAL on, restart the keeper whose WAL failed (its log has a critical line), or upgrade the keepers. The client returns it at once, with no retry. If losing the event on a keeper crash is acceptable, write it with `Durability::Accepted`; the client never does that by itself. |
+| `CL_ERR_DURABILITY_UNAVAILABLE` (-19) | No | The keeper runs with the WAL off; its WAL hit a write or `fdatasync` error and stays failed until the keeper restarts; the keeper is shutting down; or the keeper is older than 3.4.0 and lacks the durable RPC. | Retrying will not help until an operator acts: turn the WAL on, restart the keeper whose WAL failed (its log has a critical line), wait until a keeper that is shutting down has been restarted, or upgrade the keepers. The client returns it at once, with no retry. If losing the event on a keeper crash is acceptable, write it with `Durability::Accepted`; the client never does that by itself. |
 | `CL_ERR_DURABILITY_FULL` (-20) | No | The free space on the keeper's WAL file system is below the reserve (the larger of `reserve_min_bytes` and `reserve_percent` of the file system), or the keeper holds more than `durable_cap_mb` of chunks in memory. Usually ChronoGrapher is behind or down, so the keeper can release nothing. | Retry later, with a backoff. The keeper samples its free space every 100 ms and admits durable writes again once the space is back above the reserve and the keeper has freed enough chunks to be under `durable_cap_mb`. A chunk the grapher confirmed still counts until the keeper frees it, which can be later while the tail index holds it. |
 | `CL_ERR_DURABILITY_UNKNOWN` (-21) | Maybe | No attempt got an answer within `timeout_ms`, after `attempts` attempts. Also returned when an earlier attempt went unanswered and a later one got -19, -20 or found no durable RPC, and when the story's keeper list became empty between attempts: the unanswered attempt may have reached a keeper that stored the event. And when the keeper answers -21 itself: its WAL failed while writing the event and could not erase the bytes it wrote, so they may be on disk. | The caller decides. A new `log_event` call creates a second event, with a new timestamp and index, so if both are stored a reader sees two events. To make that safe, put an identifier of your own in the record and drop repeats when reading. To find out whether the event was stored, use `event_time`; see below. |
 
@@ -73,10 +73,18 @@ identifier of your own in the record to make the match certain. If a matching re
 the event was stored; do not write it again. If none is there after the keepers have recovered,
 write it again with a new `log_event` call.
 
-A keeper that is shutting down (SIGTERM) takes no new write from the moment it starts: it answers a
-durable write -19 and an accepted write `CL_ERR_UNKNOWN` (-1), and stores nothing. Durable writes it
-had already queued are synced and answered as usual before the keeper exits. If an earlier attempt
-of the same write went unanswered, the writer sees -21 instead of -19, as with any -19.
+### Retries and shutdown
+
+A keeper that is shutting down (SIGTERM) takes no new write once its shutdown starts, after it has
+unregistered from the visor: it answers a durable write -19 and an accepted write `CL_ERR_UNKNOWN`
+(-1), and stores nothing. Durable writes it had already queued are synced and answered as usual. If
+an earlier attempt of the same write went unanswered, the writer sees -21 instead of -19, as with
+any -19.
+
+This lasts until the keeper deletes its recording service, late in the shutdown. That deregisters
+all its RPCs, including the tail read the client uses as a probe, so a durable write is then an
+unanswered attempt as against a dead keeper: the client waits, retries, and returns -21. An
+accepted write still gets -1.
 
 The client reads "RPC not registered" from a keeper as "this keeper lacks the durable RPC" only
 while that keeper has never answered a durable call from this client, and only if the keeper still
