@@ -40,6 +40,9 @@
 # tree), pins the keeper's chunk and acceptance times, shortens the grapher
 # windows so the archive is written quickly, deploys 1 keeper / 1 recording
 # group, runs the scenario, stops the deployment and restores the template.
+# The keeper WAL lives in work_dir/wal/keeper-1, where deploy_local.sh --wal
+# puts it; the test removes it before it deploys and again on exit, and removes
+# work_dir/wal too when nothing else is in it.
 #
 # Usage: WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 #        ./keeper_wal_crash_test.sh
@@ -158,7 +161,13 @@ mv -f "$CONF_TEMPLATE.wal_crash_patched" "$CONF_TEMPLATE"
 
 RUN_DIR=$(mktemp -d /tmp/keeper_wal_crash.XXXXXX)
 restore_conf() { mv -f "$CONF_TEMPLATE.wal_crash_backup" "$CONF_TEMPLATE"; }
-trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
+# the WAL goes once the daemons are stopped, and work_dir/wal with it if
+# nothing else is in it
+remove_wal() {
+    rm -rf "$WAL_DIR"
+    rmdir -- "$WORK_DIR/wal" 2> /dev/null || true
+}
+trap 'cleanup; remove_wal; restore_conf; rm -rf "$RUN_DIR"' EXIT
 
 kill_daemons
 sleep 2
