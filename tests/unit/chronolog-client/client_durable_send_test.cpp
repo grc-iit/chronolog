@@ -80,6 +80,9 @@ public:
         , theEngine(engine)
     {
         define("record_event", &FakeKeeper::record_event);
+        // as every keeper since 3.1; the client asks it to tell a keeper
+        // without record_event_durable from a dead one
+        define("tail_get_sequences", &FakeKeeper::tail_get_sequences);
         if(with_durable_rpc)
         {
             durableRpc = define("record_event_durable", &FakeKeeper::record_event_durable);
@@ -93,6 +96,11 @@ public:
             acceptedEvents.push_back(event);
         }
         request.respond(acceptedCode.load());
+    }
+
+    void tail_get_sequences(tl::request const& request, chl::StoryId const&, uint64_t)
+    {
+        request.respond(std::vector<chl::EventSequence>());
     }
 
     void record_event_durable(tl::request const& request,
@@ -385,8 +393,10 @@ TEST_F(DurableSend, UnregisteredRpcIsUnavailableWithoutRetry)
 }
 
 // A forward to a dead keeper fails with HG_NOENTRY, which is HG_NO_MATCH.
-// Once the keeper has answered record_event_durable that is a transport
-// error, not a missing RPC.
+// That is a transport error, not a missing RPC, both once the keeper has
+// answered record_event_durable and before: a client that never got an
+// answer asks the keeper for an empty tail read, which a dead keeper cannot
+// answer either.
 TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
 {
     chl::ServiceId const keeper_id = serviceIdOf(*keeperEngine);
@@ -403,14 +413,49 @@ TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
     EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
               chl::DurableSendOutcome::TransportError);
 
-    // a client that never got an answer reads the dead keeper as one without
-    // the RPC; the old client goes first, since its destructor deregisters
-    // the RPC names
+    // a client that never got an answer; the old client goes first, since its
+    // destructor deregisters the RPC names
     rawClient.reset();
     rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, keeper_id));
     ASSERT_NE(rawClient, nullptr);
     EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
-              chl::DurableSendOutcome::NotRegistered);
+              chl::DurableSendOutcome::TransportError);
+}
+
+// The first durable write after a keeper crashed, from a client that never
+// had a durable answer from it (it acquired the story, or wrote only accepted
+// events): retried and reported as UNKNOWN, not as UNAVAILABLE, which would
+// tell the caller that only an operator can help.
+TEST_F(DurableSend, FirstDurableWriteToADeadKeeperIsRetried)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+    ASSERT_NE(handle->log_event("accepted"), 0u);
+
+    stopKeeper();
+    uint64_t event_time = 0;
+    EXPECT_EQ(handle->log_event("durable", durable(300, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
+    EXPECT_NE(event_time, 0u);
+}
+
+// An attempt that fails at once (a dead keeper over ofi+sockets) waits out
+// the rest of its timeout_ms before the next, so the attempts span
+// attempts x timeout_ms, the time a restarting keeper has to come back,
+// instead of a few milliseconds.
+TEST_F(DurableSend, FastTransportErrorWaitsOutTheAttempt)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+    uint64_t event_time = 0;
+    ASSERT_EQ(handle->log_event("first", durable(), event_time), chl::CL_SUCCESS);
+
+    stopKeeper();
+    auto const start = std::chrono::steady_clock::now();
+    EXPECT_EQ(handle->log_event("second", durable(500, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
+    auto const elapsed = std::chrono::steady_clock::now() - start;
+    // two waits between three attempts; the last attempt does not wait
+    EXPECT_GE(elapsed, std::chrono::milliseconds(950));
+    EXPECT_LT(elapsed, std::chrono::milliseconds(3000));
 }
 
 // The keeper answers one durable write, then dies. The next call must not

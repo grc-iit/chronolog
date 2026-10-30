@@ -5,6 +5,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -173,7 +174,10 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
         }
 
         int keeper_code = chronolog::CL_ERR_UNKNOWN;
-        switch(keeperRecordingClient->send_durable_event_msg(chronicle, story, event, options.timeout_ms, keeper_code))
+        auto const attempt_start = std::chrono::steady_clock::now();
+        DurableSendOutcome const outcome =
+                keeperRecordingClient->send_durable_event_msg(chronicle, story, event, options.timeout_ms, keeper_code);
+        switch(outcome)
         {
             case DurableSendOutcome::Answered:
                 if(may_be_stored && (chronolog::CL_ERR_DURABILITY_UNAVAILABLE == keeper_code ||
@@ -208,6 +212,15 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_durable_event(LogEvent c
                             chronicle,
                             story);
                 break;
+        }
+        // A forward to a dead keeper fails at once over ofi+sockets, so
+        // without a pause every attempt would be spent within milliseconds of
+        // a crash. Each attempt takes timeout_ms, as one that times out does,
+        // so the attempts span the time a restarted keeper needs to come back.
+        if(DurableSendOutcome::TransportError == outcome && attempt < options.attempts)
+        {
+            auto const attempt_end = attempt_start + std::chrono::milliseconds(options.timeout_ms);
+            std::this_thread::sleep_until(attempt_end);
         }
     }
     if(!may_be_stored)

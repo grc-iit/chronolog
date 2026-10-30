@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <set>
 #include <stdexcept>
 #include <thread>
 
@@ -148,6 +149,26 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
     std::vector<std::pair<StoryId, RecoveredStory const*>> recovered_stories;
     for(auto const& [wal_story_id, story]: recovered.stories)
     {
+        if(!story.has_names)
+        {
+            // Not replayed (no names, no archive to ship to), so nothing would
+            // ever confirm these copies. Pending, they would hold their
+            // segment, and every newer one behind it, for good, until the WAL
+            // hit its reserve and refused every durable write.
+            std::set<uint64_t> segments;
+            for(auto const& [identity, copies]: story.copies)
+            {
+                for(auto const& [copy_segment, bytes]: copies) { segments.insert(copy_segment); }
+            }
+            LOG_ERROR("[KeeperWal] StoryId={} has {} recovered event(s) without names in segment(s) {}..{} of {}; "
+                      "they are not replayed and do not keep their segments",
+                      wal_story_id,
+                      story.events.size(),
+                      segments.empty() ? 0 : *segments.begin(),
+                      segments.empty() ? 0 : *segments.rbegin(),
+                      walDirectory);
+            continue;
+        }
         recovered_stories.emplace_back(id_of ? id_of(story) : wal_story_id, &story);
     }
     std::size_t recovered_events = 0;
@@ -329,8 +350,9 @@ std::optional<int> KeeperWal::lookupDurable(StoryId story_id, EventSequence cons
     return completion->result.wait();
 }
 
-int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& story, LogEvent const& event)
+int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& story, LogEvent const& event, bool& wrote)
 {
+    wrote = false;
     Identity const identity{event.getStoryId(), EventSequence{event.time(), event.getClientId(), event.index()}};
     std::shared_ptr<Completion> completion;
     int status = CL_ERR_DURABILITY_UNAVAILABLE;
@@ -409,6 +431,7 @@ int KeeperWal::appendDurable(ChronicleName const& chronicle, StoryName const& st
         {
             workReady.notify_one();
         }
+        wrote = queued;
     }
 
     // a ULT yields here, so its stream keeps serving other requests
@@ -560,9 +583,11 @@ void KeeperWal::storyDropped(StoryId story_id)
     entry.queued_at = std::chrono::steady_clock::now();
     {
         std::lock_guard<WalMutex> lock(mutex);
-        // a stopped or failed WAL writes nothing; its copies of the story stay
-        // pending, which only keeps their segments longer
-        if(state != State::Running || failed.load())
+        // A stopped WAL takes nothing more. A failed one still takes the
+        // destroy: the committer cannot log it as a D record, so it keeps it
+        // in the unlogged-drops file, or recovery would bring the story's
+        // durable events back (recordUnloggedDrops).
+        if(state != State::Running)
         {
             return;
         }
@@ -617,6 +642,7 @@ void KeeperWal::committerLoop()
 
         if(latched)
         {
+            recordUnloggedDrops(group);
             finishGroup(group, CL_ERR_DURABILITY_UNAVAILABLE, 0, 0);
         }
         else
@@ -743,6 +769,51 @@ int KeeperWal::switchToSpare(uint64_t min_segment_bytes, std::string& what)
     std::lock_guard<WalMutex> lock(mutex);
     counters.segments = segmentFiles.segments().size();
     return 0;
+}
+
+void KeeperWal::recordUnloggedDrops(std::vector<Queued> const& group)
+{
+    std::vector<StoryId> stories;
+    for(Queued const& entry: group)
+    {
+        if(entry.dropped)
+        {
+            stories.push_back(entry.story_id);
+        }
+    }
+    if(stories.empty())
+    {
+        return;
+    }
+    // The latch stops every write, so the story's events are all in segments
+    // up to the active one, and a story created again after a restart has
+    // its events in newer segments only.
+    std::vector<UnloggedDrop> drops;
+    int err = readUnloggedDrops(*sink, drops);
+    if(err == 0)
+    {
+        for(StoryId story_id: stories) { drops.push_back(UnloggedDrop{story_id, activeSegment}); }
+        err = writeUnloggedDrops(*sink, drops);
+    }
+    if(err != 0)
+    {
+        LOG_ERROR("[KeeperWal] Could not record {} destroyed story(s) in {}/{} after the WAL failed: {}. A keeper "
+                  "started on this directory replays their durable events",
+                  stories.size(),
+                  walDirectory,
+                  kUnloggedDropsFile,
+                  std::strerror(err));
+    }
+    else
+    {
+        LOG_WARNING("[KeeperWal] Recorded {} destroyed story(s) in {}/{}: the failed WAL cannot log them as D "
+                    "records",
+                    stories.size(),
+                    walDirectory,
+                    kUnloggedDropsFile);
+    }
+    // destroyed either way: nothing will confirm their copies now
+    for(StoryId story_id: stories) { dropStoryCopies(story_id); }
 }
 
 void KeeperWal::finishGroup(std::vector<Queued>& group, int status, uint64_t segment, uint64_t bytes)

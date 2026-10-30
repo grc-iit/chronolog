@@ -1,6 +1,7 @@
 #ifndef KEEPER_RECORDING_CLIENT_H
 #define KEEPER_RECORDING_CLIENT_H
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -73,12 +74,15 @@ public:
 
     // One attempt of a durable write: record_event_durable with a deadline of
     // timeout_ms. A keeper that lacks the RPC answers the forward with
-    // HG_NO_MATCH, which thallium raises as a margo_exception; only that maps
-    // to NotRegistered, so the caller does not retry a call that cannot work.
+    // HG_NO_MATCH, which thallium raises as a margo_exception; that maps to
+    // NotRegistered, so the caller does not retry a call that cannot work.
     // HG_NO_MATCH is HG_NOENTRY, which a forward to a dead keeper also gets
     // over ofi+sockets. Once this keeper has answered record_event_durable, it
-    // defines the RPC, so HG_NO_MATCH from it is a TransportError: the caller
-    // retries and may reach the keeper restarted at the same address.
+    // defines the RPC, so HG_NO_MATCH from it is a TransportError. Before
+    // that, keeperIsAlive tells the two apart: a keeper that answers
+    // tail_get_sequences, which v3.3.0 keepers also define, is up and lacks
+    // the RPC; one that does not is down, and the caller retries and may reach
+    // it restarted at the same address.
     DurableSendOutcome send_durable_event_msg(ChronicleName const& chronicle,
                                               StoryName const& story,
                                               LogEvent const& eventMsg,
@@ -101,7 +105,7 @@ public:
         }
         catch(tl::margo_exception const& ex)
         {
-            if(ex.error() == HG_NO_MATCH && !answeredDurable)
+            if(ex.error() == HG_NO_MATCH && !answeredDurable && keeperIsAlive(timeout_ms))
             {
                 LOG_ERROR("[KeeperRecordingClient] Keeper {} does not define record_event_durable",
                           to_string(recordingServiceId));
@@ -118,6 +122,29 @@ public:
                       ex.what());
         }
         return DurableSendOutcome::TransportError;
+    }
+
+    // Whether the keeper answers an RPC that every keeper since 3.1 defines: a
+    // tail read of no events of no story, which changes nothing there. Waits
+    // at most timeout_ms, and no more than kTailReadRpcTimeoutMs.
+    bool keeperIsAlive(uint32_t timeout_ms)
+    {
+        auto const deadline =
+                std::chrono::milliseconds(std::min<uint32_t>(timeout_ms, static_cast<uint32_t>(kTailReadRpcTimeoutMs)));
+        try
+        {
+            std::vector<EventSequence> const none =
+                    tail_get_sequences.on(service_ph).timed(deadline, StoryId(0), uint64_t(0));
+            (void)none;
+            return true;
+        }
+        catch(tl::exception const& ex)
+        {
+            LOG_WARNING("[KeeperRecordingClient] Keeper {} does not answer: {}",
+                        to_string(recordingServiceId),
+                        ex.what());
+        }
+        return false;
     }
 
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }

@@ -107,11 +107,19 @@ int chronolog::KeeperDurableWriter::write(ChronicleName const& chronicle, StoryN
         }
     }
 
-    int const status = theLog->appendDurable(chronicle, story, event);
+    // The lookup above can miss an attempt with this identity that is still
+    // on its way to the WAL (held past the client's deadline before it got
+    // there); appendDurable then joins it. That attempt ingests the event, so
+    // this one must not: copies in two chunks would be shipped twice.
+    bool wrote = false;
+    int const status = theLog->appendDurable(chronicle, story, event, wrote);
     if(status != chl::CL_SUCCESS)
     {
         return status;
     }
-    theIngestionQueue.ingestLogEvent(event);
+    if(wrote)
+    {
+        theIngestionQueue.ingestLogEvent(event);
+    }
     return chl::CL_SUCCESS;
 }

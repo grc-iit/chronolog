@@ -130,7 +130,7 @@ public:
         return admitAnswer;
     }
 
-    bool isDurable(chl::StoryId story_id, chl::EventSequence const& identity) const override
+    bool isDurable(chl::StoryId story_id, chl::EventSequence const& identity) const
     {
         return durable.count({story_id, identity}) != 0;
     }
@@ -149,8 +149,10 @@ public:
         return std::nullopt;
     }
 
-    int
-    appendDurable(chl::ChronicleName const& chronicle, chl::StoryName const& story, chl::LogEvent const& event) override
+    int appendDurable(chl::ChronicleName const& chronicle,
+                      chl::StoryName const& story,
+                      chl::LogEvent const& event,
+                      bool& wrote) override
     {
         calls.push_back("append");
         appended.push_back({chronicle, story});
@@ -162,6 +164,7 @@ public:
         {
             durable.insert({event.getStoryId(), identityOf(event)});
         }
+        wrote = appendWrote;
         return appendAnswer;
     }
 
@@ -170,6 +173,8 @@ public:
     // earlier attempt the request waited for
     std::optional<int> lookupAnswer;
     int appendAnswer = chl::CL_SUCCESS;
+    // false: the append joined an earlier attempt with the same identity
+    bool appendWrote = true;
     std::function<void()> onAppend;
 
     std::set<std::pair<chl::StoryId, chl::EventSequence>> durable;
@@ -537,6 +542,86 @@ TEST(KeeperDurableWriter, RecordEventDurableAnswersWithTheWalOff)
     client_engine.finalize();
     // deletes the recording service before the writer and the stores it uses
     keeper_engine.finalize();
+}
+
+// Shutdown: after stopAcceptingWrites a new durable write is answered
+// UNAVAILABLE with nothing stored, but a durable handler already waiting
+// (here on a write the test holds, as on an fdatasync) runs on and sends its
+// answer, and waitForWriteHandlers reports it until it has returned. The
+// keeper deletes the service only after that, instead of under the waiting
+// handler; once deleted, its RPCs are gone and a write fails cleanly.
+TEST(KeeperDurableWriter, StopAcceptingWritesLetsRunningHandlersFinish)
+{
+    ensureLogger();
+    constexpr uint16_t kProvider = 32;
+    Keeper keeper;
+    tl::engine keeper_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+    tl::engine client_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+    tl::eventual<int> release;
+    tl::eventual<void> entered;
+    chl::KeeperRecordingService* service = chl::KeeperRecordingService::CreateKeeperRecordingService(
+            keeper_engine,
+            kProvider,
+            keeper.ingestion_queue,
+            keeper.retention_store,
+            [&](chl::ChronicleName const&, chl::StoryName const&, chl::LogEvent const&)
+            {
+                entered.set_value();
+                return release.wait();
+            });
+
+    {
+        tl::remote_procedure record_event_durable = client_engine.define("record_event_durable");
+        tl::provider_handle keeper_handle(client_engine.lookup(keeper_engine.self()), kProvider);
+        chl::ChronicleName const chronicle = "chron";
+        chl::StoryName const story = "story";
+        tl::async_response held = record_event_durable.on(keeper_handle).async(chronicle, story, makeEvent(0));
+        entered.wait();
+
+        service->stopAcceptingWrites();
+        int const refused =
+                record_event_durable.on(keeper_handle).timed(std::chrono::seconds(5), chronicle, story, makeEvent(1));
+        EXPECT_EQ(refused, chl::CL_ERR_DURABILITY_UNAVAILABLE);
+        EXPECT_FALSE(service->waitForWriteHandlers(std::chrono::milliseconds(50), std::chrono::milliseconds(300)));
+
+        release.set_value(chl::CL_SUCCESS);
+        int const answer = held.wait();
+        EXPECT_EQ(answer, chl::CL_SUCCESS);
+        EXPECT_TRUE(service->waitForWriteHandlers(std::chrono::milliseconds(50), std::chrono::seconds(5)));
+
+        delete service;
+        EXPECT_THROW(
+                {
+                    int const gone = record_event_durable.on(keeper_handle)
+                                             .timed(std::chrono::seconds(5), chronicle, story, makeEvent(2));
+                    (void)gone;
+                },
+                tl::exception);
+    }
+
+    client_engine.finalize();
+    keeper_engine.finalize();
+}
+
+// The first attempt is held before it reaches the WAL, so the retry's lookup
+// finds nothing; the retry's append then joins the first attempt and both
+// succeed. Only the attempt that wrote the record ingests the event: two
+// copies in two chunks would be shipped twice.
+TEST(KeeperDurableWriter, AppendThatJoinedAnEarlierAttemptIsNotIngested)
+{
+    ensureLogger();
+    Keeper keeper;
+    FakeDurableLog wal;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
+
+    chl::LogEvent const event = makeEvent(0);
+    ASSERT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
+    EXPECT_EQ(keeper.ingested(kStory), 1u);
+
+    wal.durable.clear(); // the retry's lookup misses the first attempt
+    wal.appendWrote = false;
+    ASSERT_EQ(writer.write("chron", "story", event), chl::CL_SUCCESS);
+    EXPECT_EQ(keeper.ingested(kStory), 1u);
 }
 
 TEST(KeeperDurableWriter, IngestHappensAfterAppendReturns)

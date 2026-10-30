@@ -1,4 +1,6 @@
 #include <atomic>
+#include <chrono>
+#include <future>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -648,6 +650,52 @@ TEST_F(ArchiveManifestSync, AppendSyncsTheLogAfterWritingTheRecord)
     EXPECT_EQ(syncs, (std::vector<std::string>{"log"}));
     ASSERT_EQ(syncedLogSizes.size(), 1u);
     EXPECT_EQ(syncedLogSizes[0], fs::file_size(writer.logPath()));
+}
+
+// the next sync of a log file waits until releaseHeldLogSync is set
+std::atomic<bool> holdNextLogSync{false};
+std::atomic<bool> logSyncHeld{false};
+std::atomic<bool> releaseHeldLogSync{false};
+
+int holdingFsync(int fd)
+{
+    struct stat st = {};
+    if(::fstat(fd, &st) == 0 && !S_ISDIR(st.st_mode) && holdNextLogSync.exchange(false))
+    {
+        logSyncHeld = true;
+        while(!releaseHeldLogSync) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+    }
+    return ::fsync(fd);
+}
+
+// One append's sync does not hold up another's: the second stream's record
+// is written and synced while the first one's sync is still running. With
+// the sync under the writer's mutex, every grapher stream waited for the one
+// before it (an NFS COMMIT each).
+TEST_F(ArchiveManifestSync, AnAppendIsNotHeldUpByAnotherAppendsSync)
+{
+    chl::setArchiveFsyncForTest(&holdingFsync);
+    chl::ArchiveManifestWriter writer(root.string(), "1");
+    ASSERT_EQ(writer.open(), chl::CL_SUCCESS);
+    auto const size_before = fs::file_size(writer.logPath());
+
+    holdNextLogSync = true;
+    logSyncHeld = false;
+    releaseHeldLogSync = false;
+    std::atomic<int> first{1};
+    std::thread first_stream([&]() { first = writer.append(publication("c", "s", "a.h5", 0, 10)); });
+    while(!logSyncHeld) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+
+    auto second = std::async(std::launch::async, [&]() { return writer.append(publication("c", "t", "b.h5", 0, 10)); });
+    bool const second_finished = second.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+    releaseHeldLogSync = true;
+    first_stream.join();
+
+    EXPECT_TRUE(second_finished) << "the second append waited for the first one's sync";
+    EXPECT_EQ(second.get(), chl::CL_SUCCESS);
+    EXPECT_EQ(first.load(), chl::CL_SUCCESS);
+    EXPECT_GT(fs::file_size(writer.logPath()), size_before);
+    EXPECT_FALSE(writer.failed());
 }
 
 TEST_F(ArchiveManifestSync, AppendSyncFailureLatches)

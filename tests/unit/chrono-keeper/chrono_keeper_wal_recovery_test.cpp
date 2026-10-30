@@ -979,6 +979,59 @@ TEST_F(WalRecoveryTest, DroppedStoryWithNothingAfterIsNotReturned)
     expectConsistent();
 }
 
+// A destroy that a failed WAL could not log as a D record, kept in the
+// unlogged-drops file: the story's events in segments up to the one named
+// are not returned, and events of the story created again in a newer segment
+// are. Another story is untouched.
+TEST_F(WalRecoveryTest, UnloggedDropRemovesTheStoryUpToItsSegment)
+{
+    chl::LogEvent const before = eventOf(kStory, 100);
+    chl::LogEvent const after = eventOf(kStory, 300);
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(before);
+    one.names(kOther, "chronicle", "other");
+    one.event(eventOf(kOther, 100));
+    Segment two(2);
+    two.names(kStory, "chronicle", "story");
+    two.event(after);
+    write(one);
+    write(two);
+    writeFile(chl::kUnloggedDropsFile, std::to_string(kStory) + " 1\n");
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(after)}));
+    EXPECT_EQ(state.stories.count(kOther), 1u);
+    // segment 1 is still there, so the entry stays
+    EXPECT_EQ(readFile(chl::kUnloggedDropsFile), std::to_string(kStory) + " 1\n");
+    expectConsistent();
+}
+
+// Once every segment an entry covers is gone, recovery removes the entry.
+TEST_F(WalRecoveryTest, UnloggedDropWhoseSegmentsAreGoneIsPruned)
+{
+    Segment three(3);
+    three.names(kStory, "chronicle", "story");
+    three.event(eventOf(kStory, 100));
+    write(three);
+    writeFile(chl::kUnloggedDropsFile, std::to_string(kStory) + " 2\n");
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory).size(), 1u);
+    EXPECT_FALSE(fs::exists(fs::path(dir) / chl::kUnloggedDropsFile));
+}
+
+TEST_F(WalRecoveryTest, UnloggedDropsFileThatDoesNotParseRefuses)
+{
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(eventOf(kStory, 100));
+    write(one);
+    writeFile(chl::kUnloggedDropsFile, "not a drop\n");
+    EXPECT_EQ(recover(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find(chl::kUnloggedDropsFile), std::string::npos) << error;
+}
+
 TEST_F(WalRecoveryTest, StoryWithoutNamesIsKept)
 {
     chl::LogEvent const a = eventOf(kStory, 100);

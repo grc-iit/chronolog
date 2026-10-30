@@ -675,8 +675,10 @@ int main(int argc, char** argv)
 
     /// Stop services and shut down ____________________________________________________________________________________
     LOG_INFO("[ChronoKeeperInstance] Initiating shutdown procedures.");
-    // Stop recording events
-    delete keeperRecordingService;
+    // Stop recording events. The service object stays: a durable handler may
+    // still be waiting for its group's fdatasync and returns into it. It is
+    // deleted once the WAL has answered every waiter, after stop_wal below.
+    keeperRecordingService->stopAcceptingWrites();
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
     // Data collection has finished, so nothing new will seal. Before extraction
@@ -713,6 +715,15 @@ int main(int argc, char** argv)
     // answer what is queued, and leave the exit summary with the events the
     // grapher did not confirm. A keeper started on the directory replays them.
     stop_wal();
+    // Every durable handler has its answer now; let them, and any write that
+    // arrived just before stopAcceptingWrites, return before the service and
+    // its RPCs go.
+    if(!keeperRecordingService->waitForWriteHandlers(std::chrono::milliseconds(200), std::chrono::seconds(10)))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] Write handlers still running 10 s after the WAL stopped; deleting the "
+                    "recording service anyway");
+    }
+    delete keeperRecordingService;
     // Shutdown extraction module
     // drain extractionQueue and stop extraction xStreams
     theExtractionModule.shutdownExtraction();

@@ -418,7 +418,7 @@ int chl::ArchiveManifestWriter::append(ArchiveManifestRecord const& record)
         return CL_ERR_INVALID_ARG;
     }
     std::string line = toManifestLine(record) + "\n";
-    std::lock_guard<std::mutex> lock(theMutex);
+    std::unique_lock<std::mutex> lock(theMutex);
     if(theFailed.load())
     {
         LOG_ERROR("[ArchiveManifest] Not appending to {}: a sync failed earlier (see the critical error above)",
@@ -459,26 +459,43 @@ int chl::ArchiveManifestWriter::append(ArchiveManifestRecord const& record)
     }
     bool const written = writeAll(fd, line);
     int const write_errno = errno;
-    // the record must be on disk before the window is reported written
+    // a failed write may leave part of the line: the next record starts on a
+    // line of its own
+    theLogNeedsNewline = !written;
+    // The record must be on disk before the window is reported written, but
+    // the sync runs without the lock, so other extraction streams append
+    // their records meanwhile instead of each waiting for the one before to
+    // sync (an NFS COMMIT round trip). An fsync of this descriptor covers its
+    // own write, and any made before it.
+    lock.unlock();
     int const sync_error = written ? syncFile(fd) : 0;
     // close is where NFS sends what it buffered, and where it reports a failure
     bool const closed = ::close(fd) == 0;
+    int const close_errno = errno;
     if(sync_error != 0)
     {
         return latch(theLogPath, sync_error);
     }
     if(!written || !closed)
     {
-        // some of the line may be on disk
-        theLogNeedsNewline = true;
+        if(!closed)
+        {
+            // some of the line may be on disk
+            std::lock_guard<std::mutex> relock(theMutex);
+            theLogNeedsNewline = true;
+        }
         LOG_ERROR("[ArchiveManifest] Could not append to {}: {}",
                   theLogPath,
-                  std::strerror(written ? errno : write_errno));
+                  std::strerror(written ? close_errno : write_errno));
         return CL_ERR_UNKNOWN;
     }
-    theLogNeedsNewline = false;
-    // a log created again (or emptied) gets its name synced as at open
-    return created ? syncDirectories() : CL_SUCCESS;
+    if(created)
+    {
+        // a log created again (or emptied) gets its name synced as at open
+        std::lock_guard<std::mutex> relock(theMutex);
+        return syncDirectories();
+    }
+    return CL_SUCCESS;
 }
 
 chl::ArchiveManifestTail::ArchiveManifestTail(std::string const& log_path)
