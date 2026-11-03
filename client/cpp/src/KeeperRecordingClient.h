@@ -44,24 +44,79 @@ public:
         return nullptr;
     }
 
-    int send_event_msg(LogEvent const& eventMsg)
+    // Installed before calls by private tests; owned continuations retain the
+    // observers. They do not replace the native call or its lifetime owner.
+    struct AppendObservers
     {
-        try
+        std::function<void()> beforeLookup, afterLookup, beforeDispatch, afterNative;
+    };
+    class AppendRequest
+    {
+    public:
+        AppendRequest(tl::engine& engine,
+                      ServiceId route,
+                      std::shared_ptr<ClientRpcProcedures> procedures,
+                      std::shared_ptr<AppendObservers const> observers)
+            : engine_(engine)
+            , route_(std::move(route))
+            , procedures_(std::move(procedures))
+            , observers_(std::move(observers))
+        {}
+        rpc::RpcResult<int> send_event_msg(rpc::OperationContext& operation, LogEvent const& event, uint64_t attemptMs)
         {
-            //std::stringstream ss;
-            //ss << eventMsg;
-            //LOG_TRACE("[KeeperRecordingClient] Sending event message: {}", ss.str());
-            int return_code = record_event.on(service_ph)(eventMsg);
-            //LOG_TRACE("[KeeperRecordingClient] Sent event message: {} with return code: {}", ss.str(), return_code);
-            return return_code;
+            try
+            {
+                if(observers_ && observers_->beforeLookup)
+                    observers_->beforeLookup();
+                if(operation.deadline().expired())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                std::string address;
+                route_.get_service_as_string(address);
+                endpoint_.emplace(engine_.lookup(address));
+                if(observers_ && observers_->afterLookup)
+                    observers_->afterLookup();
+                peer_.emplace(*endpoint_, route_.getProviderId());
+                call_.emplace(procedures_->calls[ClientRpcProcedures::RecordEvent].on(*peer_));
+                if(observers_ && observers_->beforeDispatch)
+                    observers_->beforeDispatch();
+                auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(attemptMs));
+                if(!timeout || !operation.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                rpc::RpcResult<int> result{CL_ERR_OUTCOME_UNCONFIRMED, true, std::nullopt};
+                try
+                {
+                    result.reply = call_->timed(*timeout, event);
+                    result.status = CL_SUCCESS;
+                }
+                catch(...)
+                {}
+                // A timeout still has no settlement proof. Runtime retains this
+                // request, payload, procedure and actual owner in that case.
+                if(observers_ && observers_->afterNative)
+                    observers_->afterNative();
+                return result;
+            }
+            catch(...)
+            {
+                return {operation.deadline().expired() ? CL_ERR_DEADLINE_EXCEEDED : CL_ERR_UNKNOWN,
+                        false,
+                        std::nullopt};
+            }
         }
-        catch(thallium::exception const& ex)
-        {
-            LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {} exception: {}",
-                      to_string(recordingServiceId),
-                      ex.what());
-        }
-        return (chronolog::CL_ERR_UNKNOWN);
+
+    private:
+        tl::engine& engine_;
+        ServiceId route_;
+        std::shared_ptr<ClientRpcProcedures> procedures_;
+        std::shared_ptr<AppendObservers const> observers_;
+        std::optional<tl::endpoint> endpoint_;
+        std::optional<tl::provider_handle> peer_;
+        using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
+        std::optional<Call> call_;
+    };
+    std::unique_ptr<AppendRequest> prepareAppend()
+    {
+        return std::make_unique<AppendRequest>(engine_, recordingServiceId, procedures_, appendObservers_);
     }
 
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
@@ -97,10 +152,12 @@ public:
     ~KeeperRecordingClient() = default;
 
 private:
+    friend struct KeeperRecordingClientTestAccess;
+    tl::engine& engine_;
+    std::shared_ptr<AppendObservers const> appendObservers_;
     std::shared_ptr<ClientRpcProcedures> procedures_;
     ServiceId recordingServiceId;
     tl::provider_handle service_ph; //provider_handle for remote registry service
-    tl::remote_procedure record_event;
     tl::remote_procedure tail_get_sequences;
     tl::remote_procedure tail_get_events;
 
@@ -108,7 +165,8 @@ private:
     KeeperRecordingClient(tl::engine& tl_engine,
                           ServiceId const& keeper_service_id,
                           std::shared_ptr<ClientRpcProcedures> procedures)
-        : procedures_(std::move(procedures))
+        : engine_(tl_engine)
+        , procedures_(std::move(procedures))
         , recordingServiceId(keeper_service_id)
     {
         LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_service_id));
@@ -117,7 +175,6 @@ private:
 
         service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
 
-        record_event = procedures_->calls[ClientRpcProcedures::RecordEvent];
         tail_get_sequences = procedures_->calls[ClientRpcProcedures::TailSequences];
         tail_get_events = procedures_->calls[ClientRpcProcedures::TailEvents];
     }

@@ -111,19 +111,33 @@ int main(int argc, char** argv)
                 [state, mid, i](thallium::request const& req, LogEvent const& event)
                 {
                     ++state->records;
+                    if(auto delay = state->recordDelayMs.load())
+                        margo_thread_sleep(mid, delay);
                     while(state->blockRecords.load()) margo_thread_sleep(mid, 1);
+                    int status = state->recordStatus.load();
+                    if(status != 0)
+                    {
+                        req.respond(status);
+                        return;
+                    }
+                    while(state->eventWriter.test_and_set(std::memory_order_acquire)) margo_thread_sleep(mid, 1);
                     unsigned index = state->eventCount.load();
                     if(index < 16)
                     {
                         auto& saved = state->events[index];
                         saved.time = event.time();
                         saved.storyId = event.storyId;
+                        saved.clientId = event.clientId;
+                        saved.size = event.logRecord.size();
+                        saved.last = event.logRecord.empty() ? 0 : event.logRecord.back();
                         saved.eventIndex = event.eventIndex;
                         saved.route = i;
                         std::strncpy(saved.record, event.logRecord.c_str(), sizeof(saved.record) - 1);
                         state->eventCount.store(index + 1, std::memory_order_release);
                     }
-                    req.respond(CL_SUCCESS);
+                    state->eventWriter.clear(std::memory_order_release);
+                    if(!state->dropRecordReply.load())
+                        req.respond(0);
                 },
                 clock ? 52 : 74));
     }

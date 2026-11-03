@@ -100,3 +100,7 @@ target_link_libraries(client_native_peer PRIVATE chronolog_client thallium)
 target_include_directories(chronolog_timer_test PRIVATE ${CMAKE_SOURCE_DIR}/tests/support)
 target_compile_definitions(chronolog_timer_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
 add_dependencies(chronolog_timer_test client_native_peer)
+
+add_executable(append_deadline_test append_deadline_test.cpp)
+target_link_libraries(append_deadline_test PRIVATE GTest::gtest_main chronolog_client)
+gtest_discover_tests(append_deadline_test TEST_PREFIX "Unit_ChronologClient_")

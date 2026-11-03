@@ -142,6 +142,7 @@ public:
     virtual ~StoryHandleImpl();
 
     virtual uint64_t log_event(std::string const&) override;
+    virtual AppendResult append_event(std::string const&) override;
 
     virtual int playback(size_t n, std::vector<Event>& events) override;
 
@@ -188,6 +189,14 @@ public:
     void removeRecordingClient(ServiceId const&);
 
 private:
+    friend struct StoryHandleTestAccess;
+    class AppendWork;
+    AppendResult append(std::string const&,
+                        rpc::RpcDeadline const&,
+                        RpcPolicyContext::Snapshot,
+                        EntryLease,
+                        std::shared_ptr<ClientRpcContext>);
+    AppendResult appendFromEntry(std::string const&, rpc::RpcDeadline::Clock::time_point);
     StorytellerClient& theClient;
     std::weak_ptr<ClientRpcContext> context_;
     bool retainedContext_;

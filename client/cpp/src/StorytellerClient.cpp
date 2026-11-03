@@ -58,58 +58,132 @@ void chronolog::StoryHandleImpl<KeeperChoicePolicy>::removeRecordingClient(
     }
 }
 
-//////////////////
 template <class KeeperChoicePolicy>
-uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& event_record)
+class chronolog::StoryHandleImpl<KeeperChoicePolicy>::AppendWork final: public rpc::OwnedRpcWork<int>
 {
-    using Clock = std::chrono::steady_clock;
-    auto started = Clock::now();
+public:
+    AppendWork(std::shared_ptr<ClientRpcContext> owner,
+               EntryLease entry,
+               RpcPolicyContext::Snapshot policy,
+               std::unique_ptr<KeeperRecordingClient::AppendRequest> request,
+               StoryId story,
+               uint64_t timestamp,
+               ClientId client,
+               chrono_index index,
+               std::string const& record)
+        : owner_(std::move(owner))
+        , entry_(std::move(entry))
+        , policy_(std::move(policy))
+        , request_(std::move(request))
+        , event_(story, timestamp, client, index, record)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
+    {
+        return request_->send_event_msg(operation, event_, policy_.policy().attempt_ms);
+    }
+
+private:
+    std::shared_ptr<ClientRpcContext> owner_;
+    EntryLease entry_;
+    RpcPolicyContext::Snapshot policy_;
+    std::unique_ptr<KeeperRecordingClient::AppendRequest> request_;
+    LogEvent event_;
+};
+
+template <class KeeperChoicePolicy>
+uint64_t chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& record)
+{
+    auto result = appendFromEntry(record, rpc::RpcDeadline::Clock::now());
+    return result.outcome == AppendOutcome::Acknowledged ? result.timestamp : 0;
+}
+
+template <class KeeperChoicePolicy>
+chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append_event(std::string const& record)
+{
+    return appendFromEntry(record, rpc::RpcDeadline::Clock::now());
+}
+
+template <class KeeperChoicePolicy>
+chronolog::AppendResult
+chronolog::StoryHandleImpl<KeeperChoicePolicy>::appendFromEntry(std::string const& record,
+                                                                rpc::RpcDeadline::Clock::time_point started)
+{
     auto entry = tryEnter();
     if(!entry)
-        return 0;
-    auto context = context_.lock();
-    auto nativeLease = context ? context->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
-    if(retainedContext_ && !nativeLease)
-        return 0;
-    if(nativeLease)
-        entry->retainNative(std::move(*nativeLease));
-    // Timer assignment consumes the append budget from this entry. B05 owns
-    // bounding the legacy network send, which is still synchronous here.
+        return {CL_ERR_NOT_ACQUIRED, AppendOutcome::NotSubmitted, 0, 0};
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    entry->retainNative(std::move(*native));
     auto policy = theClient.acquirePolicy();
     if(!policy)
-        return 0;
-    auto budget = std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(policy->policy().append_ms));
-    // Temporary checked absolute addition until B05 uses the shared deadline.
-    auto deadline = started > Clock::time_point::max() - budget ? Clock::time_point::max() : started + budget;
-    auto timestamp = theClient.getTimestamp(deadline);
-    if(timestamp.status != chronolog::CL_SUCCESS)
-        return 0;
-
-    chronolog::LogEvent log_event(storyId,
-                                  timestamp.timestamp,
-                                  theClient.getClientId(),
-                                  theClient.get_event_index(),
-                                  event_record);
-
-    if(Clock::now() >= deadline)
-        return 0;
-    auto keeperRecordingClient = keeperChoicePolicy->chooseKeeper(storyKeepers, log_event.time());
-    if(nullptr == keeperRecordingClient) //very unlikely...
-    {
-        LOG_WARNING("[StoryHandleImpl] No keeper selected for logging event: {}", event_record);
-        return 0;
-    }
-
-    if(chronolog::CL_SUCCESS == keeperRecordingClient->send_event_msg(log_event))
-    {
-        return log_event.eventTime;
-    }
-    else
-    {
-        return 0;
-    }
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(policy->policy().append_ms));
+    return append(record, deadline, std::move(*policy), std::move(*entry), std::move(owner));
 }
-/////////////////////
+
+template <class KeeperChoicePolicy>
+chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append(std::string const& record,
+                                                                               rpc::RpcDeadline const& deadline,
+                                                                               RpcPolicyContext::Snapshot policy,
+                                                                               EntryLease entry,
+                                                                               std::shared_ptr<ClientRpcContext> owner)
+{
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return {CL_ERR_RPC_CAPACITY, AppendOutcome::NotSubmitted, 0, 0};
+    auto timestamp = theClient.getTimestamp(deadline.expiresAt());
+    if(timestamp.status != CL_SUCCESS)
+        return {timestamp.status, AppendOutcome::NotSubmitted, 0, 0};
+    auto index = theClient.get_event_index();
+    AppendResult result{CL_ERR_DEADLINE_EXCEEDED, AppendOutcome::NotSubmitted, timestamp.timestamp, index};
+    if(deadline.expired())
+        return result;
+    // Clock failure/contending assignment needs no owned RPC context. Reserve
+    // only after stamping, before allocating the owned descriptor or payload.
+    auto reservation = runtime->reserve(deadline);
+    if(!reservation)
+    {
+        result.status = reservation.status();
+        return result;
+    }
+    if(storyKeepers.empty())
+    {
+        result.status = CL_ERR_NO_KEEPERS;
+        return result;
+    }
+    auto keeper = keeperChoicePolicy->chooseKeeper(storyKeepers, timestamp.timestamp);
+    if(!keeper)
+    {
+        result.status = CL_ERR_NO_KEEPERS;
+        return result;
+    }
+    // Reserve before copying the payload or acquiring native-bearing descriptors.
+    // Reserved submission transfers all ownership even when expiry/close wins.
+    auto work = std::make_shared<AppendWork>(owner,
+                                             std::move(entry),
+                                             std::move(policy),
+                                             keeper->prepareAppend(),
+                                             storyId,
+                                             timestamp.timestamp,
+                                             theClient.getClientId(),
+                                             index,
+                                             record);
+    auto reply = runtime->invoke<int>(std::move(reservation), std::move(work));
+    result.status = reply.status;
+    if(reply.reply)
+    {
+        result.status = *reply.reply;
+        result.outcome = *reply.reply == CL_SUCCESS ? AppendOutcome::Acknowledged : AppendOutcome::Rejected;
+    }
+    else if(reply.may_have_dispatched)
+    {
+        result.status = CL_ERR_OUTCOME_UNCONFIRMED;
+        result.outcome = AppendOutcome::Unconfirmed;
+    }
+    return result;
+}
 
 // Tail read: delegate to the two-phase scatter/gather over this story's keepers.
 template <class KeeperChoicePolicy>

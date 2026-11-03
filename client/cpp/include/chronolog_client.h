@@ -141,12 +141,41 @@ private:
 // Client owner. The raw pointer is invalid after release; do not delete it.
 // Work retained internally after a public call returns owns its own leases.
 // Those leases do not extend the lifetime of the caller's borrowed raw pointer.
+enum class AppendOutcome
+{
+    Acknowledged,
+    NotSubmitted,
+    Rejected,
+    Unconfirmed
+};
+struct AppendResult
+{
+    int status;
+    AppendOutcome outcome;
+    uint64_t timestamp;
+    uint32_t event_index;
+};
+
 class StoryHandle
 {
 public:
     virtual ~StoryHandle();
 
     virtual uint64_t log_event(std::string const&) = 0;
+
+    // Acknowledged means Keeper acceptance, not archive or disk durability.
+    // A stamped identity is retained even when the outcome is uncertain. Never
+    // retry an Unconfirmed result as though the Keeper rejected the event.
+    // Legacy subclasses cannot supply an index or distinguish a zero result.
+    // Their overridden code must cooperate with the caller's deadline.
+    virtual AppendResult append_event(std::string const& payload)
+    {
+        auto timestamp = log_event(payload);
+        return {timestamp ? CL_SUCCESS : CL_ERR_OUTCOME_UNCONFIRMED,
+                timestamp ? AppendOutcome::Acknowledged : AppendOutcome::Unconfirmed,
+                timestamp,
+                0};
+    }
 
     // Tail read: play back the most recent `n` events of this story directly
     // from the assigned keepers' in-memory tail (sealed-but-not-yet-extracted

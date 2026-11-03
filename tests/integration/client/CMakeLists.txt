@@ -226,3 +226,11 @@ gtest_discover_tests(client_metadata_deadline_test TEST_PREFIX "Integration_Clie
 target_include_directories(client_metadata_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/tests/support)
 target_compile_definitions(client_metadata_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
 add_dependencies(client_metadata_deadline_test client_native_peer)
+
+add_executable(client_append_deadline_test client_append_deadline_test.cpp)
+target_include_directories(client_append_deadline_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/src ${CMAKE_SOURCE_DIR}/tests/support)
+target_link_libraries(client_append_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+target_compile_definitions(client_append_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+add_dependencies(client_append_deadline_test client_native_peer)
+gtest_discover_tests(client_append_deadline_test TEST_PREFIX "Integration_ClientAppendDeadline_" PROPERTIES TIMEOUT 30)
