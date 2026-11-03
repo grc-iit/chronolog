@@ -136,6 +136,7 @@ int KeeperWal::start(RecoveredState const& recovered, std::function<StoryId(Reco
         segmentSizes.emplace(listed, segmentBytes); // a recovered segment's size, near enough for the warning
     }
     segmentSizes[segment] = size;
+    dropsBySegment = recovered.dropped_in;
     nextPeriodicWork = now; // the first pass deletes recovered segments with nothing pending
     lastSizeWarning = now - kWarningInterval;
     lastFreeSpaceWarning = now - kWarningInterval;
@@ -250,6 +251,7 @@ void KeeperWal::abandonStart(std::string const& reason)
     activeFd = -1;
     namedInActive.clear();
     segmentSizes.clear();
+    dropsBySegment.clear();
     LOG_CRITICAL("[KeeperWal] Cannot start the WAL committer in {}: {}. The WAL is not started", walDirectory, reason);
 }
 
@@ -839,6 +841,7 @@ void KeeperWal::finishGroup(std::vector<Queued>& group, int status, uint64_t seg
                     if(status == CL_SUCCESS)
                     {
                         dropped = entry.story_id;
+                        dropsBySegment[segment].push_back(entry.story_id);
                     }
                     continue;
                 }
@@ -962,6 +965,98 @@ int KeeperWal::eraseRange(uint64_t offset, uint64_t bytes, std::string& what)
     return 0;
 }
 
+void KeeperWal::keepDropsOfSegmentsDeletedAhead(std::vector<uint64_t>& released)
+{
+    // The oldest listed segment that stays; every released one before it goes
+    // first in this pass, so only the ones after it are deleted ahead of an
+    // older segment.
+    std::vector<uint64_t> const& listed = segmentFiles.segments();
+    auto const kept = std::find_if(listed.begin(),
+                                   listed.end(),
+                                   [&released](uint64_t segment)
+                                   { return std::find(released.begin(), released.end(), segment) == released.end(); });
+    if(kept == listed.end())
+    {
+        return;
+    }
+    uint64_t const oldest_kept = *kept;
+    // A D drops the copies before it in log order. The line "<story> <segment>"
+    // makes recovery discard the story's events whose copies all lie in
+    // segments up to this one, the older one kept included. Events of a story
+    // created again after the D lie in this segment, which holds nothing
+    // pending, or in newer ones, which the line does not reach.
+    std::vector<UnloggedDrop> carried;
+    std::vector<uint64_t> carrying;
+    for(uint64_t segment: released)
+    {
+        auto drops = dropsBySegment.find(segment);
+        if(segment < oldest_kept || drops == dropsBySegment.end() || drops->second.empty())
+        {
+            continue;
+        }
+        for(StoryId story_id: drops->second) { carried.push_back(UnloggedDrop{story_id, segment}); }
+        carrying.push_back(segment);
+    }
+    if(carried.empty())
+    {
+        return;
+    }
+    std::vector<UnloggedDrop> drops;
+    int err = readUnloggedDrops(*sink, drops);
+    if(err == 0)
+    {
+        // as recovery does: an entry whose segments are all gone has nothing
+        // left to drop; one written by a pass whose deletion failed is there
+        // already
+        uint64_t const oldest_listed = listed.front();
+        drops.erase(std::remove_if(drops.begin(),
+                                   drops.end(),
+                                   [oldest_listed](UnloggedDrop const& drop)
+                                   { return drop.last_segment < oldest_listed; }),
+                    drops.end());
+        for(UnloggedDrop const& drop: carried)
+        {
+            if(std::none_of(drops.begin(),
+                            drops.end(),
+                            [&drop](UnloggedDrop const& line)
+                            { return line.story_id == drop.story_id && line.last_segment == drop.last_segment; }))
+            {
+                drops.push_back(drop);
+            }
+        }
+        err = writeUnloggedDrops(*sink, drops);
+    }
+    if(err == 0)
+    {
+        LOG_INFO("[KeeperWal] Recorded {} destroy(s) of {} released segment(s) deleted before segment {} in {}/{}",
+                 carried.size(),
+                 carrying.size(),
+                 wal::segmentFileName(oldest_kept),
+                 walDirectory,
+                 kUnloggedDropsFile);
+        return;
+    }
+    // Without the file those segments would take destroys an older segment
+    // still needs: they stay until it can be written or the older one goes.
+    released.erase(std::remove_if(released.begin(),
+                                  released.end(),
+                                  [&carrying](uint64_t segment)
+                                  { return std::find(carrying.begin(), carrying.end(), segment) != carrying.end(); }),
+                   released.end());
+    auto const now = std::chrono::steady_clock::now();
+    if(now - lastDeleteWarning >= kWarningInterval)
+    {
+        lastDeleteWarning = now;
+        LOG_WARNING("[KeeperWal] Cannot record the destroys of {} released segment(s) in {}/{}: {}. They stay until "
+                    "segment {} is deleted or the file can be written",
+                    carrying.size(),
+                    walDirectory,
+                    kUnloggedDropsFile,
+                    std::strerror(err),
+                    wal::segmentFileName(oldest_kept));
+    }
+}
+
 void KeeperWal::deleteReleasedSegments()
 {
     if(directorySyncOwed)
@@ -992,7 +1087,9 @@ void KeeperWal::deleteReleasedSegments()
     {
         return;
     }
-    // oldest first, so a D record goes only after every older segment
+    keepDropsOfSegmentsDeletedAhead(released);
+    // oldest first: every segment before the oldest one kept goes in order,
+    // and a later one has its D records in the unlogged-drops file already
     for(uint64_t segment: released)
     {
         if(int err = segmentFiles.deleteSegment(segment))
@@ -1004,6 +1101,7 @@ void KeeperWal::deleteReleasedSegments()
                 // segment can hold the D record that applies to this one, so
                 // it stays until the directory sync succeeds.
                 segmentSizes.erase(segment);
+                dropsBySegment.erase(segment);
                 directorySyncOwed = true;
                 LOG_ERROR("[KeeperWal] Removed released WAL segment {} in {}, but the directory sync after it failed: "
                           "{}. No newer segment is deleted until a directory sync succeeds",
@@ -1024,6 +1122,7 @@ void KeeperWal::deleteReleasedSegments()
             break;
         }
         segmentSizes.erase(segment);
+        dropsBySegment.erase(segment);
         LOG_DEBUG("[KeeperWal] Deleted released WAL segment {} in {}", wal::segmentFileName(segment), walDirectory);
     }
     std::lock_guard<WalMutex> lock(mutex);

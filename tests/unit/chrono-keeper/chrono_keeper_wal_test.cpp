@@ -1307,7 +1307,7 @@ TEST_F(KeeperWalTest, IsDurableAfterSyncNotBefore)
     EXPECT_FALSE(wal->isDurable(kOtherStory, identityOf(event)));
 }
 
-// A segment goes once nothing in it is pending, oldest first, never the
+// A segment goes once nothing in it is pending, in any order, never the
 // active one.
 TEST_F(KeeperWalTest, ChunkWrittenReleasesAndDeletesOldSegments)
 {
@@ -1337,15 +1337,16 @@ TEST_F(KeeperWalTest, ChunkWrittenReleasesAndDeletesOldSegments)
     wal->chunkWritten(kOtherStory, chunkOf(kOtherStory, other));
     EXPECT_EQ(wal->stats().pending_events, 7u);
 
-    // the second segment is released first: the first still holds it back
+    // the second segment is released first and goes while the first stays;
+    // it holds no D record, so nothing is added to the unlogged-drops file
     wal->chunkWritten(kStory, chunkOf(kStory, {events[3], events[4], events[5]}));
     EXPECT_EQ(wal->stats().pending_events, 4u);
-    std::this_thread::sleep_for(300ms);
+    ASSERT_TRUE(waitFor([&]() { return !exists(second); }, 3s));
     EXPECT_TRUE(exists(first));
-    EXPECT_TRUE(exists(second));
+    EXPECT_FALSE(fs::exists(fs::path(dir) / chl::kUnloggedDropsFile));
 
     wal->chunkWritten(kStory, chunkOf(kStory, {events[0], events[1], events[2]}));
-    ASSERT_TRUE(waitFor([&]() { return !exists(first) && !exists(second); }, 3s));
+    ASSERT_TRUE(waitFor([&]() { return !exists(first); }, 3s));
     EXPECT_TRUE(exists(active));
     EXPECT_EQ(wal->stats().pending_events, 1u);
     EXPECT_TRUE(wal->isDurable(kStory, identityOf(events[6])));
@@ -1355,6 +1356,76 @@ TEST_F(KeeperWalTest, ChunkWrittenReleasesAndDeletesOldSegments)
     EXPECT_EQ(wal->stats().pending_events, 0u);
     std::this_thread::sleep_for(300ms);
     EXPECT_TRUE(exists(active));
+}
+
+// A D record drops the story's copies in older segments too. When its segment
+// is deleted while an older one stays, the destroy goes to the unlogged-drops
+// file first, so a keeper started on the directory does not replay the
+// destroyed story from the older segment. While the file cannot be written the
+// segment stays.
+TEST_F(KeeperWalTest, DestroyInASegmentDeletedBeforeAnOlderOneIsRecorded)
+{
+    startWal();
+    // three 300 KiB events fill a 1 MiB segment
+    chl::LogEvent const destroyed = makeEvent(kStory, 1000, 300 * 1024);
+    chl::LogEvent const pinning = makeEvent(kOtherStory, 1001, 300 * 1024);
+    std::vector<chl::LogEvent> released;
+    for(uint64_t i = 0; i < 4; ++i) { released.push_back(makeEvent(kOtherStory, 1100 + i, 300 * 1024)); }
+    // the story created again after the D, in the active segment
+    chl::LogEvent const again = makeEvent(kStory, 2000, 300 * 1024);
+
+    ASSERT_EQ(append(destroyed), chl::CL_SUCCESS);
+    ASSERT_EQ(append(pinning), chl::CL_SUCCESS);
+    ASSERT_EQ(append(released[0]), chl::CL_SUCCESS);
+    ASSERT_EQ(append(released[1]), chl::CL_SUCCESS);
+    wal->storyDropped(kStory);
+    ASSERT_EQ(append(released[2]), chl::CL_SUCCESS);
+    ASSERT_EQ(append(released[3]), chl::CL_SUCCESS);
+    ASSERT_EQ(append(again), chl::CL_SUCCESS);
+
+    uint64_t const older = segmentOf(destroyed);
+    uint64_t const with_d = segmentOf(released[1]);
+    uint64_t const active = segmentOf(again);
+    ASSERT_EQ(segmentOf(pinning), older);
+    ASSERT_EQ(segmentOf(released[0]), older);
+    ASSERT_EQ(segmentOf(released[3]), with_d);
+    ASSERT_LT(older, with_d);
+    ASSERT_LT(with_d, active);
+    uint64_t d_segment = 0;
+    for(auto const& record: records())
+    {
+        if(record.type == static_cast<uint8_t>(wal::RecordType::Dropped))
+        {
+            d_segment = record.segment;
+        }
+    }
+    ASSERT_EQ(d_segment, with_d);
+    ASSERT_EQ(wal->stats().pending_events, 6u);
+
+    // the file cannot be written: the segment with the D stays
+    sink->failWritesWith(EIO);
+    wal->chunkWritten(kOtherStory, chunkOf(kOtherStory, released));
+    EXPECT_EQ(wal->stats().pending_events, 2u);
+    std::this_thread::sleep_for(300ms);
+    EXPECT_TRUE(exists(with_d));
+    EXPECT_FALSE(fs::exists(fs::path(dir) / chl::kUnloggedDropsFile));
+
+    sink->failWritesWith(0);
+    ASSERT_TRUE(waitFor([&]() { return !exists(with_d); }, 3s));
+    EXPECT_TRUE(exists(older));
+    EXPECT_TRUE(exists(active));
+    std::vector<chl::UnloggedDrop> drops;
+    ASSERT_EQ(chl::readUnloggedDrops(*sink, drops), 0);
+    ASSERT_EQ(drops.size(), 1u);
+    EXPECT_EQ(drops[0].story_id, kStory);
+    EXPECT_EQ(drops[0].last_segment, with_d);
+
+    // the older segment still holds the destroyed story's E record
+    EXPECT_EQ(copiesOnDisk(destroyed), 1u);
+    chl::RecoveredState const state = recoverDirectory();
+    EXPECT_FALSE(isRecovered(state, destroyed));
+    EXPECT_TRUE(isRecovered(state, pinning));
+    EXPECT_TRUE(isRecovered(state, again));
 }
 
 TEST_F(KeeperWalTest, DiscardedChunkAndEventAreReleased)

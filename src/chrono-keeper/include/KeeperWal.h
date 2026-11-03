@@ -79,8 +79,8 @@ public:
 // its own Argobots stream writes every queued record with one writev and one
 // fdatasync, and only then answers the requests of that group. The WAL keeps
 // each event's record until the retention store tells it (as its WalObserver)
-// that the grapher confirmed the event's chunk, and deletes a segment, oldest
-// first, once nothing in it is pending.
+// that the grapher confirmed the event's chunk, and deletes a segment once
+// nothing in it is pending, whether or not older segments remain.
 //
 // Threading. A request waits on a tl::eventual, so an RPC handler yields its
 // stream instead of blocking it. Every structure is guarded by one mutex (a
@@ -268,11 +268,17 @@ private:
     // Overwrites [offset, offset + bytes) of the active segment with zeros
     // and data-syncs it. 0 or an errno value; what names the failed step.
     int eraseRange(uint64_t offset, uint64_t bytes, std::string& what);
-    // Deletes the oldest segments with nothing pending, never the active one.
-    // After a removal whose directory sync failed, deletes nothing newer until
+    // Deletes the segments with nothing pending, oldest first, never the
+    // active one. A segment that still holds a pending copy keeps only itself.
+    // After a removal whose directory sync failed, deletes nothing more until
     // a directory sync succeeds: a segment that came back after a crash must
     // still find the D records of the newer segments.
     void deleteReleasedSegments();
+    // Before released segments are deleted ahead of an older segment that
+    // stays, adds their D records to the unlogged-drops file as "<story>
+    // <segment>". When the file cannot be written, takes those segments out
+    // of `released`.
+    void keepDropsOfSegmentsDeletedAhead(std::vector<uint64_t>& released);
     // Every 100 ms: the free-space sample, the idle rotation and the max_bytes
     // warning.
     void periodicWork();
@@ -349,6 +355,11 @@ private:
     std::chrono::steady_clock::time_point activeSince;
     std::unordered_set<StoryId> namedInActive; // stories with an N record in the active segment
     std::unordered_map<uint64_t, uint64_t> segmentSizes;
+    // The stories each live segment holds a D record for (committer thread
+    // only). A D drops the copies before it in log order, older segments'
+    // included, so a segment deleted while an older one remains first adds
+    // its destroys to the unlogged-drops file.
+    std::map<uint64_t, std::vector<StoryId>> dropsBySegment;
     std::chrono::steady_clock::time_point nextPeriodicWork;
     std::chrono::steady_clock::time_point lastSizeWarning;
     std::chrono::steady_clock::time_point lastFreeSpaceWarning;

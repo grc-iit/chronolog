@@ -139,11 +139,10 @@ std::vector<uint64_t> WalReleaseTracker::deletable(std::vector<uint64_t> const& 
     std::vector<uint64_t> segments;
     for(uint64_t segment: segments_oldest_first)
     {
-        if(segment == active || outstanding(segment) != 0)
+        if(segment != active && outstanding(segment) == 0)
         {
-            break;
+            segments.push_back(segment);
         }
-        segments.push_back(segment);
     }
     return segments;
 }

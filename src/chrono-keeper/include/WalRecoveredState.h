@@ -31,7 +31,9 @@ struct RecoveredState
 {
     std::vector<uint64_t> segments;            // oldest first
     std::map<StoryId, RecoveredStory> stories; // keyed by wal_story_id
-    std::optional<uint64_t> reusable_spare;    // newest segment if it holds only its H record
+    // the stories each segment holds a D record for, in the order read
+    std::map<uint64_t, std::vector<StoryId>> dropped_in;
+    std::optional<uint64_t> reusable_spare; // newest segment if it holds only its H record
     uint64_t bytes_read = 0;
     uint64_t oldest_segment_age_secs = 0;
 };

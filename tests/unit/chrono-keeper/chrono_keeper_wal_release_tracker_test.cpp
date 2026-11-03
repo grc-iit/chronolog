@@ -120,20 +120,20 @@ TEST(WalReleaseTracker, ReleaseOfUnknownIdentityIsANoOp)
     EXPECT_EQ(tracker.outstanding(1), 0u);
 }
 
-TEST(WalReleaseTracker, DeletableStopsAtFirstOutstandingSegment)
+TEST(WalReleaseTracker, DeletableSkipsOnlySegmentsWithOutstandingCopies)
 {
     chl::WalReleaseTracker tracker;
     tracker.addCopy(1, seq(1100), 1, 10);
     tracker.addCopy(1, seq(1200), 3, 10);
     tracker.addCopy(2, seq(1300), 5, 10);
 
-    // segment 1 pins everything after it, even the empty segment 2
-    EXPECT_TRUE(tracker.deletable({1, 2, 3, 4, 5, 6}, 6).empty());
-
-    tracker.releaseEvent(1, seq(1100));
-    EXPECT_EQ(tracker.deletable({1, 2, 3, 4, 5, 6}, 6), (std::vector<uint64_t>{1, 2}));
+    // segment 1 keeps only itself, not the newer empty segments
+    EXPECT_EQ(tracker.deletable({1, 2, 3, 4, 5, 6}, 6), (std::vector<uint64_t>{2, 4}));
 
     tracker.releaseEvent(1, seq(1200));
+    EXPECT_EQ(tracker.deletable({1, 2, 3, 4, 5, 6}, 6), (std::vector<uint64_t>{2, 3, 4}));
+
+    tracker.releaseEvent(1, seq(1100));
     EXPECT_EQ(tracker.deletable({1, 2, 3, 4, 5, 6}, 6), (std::vector<uint64_t>{1, 2, 3, 4}));
 
     // the list may start past segments already deleted
@@ -146,12 +146,12 @@ TEST(WalReleaseTracker, DeletableNeverIncludesActive)
     chl::WalReleaseTracker tracker;
     EXPECT_EQ(tracker.deletable({1, 2, 3}, 3), (std::vector<uint64_t>{1, 2}));
     EXPECT_TRUE(tracker.deletable({1}, 1).empty());
-    // stops at the active segment even when later ones are empty too
-    EXPECT_EQ(tracker.deletable({1, 2, 3, 4}, 2), (std::vector<uint64_t>{1}));
+    // skips the active segment wherever it is in the list
+    EXPECT_EQ(tracker.deletable({1, 2, 3, 4}, 2), (std::vector<uint64_t>{1, 3, 4}));
 
     tracker.addCopy(1, seq(1100), 2, 10);
     tracker.releaseEvent(1, seq(1100));
-    EXPECT_EQ(tracker.deletable({1, 2, 3}, 2), (std::vector<uint64_t>{1}));
+    EXPECT_EQ(tracker.deletable({1, 2, 3}, 2), (std::vector<uint64_t>{1, 3}));
 }
 
 TEST(WalReleaseTracker, DropStoryKeepsCopiesAddedAfterIt)

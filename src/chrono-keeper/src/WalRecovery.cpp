@@ -164,6 +164,9 @@ bool applyRecord(wal::ScannedRecord const& record,
                 story->second.events.clear();
                 story->second.copies.clear();
             }
+            // so the WAL can keep the destroy if it deletes this segment
+            // before an older one
+            state.dropped_in[segment].push_back(dropped.story_id);
             return true;
         }
         case static_cast<uint8_t>(wal::RecordType::Header):

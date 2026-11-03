@@ -1110,8 +1110,8 @@ TEST_F(WalRecoveryTest, DuplicateCopiesInTwoSegmentsAreBothTracked)
 
 TEST_F(WalRecoveryTest, RecoveredCopiesKeepTheirSegmentsFromDeletion)
 {
-    // what the WAL does with the copies at start: no segment holding a copy is
-    // deletable until that event is released
+    // what the WAL does with the copies at start: a segment holding a copy is
+    // not deletable until that event is released, and keeps only itself
     chl::LogEvent const a = eventOf(kStory, 100);
     chl::LogEvent const b = eventOf(kStory, 200);
     chl::LogEvent const o = eventOf(kOther, 100);
@@ -1142,11 +1142,13 @@ TEST_F(WalRecoveryTest, RecoveredCopiesKeepTheirSegmentsFromDeletion)
         }
     }
     EXPECT_EQ(tracker.pendingEvents(), 2u);
-    EXPECT_TRUE(tracker.deletable(state.segments, 4).empty());
+    EXPECT_EQ(tracker.deletable(state.segments, 4), (std::vector<uint64_t>{2}));
     tracker.releaseEvent(kOther, seqOf(o));
     EXPECT_EQ(tracker.deletable(state.segments, 4), (std::vector<uint64_t>{1, 2}));
     tracker.releaseEvent(kStory, seqOf(a));
     EXPECT_EQ(tracker.deletable(state.segments, 4), (std::vector<uint64_t>{1, 2, 3}));
+    // the D record in segment 2, for the WAL to keep if segment 2 goes first
+    EXPECT_EQ(state.dropped_in, (std::map<uint64_t, std::vector<chl::StoryId>>{{2, {kStory}}}));
 }
 
 TEST_F(WalRecoveryTest, BytesReadAndOldestSegmentAge)

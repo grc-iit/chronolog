@@ -47,9 +47,10 @@ public:
     uint64_t pendingBytes() const;
     // Pending copies in the segment.
     uint64_t outstanding(uint64_t segment) const;
-    // Oldest-first prefix of `segments` with no outstanding copies, stopping at
-    // the first that has some or at `active`. Deleting oldest first keeps a D
-    // record until every older segment that held the story is gone.
+    // Every segment of `segments` other than `active` with no outstanding
+    // copies, oldest first. A segment that still holds a pending copy keeps
+    // only itself, not the newer ones; KeeperWal keeps the D records of a
+    // segment deleted before an older one (see deleteReleasedSegments).
     std::vector<uint64_t> deletable(std::vector<uint64_t> const& segments_oldest_first, uint64_t active) const;
 
 private:

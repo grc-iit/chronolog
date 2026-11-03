@@ -55,10 +55,12 @@ std::unique_ptr<WalFileSink> makePosixWalFileSink();
 // write that failed; failed_at, when given, then holds that write's offset.
 int writeZeros(WalFileSink& sink, int fd, uint64_t offset, uint64_t bytes, uint64_t* failed_at = nullptr);
 
-// A destroy the WAL could not log as a D record because it had latched failed
-// (see KeeperWal). Every event of the story in a segment up to last_segment
-// belongs to the destroyed story: a latched WAL writes nothing more, so a
-// story created again later has its events only in newer segments.
+// A destroy the WAL could not log as a D record because it had latched failed,
+// or one whose D record went with a segment deleted before an older segment
+// (see KeeperWal). Every event of the story whose copies all lie in segments up
+// to last_segment belongs to the destroyed story: a latched WAL writes nothing
+// more, and a story created again after a D record has its events in that
+// record's segment or newer ones.
 struct UnloggedDrop
 {
     uint64_t story_id = 0;
