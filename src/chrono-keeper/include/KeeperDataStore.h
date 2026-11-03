@@ -80,7 +80,8 @@ public:
     // leaves the retention store's drop mark for the id in place, so a stale
     // writer cannot undo a destroy. A pipeline that exists is left as it is.
     // Takes dataStoreMutex, so KeeperDurableWriter calls it only for a story
-    // with no ingestion handle.
+    // with no ingestion handle. Once data collection has started shutting
+    // down it adds nothing and returns CL_ERR_UNKNOWN.
     int ensureStoryPipeline(ChronicleName const&, StoryName const&, StoryId const&);
 
     int stopStoryRecording(StoryId const&);
@@ -143,6 +144,9 @@ private:
     std::vector<thallium::managed<thallium::thread>> dataStoreThreads;
 
     std::mutex dataStoreMutex;
+    // false once shutdownDataCollection starts: ensureStoryPipeline then adds
+    // no pipeline (guarded by dataStoreMutex)
+    bool acceptingPipelines = true;
     std::unordered_map<StoryId, KeeperStoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<KeeperStoryPipeline*, uint64_t>> pipelinesWaitingForExit;
     // Names of stories that have been retired, retained so that late/orphaned

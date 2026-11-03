@@ -210,8 +210,9 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
 - Retries, at-least-once storage and the return codes are the same as in C++: see
   [the C++ API](../cpp/api.md#storyhandle-class) and [Error Codes](./error-codes.md#durability-error-codes).
   In short, every retry carries the same `(time, client id, index)`, copies collapse on read, so a
-  reader sees the event once; `-2` means a bad argument (an empty record, `attempts` or
-  `timeout_ms` of 0), `-7` no keepers, and `-19`, `-20`, `-21` are the durability codes.
+  reader sees the event once; `-2` means a bad argument (an empty record, or `attempts` or
+  `timeout_ms` of 0 on a durable write), `-7` no keepers, and `-19`, `-20`, `-21` are the durability
+  codes.
 
 ```python
 options = py_chronolog_client.LogEventOptions()
@@ -230,10 +231,13 @@ else:
     print(f"durable write failed: {status}")   # nothing stored
 ```
 
-A Python subclass of `StoryHandle` that overrides `log_event` serves both forms with one method, so
-the override must accept an optional `options` argument and, when given one, return the
-`(status, event_time)` pair. An override that takes only `event_string` raises `TypeError` when
-called as `log_event(record, options)`.
+A Python subclass of `StoryHandle` that overrides `log_event` serves both forms with one method. To
+handle options itself, the override accepts an optional `options` argument and, when given one,
+returns the `(status, event_time)` pair. An override that takes only `event_string`, as written for
+earlier releases, keeps working when the C++ side calls `log_event(record, options)`
+(`StoryHandle.log_event(handle, record, options)` does too): the default body sends Accepted writes
+through it and answers Durable ones with `-19`. Calling `handle.log_event(record, options)` on such a
+subclass from Python still reaches its one-argument method directly and raises `TypeError`.
 
 ```python
 StoryHandle.playback(n: int, events: EventList) -> int

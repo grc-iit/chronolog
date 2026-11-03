@@ -225,7 +225,11 @@ same address can answer a later attempt. The retry budget is therefore `attempts
 with the defaults, and the call can block that long. Every attempt carries the same identity,
 `(time, client id, index)`. The keeper choice depends only on the timestamp, so a retry reaches the
 same keeper while the story's keeper list is unchanged, and the keeper answers a retry of an event
-it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart.
+it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart. The
+keeper holds the event until the grapher confirms it written, which is at least about a minute after
+the event's timestamp, so the default retry budget always finds it. A budget longer than that can
+send a retry after the confirmation; the keeper then stores the event again, and the copies collapse
+on read as below.
 
 **Storage is at-least-once; reads see each event once.** If a keeper left the story's keeper list
 between attempts, the retry lands on another keeper and both may store the event. Copies with the
@@ -237,8 +241,8 @@ it the same way.
 
 - `CL_SUCCESS` (`0`): the event is in the keeper's WAL and synced.
 - `CL_ERR_INVALID_ARG` (`-2`): nothing was sent or nothing was stored. The client refuses an empty
-  record, `attempts` or `timeout_ms` of 0, and a `durability` value other than the two above (these
-  three argument checks apply to Accepted too, apart from the empty record). The keeper refuses an
+  record, `attempts` or `timeout_ms` of 0, and a `durability` value other than the two above. Only
+  the last check applies to Accepted writes, which ignore `attempts` and `timeout_ms`. The keeper refuses an
   event larger than its WAL record limit (256 MiB minus 36 bytes).
 - `CL_ERR_NO_KEEPERS` (`-7`): the story has no keepers. Nothing was sent.
 - `CL_ERR_DURABILITY_UNAVAILABLE` (`-19`), `CL_ERR_DURABILITY_FULL` (`-20`),

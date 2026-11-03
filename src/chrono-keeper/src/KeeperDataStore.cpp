@@ -110,6 +110,17 @@ int chronolog::KeeperDataStore::ensureStoryPipeline(std::string const& chronicle
     {
         return chronolog::CL_SUCCESS;
     }
+    // After shutdownDataCollection the collection threads may have exited:
+    // nothing would collect, seal or retire a new pipeline.
+    if(!acceptingPipelines)
+    {
+        LOG_WARNING("[KeeperDataStore] Durable write for Chronicle={}, Story={}, StoryID={} refused: data collection "
+                    "is shutting down",
+                    chronicle,
+                    story,
+                    story_id);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
 
     LOG_INFO("[KeeperDataStore] Durable write starts a pipeline for a story not recorded here: Chronicle={}, "
              "Story={}, StoryID={}",
@@ -512,6 +523,15 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
     {
         LOG_INFO("[KeeperDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
         return;
+    }
+
+    {
+        // Closed before the state changes: a collection thread exits only
+        // once it sees SHUTTING_DOWN and no pipeline left, so a pipeline that
+        // ensureStoryPipeline added before this keeps the threads running
+        // until it retires, and none is added after.
+        std::lock_guard storeLock(dataStoreMutex);
+        acceptingPipelines = false;
     }
     state = SHUTTING_DOWN;
 
