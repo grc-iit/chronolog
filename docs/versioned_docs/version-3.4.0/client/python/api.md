@@ -210,8 +210,9 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
 - Retries, at-least-once storage and the return codes are the same as in C++: see
   [the C++ API](../cpp/api.md#storyhandle-class) and [Error Codes](./error-codes.md#durability-error-codes).
   In short, every retry carries the same `(time, client id, index)`, copies collapse on read, so a
-  reader sees the event once; `-2` means a bad argument (an empty record, `attempts` or
-  `timeout_ms` of 0), `-7` no keepers, and `-19`, `-20`, `-21` are the durability codes.
+  reader sees the event once; `-2` means a bad argument (an empty record, or `attempts` or
+  `timeout_ms` of 0 on a durable write), `-7` no keepers, and `-19`, `-20`, `-21` are the durability
+  codes.
 
 ```python
 options = py_chronolog_client.LogEventOptions()

@@ -237,8 +237,8 @@ it the same way.
 
 - `CL_SUCCESS` (`0`): the event is in the keeper's WAL and synced.
 - `CL_ERR_INVALID_ARG` (`-2`): nothing was sent or nothing was stored. The client refuses an empty
-  record, `attempts` or `timeout_ms` of 0, and a `durability` value other than the two above (these
-  three argument checks apply to Accepted too, apart from the empty record). The keeper refuses an
+  record, `attempts` or `timeout_ms` of 0, and a `durability` value other than the two above. Only
+  the last check applies to Accepted writes, which ignore `attempts` and `timeout_ms`. The keeper refuses an
   event larger than its WAL record limit (256 MiB minus 36 bytes).
 - `CL_ERR_NO_KEEPERS` (`-7`): the story has no keepers. Nothing was sent.
 - `CL_ERR_DURABILITY_UNAVAILABLE` (`-19`), `CL_ERR_DURABILITY_FULL` (`-20`),

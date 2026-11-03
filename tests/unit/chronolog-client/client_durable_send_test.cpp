@@ -586,19 +586,29 @@ TEST_F(DurableSend, InvalidOptionsRefusedBeforeSending)
     EXPECT_EQ(handle->log_event("record", durable(1000, 0), event_time), chl::CL_ERR_INVALID_ARG);
     EXPECT_EQ(event_time, 0u);
 
-    chl::LogEventOptions accepted;
-    accepted.attempts = 0;
-    EXPECT_EQ(handle->log_event("record", accepted, event_time), chl::CL_ERR_INVALID_ARG);
-    accepted = chl::LogEventOptions{};
-    accepted.timeout_ms = 0;
-    EXPECT_EQ(handle->log_event("record", accepted, event_time), chl::CL_ERR_INVALID_ARG);
-
     chl::LogEventOptions unknown_level;
     unknown_level.durability = static_cast<chl::Durability>(0);
     EXPECT_EQ(handle->log_event("record", unknown_level, event_time), chl::CL_ERR_INVALID_ARG);
 
     EXPECT_TRUE(keeper->durable().empty());
     EXPECT_TRUE(keeper->accepted().empty());
+}
+
+// attempts and timeout_ms are for durable writes only: an Accepted write
+// with either at 0 is sent as usual.
+TEST_F(DurableSend, AcceptedIgnoresAttemptsAndTimeout)
+{
+    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_NE(handle, nullptr);
+
+    chl::LogEventOptions accepted;
+    accepted.attempts = 0;
+    accepted.timeout_ms = 0;
+    uint64_t event_time = 0;
+    EXPECT_EQ(handle->log_event("record", accepted, event_time), chl::CL_SUCCESS);
+    EXPECT_NE(event_time, 0u);
+    EXPECT_EQ(keeper->accepted().size(), 1u);
+    EXPECT_TRUE(keeper->durable().empty());
 }
 
 TEST_F(DurableSend, AcceptedReturnsKeeperStatus)

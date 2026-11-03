@@ -98,11 +98,12 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const&
                                                               uint64_t& event_time)
 {
     event_time = 0;
-    if(options.attempts == 0 || options.timeout_ms == 0)
+    if(options.durability != Durability::Accepted && options.durability != Durability::Durable)
     {
         return chronolog::CL_ERR_INVALID_ARG;
     }
-    if(options.durability != Durability::Accepted && options.durability != Durability::Durable)
+    // attempts and timeout_ms are for durable writes only
+    if(options.durability == Durability::Durable && (options.attempts == 0 || options.timeout_ms == 0))
     {
         return chronolog::CL_ERR_INVALID_ARG;
     }
