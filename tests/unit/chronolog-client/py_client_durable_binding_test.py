@@ -50,6 +50,33 @@ check(m.StoryHandle.log_event(fake, "x", durable) == (2, 42),
       "trampoline did not reach the Python override with options")
 
 
+# A subclass written before the options overload overrides only
+# log_event(self, log_string). log_event(record, options) runs the default
+# C++ body, which sends Accepted through that override and answers Durable
+# with CL_ERR_DURABILITY_UNAVAILABLE (-19), instead of calling the
+# one-argument override with two arguments.
+class OldHandle(m.StoryHandle):
+    def __init__(self):
+        m.StoryHandle.__init__(self)
+        self.records = []
+
+    def log_event(self, log_string):
+        self.records.append(log_string)
+        return 1234
+
+
+old = OldHandle()
+try:
+    check(m.StoryHandle.log_event(old, "old-accepted", m.LogEventOptions()) == (0, 1234),
+          "an old one-argument override did not serve an Accepted log_event(record, options)")
+    check(old.records == ["old-accepted"], "the old override saw %r, want ['old-accepted']" % old.records)
+    check(m.StoryHandle.log_event(old, "old-durable", durable) == (-19, 0),
+          "a Durable log_event(record, options) on an old override did not answer (-19, 0)")
+    check(old.records == ["old-accepted"], "a Durable call reached the old override: %r" % old.records)
+except TypeError as error:
+    check(False, "log_event(record, options) called an old one-argument override with two arguments: %s" % error)
+
+
 # A subclass without a log_event override: the default C++ body of
 # log_event(record, options) reaches the pure log_event(record), which has
 # no override either. That must raise a Python exception, not crash.

@@ -51,6 +51,25 @@ void BindChronologDurability(pybind11::module& m)
             .def_readwrite("attempts", &LogEventOptions::attempts);
 };
 
+// True when a Python override of log_event can be called as
+// log_event(record, options). One written for the one-argument API cannot;
+// the signature is bound, not called, so an error raised inside the override
+// is never taken for the wrong arity. An override with no signature to read
+// is assumed to take both arguments.
+static bool takesOptions(pybind11::function const& override)
+{
+    try
+    {
+        pybind11::module_::import("inspect").attr("signature")(override).attr("bind")(pybind11::none(),
+                                                                                      pybind11::none());
+        return true;
+    }
+    catch(pybind11::error_already_set& error)
+    {
+        return !error.matches(PyExc_TypeError);
+    }
+}
+
 using chronolog::StoryHandle;
 class PyStoryHandle: public StoryHandle
 {
@@ -72,14 +91,16 @@ public:
     // A Python override of log_event serves both overloads, as in Python:
     // called here as log_event(record, options), it returns
     // (status, event_time), the same pair the binding below returns.
-    // Without one, the default body runs and reaches log_event(record).
-    // The GIL stays held across the default body: it does not block, and
-    // log_event(record) must hold it to raise when it has no override.
+    // Without one, or with one that takes only the record (written before
+    // this overload existed), the default body runs and reaches
+    // log_event(record). The GIL stays held across the default body: it does
+    // not block, and log_event(record) must hold it to raise when it has no
+    // override.
     int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time) override
     {
         pybind11::gil_scoped_acquire gil;
         pybind11::function override = pybind11::get_override(static_cast<StoryHandle const*>(this), "log_event");
-        if(override)
+        if(override && takesOptions(override))
         {
             auto result = override(record, options).cast<std::pair<int, uint64_t>>();
             event_time = result.second;

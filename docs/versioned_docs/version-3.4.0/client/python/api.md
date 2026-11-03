@@ -230,10 +230,13 @@ else:
     print(f"durable write failed: {status}")   # nothing stored
 ```
 
-A Python subclass of `StoryHandle` that overrides `log_event` serves both forms with one method, so
-the override must accept an optional `options` argument and, when given one, return the
-`(status, event_time)` pair. An override that takes only `event_string` raises `TypeError` when
-called as `log_event(record, options)`.
+A Python subclass of `StoryHandle` that overrides `log_event` serves both forms with one method. To
+handle options itself, the override accepts an optional `options` argument and, when given one,
+returns the `(status, event_time)` pair. An override that takes only `event_string`, as written for
+earlier releases, keeps working when the C++ side calls `log_event(record, options)`
+(`StoryHandle.log_event(handle, record, options)` does too): the default body sends Accepted writes
+through it and answers Durable ones with `-19`. Calling `handle.log_event(record, options)` on such a
+subclass from Python still reaches its one-argument method directly and raises `TypeError`.
 
 ```python
 StoryHandle.playback(n: int, events: EventList) -> int
