@@ -1523,6 +1523,48 @@ TEST_F(KeeperWalTest, DestroyAfterTheLatchIsRecordedForRecovery)
     EXPECT_FALSE(wal->isDurable(kStory, identityOf(stored)));
 }
 
+// A destroy queued in the group whose sync fails is not on disk either. It is
+// recorded in the unlogged-drops file like a destroy after the latch, so a
+// keeper started on the directory does not replay the destroyed story, and the
+// story's copies stop pinning their segments.
+TEST_F(KeeperWalTest, DestroyInTheFailedGroupIsRecordedForRecovery)
+{
+    startWal();
+    chl::LogEvent const stored = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(stored), chl::CL_SUCCESS);
+
+    sink->holdSyncs();
+    uint64_t const syncs_before = sink->syncCount();
+    std::deque<Append> requests;
+    requests.emplace_back().event = makeEvent(kOtherStory, 1100); // its group syncs
+    requests.emplace_back().event = makeEvent(kOtherStory, 1101); // in the failed group, after the D
+    {
+        UltPool pool;
+        appendOn(pool, requests[0]);
+        ASSERT_TRUE(waitFor([&]() { return sink->syncCount() > syncs_before; }));
+        wal->storyDropped(kStory);
+        appendOn(pool, requests[1]);
+        // the first still syncing, the second queued behind the D
+        ASSERT_TRUE(waitFor([&]() { return wal->stats().queued_events == 2; }));
+        // the held sync started before this, so only the next group's fails
+        sink->failNextSyncsWith(EIO);
+        sink->releaseSyncs();
+        ASSERT_TRUE(waitFor([&]() { return allDone(requests); }));
+    }
+    EXPECT_EQ(requests[0].status.load(), chl::CL_SUCCESS);
+    EXPECT_EQ(requests[1].status.load(), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    ASSERT_EQ(wal->admit(), chl::WalAdmit::Unavailable);
+
+    std::vector<chl::UnloggedDrop> drops;
+    ASSERT_EQ(chl::readUnloggedDrops(*sink, drops), 0);
+    ASSERT_EQ(drops.size(), 1u);
+    EXPECT_EQ(drops[0].story_id, kStory);
+    EXPECT_GE(drops[0].last_segment, segmentOf(stored));
+    EXPECT_FALSE(wal->isDurable(kStory, identityOf(stored)));
+    EXPECT_TRUE(wal->isDurable(kOtherStory, identityOf(requests[0].event)));
+    EXPECT_EQ(wal->stats().pending_events, 1u);
+}
+
 TEST_F(KeeperWalTest, AppendBeforeStartOrAfterStopIsUnavailable)
 {
     makeWal();
