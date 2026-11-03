@@ -35,7 +35,9 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
    synced and not yet released, it answers `CL_SUCCESS` and stores nothing; if an earlier attempt is
    still waiting for its sync, it waits for that attempt's result. This is how a client's retry gets
    the first attempt's answer before any later check can refuse it; only the WAL-off, shutdown and
-   story-id checks come first;
+   story-id checks come first. A released event is no longer found: a retry that arrives after the
+   grapher confirmed it, which takes a retry budget over about a minute, is stored again, and reads
+   drop the second copy;
 4. answers `CL_ERR_INVALID_ARG` to an empty record, `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL has
    failed, and `CL_ERR_DURABILITY_FULL` if the WAL's file system is below its reserve or the keeper
    holds more than `durable_cap_mb` of chunks;
@@ -149,7 +151,8 @@ registers with the visor:
    separated by a space, or the file's permissions. Deleting the file instead brings back the events
    of the stories it names.
 6. It starts writing in a fresh segment and rebuilds the table of pending events, so a client retry
-   of an event synced before the crash gets `CL_SUCCESS` without a second copy.
+   of an event synced before the crash gets `CL_SUCCESS` without a second copy while the event is
+   still pending (step 3 of the write path).
 7. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
    normal extraction path sends them to the grapher. The grapher usually has no pipeline for those
    stories and adopts the chunks by their chronicle and story names. Its confirmations come back to

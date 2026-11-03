@@ -225,7 +225,11 @@ same address can answer a later attempt. The retry budget is therefore `attempts
 with the defaults, and the call can block that long. Every attempt carries the same identity,
 `(time, client id, index)`. The keeper choice depends only on the timestamp, so a retry reaches the
 same keeper while the story's keeper list is unchanged, and the keeper answers a retry of an event
-it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart.
+it already holds with `CL_SUCCESS` without storing it again, also after a crash and restart. The
+keeper holds the event until the grapher confirms it written, which is at least about a minute after
+the event's timestamp, so the default retry budget always finds it. A budget longer than that can
+send a retry after the confirmation; the keeper then stores the event again, and the copies collapse
+on read as below.
 
 **Storage is at-least-once; reads see each event once.** If a keeper left the story's keeper list
 between attempts, the retry lands on another keeper and both may store the event. Copies with the
