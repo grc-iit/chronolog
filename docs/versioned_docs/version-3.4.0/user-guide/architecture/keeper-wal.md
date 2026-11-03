@@ -163,8 +163,11 @@ The keeper logs what it replayed: the segments, each story with its event count 
 bytes and the time taken. Recovery reads the whole WAL, so startup takes longer the more it holds.
 
 Some recovered events were already written before the crash; their segment survived because
-another event in it was still pending. They are written to the archive a second time, and replay
-returns each event once.
+another event in it, or in an older segment, was still pending. Segments are deleted oldest first,
+so the ones that survive run from the oldest segment with an unconfirmed event to the active one,
+and recovery replays every event in them. The confirmed ones are written to the archive a second
+time, and replay returns each event once. One story whose chunk stays unconfirmed keeps every newer
+segment, so the archive can grow by much more than one segment per crash.
 
 A restarted keeper registers with the visor again, retrying every 5 seconds while the visor still
 holds its old entry. The visor then starts a pipeline on it for every story its recording group's
