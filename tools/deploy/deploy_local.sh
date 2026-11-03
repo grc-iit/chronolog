@@ -172,6 +172,11 @@ generate_config_files() {
         exit 1
     fi
 
+    # A conf left by an earlier deploy with more keepers or groups would name a process this one does
+    # not start; stop's exit-summary check would report that keeper's WAL as missing.
+    rm -f "${conf_dir}"/chrono-keeper-conf-*.json "${conf_dir}"/chrono-grapher-conf-*.json \
+        "${conf_dir}"/chrono-player-conf-*.json
+
     # Extract base ports
     local base_port_keeper_record base_port_keeper_drain base_port_keeper_datastore
     local base_port_grapher_drain base_port_grapher_datastore
