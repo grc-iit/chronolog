@@ -354,8 +354,9 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
     if(story_record_iter != acquiredStoryHandles.end())
     {
         static_cast<StoryHandleImpl<RoundRobinKeeperChoice>*>(story_record_iter->second)->invalidate();
-        // Retain the borrowed object until owner cleanup has proved all entered
-        // legacy calls settled. B05/B08 replace these entries with owned work.
+        // Retain admitted calls/owned continuations through settlement. Raw
+        // pointer invocation must already satisfy the caller lifetime contract.
+        // B05/B08 retain these leases in work that outlives its public call.
         acquiredStoryHandles.erase(story_record_iter);
         reapRetiredHandles();
         LOG_INFO("[StorytellerClient] Successfully removed StoryHandle for Chronicle: '{}' and Story: '{}'.",

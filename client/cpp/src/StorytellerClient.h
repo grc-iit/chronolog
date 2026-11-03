@@ -148,6 +148,8 @@ public:
     // virtual int log_event(size_t size, void*data);
 
     void addRecordingClient(KeeperRecordingClient*);
+    // Counts admitted calls/owned continuations, not raw-pointer lifetime.
+    // Callers must keep the raw object valid before and throughout entry.
     void invalidate() noexcept { entries_.fetch_or(Closed, std::memory_order_acq_rel); }
     bool retiredAndIdle() const noexcept { return entries_.load(std::memory_order_acquire) == Closed; }
     class EntryLease
@@ -174,6 +176,7 @@ public:
         StoryHandleImpl* handle_;
         std::optional<ClientRpcContext::NativeLease> native_;
     };
+    // This gate cannot protect virtual dispatch or access before admission.
     std::optional<EntryLease> tryEnter() noexcept
     {
         auto observed = entries_.load(std::memory_order_acquire);

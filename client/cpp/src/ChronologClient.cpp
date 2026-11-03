@@ -75,7 +75,8 @@ int chronolog::Client::ReplayStory(std::string const& chronicle_name,
                                    uint64_t end_time,
                                    std::vector<chronolog::Event>& event_series)
 {
-    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series);
+    auto started = chronolog::rpc::RpcDeadline::Clock::now();
+    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, event_series, started);
 }
 
 int chronolog::Client::ReplayStory(std::string const& chronicle_name,
@@ -84,5 +85,7 @@ int chronolog::Client::ReplayStory(std::string const& chronicle_name,
                                    uint64_t end_time,
                                    chronolog::Client::EventCallback callback)
 {
-    return chronologClientImpl->replay_story(chronicle_name, story_name, start_time, end_time, std::move(callback));
+    auto started = chronolog::rpc::RpcDeadline::Clock::now();
+    return chronologClientImpl
+            ->replay_story(chronicle_name, story_name, start_time, end_time, std::move(callback), started);
 }

@@ -134,6 +134,13 @@ private:
     std::string logRecord;
 };
 
+// AcquireStory returns a borrowed, library-owned pointer. Keep a Client for
+// its context alive until all raw-handle calls return. Calls on a live handle
+// may run concurrently. Callers must synchronize those calls against
+// ReleaseStory, Disconnect (which auto-releases), and destruction of the last
+// Client owner. The raw pointer is invalid after release; do not delete it.
+// Work retained internally after a public call returns owns its own leases.
+// Those leases do not extend the lifetime of the caller's borrowed raw pointer.
 class StoryHandle
 {
 public:
@@ -214,6 +221,7 @@ public:
 
     int DestroyChronicle(std::string const& chronicle_name);
 
+    // The returned raw handle follows the lifetime/synchronization rules on StoryHandle.
     std::pair<int, StoryHandle*> AcquireStory(std::string const& chronicle_name, std::string const& story_name);
 
     int ReleaseStory(std::string const& chronicle_name, std::string const& story_name);

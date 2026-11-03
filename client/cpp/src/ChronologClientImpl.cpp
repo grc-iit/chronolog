@@ -358,20 +358,30 @@ int ChronologClientImpl::replay_story(ChronicleName const& c,
                                       StoryName const& s,
                                       uint64_t begin,
                                       uint64_t end,
-                                      std::vector<Event>& events)
+                                      std::vector<Event>& events,
+                                      Clock::time_point started)
 {
     auto lease = context_->acquireNative();
     if(!lease)
         return CL_ERR_RPC_CAPACITY;
     if(!context_->readerMode)
         return CL_ERR_NOT_READER_MODE;
-    return context_->reader ? context_->reader->replay_story(c, s, begin, end, events) : CL_ERR_NO_PLAYERS;
+    auto snapshot = context_->policy->tryAcquire();
+    if(!snapshot)
+        return CL_ERR_RPC_CAPACITY;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(snapshot->policy().replay_ms));
+    auto admission = context_->admitReader(deadline);
+    if(admission.first != CL_SUCCESS)
+        return admission.first;
+    // B09 must pass this original deadline through the legacy replay RPC path.
+    return admission.second->replay_story(c, s, begin, end, events);
 }
 int ChronologClientImpl::replay_story(ChronicleName const& c,
                                       StoryName const& s,
                                       uint64_t begin,
                                       uint64_t end,
-                                      Client::EventCallback callback)
+                                      Client::EventCallback callback,
+                                      Clock::time_point started)
 {
     auto lease = context_->acquireNative();
     if(!lease)
@@ -380,6 +390,14 @@ int ChronologClientImpl::replay_story(ChronicleName const& c,
         return CL_ERR_NOT_READER_MODE;
     if(!callback)
         return CL_ERR_INVALID_ARG;
-    return context_->reader ? context_->reader->replay_story(c, s, begin, end, std::move(callback)) : CL_ERR_NO_PLAYERS;
+    auto snapshot = context_->policy->tryAcquire();
+    if(!snapshot)
+        return CL_ERR_RPC_CAPACITY;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(snapshot->policy().replay_ms));
+    auto admission = context_->admitReader(deadline);
+    if(admission.first != CL_SUCCESS)
+        return admission.first;
+    // B09 must pass this original deadline through the legacy replay RPC path.
+    return admission.second->replay_story(c, s, begin, end, std::move(callback));
 }
 } // namespace chronolog

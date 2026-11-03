@@ -95,7 +95,19 @@ int ClientRpcContext::initialize(rpc::RpcDeadline const& deadline)
                 shared_from_this());
     auto address = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     visor = std::make_unique<RpcVisorClient>(*engine, address, portalConf.PROVIDER_ID, procedures);
+    if(beforeInitializeUnlock_)
+        beforeInitializeUnlock_();
     return deadline.expired() ? CL_ERR_DEADLINE_EXCEEDED : CL_SUCCESS;
+}
+
+std::pair<int, ClientQueryService*> ClientRpcContext::admitReader(rpc::RpcDeadline const& deadline)
+{
+    if(deadline.expired())
+        return {CL_ERR_DEADLINE_EXCEEDED, nullptr};
+    std::unique_lock<std::timed_mutex> lock(initializeMutex_, std::defer_lock);
+    if(!lock.try_lock_until(deadline.expiresAt()) || deadline.expired())
+        return {CL_ERR_DEADLINE_EXCEEDED, nullptr};
+    return {reader ? CL_SUCCESS : CL_ERR_NO_PLAYERS, reader};
 }
 
 ClientRpcContext::~ClientRpcContext() = default;

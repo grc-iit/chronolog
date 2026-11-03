@@ -17,6 +17,16 @@
 #include <filesystem>
 #include <thread>
 
+namespace chronolog
+{
+struct ClientRpcContextTestAccess
+{
+    static void beforeInitializationUnlock(ClientRpcContext& context, std::function<void()> observer)
+    {
+        context.beforeInitializeUnlock_ = std::move(observer);
+    }
+};
+} // namespace chronolog
 namespace
 {
 using namespace chronolog;
@@ -229,7 +239,9 @@ TEST_P(ClientMetadataDeadline, HealthyAcquireReleaseChurnDoesNotRetainInactiveHa
     EXPECT_TRUE(peer.until([&] { return context->cleanupComplete.load(); }));
     EXPECT_TRUE(engine.expired());
 }
-TEST_P(ClientMetadataDeadline, ReleaseRetainsEnteredNativeCallThenReclaimsHandle)
+// These internal stress cases pause after native admission. They check extra
+// lease retention, not safety of arbitrary unsynchronized raw invocation.
+TEST_P(ClientMetadataDeadline, InternalReleaseRetainsAdmittedNativeCallThenReclaimsHandle)
 {
     MetadataPeer peer(GetParam());
     peer.state().roster = true;
@@ -254,7 +266,7 @@ TEST_P(ClientMetadataDeadline, ReleaseRetainsEnteredNativeCallThenReclaimsHandle
     owner.reset();
     EXPECT_TRUE(peer.until([&] { return context->cleanupComplete.load(); }));
 }
-TEST_P(ClientMetadataDeadline, LastFacadeDropRetainsActualEngineDuringEnteredNativeCall)
+TEST_P(ClientMetadataDeadline, InternalFacadeDropRetainsActualEngineDuringAdmittedNativeCall)
 {
     MetadataPeer peer(GetParam());
     peer.state().roster = true;
@@ -403,6 +415,53 @@ TEST_P(ClientMetadataDeadline, HealthyCleanupAllowsFreshOwnedNativeGeneration)
         EXPECT_TRUE(peer.until([] { return threadCount() == 3; }));
     }
     EXPECT_EQ(2u, peer.state().connects.load());
+}
+TEST_P(ClientMetadataDeadline, ReplayAdmissionExpiresWhileFirstReaderInitializationOwnsState)
+{
+    MetadataPeer peer(GetParam());
+    auto conf = peer.portal;
+    conf.RPC_POLICY.replay_ms = 40;
+    ClientQueryServiceConf query{GetParam(), "127.0.0.1", 0, 75};
+    Client client(conf, query);
+    auto owner = ChronologClientImpl::GetClientImplInstance(conf, READER_MODE, query);
+    struct Gate
+    {
+        std::atomic<bool> entered{false}, open{false};
+        void wait()
+        {
+            entered = true;
+            while(!open.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    auto gate = std::make_shared<Gate>();
+    struct OpenOnExit
+    {
+        std::shared_ptr<Gate> gate;
+        ~OpenOnExit() { gate->open = true; }
+    } cleanup{gate};
+    ClientRpcContextTestAccess::beforeInitializationUnlock(*owner->context(), [gate] { gate->wait(); });
+    EXPECT_EQ(CL_ERR_DEADLINE_EXCEEDED, client.Connect());
+    ASSERT_TRUE(peer.until([&] { return gate->entered.load(); }));
+    EXPECT_FALSE(owner->context()->initializationSettled.load());
+    EXPECT_EQ(0u, peer.state().connects.load());
+    std::vector<Event> events;
+    auto started = Clock::now();
+    EXPECT_EQ(CL_ERR_DEADLINE_EXCEEDED, client.ReplayStory("c", "s", 0, 1, events));
+    EXPECT_LT(Clock::now() - started, std::chrono::milliseconds(120));
+    EXPECT_TRUE(events.empty());
+    unsigned callbacks = 0;
+    Client::EventCallback callback = [&](Event const&) { ++callbacks; };
+    started = Clock::now();
+    EXPECT_EQ(CL_ERR_DEADLINE_EXCEEDED, client.ReplayStory("c", "s", 0, 1, callback));
+    EXPECT_LT(Clock::now() - started, std::chrono::milliseconds(120));
+    EXPECT_EQ(0u, callbacks);
+    gate->open = true;
+    ASSERT_TRUE(peer.until([&] { return owner->context()->initializationSettled.load(); }));
+    ASSERT_EQ(CL_SUCCESS, client.Connect()); // The first Connect definitely did not dispatch.
+    EXPECT_EQ(CL_ERR_NOT_ACQUIRED, client.ReplayStory("c", "s", 0, 1, events));
+    EXPECT_EQ(CL_ERR_NOT_ACQUIRED, client.ReplayStory("c", "s", 0, 1, callback));
+    EXPECT_TRUE(events.empty());
+    EXPECT_EQ(0u, callbacks);
 }
 TEST_P(ClientMetadataDeadline, ReaderCleanupStaysChargedWithoutIncomingQuiescenceProof)
 {

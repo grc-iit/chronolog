@@ -34,8 +34,18 @@ public:
     int DestroyStory(std::string const&, std::string const&, Clock::time_point = Clock::now());
     std::pair<int, std::vector<std::string>> ShowChronicles(Clock::time_point = Clock::now());
     std::pair<int, std::vector<std::string>> ShowStories(std::string const&, Clock::time_point = Clock::now());
-    int replay_story(ChronicleName const&, StoryName const&, uint64_t, uint64_t, std::vector<Event>&);
-    int replay_story(ChronicleName const&, StoryName const&, uint64_t, uint64_t, Client::EventCallback);
+    int replay_story(ChronicleName const&,
+                     StoryName const&,
+                     uint64_t,
+                     uint64_t,
+                     std::vector<Event>&,
+                     Clock::time_point = Clock::now());
+    int replay_story(ChronicleName const&,
+                     StoryName const&,
+                     uint64_t,
+                     uint64_t,
+                     Client::EventCallback,
+                     Clock::time_point = Clock::now());
     // Private producers: acquire while this facade is alive. Work retains the
     // actual context, never a facade/output buffer or an engine copy alone.
     std::shared_ptr<ClientRpcContext> context() const noexcept { return context_; }
@@ -60,7 +70,7 @@ private:
         StoryHandle* handle = nullptr;
         std::vector<std::string> names;
         ClientId id = 0;
-        std::shared_ptr<AcquireStoryResponseMsg> acquisition;
+        std::shared_ptr<AcquireStoryResponseMsg> acquisition{};
     };
     class Work;
     ChronologClientImpl(std::shared_ptr<ClientRpcContext>, std::shared_ptr<rpc::RpcRuntime>, bool);
