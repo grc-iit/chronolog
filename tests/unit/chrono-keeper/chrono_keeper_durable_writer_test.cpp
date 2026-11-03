@@ -447,6 +447,27 @@ TEST(KeeperDurableWriter, EnsureStoryPipelineLeavesAnExistingPipelineAlone)
     EXPECT_EQ(keeper.ingested(kRecorded), 1u);
 }
 
+// Once data collection shuts down its threads may have exited, and nothing
+// would collect, seal or retire a pipeline started after that: its event
+// would stay pending in the WAL. A durable write that was already past
+// stopAcceptingWrites, for a story with no pipeline, is refused with nothing
+// stored, so the client can send it to a keeper that is running.
+TEST(KeeperDurableWriter, NoPipelineStartsAfterDataCollectionShutsDown)
+{
+    ensureLogger();
+    Keeper keeper(/*acceptance_window_secs=*/0);
+    keeper.data_store.shutdownDataCollection();
+
+    EXPECT_NE(keeper.data_store.ensureStoryPipeline("chron", "story", kStory), chl::CL_SUCCESS);
+
+    FakeDurableLog wal;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, kNoCap);
+    EXPECT_EQ(writer.write("chron", "story", makeEvent(0)), chl::CL_ERR_DURABILITY_UNAVAILABLE);
+    EXPECT_TRUE(wal.appended.empty());
+    EXPECT_FALSE(keeper.ingestion_queue.hasStoryIngestionHandle(kStory));
+    EXPECT_EQ(keeper.ingested(kStory), 0u);
+}
+
 // The writer asks the ingestion queue, not the data store, whether the story
 // has a pipeline, so a durable write for a recorded story never waits on the
 // data store's mutex, which the collector holds for a whole tick. Here the
