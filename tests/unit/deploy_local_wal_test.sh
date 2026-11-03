@@ -121,6 +121,24 @@ check "stop: the table marks a 2^64 count pending" grep -q 'keeper-2 .*184467440
 conf_dir=$(stop_case zeros 'pending_events=000 pending_bytes=0')
 check "stop: an all-zero count is clean" quiet report_wal_exit_summaries "$conf_dir"
 
+# A deploy with fewer keepers than the one before it in the same conf dir: the earlier keeper-2 conf
+# is removed, so stop does not report a keeper that never ran as missing.
+conf_dir="$fixture/stop-shrink/conf"
+mkdir -p "$conf_dir" "$fixture/stop-shrink/wal/keeper-1"
+generate_config_files 2 "$template" "$conf_dir" "$fixture/output" 2 "$fixture/monitor" "$client_template" \
+    "$fixture/stop-shrink/wal" > /dev/null
+check "first deploy: two keeper and two grapher confs" \
+    test -f "$conf_dir/chrono-keeper-conf-2.json" -a -f "$conf_dir/chrono-grapher-conf-2.json"
+generate_config_files 1 "$template" "$conf_dir" "$fixture/output" 1 "$fixture/monitor" "$client_template" \
+    "$fixture/stop-shrink/wal" > /dev/null
+printf 'pending_events=0 pending_bytes=0\n' > "$fixture/stop-shrink/wal/keeper-1/exit-summary"
+check "redeploy with fewer keepers: the earlier keeper-2 conf is gone" \
+    test ! -e "$conf_dir/chrono-keeper-conf-2.json"
+check "redeploy with fewer keepers: keeper 1's conf is written" test -f "$conf_dir/chrono-keeper-conf-1.json"
+check "redeploy with fewer keepers: stop finds only keeper 1 and exits 0" quiet report_wal_exit_summaries "$conf_dir"
+check "redeploy with fewer groups: the earlier grapher-2 conf is gone" \
+    test ! -e "$conf_dir/chrono-grapher-conf-2.json"
+
 conf_dir="$fixture/stop-off/conf"
 mkdir -p "$conf_dir"
 generate_config_files 1 "$template" "$conf_dir" "$fixture/output" 1 "$fixture/monitor" "$client_template" "" > /dev/null

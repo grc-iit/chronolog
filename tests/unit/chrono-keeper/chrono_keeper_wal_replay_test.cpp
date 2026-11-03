@@ -171,6 +171,41 @@ TEST(KeeperWalReplay, ChunksAlignToChunkDuration)
     EXPECT_EQ(event_count, times.size());
 }
 
+// The replay moves each recovered record into its chunk instead of copying
+// it, so startup does not hold every pending payload twice. The recovered
+// state keeps its stories, identities and timestamps, which the startup log
+// reads afterwards.
+TEST(KeeperWalReplay, RecordsMoveIntoTheirChunks)
+{
+    ensureLogger();
+    Keeper keeper;
+
+    std::vector<uint64_t> const times = {kBase, kBase + 10, kBase + kChunkDurationNs + 3};
+    chl::RecoveredStory const story = recoveredStory(chl::storyIdOf("chron", "story"), true, times);
+    chl::RecoveredState state;
+    state.segments = {1};
+    state.stories.emplace(story.wal_story_id, story);
+
+    EXPECT_EQ(keeper.data_store.replayRecoveredEvents(state), 2u);
+
+    chl::RecoveredStory const& replayed = state.stories.at(story.wal_story_id);
+    ASSERT_EQ(replayed.events.size(), times.size());
+    for(auto const& [sequence, event]: replayed.events) { EXPECT_TRUE(event.getRecord().empty()); }
+    EXPECT_EQ(std::get<0>(replayed.events.begin()->first), times.front());
+    EXPECT_EQ(std::get<0>(replayed.events.rbegin()->first), times.back());
+
+    std::vector<std::string> records;
+    for(ShippedChunk const& chunk: shipQueued(keeper))
+    {
+        for(chl::LogEvent const& event: chunk.events) { records.push_back(event.getRecord()); }
+    }
+    std::sort(records.begin(), records.end());
+    std::vector<std::string> expected;
+    for(uint64_t time: times) { expected.push_back("event-" + std::to_string(time)); }
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(records, expected);
+}
+
 TEST(KeeperWalReplay, IdsComeFromNames)
 {
     ensureLogger();

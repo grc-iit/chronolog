@@ -101,8 +101,11 @@ public:
     // recovery read back to the retention store as sealed chunks aligned to
     // story_chunk_duration_secs, under recoveredStoryId, and release their
     // stories' tails as sealOrphanedEvents does. A story without names is
-    // logged and not shipped. Returns the number of chunks handed over.
-    std::size_t replayRecoveredEvents(RecoveredState const&);
+    // logged and not shipped. Returns the number of chunks handed over. The
+    // records of the events placed are moved into their chunks, not copied:
+    // afterwards `recovered` keeps its stories, identities and timestamps, but
+    // those events' records are empty.
+    std::size_t replayRecoveredEvents(RecoveredState&);
 
     // Grapher watermark report: everything below w for the story is durable;
     // forwards to the retention store's confirmPersisted.

@@ -292,17 +292,12 @@ int WalSegmentManager::extend(Spare& target, uint64_t bytes)
 {
     // zeros past the end: the file grows, and the data sync below commits the
     // new size before anything is written there
-    static std::string const zeros(1u << 20, '\0');
-    uint64_t offset = target.size_bytes;
-    while(offset < bytes)
+    if(target.size_bytes < bytes)
     {
-        iovec iov{const_cast<char*>(zeros.data()),
-                  static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), bytes - offset))};
-        if(int err = sink.writeAt(target.fd, offset, &iov, 1))
+        if(int err = writeZeros(sink, target.fd, target.size_bytes, bytes - target.size_bytes))
         {
             return err;
         }
-        offset += iov.iov_len;
     }
     if(int err = sink.syncData(target.fd))
     {
