@@ -150,16 +150,7 @@ public:
         {
             return errno;
         }
-        static std::string const zeros(1u << 20, '\0');
-        uint64_t offset = 0;
-        int err = 0;
-        while(err == 0 && offset < bytes)
-        {
-            iovec iov{const_cast<char*>(zeros.data()),
-                      static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), bytes - offset))};
-            err = writeAllAt(fd, offset, &iov, 1);
-            offset += iov.iov_len;
-        }
+        int err = writeZeros(*this, fd, 0, bytes);
         if(err == 0)
         {
             err = syncData(fd);
@@ -357,6 +348,26 @@ void waitBriefly()
 } // namespace
 
 std::unique_ptr<WalFileSink> makePosixWalFileSink() { return std::make_unique<PosixWalFileSink>(); }
+
+int writeZeros(WalFileSink& sink, int fd, uint64_t offset, uint64_t bytes, uint64_t* failed_at)
+{
+    static std::string const zeros(1u << 20, '\0');
+    for(uint64_t done = 0; done < bytes;)
+    {
+        iovec iov{const_cast<char*>(zeros.data()),
+                  static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), bytes - done))};
+        if(int err = sink.writeAt(fd, offset + done, &iov, 1))
+        {
+            if(failed_at != nullptr)
+            {
+                *failed_at = offset + done;
+            }
+            return err;
+        }
+        done += iov.iov_len;
+    }
+    return 0;
+}
 
 FaultInjectingWalFileSink::FaultInjectingWalFileSink(std::unique_ptr<WalFileSink> inner)
     : inner(std::move(inner))

@@ -50,6 +50,11 @@ public:
 
 std::unique_ptr<WalFileSink> makePosixWalFileSink();
 
+// Writes zeros over [offset, offset + bytes) of fd through sink.writeAt, in
+// pieces of at most 1 MiB, and syncs nothing. 0, or the errno of the first
+// write that failed; failed_at, when given, then holds that write's offset.
+int writeZeros(WalFileSink& sink, int fd, uint64_t offset, uint64_t bytes, uint64_t* failed_at = nullptr);
+
 // A destroy the WAL could not log as a D record because it had latched failed
 // (see KeeperWal). Every event of the story in a segment up to last_segment
 // belongs to the destroyed story: a latched WAL writes nothing more, so a

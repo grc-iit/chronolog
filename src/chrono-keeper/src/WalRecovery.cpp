@@ -270,15 +270,7 @@ int zeroTail(WalFileSink& sink, std::string const& name, uint64_t from, uint64_t
     {
         return err;
     }
-    static std::string const zeros(1u << 20, '\0');
-    int err = 0;
-    for(uint64_t offset = from; err == 0 && offset < size;)
-    {
-        iovec iov{const_cast<char*>(zeros.data()),
-                  static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), size - offset))};
-        err = sink.writeAt(fd, offset, &iov, 1);
-        offset += iov.iov_len;
-    }
+    int err = from < size ? writeZeros(sink, fd, from, size - from) : 0;
     if(err == 0)
     {
         err = sink.syncData(fd);

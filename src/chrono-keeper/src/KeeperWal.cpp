@@ -31,8 +31,6 @@ constexpr std::size_t kPruneOnAdd = 2;
 // the longest a batch loop waits for a waiting thread to take the mutex: a
 // woken thread takes it within microseconds, so this only bounds the wait
 constexpr std::chrono::microseconds kHandOffLimit(500);
-// the most zeros one write of a failed group's erase carries
-constexpr std::size_t kZeroWriteBytes = 1u << 20;
 
 iovec iovOf(char const* data, std::size_t len) { return iovec{const_cast<char*>(data), len}; }
 
@@ -950,16 +948,11 @@ void KeeperWal::failGroup(std::vector<Queued>& group, int err, std::string const
 
 int KeeperWal::eraseRange(uint64_t offset, uint64_t bytes, std::string& what)
 {
-    static std::string const zeros(kZeroWriteBytes, '\0');
-    for(uint64_t done = 0; done < bytes;)
+    uint64_t failed_at = 0;
+    if(int err = writeZeros(*sink, activeFd, offset, bytes, &failed_at))
     {
-        iovec iov = iovOf(zeros.data(), static_cast<std::size_t>(std::min<uint64_t>(zeros.size(), bytes - done)));
-        if(int err = sink->writeAt(activeFd, offset + done, &iov, 1))
-        {
-            what = "the write of zeros at offset " + std::to_string(offset + done);
-            return err;
-        }
-        done += iov.iov_len;
+        what = "the write of zeros at offset " + std::to_string(failed_at);
+        return err;
     }
     if(int err = sink->syncData(activeFd))
     {
