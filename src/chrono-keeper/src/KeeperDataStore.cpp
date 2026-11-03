@@ -349,11 +349,11 @@ chronolog::StoryId chronolog::recoveredStoryId(chronolog::RecoveredStory const& 
     return story.has_names ? chl::storyIdOf(story.chronicle, story.story) : story.wal_story_id;
 }
 
-std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::RecoveredState const& recovered)
+std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::RecoveredState& recovered)
 {
     uint64_t const chunk_duration = uint64_t{std::max<uint32_t>(story_chunk_duration_secs, 1)} * 1000000000ULL;
     std::size_t chunks_handed_over = 0;
-    for(auto const& [wal_story_id, story]: recovered.stories)
+    for(auto& [wal_story_id, story]: recovered.stories)
     {
         if(story.events.empty())
         {
@@ -387,7 +387,7 @@ std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::Recover
         };
         // events are ordered by time first, so each chunk is complete once an
         // event falls past its end
-        for(auto const& [sequence, recovered_event]: story.events)
+        for(auto& [sequence, recovered_event]: story.events)
         {
             if(chunk != nullptr && recovered_event.time() >= chunk->getEndTime())
             {
@@ -402,17 +402,18 @@ std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::Recover
                                             start_time,
                                             start_time + chunk_duration);
             }
-            chl::LogEvent event = recovered_event;
-            event.storyId = story_id;
-            if(chunk->insertEvent(event) == 0)
+            // moved, not copied, so startup does not hold every pending payload
+            // twice; a refused event is left in place for the warning
+            recovered_event.storyId = story_id;
+            if(chunk->insertEvent(std::move(recovered_event)) == 0)
             {
                 // a durable write never logs an empty record, so this is a bug too
                 LOG_WARNING("[KeeperDataStore] WAL replay: StoryID={} event {}:{}:{} could not be placed; dropping "
                             "it",
                             story_id,
-                            event.time(),
-                            event.getClientId(),
-                            event.index());
+                            recovered_event.time(),
+                            recovered_event.getClientId(),
+                            recovered_event.index());
                 theTailStore.eventDiscarded(story_id, sequence);
             }
         }

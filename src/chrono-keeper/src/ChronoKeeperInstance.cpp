@@ -83,15 +83,16 @@ static void log_wal_replay(std::string const& dir,
         {
             continue;
         }
-        // events are ordered by time first
+        // events are keyed by (time, client id, index); the replay has moved
+        // their records out, so read the times from the keys
         LOG_INFO("[ChronoKeeperInstance] WAL replay: StoryID={} {}/{} (WAL StoryID={}): {} events from {} to {}",
                  chl::recoveredStoryId(story),
                  story.has_names ? story.chronicle : std::string("<no names>"),
                  story.has_names ? story.story : std::string("<no names>"),
                  wal_story_id,
                  story.events.size(),
-                 story.events.begin()->second.time(),
-                 story.events.rbegin()->second.time());
+                 std::get<0>(story.events.begin()->first),
+                 std::get<0>(story.events.rbegin()->first));
     }
     LOG_INFO("[ChronoKeeperInstance] WAL replay from {}: {} segments, {} bytes read, oldest segment {} s old, "
              "{} stories, {} events in {} chunks, took {} ms",
