@@ -253,9 +253,10 @@ private:
     // Registers a synced group (or drops a failed one) and sets every
     // completion in it.
     void finishGroup(std::vector<Queued>& group, int status, uint64_t segment, uint64_t bytes);
-    // A latched WAL writes no D record, so the destroys in a latched group go
-    // to the unlogged-drops file for recovery, and their stories' copies are
-    // dropped here (committer thread only).
+    // A latched WAL writes no D record, and a failed group's D records are
+    // erased with it, so the destroys in a latched or failed group go to the
+    // unlogged-drops file for recovery, and their stories' copies are dropped
+    // here (committer thread only).
     void recordUnloggedDrops(std::vector<Queued> const& group);
     // Latches the failure, logs it and fails the group. written is the length
     // of the range from writeOffset of the active segment that the group's

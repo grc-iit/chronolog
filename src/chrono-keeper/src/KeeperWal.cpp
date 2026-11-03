@@ -785,9 +785,10 @@ void KeeperWal::recordUnloggedDrops(std::vector<Queued> const& group)
     {
         return;
     }
-    // The latch stops every write, so the story's events are all in segments
-    // up to the active one, and a story created again after a restart has
-    // its events in newer segments only.
+    // The latch stops every write (failGroup sets it before calling this), so
+    // the story's events are all in segments up to the active one, and a
+    // story created again after a restart has its events in newer segments
+    // only.
     std::vector<UnloggedDrop> drops;
     int err = readUnloggedDrops(*sink, drops);
     if(err == 0)
@@ -889,6 +890,9 @@ void KeeperWal::failGroup(std::vector<Queued>& group, int err, std::string const
     // a retry of an event in the group still finds it in flight and waits for
     // its answer, and a retry after the answer is refused.
     failed = true;
+    // A D record of the group is erased with it, or was never written, so the
+    // destroy goes to the unlogged-drops file as after the latch.
+    recordUnloggedDrops(group);
     if(written == 0)
     {
         LOG_CRITICAL("[KeeperWal] {} failed in WAL directory {}: {} (errno {}). Nothing of the group was written; its "
