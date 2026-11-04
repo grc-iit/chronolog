@@ -30,8 +30,13 @@ namespace chronolog
 //     group, the one its last G record starts: when it lies inside a group
 //     and data follows the end of that group, or when records without a G
 //     record follow the end of the last group, a later group was written
-//     after this one synced, and it refuses. In any other segment a bad
-//     frame, or anything but zeros after its end of data, refuses.
+//     after this one synced, and it refuses. Before a tail is zeroed, its
+//     bytes up to the last nonzero one are written whole to
+//     "<segment>.wal.tail-<offset>"; whole records after a bad frame are
+//     counted and logged as an error, since if the drive damaged a synced
+//     group they may be acknowledged. A failed copy is logged and does not
+//     stop the start. In any other segment a bad frame, or anything but
+//     zeros after its end of data, refuses.
 //   - Before it returns, every segment is data-synced, then the directory. The
 //     keeper that wrote them may have died between writing a group and its
 //     sync: on the same boot that group reads back whole from the page cache

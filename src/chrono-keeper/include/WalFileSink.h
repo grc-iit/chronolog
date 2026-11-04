@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <sys/uio.h>
@@ -70,6 +71,11 @@ struct UnloggedDrop
 // The file in the WAL directory that holds them, one "<story id> <segment>"
 // line each. Recovery applies it and removes entries whose segments are gone.
 constexpr char kUnloggedDropsFile[] = "dropped-unlogged";
+
+// Writes the file whole: a .partial created, written, synced and renamed into
+// place, then the directory synced. 0 or an errno value; a failure can leave
+// the .partial, which the next start removes.
+int writeWholeFile(WalFileSink& sink, std::string const& name, std::string_view bytes);
 
 // A missing file is no drops. EINVAL for a line that does not parse.
 int readUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop>& drops);

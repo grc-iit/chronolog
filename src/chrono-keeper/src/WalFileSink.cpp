@@ -560,25 +560,10 @@ int readUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop>& drops)
     return 0;
 }
 
-int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops)
+int writeWholeFile(WalFileSink& sink, std::string const& name, std::string_view bytes)
 {
-    std::string const name = kUnloggedDropsFile;
-    if(drops.empty())
-    {
-        int const err = sink.remove(name);
-        if(err != 0 && err != ENOENT)
-        {
-            return err;
-        }
-        return err == ENOENT ? 0 : sink.syncDirectory();
-    }
-    std::string text;
-    for(UnloggedDrop const& drop: drops)
-    {
-        text += std::to_string(drop.story_id) + " " + std::to_string(drop.last_segment) + "\n";
-    }
     std::string const partial = name + ".partial";
-    if(int err = sink.createZeroed(partial, text.size()))
+    if(int err = sink.createZeroed(partial, bytes.size()))
     {
         return err;
     }
@@ -587,7 +572,7 @@ int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops
     {
         return err;
     }
-    iovec iov{const_cast<char*>(text.data()), text.size()};
+    iovec iov{const_cast<char*>(bytes.data()), bytes.size()};
     int err = sink.writeAt(fd, 0, &iov, 1);
     if(err == 0)
     {
@@ -607,6 +592,26 @@ int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops
         err = sink.syncDirectory();
     }
     return err;
+}
+
+int writeUnloggedDrops(WalFileSink& sink, std::vector<UnloggedDrop> const& drops)
+{
+    std::string const name = kUnloggedDropsFile;
+    if(drops.empty())
+    {
+        int const err = sink.remove(name);
+        if(err != 0 && err != ENOENT)
+        {
+            return err;
+        }
+        return err == ENOENT ? 0 : sink.syncDirectory();
+    }
+    std::string text;
+    for(UnloggedDrop const& drop: drops)
+    {
+        text += std::to_string(drop.story_id) + " " + std::to_string(drop.last_segment) + "\n";
+    }
+    return writeWholeFile(sink, name, text);
 }
 
 } // namespace chronolog

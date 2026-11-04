@@ -298,6 +298,50 @@ bool readSegment(WalFileSink& sink,
     return true;
 }
 
+// The name of the copy of a torn tail that starts at `from`
+std::string tailCopyName(std::string const& segment_name, uint64_t from)
+{
+    return segment_name + ".tail-" + std::to_string(from);
+}
+
+// Before a torn tail is zeroed: copies its bytes, from the end of the data to
+// the last nonzero byte, to tailCopyName, and counts the whole records that
+// follow the bad frame when its length can be trusted (nullopt when it cannot:
+// a zero length, a length past the segment, or one over kMaxBodyBytes). Those
+// records are lost to recovery; in a crash they belong to the group that was
+// never acknowledged, but if the drive damaged a synced group they may be
+// acknowledged events, and the copy is how to get them back.
+int saveTornTail(WalFileSink& sink,
+                 std::string const& name,
+                 uint64_t from,
+                 std::string const& copy,
+                 uint64_t& copied,
+                 std::optional<std::size_t>& whole_after)
+{
+    std::string bytes;
+    if(int err = sink.readFile(name, bytes))
+    {
+        return err;
+    }
+    std::size_t last = bytes.size();
+    while(last > from && bytes[last - 1] == '\0') { --last; }
+    copied = last > from ? last - from : 0;
+    if(bytes.size() >= from + wal::kFrameHeaderBytes)
+    {
+        uint64_t length = 0;
+        for(int i = 3; i >= 0; --i)
+        {
+            length = (length << 8) | static_cast<unsigned char>(bytes[from + static_cast<std::size_t>(i)]);
+        }
+        uint64_t const next = from + wal::kFrameHeaderBytes + length;
+        if(length != 0 && length <= wal::kMaxBodyBytes && next <= bytes.size())
+        {
+            whole_after = wal::scanSegment(std::string_view(bytes).substr(next)).records.size();
+        }
+    }
+    return copied == 0 ? 0 : writeWholeFile(sink, copy, std::string_view(bytes).substr(from, copied));
+}
+
 // Overwrites [from, size) of the segment with zeros and data-syncs it. The file
 // keeps its size, so the directory needs no sync.
 int zeroTail(WalFileSink& sink, std::string const& name, uint64_t from, uint64_t size)
@@ -462,17 +506,50 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
         // everything from the end of the data goes, not just the bad frame.
         SegmentEnd& end = ends[*torn];
         std::string const where = segmentText(end.name, directory);
+        std::string const why =
+                end.bad_frame ? end.reason : "a zero length followed by data " + offsetText(*end.after_end);
+        // a copy first, so records a damaged synced group still holds are not
+        // gone with the zeros; a failed copy does not stop the start
+        std::string const copy = tailCopyName(end.name, end.data_end);
+        uint64_t copied = 0;
+        std::optional<std::size_t> whole_after;
+        int const copy_err = saveTornTail(sink, end.name, end.data_end, copy, copied, whole_after);
+        if(copy_err != 0)
+        {
+            LOG_ERROR("[WalRecovery] Cannot save a copy of the torn tail of {} in {}/{}: {}. Zeroing it anyway",
+                      where,
+                      directory,
+                      copy,
+                      std::strerror(copy_err));
+        }
         if(int err = zeroTail(sink, end.name, end.data_end, end.size))
         {
             error = "cannot zero the torn tail of " + where + " from " + offsetText(end.data_end) + ": " +
                     std::strerror(err);
             return CL_ERR_UNKNOWN;
         }
-        LOG_WARNING("[WalRecovery] Zeroed the torn tail of {}: {} bytes from offset {} ({})",
-                    where,
-                    end.size - end.data_end,
-                    end.data_end,
-                    end.bad_frame ? end.reason : "a zero length followed by data " + offsetText(*end.after_end));
+        std::string const kept = copy_err == 0 ? ", copied to " + directory + "/" + copy : "";
+        if(whole_after.value_or(0) > 0)
+        {
+            LOG_ERROR("[WalRecovery] Zeroed the tail of {}: {} bytes from offset {} ({}), and with it {} whole "
+                      "record(s) after the bad one{}. After a crash they belong to a write that was never "
+                      "acknowledged; if the drive damaged a synced write instead, they may be acknowledged events",
+                      where,
+                      end.size - end.data_end,
+                      end.data_end,
+                      why,
+                      *whole_after,
+                      kept);
+        }
+        else
+        {
+            LOG_WARNING("[WalRecovery] Zeroed the torn tail of {}: {} bytes from offset {} ({}){}",
+                        where,
+                        end.size - end.data_end,
+                        end.data_end,
+                        why,
+                        kept);
+        }
         end.after_end.reset();
     }
 

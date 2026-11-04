@@ -91,7 +91,10 @@ Each keeper owns one directory:
   yet confirmed;
 - `dropped-unlogged`, present only after a story was destroyed while the WAL was failed, or after
   a segment holding a `D` record was deleted before an older segment (see [Release](#release)): one
-  `<story id> <segment>` line for each such destroy.
+  `<story id> <segment>` line for each such destroy;
+- `<n>.wal.tail-<offset>`, a copy of a torn tail that recovery zeroed in segment `<n>` from that
+  offset (see [Recovery](#recovery)). The keeper does not read or remove it; delete it once you no
+  longer need it.
 
 A segment is written full of zeros, given its header and synced before it is used, so a write
 overwrites zeros and a sync does not also commit a change of file size. That cut the sync time 1.7
@@ -157,6 +160,11 @@ registers with the visor:
    been acknowledged, and it stops startup with the segment and offset, as a bad record in any older
    segment does. Move that segment aside to start without it. A bad record in the last group is
    zeroed even if that group's sync had returned, for example when the drive damaged it later.
+   Before it zeros a tail, recovery copies it, up to its last nonzero byte, to
+   `<n>.wal.tail-<offset>`, and logs a warning. When whole records follow the bad one, it logs an
+   error with their count: after a crash they belong to a write that was never acknowledged, but if
+   the drive damaged a synced write they may be acknowledged events, and the copy holds them. A
+   copy that cannot be written is logged as an error, and the tail is zeroed anyway.
 4. It syncs every segment and the directory.
 5. It applies `dropped-unlogged`, if the file exists (see [Release](#release)). A line that does not
    parse, or a read error such as EIO or EACCES, stops startup, after step 4: a torn tail has been
@@ -235,7 +243,7 @@ burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 | WAL on tmpfs | Survives a keeper crash, not a reboot. |
 | WAL write or sync fails | The keeper zeros the group's bytes and syncs them, then answers the group `CL_ERR_DURABILITY_UNAVAILABLE`. If it cannot erase the group, it answers `CL_ERR_DURABILITY_UNKNOWN`. The WAL stays failed until a restart; accepted writes continue. |
 | Grapher down for a long time | The WAL and keeper memory grow; a warning above `max_bytes`; durable writes refused at `durable_cap_mb` or the reserve. Nothing is dropped. |
-| Torn record at the end of the newest segment | Zeroed at startup, when it lies in the last group. |
+| Torn record at the end of the newest segment | Copied to `<n>.wal.tail-<offset>` and zeroed at startup, when it lies in the last group. |
 | Bad record inside an earlier group of the newest segment | The keeper refuses to start and names the segment and offset. |
 | Bad record in an older segment | The keeper refuses to start and names the segment and offset. |
 | WAL from a build with another format | The keeper refuses to start and names the segment and both versions. |

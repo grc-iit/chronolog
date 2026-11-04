@@ -204,6 +204,35 @@ std::string writeOf(uint64_t segment) { return "write " + wal::segmentFileName(s
 
 using Ops = std::vector<std::string>;
 
+Ops operator+(Ops first, Ops const& second)
+{
+    first.insert(first.end(), second.begin(), second.end());
+    return first;
+}
+
+// The torn tail of segment from offset `from` is copied before it is zeroed
+std::string tailCopyOf(uint64_t segment, uint64_t from)
+{
+    return wal::segmentFileName(segment) + ".tail-" + std::to_string(from);
+}
+
+// the copy's write, sync and directory sync, then `then`
+Ops withTailCopy(uint64_t segment, uint64_t from, Ops const& then)
+{
+    std::string const partial = tailCopyOf(segment, from) + ".partial";
+    Ops ops{"write " + partial, "sync " + partial, "syncdir"};
+    ops.insert(ops.end(), then.begin(), then.end());
+    return ops;
+}
+
+// the bytes from `from` to the last nonzero byte
+std::string tailBytes(std::string const& bytes, std::size_t from)
+{
+    std::size_t last = bytes.size();
+    while(last > from && bytes[last - 1] == '\0') { --last; }
+    return bytes.substr(from, last - from);
+}
+
 bool allZero(std::string const& bytes, std::size_t from)
 {
     for(std::size_t i = from; i < bytes.size(); ++i)
@@ -473,8 +502,9 @@ TEST_F(WalRecoveryTest, TornTailIsZeroedAndSynced)
     ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
     EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a), seqOf(b)}));
     expectConsistent();
-    // the older segment is synced before the newest one is zeroed
-    EXPECT_EQ(ops(), (Ops{syncOf(1), writeOf(2), syncOf(2), "syncdir"}));
+    // the older segment is synced before the newest one is copied and zeroed
+    EXPECT_EQ(ops(), (Ops{syncOf(1)}) + withTailCopy(2, torn_at, {writeOf(2), syncOf(2), "syncdir"}));
+    EXPECT_EQ(readFile(tailCopyOf(2, torn_at)), tailBytes(newest, torn_at));
 
     std::string const after = readSegment(2);
     ASSERT_EQ(after.size(), newest.size());
@@ -512,7 +542,7 @@ TEST_F(WalRecoveryTest, TornTailBeforeAHeaderOnlySpareIsZeroed)
     EXPECT_EQ(readSegment(2), spare);
     ASSERT_TRUE(state.reusable_spare.has_value());
     EXPECT_EQ(*state.reusable_spare, 2u);
-    EXPECT_EQ(ops(), (Ops{syncOf(2), writeOf(1), syncOf(1), "syncdir"}));
+    EXPECT_EQ(ops(), (Ops{syncOf(2)}) + withTailCopy(1, torn_at, {writeOf(1), syncOf(1), "syncdir"}));
     expectConsistent();
 }
 
@@ -538,7 +568,9 @@ TEST_F(WalRecoveryTest, TornWriteWithALaterPageWritten)
     ASSERT_EQ(after.size(), before.size());
     EXPECT_EQ(after.substr(0, hole), before.substr(0, hole));
     EXPECT_TRUE(allZero(after, hole));
-    EXPECT_EQ(ops(), (Ops{writeOf(1), syncOf(1), "syncdir"}));
+    EXPECT_EQ(ops(), withTailCopy(1, hole, {writeOf(1), syncOf(1), "syncdir"}));
+    // the copy keeps c, a whole record after the hole
+    EXPECT_EQ(readFile(tailCopyOf(1, hole)), tailBytes(before, hole));
     expectConsistent();
 }
 
@@ -568,7 +600,7 @@ TEST_F(WalRecoveryTest, HoleRightAfterTheHeaderIsZeroed)
     // it now holds only its header, so the WAL can write into it
     ASSERT_TRUE(state.reusable_spare.has_value());
     EXPECT_EQ(*state.reusable_spare, 2u);
-    EXPECT_EQ(ops(), (Ops{syncOf(1), writeOf(2), syncOf(2), "syncdir"}));
+    EXPECT_EQ(ops(), (Ops{syncOf(1)}) + withTailCopy(2, header_end, {writeOf(2), syncOf(2), "syncdir"}));
     int fd = -1;
     uint64_t data_offset = 0;
     EXPECT_EQ(manager->adoptExisting(2, fd, data_offset), 0) << manager->error();
@@ -837,9 +869,38 @@ TEST_F(WalRecoveryTest, CrcMismatchInTheLastGroupIsZeroed)
     one.raw(c);
     write(one);
 
+    std::string const before = readSegment(1);
+
     ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
     EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a)}));
     EXPECT_TRUE(allZero(readSegment(1), bad_at));
+    // the bad record and the whole one after it are kept in the copy, in case
+    // the drive damaged a group that had synced
+    std::string const copy = readFile(tailCopyOf(1, bad_at));
+    EXPECT_EQ(copy, tailBytes(before, bad_at));
+    // the copy ends at the last nonzero byte, so at the last nonzero byte of c
+    EXPECT_EQ(copy, tailBytes(flipped + c, 0));
+    expectConsistent();
+}
+
+// A copy that cannot be saved does not stop the start: the tail is zeroed and
+// the half-written copy is removed by the next start, with the other partials.
+TEST_F(WalRecoveryTest, TornTailIsZeroedWhenItsCopyCannotBeSaved)
+{
+    chl::LogEvent const a = eventOf(kStory, 100);
+    Segment one(1);
+    one.names(kStory, "chronicle", "story");
+    one.event(a);
+    std::string const torn = frameOf(eventOf(kStory, 200));
+    uint64_t const torn_at = one.raw(torn.substr(0, torn.size() / 2));
+    write(one);
+    open();
+    recorder->failSyncsOf(tailCopyOf(1, torn_at) + ".partial", EIO);
+
+    ASSERT_EQ(run(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a)}));
+    EXPECT_TRUE(allZero(readSegment(1), torn_at));
+    EXPECT_FALSE(fs::exists(fs::path(dir) / tailCopyOf(1, torn_at)));
     expectConsistent();
 }
 
