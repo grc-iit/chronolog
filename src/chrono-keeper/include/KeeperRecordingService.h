@@ -19,6 +19,7 @@
 #include <KeeperIdCard.h>
 #include <chronolog_types.h>
 #include <HotRangeResponse.h>
+#include <RpcAnswer.h>
 
 #include "IngestionQueue.h"
 #include "KeeperChunkRetentionStore.h"
@@ -108,11 +109,11 @@ public:
                   log_event.getRecord());
         if(!acceptingWrites)
         {
-            request.respond(chronolog::CL_ERR_UNKNOWN);
+            answerRpcCaller(request, chronolog::CL_ERR_UNKNOWN, "KeeperRecordingService");
             return;
         }
         theIngestionQueue.ingestLogEvent(log_event);
-        request.respond(chronolog::CL_SUCCESS);
+        answerRpcCaller(request, chronolog::CL_SUCCESS, "KeeperRecordingService");
     }
 
     // A durable write: answered CL_SUCCESS only once the event is in the
@@ -136,24 +137,26 @@ public:
                   log_event.index());
         if(!acceptingWrites)
         {
-            request.respond(chronolog::CL_ERR_DURABILITY_UNAVAILABLE);
+            answerRpcCaller(request, chronolog::CL_ERR_DURABILITY_UNAVAILABLE, "KeeperRecordingService");
             return;
         }
-        request.respond(theDurableWrite(chronicle, story, log_event));
+        // a client that gave up on its attempt cannot be answered; the event
+        // is durable either way, and a retry finds it
+        answerRpcCaller(request, theDurableWrite(chronicle, story, log_event), "KeeperRecordingService");
     }
 
     // Tail-read phase 1: return this keeper's most recent (up to n) event
     // sequences for the story (cheap keys only, no payload).
     void tail_get_sequences(tl::request const& request, StoryId const& story_id, uint64_t n)
     {
-        request.respond(theTailStore.getTailSequences(story_id, (std::size_t)n));
+        answerRpcCaller(request, theTailStore.getTailSequences(story_id, (std::size_t)n), "KeeperRecordingService");
     }
 
     // Tail-read phase 2: return the payloads this keeper holds for the requested
     // event sequences (the globally-selected last-N, after client-side merge).
     void tail_get_events(tl::request const& request, StoryId const& story_id, std::vector<EventSequence> const& seqs)
     {
-        request.respond(theTailStore.getTailEvents(story_id, seqs));
+        answerRpcCaller(request, theTailStore.getTailEvents(story_id, seqs), "KeeperRecordingService");
     }
 
     // Replay hot fetch: every retained event in [start, end) plus this
@@ -176,7 +179,8 @@ public:
                   response.hot_floor,
                   response.known_W,
                   response.truncated);
-        request.respond(response);
+        // a player whose fetch deadline passed cannot be answered
+        answerRpcCaller(request, response, "KeeperRecordingService");
     }
 
 private:

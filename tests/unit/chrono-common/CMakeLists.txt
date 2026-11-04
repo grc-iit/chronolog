@@ -216,6 +216,7 @@ target_include_directories(chunk_sender_answer_test PRIVATE
 target_compile_definitions(chunk_sender_answer_test PRIVATE
     CHRONOLOG_GRAPHER_RECORDING_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-grapher/include/GrapherRecordingService.h"
     CHRONOLOG_CHUNK_CONSUMER_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-common/include/StoryChunkConsumerService.h"
+    CHRONOLOG_KEEPER_RECORDING_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-keeper/include/KeeperRecordingService.h"
 )
 
 target_link_libraries(chunk_sender_answer_test PRIVATE
