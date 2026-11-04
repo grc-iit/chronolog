@@ -1955,6 +1955,9 @@ TEST_F(KeeperWalTest, LookupAnswersADurableEventInEveryState)
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::nullopt); // not started
 
     ASSERT_EQ(wal->start(chl::RecoveredState{}, {}), chl::CL_SUCCESS);
+    // the spare's header sync goes through the same sink: once it is done,
+    // the failure below is the next group's
+    ASSERT_TRUE(waitFor([this]() { return segmentNumbers().size() == 2; }));
     ASSERT_EQ(append(event), chl::CL_SUCCESS);
     EXPECT_EQ(wal->lookupDurable(kStory, identityOf(event)), std::optional<int>(chl::CL_SUCCESS));
     EXPECT_EQ(wal->lookupDurable(kOtherStory, identityOf(event)), std::nullopt);
