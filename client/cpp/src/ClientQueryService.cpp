@@ -1,451 +1,380 @@
-#include <atomic>
-#include <chrono>
-#include <exception>
-#include <mutex>
-#include <new>
-#include <sstream>
-#include <string>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-
-#include <cereal/archives/binary.hpp>
-#include <thallium.hpp>
-#include <thallium/serialization/stl/vector.hpp>
-
-#include <client_errcode.h>
-#include <chrono_monitor.h>
-#include <chronolog_client.h>
-#include <PlaybackQueryResponse.h>
-
 #include "ClientQueryService.h"
 #include "PlaybackQueryRpcClient.h"
-
-namespace tl = thallium;
+#include <PlaybackQueryResponse.h>
+#include <private/RpcBulkSerialization.h>
+#include <thread>
+#include <exception>
 namespace chl = chronolog;
-
-
-chl::ClientQueryService::ClientQueryService(thallium::engine& tl_engine,
-                                            chl::ServiceId const& client_service_id,
-                                            std::shared_ptr<ClientRpcProcedures> procedures,
-                                            std::weak_ptr<ClientRpcContext> context)
-    : tl::provider<ClientQueryService>(tl_engine, client_service_id.getProviderId())
+namespace tl = thallium;
+namespace chronolog
+{
+namespace
+{
+struct QueryConsumption
+{
+    std::shared_ptr<PlaybackQuery> query;
+    ~QueryConsumption()
+    {
+        query->closeCallbacks();
+        query->consumed.store(true, std::memory_order_release);
+    }
+};
+} // namespace
+void PlaybackQuery::closeCallbacks() noexcept
+{
+    callbackState.fetch_or(CallbackClosed, std::memory_order_acq_rel);
+    // This wait covers only an already-admitted cooperative user callback.
+    // Native work, diagnostics and map locks are outside the active interval.
+    while(callbackState.load(std::memory_order_acquire) & CallbackActive)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    callback = {}; // Release user captures before the public replay returns.
+}
+ClientQueryService* ClientQueryService::CreateClientQueryService(thallium::engine& engine,
+                                                                 ServiceId const& id,
+                                                                 std::shared_ptr<ClientRpcProcedures> procedures,
+                                                                 std::weak_ptr<ClientRpcContext> context)
+{
+    auto owner = context.lock();
+    if(!owner || owner->closing() || !procedures || !owner->engine ||
+       owner->engine->get_margo_instance() != engine.get_margo_instance() || owner->reader)
+        return nullptr;
+    auto* service = new ClientQueryService(engine, id, std::move(procedures), owner);
+    owner->reader = service; // Actual root precedes every callback registration.
+    service->registerProcedures(owner->readerRegistrationObserver_);
+    return service;
+}
+ClientQueryService::ClientQueryService(thallium::engine& engine,
+                                       ServiceId const& id,
+                                       std::shared_ptr<ClientRpcProcedures> procedures,
+                                       std::weak_ptr<ClientRpcContext> context)
+    : tl::provider<ClientQueryService>(engine, id.getProviderId())
     , procedures_(std::move(procedures))
     , context_(std::move(context))
-    , queryServiceEngine(tl_engine)
-    , queryServiceId(client_service_id)
-    , queryTimeoutInSecs(180) // 3 mins
+    , queryServiceEngine(engine)
+    , queryServiceId(id)
+    , queryIndex(0)
+    , queryTimeoutInSecs(180)
+{}
+void ClientQueryService::registerProcedures(std::function<void(ClientQueryService&, bool)> const& observer)
 {
-    std::atomic_init(&queryIndex, 0);
-
-    LOG_DEBUG("[ClientQueryService] created  service {}", chl::to_string(queryServiceId));
-
+    if(observer)
+        observer(*this, false);
     define("receive_query_response", &ClientQueryService::receive_query_response, tl::ignore_return_value());
-    //set up callback for the case when the engine is being finalized while this provider is still alive
-    get_engine().push_finalize_callback(this, [p = this]() { delete p; });
+    if(observer)
+        observer(*this, true);
 }
-
-
-chl::ClientQueryService::~ClientQueryService()
+ClientQueryService::~ClientQueryService()
 {
-    LOG_DEBUG("[ClientQueryService] Destructor called. Cleaning up...");
-    get_engine().pop_finalize_callback(this);
+    for(auto& client: playbackRpcClientMap) delete client.second;
 }
-
-
-///////////////
-int chl::ClientQueryService::addStoryReader(ChronicleName const& chronicle,
-                                            StoryName const& story,
-                                            StoryId const& story_id,
-                                            ServiceId const& service_id)
+int ClientQueryService::addStoryReader(ChronicleName const& chronicle,
+                                       StoryName const& story,
+                                       StoryId const& id,
+                                       ServiceId const& service)
 {
-    chl::PlaybackQueryRpcClient* playbackRpcClient = addPlaybackQueryClient(service_id);
-
-    if(nullptr == playbackRpcClient)
+    auto* client = addPlaybackQueryClient(service);
+    if(!client)
+        return CL_ERR_UNKNOWN;
+    std::lock_guard<std::mutex> lock(queryServiceMutex);
+    return acquiredStoryMap.emplace(std::make_pair(chronicle, story), std::make_pair(id, client)).second
+                   ? CL_SUCCESS
+                   : CL_ERR_UNKNOWN;
+}
+void ClientQueryService::removeStoryReader(ChronicleName const& chronicle, StoryName const& story)
+{
+    std::lock_guard<std::mutex> lock(queryServiceMutex);
+    acquiredStoryMap.erase({chronicle, story});
+}
+std::shared_ptr<PlaybackQuery> ClientQueryService::start_query(std::chrono::steady_clock::time_point timeout,
+                                                               StoryId const& story,
+                                                               ChronicleName const& chronicle,
+                                                               StoryName const& name,
+                                                               chrono_time const& start,
+                                                               chrono_time const& end,
+                                                               Client::EventCallback callback)
+{
+    auto query = std::make_shared<PlaybackQuery>(++queryIndex,
+                                                 timeout,
+                                                 story,
+                                                 chronicle,
+                                                 name,
+                                                 start,
+                                                 end,
+                                                 std::move(callback));
+    std::lock_guard<std::mutex> lock(queryServiceMutex);
+    return activeQueryMap.emplace(query->queryId, query).second ? query : nullptr;
+}
+void ClientQueryService::stop_query(uint32_t query)
+{
+    std::lock_guard<std::mutex> lock(queryServiceMutex);
+    activeQueryMap.erase(query);
+}
+int ClientQueryService::dispatch_query(std::shared_ptr<PlaybackQuery> const& query, PlaybackQueryRpcClient* client)
+{
+    bool submitted = false;
+    try
     {
-        return chl::CL_ERR_UNKNOWN;
+        submitted = client && client->send_story_playback_request(query->queryId,
+                                                                  query->storyId,
+                                                                  query->chronicleName,
+                                                                  query->storyName,
+                                                                  query->startTime,
+                                                                  query->endTime) == CL_SUCCESS;
     }
-
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-    auto insert_return = acquiredStoryMap.insert(std::pair<std::pair<chl::ChronicleName, chl::StoryName>,
-                                                           std::pair<chl::StoryId, chl::PlaybackQueryRpcClient*>>(
-            std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story),
-            std::pair<chl::StoryId, chl::PlaybackQueryRpcClient*>(story_id, playbackRpcClient)));
-
-    return (insert_return.second ? chl::CL_SUCCESS : chl::CL_ERR_UNKNOWN);
-}
-
-void chl::ClientQueryService::removeStoryReader(chl::ChronicleName const& chronicle, chl::StoryName const& story)
-{
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-    acquiredStoryMap.erase(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
-}
-
-////////////
-
-// Common dispatch loop shared by both replay_story overloads. Sends the
-// playback request, polls for completion or timeout, and tears the query
-// down. The PlaybackQuery* must already be installed in activeQueryMap.
-int chl::ClientQueryService::dispatch_query(chl::PlaybackQuery* query, PlaybackQueryRpcClient* playbackRpcClient)
-{
-    if((playbackRpcClient == nullptr) ||
-       (playbackRpcClient->send_story_playback_request(query->queryId,
-                                                       query->storyId,
-                                                       query->chronicleName,
-                                                       query->storyName,
-                                                       query->startTime,
-                                                       query->endTime) != chl::CL_SUCCESS))
+    catch(...)
+    {}
+    if(!submitted)
     {
+        query->phase.store(PlaybackQuery::Abandoned, std::memory_order_release);
+        query->closeCallbacks();
         stop_query(query->queryId);
-        return chl::CL_ERR_NO_PLAYERS;
+        return CL_ERR_NO_PLAYERS;
     }
-
-    uint64_t current_time = std::chrono::steady_clock::now().time_since_epoch().count();
-    while(!query->completed && current_time < query->timeout_time)
+    int status = CL_ERR_QUERY_TIMED_OUT;
+    for(;;)
     {
-        sleep(1); //TODO: replace with finer granularity sleep...
-        current_time = std::chrono::steady_clock::now().time_since_epoch().count();
+        if(std::chrono::steady_clock::now() >= query->deadline)
+        {
+            query->phase.store(PlaybackQuery::Abandoned, std::memory_order_release);
+            break;
+        }
+        auto expected = PlaybackQuery::Complete;
+        if(query->phase.compare_exchange_strong(expected, PlaybackQuery::Consuming, std::memory_order_acq_rel))
+        {
+            status = query->complete ? CL_SUCCESS : CL_ERR_PARTIAL_RESULT;
+            break;
+        }
+        if(expected == PlaybackQuery::Abandoned)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
-    int ret_value = chl::CL_ERR_QUERY_TIMED_OUT;
-    if(query->completed)
-    {
-        // the player answered; it may have told us the series is short
-        ret_value = query->complete ? chl::CL_SUCCESS : chl::CL_ERR_PARTIAL_RESULT;
-    }
+    query->closeCallbacks();
     stop_query(query->queryId);
-    return ret_value;
+    return status;
 }
-
-int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
-                                          chl::StoryName const& story,
-                                          uint64_t start,
-                                          uint64_t end,
-                                          std::vector<chl::Event>& event_series)
+int ClientQueryService::replay_story(ChronicleName const& chronicle,
+                                     StoryName const& story,
+                                     uint64_t start,
+                                     uint64_t end,
+                                     std::vector<Event>& output)
 {
-    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
-    if(storyReader_iter == acquiredStoryMap.end())
+    auto started = std::chrono::steady_clock::now();
+    std::pair<StoryId, PlaybackQueryRpcClient*> reader;
     {
-        return chl::CL_ERR_NOT_ACQUIRED;
+        std::lock_guard<std::mutex> lock(queryServiceMutex);
+        auto found = acquiredStoryMap.find({chronicle, story});
+        if(found == acquiredStoryMap.end())
+            return CL_ERR_NOT_ACQUIRED;
+        reader = found->second;
     }
-    chl::StoryId story_id = (*storyReader_iter).second.first;
-    chl::PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second.second;
-
-    auto timeout_time =
-            (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
-
-    chl::PlaybackQuery* query = start_query(timeout_time, story_id, chronicle, story, start, end, event_series);
-    if(query == nullptr)
+    auto timeout = started + std::chrono::seconds(queryTimeoutInSecs);
+    auto query = start_query(timeout, reader.first, chronicle, story, start, end);
+    if(!query)
+        return CL_ERR_RPC_CAPACITY;
+    QueryConsumption handoff{query};
+    int status = dispatch_query(query, reader.second);
+    if(status == CL_SUCCESS || status == CL_ERR_PARTIAL_RESULT)
     {
-        return chl::CL_ERR_UNKNOWN;
+        output = std::move(query->events);
+        query->discard = false;
     }
-    return dispatch_query(query, playbackRpcClient);
+    return status;
 }
-
-int chl::ClientQueryService::replay_story(chl::ChronicleName const& chronicle,
-                                          chl::StoryName const& story,
-                                          uint64_t start,
-                                          uint64_t end,
-                                          chl::Client::EventCallback callback)
+int ClientQueryService::replay_story(ChronicleName const& chronicle,
+                                     StoryName const& story,
+                                     uint64_t start,
+                                     uint64_t end,
+                                     Client::EventCallback callback)
 {
-    auto storyReader_iter = acquiredStoryMap.find(std::pair<chl::ChronicleName, chl::StoryName>(chronicle, story));
-    if(storyReader_iter == acquiredStoryMap.end())
+    if(!callback)
+        return CL_ERR_INVALID_ARG;
+    auto started = std::chrono::steady_clock::now();
+    std::pair<StoryId, PlaybackQueryRpcClient*> reader;
     {
-        return chl::CL_ERR_NOT_ACQUIRED;
+        std::lock_guard<std::mutex> lock(queryServiceMutex);
+        auto found = acquiredStoryMap.find({chronicle, story});
+        if(found == acquiredStoryMap.end())
+            return CL_ERR_NOT_ACQUIRED;
+        reader = found->second;
     }
-    chl::StoryId story_id = (*storyReader_iter).second.first;
-    chl::PlaybackQueryRpcClient* playbackRpcClient = (*storyReader_iter).second.second;
-
-    auto timeout_time =
-            (std::chrono::steady_clock::now() + std::chrono::seconds(queryTimeoutInSecs)).time_since_epoch().count();
-
-    chl::PlaybackQuery* query = start_query(timeout_time, story_id, chronicle, story, start, end, std::move(callback));
-    if(query == nullptr)
-    {
-        return chl::CL_ERR_UNKNOWN;
-    }
-    return dispatch_query(query, playbackRpcClient);
+    auto timeout = started + std::chrono::seconds(queryTimeoutInSecs);
+    auto query = start_query(timeout, reader.first, chronicle, story, start, end, std::move(callback));
+    if(!query)
+        return CL_ERR_RPC_CAPACITY;
+    QueryConsumption handoff{query};
+    return dispatch_query(query, reader.second);
 }
-//////
-
-chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
-                                                         chl::StoryId const& story_id,
-                                                         chl::ChronicleName const& chronicle,
-                                                         chl::StoryName const& story,
-                                                         chl::chrono_time const& start_time,
-                                                         chl::chrono_time const& end_time,
-                                                         std::vector<chl::Event>& playback_events)
+PlaybackQueryRpcClient* ClientQueryService::addPlaybackQueryClient(ServiceId const& player)
 {
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-
-    uint32_t query_id = ++queryIndex;
-
-    auto insert_return =
-            activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(query_id,
-                                                                          chl::PlaybackQuery(playback_events,
-                                                                                             query_id,
-                                                                                             timeout_time,
-                                                                                             story_id,
-                                                                                             chronicle,
-                                                                                             story,
-                                                                                             start_time,
-                                                                                             end_time)));
-
-    if(insert_return.second)
     {
-        LOG_DEBUG("[ClientQueryService] started query {} for story {} {}-{} time range {}-{}",
-                  query_id,
-                  story_id,
-                  chronicle,
-                  story,
-                  start_time,
-                  end_time);
-        return &(*insert_return.first).second;
+        std::lock_guard<std::mutex> lock(queryServiceMutex);
+        auto found = playbackRpcClientMap.find(player.get_service_endpoint());
+        if(found != playbackRpcClientMap.end())
+            return found->second;
     }
-    else
-    {
+    // Native lookup is outside the query-map lock. B09 owns its independently
+    // bounded control adapter; this task does not claim its conversion.
+    auto candidate = std::unique_ptr<PlaybackQueryRpcClient>(
+            PlaybackQueryRpcClient::CreatePlaybackQueryRpcClient(*this, player));
+    if(!candidate)
         return nullptr;
-    }
-}
-
-chl::PlaybackQuery* chl::ClientQueryService::start_query(uint64_t timeout_time,
-                                                         chl::StoryId const& story_id,
-                                                         chl::ChronicleName const& chronicle,
-                                                         chl::StoryName const& story,
-                                                         chl::chrono_time const& start_time,
-                                                         chl::chrono_time const& end_time,
-                                                         chl::Client::EventCallback callback)
-{
     std::lock_guard<std::mutex> lock(queryServiceMutex);
-
-    uint32_t query_id = ++queryIndex;
-
-    auto insert_return =
-            activeQueryMap.insert(std::pair<uint32_t, chl::PlaybackQuery>(query_id,
-                                                                          chl::PlaybackQuery(std::move(callback),
-                                                                                             query_id,
-                                                                                             timeout_time,
-                                                                                             story_id,
-                                                                                             chronicle,
-                                                                                             story,
-                                                                                             start_time,
-                                                                                             end_time)));
-
-    if(insert_return.second)
-    {
-        LOG_DEBUG("[ClientQueryService] started query {} for story {} {}-{} time range {}-{}",
-                  query_id,
-                  story_id,
-                  chronicle,
-                  story,
-                  start_time,
-                  end_time);
-        return &(*insert_return.first).second;
-    }
-    else
-    {
-        return nullptr;
-    }
+    auto inserted = playbackRpcClientMap.emplace(player.get_service_endpoint(), candidate.get());
+    if(inserted.second)
+        candidate.release();
+    return inserted.first->second;
 }
-
-void chl::ClientQueryService::stop_query(uint32_t query_id)
+void ClientQueryService::removePlaybackQueryClient(ServiceId const&)
+{ /* Existing routes remain owned until reader cleanup. */ }
+void ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& source)
 {
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-
-    activeQueryMap.erase(query_id);
-}
-////
-
-// find or create PlaybackServiceRpcClient associated with the remote Playback Service
-chl::PlaybackQueryRpcClient* chronolog::ClientQueryService::addPlaybackQueryClient(chl::ServiceId const& player_card)
-{
-    LOG_DEBUG("[ClientQueryService] adding PlaybackQueryRpcClient for {}", chl::to_string(player_card));
-
-
-    auto find_iter = playbackRpcClientMap.find(player_card.get_service_endpoint());
-
-    if(find_iter != playbackRpcClientMap.end())
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!owner || !native)
+        return;
+    auto lease = owner->incomingResponses.acquire();
+    if(!lease)
+        return;
+    struct NativeOwner
     {
-        LOG_DEBUG("[ClientQueryService] found PlaybackQueryRpcClient for {}", chl::to_string(player_card));
-        return (*find_iter).second;
-    }
-
-    chl::PlaybackQueryRpcClient* playbackRpcClient = nullptr;
-    LOG_DEBUG("[ClientQueryService] adding PlaybackQueryRpcClient for {}", chl::to_string(player_card));
-
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-
+        ClientRpcContext::NativeLease lease;
+        explicit NativeOwner(ClientRpcContext::NativeLease retained)
+            : lease(std::move(retained))
+        {}
+    };
+    struct Receive: rpc::BulkReceiveContext
+    {
+        using rpc::BulkReceiveContext::BulkReceiveContext;
+        PlaybackQueryResponse response;
+    };
+    std::shared_ptr<Receive> context;
     try
     {
-        playbackRpcClient = chronolog::PlaybackQueryRpcClient::CreatePlaybackQueryRpcClient(*this, player_card);
-
-        auto insert_return = playbackRpcClientMap.insert(
-                std::pair<chl::service_endpoint, chl::PlaybackQueryRpcClient*>(player_card.get_service_endpoint(),
-                                                                               playbackRpcClient));
-
-        if(false != insert_return.second)
+        auto retained = std::make_shared<NativeOwner>(std::move(*native));
+        context = std::make_shared<Receive>(retained,
+                                            *owner->engine,
+                                            request,
+                                            source,
+                                            owner->incomingResponses.observers);
+        lease->retain(context);
+        if(!context->pull())
         {
-            LOG_DEBUG("[ClientQueryService] created PlaybackQueryRpcClient for {}", chl::to_string(player_card));
-            return playbackRpcClient;
-        }
-        else
-        {
-            delete playbackRpcClient;
-            playbackRpcClient = nullptr;
-            LOG_DEBUG("[ClientQueryService] Failed to create PlaybackQueryRpcClient}", chl::to_string(player_card));
-        }
-    }
-    catch(tl::exception const& ex)
-    {
-        playbackRpcClient = nullptr;
-        LOG_DEBUG("[ClientQueryService] Failed to create PlaybackQueryRpcClient}", chl::to_string(player_card));
-    }
-    return playbackRpcClient;
-}
-
-// we are notified of the remote PlaybackService stopping, remove associated PlaybackQueryRpcClient
-void chronolog::ClientQueryService::removePlaybackQueryClient(chl::ServiceId const& player_card)
-{
-    std::lock_guard<std::mutex> lock(queryServiceMutex);
-    //TODO : we need to check that there no active queries associated with this PlaybackQueryRpcClient
-    // to safely remove it
-}
-
-// Receive a PlaybackQueryResponse from the Player and append its events
-// directly to the active query's event series.
-void chl::ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& b)
-{
-    try
-    {
-        tl::endpoint ep = request.get_endpoint();
-        LOG_DEBUG("[ClientQueryService] receive_query_response :Endpoint obtained, ThreadID={}", tl::thread::self_id());
-
-        std::vector<char> mem_vec(b.size());
-        std::vector<std::pair<void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(&mem_vec[0]);
-        segments[0].second = mem_vec.size();
-        LOG_DEBUG("[ClientQueryService] Bulk memory prepared, size: {}, ThreadID={}",
-                  mem_vec.size(),
-                  tl::thread::self_id());
-        tl::engine local_engine = get_engine();
-
-        tl::bulk local = local_engine.expose(segments, tl::bulk_mode::write_only);
-        LOG_DEBUG("[ClientQueryService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
-        b.on(ep) >> local;
-        LOG_DEBUG("[ClientQueryService] Received {} bytes of PlaybackQueryResponse data, ThreadID={}",
-                  b.size(),
-                  tl::thread::self_id());
-
-        chronolog::PlaybackQueryResponse response(0);
-        int ret = deserializeResponse(&mem_vec[0], b.size(), response);
-        if(ret != chronolog::CL_SUCCESS)
-        {
-            LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}",
-                      tl::thread::self_id());
-            ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
-            LOG_ERROR("[ClientQueryService] Discarding the response, responding {} to Player", ret);
-            request.respond(ret);
+            lease->quarantine();
             return;
         }
-
-        LOG_DEBUG("[ClientQueryService] PlaybackQueryResponse received: query_id {} eventCount {} ThreadID={}",
-                  response.query_id,
-                  response.events.size(),
-                  tl::thread::self_id());
-
-        // NOTE: by design there would be only one receiving thread that's writing to the specific query object
-        // but we probably should take care of the possibility of the query timeout happening while we are writing the response
-
-        auto query_iter = activeQueryMap.find(response.query_id);
-        if(query_iter != activeQueryMap.end())
+        if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), context->response))
         {
-            chl::PlaybackQuery& query = (*query_iter).second;
-            if(query.callback)
+            if(!context->answer(uint64_t{0}))
+                lease->quarantine();
+            return;
+        }
+        std::shared_ptr<PlaybackQuery> query;
+        {
+            std::lock_guard<std::mutex> lock(queryServiceMutex);
+            auto found = activeQueryMap.find(context->response.query_id);
+            if(found != activeQueryMap.end())
+                query = found->second;
+        }
+        bool published = false;
+        if(query && std::chrono::steady_clock::now() < query->deadline)
+        {
+            auto expected = PlaybackQuery::Pending;
+            if(query->phase.compare_exchange_strong(expected, PlaybackQuery::Publishing, std::memory_order_acq_rel))
             {
-                for(auto const& event: response.events)
+                bool delivered = true;
+                if(query->callbackMode)
                 {
-                    // Per the public-header contract, the callback must not throw.
-                    // We still guard against it here so a misbehaving user callback
-                    // can't escape into the Thallium ULT, skip request.respond(...),
-                    // and hang the polling thread until CL_ERR_QUERY_TIMED_OUT.
-                    try
+                    for(auto const& event: context->response.events)
                     {
-                        query.callback(chl::Event{event.time(), event.client_id(), event.index(), event.log_record()});
-                    }
-                    catch(std::exception const& ex)
-                    {
-                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw '{}'; "
-                                  "skipping event and continuing, ThreadID={}",
-                                  ex.what(),
-                                  tl::thread::self_id());
-                    }
-                    catch(...)
-                    {
-                        LOG_ERROR("[ClientQueryService] User ReplayStory callback threw non-std exception; "
-                                  "skipping event and continuing, ThreadID={}",
-                                  tl::thread::self_id());
+                        if(!query->beginCallback())
+                        {
+                            delivered = false;
+                            break;
+                        }
+                        std::exception_ptr failure;
+                        try
+                        {
+                            query->callback(event);
+                        }
+                        catch(...)
+                        {
+                            failure = std::current_exception();
+                        }
+                        query->endCallback();
+                        // Diagnostics stay in this charged receive context,
+                        // after the user-callback interval is released.
+                        if(failure)
+                        {
+                            try
+                            {
+                                std::rethrow_exception(failure);
+                            }
+                            catch(std::exception const& error)
+                            {
+                                LOG_ERROR("[ClientQueryService] Replay callback threw: {}", error.what());
+                            }
+                            catch(...)
+                            {
+                                LOG_ERROR("[ClientQueryService] Replay callback threw");
+                            }
+                        }
                     }
                 }
+                else
+                    query->events = std::move(context->response.events);
+                query->complete = context->response.complete;
+                expected = PlaybackQuery::Publishing;
+                if(delivered && std::chrono::steady_clock::now() < query->deadline)
+                    published = query->phase.compare_exchange_strong(expected,
+                                                                     PlaybackQuery::Complete,
+                                                                     std::memory_order_acq_rel);
+                else
+                    query->phase.store(PlaybackQuery::Abandoned, std::memory_order_release);
             }
-            else if(query.eventSeries != nullptr)
-            {
-                // PlaybackResponse contains vector<Event>,
-                // just move it to query.event_series
-                std::vector<chl::Event>& event_series = *query.eventSeries;
-                event_series = std::move(response.events);
-                LOG_DEBUG("[ClientQueryService] Query {} got {} events, ThreadID={}",
-                          response.query_id,
-                          event_series.size(),
-                          tl::thread::self_id());
-            }
-            query.complete = response.complete;
-            query.completed = true;
         }
-
-        LOG_TRACE("[ClientQueryService] PlaybackQueryResponse recording RPC response {}, ThreadID={}",
-                  b.size(),
-                  tl::thread::self_id());
-        request.respond(b.size());
-    }
-    catch(std::bad_alloc const& ex)
-    {
-        LOG_ERROR("[ClientQueryService] Failed to allocate memory for PlaybackQueryResponse data, ThreadID={}",
-                  tl::thread::self_id());
-        request.respond(20000000 + tl::thread::self_id());
-    }
-}
-
-int chl::ClientQueryService::deserializeResponse(char* buffer, size_t size, chl::PlaybackQueryResponse& response)
-{
-    std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
-    try
-    {
-        ss.write(buffer, size);
-        cereal::BinaryInputArchive iarchive(ss);
-        iarchive(response);
-        return chronolog::CL_SUCCESS;
-    }
-    catch(cereal::Exception const& ex)
-    {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, size={}, ThreadID={}. "
-                  "Cereal exception: {}",
-                  ss.str().size(),
-                  tl::thread::self_id(),
-                  ex.what());
-    }
-    catch(std::exception const& ex)
-    {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, size={}, ThreadID={}. "
-                  "std::exception : {}",
-                  ss.str().size(),
-                  tl::thread::self_id(),
-                  ex.what());
+        // No caller vector is reachable. The owned callback has closed/active
+        // arbitration and never runs under the map lock.
+        // An expired/unknown query is a known rejection after the full pull.
+        if(!context->answer(published ? uint64_t(context->bytes.size()) : uint64_t{0}))
+            lease->quarantine();
+        else if(query)
+        {
+            // Reply first: the peer may withhold the original scalar ACK until
+            // this response arrives. Keep incoming capacity charged while the
+            // private decoded result awaits its public caller's handoff.
+            bool discarded = false;
+            while(!query->consumed.load(std::memory_order_acquire))
+            {
+                if(std::chrono::steady_clock::now() >= query->deadline)
+                {
+                    auto expected = PlaybackQuery::Complete;
+                    if(query->phase.compare_exchange_strong(expected,
+                                                            PlaybackQuery::Abandoned,
+                                                            std::memory_order_acq_rel) ||
+                       expected == PlaybackQuery::Abandoned)
+                    {
+                        discarded = true;
+                        break;
+                    }
+                }
+                margo_thread_sleep(owner->engine->get_margo_instance(), 1);
+            }
+            if(discarded || query->discard)
+                std::vector<Event>{}.swap(query->events);
+        }
     }
     catch(...)
     {
-        LOG_ERROR("[ClientQueryService] Failed to deserialize PlaybackQueryResponse, ThreadID={}. Unknown exception "
-                  "encountered.",
-                  tl::thread::self_id());
+        if(context)
+        {
+            if(context->initiated && !context->completed)
+            {
+                lease->quarantine();
+                return;
+            }
+            if(!context->answer(uint64_t{0}))
+                lease->quarantine();
+        }
     }
-    return chronolog::CL_ERR_UNKNOWN;
 }
+} // namespace chronolog

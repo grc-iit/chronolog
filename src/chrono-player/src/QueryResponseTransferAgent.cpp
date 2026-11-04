@@ -1,329 +1,100 @@
-
-#include <sstream>
-#include <string>
-#include <vector>
-#include <utility>
-#include <ios>
-#include <cstddef>
-
-#include <unistd.h>
-#include <cereal/archives/binary.hpp>
-#include <thallium/serialization/stl/vector.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_errcode.h>
-#include <PlaybackQueryResponse.h>
-#include <StoryChunk.h>
 #include <QueryResponseTransferAgent.h>
 #include <ReplayEventMerge.h>
-
-namespace tl = thallium;
-namespace chl = chronolog;
-
-chronolog::QueryResponseAgent::QueryResponseAgent(tl::engine& tl_engine, chronolog::ServiceId const& service_id)
-    : state(UNKNOWN)
-    , service_engine(tl_engine)
-    , receiver_service_id(service_id)
+#include <private/RpcBulkSerialization.h>
+namespace chronolog
 {
-    std::string service_addr_string;
-    receiver_service_id.get_service_as_string(service_addr_string);
-
-    LOG_DEBUG("[QueryResponseAgent] Constructor for receiver service {} , service_string {}",
-              chl::to_string(receiver_service_id),
-              service_addr_string);
-    receiver_service_handle =
-            tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
-
-    receiver_is_available = service_engine.define("receiver_is_available");
-    receive_query_response = service_engine.define("receive_query_response");
-
-    LOG_INFO("[QueryResponseAgent] created QueryResponseAgent for receiver service {}",
-             chl::to_string(receiver_service_id));
+int QueryResponseAgent::stashOwnedQueryResponse(ClientQueryId query,
+                                                std::shared_ptr<PlaybackQueryResponse> const& response,
+                                                bool ready)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return queries_.emplace(query, Record{ready, response}).second ? CL_SUCCESS : CL_ERR_RPC_CAPACITY;
 }
-
-chronolog::QueryResponseAgent::~QueryResponseAgent()
+std::shared_ptr<PlaybackQueryResponse> QueryResponseAgent::takeReady(ClientQueryId query)
 {
-    LOG_DEBUG("[QueryResponseAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
-
-    stopResponseThreads();
-
-    {
-        std::lock_guard<std::mutex> lock(query_mutex);
-        for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
-        {
-            delete(*query_iter).second.second;
-        }
-        active_queries.clear();
-    }
-
-    receiver_is_available.deregister();
-    receive_query_response.deregister();
-
-    extractionThreads.clear();
-    extractionStreams.clear();
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found = queries_.find(query);
+    if(found == queries_.end() || !found->second.ready)
+        return {};
+    auto response = std::move(found->second.response);
+    queries_.erase(found);
+    return response;
 }
-
-bool chronolog::QueryResponseAgent::is_receiver_available() const
+int QueryResponseAgent::addArchivedEventsToQueryResponse(ClientQueryId const& query,
+                                                         std::list<StoryChunk*> const& chunks,
+                                                         int status)
 {
-    bool ret_value = receiver_is_available.on(receiver_service_handle)();
-
-    LOG_DEBUG("[QueryResponseAgent] receiver_service {} is available {}",
-              chl::to_string(receiver_service_id),
-              ret_value);
-    return ret_value;
+    std::vector<Event> archived;
+    for(auto* chunk: chunks) chunk->extractEventSeries(archived);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found = queries_.find(query);
+    if(found == queries_.end())
+        return CL_ERR_UNKNOWN;
+    auto& response = *found->second.response;
+    if(status != CL_SUCCESS)
+        response.complete = false;
+    if(!archived.empty())
+        response.events = mergeReplayEvents(std::move(archived), std::move(response.events));
+    found->second.ready = true;
+    return CL_SUCCESS;
 }
-
-//////////
-
-int chronolog::QueryResponseAgent::stashQueryResponseRecord(chl::ClientQueryId const& query_id,
-                                                            chl::PlaybackQueryResponse* query_response,
-                                                            bool ready_to_send)
+rpc::RpcResult<uint64_t>
+QueryResponseAgent::transferOwnedQueryResponse(std::shared_ptr<PlaybackQueryResponse const> response,
+                                               rpc::RpcReservation reservation,
+                                               rpc::BulkPermits::Permit permit,
+                                               rpc::RpcDeadline const& replay)
 {
-    // stash PlaybackResponseObject into this agent's internal map of active queries
-    // keyed by the ClientQueryId
-    //
-    // ready_send = true means the response is compelte and ready to be send to the client
-    // ready_to_send = false means there's an archive portion of the response pending
-
-    int ret_value = chl::CL_ERR_UNKNOWN;
-
-    std::lock_guard<std::mutex> lock(query_mutex);
-
-    auto insert_return =
-            active_queries.insert(std::pair<chl::ClientQueryId, std::pair<bool, chl::PlaybackQueryResponse*>>(
-                    query_id,
-                    std::pair<bool, chl::PlaybackQueryResponse*>(ready_to_send, query_response)));
-
-    if(insert_return.second)
-    {
-        LOG_INFO("[QueryResponseAgent] receiver for {} got request for query_id {}, ThreadID={}",
-                 chl::to_string(receiver_service_id),
-                 query_id,
-                 tl::thread::self_id());
-        ret_value = chl::CL_SUCCESS;
-    }
-
-    return ret_value;
-}
-
-///////
-
-//int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
-int chronolog::QueryResponseAgent::addArchivedEventsToQueryResponse(chl::ClientQueryId const& query_id,
-                                                                    std::list<chl::StoryChunk*> const& archive_chunks,
-                                                                    int read_status)
-{
-    // this function is called by ArchiveReadingAgent thread that got the ArchiveReadingRequest
-    // extract events from archive story chunks into the response->events
-
-    LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing archived events for query {} ThreadID={}",
-              chl::to_string(receiver_service_id),
-              query_id,
-              tl::thread::self_id());
-
-    std::vector<Event> archived_events;
-
-    for(auto& story_chunk: archive_chunks)
-    {
-        LOG_DEBUG("[QueryResponseAgent] agent for receiver {} processing story_chunk for query {} : story {}-{} "
-                  "ThreadID={}",
-                  chl::to_string(receiver_service_id),
-                  query_id,
-                  story_chunk->getChronicleName(),
-                  story_chunk->getStoryName(),
-                  tl::thread::self_id());
-
-        story_chunk->extractEventSeries(archived_events);
-    }
-
-    std::lock_guard<std::mutex> lock(query_mutex);
-
-    auto query_iter = active_queries.find(query_id);
-    if(query_iter == active_queries.end())
-    {
-        return chl::CL_ERR_UNKNOWN;
-    }
-
-    // add the events from the StoryChunks to the response.events vector
-    chronolog::PlaybackQueryResponse* response = (*query_iter).second.second;
-
-    if(read_status != chl::CL_SUCCESS)
-    {
-        // a file in the range could not be read: whatever it held is missing
-        response->complete = false;
-    }
-
-    // if no events in query time range were found in archives
-    // just mark the response as ready to send and return
-    if(archived_events.empty())
-    {
-        (*query_iter).second.first = true;
-        return chl::CL_SUCCESS;
-    }
-
-    // The events the keepers served are already in the response. The same
-    // event can also be in the archive, so merge rather than append: each
-    // event once, in time order.
-    response->events = mergeReplayEvents(std::move(archived_events), std::move(response->events));
-
-    //mark the query_response as ready to be sent to client
-    (*query_iter).second.first = true;
-
-    return chl::CL_SUCCESS;
-}
-
-////
-
-int chronolog::QueryResponseAgent::transferQueryResponseToClient(chl::PlaybackQueryResponse const& response)
-{
-    chl::ClientQueryId query_id = response.query_id;
-
+    auto owner = owner_.lock();
+    auto runtime = owner ? owner->runtime.lock() : nullptr;
+    if(!owner || !runtime)
+        return {CL_ERR_RPC_CAPACITY, false, {}};
+    auto phaseStarted = rpc::RpcDeadline::Clock::now();
+    auto total = rpc::RpcDeadline::fromStart(phaseStarted, std::chrono::milliseconds(owner->policy.transfer_ms));
+    if(replay.expiresAt() < total.expiresAt())
+        total = replay;
+    auto attempt = rpc::RpcDeadline::fromStart(phaseStarted, std::chrono::milliseconds(owner->policy.attempt_ms));
+    reservation.narrowDeadline(total);
+    reservation.narrowDeadline(attempt);
     try
     {
-        size_t serialized_response_size;
-        std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(response);
-        std::string serialized_response = oss.str();
-        serialized_response_size = serialized_response.size();
-
-        LOG_DEBUG("[QueryResponseAgent] Serialized PlaybackQueryResponse size: {} ({} events)",
-                  serialized_response_size,
-                  response.events.size());
-
-        std::vector<std::pair<void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(serialized_response.data());
-        segments[0].second = serialized_response_size;
-        tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_TRACE("[QueryResponseAgent] Draining PlaybackQueryResponse QueryId {} bulk size: {} ",
-                  query_id,
-                  tl_bulk.size());
-
-        size_t bytes_transfered = receive_query_response.on(receiver_service_handle)(tl_bulk);
-
-        LOG_TRACE("[QueryResponseAgent] PlaybackQueryResponse transfer for QueryId {} returned with result: {}",
-                  query_id,
-                  bytes_transfered);
-
-        if(bytes_transfered == serialized_response_size)
-        {
-            LOG_INFO("[QueryResponseAgent] Successfully transfered PlaybackQueryResponse for QueryId {} with {} events",
-                     query_id,
-                     response.events.size());
-            return chronolog::CL_SUCCESS;
-        }
-    }
-    catch(tl::exception const& ex)
-    {
-        LOG_ERROR("[QueryResponseAgent] Thallium exception while transferring PlaybackQueryResponse for QueryId {}: {}",
-                  query_id,
-                  ex.what());
-        return (chronolog::CL_ERR_UNKNOWN);
-    }
-    catch(cereal::Exception const& ex)
-    {
-        LOG_ERROR("[QueryResponseAgent] Cereal exception while serializing PlaybackQueryResponse for QueryId {}: {}",
-                  query_id,
-                  ex.what());
-        return chronolog::CL_ERR_UNKNOWN;
-    }
-    catch(std::exception const& ex)
-    {
-        LOG_ERROR("[QueryResponseAgent] Standard exception while serializing PlaybackQueryResponse for QueryId {}: {}",
-                  query_id,
-                  ex.what());
-        return chronolog::CL_ERR_UNKNOWN;
+        auto prepare = [response = std::move(response)] { return rpc::serializeBulk(*response); };
+        auto route = route_;
+        auto work = std::make_shared<rpc::BulkSendWork<uint64_t>>(
+                owner,
+                *owner->engine,
+                owner->receiveResponse,
+                [owner, provider = route.getProviderId()](rpc::RpcDeadline const& deadline)
+                { return owner->provisionResponse(provider, deadline); },
+                route,
+                std::string{},
+                std::move(permit),
+                ServiceId{},
+                std::shared_ptr<rpc::BulkReplyState<uint64_t>>{},
+                std::move(prepare));
+        return runtime->invoke<uint64_t>(std::move(reservation), std::move(work));
     }
     catch(...)
     {
-        LOG_ERROR("[QueryResponseAgent] Unknown exception while transferring PlaybackQueryResponse.");
-        return chronolog::CL_ERR_UNKNOWN;
+        return {CL_ERR_UNKNOWN, false, {}};
     }
-
-    LOG_ERROR("[QueryResponseAgent] Failed to transfer PlaybackQueryResponse for QueryId {}", query_id);
-
-    return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
 }
-
-////
-
-void chronolog::QueryResponseAgent::startResponseThreads(int stream_count)
+int QueryResponseAgent::transferQueryResponseToClient(PlaybackQueryResponse const& response)
 {
-    state = RUNNING;
-
-    for(int i = 0; i < stream_count; ++i)
-    {
-        tl::managed<tl::xstream> es = tl::xstream::create();
-        extractionStreams.push_back(std::move(es));
-    }
-
-    for(int i = 0; i < stream_count; ++i)
-    {
-        tl::managed<tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread(
-                [p = this]() { p->drainQueryResponses(); });
-        extractionThreads.push_back(std::move(th));
-    }
-    LOG_INFO("[QueryResponseAgent] Started query response threads for receiver  {}",
-             chl::to_string(receiver_service_id));
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto owner = owner_.lock();
+    auto runtime = owner ? owner->runtime.lock() : nullptr;
+    if(!owner || !runtime)
+        return CL_ERR_RPC_CAPACITY;
+    auto total = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.transfer_ms));
+    auto reservation = runtime->reserve(total);
+    if(!reservation)
+        return reservation.status();
+    auto permit = owner->responseSources.acquire();
+    if(!permit)
+        return CL_ERR_RPC_CAPACITY;
+    // Legacy borrowed input needs one admitted snapshot; the production
+    // coordinator passes its already-owned response without another copy.
+    auto snapshot = std::make_shared<PlaybackQueryResponse const>(response);
+    return transferOwnedQueryResponse(std::move(snapshot), std::move(reservation), std::move(*permit), total).status;
 }
-
-//////
-
-void chronolog::QueryResponseAgent::stopResponseThreads()
-{
-    if(state == SHUTTING_DOWN)
-    {
-        return;
-    }
-
-    state = SHUTTING_DOWN;
-
-    // join threads & executionstreams while holding stateMutex
-    for(auto& eth: extractionThreads) { eth->join(); }
-    LOG_INFO("[QueryResponseAgent] Response threads for receiver {} successfully shut down.",
-             chl::to_string(receiver_service_id));
-    for(auto& es: extractionStreams) { es->join(); }
-    LOG_INFO("[QueryResponseAgent] Streams for receiver {} have been successfully closed.",
-             chl::to_string(receiver_service_id));
-}
-
-///
-void chronolog::QueryResponseAgent::drainQueryResponses()
-{
-    while(state == RUNNING)
-    {
-        PlaybackQueryResponse* query_response = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(query_mutex);
-            LOG_TRACE("[StoryChunkTransferAgent] Draining query responses: {}  active queries,  thread ID: {}",
-                      active_queries.size(),
-                      thallium::thread::self_id());
-
-            for(auto query_iter = active_queries.begin(); query_iter != active_queries.end(); ++query_iter)
-            {
-                if((*query_iter).second.first)
-                { // query_response is ready to be sent to the client
-                    query_response = (*query_iter).second.second;
-                    active_queries.erase(query_iter);
-                    break;
-                }
-            }
-        }
-
-        if(query_response != nullptr)
-        {
-            transferQueryResponseToClient(*query_response);
-            delete query_response;
-        }
-        else
-        {
-            // Poll frequently: a response becomes ready as soon as its archive
-            // read completes (immediately when the range has no files), and
-            // on-demand hot replay is meant to be low-latency. A 2 s poll here
-            // used to make an immediate replay of still-hot data race the
-            // client's response timeout. 20 ms is negligible CPU at prototype
-            // scale (mirrors the extraction module's idle usleep).
-            usleep(20000);
-        }
-    }
-}
+} // namespace chronolog

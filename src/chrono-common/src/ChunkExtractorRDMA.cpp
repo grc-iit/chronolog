@@ -218,74 +218,13 @@ int chronolog::StoryChunkExtractorRDMA::reset(json_object* json_block)
 
 ////
 
-int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* story_chunk)
+int chronolog::StoryChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* chunk)
 {
-    try
-    {
-        LOG_DEBUG("[ChunkExtractorRDMA] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
-                  thallium::thread::self_id(),
-                  story_chunk->getStoryId(),
-                  story_chunk->getChronicleName(),
-                  story_chunk->getStoryName(),
-                  story_chunk->getStartTime(),
-                  story_chunk->getEndTime(),
-                  story_chunk->getEventCount());
-
-        if(rdma_sender == nullptr)
-        {
-            LOG_ERROR(
-                    "[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}, no valid rdma_sender",
-                    story_chunk->getStoryId(),
-                    story_chunk->getStartTime());
-            return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
-        }
-
-        std::ostringstream oss(std::ios::binary);
-        cereal::BinaryOutputArchive oarchive(oss);
-        oarchive(*story_chunk);
-        std::string serialized_story_chunk = oss.str();
-
-        chl::ChunkReceipt receipt;
-        auto transfer_return =
-                rdma_sender->transfer_serialized_story_chunk(serialized_story_chunk, reporter_service_id, &receipt);
-
-        if(transfer_return == chl::CL_SUCCESS)
-        {
-            // the keeper frees the chunk only once the grapher settles this receipt
-            story_chunk->setGrapherReceipt(receipt.grapher_instance, receipt.receipt);
-            LOG_INFO("[ChunkExtractorRDMA] Transfered StoryChunk StoryId={} StartTime={}",
-                     story_chunk->getStoryId(),
-                     story_chunk->getStartTime());
-        }
-        else
-        {
-            LOG_ERROR("[ChunkExtractorRDMA] Failed to transfer StoryChunk StoryId={} StartTime={}",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime());
-        }
-
-        return transfer_return;
-    }
-    catch(cereal::Exception const& ex)
-    {
-        LOG_ERROR("[RDMATransferAgent] Cereal exception while serializing StoryChunk StoryId={} StartTime={} ex {}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime(),
-                  ex.what());
-    }
-    catch(std::exception const& ex)
-    {
-        LOG_ERROR("[RDMATransferAgent] Standard exception while serializing StoryChunk StoryId={} StartTime={} ex {}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime(),
-                  ex.what());
-    }
-    catch(...)
-    {
-        LOG_ERROR("[ChunkExtractorRDMA] Exception while  transferring StoryChunkiStoryId={} StartTime={}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime());
-    }
-
-    return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+    if(!rdma_sender)
+        return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+    chl::ChunkReceipt receipt;
+    int status = rdma_sender->transfer_story_chunk(*chunk, reporter_service_id, &receipt);
+    if(status == chl::CL_SUCCESS)
+        chunk->setGrapherReceipt(receipt.grapher_instance, receipt.receipt);
+    return status;
 }

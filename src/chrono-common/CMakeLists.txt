@@ -15,12 +15,14 @@ add_library(chrono_common STATIC
     src/ChunkExtractorCSV.cpp
     src/ChunkExtractorRDMA.cpp
     src/RDMATransferAgent.cpp
+    src/RpcBulkOwner.cpp
     src/ExtractionModuleConfiguration.cpp
 )
 
 target_include_directories(chrono_common
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/chrono-rpc/include>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/client/cpp/include>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/client/cpp/include

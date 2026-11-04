@@ -319,3 +319,24 @@ chl::StoryChunk::copyToEventSeries(std::vector<chl::Event>& event_series, uint64
 
     return event_series;
 }
+
+
+bool chronolog::StoryChunk::sameSerializedData(StoryChunk const& other) const
+{
+    if(chronicleName != other.chronicleName || storyName != other.storyName || storyId != other.storyId ||
+       startTime != other.startTime || endTime != other.endTime || revisionTime != other.revisionTime ||
+       logEvents.size() != other.logEvents.size())
+        return false;
+    auto left = logEvents.begin(), right = other.logEvents.begin();
+    for(; left != logEvents.end(); ++left, ++right)
+    {
+        auto const& a = left->second;
+        auto const& b = right->second;
+        // LogEvent::operator== excludes logRecord. The transfer identity must
+        // compare every serialized field, including payload and map keys.
+        if(left->first != right->first || a.storyId != b.storyId || a.eventTime != b.eventTime ||
+           a.clientId != b.clientId || a.eventIndex != b.eventIndex || a.logRecord != b.logRecord)
+            return false;
+    }
+    return true;
+}

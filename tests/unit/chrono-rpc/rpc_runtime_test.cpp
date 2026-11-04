@@ -1014,3 +1014,140 @@ TEST(RpcRuntimeOwner, ConcurrentDrainClaimsCleanupExactlyOnce)
         EXPECT_EQ(1u, calls->load());
     }
 }
+
+
+namespace
+{
+template <class T>
+auto handoff(T& pending, int) -> decltype(pending.releaseToRuntime(), void())
+{
+    pending.releaseToRuntime();
+}
+template <class T>
+void handoff(T& pending, long)
+{
+    pending = T{};
+}
+template <class T>
+auto narrow(T& reservation, RpcDeadline const& deadline, int) -> decltype(reservation.narrowDeadline(deadline), void())
+{
+    reservation.narrowDeadline(deadline);
+}
+template <class T>
+void narrow(T&, RpcDeadline const&, long)
+{}
+} // namespace
+
+TEST(RpcRuntime, ServerHandoffDoesNotAbandonBeforeDispatch)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    std::atomic<bool> dispatched{false};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   dispatched = context.tryBeginDispatch();
+                                                   return RpcResult<int>{CL_SUCCESS, dispatched, 1};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    gate->release();
+    EXPECT_TRUE(eventually([&] { return dispatched.load(); }));
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, ServerHandoffStillExpiresBeforeDispatch)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    std::atomic<bool> dispatched{false};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(30ms)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   dispatched = context.tryBeginDispatch();
+                                                   return RpcResult<int>{CL_SUCCESS, dispatched, 0};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    std::this_thread::sleep_for(40ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_FALSE(dispatched);
+}
+
+TEST(RpcRuntime, ServerHandoffKeepsUnknownWorkCharged)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto pending = runtime.submit<int>(runtime.reserve(RpcDeadline::after(1s)),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   gate->block();
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   return RpcResult<int>{CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    handoff(pending, 0);
+    gate->release();
+    std::this_thread::sleep_for(20ms);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(30ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+
+TEST(RpcRuntime, NarrowedReservationBoundsTheIndependentWait)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto reservation = runtime.reserve(RpcDeadline::after(600ms));
+    auto started = RpcDeadline::Clock::now();
+    narrow(reservation, RpcDeadline::after(40ms), 0);
+    auto pending = runtime.submit<int>(std::move(reservation),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   gate->block();
+                                                   return confirmed();
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    auto result = pending.wait();
+    auto elapsed = RpcDeadline::Clock::now() - started;
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_LT(elapsed, 250ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(RpcRuntime, NarrowingCannotExtendTheOriginalReservation)
+{
+    RpcRuntime runtime(1);
+    auto gate = std::make_shared<Gate>();
+    ReleaseGates release{{gate}};
+    auto reservation = runtime.reserve(RpcDeadline::after(40ms));
+    narrow(reservation, RpcDeadline::after(600ms), 0);
+    auto started = RpcDeadline::Clock::now();
+    auto pending = runtime.submit<int>(std::move(reservation),
+                                       work(
+                                               [&](OperationContext& context)
+                                               {
+                                                   if(!context.tryBeginDispatch())
+                                                       return RpcResult<int>{CL_ERR_DEADLINE_EXCEEDED, false, 0};
+                                                   gate->block();
+                                                   return confirmed();
+                                               }));
+    ASSERT_TRUE(gate->waitForEntry());
+    EXPECT_EQ(pending.wait().status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_LT(RpcDeadline::Clock::now() - started, 250ms);
+    gate->release();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}

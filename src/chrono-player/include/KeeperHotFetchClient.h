@@ -37,15 +37,25 @@ public:
                                                       uint64_t start,
                                                       uint64_t end,
                                                       uint64_t max,
-                                                      std::shared_ptr<rpc::FanoutIssueBarrier> barrier = {})
+                                                      std::shared_ptr<rpc::FanoutIssueBarrier> barrier = {},
+                                                      std::optional<rpc::BulkPermits::Permit> permit = {})
     {
         auto owner = owner_.lock();
         auto runtime = owner ? owner->runtime.lock() : nullptr;
         if(!runtime || owner->closing())
             return {};
+        if(!permit)
+        {
+            auto acquired = owner->hotPermits.acquire();
+            if(acquired)
+                permit.emplace(std::move(*acquired));
+        }
+        if(!permit)
+            return {};
         return runtime->submit<HotRangeResponse>(
                 std::move(reservation),
-                std::make_shared<Fetch>(owner, route_, cap_, story, start, end, max, std::move(barrier)));
+                std::make_shared<
+                        Fetch>(owner, route_, cap_, story, start, end, max, std::move(barrier), std::move(*permit)));
     }
     HotRangeResponse waitForRange(rpc::RpcPending<HotRangeResponse>& pending)
     {
@@ -82,8 +92,10 @@ private:
               uint64_t start,
               uint64_t end,
               uint64_t max,
-              std::shared_ptr<rpc::FanoutIssueBarrier> barrier)
-            : barrier_(std::move(barrier))
+              std::shared_ptr<rpc::FanoutIssueBarrier> barrier,
+              rpc::BulkPermits::Permit permit)
+            : permit_(std::move(permit))
+            , barrier_(std::move(barrier))
             , owner_(std::move(owner))
             , route_(std::move(route))
             , cap_(cap)
@@ -138,6 +150,7 @@ private:
         }
 
     private:
+        rpc::BulkPermits::Permit permit_;
         std::shared_ptr<rpc::FanoutIssueBarrier> barrier_;
         std::shared_ptr<PlaybackRpcOwner> owner_;
         ServiceId route_;

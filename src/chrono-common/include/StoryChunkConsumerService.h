@@ -1,181 +1,102 @@
 #ifndef STORY_CHUNK_CONSUMER_SERVICE_H
 #define STORY_CHUNK_CONSUMER_SERVICE_H
-
-#include <iostream>
-#include <margo.h>
 #include <thallium.hpp>
-
 #include <ChunkReceipt.h>
-#include <thallium/serialization/stl/string.hpp>
-#include <cereal/archives/binary.hpp>
-
-#include <chronolog_errcode.h>
 #include <ServiceId.h>
-#include <chronolog_types.h>
-
+#include <private/RpcBulkOwner.h>
+#include <private/RpcBulkControl.h>
+#include <private/RpcBulkSerialization.h>
 #include "StoryChunkIngestionQueue.h"
-
 namespace tl = thallium;
-
 namespace chronolog
 {
 class StoryChunkConsumerService: public tl::provider<StoryChunkConsumerService>
 {
 public:
-    // Service should be created on the heap not the stack thus the constructor is private...
-    static StoryChunkConsumerService* CreateChunkConsumerService(tl::engine& tl_engine,
-                                                                 uint16_t service_provider_id,
-                                                                 StoryChunkIngestionQueue& ingestion_queue)
+    static StoryChunkConsumerService*
+    CreateChunkConsumerService(tl::engine& engine, uint16_t provider, StoryChunkIngestionQueue& queue)
     {
-        return new StoryChunkConsumerService(tl_engine, service_provider_id, ingestion_queue);
+        return CreateChunkConsumerService(rpc::RpcBulkOwner::Find(engine.get_margo_instance()), provider, queue);
     }
-
-    ~StoryChunkConsumerService()
+    static StoryChunkConsumerService* CreateChunkConsumerService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                                                                 uint16_t provider,
+                                                                 StoryChunkIngestionQueue& queue)
     {
-        LOG_DEBUG("[StoryChunkConsumerService] Destructor called. Cleaning up...");
-        get_engine().pop_finalize_callback(this);
+        if(!owner || owner->closing)
+            return nullptr;
+        if(owner->provider)
+            throw std::logic_error("Chunk consumer provider already exists");
+        auto service =
+                std::shared_ptr<StoryChunkConsumerService>(new StoryChunkConsumerService(owner, provider, queue));
+        owner->provider = service;
+        service->define("receiver_available", &StoryChunkConsumerService::receiver_available);
+        service->define("receive_story_chunk", &StoryChunkConsumerService::receive_story_chunk);
+        return service.get();
     }
-
-    void receiver_available(tl::request const& request) { request.respond(true); }
-
-    // The reporter identity (watermark-report target) travels with every
-    // chunk; the player consumes chunks without reporting, so it is ignored.
-    void receive_story_chunk(tl::request const& request, tl::bulk& b, ServiceId const& /*reporter*/)
+    ~StoryChunkConsumerService() = default;
+    void receiver_available(tl::request const& request) noexcept { rpc::bulkReady(owner_.lock(), request); }
+    void receive_story_chunk(tl::request const& request, tl::bulk& source, ServiceId const&) noexcept
     {
+        auto owner = owner_.lock();
+        if(!owner || owner->closing)
+            return;
+        auto lease = owner->incoming.acquire();
+        if(!lease)
+            return;
+        struct Receive: rpc::BulkReceiveContext
+        {
+            using rpc::BulkReceiveContext::BulkReceiveContext;
+            std::unique_ptr<StoryChunk> chunk;
+        };
+        std::shared_ptr<Receive> context;
         try
         {
-            std::vector<char> mem_vec(b.size());
-            std::chrono::high_resolution_clock::time_point start, end;
-            LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC invoked, ThreadID={}",
-                      tl::thread::self_id());
-            tl::endpoint ep = request.get_endpoint();
-            LOG_TRACE("[StoryChunkConsumerService] Endpoint obtained, ThreadID={}", tl::thread::self_id());
-            std::vector<std::pair<void*, std::size_t>> segments(1);
-            segments[0].first = (void*)(&mem_vec[0]);
-            segments[0].second = mem_vec.size();
-            LOG_TRACE("[StoryChunkConsumerService] Bulk memory prepared, size: {}, ThreadID={}",
-                      mem_vec.size(),
-                      tl::thread::self_id());
-            tl::engine tl_engine = get_engine();
-            LOG_TRACE("[StoryChunkConsumerService] Engine addr: {}, ThreadID={}",
-                      (void*)&tl_engine,
-                      tl::thread::self_id());
-            tl::bulk local = tl_engine.expose(segments, tl::bulk_mode::write_only);
-            LOG_TRACE("[StoryChunkConsumerService] Bulk memory exposed, ThreadID={}", tl::thread::self_id());
-            b.on(ep) >> local;
-            LOG_DEBUG("[StoryChunkConsumerService] Received {} bytes of StoryChunk data, ThreadID={}",
-                      b.size(),
-                      tl::thread::self_id());
-
-            StoryChunk* story_chunk = new StoryChunk();
-#ifndef NDEBUG
-            start = std::chrono::high_resolution_clock::now();
-#endif
-            int ret = deserializedWithCereal(&mem_vec[0], b.size(), *story_chunk);
-            if(ret != chronolog::CL_SUCCESS)
+            context = std::make_shared<Receive>(owner, *owner->engine, request, source, owner->incoming.observers);
+            lease->retain(context);
+            if(!context->pull())
             {
-                LOG_ERROR("[StoryChunkConsumerService] Failed to deserialize a story chunk, ThreadID={}",
-                          tl::thread::self_id());
-                delete story_chunk;
-                ret = 10000000 + tl::thread::self_id(); // arbitrary error code encoded with thread id
-                LOG_ERROR("[StoryChunkConsumerService] Discarding the story chunk, responding {} to Keeper", ret);
-                ChunkReceipt failure;
-                failure.bytes = ret;
-                request.respond(failure);
+                lease->quarantine();
                 return;
             }
-#ifndef NDEBUG
-            end = std::chrono::high_resolution_clock::now();
-            LOG_TRACE("[StoryChunkConsumerService] Deserialization took {} us, ThreadID={}",
-                      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000.0,
-                      tl::thread::self_id());
-#endif
-            LOG_DEBUG("[StoryChunkConsumerService] StoryChunk received: StoryId {} StartTime {} eventCount {} "
-                      "ThreadID={}",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime(),
-                      story_chunk->getEventCount(),
-                      tl::thread::self_id());
-
-            // the player tracks no durability: no receipt
-            ChunkReceipt answer;
-            answer.bytes = b.size();
-            request.respond(answer);
-            LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
-                      b.size(),
-                      tl::thread::self_id());
-
-            theIngestionQueue.ingestStoryChunk(story_chunk);
+            context->chunk = std::make_unique<StoryChunk>();
+            if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
+            {
+                if(!context->answer(ChunkReceipt{}))
+                    lease->quarantine();
+                return;
+            }
+            queue_.ingestStoryChunk(context->chunk.get());
+            context->chunk.release();
+            ChunkReceipt reply;
+            reply.bytes = context->bytes.size();
+            if(!context->answer(reply))
+                lease->quarantine();
         }
-        catch(std::bad_alloc const& ex)
+        catch(...)
         {
-            LOG_ERROR("[StoryChunkConsumerService] Failed to allocate memory for StoryChunk data, ThreadID={}",
-                      tl::thread::self_id());
-            ChunkReceipt failure;
-            failure.bytes = 20000000 + tl::thread::self_id();
-            request.respond(failure);
-            return;
+            if(context)
+            {
+                if((context->initiated && !context->completed) || context->chunk)
+                {
+                    lease->quarantine();
+                    return;
+                }
+                if(!context->answer(ChunkReceipt{}))
+                    lease->quarantine();
+            }
         }
     }
 
 private:
-    StoryChunkConsumerService(tl::engine& tl_engine,
-                              uint16_t service_provider_id,
-                              StoryChunkIngestionQueue& ingestion_queue)
-        : tl::provider<StoryChunkConsumerService>(tl_engine, service_provider_id)
-        , theIngestionQueue(ingestion_queue)
-    {
-
-        define("receiver_available", &StoryChunkConsumerService::receiver_available);
-        define("receive_story_chunk", &StoryChunkConsumerService::receive_story_chunk);
-        //set up callback for the case when the engine is being finalized while this provider is still alive
-        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
-    }
-
-    int deserializedWithCereal(char* buffer, size_t size, StoryChunk& story_chunk)
-    {
-        std::stringstream ss(std::ios::binary | std::ios::in | std::ios::out);
-        try
-        {
-            ss.write(buffer, size);
-            cereal::BinaryInputArchive iarchive(ss);
-            iarchive(story_chunk);
-            return chronolog::CL_SUCCESS;
-        }
-        catch(cereal::Exception const& ex)
-        {
-            LOG_ERROR("[StoryChunkConsumerService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
-                      "Cereal exception encountered.",
-                      ss.str().size(),
-                      tl::thread::self_id());
-            LOG_ERROR("[StoryChunkConsumerService] Exception: {}", ex.what());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-        catch(std::exception const& ex)
-        {
-            LOG_ERROR("[StoryChunkConsumerService] Failed to deserialize a story chunk, size={}, ThreadID={}. "
-                      "std::exception encountered.",
-                      ss.str().size(),
-                      tl::thread::self_id());
-            LOG_ERROR("[StoryChunkConsumerService] Exception: {}", ex.what());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-        catch(...)
-        {
-            LOG_ERROR("[StoryChunkConsumerService] Failed to deserialize a story chunk, ThreadID={}. Unknown exception "
-                      "encountered.",
-                      tl::thread::self_id());
-            return chronolog::CL_ERR_UNKNOWN;
-        }
-    }
-
-    StoryChunkConsumerService(StoryChunkConsumerService const&) = delete;
-
-    StoryChunkConsumerService& operator=(StoryChunkConsumerService const&) = delete;
-
-    StoryChunkIngestionQueue& theIngestionQueue;
+    StoryChunkConsumerService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                              uint16_t provider,
+                              StoryChunkIngestionQueue& queue)
+        : tl::provider<StoryChunkConsumerService>(*owner->engine, provider)
+        , owner_(owner)
+        , queue_(queue)
+    {}
+    std::weak_ptr<rpc::RpcBulkOwner> owner_;
+    StoryChunkIngestionQueue& queue_;
 };
-
 } // namespace chronolog
-
 #endif

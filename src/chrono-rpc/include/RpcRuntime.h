@@ -85,6 +85,12 @@ public:
     RpcReservation& operator=(RpcReservation&&) noexcept;
     ~RpcReservation();
     int status() const noexcept { return status_; }
+    // Before submit only: retain this slot and clamp its original deadline.
+    void narrowDeadline(RpcDeadline const& deadline) noexcept
+    {
+        if(deadline_ && deadline.expiresAt() < deadline_->expiresAt())
+            deadline_ = deadline;
+    }
     explicit operator bool() const noexcept { return state_ != nullptr; }
 
 private:
@@ -174,6 +180,19 @@ public:
         return *this;
     }
     ~RpcPending() { reset(); }
+
+    // Only for an admitted server continuation owning its request and actual
+    // native owner. There is no caller result; normal expiry and quarantine
+    // still apply. Ordinary drop continues to abandon undispatched work.
+    void releaseToRuntime() noexcept
+    {
+        if(job_)
+        {
+            job_->callerDone.store(true, std::memory_order_release);
+            job_.reset();
+        }
+        status_ = CL_ERR_INVALID_ARG;
+    }
 
     RpcResult<Reply> wait()
     {

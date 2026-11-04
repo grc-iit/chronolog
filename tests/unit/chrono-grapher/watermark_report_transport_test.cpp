@@ -238,6 +238,16 @@ TEST_F(WatermarkReportTransport, PublishWithinTheIntervalSendsNothing)
 
 TEST_F(WatermarkReportTransport, ChunkAckCarriesTheGraphersReceipt)
 {
+    auto sendRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+    auto receiveRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+    auto sendOwner = chl::rpc::RpcBulkOwner::Create(std::make_shared<tl::engine>(*keeperEngine),
+                                                    sendRuntime,
+                                                    chl::RpcTimeoutPolicy{},
+                                                    true);
+    auto receiveOwner = chl::rpc::RpcBulkOwner::Create(std::make_shared<tl::engine>(*grapherEngine),
+                                                       receiveRuntime,
+                                                       chl::RpcTimeoutPolicy{},
+                                                       false);
     constexpr chl::StoryId kStory = 5;
     grapherIngestionHandle = std::make_unique<chl::StoryChunkIngestionHandle>(grapherIngestionMutex,
                                                                               &grapherActiveDeque,

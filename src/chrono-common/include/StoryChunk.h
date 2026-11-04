@@ -170,6 +170,9 @@ private:
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;
+    friend class RDMATransferAgent;
+    bool sameSerializedData(StoryChunk const&) const;
+
     uint64_t revisionTime;
     std::map<EventSequence, LogEvent> logEvents;
     bool watermarkExempt = false;

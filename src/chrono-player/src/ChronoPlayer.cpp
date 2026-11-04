@@ -1,3 +1,4 @@
+#include <private/RpcBulkControl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <signal.h>
@@ -112,18 +113,31 @@ int main(int argc, char** argv)
 
     // Instantiate Playback Service
     std::shared_ptr<chronolog::PlaybackRpcOwner> playbackOwner;
-    auto playbackRuntime = std::make_shared<chronolog::rpc::RpcRuntime>();
+    auto playbackRuntime = std::make_shared<chronolog::rpc::RpcRuntime>(6);
+    std::shared_ptr<chl::rpc::RpcBulkOwner> recordingOwner;
+    auto recordingRuntime = std::make_shared<chl::rpc::RpcRuntime>();
     auto retainPlaybackDependencies = [&]
     {
+        if(recordingOwner)
+            recordingOwner->quiesce();
+        if(playbackOwner)
+            playbackOwner->quiesce();
         if(!playbackOwner)
+        {
+            chl::rpc::retainBulkDependencies(recordingOwner, recordingRuntime);
             return;
-        playbackOwner->quiesce();
+        }
         // B08 cannot prove incoming/bulk native settlement. Keep every main
         // stack dependency alive rather than return through unsafe teardown.
         while(playbackRuntime->drain(chronolog::rpc::RpcDeadline::after(
                       std::chrono::milliseconds(PLAYER_CONF.RPC_POLICY.shutdown_ms))) != chronolog::CL_SUCCESS)
             std::this_thread::sleep_for(std::chrono::seconds(1));
     };
+    struct MainScopeFence
+    {
+        decltype(retainPlaybackDependencies)& retain;
+        ~MainScopeFence() { retain(); }
+    } mainScopeFence{retainPlaybackDependencies};
     tl::engine* playbackEngine = nullptr;
     chronolog::PlaybackService* playbackService = nullptr;
 
@@ -202,7 +216,9 @@ int main(int argc, char** argv)
         int rpc_thread_count = static_cast<int>(PLAYER_CONF.RECORDING_SERVICE_CONF.INGESTION_THREAD_COUNT);
         margo_instance_id margo_id =
                 margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
-        recordingEngine = new tl::engine(margo_id);
+        auto native = std::make_shared<tl::engine>(margo_id);
+        recordingOwner = chl::rpc::RpcBulkOwner::Create(native, recordingRuntime, PLAYER_CONF.RPC_POLICY, false);
+        recordingEngine = native.get();
 
         LOG_INFO("[ChronoPlayer] starting RecordingService at {}", chl::to_string(recordingServiceId));
 
@@ -223,7 +239,7 @@ int main(int argc, char** argv)
         retainPlaybackDependencies();
         if(recordingEngine)
         {
-            delete recordingEngine;
+            recordingEngine = nullptr;
         }
         playbackService = nullptr;
         playbackEngine = nullptr;
@@ -267,8 +283,8 @@ int main(int argc, char** argv)
         {
             delete dataAdminEngine;
         }
-        delete recordingService;
-        delete recordingEngine;
+        recordingService = nullptr;
+        recordingEngine = nullptr;
         playbackService = nullptr;
         playbackEngine = nullptr;
         return (-1);
@@ -296,8 +312,8 @@ int main(int argc, char** argv)
         retainPlaybackDependencies();
         delete playerStoreAdminService;
         delete dataAdminEngine;
-        delete recordingService;
-        delete recordingEngine;
+        recordingService = nullptr;
+        recordingEngine = nullptr;
         playbackService = nullptr;
         playbackEngine = nullptr;
         return (-1);
@@ -330,8 +346,8 @@ int main(int argc, char** argv)
         delete playerRegistryClient;
         delete playerStoreAdminService;
         delete dataAdminEngine;
-        delete recordingService;
-        delete recordingEngine;
+        recordingService = nullptr;
+        recordingEngine = nullptr;
         playbackService = nullptr;
         playbackEngine = nullptr;
         return (-1);
@@ -367,11 +383,11 @@ int main(int argc, char** argv)
     delete archiveReadingAgent;
     delete playerStoreAdminService;
     playbackService = nullptr;
-    delete recordingService;
+    recordingService = nullptr;
 
     delete dataAdminEngine;
     playbackEngine = nullptr;
-    delete recordingEngine;
+    recordingEngine = nullptr;
     LOG_INFO("[ChronoPlayer] Shutdown completed. Exiting.");
     return exit_code;
 }

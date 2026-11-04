@@ -6,6 +6,7 @@
 #include "RpcPolicyContext.h"
 #include <RpcRuntime.h>
 #include <private/RpcProviderRegistration.h>
+#include <private/RpcBulkLifetime.h>
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
 #include <thallium.hpp>
@@ -98,12 +99,15 @@ public:
     std::unique_ptr<RpcVisorClient> visor;
     std::unique_ptr<StorytellerClient> storyteller;
     ClientQueryService* reader = nullptr;
+    rpc::BulkReceives incomingResponses;
 
 private:
     friend struct ClientRpcContextTestAccess;
+    friend class ClientQueryService;
     // Test observer is installed before first Connect. It never replaces setup
     // or ownership; it observes actual construction while the init lock is held.
     std::function<void()> beforeInitializeUnlock_;
+    std::function<void(ClientQueryService&, bool)> readerRegistrationObserver_;
     static constexpr unsigned Closed = 1u << 31;
     std::atomic<unsigned> facades_{0};
     std::atomic<unsigned> nativeUses_{0};

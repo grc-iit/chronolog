@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 #include <cstdint>
+#include <private/RpcBulkControl.h>
 
 #include <KeeperRecordingService.h>
 #include <KeeperRegClient.h>
@@ -163,6 +164,8 @@ int main(int argc, char** argv)
     // Instantiate ChronoKeeper  ExtractionModule
 
     tl::engine* extractionEngine = nullptr;
+    std::shared_ptr<chl::rpc::RpcBulkOwner> extractionOwner;
+    auto extractionRuntime = std::make_shared<chl::rpc::RpcRuntime>();
     // default extraction engine fabric is "ofi+sockets"
     std::string extraction_engine_protocol = KEEPER_CONF.EXTRACTION_MODULE_CONF.extraction_protocol;
 
@@ -173,7 +176,9 @@ int main(int argc, char** argv)
 
     try
     {
-        extractionEngine = new tl::engine(extraction_engine_protocol, THALLIUM_CLIENT_MODE);
+        auto native = std::make_shared<tl::engine>(extraction_engine_protocol, THALLIUM_CLIENT_MODE, true, 1);
+        extractionOwner = chl::rpc::RpcBulkOwner::Create(native, extractionRuntime, KEEPER_CONF.RPC_POLICY, true);
+        extractionEngine = native.get();
 
         std::stringstream s1;
         s1 << extractionEngine->self();
@@ -248,6 +253,9 @@ int main(int argc, char** argv)
                                             KEEPER_CONF.DATA_STORE_CONF.watermark_resend_timeout_secs);
 
     // Instantiate KeeperRecordingService
+    auto retainExtractionDependencies = [&] { chl::rpc::retainBulkDependencies(extractionOwner, extractionRuntime); };
+    chl::rpc::BulkScopeFence extractionFence(extractionOwner, extractionRuntime);
+
     tl::engine* dataAdminEngine = nullptr;
 
     chronolog::DataStoreAdminService* keeperDataAdminService = nullptr;
@@ -280,6 +288,7 @@ int main(int argc, char** argv)
     if(nullptr == keeperDataAdminService)
     {
         LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create DataStoreAdminService exiting");
+        retainExtractionDependencies();
         if(dataAdminEngine)
         {
             delete dataAdminEngine;
@@ -318,6 +327,7 @@ int main(int argc, char** argv)
     if(nullptr == keeperRecordingService)
     {
         LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRecordingService exiting");
+        retainExtractionDependencies();
         delete keeperDataAdminService;
         return (-1);
     }
@@ -338,7 +348,9 @@ int main(int argc, char** argv)
     if(nullptr == keeperRegistryClient)
     {
         LOG_CRITICAL("[ChronoKeeperInstance] Keeper failed to create KeeperRegistryClient; exiting");
+        retainExtractionDependencies();
         delete keeperRecordingService;
+        retainExtractionDependencies();
         delete keeperDataAdminService;
         return (-1);
     }
@@ -357,8 +369,11 @@ int main(int argc, char** argv)
     if(chronolog::CL_SUCCESS != registration_status)
     {
         LOG_CRITICAL("[ChronoKeeperInstance] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        retainExtractionDependencies();
         delete keeperRegistryClient;
+        retainExtractionDependencies();
         delete keeperRecordingService;
+        retainExtractionDependencies();
         delete keeperDataAdminService;
         return (-1);
     }
@@ -383,6 +398,8 @@ int main(int argc, char** argv)
         keeperRegistryClient->send_stats_msg(keeperStatsMsg);
         sleep(10);
     }
+
+    retainExtractionDependencies();
 
     /// Unregister from ChronoVisor ____________________________________________________________________________________
     // Unregister from the chronoVisor so that no new story requests would be coming
@@ -432,7 +449,7 @@ int main(int argc, char** argv)
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
-    delete extractionEngine;
+    extractionEngine = nullptr;
     delete recordingEngine;
     delete dataAdminEngine;
     LOG_INFO("[ChronoKeeperInstance] Shutdown completed. Exiting.");

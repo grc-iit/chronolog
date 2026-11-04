@@ -89,3 +89,71 @@ foreach(transport IN ITEMS sockets tcp)
     set_tests_properties(Communication_RpcDeadlineCapability_${transport}
         PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
 endforeach()
+
+add_executable(rpc_bulk_lifetime_test rpc_bulk_lifetime_test.cpp)
+target_include_directories(rpc_bulk_lifetime_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(rpc_bulk_lifetime_test PRIVATE chrono_common chronolog_client chrono_rpc thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    add_test(NAME Communication_RpcBulkLifetime_${transport}
+        COMMAND rpc_bulk_lifetime_test ofi+${transport})
+    set_tests_properties(Communication_RpcBulkLifetime_${transport}
+        PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endforeach()
+
+add_executable(rpc_bulk_receiver_test rpc_bulk_receiver_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp)
+target_include_directories(rpc_bulk_receiver_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(rpc_bulk_receiver_test PRIVATE chrono_common chronolog_client chrono_rpc thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    foreach(scenario IN ITEMS capacity reply-error decode-error failure-reply-error)
+        add_test(NAME Communication_RpcBulkReceiver_${transport}_${scenario}
+            COMMAND rpc_bulk_receiver_test ofi+${transport} ${scenario})
+        set_tests_properties(Communication_RpcBulkReceiver_${transport}_${scenario}
+            PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
+    endforeach()
+endforeach()
+
+add_executable(rpc_player_response_test rpc_player_response_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp)
+target_include_directories(rpc_player_response_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(rpc_player_response_test PRIVATE chrono_common chronolog_client chrono_rpc thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    add_test(NAME Communication_RpcPlayerResponse_${transport}
+        COMMAND rpc_player_response_test ofi+${transport})
+    set_tests_properties(Communication_RpcPlayerResponse_${transport}
+        PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
+endforeach()
+
+add_executable(rpc_client_bulk_test rpc_client_bulk_test.cpp)
+target_include_directories(rpc_client_bulk_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/src
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(rpc_client_bulk_test PRIVATE chronolog_client chrono_common chrono_rpc thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    foreach(scenario IN ITEMS register-before register-after response-before-ack late-private staged-expiry callback-thread callback-active callback-late callback-throw callback-control)
+        add_test(NAME Communication_RpcClientBulk_${transport}_${scenario}
+            COMMAND rpc_client_bulk_test ofi+${transport} ${scenario})
+        set_tests_properties(Communication_RpcClientBulk_${transport}_${scenario}
+            PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endforeach()
+endforeach()
+
+foreach(transport IN ITEMS sockets tcp)
+    foreach(scenario IN ITEMS identity same-range route-key capacity prep-expired queued during default large-chunk empty)
+        add_test(NAME Communication_RpcBulkLifetime_${transport}_${scenario}
+            COMMAND rpc_bulk_lifetime_test ofi+${transport} ${scenario})
+        set_tests_properties(Communication_RpcBulkLifetime_${transport}_${scenario}
+            PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endforeach()
+endforeach()

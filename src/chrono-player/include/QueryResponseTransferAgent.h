@@ -1,94 +1,59 @@
 #ifndef CHRONOLOG_QUERY_RESPONSE_AGENT_H
 #define CHRONOLOG_QUERY_RESPONSE_AGENT_H
-
-#include <string>
-#include <cstdint>
-#include <thallium.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_client.h>
+#include <PlaybackRpcOwner.h>
 #include <PlaybackQueryResponse.h>
-#include <ServiceId.h>
-
+#include <private/RpcBulkSend.h>
+#include <StoryChunk.h>
+#include <list>
+#include <map>
+#include <mutex>
 namespace chronolog
 {
-
-class StoryChunk;
-
 class QueryResponseAgent
 {
-
-    enum AgentState
-    {
-        UNKNOWN = 0,
-        RUNNING = 1,      //  active threads
-        SHUTTING_DOWN = 2 // shutting down threads
-    };
-
 public:
-    static QueryResponseAgent* CreateQueryResponseAgent(thallium::engine& tl_engine,
-                                                        ServiceId const& receiver_service_id)
+    static QueryResponseAgent* CreateQueryResponseAgent(thallium::engine& engine, ServiceId const& route)
     {
-        QueryResponseAgent* queryResponseAgent = nullptr;
-        try
-        {
-            queryResponseAgent = new QueryResponseAgent(tl_engine, receiver_service_id);
-        }
-        catch(thallium::exception const& ex)
-        {
-            LOG_ERROR("[QueryResponseAgent] Failed to create QueryResponseAgent for service {}",
-                      to_string(receiver_service_id));
-        }
-        return queryResponseAgent;
+        return CreateQueryResponseAgent(PlaybackRpcOwner::Find(engine.get_margo_instance()), route);
     }
-
-
-    virtual ~QueryResponseAgent();
-
-    bool is_receiver_available() const;
-
-    int stashQueryResponseRecord(ClientQueryId const&, PlaybackQueryResponse*, bool);
-
-    // read_status is what the archive reader returned for the range: anything
-    // but CL_SUCCESS means a file in it could not be read, so the response
-    // cannot claim to be complete.
-    int addArchivedEventsToQueryResponse(ClientQueryId const& query_id,
-                                         std::list<StoryChunk*> const&,
-                                         int read_status = CL_SUCCESS);
-
-    void drainQueryResponses();
-
+    static QueryResponseAgent* CreateQueryResponseAgent(std::shared_ptr<PlaybackRpcOwner> const& owner,
+                                                        ServiceId const& route)
+    {
+        return owner && !owner->closing() ? new QueryResponseAgent(owner, route) : nullptr;
+    }
+    virtual ~QueryResponseAgent() = default;
+    bool is_receiver_available() const { return false; }
+    // Unreserved raw records cannot create retained payload state. Production
+    // uses the owned overload under the whole-query admission below.
+    int stashQueryResponseRecord(ClientQueryId const&, PlaybackQueryResponse*, bool) { return CL_ERR_RPC_CAPACITY; }
+    int
+    addArchivedEventsToQueryResponse(ClientQueryId const&, std::list<StoryChunk*> const&, int read_status = CL_SUCCESS);
+    void drainQueryResponses() {}
+    void startResponseThreads(int) {}
+    void stopResponseThreads() {}
     int transferQueryResponseToClient(PlaybackQueryResponse const&);
-
-    void startResponseThreads(int);
-
-    void stopResponseThreads();
+    rpc::RpcResult<uint64_t> transferOwnedQueryResponse(std::shared_ptr<PlaybackQueryResponse const>,
+                                                        rpc::RpcReservation,
+                                                        rpc::BulkPermits::Permit,
+                                                        rpc::RpcDeadline const& replay);
+    std::shared_ptr<PlaybackQueryResponse> takeReady(ClientQueryId query);
 
 private:
-    // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    QueryResponseAgent(thallium::engine& tl_engine, ServiceId const& receiver_service_id);
-
-    // transfer agents can't be copied
-    QueryResponseAgent(QueryResponseAgent const&) = delete;
-    QueryResponseAgent& operator=(QueryResponseAgent const&) = delete;
-
-    std::atomic<AgentState> state;
-
-    thallium::engine& service_engine;                  // local tl::engine
-    ServiceId receiver_service_id;                     // remote receiver service ServiceId
-    thallium::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
-    thallium::remote_procedure receiver_is_available;
-    thallium::remote_procedure receive_query_response;
-    std::vector<thallium::managed<thallium::xstream>> extractionStreams;
-    std::vector<thallium::managed<thallium::thread>> extractionThreads;
-
-    //map of active client queries the receiver service is waiting on
-    std::mutex query_mutex;
-    std::map<ClientQueryId, std::pair<bool, PlaybackQueryResponse*>> active_queries;
+    friend class PlaybackService;
+    int stashOwnedQueryResponse(ClientQueryId, std::shared_ptr<PlaybackQueryResponse> const&, bool);
+    QueryResponseAgent(std::shared_ptr<PlaybackRpcOwner> owner, ServiceId route)
+        : owner_(owner)
+        , route_(std::move(route))
+    {}
+    struct Record
+    {
+        bool ready;
+        std::shared_ptr<PlaybackQueryResponse> response;
+    };
+    std::weak_ptr<PlaybackRpcOwner> owner_;
+    ServiceId route_;
+    std::mutex mutex_;
+    std::map<ClientQueryId, Record> queries_;
 };
-
-
 } // namespace chronolog
-
-
-#endif //CHRONOLOG_QUERY_RESPONSE_AGENT_H
+#endif

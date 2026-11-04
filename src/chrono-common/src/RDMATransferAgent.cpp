@@ -1,93 +1,238 @@
-#include <thallium/serialization/stl/string.hpp>
-#include <thallium/serialization/stl/vector.hpp>
-#include <cereal/archives/binary.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_errcode.h>
 #include <RDMATransferAgent.h>
-
-namespace tl = thallium;
-namespace chl = chronolog;
-
-chronolog::RDMATransferAgent::RDMATransferAgent(tl::engine& tl_engine, chronolog::ServiceId const& service_id)
-    : service_engine(tl_engine)
-    , receiver_service_id(service_id)
+#include <StoryChunk.h>
+#include <private/RpcBulkSerialization.h>
+#include <sstream>
+#include <thread>
+namespace chronolog
 {
-    std::string service_addr_string;
-    receiver_service_id.get_service_as_string(service_addr_string);
-
-    receiver_service_handle =
-            tl::provider_handle(service_engine.lookup(service_addr_string), receiver_service_id.getProviderId());
-
-    receiver_available = service_engine.define("receiver_available");
-    receive_story_chunk = service_engine.define("receive_story_chunk");
-
-    LOG_DEBUG("[RDMATransferAgent] created agent for receiver service {}", chl::to_string(receiver_service_id));
+namespace
+{
+rpc::RpcDeadline attempt(std::shared_ptr<rpc::RpcBulkOwner> const& owner, rpc::RpcDeadline::Clock::time_point started)
+{
+    return rpc::RpcDeadline::fromStart(
+            started,
+            std::chrono::milliseconds(std::min(owner->policy.transfer_ms, owner->policy.attempt_ms)));
 }
-
-chronolog::RDMATransferAgent::~RDMATransferAgent()
+auto bulkWork(std::shared_ptr<rpc::RpcBulkOwner> owner,
+              ServiceId route,
+              std::string payload,
+              rpc::BulkPermits::Permit permit,
+              ServiceId reporter,
+              std::shared_ptr<rpc::BulkReplyState<ChunkReceipt>> state = {},
+              std::function<std::string()> prepare = {},
+              std::function<void()> afterKnown = {})
 {
-    LOG_DEBUG("[RDMATransferAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
-    receiver_available.deregister();
-    receive_story_chunk.deregister();
+    return std::make_shared<rpc::BulkSendWork<ChunkReceipt>>(
+            owner,
+            *owner->engine,
+            owner->receiveChunk,
+            [owner, provider = route.getProviderId()](rpc::RpcDeadline const& deadline)
+            { return owner->provision("receive_story_chunk", provider, deadline); },
+            std::move(route),
+            std::move(payload),
+            std::move(permit),
+            std::move(reporter),
+            std::move(state),
+            std::move(prepare),
+            std::move(afterKnown));
 }
-
-bool chronolog::RDMATransferAgent::is_receiver_available() const
+} // namespace
+int RDMATransferAgent::transfer_serialized_story_chunk(std::string const& payload,
+                                                       ServiceId const& reporter,
+                                                       ChunkReceipt* receipt)
 {
-    bool ret_value = false;
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto deadline = attempt(owner_, started);
+    if(payload.empty())
+        return CL_ERR_INVALID_ARG;
+    auto runtime = owner_->runtime.lock();
+    if(!runtime || owner_->closing)
+        return CL_ERR_RPC_CAPACITY;
+    auto reservation = runtime->reserve(deadline);
+    if(!reservation)
+        return reservation.status();
+    auto permit = owner_->sources.acquire();
+    if(!permit)
+        return CL_ERR_RPC_CAPACITY;
     try
     {
-        ret_value = receiver_available.on(receiver_service_handle)();
+        auto result = runtime->invoke<ChunkReceipt>(
+                std::move(reservation),
+                bulkWork(owner_, route_, std::string(payload), std::move(*permit), reporter));
+        if(result.status == CL_SUCCESS && result.reply && receipt)
+            *receipt = *result.reply;
+        return result.status;
     }
     catch(...)
     {
-        LOG_ERROR("[RDMATransferAgent] Unknown exception in rpc with receiver_service {}.",
-                  chl::to_string(receiver_service_id));
+        return CL_ERR_UNKNOWN;
     }
-
-    LOG_DEBUG("[RDMATransferAgent] receiver_service {} is available {}",
-              chl::to_string(receiver_service_id),
-              ret_value);
-    return ret_value;
 }
-
-///////////////////////////////////
-int chronolog::RDMATransferAgent::transfer_serialized_story_chunk(std::string const& serialized_story_chunk,
-                                                                  chronolog::ServiceId const& reporter,
-                                                                  chronolog::ChunkReceipt* receipt)
+int RDMATransferAgent::transfer_story_chunk(StoryChunk const& chunk, ServiceId const& reporter, ChunkReceipt* receipt)
 {
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto deadline = attempt(owner_, started);
+    auto runtime = owner_->runtime.lock();
+    rpc::RpcBulkOwner::ChunkIdentity identity{route_.getProtocol(),
+                                              route_.getIPaddr(),
+                                              route_.getPort(),
+                                              route_.getProviderId(),
+                                              reporter.getProtocol(),
+                                              reporter.getIPaddr(),
+                                              reporter.getPort(),
+                                              reporter.getProviderId(),
+                                              chunk.getStoryId(),
+                                              chunk.getStartTime(),
+                                              chunk.getEndTime()};
+    std::unique_lock<std::timed_mutex> lock(owner_->pendingMutex, std::defer_lock);
+    if(!lock.try_lock_until(deadline.expiresAt()))
+        return CL_ERR_DEADLINE_EXCEEDED;
+    // Only the originating caller's already-consumed result may be removed.
+    // Another chunk cannot evict a late receipt that has not been collected.
+    for(auto entry = owner_->chunks.begin(); entry != owner_->chunks.end();)
+        if(entry->second->consumed.load(std::memory_order_acquire))
+            entry = owner_->chunks.erase(entry);
+        else
+            ++entry;
+    if(deadline.expired())
+        return CL_ERR_DEADLINE_EXCEEDED;
+    auto matches = owner_->chunks.equal_range(identity);
+    for(auto found = matches.first; found != matches.second; ++found)
+    {
+        auto outcome = found->second;
+        bool same = outcome->snapshot && outcome->snapshot->sameSerializedData(chunk);
+        if(deadline.expired())
+            return CL_ERR_DEADLINE_EXCEEDED;
+        if(!same)
+            continue;
+        auto const& state = outcome->state;
+        if(!state->known.load(std::memory_order_acquire))
+            return CL_ERR_OUTCOME_UNCONFIRMED;
+        int status = state->status;
+        if(status == CL_SUCCESS && receipt)
+            *receipt = state->reply;
+        owner_->chunks.erase(found);
+        outcome->consumed.store(true, std::memory_order_release);
+        return status;
+    }
+    if(!runtime || owner_->closing)
+        return CL_ERR_RPC_CAPACITY;
+    auto reserved = runtime->reserve(deadline);
+    if(!reserved)
+        return reserved.status();
+    auto source = owner_->sources.acquire();
+    if(!source)
+        return CL_ERR_RPC_CAPACITY;
+    auto metadata = owner_->pendingOutcomes.acquire();
+    if(!metadata)
+        return CL_ERR_RPC_CAPACITY;
+    std::shared_ptr<rpc::RpcBulkOwner::ChunkOutcome> outcome;
     try
     {
-        std::vector<std::pair<void*, std::size_t>> segments(1);
-        segments[0].first = (void*)(serialized_story_chunk.data());
-        segments[0].second = serialized_story_chunk.size();
-        tl::bulk tl_bulk = service_engine.expose(segments, tl::bulk_mode::read_only);
-        LOG_TRACE("[RDMATransferAgent] about to transfer Chunk size: {}  tl_bulk size {}",
-                  serialized_story_chunk.size(),
-                  tl_bulk.size());
-
-        chronolog::ChunkReceipt answer = receive_story_chunk.on(receiver_service_handle)(tl_bulk, reporter);
-
-        LOG_DEBUG("[RDMATransferAgent] prepared tl_bulk size {} transfered {} bytes", tl_bulk.size(), answer.bytes);
-
-        if(answer.bytes == tl_bulk.size())
+        outcome = std::make_shared<rpc::RpcBulkOwner::ChunkOutcome>(std::move(*metadata));
+        owner_->chunks.emplace(identity, outcome);
+        // One admitted immutable snapshot of borrowed input. Serialization
+        // happens on the charged worker, before its independent wait expires.
+        outcome->snapshot = std::make_shared<StoryChunk const>(chunk);
+        auto before = owner_->beforeSerialize;
+        auto prepare = [outcome, before]
         {
-            LOG_TRACE("[RDMATransferAgent] Successfully transfered bulk");
-            if(receipt != nullptr)
-            {
-                *receipt = answer;
-            }
-            return chronolog::CL_SUCCESS;
-        }
-    }
-    catch(tl::exception const& ex)
-    {
-        LOG_ERROR("[RDMATransferAgent] Thallium exception while transferring bulk: {}", ex.what());
+            if(before)
+                before();
+            return rpc::serializeBulk(*outcome->snapshot);
+        };
+        auto owner = owner_;
+        auto afterKnown = [owner, outcome, identity]
+        {
+            // A late receipt retains its immutable identity and charged slot
+            // until the originating chunk consumes it. Large snapshot cleanup
+            // stays on this existing worker, never the receipt collector.
+            while(!outcome->consumed.load(std::memory_order_acquire))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::lock_guard<std::timed_mutex> lock(owner->pendingMutex);
+            outcome->snapshot.reset();
+            auto range = owner->chunks.equal_range(identity);
+            for(auto found = range.first; found != range.second; ++found)
+                if(found->second == outcome)
+                {
+                    owner->chunks.erase(found);
+                    break;
+                }
+        };
+        auto work = bulkWork(owner_,
+                             route_,
+                             {},
+                             std::move(*source),
+                             reporter,
+                             outcome->state,
+                             std::move(prepare),
+                             std::move(afterKnown));
+        lock.unlock();
+        auto result = runtime->invoke<ChunkReceipt>(std::move(reserved), std::move(work));
+        if(result.status == CL_SUCCESS && result.reply && receipt)
+            *receipt = *result.reply;
+        if(result.reply || !result.may_have_dispatched)
+            outcome->consumed.store(true, std::memory_order_release);
+        return result.status;
     }
     catch(...)
     {
-        LOG_ERROR("[RDMATransferAgent] Unknown exception while  transferring bulk.");
+        if(lock.owns_lock())
+        {
+            auto range = owner_->chunks.equal_range(identity);
+            for(auto found = range.first; found != range.second; ++found)
+                if(found->second == outcome)
+                {
+                    owner_->chunks.erase(found);
+                    break;
+                }
+        }
+        return CL_ERR_UNKNOWN;
     }
-
-    return chronolog::CL_ERR_STORY_CHUNK_EXTRACTION;
 }
+bool RDMATransferAgent::is_receiver_available() const
+{
+    auto runtime = owner_->runtime.lock();
+    if(!runtime || owner_->closing)
+        return false;
+    class Available: public rpc::OwnedRpcWork<bool>
+    {
+        std::shared_ptr<rpc::RpcBulkOwner> owner_;
+        ServiceId route_;
+        rpc::RpcCallState call_;
+
+    public:
+        Available(std::shared_ptr<rpc::RpcBulkOwner> owner, ServiceId route)
+            : owner_(std::move(owner))
+            , route_(std::move(route))
+        {}
+        rpc::RpcResult<bool> run(rpc::OperationContext& context) override
+        {
+            bool dispatched = false;
+            try
+            {
+                auto status = owner_->provision("receiver_available", route_.getProviderId(), context.deadline());
+                if(status != CL_SUCCESS)
+                    return {status, false, {}};
+                std::string address;
+                route_.get_service_as_string(address);
+                call_.bind(*owner_->engine, owner_->available, address, route_.getProviderId());
+                auto timeout = context.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
+                if(!timeout || !context.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
+                dispatched = true;
+                bool reply = call_.callable().timed(*timeout);
+                call_.clearKnown();
+                return {CL_SUCCESS, true, reply};
+            }
+            catch(...)
+            {
+                return {CL_ERR_OUTCOME_UNCONFIRMED, dispatched, {}};
+            }
+        }
+    };
+    auto result = runtime->invoke<bool>(rpc::RpcDeadline::after(std::chrono::milliseconds(owner_->policy.attempt_ms)),
+                                        std::make_shared<Available>(owner_, route_));
+    return result.reply.value_or(false);
+}
+} // namespace chronolog

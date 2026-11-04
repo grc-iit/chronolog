@@ -271,7 +271,8 @@ public:
     // [start, end) range, with no client-side std::vector<Event> materialization.
     //
     // The callback runs on the query service receive thread; the caller is
-    // responsible for any locking it needs.
+    // responsible for any locking it needs. New callbacks stop at expiry; an
+    // already running callback must cooperate and finish before this call returns.
     //
     // The callback must not throw. If it does, the exception is caught and
     // logged, that event is skipped, and the remaining events in the response

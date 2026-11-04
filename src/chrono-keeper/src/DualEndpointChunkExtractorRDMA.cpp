@@ -171,124 +171,18 @@ chronolog::DualEndpointChunkExtractorRDMA::~DualEndpointChunkExtractorRDMA()
 
 ////
 
-int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* story_chunk)
+int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChunk* chunk)
 {
-
-    // Note: a failure to transfer a story_chunk to the ChronoPlayer alone is not considered a critical enough error
-    // to exit this function and try again later. In this case the error would be logged but the function would
-    // proceed to sending the story_chunk to the ChronoGrapher
-    // Failure to transfer the story_chunk to the ChronoGrapher would trigger the exit from the function,
-    // return the StoryChunk back on the extraction_queue, and subsequent retry
-
-    int transfer_return = chl::CL_ERR_UNKNOWN;
-
-    try
-    {
-        LOG_DEBUG("[DualEndpointChunkExtractor] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
-                  thallium::thread::self_id(),
-                  story_chunk->getStoryId(),
-                  story_chunk->getChronicleName(),
-                  story_chunk->getStoryName(),
-                  story_chunk->getStartTime(),
-                  story_chunk->getEndTime(),
-                  story_chunk->getEventCount());
-
-        if(rdma_sender_for_grapher == nullptr)
-        {
-            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer StoryChunk StoryId={} StartTime={}, no valid "
-                      "rdma_sender_for_grapher",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime());
-            return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
-        }
-
-        std::ostringstream oss(std::ios::binary);
-        try
-        {
-            cereal::BinaryOutputArchive oarchive(oss);
-            oarchive(*story_chunk);
-        }
-        catch(cereal::Exception const& ex)
-        {
-            LOG_ERROR("[DualEndpointChunkExtractor] Cereal exception while serializing StoryChunk StoryId={} "
-                      "StartTime={} ex {}",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime(),
-                      ex.what());
-        }
-
-
-        std::string serialized_story_chunk = oss.str();
-
-        if(rdma_sender_for_player != nullptr)
-        {
-            try
-            {
-                transfer_return = rdma_sender_for_player->transfer_serialized_story_chunk(serialized_story_chunk);
-                if(transfer_return == chl::CL_SUCCESS)
-                {
-                    LOG_INFO("[DualEndpointChunkExtractor] Transfered to Player StoryChunk StoryId={} StartTime={}",
-                             story_chunk->getStoryId(),
-                             story_chunk->getStartTime());
-                }
-                else
-                {
-                    LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer to Player StoryChunk StoryId={} "
-                              "StartTime={}",
-                              story_chunk->getStoryId(),
-                              story_chunk->getStartTime());
-                }
-            }
-            catch(std::exception const& ex)
-            {
-                LOG_ERROR("[DualEndpointChunkExtractor] Standard exception while serializing StoryChunk StoryId={} "
-                          "StartTime={} ex {}",
-                          story_chunk->getStoryId(),
-                          story_chunk->getStartTime(),
-                          ex.what());
-            }
-        }
-
-        chl::ChunkReceipt receipt;
-        transfer_return = rdma_sender_for_grapher->transfer_serialized_story_chunk(serialized_story_chunk,
-                                                                                   reporter_service_id,
-                                                                                   &receipt);
-
-        if(transfer_return == chl::CL_SUCCESS)
-        {
-            // the keeper frees the chunk only once the grapher settles this receipt
-            story_chunk->setGrapherReceipt(receipt.grapher_instance, receipt.receipt);
-            LOG_INFO("[DualEndpointChunkExtractor] Transfered to Grapher StoryChunk StoryId={} StartTime={}",
-                     story_chunk->getStoryId(),
-                     story_chunk->getStartTime());
-        }
-        else
-        {
-            LOG_ERROR("[DualEndpointChunkExtractor] Failed to transfer to Grapher StoryChunk StoryId={} StartTime={}",
-                      story_chunk->getStoryId(),
-                      story_chunk->getStartTime());
-        }
-
-        return transfer_return;
-    }
-    catch(std::exception const& ex)
-    {
-        LOG_ERROR("[DualEndpointChunkExtractor] Standard exception while serializing StoryChunk StoryId={} "
-                  "StartTime={} ex {}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime(),
-                  ex.what());
-    }
-    catch(...)
-    {
-        LOG_ERROR("[DualEndpointChunkExtractor] Exception while transferring StoryChunkiStoryId={} StartTime={}",
-                  story_chunk->getStoryId(),
-                  story_chunk->getStartTime());
-    }
-
-    return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+    if(!rdma_sender_for_grapher)
+        return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+    if(rdma_sender_for_player)
+        rdma_sender_for_player->transfer_story_chunk(*chunk);
+    chl::ChunkReceipt receipt;
+    int status = rdma_sender_for_grapher->transfer_story_chunk(*chunk, reporter_service_id, &receipt);
+    if(status == chl::CL_SUCCESS)
+        chunk->setGrapherReceipt(receipt.grapher_instance, receipt.receipt);
+    return status;
 }
-
 
 /*
    JSON Block for Dual Endpoint RDMA Extractor

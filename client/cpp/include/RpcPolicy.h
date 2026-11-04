@@ -10,6 +10,9 @@ namespace chronolog
 {
 // Total operation budgets and the cap on a constituent RPC attempt, in milliseconds.
 // The runtime caps each attempt by the operation's remaining time.
+// These bound library waits under normal scheduling. Taking an admitted owned
+// snapshot of borrowed input has O(input-size) CPU/allocation cost and cannot be
+// independently preempted; that time consumes the same original deadline.
 struct RpcTimeoutPolicy
 {
     uint64_t append_ms = 5000;

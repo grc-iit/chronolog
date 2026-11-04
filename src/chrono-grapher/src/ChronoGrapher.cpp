@@ -8,6 +8,7 @@
 #include <sstream>
 #include <mutex>
 #include <chrono>
+#include <private/RpcBulkControl.h>
 
 #include <GrapherIdCard.h>
 #include <GrapherRecordingService.h>
@@ -202,6 +203,11 @@ int main(int argc, char** argv)
                                              &grapherExtractionChain,
                                              &theWatermarkRegistry);
 
+    std::shared_ptr<chl::rpc::RpcBulkOwner> recordingOwner;
+    auto recordingRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+    auto retainRecordingDependencies = [&] { chl::rpc::retainBulkDependencies(recordingOwner, recordingRuntime); };
+    chl::rpc::BulkScopeFence recordingFence(recordingOwner, recordingRuntime);
+
     tl::engine* dataAdminEngine = nullptr;
 
     chronolog::DataStoreAdminService* grapherDataAdminService = nullptr;
@@ -253,7 +259,9 @@ int main(int argc, char** argv)
         int rpc_thread_count = static_cast<int>(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.INGESTION_THREAD_COUNT);
         margo_instance_id margo_id =
                 margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
-        recordingEngine = new tl::engine(margo_id);
+        auto native = std::make_shared<tl::engine>(margo_id);
+        recordingOwner = chl::rpc::RpcBulkOwner::Create(native, recordingRuntime, GRAPHER_CONF.RPC_POLICY, false);
+        recordingEngine = native.get();
 
         std::stringstream s1;
         s1 << recordingEngine->self();
@@ -276,6 +284,7 @@ int main(int argc, char** argv)
     if(nullptr == grapherRecordingService)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
+        retainRecordingDependencies();
         delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
@@ -297,7 +306,9 @@ int main(int argc, char** argv)
     if(nullptr == grapherRegistryClient)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
-        delete grapherRecordingService;
+        retainRecordingDependencies();
+        grapherRecordingService = nullptr;
+        retainRecordingDependencies();
         delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
@@ -321,8 +332,11 @@ int main(int argc, char** argv)
     if(chronolog::CL_SUCCESS != registration_status)
     {
         LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        retainRecordingDependencies();
         delete grapherRegistryClient;
-        delete grapherRecordingService;
+        retainRecordingDependencies();
+        grapherRecordingService = nullptr;
+        retainRecordingDependencies();
         delete watermarkPublisher;
         delete grapherDataAdminService;
         return (-1);
@@ -348,6 +362,8 @@ int main(int argc, char** argv)
         sleep(10);
     }
 
+    retainRecordingDependencies();
+
     /// Unregister from ChronoVisor ____________________________________________________________________________________
     // Unregister from the chronoVisor so that no new story requests would be coming
     grapherRegistryClient->send_unregister_msg(processIdCard);
@@ -356,7 +372,7 @@ int main(int argc, char** argv)
     /// Stop services and shut down ____________________________________________________________________________________
     LOG_INFO("[ChronoGrapher] Initiating shutdown procedures.");
     // Stop recording events
-    delete grapherRecordingService;
+    grapherRecordingService = nullptr;
     delete grapherDataAdminService;
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
@@ -375,7 +391,7 @@ int main(int argc, char** argv)
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
-    delete recordingEngine;
+    recordingEngine = nullptr;
     delete dataAdminEngine;
     LOG_INFO("[ChronoGrapher] Shutdown completed. Exiting.");
     return exit_code;

@@ -23,6 +23,8 @@ namespace chronolog
 {
 
 class QueryResponseAgent;
+class PlaybackQueryWork;
+struct PlaybackQueryResponse;
 
 class PlaybackService: public tl::provider<PlaybackService>
 {
@@ -51,6 +53,16 @@ public:
 
 private:
     friend struct PlaybackServiceTestAccess;
+    friend class PlaybackQueryWork;
+    QueryResponseAgent* prepareQuery(ServiceId const&,
+                                     uint32_t,
+                                     StoryId const&,
+                                     ChronicleName const&,
+                                     StoryName const&,
+                                     chrono_time const&,
+                                     chrono_time const&,
+                                     rpc::RpcDeadline const&,
+                                     std::shared_ptr<PlaybackQueryResponse>&);
     using RegistrationObserver = std::function<void(PlaybackService&, bool)>;
     static PlaybackService* CreatePlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                                                   uint16_t service_provider_id,

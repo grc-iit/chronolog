@@ -9,6 +9,7 @@
 #include <StoryChunk.h>
 #include <StoryChunkIngestionQueue.h>
 #include <StoryChunkConsumerService.h>
+#include <private/RpcBulkControl.h>
 
 namespace tl = thallium;
 namespace chl = chronolog;
@@ -53,17 +54,22 @@ int main()
     chl::StoryChunkConsumerService* chunkConsumerService;
 
     chl::StoryChunkIngestionQueue ingestionQueue;
+    auto runtime = std::make_shared<chl::rpc::RpcRuntime>();
+    std::shared_ptr<chl::rpc::RpcBulkOwner> owner;
+    chl::rpc::BulkScopeFence fence(owner, runtime);
 
     try
     {
         margo_instance_id margo_id = margo_init(LOCAL_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-        localEngine = new tl::engine(margo_id);
+        auto native = std::make_shared<tl::engine>(margo_id);
+        owner = chl::rpc::RpcBulkOwner::Create(native, runtime, chl::RpcTimeoutPolicy{}, false);
+        localEngine = native.get();
 
 
         LOG_INFO("[ChunkConsumerServiceTest] starting StoryChunkConsumerService at {}", chl::to_string(localServiceId));
 
         chunkConsumerService =
-                chronolog::StoryChunkConsumerService::CreateChunkConsumerService(*localEngine,
+                chronolog::StoryChunkConsumerService::CreateChunkConsumerService(owner,
                                                                                  localServiceId.getProviderId(),
                                                                                  ingestionQueue);
     }
@@ -86,7 +92,8 @@ int main()
     LOG_INFO("[ChunkConsumerServiceTest] Shutting down StoryChunkConsumerService at {}",
              chl::to_string(localServiceId));
 
-    delete chunkConsumerService;
-    delete localEngine;
+    chl::rpc::retainBulkDependencies(owner, runtime);
+    chunkConsumerService = nullptr;
+    localEngine = nullptr;
     return 1;
 }

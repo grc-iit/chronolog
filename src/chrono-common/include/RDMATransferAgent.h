@@ -1,67 +1,50 @@
 #ifndef RDMA_TRANSFER_AGENT_H
 #define RDMA_TRANSFER_AGENT_H
-
 #include <string>
+#include <map>
+#include <mutex>
+#include <tuple>
+#include <memory>
 #include <thallium.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_types.h>
 #include <ChunkReceipt.h>
+#include <chronolog_types.h>
 #include <ServiceId.h>
-
+#include <private/RpcBulkOwner.h>
+#include <private/RpcBulkSend.h>
 namespace tl = thallium;
-
 namespace chronolog
 {
-
-//class StoryChunk;
-
+class StoryChunk;
 class RDMATransferAgent
 {
 public:
-    static RDMATransferAgent* CreateRDMATransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id)
+    static RDMATransferAgent* CreateRDMATransferAgent(tl::engine& engine, ServiceId const& route)
     {
-        RDMATransferAgent* rdma_transfer_agent = nullptr;
-        try
-        {
-            rdma_transfer_agent = new RDMATransferAgent(tl_engine, receiver_service_id);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[RDMATransferAgent] Failed to create RDMATransferAgent for receiver {}",
-                      chronolog::to_string(receiver_service_id));
-            rdma_transfer_agent = nullptr;
-        }
-        return rdma_transfer_agent;
+        return CreateRDMATransferAgent(rpc::RpcBulkOwner::Find(engine.get_margo_instance()), route);
     }
-
-
-    ~RDMATransferAgent();
-
-    // Ship one serialized chunk. reporter identifies the sender's
-    // DataStoreAdminService so the receiver (grapher) knows where to push
-    // watermark reports; pass a default ServiceId for receivers that do not
-    // report (player). On success, receipt (if given) gets the receiver's
-    // answer: a grapher's receipt for the chunk, or zeros.
-    int transfer_serialized_story_chunk(std::string const& chunk,
-                                        ServiceId const& reporter = ServiceId(),
+    static RDMATransferAgent* CreateRDMATransferAgent(std::shared_ptr<rpc::RpcBulkOwner> owner, ServiceId const& route)
+    {
+        if(!owner || !route.is_valid() || owner->closing || owner->runtime.expired())
+            return nullptr;
+        return new RDMATransferAgent(std::move(owner), route);
+    }
+    ~RDMATransferAgent() = default;
+    int transfer_serialized_story_chunk(std::string const&,
+                                        ServiceId const& reporter = {},
                                         ChunkReceipt* receipt = nullptr);
+    int transfer_story_chunk(StoryChunk const&, ServiceId const& reporter = {}, ChunkReceipt* receipt = nullptr);
     bool is_receiver_available() const;
 
 private:
-    tl::engine& service_engine;                  // local sender tl::engine
-    ServiceId receiver_service_id;               // remote receiver service ServiceId
-    tl::provider_handle receiver_service_handle; // tl::provider_handle for remote receiver service
-    tl::remote_procedure receiver_available;
-    tl::remote_procedure receive_story_chunk;
-
-    // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    RDMATransferAgent(tl::engine& tl_engine, ServiceId const& receiver_service_id);
-    RDMATransferAgent(RDMATransferAgent const&) = delete;
+    RDMATransferAgent(std::shared_ptr<rpc::RpcBulkOwner> owner, ServiceId route)
+        : owner_(std::move(owner))
+        , route_(std::move(route))
+    {}
+    // Borrowed input is copied once after admission. That O(input-size)
+    // CPU/allocation boundary is not independently preemptible; elapsed time
+    // consumes the original deadline. No worker retains a raw caller input.
+    std::shared_ptr<rpc::RpcBulkOwner> owner_;
+    ServiceId route_;
 };
-
-
 } // namespace chronolog
-
-
 #endif

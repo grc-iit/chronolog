@@ -97,11 +97,28 @@ int ClientRpcContext::initialize(rpc::RpcDeadline const& deadline)
     if(!procedures)
         procedures = std::make_shared<ClientRpcProcedures>(*engine);
     if(readerMode && !reader)
-        reader = ClientQueryService::CreateClientQueryService(
-                *engine,
-                ServiceId(queryConf.PROTO_CONF, queryIp.ip, queryConf.PORT, queryConf.PROVIDER_ID),
-                procedures,
-                shared_from_this());
+    {
+        try
+        {
+            reader = ClientQueryService::CreateClientQueryService(
+                    *engine,
+                    ServiceId(queryConf.PROTO_CONF, queryIp.ip, queryConf.PORT, queryConf.PROVIDER_ID),
+                    procedures,
+                    shared_from_this());
+            if(!reader)
+            {
+                initializeStatus_ = CL_ERR_UNKNOWN;
+                return initializeStatus_;
+            }
+        }
+        catch(...)
+        {
+            // A nonnull provider root after partial registration is not a
+            // successful initialization. Never retry into a partial reader.
+            initializeStatus_ = CL_ERR_UNKNOWN;
+            throw;
+        }
+    }
     auto address = portalConf.PROTO_CONF + "://" + portalConf.IP + ":" + std::to_string(portalConf.PORT);
     visor = std::make_unique<RpcVisorClient>(*engine, address, portalConf.PROVIDER_ID, procedures);
     if(beforeInitializeUnlock_)
