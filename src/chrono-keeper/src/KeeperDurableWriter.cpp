@@ -21,6 +21,7 @@ chronolog::KeeperDurableWriter::KeeperDurableWriter(DurableLog* log,
     , theTailStore(tail_store)
     , theDataStore(data_store)
     , durableCapBytes(durable_cap_bytes)
+    , durableResumeBytes(durable_cap_bytes / 4 * 3)
 {}
 
 int chronolog::KeeperDurableWriter::write(ChronicleName const& chronicle, StoryName const& story, LogEvent const& event)
@@ -77,15 +78,37 @@ int chronolog::KeeperDurableWriter::write(ChronicleName const& chronicle, StoryN
             return chl::CL_ERR_DURABILITY_FULL;
     }
 
-    std::size_t const retained = theTailStore.retainedByteCount();
-    if(retained > durableCapBytes)
+    // Only chunks the grapher has not confirmed count: a confirmed chunk the
+    // tail index still holds is freed without the grapher.
+    std::size_t const unconfirmed = theTailStore.unconfirmedByteCount();
+    if(unconfirmed > durableCapBytes)
     {
-        LOG_DEBUG("[KeeperDurableWriter] StoryId={} refused: the retention store holds {} bytes, above the durable "
-                  "cap of {}",
-                  story_id,
-                  retained,
-                  durableCapBytes);
+        if(!overCap.exchange(true))
+        {
+            LOG_WARNING("[KeeperDurableWriter] Refusing durable writes: the retention store holds {} bytes the grapher "
+                        "has not confirmed, above durable_cap_mb ({} bytes). They are admitted again at {} bytes",
+                        unconfirmed,
+                        durableCapBytes,
+                        durableResumeBytes);
+        }
         return chl::CL_ERR_DURABILITY_FULL;
+    }
+    if(overCap.load())
+    {
+        if(unconfirmed > durableResumeBytes)
+        {
+            LOG_DEBUG("[KeeperDurableWriter] StoryId={} refused: {} unconfirmed bytes, above the resume level of {}",
+                      story_id,
+                      unconfirmed,
+                      durableResumeBytes);
+            return chl::CL_ERR_DURABILITY_FULL;
+        }
+        if(overCap.exchange(false))
+        {
+            LOG_INFO("[KeeperDurableWriter] Admitting durable writes again: {} unconfirmed bytes, at most {}",
+                     unconfirmed,
+                     durableResumeBytes);
+        }
     }
 
     // Only a story without an ingestion handle goes to the data store, whose

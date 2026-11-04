@@ -346,6 +346,38 @@ TEST(KeeperDurableWriter, FullAndCapAreFullAndNothingIngested)
     EXPECT_EQ(keeper.ingested(kStory), 1u);
 }
 
+// Over the cap the writer refuses until the unconfirmed bytes are down to
+// three quarters of it, not just under it, so the answer does not flip on
+// every chunk at the limit.
+TEST(KeeperDurableWriter, OverTheCapRefusesUntilThreeQuartersOfIt)
+{
+    ensureLogger();
+    Keeper keeper;
+    FakeDurableLog wal;
+    std::vector<chl::StoryId> const stories{71, 72, 73, 74};
+    for(chl::StoryId story: stories) { keeper.retention_store.ingestSealedChunk(story, sealedChunk(story, 1000)); }
+    std::size_t const four = keeper.retention_store.unconfirmedByteCount();
+    ASSERT_GT(four, 0u);
+    ASSERT_EQ(four % 4, 0u);
+    std::size_t const one = four / 4;
+    chl::KeeperDurableWriter writer(&wal, keeper.ingestion_queue, keeper.retention_store, keeper.data_store, four - 1);
+
+    EXPECT_EQ(writer.write("chron", "story", makeEvent(0)), chl::CL_ERR_DURABILITY_FULL);
+
+    // three chunks: under the cap, but above three quarters of it
+    keeper.retention_store.applyReport(71, chl::StoryWatermarkReport{chl::kStoryDroppedWatermark, 0, 0, {}});
+    ASSERT_EQ(keeper.retention_store.unconfirmedByteCount(), 3 * one);
+    ASSERT_GT(3 * one, (four - 1) / 4 * 3);
+    EXPECT_EQ(writer.write("chron", "story", makeEvent(1)), chl::CL_ERR_DURABILITY_FULL);
+    EXPECT_TRUE(wal.appended.empty());
+
+    // two chunks: admitted again
+    keeper.retention_store.applyReport(72, chl::StoryWatermarkReport{chl::kStoryDroppedWatermark, 0, 0, {}});
+    ASSERT_EQ(keeper.retention_store.unconfirmedByteCount(), 2 * one);
+    EXPECT_EQ(writer.write("chron", "story", makeEvent(2)), chl::CL_SUCCESS);
+    EXPECT_EQ(wal.appended.size(), 1u);
+}
+
 TEST(KeeperDurableWriter, FailedAppendIsNotIngested)
 {
     ensureLogger();

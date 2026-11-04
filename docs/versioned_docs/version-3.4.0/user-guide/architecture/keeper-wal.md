@@ -40,7 +40,8 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
    drop the second copy;
 4. answers `CL_ERR_INVALID_ARG` to an empty record, `CL_ERR_DURABILITY_UNAVAILABLE` if its WAL has
    failed, and `CL_ERR_DURABILITY_FULL` if the WAL's file system is below its reserve or the keeper
-   holds more than `durable_cap_mb` of chunks;
+   holds more than `durable_cap_mb` of chunks the grapher has not confirmed (once over the cap, it
+   refuses until those chunks are down to three quarters of it);
 5. starts a pipeline for the story if it has none, as `start_story_recording` would. It retires one
    acceptance window later unless the visor starts the story;
 6. queues the event and waits. A committer on its own thread takes everything queued, up to
@@ -134,7 +135,9 @@ The WAL never drops an event the grapher has not confirmed. Above `max_bytes` (1
 warning, since that means the grapher is behind or down. Durable writes are refused with
 `CL_ERR_DURABILITY_FULL` while the free space on the WAL's file system is below the reserve, the
 larger of `reserve_min_bytes` and `reserve_percent` of the file system, or while the keeper holds
-more than `durable_cap_mb` of chunks in memory.
+more than `durable_cap_mb` of chunks the grapher has not confirmed. A confirmed chunk that the tail
+index still keeps for tail reads does not count. Once over the cap, durable writes are refused
+until the unconfirmed chunks are down to three quarters of it.
 
 ---
 
@@ -254,7 +257,7 @@ deploy scripts turn it on with `--wal` and choose the directory on each keeper h
 | `group_commit_max_bytes` | `4194304` | Most bytes written and synced in one group. |
 | `group_commit_window_us` | `0` | How long the committer waits to grow a group; `0` syncs as soon as the previous sync returns. At most `10000`. |
 | `reserve_min_bytes`, `reserve_percent` | `268435456`, `10` | Free space kept on the WAL's file system: the larger of the two. Below it, durable writes get `CL_ERR_DURABILITY_FULL`. |
-| `durable_cap_mb` | `4096` | Chunk memory above which durable writes get `CL_ERR_DURABILITY_FULL`. |
+| `durable_cap_mb` | `4096` | Memory of chunks the grapher has not confirmed, above which durable writes get `CL_ERR_DURABILITY_FULL` until it is down to three quarters of the cap. |
 
 Every 10 seconds a keeper with the WAL on logs a `[KeeperWal] stats` line at INFO level: groups,
 events and bytes written, the largest group, pending events and bytes, and segments.

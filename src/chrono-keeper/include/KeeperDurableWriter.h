@@ -1,6 +1,7 @@
 #ifndef KEEPER_DURABLE_WRITER_H
 #define KEEPER_DURABLE_WRITER_H
 
+#include <atomic>
 #include <cstdint>
 
 #include <chronolog_types.h>
@@ -30,8 +31,10 @@ class KeeperDataStore;
 //      durable answer);
 //   5. the WAL failed or stopped: CL_ERR_DURABILITY_UNAVAILABLE; its file
 //      system below the reserve: CL_ERR_DURABILITY_FULL;
-//   6. the retention store holds more than durable_cap_bytes:
-//      CL_ERR_DURABILITY_FULL;
+//   6. the retention store holds more than durable_cap_bytes of chunks the
+//      grapher has not confirmed: CL_ERR_DURABILITY_FULL, until it holds no
+//      more than three quarters of the cap, so the answer does not flip on
+//      every chunk at the limit;
 //   7. a story with no ingestion handle gets a pipeline (ensureStoryPipeline,
 //      which keeps the store's drop mark); when none can be started:
 //      CL_ERR_DURABILITY_UNAVAILABLE;
@@ -67,6 +70,8 @@ private:
     KeeperChunkRetentionStore& theTailStore;
     KeeperDataStore& theDataStore;
     uint64_t durableCapBytes;
+    uint64_t durableResumeBytes; // three quarters of durableCapBytes
+    std::atomic<bool> overCap{false};
 };
 
 } // namespace chronolog

@@ -1567,6 +1567,42 @@ TEST(KeeperChunkRetentionStore, WalHookFiresOnceAtFirstConfirmation)
     EXPECT_TRUE(wal.dropped.empty());
 }
 
+// durable_cap_mb is checked against the unconfirmed bytes: a chunk leaves them
+// when the grapher confirms it, though the tail index keeps it in memory, or
+// when its story is destroyed before that.
+TEST(KeeperChunkRetentionStore, UnconfirmedBytesLeaveAtConfirmationNotAtFree)
+{
+    ensureLogger();
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 10); // the tail keeps the chunk after it is written
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 3, 1, "A"));
+    std::size_t const bytes = store.retainedByteCount();
+    ASSERT_GT(bytes, 0u);
+    EXPECT_EQ(store.unconfirmedByteCount(), bytes);
+
+    shipWithReceipt(q, store, kGrapher, 1);
+    EXPECT_EQ(store.unconfirmedByteCount(), bytes); // acked, but W does not cover it yet
+
+    store.applyReport(sid, watermarkReport(200, kGrapher, 1));
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(store.retainedByteCount(), bytes);
+    EXPECT_EQ(store.unconfirmedByteCount(), 0u);
+
+    store.releaseStoryTail(sid);
+    EXPECT_EQ(store.retainedByteCount(), 0u);
+    EXPECT_EQ(store.unconfirmedByteCount(), 0u);
+
+    // destroyed before it was confirmed, while it was still queued
+    chl::StoryId other = 8;
+    store.ingestSealedChunk(other, makeChunk(other, 100, 200, 100, 3, 1, "B"));
+    EXPECT_EQ(store.unconfirmedByteCount(), bytes);
+    store.applyReport(other, watermarkReport(chl::kStoryDroppedWatermark, kGrapher, 0));
+    EXPECT_NE(drainOne(q, store, true), nullptr);
+    EXPECT_EQ(store.retainedByteCount(), 0u);
+    EXPECT_EQ(store.unconfirmedByteCount(), 0u);
+}
+
 TEST(KeeperChunkRetentionStore, WalHookWaitsForReceiptSettlement)
 {
     ensureLogger();

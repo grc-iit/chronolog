@@ -260,6 +260,7 @@ public:
                 story.index[it->first] = sealed_chunk;
             }
             retainedBytes += state.approx_bytes;
+            unconfirmedBytes += state.approx_bytes;
             LOG_INFO("[KeeperChunkRetentionStore] retaining StoryId={} chunk {}-{} eventCount {} (retained_chunks={})",
                      story_id,
                      sealed_chunk->getStartTime(),
@@ -547,6 +548,15 @@ public:
         return retainedBytes;
     }
 
+    // The part of retainedByteCount the grapher has not confirmed written, the
+    // total durable_cap_mb is checked against. A confirmed chunk the tail
+    // index still holds is not in it.
+    std::size_t unconfirmedByteCount() const
+    {
+        std::lock_guard<std::mutex> lock(tailMutex);
+        return unconfirmedBytes;
+    }
+
     // The story is no longer recorded on this keeper, so its tail stops serving
     // playback. Without this, tail_capacity eviction is the only way events
     // leave the index, and a story that retires with fewer events than that
@@ -762,6 +772,13 @@ private:
         return bytes;
     }
 
+    // Takes a chunk's bytes out of unconfirmedBytes, once: when it is first
+    // confirmed written, or when it goes without that (caller holds tailMutex).
+    void forgetUnconfirmed(ChunkState const& state)
+    {
+        unconfirmedBytes -= (state.approx_bytes < unconfirmedBytes) ? state.approx_bytes : unconfirmedBytes;
+    }
+
     // The grapher has acked the chunk, settled its receipt, and W covers it.
     static bool confirmedWritten(StoryRetention const& story, StoryChunk const* chunk, ChunkState const& state)
     {
@@ -871,6 +888,7 @@ private:
         if(!state.wal_released && confirmedWritten(story, chunk, state))
         {
             state.wal_released = true;
+            forgetUnconfirmed(state);
             if(walObserver != nullptr)
             {
                 walObserver->chunkWritten(chunk->getStoryId(), *chunk);
@@ -887,6 +905,10 @@ private:
                  chunk->getEventCount(),
                  story.known_w);
         retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
+        if(!state.wal_released)
+        {
+            forgetUnconfirmed(state);
+        }
         auto next = story.chunks.erase(chunk_iter);
         delete chunk;
         return next;
@@ -933,6 +955,10 @@ private:
             // for a queued chunk too: its state, the only record of its bytes,
             // goes with the story, and the drain callback only deletes the pointer
             retainedBytes -= (state.approx_bytes < retainedBytes) ? state.approx_bytes : retainedBytes;
+            if(!state.wal_released)
+            {
+                forgetUnconfirmed(state);
+            }
             if(state.in_queue)
             {
                 ++handed_over;
@@ -1037,6 +1063,7 @@ private:
     std::size_t tailCapacity;
     std::size_t retentionCapBytes;
     std::size_t retainedBytes = 0;
+    std::size_t unconfirmedBytes = 0; // retainedBytes of chunks not yet wal_released
     bool capWarned = false;
     bool liveTailRead = false;
     // how long after the keeper learns a chunk is written a player may still
