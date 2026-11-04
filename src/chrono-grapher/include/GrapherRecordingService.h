@@ -92,7 +92,7 @@ public:
                 LOG_ERROR("[GrapherRecordingService] Discarding the story chunk, responding {} to Keeper", ret);
                 ChunkReceipt failure;
                 failure.bytes = ret;
-                request.respond(failure);
+                answer(request, failure);
                 return;
             }
 #ifndef NDEBUG
@@ -115,15 +115,19 @@ public:
 
             // The receipt ties this delivery to the writes of its events and
             // travels with the chunk into the pipeline; see ChunkReceipt.h.
-            ChunkReceipt answer;
-            answer.bytes = b.size();
+            ChunkReceipt receipt;
+            receipt.bytes = b.size();
             if(theWatermarkRegistry != nullptr)
             {
-                answer.grapher_instance = theWatermarkRegistry->instanceId();
-                answer.receipt = theWatermarkRegistry->assignReceipt(story_chunk->getStoryId());
-                story_chunk->carryReceipt(answer.receipt);
+                receipt.grapher_instance = theWatermarkRegistry->instanceId();
+                receipt.receipt = theWatermarkRegistry->assignReceipt(story_chunk->getStoryId());
+                story_chunk->carryReceipt(receipt.receipt);
             }
-            request.respond(answer);
+            // When the keeper cannot be answered (it died, or the network timed
+            // the handle out), the chunk is kept: it is written, and its receipt
+            // settles; the keeper, not knowing the receipt, sends it again later
+            // and reads drop the second copy.
+            answer(request, receipt);
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -136,12 +140,40 @@ public:
                       tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 20000000 + tl::thread::self_id();
-            request.respond(failure);
+            answer(request, failure);
             return;
+        }
+        catch(tl::exception const& ex)
+        {
+            // the bulk pull failed: nothing was received or stored, and the
+            // keeper sends the chunk again
+            LOG_WARNING("[GrapherRecordingService] Could not receive a StoryChunk: {}, ThreadID={}",
+                        ex.what(),
+                        tl::thread::self_id());
+            ChunkReceipt failure;
+            failure.bytes = 30000000 + tl::thread::self_id();
+            answer(request, failure);
         }
     }
 
 private:
+    // Answers the sending keeper. A thallium error here (the keeper died, or
+    // the network timed the handle out) is logged and swallowed: thrown out of
+    // the handler it would end the process.
+    static void answer(tl::request const& request, ChunkReceipt const& receipt)
+    {
+        try
+        {
+            request.respond(receipt);
+        }
+        catch(tl::exception const& ex)
+        {
+            LOG_WARNING("[GrapherRecordingService] Could not answer the StoryChunk sender: {}, ThreadID={}",
+                        ex.what(),
+                        tl::thread::self_id());
+        }
+    }
+
     GrapherRecordingService(tl::engine& tl_engine,
                             uint16_t service_provider_id,
                             ChunkIngestionQueue& ingestion_queue,
