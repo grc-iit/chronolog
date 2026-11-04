@@ -202,7 +202,8 @@ clients still hold, so accepted writes after the restart are kept too.
 
 A keeper stopped with SIGTERM first unregisters from the visor, then stops taking writes: a new
 durable write gets `CL_ERR_DURABILITY_UNAVAILABLE` and a new accepted write `CL_ERR_UNKNOWN`, and
-neither is stored. The recording service and its RPCs stay up, so a durable write already waiting
+neither is stored. An accepted write that arrived just before is taken in before data collection
+stops, so one answered `CL_SUCCESS` is collected. The recording service and its RPCs stay up, so a durable write already waiting
 for its sync is still synced and answered, and a client that holds a story on this keeper gets that
 answer. The keeper then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its
 chunks, stops the WAL, which syncs and answers everything queued and writes `exit-summary`, and

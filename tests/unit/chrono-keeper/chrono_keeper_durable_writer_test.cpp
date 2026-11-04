@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -15,6 +16,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -34,6 +36,7 @@
 #include <KeeperDurableWriter.h>
 #include <KeeperRecordingService.h>
 #include <KeeperWal.h>
+#include <KeeperWriteGate.h>
 #include <StoryChunk.h>
 #include <StoryChunkExtractionQueue.h>
 #include <StoryIdOf.h>
@@ -652,6 +655,74 @@ TEST(KeeperDurableWriter, StopAcceptingWritesLetsRunningHandlersFinish)
                 tl::exception);
     }
 
+    client_engine.finalize();
+    keeper_engine.finalize();
+}
+
+// The gate the recording service closes at shutdown. A write that got in
+// before close() is waited for, so its event reaches the ingestion queue
+// before data collection stops; one after close() is refused.
+TEST(KeeperWriteGate, CloseWaitsForAWriteThatGotIn)
+{
+    chl::KeeperWriteGate gate;
+    ASSERT_TRUE(gate.enter());
+    std::atomic<bool> closed{false};
+    std::thread closer(
+            [&]()
+            {
+                EXPECT_TRUE(gate.close(std::chrono::seconds(5)));
+                closed = true;
+            });
+    // close() shuts the gate at once but waits for the write inside
+    while(gate.isOpen()) { std::this_thread::yield(); }
+    EXPECT_FALSE(gate.enter());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_FALSE(closed.load());
+    gate.leave();
+    closer.join();
+    EXPECT_TRUE(closed.load());
+    EXPECT_FALSE(gate.enter());
+}
+
+TEST(KeeperWriteGate, CloseGivesUpAfterItsWait)
+{
+    chl::KeeperWriteGate gate;
+    ASSERT_TRUE(gate.enter());
+    auto const start = std::chrono::steady_clock::now();
+    EXPECT_FALSE(gate.close(std::chrono::milliseconds(100)));
+    EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+    gate.leave();
+    EXPECT_TRUE(gate.close(std::chrono::milliseconds(100)));
+}
+
+// The recording service's accepted record_event goes through the gate: after
+// stopAcceptingWrites, which waits for writes already let in, a new one is
+// answered CL_ERR_UNKNOWN with nothing stored.
+TEST(KeeperDurableWriter, AcceptedWriteAfterStopAcceptingWritesIsRefused)
+{
+    ensureLogger();
+    constexpr uint16_t kProvider = 34;
+    Keeper keeper;
+    tl::engine keeper_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+    tl::engine client_engine("ofi+sockets://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+    chl::KeeperRecordingService* service = chl::KeeperRecordingService::CreateKeeperRecordingService(
+            keeper_engine,
+            kProvider,
+            keeper.ingestion_queue,
+            keeper.retention_store,
+            [](chl::ChronicleName const&, chl::StoryName const&, chl::LogEvent const&)
+            { return chl::CL_ERR_DURABILITY_UNAVAILABLE; });
+    ASSERT_EQ(keeper.data_store.startStoryRecording("chron", "story", kStory, now()), chl::CL_SUCCESS);
+    {
+        tl::remote_procedure record_event = client_engine.define("record_event");
+        tl::provider_handle keeper_handle(client_engine.lookup(keeper_engine.self()), kProvider);
+        int const taken = record_event.on(keeper_handle)(makeEvent(0));
+        EXPECT_EQ(taken, chl::CL_SUCCESS);
+        EXPECT_TRUE(service->stopAcceptingWrites(std::chrono::seconds(1)));
+        int const refused = record_event.on(keeper_handle)(makeEvent(1));
+        EXPECT_EQ(refused, chl::CL_ERR_UNKNOWN);
+    }
+    EXPECT_EQ(keeper.ingested(kStory), 1u);
     client_engine.finalize();
     keeper_engine.finalize();
 }

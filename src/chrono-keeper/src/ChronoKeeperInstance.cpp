@@ -679,7 +679,15 @@ int main(int argc, char** argv)
     // Stop recording events. The service object stays: a durable handler may
     // still be waiting for its group's fdatasync and returns into it. It is
     // deleted once the WAL has answered every waiter, after stop_wal below.
-    keeperRecordingService->stopAcceptingWrites();
+    // The call returns once every accepted write already past its check has
+    // reached the ingestion queue, so data collection below collects it.
+    auto const ingest_wait = std::chrono::seconds(5);
+    if(!keeperRecordingService->stopAcceptingWrites(ingest_wait))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] An accepted write was still being taken in {} s after the keeper stopped "
+                    "accepting writes; its event may not be collected",
+                    ingest_wait.count());
+    }
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
     // Data collection has finished, so nothing new will seal. Before extraction

@@ -23,6 +23,7 @@
 
 #include "IngestionQueue.h"
 #include "KeeperChunkRetentionStore.h"
+#include "KeeperWriteGate.h"
 
 namespace tl = thallium;
 
@@ -66,11 +67,17 @@ public:
     // Shutdown, first step: take no new writes. A new durable write is
     // answered CL_ERR_DURABILITY_UNAVAILABLE and an accepted one CL_ERR_UNKNOWN,
     // both with nothing stored, instead of being taken after data collection
-    // stopped. The RPCs stay registered: a handler already running, such as a
-    // durable one waiting for its fdatasync, could not send its answer for an
-    // RPC that is gone. So the service must outlive those handlers: delete it
-    // only after waitForWriteHandlers.
-    void stopAcceptingWrites() { acceptingWrites = false; }
+    // stopped. Returns once every accepted write that got past the check has
+    // put its event in the ingestion queue (true), or after max_wait (false):
+    // call it before data collection shuts down, so an accepted write answered
+    // CL_SUCCESS is collected. The RPCs stay registered: a handler already
+    // running, such as a durable one waiting for its fdatasync, could not send
+    // its answer for an RPC that is gone. So the service must outlive those
+    // handlers: delete it only after waitForWriteHandlers.
+    bool stopAcceptingWrites(std::chrono::milliseconds max_wait = std::chrono::seconds(5))
+    {
+        return writeGate.close(max_wait);
+    }
 
     // Shutdown, second step, after the WAL has answered every queued durable
     // write: returns true once no write handler has been running for `quiet`
@@ -107,12 +114,13 @@ public:
                   log_event.getClientId(),
                   log_event.index(),
                   log_event.getRecord());
-        if(!acceptingWrites)
+        if(!writeGate.enter())
         {
             answerRpcCaller(request, chronolog::CL_ERR_UNKNOWN, "KeeperRecordingService");
             return;
         }
         theIngestionQueue.ingestLogEvent(log_event);
+        writeGate.leave();
         answerRpcCaller(request, chronolog::CL_SUCCESS, "KeeperRecordingService");
     }
 
@@ -135,7 +143,7 @@ public:
                   log_event.time(),
                   log_event.getClientId(),
                   log_event.index());
-        if(!acceptingWrites)
+        if(!writeGate.isOpen())
         {
             answerRpcCaller(request, chronolog::CL_ERR_DURABILITY_UNAVAILABLE, "KeeperRecordingService");
             return;
@@ -229,7 +237,7 @@ private:
     tl::remote_procedure tailGetSequencesRpc;
     tl::remote_procedure tailGetEventsRpc;
     tl::remote_procedure storyRangeFetchRpc;
-    std::atomic<bool> acceptingWrites{true};
+    KeeperWriteGate writeGate;
     std::atomic<int> activeWriteHandlers{0};
 };
 
