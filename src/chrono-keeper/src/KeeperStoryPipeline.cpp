@@ -377,6 +377,7 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
     }
 
     std::lock_guard<std::mutex> lock(sequencingMutex);
+    lastArrival.store(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     chl::LogEvent event;
     // the last chunk is most likely the one that would get the events, so we'd start with the last
     // chunk and do the lookup only if it's not the one

@@ -53,6 +53,7 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
         {
             pipelinesWaitingForExit.erase(waiting_iter);
         }
+        startedByDurableWrite.erase(story_id);
 
         return chronolog::CL_SUCCESS;
     }
@@ -138,6 +139,7 @@ int chronolog::KeeperDataStore::ensureStoryPipeline(std::string const& chronicle
     // unless a start_story_recording takes it off the list first. A later
     // durable write for the retired story starts a new one.
     pipelinesWaitingForExit[story_id] = std::make_pair(pipeline, current_time + pipeline->getAcceptanceWindow());
+    startedByDurableWrite.insert(story_id);
     return chronolog::CL_SUCCESS;
 }
 
@@ -158,6 +160,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
                              (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+        // the visor stopped it: it decays as any stopped story's
+        startedByDurableWrite.erase(story_id);
         LOG_INFO(
                 "[KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
                 story_id,
@@ -234,6 +238,17 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
                 //current_time >= pipeline exit_time
                 KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
                 chl::StoryId const story_id = pipeline->getStoryId();
+                // a pipeline a durable write started, still taking events in:
+                // its client may still hold the story, so it stays an
+                // acceptance window past the last of them
+                uint64_t const kept_until = pipeline->lastEventArrival() + pipeline->getAcceptanceWindow();
+                if(acceptingPipelines && startedByDurableWrite.count(story_id) != 0 && kept_until > current_time)
+                {
+                    (*pipeline_iter).second.second = kept_until;
+                    pipeline_iter++;
+                    continue;
+                }
+                startedByDurableWrite.erase(story_id);
                 // remember the story's names before the pipeline is gone so that
                 // any late orphaned events (which carry only a storyId) can still
                 // be sealed with the correct chronicle/story identity.

@@ -727,6 +727,48 @@ TEST(KeeperDurableWriter, AcceptedWriteAfterStopAcceptingWritesIsRefused)
     keeper_engine.finalize();
 }
 
+// A pipeline a durable write started (the visor's start never reached this
+// keeper) is kept while events keep reaching it: each retirement pass moves
+// its exit an acceptance window past the last event, instead of retiring it,
+// and dropping its tail, every window. Once the events stop it retires.
+TEST(KeeperDurableWriter, DurablePipelineStaysWhileEventsKeepArriving)
+{
+    ensureLogger();
+    Keeper keeper(/*acceptance_window_secs=*/1);
+    ASSERT_EQ(keeper.data_store.ensureStoryPipeline("chron", "story", kStory), chl::CL_SUCCESS);
+    for(uint32_t i = 0; i < 3; ++i)
+    {
+        keeper.ingestion_queue.ingestLogEvent(makeEvent(i));
+        keeper.data_store.collectIngestedEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+        keeper.data_store.retireDecayedPipelines();
+        // 0.6 s after the last event, more than a window after the start
+        EXPECT_TRUE(keeper.ingestion_queue.hasStoryIngestionHandle(kStory)) << "pass " << i;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    keeper.data_store.retireDecayedPipelines();
+    EXPECT_FALSE(keeper.ingestion_queue.hasStoryIngestionHandle(kStory));
+}
+
+// A visor stop hands the pipeline back to the normal decay: it retires an
+// acceptance window after the stop even while events keep arriving.
+TEST(KeeperDurableWriter, StoppedStoryRetiresWhileEventsKeepArriving)
+{
+    ensureLogger();
+    Keeper keeper(/*acceptance_window_secs=*/1);
+    ASSERT_EQ(keeper.data_store.ensureStoryPipeline("chron", "story", kStory), chl::CL_SUCCESS);
+    ASSERT_EQ(keeper.data_store.startStoryRecording("chron", "story", kStory, now()), chl::CL_SUCCESS);
+    ASSERT_EQ(keeper.data_store.stopStoryRecording(kStory), chl::CL_SUCCESS);
+    for(uint32_t i = 0; i < 3; ++i)
+    {
+        keeper.ingestion_queue.ingestLogEvent(makeEvent(i));
+        keeper.data_store.collectIngestedEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    }
+    keeper.data_store.retireDecayedPipelines();
+    EXPECT_FALSE(keeper.ingestion_queue.hasStoryIngestionHandle(kStory));
+}
+
 // The first attempt is held before it reaches the WAL, so the retry's lookup
 // finds nothing; the retry's append then joins the first attempt and both
 // succeed. Only the attempt that wrote the record ingests the event: two

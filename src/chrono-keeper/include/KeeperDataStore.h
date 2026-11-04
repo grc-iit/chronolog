@@ -5,6 +5,7 @@
 #include <list>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <cstdint>
 
@@ -78,7 +79,11 @@ public:
     // its start time, and lets it decay as a stopped story's pipeline does
     // unless a start_story_recording keeps it. Unlike startStoryRecording it
     // leaves the retention store's drop mark for the id in place, so a stale
-    // writer cannot undo a destroy. A pipeline that exists is left as it is.
+    // writer cannot undo a destroy. While events keep reaching such a
+    // pipeline, retirement moves its exit an acceptance window past the last
+    // of them, so a client still writing to the story (whose visor start never
+    // reached this keeper) does not lose the pipeline and its tail every
+    // window. A pipeline that exists is left as it is.
     // Takes dataStoreMutex, so KeeperDurableWriter calls it only for a story
     // with no ingestion handle. Once data collection has started shutting
     // down it adds nothing and returns CL_ERR_UNKNOWN.
@@ -152,6 +157,10 @@ private:
     bool acceptingPipelines = true;
     std::unordered_map<StoryId, KeeperStoryPipeline*> theMapOfStoryPipelines;
     std::unordered_map<StoryId, std::pair<KeeperStoryPipeline*, uint64_t>> pipelinesWaitingForExit;
+    // Pipelines ensureStoryPipeline started and no start_story_recording has
+    // taken over: retirement keeps one while events keep reaching it, since a
+    // client may still hold the story (guarded by dataStoreMutex).
+    std::unordered_set<StoryId> startedByDurableWrite;
     // Names of stories that have been retired, retained so that late/orphaned
     // events (which carry only a storyId) can still be sealed into a correctly
     // named recovery chunk. Grows with the number of distinct retired stories;
