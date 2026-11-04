@@ -36,6 +36,11 @@ struct SegmentEnd
     bool bad_frame = false;
     std::string reason;                // the scan's reason for a bad frame
     std::optional<uint64_t> after_end; // first nonzero byte at or after data_end
+    // End of the group the last whole G record starts; none in a segment
+    // without one. after_group is the first nonzero byte at or after it, when
+    // the data ends inside that group.
+    std::optional<uint64_t> group_end;
+    std::optional<uint64_t> after_group;
 
     bool dataAfterHeader() const { return data_end > header_end || after_end.has_value(); }
 };
@@ -169,12 +174,23 @@ bool applyRecord(wal::ScannedRecord const& record,
             state.dropped_in[segment].push_back(dropped.story_id);
             return true;
         }
+        case static_cast<uint8_t>(wal::RecordType::Group):
+        {
+            // only marks where a group starts; recoverWal uses the last one
+            wal::GroupRecord group{};
+            if(wal::decodeGroup(record.body, group) != CL_SUCCESS || group.bytes < wal::kGroupFrameBytes)
+            {
+                error = where + ": the G record " + offsetText(record.offset) + " does not decode";
+                return false;
+            }
+            return true;
+        }
         case static_cast<uint8_t>(wal::RecordType::Header):
             error = where + ": a second H record " + offsetText(record.offset);
             return false;
         default:
             error = where + ": record type " + typeText(record.type) + " " + offsetText(record.offset) +
-                    ", which this build does not know; this build reads H, N, E and D records";
+                    ", which this build does not know; this build reads H, N, E, D and G records";
             return false;
     }
 }
@@ -252,6 +268,24 @@ bool readSegment(WalFileSink& sink,
     if(nonzero != std::string_view::npos)
     {
         end.after_end = nonzero;
+    }
+    for(std::size_t i = scan.records.size(); i-- > 1;)
+    {
+        wal::GroupRecord group{};
+        if(scan.records[i].type == static_cast<uint8_t>(wal::RecordType::Group) &&
+           wal::decodeGroup(scan.records[i].body, group) == CL_SUCCESS)
+        {
+            end.group_end = scan.records[i].offset + group.bytes;
+            if(end.data_end < *end.group_end && *end.group_end < bytes.size())
+            {
+                std::size_t const after_group = firstNonZero(bytes, *end.group_end);
+                if(after_group != std::string_view::npos)
+                {
+                    end.after_group = after_group;
+                }
+            }
+            break;
+        }
     }
 
     for(std::size_t i = 1; i < scan.records.size(); ++i)
@@ -356,6 +390,39 @@ int recoverWal(WalFileSink& sink, WalSegmentManager& manager, RecoveredState& ou
                     offsetText(end.data_end) +
                     ". It is not the newest segment with data, so this is not a torn write; move the segment aside "
                     "to start without it";
+            return CL_ERR_UNKNOWN;
+        }
+    }
+
+    // In the newest segment, the bad frame or the bytes after the data must lie
+    // in the last group. Data after the end of the group they lie in means a
+    // later group was written, which happens only after this one synced: its
+    // records may have been acknowledged, so this is damage, not a torn write.
+    // A segment without G records, or whose last G record is itself lost, keeps
+    // the rule above.
+    if(newest)
+    {
+        SegmentEnd const& end = ends[*newest];
+        std::string const where = segmentText(end.name, directory);
+        bool const torn_tail = end.bad_frame || end.after_end.has_value();
+        if(torn_tail && end.group_end && end.data_end > *end.group_end)
+        {
+            error = where + " holds records between offsets " + std::to_string(*end.group_end) + " and " +
+                    std::to_string(end.data_end) + ", after the end of its last group and with no G record, " +
+                    "then " +
+                    (end.bad_frame ? "a bad record: " + end.reason : std::string("data after a zero length")) +
+                    ". This is not a torn write; move the segment aside to start without it";
+            return CL_ERR_UNKNOWN;
+        }
+        if(torn_tail && end.after_group)
+        {
+            error = where + " has " +
+                    (end.bad_frame ? "a bad record: " + end.reason
+                                   : "a zero length " + offsetText(end.data_end) + " followed by data") +
+                    ", inside the group that ends " + offsetText(*end.group_end) + ", and data " +
+                    offsetText(*end.after_group) +
+                    " after that group. A later group was written, so this one had been synced and its records may "
+                    "have been acknowledged: this is not a torn write. Move the segment aside to start without it";
             return CL_ERR_UNKNOWN;
         }
     }

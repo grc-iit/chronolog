@@ -659,7 +659,7 @@ void KeeperWal::committerLoop()
 
 uint64_t KeeperWal::groupBytes(std::vector<Queued> const& group, std::unordered_set<StoryId> const& named) const
 {
-    uint64_t bytes = 0;
+    uint64_t bytes = wal::kGroupFrameBytes;
     std::unordered_set<StoryId> named_here;
     for(Queued const& entry: group)
     {
@@ -690,10 +690,13 @@ void KeeperWal::commitGroup(std::vector<Queued>& group)
         bytes = groupBytes(group, namedInActive);
     }
 
-    // one writev: each event's header pieces and its payload straight from
-    // the request, with the story's N frame before its first E in the segment
+    // one writev: the G frame with the group's size, then each event's header
+    // pieces and its payload straight from the request, with the story's N
+    // frame before its first E in the segment
+    std::string const group_frame = wal::encodeGroup(wal::GroupRecord{bytes});
     std::vector<iovec> iov;
-    iov.reserve(group.size() * 5);
+    iov.reserve(1 + group.size() * 5);
+    iov.push_back(iovOf(group_frame.data(), group_frame.size()));
     std::unordered_set<StoryId> named_here;
     for(Queued const& entry: group)
     {

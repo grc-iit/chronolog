@@ -19,14 +19,19 @@ namespace chronolog
 //     that names the segment. Any other header refuses.
 //   - Records are replayed in log order: N sets a story's names, E adds the
 //     event and a copy in that segment, D erases the story's events and copies
-//     so far (its names stay). An unknown record type, or an E of an event
-//     codec version this build cannot read, refuses.
+//     so far (its names stay), and G only marks where a group starts. An
+//     unknown record type, or an E of an event codec version this build cannot
+//     read, refuses.
 //   - Only the newest segment whose bytes after its H are not all zero can end
 //     in a torn write. There the first bad frame or zero length ends the data,
 //     and when anything but zeros follows, it is overwritten with zeros to the
 //     end of the segment and data-synced: a torn group can leave a later page
-//     written after a missing one. In any other segment a bad frame, or
-//     anything but zeros after its end of data, refuses.
+//     written after a missing one. That end of data must lie in the last
+//     group, the one its last G record starts: when it lies inside a group
+//     and data follows the end of that group, or when records without a G
+//     record follow the end of the last group, a later group was written
+//     after this one synced, and it refuses. In any other segment a bad
+//     frame, or anything but zeros after its end of data, refuses.
 //   - Before it returns, every segment is data-synced, then the directory. The
 //     keeper that wrote them may have died between writing a group and its
 //     sync: on the same boot that group reads back whole from the page cache

@@ -1281,6 +1281,41 @@ TEST_F(KeeperWalTest, RetryOfADurableEventIsNotWrittenAgain)
     EXPECT_EQ(append(event), chl::CL_ERR_DURABILITY_UNAVAILABLE);
 }
 
+// Each group the committer writes starts with a G record of the group's size,
+// so the groups tile the segment's data from its H record to its end of data.
+TEST_F(KeeperWalTest, EveryGroupStartsWithAGRecordOfItsSize)
+{
+    startWal();
+    chl::LogEvent const first = makeEvent(kStory, 1000);
+    ASSERT_EQ(append(first), chl::CL_SUCCESS);
+    ASSERT_EQ(append(makeEvent(kStory, 1001)), chl::CL_SUCCESS);
+    wal->storyDropped(kOtherStory);
+    ASSERT_EQ(append(makeEvent(kOtherStory, 1002, 4096)), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&]() { return droppedRecordsOnDisk(kOtherStory) == 1; }));
+
+    uint64_t const segment = segmentOf(first);
+    std::string const bytes = readFile(wal::segmentFileName(segment));
+    wal::ScanResult const scan = wal::scanSegment(bytes);
+    ASSERT_EQ(scan.end, wal::ScanEnd::EndOfData);
+    ASSERT_GE(scan.records.size(), 2u);
+    std::size_t groups = 0;
+    uint64_t expected_at = wal::kFrameHeaderBytes + scan.records[0].body.size();
+    for(std::size_t i = 1; i < scan.records.size(); ++i)
+    {
+        if(scan.records[i].offset != expected_at)
+        {
+            continue;
+        }
+        ASSERT_EQ(scan.records[i].type, static_cast<uint8_t>(wal::RecordType::Group)) << "at " << expected_at;
+        wal::GroupRecord group{};
+        ASSERT_EQ(wal::decodeGroup(scan.records[i].body, group), chl::CL_SUCCESS);
+        expected_at += group.bytes;
+        ++groups;
+    }
+    EXPECT_EQ(expected_at, scan.end_offset);
+    EXPECT_GE(groups, 3u);
+}
+
 TEST_F(KeeperWalTest, IsDurableAfterSyncNotBefore)
 {
     startWal();

@@ -241,8 +241,8 @@ private:
     // Writes the group into the active segment (after a rotation if it does
     // not fit), syncs it and answers it.
     void commitGroup(std::vector<Queued>& group);
-    // Frame bytes of the group with an N record before the first E of each
-    // story not in named.
+    // Frame bytes of the group: its G record, its records, and an N record
+    // before the first E of each story not in named.
     uint64_t groupBytes(std::vector<Queued> const& group, std::unordered_set<StoryId> const& named) const;
     // Syncs the active segment and switches to a spare of at least
     // min_segment_bytes. 0 or an errno value; what names the failed step.

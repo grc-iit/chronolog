@@ -99,8 +99,9 @@ times on the Ares boot SSD and 2 to 4.5 times on the other drives measured. The 
 the active segment is full. The thread that prepares the spare sleeps while it has nothing to do, so a keeper with the WAL on and no writes uses about 1 % of a core.
 
 Each record is a frame with its length and a CRC32C. The records are a segment header (`H`, with a
-format version), a story's names (`N`, once per story per segment), an event (`E`) and a story
-dropped (`D`). An event record holds at most 256 MiB.
+format version), a story's names (`N`, once per story per segment), an event (`E`), a story
+dropped (`D`), and a group (`G`), which starts every group the committer writes and holds the
+group's size. An event record holds at most 256 MiB.
 
 ---
 
@@ -150,9 +151,12 @@ registers with the visor:
 2. It removes `*.partial` and checks every segment's header. A segment from a build with another WAL
    format stops startup with the segment and both versions; nothing is truncated.
 3. It reads every record and checks its length and CRC. In the newest segment that holds data, the
-   first bad record is a write the crash cut short: it ends the data, and the rest of the segment is
-   zeroed. A bad record in any older segment stops startup with the segment and offset; move that
-   segment aside to start without it.
+   first bad record is a write the crash cut short when it lies in the last group: it ends the data,
+   and the rest of the segment is zeroed. Each group is synced before the next is written, so a bad
+   record inside a group with data after the end of that group is damage to records that may have
+   been acknowledged, and it stops startup with the segment and offset, as a bad record in any older
+   segment does. Move that segment aside to start without it. A bad record in the last group is
+   zeroed even if that group's sync had returned, for example when the drive damaged it later.
 4. It syncs every segment and the directory.
 5. It applies `dropped-unlogged`, if the file exists (see [Release](#release)). A line that does not
    parse, or a read error such as EIO or EACCES, stops startup, after step 4: a torn tail has been
@@ -231,7 +235,8 @@ burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 | WAL on tmpfs | Survives a keeper crash, not a reboot. |
 | WAL write or sync fails | The keeper zeros the group's bytes and syncs them, then answers the group `CL_ERR_DURABILITY_UNAVAILABLE`. If it cannot erase the group, it answers `CL_ERR_DURABILITY_UNKNOWN`. The WAL stays failed until a restart; accepted writes continue. |
 | Grapher down for a long time | The WAL and keeper memory grow; a warning above `max_bytes`; durable writes refused at `durable_cap_mb` or the reserve. Nothing is dropped. |
-| Torn record at the end of the newest segment | Zeroed at startup. |
+| Torn record at the end of the newest segment | Zeroed at startup, when it lies in the last group. |
+| Bad record inside an earlier group of the newest segment | The keeper refuses to start and names the segment and offset. |
 | Bad record in an older segment | The keeper refuses to start and names the segment and offset. |
 | WAL from a build with another format | The keeper refuses to start and names the segment and both versions. |
 | WAL directory locked | The keeper exits and names the directory. |

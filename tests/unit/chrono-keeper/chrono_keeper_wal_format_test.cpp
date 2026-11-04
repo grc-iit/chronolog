@@ -140,6 +140,12 @@ TEST(WalFormat, HeaderLayoutIsAsDocumented)
     wal::NamesRecord const names{5, "c", "st"};
     EXPECT_EQ(frameOf(std::string("N") + le(5, 8) + le(1, 4) + "c" + le(2, 4) + "st"), wal::encodeNames(names));
     EXPECT_EQ(frameOf(std::string("D") + le(5, 8)), wal::encodeDropped(wal::DroppedRecord{5}));
+    EXPECT_EQ(frameOf(std::string("G") + le(4096, 8)), wal::encodeGroup(wal::GroupRecord{4096}));
+    EXPECT_EQ(wal::encodeGroup(wal::GroupRecord{4096}).size(), wal::kGroupFrameBytes);
+
+    wal::GroupRecord group{};
+    ASSERT_EQ(chl::CL_SUCCESS, wal::decodeGroup(wal::encodeGroup(wal::GroupRecord{4096}).substr(8), group));
+    EXPECT_EQ(group.bytes, 4096u);
 }
 
 TEST(WalFormat, ZeroLengthAfterRecordsEndsTheData)
@@ -359,10 +365,19 @@ TEST(WalFormat, DecodersRefuseTheWrongTypeAndCutBodies)
     std::string const h = wal::encodeHeader(sampleHeader()).substr(8);
     std::string const n = wal::encodeNames(wal::NamesRecord{7, "chronicle", "story"}).substr(8);
     std::string const d = wal::encodeDropped(wal::DroppedRecord{7}).substr(8);
+    std::string const g = wal::encodeGroup(wal::GroupRecord{100}).substr(8);
 
     wal::HeaderRecord header{};
     wal::NamesRecord names{};
     wal::DroppedRecord dropped{};
+    wal::GroupRecord group{};
+    EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeGroup(d, group));
+    EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeDropped(g, dropped));
+    for(std::size_t keep = 0; keep < g.size(); ++keep)
+    {
+        EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeGroup(std::string_view(g).substr(0, keep), group)) << keep;
+    }
+    EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeGroup(g + "x", group));
     EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeHeader(n, header));
     EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeNames(d, names));
     EXPECT_EQ(chl::CL_ERR_INVALID_ARG, wal::decodeDropped(h, dropped));

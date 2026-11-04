@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 785 CTest entries: 738 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 793 CTest entries: 746 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -90,13 +90,13 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
-| `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 64 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
-| `Unit_ChronoKeeper_KeeperWalTest` | 48 | `chrono_keeper_wal_test.cpp` | The WAL committer: group commit, a failed write or sync and the erase of the group, rotation, a retry joining an attempt, release and segment deletion in any order, stop, and a destroy after the WAL failed or in a segment deleted before an older one |
-| `Unit_ChronoKeeper_WalRecoveryTest` | 31 | `chrono_keeper_wal_recovery_test.cpp` | Reading a WAL at startup: log order, torn tails, bad records, unknown versions, dropped stories and `dropped-unlogged` |
+| `Unit_ChronoKeeper_KeeperChunkRetentionStore` | 65 | `chrono_keeper_retention_store_test.cpp` | The keeper's retention store: the tail index, retained chunks, and freeing a chunk only once the grapher has written it |
+| `Unit_ChronoKeeper_KeeperWalTest` | 49 | `chrono_keeper_wal_test.cpp` | The WAL committer: group commit, a failed write or sync and the erase of the group, rotation, a retry joining an attempt, release and segment deletion in any order, stop, and a destroy after the WAL failed or in a segment deleted before an older one |
+| `Unit_ChronoKeeper_WalRecoveryTest` | 36 | `chrono_keeper_wal_recovery_test.cpp` | Reading a WAL at startup: log order, torn tails, bad records in the last group and in earlier ones, unknown versions, dropped stories and `dropped-unlogged` |
 | `Unit_ChronoKeeper_WalFileSinkTest` | 22 | `chrono_keeper_wal_file_sink_test.cpp` | The WAL's file layer and its fault-injecting test sink: `flock`, zeroed files, `writev`, renames, directory sync, held and failed syncs |
 | `Unit_ChronoKeeper_WalSegmentManagerTest` | 17 | `chrono_keeper_wal_segment_manager_test.cpp` | Segment headers, the spare prepared ahead on its own stream, adopting a header-only segment, and an idle preparer that does not spin |
-| `Unit_ChronoKeeper_KeeperDurableWriter` | 16 | `chrono_keeper_durable_writer_test.cpp` | The durable write path: its checks and their order, the pipeline it starts for an unknown story, ingestion only after the sync, a retry that joins an earlier attempt, and shutdown |
-| `Unit_ChronoKeeper_WalFormat` | 14 | `chrono_keeper_wal_format_test.cpp` | The record frames: length, CRC32C and segment header, and how a cut or flipped frame is read |
+| `Unit_ChronoKeeper_KeeperDurableWriter` | 18 | `chrono_keeper_durable_writer_test.cpp` | The durable write path: its checks and their order, the cap on unconfirmed chunks, the pipeline it starts for an unknown story, ingestion only after the sync, a retry that joins an earlier attempt, and shutdown |
+| `Unit_ChronoKeeper_WalFormat` | 14 | `chrono_keeper_wal_format_test.cpp` | The record frames: length, CRC32C, segment header and group record, and how a cut or flipped frame is read |
 | `Unit_ChronoKeeper_KeeperWalConf` | 12 | `chrono_keeper_wal_conf_test.cpp` | Parsing and validating the `WAL` configuration block |
 | `Unit_ChronoKeeper_WalMountCheck` | 11 | `chrono_keeper_wal_mount_check_test.cpp` | The startup warnings about the WAL directory: NFS, tmpfs, overlay, the root device and low space |
 | `Unit_ChronoKeeper_WalReleaseTracker` | 9 | `chrono_keeper_wal_release_tracker_test.cpp` | The table of pending durable events: release by a confirmed chunk, copies in two segments, and which segments can be deleted |

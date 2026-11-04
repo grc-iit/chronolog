@@ -25,7 +25,9 @@ namespace chronolog::wal
 //   N  u64 story id | string chronicle | string story
 //   E  the LogEventCodec encoding of the event
 //   D  u64 story id
-// A body length of 0 at a record boundary ends a segment's data: segments are
+//   G  u64 bytes of the group it starts, this frame included
+// Every group the committer writes starts with a G record, so recovery knows
+// where the last group begins and ends. A body length of 0 at a record boundary ends a segment's data: segments are
 // pre-zeroed and every real body holds at least its type byte. A body over
 // kMaxBodyBytes is corruption.
 
@@ -40,7 +42,8 @@ enum class RecordType : uint8_t
     Header = 'H',
     Names = 'N',
     Event = 'E',
-    Dropped = 'D'
+    Dropped = 'D',
+    Group = 'G'
 };
 
 struct HeaderRecord
@@ -63,11 +66,20 @@ struct DroppedRecord
     StoryId story_id;
 };
 
+struct GroupRecord
+{
+    uint64_t bytes; // every frame of the group, this one included
+};
+
+// frame header, type byte and u64
+constexpr std::size_t kGroupFrameBytes = kFrameHeaderBytes + 1 + 8;
+
 // Each returns the whole frame. Throws std::length_error when the body would
 // exceed kMaxBodyBytes.
 std::string encodeHeader(HeaderRecord const&);
 std::string encodeNames(NamesRecord const&);
 std::string encodeDropped(DroppedRecord const&);
+std::string encodeGroup(GroupRecord const&);
 
 // An event frame in pieces for writev, in this order: frame_header, head,
 // record, tail. head is the type byte followed by the codec's head; record
@@ -130,6 +142,7 @@ ScanResult scanSegment(std::string_view bytes);
 int decodeHeader(std::string_view body, HeaderRecord&);
 int decodeNames(std::string_view body, NamesRecord&);
 int decodeDropped(std::string_view body, DroppedRecord&);
+int decodeGroup(std::string_view body, GroupRecord&);
 // An E body is passed to the codec without its type byte:
 //   decodeLogEvent(body.data() + 1, body.size() - 1, event, &extensions)
 

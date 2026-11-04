@@ -169,6 +169,13 @@ std::string wal::encodeDropped(DroppedRecord const& dropped)
     return frame.finish();
 }
 
+std::string wal::encodeGroup(GroupRecord const& group)
+{
+    FrameBuilder frame(RecordType::Group);
+    frame.put(group.bytes, 8);
+    return frame.finish();
+}
+
 std::size_t wal::EventFrame::size() const { return frame_header.size() + head.size() + record.size() + tail.size(); }
 
 wal::EventFrame wal::encodeEvent(LogEvent const& event, std::vector<EventExtension> const& extensions)
@@ -348,5 +355,17 @@ int wal::decodeDropped(std::string_view body, DroppedRecord& dropped)
         return CL_ERR_INVALID_ARG;
     }
     dropped.story_id = story_id;
+    return CL_SUCCESS;
+}
+
+int wal::decodeGroup(std::string_view body, GroupRecord& group)
+{
+    BodyReader in(body);
+    uint64_t bytes = 0;
+    if(!in.takeType(RecordType::Group) || !in.take(8, bytes) || !in.atEnd())
+    {
+        return CL_ERR_INVALID_ARG;
+    }
+    group.bytes = bytes;
     return CL_SUCCESS;
 }

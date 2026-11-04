@@ -96,6 +96,9 @@ public:
 
     uint64_t dropped(chl::StoryId story) { return raw(wal::encodeDropped(wal::DroppedRecord{story})); }
 
+    // a G record for a group of `bytes`, its own frame included
+    uint64_t group(uint64_t bytes) { return raw(wal::encodeGroup(wal::GroupRecord{bytes})); }
+
     uint64_t zeros(std::size_t count) { return raw(std::string(count, '\0')); }
 
     uint64_t raw(std::string const& frame)
@@ -762,6 +765,124 @@ TEST_F(WalRecoveryTest, CrcMismatchBeforeTheTailRefusesAndChangesNothing)
     EXPECT_EQ(recover(), chl::CL_ERR_UNKNOWN);
     EXPECT_NE(error.find("offset " + std::to_string(bad_at)), std::string::npos) << error;
     EXPECT_NE(error.find("CRC"), std::string::npos) << error;
+    expectRefused(before, 1);
+}
+
+// In the newest segment, a bad record is a torn write only inside the last
+// group. Inside an earlier group, with a later group after it, the earlier
+// group had been synced before the later one was written, so its records may
+// have been acknowledged: recovery refuses and changes nothing.
+TEST_F(WalRecoveryTest, CrcMismatchInsideAGroupFollowedByALaterGroupRefuses)
+{
+    std::string const names = wal::encodeNames(wal::NamesRecord{kStory, "chronicle", "story"});
+    std::string const a = frameOf(eventOf(kStory, 100));
+    std::string flipped = frameOf(eventOf(kStory, 200));
+    flipped[flipped.size() - 5] ^= 0x01;
+    std::string const c = frameOf(eventOf(kStory, 300));
+    Segment one(1);
+    one.group(wal::kGroupFrameBytes + names.size() + a.size() + flipped.size());
+    one.raw(names);
+    one.raw(a);
+    uint64_t const bad_at = one.raw(flipped);
+    uint64_t const later_group_at = one.group(wal::kGroupFrameBytes + c.size());
+    one.raw(c);
+    write(one);
+    auto const before = snapshot();
+
+    EXPECT_EQ(recover(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find("offset " + std::to_string(bad_at)), std::string::npos) << error;
+    EXPECT_NE(error.find("offset " + std::to_string(later_group_at)), std::string::npos) << error;
+    EXPECT_NE(error.find("CRC"), std::string::npos) << error;
+    expectRefused(before, 1);
+}
+
+// A page missing inside an earlier group is damage in the same way.
+TEST_F(WalRecoveryTest, HoleInsideAGroupFollowedByALaterGroupRefuses)
+{
+    std::string const names = wal::encodeNames(wal::NamesRecord{kStory, "chronicle", "story"});
+    std::string const a = frameOf(eventOf(kStory, 100));
+    std::string const b = frameOf(eventOf(kStory, 200));
+    std::string const c = frameOf(eventOf(kStory, 300));
+    Segment one(1);
+    one.group(wal::kGroupFrameBytes + names.size() + a.size() + b.size());
+    one.raw(names);
+    one.raw(a);
+    uint64_t const hole_at = one.zeros(b.size());
+    one.group(wal::kGroupFrameBytes + c.size());
+    one.raw(c);
+    write(one);
+    auto const before = snapshot();
+
+    EXPECT_EQ(recover(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find("offset " + std::to_string(hole_at)), std::string::npos) << error;
+    expectRefused(before, 1);
+}
+
+// Inside the last group a bad record is a torn write, with a later page
+// written or not: the data ends there and the rest is zeroed.
+TEST_F(WalRecoveryTest, CrcMismatchInTheLastGroupIsZeroed)
+{
+    std::string const names = wal::encodeNames(wal::NamesRecord{kStory, "chronicle", "story"});
+    chl::LogEvent const a = eventOf(kStory, 100);
+    std::string const a_frame = frameOf(a);
+    std::string flipped = frameOf(eventOf(kStory, 200));
+    flipped[flipped.size() - 5] ^= 0x01;
+    std::string const c = frameOf(eventOf(kStory, 300));
+    Segment one(1);
+    one.group(wal::kGroupFrameBytes + names.size() + a_frame.size());
+    one.raw(names);
+    one.raw(a_frame);
+    one.group(wal::kGroupFrameBytes + flipped.size() + c.size());
+    uint64_t const bad_at = one.raw(flipped);
+    one.raw(c);
+    write(one);
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a)}));
+    EXPECT_TRUE(allZero(readSegment(1), bad_at));
+    expectConsistent();
+}
+
+// When the last group's own G record is lost, the data ends at the end of the
+// group before it, and what follows is zeroed as a torn write.
+TEST_F(WalRecoveryTest, TornGroupWithItsGRecordLostIsZeroed)
+{
+    std::string const names = wal::encodeNames(wal::NamesRecord{kStory, "chronicle", "story"});
+    chl::LogEvent const a = eventOf(kStory, 100);
+    std::string const a_frame = frameOf(a);
+    std::string const b = frameOf(eventOf(kStory, 200));
+    Segment one(1);
+    one.group(wal::kGroupFrameBytes + names.size() + a_frame.size());
+    one.raw(names);
+    one.raw(a_frame);
+    uint64_t const lost_at = one.zeros(wal::kGroupFrameBytes);
+    one.raw(b);
+    write(one);
+
+    ASSERT_EQ(recover(), chl::CL_SUCCESS) << error;
+    EXPECT_EQ(eventsOf(kStory), (std::vector<chl::EventSequence>{seqOf(a)}));
+    EXPECT_TRUE(allZero(readSegment(1), lost_at));
+}
+
+// Records after the end of the last group without a G record of their own
+// were not written by the committer, so a bad record after them is not taken
+// for a torn write.
+TEST_F(WalRecoveryTest, RecordsAfterTheLastGroupWithoutAGRecordRefuse)
+{
+    std::string const names = wal::encodeNames(wal::NamesRecord{kStory, "chronicle", "story"});
+    std::string const a = frameOf(eventOf(kStory, 100));
+    std::string const torn = frameOf(eventOf(kStory, 300));
+    Segment one(1);
+    one.group(wal::kGroupFrameBytes + names.size() + a.size());
+    one.raw(names);
+    one.raw(a);
+    one.event(eventOf(kStory, 200));
+    one.raw(torn.substr(0, torn.size() / 2));
+    write(one);
+    auto const before = snapshot();
+
+    EXPECT_EQ(recover(), chl::CL_ERR_UNKNOWN);
+    EXPECT_NE(error.find("no G record"), std::string::npos) << error;
     expectRefused(before, 1);
 }
 
