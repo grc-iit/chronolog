@@ -51,8 +51,8 @@ struct WalStats
     uint64_t queued_events = 0;        // durable writes waiting for their group to sync
 };
 
-// What the keeper's durable write path needs from the WAL; W14 fakes it in
-// its tests.
+// What the keeper's durable write path needs from the WAL; the
+// KeeperDurableWriter tests fake it.
 class DurableLog
 {
 public:

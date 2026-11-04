@@ -686,7 +686,7 @@ TEST_F(KeeperWalTest, FailedWriteThatCannotBeErasedAnswersUnknown)
     EXPECT_EQ(copiesOnDisk(later), 0u);
 }
 
-// A12. After a failed writeback Linux marks the pages clean and keeps them, so
+// After a failed writeback Linux marks the pages clean and keeps them, so
 // a group whose sync failed would read back whole on the same boot and be
 // recovered as durable. The committer overwrites it with zeros and syncs
 // before it answers; then every record of the group gets
@@ -1870,10 +1870,10 @@ TEST_F(KeeperWalTest, ManyWritersAcrossRotationsWriteEachEventOnce)
     ASSERT_TRUE(waitFor([&]() { return wal->stats().segments == 1; }, 3s));
 }
 
-// A2: a retry is answered by its first attempt before any other check. With
-// the reserve full, so W14 would refuse a new write, a lookup of an attempt in
-// its group's sync and of one queued behind it waits for them and gets their
-// CL_SUCCESS, instead of reporting the identity unknown.
+// A retry is answered by its first attempt before any other check. With the
+// reserve full, so the durable writer would refuse a new write, a lookup of
+// an attempt in its group's sync and of one queued behind it waits for them
+// and gets their CL_SUCCESS, instead of reporting the identity unknown.
 TEST_F(KeeperWalTest, LookupWaitsForAQueuedAttemptWhileTheReserveIsFull)
 {
     conf.reserve_min_bytes = 4 * kMiB;
