@@ -6,6 +6,13 @@ namespace chronolog
 {
 namespace
 {
+constexpr char const* names[] = {"start_story_recording",
+                                 "start_story_recording_with_keepers",
+                                 "stop_story_recording",
+                                 "destroy_story",
+                                 "destroy_chronicle",
+                                 "shutdown_data_collection",
+                                 "collection_service_available"};
 class NativeAdminLookup final: public AdminLookup
 {
 public:
@@ -29,14 +36,15 @@ void VisorAdminRuntime::initializeRpcDefinitions()
 {
     // Define once on the initialization thread. Concurrent duplicate definitions
     // can replace Margo registration data and leak it on the pinned stack.
-    constexpr char const* names[] = {"start_story_recording",
-                                     "start_story_recording_with_keepers",
-                                     "stop_story_recording",
-                                     "destroy_story",
-                                     "destroy_chronicle",
-                                     "shutdown_data_collection",
-                                     "collection_service_available"};
     for(std::size_t i = 0; i < procedures.size(); ++i) procedures[i] = engine->define(names[i]);
+    registrations_ = std::make_unique<rpc::RpcProviderRegistration>(*engine);
+}
+int VisorAdminRuntime::provision(AdminAction action, uint16_t provider, rpc::RpcDeadline const& deadline)
+{
+    auto index = static_cast<std::size_t>(action);
+    if(!registrations_ || index >= procedures.size())
+        return CL_ERR_UNKNOWN;
+    return registrations_->provision(names[index], provider, deadline);
 }
 int DataStoreAdminClient::shutdown_collection(std::shared_ptr<KeeperRegistry> registry,
                                               rpc::RpcDeadline const& deadline)
@@ -75,7 +83,7 @@ rpc::RpcResult<int> AdminWork::run(rpc::OperationContext& context)
     int nativeError = HG_SUCCESS;
     try
     {
-        result = client_->execute(context, arguments_);
+        result = client_->execute(context, arguments_, native_);
     }
     catch(thallium::timeout const&)
     {

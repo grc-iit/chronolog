@@ -6,15 +6,18 @@ struct NativeAcquire final: rpc::OwnedRpcWork<std::shared_ptr<AcquireStoryRespon
     std::string address;
     tl::remote_procedure remote;
     std::string story = "story";
+    rpc::RpcCallState native;
     rpc::RpcResult<std::shared_ptr<AcquireStoryResponseMsg>> run(rpc::OperationContext& context) override
     {
-        auto endpoint = engine->lookup(address);
-        auto call = remote.on(tl::provider_handle(endpoint, 40));
+        native.bind(*engine, remote, address, 40);
         auto cap = context.deadline().cappedAttempt(120ms);
         if(!cap || !context.tryBeginDispatch())
             return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
-        auto value = call.timed(*cap, ClientId{100}, std::string("chronicle"), story).as<AcquireStoryResponseMsg>();
+        auto value = native.callable()
+                             .timed(*cap, ClientId{100}, std::string("chronicle"), story)
+                             .as<AcquireStoryResponseMsg>();
         auto reply = std::make_shared<AcquireStoryResponseMsg>(value);
+        native.clearKnown();
         return {value.getErrorCode(), true, std::move(reply)};
     }
 };

@@ -17,12 +17,14 @@ public:
         return std::shared_ptr<DataStoreAdminClient>(
                 new DataStoreAdminClient(std::move(owner), std::move(address), provider));
     }
-    rpc::RpcResult<int> execute(rpc::OperationContext& context, AdminArguments const& args)
+    rpc::RpcResult<int> execute(rpc::OperationContext& context, AdminArguments const& args, rpc::RpcCallState& native)
     {
+        auto binding = owner_->provision(args.action, provider_, context.deadline());
+        if(binding != CL_SUCCESS)
+            return {binding, false, std::nullopt};
         auto endpoint = owner_->lookup->resolve(*owner_->engine, address_);
         auto remote = owner_->procedures[static_cast<std::size_t>(args.action)];
-        thallium::provider_handle handle(endpoint, provider_);
-        auto call = remote.on(handle);
+        native.bind(remote, endpoint, provider_);
         auto attempt = context.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
         if(!attempt || !context.tryBeginDispatch())
             return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
@@ -30,24 +32,26 @@ public:
         switch(args.action)
         {
             case AdminAction::Start:
-                reply = call.timed(*attempt, args.chronicle, args.story, args.id, args.start);
+                reply = native.callable().timed(*attempt, args.chronicle, args.story, args.id, args.start);
                 break;
             case AdminAction::StartPlayer:
-                reply = call.timed(*attempt, args.chronicle, args.story, args.id, args.start, args.keepers);
+                reply = native.callable()
+                                .timed(*attempt, args.chronicle, args.story, args.id, args.start, args.keepers);
                 break;
             case AdminAction::Stop:
-                reply = call.timed(*attempt, args.id);
+                reply = native.callable().timed(*attempt, args.id);
                 break;
             case AdminAction::DestroyStory:
-                reply = call.timed(*attempt, args.chronicle, args.story, args.id);
+                reply = native.callable().timed(*attempt, args.chronicle, args.story, args.id);
                 break;
             case AdminAction::DestroyChronicle:
-                reply = call.timed(*attempt, args.chronicle);
+                reply = native.callable().timed(*attempt, args.chronicle);
                 break;
             default:
-                reply = call.timed(*attempt);
+                reply = native.callable().timed(*attempt);
                 break;
         }
+        native.clearKnown();
         // Scalar replies have no remote access to caller memory. Native RPC
         // registration belongs to the engine and is never deregistered per call.
         return {reply, true, reply};

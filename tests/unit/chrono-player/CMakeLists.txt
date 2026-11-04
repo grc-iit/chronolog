@@ -77,6 +77,7 @@ add_executable(keeper_hot_fetch_client_test
 )
 
 target_include_directories(keeper_hot_fetch_client_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
     ${CMAKE_SOURCE_DIR}/src/chrono-player/include
     ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include

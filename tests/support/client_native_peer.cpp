@@ -56,8 +56,11 @@ int main(int argc, char** argv)
             provider));
     calls.push_back(engine.define(
             "ReleaseStory",
-            [](thallium::request const& req, ClientId, std::string const&, std::string const&)
-            { req.respond(CL_SUCCESS); },
+            [state](thallium::request const& req, ClientId, std::string const&, std::string const&)
+            {
+                ++state->releases;
+                req.respond(CL_SUCCESS);
+            },
             provider));
     calls.push_back(engine.define(
             "CreateChronicle",
@@ -107,6 +110,41 @@ int main(int argc, char** argv)
         }
         roster.emplace_back(protocol, "127.0.0.1", keeperPort, clock ? 52 : 74);
         calls.push_back(keeper->define(
+                "tail_get_sequences",
+                [state, mid, i](thallium::request const& req, StoryId, uint64_t)
+                {
+                    ++state->sequenceCalls;
+                    if(auto delay = state->sequenceDelayMs.load();
+                       delay && (state->delaySequenceMask.load() & (1u << i)))
+                        margo_thread_sleep(mid, delay);
+                    while(state->blockSequences.load() && (state->delaySequenceMask.load() & (1u << i)))
+                        margo_thread_sleep(mid, 1);
+                    if(!state->dropSequences.load())
+                    {
+                        req.respond(std::vector<EventSequence>{EventSequence(100 + i, 1, 0)});
+                        ++state->sequenceReplies;
+                    }
+                },
+                clock ? 52 : 74));
+        calls.push_back(keeper->define(
+                "tail_get_events",
+                [state, mid](thallium::request const& req, StoryId story, std::vector<EventSequence> const& seqs)
+                {
+                    ++state->payloadCalls;
+                    if(auto delay = state->payloadDelayMs.load())
+                        margo_thread_sleep(mid, delay);
+                    std::vector<LogEvent> result;
+                    if(!state->shortPayloads.load())
+                        for(auto const& seq: seqs)
+                            result.emplace_back(story, std::get<0>(seq), std::get<1>(seq), std::get<2>(seq), "tail");
+                    if(!state->dropPayloads.load())
+                    {
+                        req.respond(result);
+                        ++state->payloadReplies;
+                    }
+                },
+                clock ? 52 : 74));
+        calls.push_back(keeper->define(
                 "record_event",
                 [state, mid, i](thallium::request const& req, LogEvent const& event)
                 {
@@ -151,9 +189,13 @@ int main(int argc, char** argv)
                 ++state->acquisitions;
                 if(state->delay.load())
                     margo_thread_sleep(mid, 150);
-                req.respond(AcquireStoryResponseMsg(state->acquireStatus.load(),
-                                                    clock && story != "a" ? 2 : 1,
-                                                    clock || state->roster.load() ? roster : std::vector<ServiceId>{}));
+                auto assigned = roster;
+                if(clock && state->keeperCount.load() < assigned.size())
+                    assigned.resize(state->keeperCount.load());
+                req.respond(
+                        AcquireStoryResponseMsg(state->acquireStatus.load(),
+                                                clock && story != "a" ? 2 : 1,
+                                                clock || state->roster.load() ? assigned : std::vector<ServiceId>{}));
             },
             provider));
     if(write(199, &port, sizeof(port)) != sizeof(port))

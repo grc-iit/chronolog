@@ -111,6 +111,19 @@ int main(int argc, char** argv)
     chronolog::ArchiveReadingRequestQueue readingRequestQueue;
 
     // Instantiate Playback Service
+    std::shared_ptr<chronolog::PlaybackRpcOwner> playbackOwner;
+    auto playbackRuntime = std::make_shared<chronolog::rpc::RpcRuntime>();
+    auto retainPlaybackDependencies = [&]
+    {
+        if(!playbackOwner)
+            return;
+        playbackOwner->quiesce();
+        // B08 cannot prove incoming/bulk native settlement. Keep every main
+        // stack dependency alive rather than return through unsafe teardown.
+        while(playbackRuntime->drain(chronolog::rpc::RpcDeadline::after(
+                      std::chrono::milliseconds(PLAYER_CONF.RPC_POLICY.shutdown_ms))) != chronolog::CL_SUCCESS)
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+    };
     tl::engine* playbackEngine = nullptr;
     chronolog::PlaybackService* playbackService = nullptr;
 
@@ -124,11 +137,15 @@ int main(int argc, char** argv)
         margo_instance_id playback_margo_id =
                 margo_init(PLAYBACK_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
 
-        playbackEngine = new tl::engine(playback_margo_id);
+        playbackOwner = std::make_shared<chronolog::PlaybackRpcOwner>(std::make_unique<tl::engine>(playback_margo_id),
+                                                                      PLAYER_CONF.RPC_POLICY);
+        playbackOwner->attach(playbackRuntime);
+        playbackOwner->initializeProcedure();
+        playbackEngine = playbackOwner->engine.get();
 
         LOG_DEBUG("[ChronoPlayer] starting PlaybackService at {}", chl::to_string(playbackServiceId));
 
-        playbackService = chronolog::PlaybackService::CreatePlaybackService(*playbackEngine,
+        playbackService = chronolog::PlaybackService::CreatePlaybackService(playbackOwner,
                                                                             playbackServiceId.getProviderId(),
                                                                             theDataStore,
                                                                             readingRequestQueue);
@@ -145,9 +162,10 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoPlayer] failed to create Playback Service at {}; exiting",
                      chl::to_string(playbackServiceId));
+        retainPlaybackDependencies();
         if(playbackEngine)
         {
-            delete playbackEngine;
+            playbackEngine = nullptr;
         }
         return (-1);
     }
@@ -168,8 +186,9 @@ int main(int argc, char** argv)
     if(!recordingServiceId.is_valid())
     {
         LOG_CRITICAL("[ChronoPlayer] Failed to start RecordingService. Invalid endpoint provided.");
-        delete playbackService;
-        delete playbackEngine;
+        retainPlaybackDependencies();
+        playbackService = nullptr;
+        playbackEngine = nullptr;
         return (-1);
     }
 
@@ -201,12 +220,13 @@ int main(int argc, char** argv)
     if(recordingService == nullptr)
     {
         LOG_CRITICAL("[ChronoPlayer] Failed to start RecordingService. exiting");
+        retainPlaybackDependencies();
         if(recordingEngine)
         {
             delete recordingEngine;
         }
-        delete playbackService;
-        delete playbackEngine;
+        playbackService = nullptr;
+        playbackEngine = nullptr;
         return (-1);
     }
 
@@ -242,14 +262,15 @@ int main(int argc, char** argv)
     if(nullptr == playerStoreAdminService)
     {
         LOG_CRITICAL("[ChronoPlayer] failed to create DataStoreAdminService, exiting");
+        retainPlaybackDependencies();
         if(dataAdminEngine)
         {
             delete dataAdminEngine;
         }
         delete recordingService;
         delete recordingEngine;
-        delete playbackService;
-        delete playbackEngine;
+        playbackService = nullptr;
+        playbackEngine = nullptr;
         return (-1);
     }
 
@@ -272,12 +293,13 @@ int main(int argc, char** argv)
     if(nullptr == playerRegistryClient)
     {
         LOG_CRITICAL("[ChronoPlayer] failed to create RegistryClient; exiting");
+        retainPlaybackDependencies();
         delete playerStoreAdminService;
         delete dataAdminEngine;
         delete recordingService;
         delete recordingEngine;
-        delete playbackService;
-        delete playbackEngine;
+        playbackService = nullptr;
+        playbackEngine = nullptr;
         return (-1);
     }
 
@@ -303,14 +325,15 @@ int main(int argc, char** argv)
     if(chronolog::CL_SUCCESS != registration_status)
     {
         LOG_CRITICAL("[ChronoPlayer] Failed to register with ChronoVisor after multiple attempts. Exiting.");
+        retainPlaybackDependencies();
         delete archiveReadingAgent;
         delete playerRegistryClient;
         delete playerStoreAdminService;
         delete dataAdminEngine;
         delete recordingService;
         delete recordingEngine;
-        delete playbackService;
-        delete playbackEngine;
+        playbackService = nullptr;
+        playbackEngine = nullptr;
         return (-1);
     }
     LOG_INFO("[ChronoPlayer] Successfully registered with ChronoVisor.");
@@ -332,6 +355,7 @@ int main(int argc, char** argv)
 
     /// Stop services and shut down ____________________________________________________________________________________
     LOG_INFO("[ChronoPlayer] Initiating shutdown procedures.");
+    retainPlaybackDependencies();
     /// Unregister from ChronoVisor ____________________________________________________________________________________
     // Unregister from the chronoVisor so that no new story requests would be coming
     playerRegistryClient->send_unregister_msg(playerIdCard);
@@ -342,11 +366,11 @@ int main(int argc, char** argv)
     archiveReadingAgent->shutdownArchiveReading();
     delete archiveReadingAgent;
     delete playerStoreAdminService;
-    delete playbackService;
+    playbackService = nullptr;
     delete recordingService;
 
     delete dataAdminEngine;
-    delete playbackEngine;
+    playbackEngine = nullptr;
     delete recordingEngine;
     LOG_INFO("[ChronoPlayer] Shutdown completed. Exiting.");
     return exit_code;

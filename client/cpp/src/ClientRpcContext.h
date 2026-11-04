@@ -5,6 +5,7 @@
 #include "MetadataOperationState.h"
 #include "RpcPolicyContext.h"
 #include <RpcRuntime.h>
+#include <private/RpcProviderRegistration.h>
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
 #include <thallium.hpp>
@@ -41,7 +42,11 @@ struct ClientRpcProcedures
     };
     explicit ClientRpcProcedures(thallium::engine&);
     ~ClientRpcProcedures();
+    int provision(Name, uint16_t provider, rpc::RpcDeadline const&);
     std::array<thallium::remote_procedure, Count> calls;
+
+private:
+    rpc::RpcProviderRegistration registrations_;
 };
 // Actual native lifetime, retained by the existing runtime owner independently
 // of lightweight Client wrappers. No runtime backlink or engine-copy finalizer.

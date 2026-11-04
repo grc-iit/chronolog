@@ -77,6 +77,7 @@ add_executable(playback_service_test
 )
 
 target_include_directories(playback_service_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
     ${CMAKE_SOURCE_DIR}/src/chrono-player/include
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include

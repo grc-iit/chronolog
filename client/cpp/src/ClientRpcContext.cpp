@@ -10,23 +10,32 @@
 #include <chrono_monitor.h>
 namespace chronolog
 {
-ClientRpcProcedures::ClientRpcProcedures(thallium::engine& engine)
+namespace
 {
-    constexpr char const* names[] = {"Connect",
-                                     "Disconnect",
-                                     "CreateChronicle",
-                                     "DestroyChronicle",
-                                     "AcquireStory",
-                                     "ReleaseStory",
-                                     "DestroyStory",
-                                     "ShowChronicles",
-                                     "ShowStories",
-                                     "record_event",
-                                     "tail_get_sequences",
-                                     "tail_get_events",
-                                     "playback_service_available",
-                                     "story_playback_request"};
+constexpr char const* names[] = {"Connect",
+                                 "Disconnect",
+                                 "CreateChronicle",
+                                 "DestroyChronicle",
+                                 "AcquireStory",
+                                 "ReleaseStory",
+                                 "DestroyStory",
+                                 "ShowChronicles",
+                                 "ShowStories",
+                                 "record_event",
+                                 "tail_get_sequences",
+                                 "tail_get_events",
+                                 "playback_service_available",
+                                 "story_playback_request"};
+}
+ClientRpcProcedures::ClientRpcProcedures(thallium::engine& engine)
+    : registrations_(engine)
+{
     for(size_t i = 0; i < calls.size(); ++i) calls[i] = engine.define(names[i]);
+}
+int ClientRpcProcedures::provision(Name name, uint16_t provider, rpc::RpcDeadline const& deadline)
+{
+    auto index = static_cast<size_t>(name);
+    return index < Count ? registrations_.provision(names[index], provider, deadline) : CL_ERR_INVALID_ARG;
 }
 ClientRpcProcedures::~ClientRpcProcedures()
 {

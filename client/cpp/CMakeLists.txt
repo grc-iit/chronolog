@@ -41,6 +41,7 @@ add_library(chronolog_client
 target_include_directories(chronolog_client
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/chrono-common/include>
         $<INSTALL_INTERFACE:${CHRONOLOG_INSTALL_INCLUDE_DIR}>
         # json-c is PUBLIC because public headers include json-c/json.h
         ${JSON-C_INCLUDE_DIRS}

@@ -189,16 +189,37 @@ chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append(s
 template <class KeeperChoicePolicy>
 int chronolog::StoryHandleImpl<KeeperChoicePolicy>::playback(size_t n, std::vector<Event>& events)
 {
+    auto started = rpc::RpcDeadline::Clock::now();
     auto entry = tryEnter();
     if(!entry)
         return CL_ERR_NOT_ACQUIRED;
-    auto context = context_.lock();
-    auto nativeLease = context ? context->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
-    if(retainedContext_ && !nativeLease)
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
         return CL_ERR_RPC_CAPACITY;
-    if(nativeLease)
-        entry->retainNative(std::move(*nativeLease));
-    return gather_story_tail(storyKeepers, storyId, n, events);
+    entry->retainNative(std::move(*native));
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return CL_ERR_RPC_CAPACITY;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return CL_ERR_RPC_CAPACITY;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(policy->policy().tail_ms));
+    struct Retention
+    {
+        std::shared_ptr<ClientRpcContext> owner;
+        EntryLease entry;
+        RpcPolicyContext::Snapshot policy;
+    };
+    auto retained = std::make_shared<Retention>(Retention{owner, std::move(*entry), std::move(*policy)});
+    return gather_story_tail(storyKeepers,
+                             storyId,
+                             n,
+                             events,
+                             deadline,
+                             *runtime,
+                             retained,
+                             retained->policy.policy().attempt_ms);
 }
 /////////////////////
 

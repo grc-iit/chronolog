@@ -30,11 +30,17 @@
 #
 # Usage: WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 #        ./replay_fanout_timing_test.sh
+# For this all-loopback TCP deployment, explicitly select an up local interface:
+#   FI_TCP_IFACE=lo RPC_PROTOCOL=ofi+tcp WORK_DIR=... BUILD_DIR=... ./replay_fanout_timing_test.sh
+# For remote services select the routable NIC instead; never use lo across hosts.
 
 set -u
 
 WORK_DIR="${WORK_DIR:-$HOME/chronolog-install/chronolog}"
 BUILD_DIR="${BUILD_DIR:-$HOME/chronolog-build/Debug}"
+RPC_PROTOCOL="${RPC_PROTOCOL:-ofi+sockets}"
+case "$RPC_PROTOCOL" in ofi+sockets|ofi+tcp) ;; *) echo "unsupported RPC_PROTOCOL: $RPC_PROTOCOL"; exit 2 ;; esac
+ARTIFACT_DIR="${ARTIFACT_DIR:-}"
 
 MONITOR_DIR="$WORK_DIR/monitor"
 OUTPUT_DIR="$WORK_DIR/output"
@@ -92,8 +98,15 @@ cleanup() {
 }
 
 PROBE_QUERY_PORT="${PROBE_QUERY_PORT:-5562}"
-PROBE_CLIENT_CONF="/tmp/fanout_probe_client_conf.json"
 RUN_DIR=$(mktemp -d /tmp/fanout_timing.XXXXXX)
+PROBE_CLIENT_CONF="$RUN_DIR/probe-client-conf.json"
+preserve_logs() {
+    [ -n "$ARTIFACT_DIR" ] || return 0
+    mkdir -p "$ARTIFACT_DIR"
+    cp -a "$RUN_DIR" "$ARTIFACT_DIR/probes"
+    cp -a "$MONITOR_DIR" "$ARTIFACT_DIR/monitor"
+    cp -a "$WORK_DIR/conf" "$ARTIFACT_DIR/conf"
+}
 
 replay_ms() { # runs the probe, echoes the milliseconds ReplayStory took (or -1)
     local raw_out="${1:-/dev/null}"
@@ -119,20 +132,26 @@ command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
 [ -x "$REPLAY_CHECK" ] || { say "replay probe not found at $REPLAY_CHECK"; exit 2; }
 
+say "transport $RPC_PROTOCOL"
 say "patching installed conf template (grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
 # jq writes to a side file that replaces the template only on success, so a failed
 # patch leaves the template intact (the restore trap below is not set up yet)
 cp "$CONF_TEMPLATE" "$CONF_TEMPLATE.fanout_backup"
-jq ".chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
+cp "$CLIENT_CONF" "$CLIENT_CONF.fanout_backup"
+jq --arg protocol "$RPC_PROTOCOL" 'walk(if type == "object" and has("protocol_conf") then .protocol_conf = $protocol else . end)' "$CLIENT_CONF.fanout_backup" > "$CLIENT_CONF"
+jq --arg protocol "$RPC_PROTOCOL" "walk(if type == \"object\" and has(\"protocol_conf\") then .protocol_conf = \$protocol else . end) |
+    .chrono_keeper.ExtractionModule.extraction_protocol = \$protocol |
+    .chrono_grapher.ExtractionModule.extraction_protocol = \$protocol |
+    .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = $VISIBILITY_SECS |
     .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = $G_CHUNK_SECS |
     .chrono_grapher.DataStoreInternals.acceptance_window_secs = $G_ACCEPT_SECS |
     .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = $REPORT_SECS" \
     "$CONF_TEMPLATE.fanout_backup" > "$CONF_TEMPLATE.fanout_patched" ||
-    { say "conf patch failed; template left as it was"; rm -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE.fanout_patched"; exit 2; }
+    { say "conf patch failed; restoring templates"; mv -f "$CLIENT_CONF.fanout_backup" "$CLIENT_CONF"; rm -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE.fanout_patched"; exit 2; }
 mv -f "$CONF_TEMPLATE.fanout_patched" "$CONF_TEMPLATE"
 
-restore_conf() { mv -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE"; }
-trap 'cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
+restore_conf() { mv -f "$CONF_TEMPLATE.fanout_backup" "$CONF_TEMPLATE"; mv -f "$CLIENT_CONF.fanout_backup" "$CLIENT_CONF"; }
+trap 'preserve_logs; cleanup; restore_conf; rm -rf "$RUN_DIR"' EXIT
 
 kill_daemons
 sleep 2

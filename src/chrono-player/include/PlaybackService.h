@@ -27,12 +27,14 @@ class PlaybackService: public tl::provider<PlaybackService>
 {
 public:
     // Service should be created on the heap not the stack thus the constructor is private...
-    static PlaybackService* CreatePlaybackService(tl::engine& tl_engine,
+    static PlaybackService* CreatePlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                                                   uint16_t service_provider_id,
                                                   PlayerDataStore& activeDataStore,
                                                   ArchiveReadingRequestQueue& archiveReadingQueue)
     {
-        return new PlaybackService(tl_engine, service_provider_id, activeDataStore, archiveReadingQueue);
+        auto* service = new PlaybackService(owner, service_provider_id, activeDataStore, archiveReadingQueue);
+        owner->provider.reset(service);
+        return service;
     }
 
     ~PlaybackService();
@@ -49,7 +51,7 @@ public:
                                 chrono_time const& end_time);
 
 private:
-    PlaybackService(tl::engine& tl_engine,
+    PlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                     uint16_t service_provider_id,
                     PlayerDataStore& activeDataStore,
                     ArchiveReadingRequestQueue& reading_queue);
@@ -62,7 +64,8 @@ private:
     // endpoint. Returns nullptr if the keeper cannot be looked up.
     KeeperHotFetchClient* getHotFetchClient(ServiceId const& keeper_service_id);
 
-    tl::engine playbackEngine;
+    std::weak_ptr<PlaybackRpcOwner> owner_;
+    tl::engine& playbackEngine;
     chronolog::PlayerDataStore& theActiveDataStore;
     ArchiveReadingRequestQueue& theArchiveReadingRequestQueue;
     std::mutex playbackServiceMutex;

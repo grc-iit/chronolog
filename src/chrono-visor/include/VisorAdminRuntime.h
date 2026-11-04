@@ -1,6 +1,8 @@
 #ifndef CHRONOLOG_VISOR_ADMIN_RUNTIME_H
 #define CHRONOLOG_VISOR_ADMIN_RUNTIME_H
 #include <RpcRuntime.h>
+#include <private/RpcProviderRegistration.h>
+#include <private/RpcCallState.h>
 #include <array>
 #include <chronolog_types.h>
 #include <RpcPolicy.h>
@@ -14,6 +16,7 @@
 namespace chronolog
 {
 class KeeperRegistry;
+enum class AdminAction;
 class DataStoreAdminClient;
 class AdminLookup
 {
@@ -39,6 +42,10 @@ struct VisorAdminRuntime
     std::shared_ptr<thallium::engine> engine;
     std::array<thallium::remote_procedure, 7> procedures;
     void initializeRpcDefinitions();
+    int provision(AdminAction, uint16_t provider, rpc::RpcDeadline const&);
+
+private:
+    std::unique_ptr<rpc::RpcProviderRegistration> registrations_;
 };
 enum class AdminAction
 {
@@ -78,6 +85,7 @@ private:
     AdminArguments arguments_;
     std::shared_ptr<AdminCompletion> completion_;
     std::shared_ptr<KeeperRegistry> registry_;
+    rpc::RpcCallState native_;
 };
 struct StoryRecording
 {

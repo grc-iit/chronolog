@@ -1,6 +1,7 @@
 #ifndef RPC_VISOR_PORTAL_CLIENT_H
 #define RPC_VISOR_PORTAL_CLIENT_H
 #include "ClientRpcContext.h"
+#include <private/RpcCallState.h>
 #include <AcquireStoryResponseMsg.h>
 #include <ConnectResponseMsg.h>
 #include <thallium/serialization/stl/string.hpp>
@@ -22,19 +23,25 @@ public:
         , procedures_(std::move(procedures))
     {}
     template <class Reply, class... Args>
-    rpc::RpcResult<Reply>
-    call(ClientRpcProcedures::Name name, rpc::OperationContext& context, uint64_t attemptMs, Args const&... args)
+    rpc::RpcResult<Reply> call(ClientRpcProcedures::Name name,
+                               rpc::OperationContext& context,
+                               uint64_t attemptMs,
+                               rpc::RpcCallState& native,
+                               Args const&... args)
     {
         try
         {
-            auto endpoint = engine_.lookup(address_);
-            thallium::provider_handle peer(endpoint, provider_);
+            auto binding = procedures_->provision(name, provider_, context.deadline());
+            if(binding != CL_SUCCESS)
+                return {binding, false, std::nullopt};
+            native.bind(engine_, procedures_->calls[name], address_, provider_);
             auto timeout = context.deadline().cappedAttempt(std::chrono::milliseconds(attemptMs));
             if(!timeout || !context.tryBeginDispatch())
                 return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
             try
             {
-                Reply reply = procedures_->calls[name].on(peer).timed(*timeout, args...);
+                Reply reply = native.callable().timed(*timeout, args...);
+                native.clearKnown();
                 return {CL_SUCCESS, true, std::move(reply)};
             }
             catch(...)

@@ -33,6 +33,11 @@ struct PeerState
 {
     std::atomic<bool> stop{false}, delay{false}, roster{false}, blockRecords{false};
     std::atomic<bool> delayConnect{false}, delayDisconnect{false}, dropRecordReply{false};
+    std::atomic<unsigned> keeperCount{3}, sequenceCalls{0}, payloadCalls{0}, sequenceReplies{0}, payloadReplies{0},
+            releases{0};
+    std::atomic<int> sequenceDelayMs{0}, payloadDelayMs{0};
+    std::atomic<unsigned> delaySequenceMask{7};
+    std::atomic<bool> blockSequences{false}, dropSequences{false}, dropPayloads{false}, shortPayloads{false};
     std::atomic<int> acquireStatus{0}, recordStatus{0}, recordDelayMs{0};
     std::atomic<unsigned> connects{0}, disconnects{0}, acquisitions{0}, destroys{0}, records{0};
     std::atomic<unsigned> storyGeneration{1}, destroyedGeneration{0}, eventCount{0};
@@ -125,6 +130,7 @@ public:
         if(!state_)
             return;
         state_->blockRecords = false;
+        state_->blockSequences = false;
         state_->stop = true;
         // Test watchdog bounds a broken peer; normal retirement is a real wait,
         // not a signal or process-exit substitute for client cleanup proof.

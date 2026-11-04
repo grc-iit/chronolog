@@ -213,6 +213,7 @@ private:
             auto result = visor.call<ConnectResponseMsg>(ClientRpcProcedures::Connect,
                                                          operation,
                                                          attempt,
+                                                         native_,
                                                          owner_->euid,
                                                          owner_->identity.pack(),
                                                          CLIENT_PROTOCOL_VERSION);
@@ -225,6 +226,7 @@ private:
             auto result = visor.call<AcquireStoryResponseMsg>(ClientRpcProcedures::AcquireStory,
                                                               operation,
                                                               attempt,
+                                                              native_,
                                                               id,
                                                               chronicle_,
                                                               story_);
@@ -243,8 +245,13 @@ private:
             using Names = std::pair<int, std::vector<std::string>>;
             auto result =
                     action_ == Action::ShowChronicles
-                            ? visor.call<Names>(ClientRpcProcedures::ShowChronicles, operation, attempt, id)
-                            : visor.call<Names>(ClientRpcProcedures::ShowStories, operation, attempt, id, chronicle_);
+                            ? visor.call<Names>(ClientRpcProcedures::ShowChronicles, operation, attempt, native_, id)
+                            : visor.call<Names>(ClientRpcProcedures::ShowStories,
+                                                operation,
+                                                attempt,
+                                                native_,
+                                                id,
+                                                chronicle_);
             if(!result.reply)
                 return {result.status, result.may_have_dispatched, std::nullopt};
             return {CL_SUCCESS, true, Reply{result.reply->first, nullptr, std::move(result.reply->second)}};
@@ -253,19 +260,41 @@ private:
         switch(action_)
         {
             case Action::Disconnect:
-                result = visor.call<int>(ClientRpcProcedures::Disconnect, operation, attempt, id);
+                result = visor.call<int>(ClientRpcProcedures::Disconnect, operation, attempt, native_, id);
                 break;
             case Action::CreateChronicle:
-                result = visor.call<int>(ClientRpcProcedures::CreateChronicle, operation, attempt, id, chronicle_);
+                result = visor.call<int>(ClientRpcProcedures::CreateChronicle,
+                                         operation,
+                                         attempt,
+                                         native_,
+                                         id,
+                                         chronicle_);
                 break;
             case Action::DestroyChronicle:
-                result = visor.call<int>(ClientRpcProcedures::DestroyChronicle, operation, attempt, id, chronicle_);
+                result = visor.call<int>(ClientRpcProcedures::DestroyChronicle,
+                                         operation,
+                                         attempt,
+                                         native_,
+                                         id,
+                                         chronicle_);
                 break;
             case Action::ReleaseStory:
-                result = visor.call<int>(ClientRpcProcedures::ReleaseStory, operation, attempt, id, chronicle_, story_);
+                result = visor.call<int>(ClientRpcProcedures::ReleaseStory,
+                                         operation,
+                                         attempt,
+                                         native_,
+                                         id,
+                                         chronicle_,
+                                         story_);
                 break;
             case Action::DestroyStory:
-                result = visor.call<int>(ClientRpcProcedures::DestroyStory, operation, attempt, id, chronicle_, story_);
+                result = visor.call<int>(ClientRpcProcedures::DestroyStory,
+                                         operation,
+                                         attempt,
+                                         native_,
+                                         id,
+                                         chronicle_,
+                                         story_);
                 break;
             default:
                 break;
@@ -278,6 +307,7 @@ private:
     RpcPolicyContext::Snapshot snapshot_;
     Action action_;
     std::string chronicle_, story_;
+    rpc::RpcCallState native_;
 };
 ChronologClientImpl::Reply ChronologClientImpl::invoke(Action action,
                                                        std::string const& chronicle,

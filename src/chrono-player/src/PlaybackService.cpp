@@ -13,20 +13,19 @@
 namespace tl = thallium;
 namespace chl = chronolog;
 
-chronolog::PlaybackService::PlaybackService(tl::engine& tl_engine,
+chronolog::PlaybackService::PlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                                             uint16_t service_provider_id,
                                             chronolog::PlayerDataStore& activeDataStore,
                                             chronolog::ArchiveReadingRequestQueue& archive_reading_queue)
-    : tl::provider<PlaybackService>(tl_engine, service_provider_id)
-    , playbackEngine(tl_engine)
+    : tl::provider<PlaybackService>(*owner->engine, service_provider_id)
+    , owner_(owner)
+    , playbackEngine(*owner->engine)
     , theActiveDataStore(activeDataStore)
     , theArchiveReadingRequestQueue(archive_reading_queue)
 {
     define("playback_service_available", &PlaybackService::playback_service_available);
     define("story_playback_request", &PlaybackService::story_playback_request);
 
-    //set up callback for the case when the engine is being finalized while this provider is still alive
-    playbackEngine.push_finalize_callback(this, [p = this]() { delete p; });
 
     std::stringstream ss;
     ss << get_engine().self();
@@ -52,9 +51,6 @@ chronolog::PlaybackService::~PlaybackService()
         delete agent.second;
     }
     responseSenders.clear();
-
-    //remove provider finalization callback from the engine's list
-    playbackEngine.pop_finalize_callback(this);
 }
 
 //////////////////
@@ -70,7 +66,10 @@ chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(c
         }
     }
     // engine lookup happens outside the cache mutex
-    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(playbackEngine, keeper_service_id);
+    KeeperHotFetchClient* client = KeeperHotFetchClient::CreateKeeperHotFetchClient(
+            owner_.lock(),
+            keeper_service_id,
+            std::chrono::milliseconds(owner_.lock()->policy.attempt_ms));
     if(client == nullptr)
     {
         return nullptr;
@@ -87,7 +86,13 @@ chronolog::KeeperHotFetchClient* chronolog::PlaybackService::getHotFetchClient(c
 
 //////////////////
 
-void chronolog::PlaybackService::playback_service_available(tl::request const& request) { request.respond(1); }
+void chronolog::PlaybackService::playback_service_available(tl::request const& request)
+{
+    auto owner = owner_.lock();
+    auto entry = owner ? owner->enter() : std::optional<PlaybackRpcOwner::Entry>{};
+    if(entry)
+        request.respond(1);
+}
 
 /////////
 
@@ -100,6 +105,15 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                         chl::chrono_time const& start_time,
                                                         chl::chrono_time const& end_time)
 {
+    auto started = rpc::RpcDeadline::Clock::now();
+    auto owner = owner_.lock();
+    auto entry = owner ? owner->enter() : std::optional<PlaybackRpcOwner::Entry>{};
+    if(!entry)
+        return;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.replay_ms));
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return;
     LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} query_id {} story {} {}-{}",
              chl::to_string(receiver_service_id),
              query_id,
@@ -158,37 +172,46 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
     bool all_keepers_answered = true;
     bool any_truncated = false;
 
-    // Issue every keeper's fetch before waiting on any of them: a keeper that
-    // never answers then costs this query one deadline in total, not one each.
-    std::vector<std::pair<chl::KeeperHotFetchClient*, tl::async_response>> pending_fetches;
-    pending_fetches.reserve(story_keepers.size());
-    for(auto const& keeper_service_id: story_keepers)
-    {
-        chl::KeeperHotFetchClient* fetch_client = getHotFetchClient(keeper_service_id);
-        if(fetch_client == nullptr)
+    // The handler is a std-only coordinator, never a child worker. Reserve
+    // the full roster before any native lookup/forward; no silent truncation.
+    auto phaseStarted = rpc::RpcDeadline::Clock::now();
+    auto hotDeadline = KeeperHotFetchClient::fanoutDeadline(deadline,
+                                                            phaseStarted,
+                                                            std::chrono::milliseconds(owner->policy.attempt_ms));
+    std::vector<rpc::RpcReservation> reservations;
+    bool admitted = story_keepers.size() <= 2;
+    if(admitted)
+        for(size_t i = 0; i < story_keepers.size(); ++i)
         {
-            // unreachable keeper: the split is left to the keepers that answer,
-            // and the reply cannot claim to hold what this one still has
-            all_keepers_answered = false;
-            continue;
+            auto reserved = runtime->reserve(hotDeadline);
+            if(!reserved)
+            {
+                admitted = false;
+                break;
+            }
+            reservations.push_back(std::move(reserved));
         }
-        try
+    std::vector<std::pair<chl::KeeperHotFetchClient*, rpc::RpcPending<HotRangeResponse>>> pending_fetches;
+    auto issued = std::make_shared<rpc::FanoutIssueBarrier>(story_keepers.size());
+    if(!admitted)
+        all_keepers_answered = false;
+    else
+        for(size_t i = 0; i < story_keepers.size(); ++i)
         {
-            pending_fetches.emplace_back(
-                    fetch_client,
-                    fetch_client->fetchRangeAsync(story_id, start_time, end_time, kHotFetchMaxEvents));
+            auto* client = getHotFetchClient(story_keepers[i]);
+            if(!client)
+            {
+                all_keepers_answered = false;
+                continue;
+            }
+            pending_fetches.emplace_back(client,
+                                         client->fetchRangeAsync(std::move(reservations[i]),
+                                                                 story_id,
+                                                                 start_time,
+                                                                 end_time,
+                                                                 kHotFetchMaxEvents,
+                                                                 issued));
         }
-        catch(tl::exception const& ex)
-        {
-            all_keepers_answered = false;
-            LOG_WARNING("[PlaybackService] query {} story {} could not issue a hot fetch to {}: {}",
-                        query_id,
-                        story_id,
-                        chl::to_string(keeper_service_id),
-                        ex.what());
-        }
-    }
-
     std::vector<chl::HotRangeResponse> hot_responses;
     hot_responses.reserve(pending_fetches.size());
     for(auto& pending: pending_fetches)

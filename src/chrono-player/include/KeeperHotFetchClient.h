@@ -1,153 +1,163 @@
 #ifndef KEEPER_HOT_FETCH_CLIENT_H
 #define KEEPER_HOT_FETCH_CLIENT_H
-
-#include <chrono>
-#include <string>
-#include <thallium.hpp>
-#include <thallium/serialization/stl/string.hpp>
-#include <thallium/serialization/stl/vector.hpp>
-#include <thallium/serialization/stl/tuple.hpp>
-
-#include <chrono_monitor.h>
-#include <chronolog_types.h>
+#include <PlaybackRpcOwner.h>
+#include <RpcFanout.h>
 #include <HotRangeResponse.h>
 #include <ServiceId.h>
-
-namespace tl = thallium;
-
+#include <thallium/serialization/stl/vector.hpp>
+#include <thallium/serialization/stl/tuple.hpp>
 namespace chronolog
 {
-
-// Thin Thallium client of the keeper's story_range_fetch RPC — the player's
-// on-demand hot source for replay. One instance per keeper recording service,
-// created lazily by the PlaybackService and cached by endpoint.
+// Cached route descriptor; native lookup/dispatch belongs to a charged child.
 class KeeperHotFetchClient
 {
 public:
-    // same bound as the client's tail-read RPCs
     static constexpr std::chrono::milliseconds kDefaultFetchDeadline{5000};
-
-    static KeeperHotFetchClient*
-    CreateKeeperHotFetchClient(tl::engine& tl_engine,
-                               ServiceId const& keeper_service_id,
-                               std::chrono::milliseconds fetch_deadline = kDefaultFetchDeadline)
+    static KeeperHotFetchClient* CreateKeeperHotFetchClient(std::shared_ptr<PlaybackRpcOwner> const& owner,
+                                                            ServiceId const& route,
+                                                            std::chrono::milliseconds cap = kDefaultFetchDeadline)
     {
-        try
-        {
-            return new KeeperHotFetchClient(tl_engine, keeper_service_id, fetch_deadline);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[KeeperHotFetchClient] Failed to create client for {} exception {}",
-                      to_string(keeper_service_id),
-                      ex.what());
-        }
-        return nullptr;
+        return new KeeperHotFetchClient(owner, route, cap);
     }
-
-    // Fetch every event the keeper retains in [start, end), waiting at most the
-    // fetch deadline. On any failure -- an RPC error or a keeper that does not
-    // answer in time -- an empty response is returned (no events, known_W = 0,
-    // hot_floor = UINT64_MAX) with answered = false, which leaves the split
-    // boundary to the keepers that did answer and tells the player its reply
-    // may be short of what this keeper holds.
-    HotRangeResponse fetchRange(StoryId const& story_id, uint64_t start_time, uint64_t end_time, uint64_t max_events)
+    HotRangeResponse fetchRange(StoryId story, uint64_t start, uint64_t end, uint64_t max)
     {
-        try
-        {
-            HotRangeResponse response =
-                    story_range_fetch.on(service_ph).timed(fetchDeadline, story_id, start_time, end_time, max_events);
-            return response;
-        }
-        catch(tl::timeout const&)
-        {
-            // tl::timeout is not a tl::exception
-            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} timed out after {} ms",
-                        to_string(keeperServiceId),
-                        fetchDeadline.count());
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} failed: {}",
-                        to_string(keeperServiceId),
-                        ex.what());
-        }
-        return unansweredResponse();
+        auto deadline = rpc::RpcDeadline::after(cap_);
+        auto owner = owner_.lock();
+        auto runtime = owner ? owner->runtime.lock() : nullptr;
+        if(!runtime || owner->closing())
+            return unansweredResponse();
+        auto reservation = runtime->reserve(deadline);
+        if(!reservation)
+            return unansweredResponse();
+        auto pending = fetchRangeAsync(std::move(reservation), story, start, end, max);
+        return waitForRange(pending);
     }
-
-    // Issue the same fetch without waiting for it. The player asks every keeper
-    // of a story, so issuing them all before waiting on any keeps one silent
-    // keeper from adding its deadline to each of the others. The handle is
-    // waited on with waitForRange.
-    tl::async_response
-    fetchRangeAsync(StoryId const& story_id, uint64_t start_time, uint64_t end_time, uint64_t max_events)
+    rpc::RpcPending<HotRangeResponse> fetchRangeAsync(rpc::RpcReservation reservation,
+                                                      StoryId story,
+                                                      uint64_t start,
+                                                      uint64_t end,
+                                                      uint64_t max,
+                                                      std::shared_ptr<rpc::FanoutIssueBarrier> barrier = {})
     {
-        return story_range_fetch.on(service_ph).timed_async(fetchDeadline, story_id, start_time, end_time, max_events);
+        auto owner = owner_.lock();
+        auto runtime = owner ? owner->runtime.lock() : nullptr;
+        if(!runtime || owner->closing())
+            return {};
+        return runtime->submit<HotRangeResponse>(
+                std::move(reservation),
+                std::make_shared<Fetch>(owner, route_, cap_, story, start, end, max, std::move(barrier)));
     }
-
-    // Wait on a handle from fetchRangeAsync, with the same failure contract as
-    // fetchRange: any failure is an empty response with answered = false.
-    HotRangeResponse waitForRange(tl::async_response& pending)
+    HotRangeResponse waitForRange(rpc::RpcPending<HotRangeResponse>& pending)
     {
-        try
-        {
-            HotRangeResponse response = pending.wait();
-            return response;
-        }
-        catch(tl::timeout const&)
-        {
-            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} timed out after {} ms",
-                        to_string(keeperServiceId),
-                        fetchDeadline.count());
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_WARNING("[KeeperHotFetchClient] story_range_fetch to {} failed: {}",
-                        to_string(keeperServiceId),
-                        ex.what());
-        }
-        return unansweredResponse();
+        auto result = pending.wait();
+        return result.reply ? std::move(*result.reply) : unansweredResponse();
     }
-
-    ServiceId const& getKeeperServiceId() const { return keeperServiceId; }
-
+    ServiceId const& getKeeperServiceId() const { return route_; }
     static HotRangeResponse unansweredResponse()
     {
-        HotRangeResponse unanswered;
-        unanswered.answered = false;
-        return unanswered;
+        HotRangeResponse value;
+        value.answered = false;
+        return value;
     }
-
-    // Leaves story_range_fetch registered: the engine registers an RPC once per
-    // name, so every client of every keeper shares that registration, and
-    // deregistering it here would cut off the others. The player deletes a
-    // client whenever two replays race to create one for the same keeper.
-    ~KeeperHotFetchClient() { LOG_DEBUG("[KeeperHotFetchClient] Destructor called {}", to_string(keeperServiceId)); }
 
 private:
-    ServiceId keeperServiceId;
-    std::chrono::milliseconds fetchDeadline;
-    tl::provider_handle service_ph;
-    tl::remote_procedure story_range_fetch;
-
-    // constructor is private to make sure thallium rpc objects are created on the heap, not stack
-    KeeperHotFetchClient(tl::engine& tl_engine,
-                         ServiceId const& keeper_service_id,
-                         std::chrono::milliseconds fetch_deadline)
-        : keeperServiceId(keeper_service_id)
-        , fetchDeadline(fetch_deadline)
+    friend class PlaybackService;
+    friend struct KeeperHotFetchClientTestAccess;
+    static rpc::RpcDeadline fanoutDeadline(rpc::RpcDeadline const& replay,
+                                           rpc::RpcDeadline::Clock::time_point phaseStarted,
+                                           std::chrono::milliseconds cap)
     {
-        std::string service_addr_string;
-        keeperServiceId.get_service_as_string(service_addr_string);
-        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), keeperServiceId.getProviderId());
-        story_range_fetch = tl_engine.define("story_range_fetch");
+        // One constituent phase includes reservation, lookup, issue and collect.
+        // It may shorten the replay's remaining budget, never extend it.
+        auto phase = rpc::RpcDeadline::fromStart(phaseStarted, cap);
+        return phase.expiresAt() < replay.expiresAt() ? phase : replay;
     }
+    class Fetch final: public rpc::OwnedRpcWork<HotRangeResponse>
+    {
+    public:
+        Fetch(std::shared_ptr<PlaybackRpcOwner> owner,
+              ServiceId route,
+              std::chrono::milliseconds cap,
+              StoryId story,
+              uint64_t start,
+              uint64_t end,
+              uint64_t max,
+              std::shared_ptr<rpc::FanoutIssueBarrier> barrier)
+            : barrier_(std::move(barrier))
+            , owner_(std::move(owner))
+            , route_(std::move(route))
+            , cap_(cap)
+            , story_(story)
+            , start_(start)
+            , end_(end)
+            , max_(max)
+        {}
+        rpc::RpcResult<HotRangeResponse> run(rpc::OperationContext& operation) override
+        {
+            bool dispatched = false, arrived = false;
+            struct Arrival
+            {
+                std::shared_ptr<rpc::FanoutIssueBarrier> barrier;
+                rpc::RpcDeadline const& deadline;
+                bool& arrived;
+                ~Arrival()
+                {
+                    if(barrier && !arrived)
+                        barrier->arriveAndWait(deadline);
+                }
+            } arrival{barrier_, operation.deadline(), arrived};
+            try
+            {
+                if(operation.deadline().expired() || owner_->closing())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                auto binding = owner_->provisionHotFetch(route_.getProviderId(), operation.deadline());
+                if(binding != CL_SUCCESS)
+                    return {binding, false, std::nullopt};
+                std::string address;
+                route_.get_service_as_string(address);
+                endpoint_.emplace(owner_->engine->lookup(address));
+                peer_.emplace(*endpoint_, route_.getProviderId());
+                call_.emplace(owner_->hotFetch.on(*peer_));
+                auto timeout = operation.deadline().cappedAttempt(cap_);
+                if(!timeout || owner_->closing() || !operation.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                dispatched = true;
+                pending_.emplace(call_->timed_async(*timeout, story_, start_, end_, max_));
+                arrived = true;
+                if(barrier_)
+                    barrier_->arriveAndWait(operation.deadline());
+                HotRangeResponse response = pending_->wait();
+                pending_.reset();
+                call_.reset();
+                return {CL_SUCCESS, true, std::move(response)};
+            }
+            catch(...)
+            {
+                return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
+            }
+        }
 
-    KeeperHotFetchClient() = delete;
-    KeeperHotFetchClient(KeeperHotFetchClient const&) = delete;
-    KeeperHotFetchClient& operator=(KeeperHotFetchClient const&) = delete;
+    private:
+        std::shared_ptr<rpc::FanoutIssueBarrier> barrier_;
+        std::shared_ptr<PlaybackRpcOwner> owner_;
+        ServiceId route_;
+        std::chrono::milliseconds cap_;
+        StoryId story_;
+        uint64_t start_, end_, max_;
+        std::optional<thallium::endpoint> endpoint_;
+        std::optional<thallium::provider_handle> peer_;
+        using Call = decltype(std::declval<thallium::remote_procedure>().on(std::declval<thallium::provider_handle>()));
+        std::optional<Call> call_;
+        std::optional<thallium::async_response> pending_;
+    };
+    KeeperHotFetchClient(std::shared_ptr<PlaybackRpcOwner> owner, ServiceId route, std::chrono::milliseconds cap)
+        : owner_(owner)
+        , route_(std::move(route))
+        , cap_(cap)
+    {}
+    std::weak_ptr<PlaybackRpcOwner> owner_;
+    ServiceId route_;
+    std::chrono::milliseconds cap_;
 };
-
 } // namespace chronolog
-
-#endif // KEEPER_HOT_FETCH_CLIENT_H
+#endif

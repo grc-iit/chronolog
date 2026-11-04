@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include "ClientRpcContext.h"
+#include <RpcFanout.h>
 #include <iostream>
 #include <string>
 
@@ -70,6 +71,11 @@ public:
                     observers_->beforeLookup();
                 if(operation.deadline().expired())
                     return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                auto binding = procedures_->provision(ClientRpcProcedures::RecordEvent,
+                                                      route_.getProviderId(),
+                                                      operation.deadline());
+                if(binding != CL_SUCCESS)
+                    return {binding, false, std::nullopt};
                 std::string address;
                 route_.get_service_as_string(address);
                 endpoint_.emplace(engine_.lookup(address));
@@ -121,32 +127,108 @@ public:
 
     ServiceId const& getRecordingServiceId() const { return recordingServiceId; }
 
-    // Per-RPC deadline (ms) for tail reads so a slow or hung keeper cannot block
-    // playback() indefinitely. Tail reads are served from the keeper's in-memory
-    // tail and normally return in well under a second; this is a generous ceiling
-    // (a hung keeper never responds, so any finite bound achieves the goal).
-    static constexpr int kTailReadRpcTimeoutMs = 5000;
-
-    // Tail-read phase 1 (async): issue tail_get_sequences without blocking and
-    // return a handle to wait on. Lets a caller fan out to all of a story's
-    // keepers concurrently so one slow/hung keeper cannot serialize the rest.
-    // wait() yields the sequences, or throws thallium::timeout after
-    // kTailReadRpcTimeoutMs (see gather_story_tail).
-    tl::async_response getTailSequencesAsync(StoryId const& story_id, uint64_t n)
+    // Each retained child has at most one native request at a time. Lookup,
+    // serialization, wait and native destruction all run on its charged worker.
+    class TailRequest
     {
-        return tail_get_sequences.on(service_ph)
-                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, n);
-    }
+    public:
+        TailRequest(tl::engine& engine, ServiceId route, std::shared_ptr<ClientRpcProcedures> procedures)
+            : engine_(engine)
+            , route_(std::move(route))
+            , procedures_(std::move(procedures))
+        {}
+        rpc::RpcResult<std::vector<EventSequence>> sequences(rpc::OperationContext& operation,
+                                                             StoryId story,
+                                                             size_t n,
+                                                             uint64_t cap,
+                                                             rpc::FanoutIssueBarrier& issued)
+        {
+            return call<std::vector<EventSequence>>(operation,
+                                                    ClientRpcProcedures::TailSequences,
+                                                    cap,
+                                                    issued,
+                                                    story,
+                                                    n);
+        }
+        rpc::RpcResult<std::vector<LogEvent>> events(rpc::OperationContext& operation,
+                                                     StoryId story,
+                                                     std::vector<EventSequence> const& sequences,
+                                                     uint64_t cap,
+                                                     rpc::FanoutIssueBarrier& issued)
+        {
+            return call<std::vector<LogEvent>>(operation,
+                                               ClientRpcProcedures::TailEvents,
+                                               cap,
+                                               issued,
+                                               story,
+                                               sequences);
+        }
 
-    // Tail-read phase 2 (async): issue tail_get_events without blocking and return
-    // a handle to wait on, so payloads can be fetched from all of a story's
-    // keepers concurrently. wait() yields the payloads, or throws
-    // thallium::timeout after kTailReadRpcTimeoutMs. `seqs` must stay alive until
-    // the returned handle is waited on.
-    tl::async_response getTailEventsAsync(StoryId const& story_id, std::vector<EventSequence> const& seqs)
+    private:
+        template <class Reply, class... Args>
+        rpc::RpcResult<Reply> call(rpc::OperationContext& operation,
+                                   ClientRpcProcedures::Name name,
+                                   uint64_t cap,
+                                   rpc::FanoutIssueBarrier& issued,
+                                   Args const&... args)
+        {
+            bool dispatched = false, arrived = false;
+            struct Arrival
+            {
+                rpc::FanoutIssueBarrier& barrier;
+                rpc::RpcDeadline const& deadline;
+                bool& arrived;
+                ~Arrival()
+                {
+                    if(!arrived)
+                        barrier.arriveAndWait(deadline);
+                }
+            } arrival{issued, operation.deadline(), arrived};
+            try
+            {
+                if(operation.deadline().expired())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                auto binding = procedures_->provision(name, route_.getProviderId(), operation.deadline());
+                if(binding != CL_SUCCESS)
+                    return {binding, false, std::nullopt};
+                if(!peer_)
+                {
+                    std::string address;
+                    route_.get_service_as_string(address);
+                    endpoint_.emplace(engine_.lookup(address));
+                    peer_.emplace(*endpoint_, route_.getProviderId());
+                }
+                call_.emplace(procedures_->calls[name].on(*peer_));
+                auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(cap));
+                if(!timeout || !operation.tryBeginDispatch())
+                    return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+                dispatched = true;
+                pending_.emplace(call_->timed_async(*timeout, args...));
+                arrived = true;
+                issued.arriveAndWait(operation.deadline());
+                Reply reply = pending_->wait();
+                pending_.reset();
+                call_.reset();
+                return {CL_SUCCESS, true, std::move(reply)};
+            }
+            catch(...)
+            {
+                // Never destroy a possibly active request after a local timeout.
+                return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
+            }
+        }
+        tl::engine& engine_;
+        ServiceId route_;
+        std::shared_ptr<ClientRpcProcedures> procedures_;
+        std::optional<tl::endpoint> endpoint_;
+        std::optional<tl::provider_handle> peer_;
+        using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
+        std::optional<Call> call_;
+        std::optional<tl::async_response> pending_;
+    };
+    std::unique_ptr<TailRequest> prepareTail()
     {
-        return tail_get_events.on(service_ph)
-                .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
+        return std::make_unique<TailRequest>(engine_, recordingServiceId, procedures_);
     }
 
     ~KeeperRecordingClient() = default;
@@ -157,9 +239,6 @@ private:
     std::shared_ptr<AppendObservers const> appendObservers_;
     std::shared_ptr<ClientRpcProcedures> procedures_;
     ServiceId recordingServiceId;
-    tl::provider_handle service_ph; //provider_handle for remote registry service
-    tl::remote_procedure tail_get_sequences;
-    tl::remote_procedure tail_get_events;
 
     // constructor is private to make sure thalium rpc objects are created on the heap, not stack
     KeeperRecordingClient(tl::engine& tl_engine,
@@ -168,16 +247,7 @@ private:
         : engine_(tl_engine)
         , procedures_(std::move(procedures))
         , recordingServiceId(keeper_service_id)
-    {
-        LOG_DEBUG("[KeeperRecordingClient] KeeperRecordingiClient Constructor for {}", to_string(keeper_service_id));
-        std::string service_addr_string;
-        recordingServiceId.get_service_as_string(service_addr_string);
-
-        service_ph = tl::provider_handle(tl_engine.lookup(service_addr_string), recordingServiceId.getProviderId());
-
-        tail_get_sequences = procedures_->calls[ClientRpcProcedures::TailSequences];
-        tail_get_events = procedures_->calls[ClientRpcProcedures::TailEvents];
-    }
+    {}
 
 
     KeeperRecordingClient() = delete;
