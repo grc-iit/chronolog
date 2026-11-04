@@ -203,6 +203,34 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(archive_manifest_test DESTINATION tests)
 endif()
 
+# answerChunkSender (GTest): a failed answer to a chunk sender does not leave
+# the grapher's or the player's receive_story_chunk
+add_executable(chunk_sender_answer_test
+    chrono_common_chunk_sender_answer_test.cpp
+)
+
+target_include_directories(chunk_sender_answer_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_compile_definitions(chunk_sender_answer_test PRIVATE
+    CHRONOLOG_GRAPHER_RECORDING_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-grapher/include/GrapherRecordingService.h"
+    CHRONOLOG_CHUNK_CONSUMER_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-common/include/StoryChunkConsumerService.h"
+)
+
+target_link_libraries(chunk_sender_answer_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(chunk_sender_answer_test PROPERTIES OUTPUT_NAME chronolog-test-common-chunk-sender-answer)
+gtest_discover_tests(chunk_sender_answer_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chunk_sender_answer_test DESTINATION tests)
+endif()
+
 # StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
 add_executable(chunk_extractor_csv_test
     chrono_common_chunk_extractor_csv_test.cpp

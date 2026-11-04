@@ -6,6 +6,7 @@
 #include <thallium.hpp>
 
 #include <ChunkReceipt.h>
+#include <ChunkSenderAnswer.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <cereal/archives/binary.hpp>
 
@@ -81,7 +82,7 @@ public:
                 LOG_ERROR("[StoryChunkConsumerService] Discarding the story chunk, responding {} to Keeper", ret);
                 ChunkReceipt failure;
                 failure.bytes = ret;
-                answer(request, failure);
+                answerChunkSender(request, failure, "StoryChunkConsumerService");
                 return;
             }
 #ifndef NDEBUG
@@ -103,7 +104,7 @@ public:
             // When the keeper cannot be answered (it died, or the network timed
             // the handle out), the chunk is kept: the keeper sends it again later and
             // reads drop the second copy.
-            answer(request, receipt);
+            answerChunkSender(request, receipt, "StoryChunkConsumerService");
             LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -116,7 +117,7 @@ public:
                       tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 20000000 + tl::thread::self_id();
-            answer(request, failure);
+            answerChunkSender(request, failure, "StoryChunkConsumerService");
             return;
         }
         catch(tl::exception const& ex)
@@ -128,28 +129,11 @@ public:
                         tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 30000000 + tl::thread::self_id();
-            answer(request, failure);
+            answerChunkSender(request, failure, "StoryChunkConsumerService");
         }
     }
 
 private:
-    // Answers the sending keeper. A thallium error here (the keeper died, or
-    // the network timed the handle out) is logged and swallowed: thrown out of
-    // the handler it would end the process.
-    static void answer(tl::request const& request, ChunkReceipt const& receipt)
-    {
-        try
-        {
-            request.respond(receipt);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_WARNING("[StoryChunkConsumerService] Could not answer the StoryChunk sender: {}, ThreadID={}",
-                        ex.what(),
-                        tl::thread::self_id());
-        }
-    }
-
     StoryChunkConsumerService(tl::engine& tl_engine,
                               uint16_t service_provider_id,
                               StoryChunkIngestionQueue& ingestion_queue)

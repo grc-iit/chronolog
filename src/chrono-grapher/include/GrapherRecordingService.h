@@ -16,6 +16,7 @@
 #include <chronolog_types.h>
 #include <ServiceId.h>
 #include <StoryChunk.h>
+#include <ChunkSenderAnswer.h>
 
 #include "ChunkIngestionQueue.h"
 #include "StoryWatermarkRegistry.h"
@@ -92,7 +93,7 @@ public:
                 LOG_ERROR("[GrapherRecordingService] Discarding the story chunk, responding {} to Keeper", ret);
                 ChunkReceipt failure;
                 failure.bytes = ret;
-                answer(request, failure);
+                answerChunkSender(request, failure, "GrapherRecordingService");
                 return;
             }
 #ifndef NDEBUG
@@ -127,7 +128,7 @@ public:
             // the handle out), the chunk is kept: it is written, and its receipt
             // settles; the keeper, not knowing the receipt, sends it again later
             // and reads drop the second copy.
-            answer(request, receipt);
+            answerChunkSender(request, receipt, "GrapherRecordingService");
             LOG_DEBUG("[GrapherRecordingService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -140,7 +141,7 @@ public:
                       tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 20000000 + tl::thread::self_id();
-            answer(request, failure);
+            answerChunkSender(request, failure, "GrapherRecordingService");
             return;
         }
         catch(tl::exception const& ex)
@@ -152,28 +153,11 @@ public:
                         tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 30000000 + tl::thread::self_id();
-            answer(request, failure);
+            answerChunkSender(request, failure, "GrapherRecordingService");
         }
     }
 
 private:
-    // Answers the sending keeper. A thallium error here (the keeper died, or
-    // the network timed the handle out) is logged and swallowed: thrown out of
-    // the handler it would end the process.
-    static void answer(tl::request const& request, ChunkReceipt const& receipt)
-    {
-        try
-        {
-            request.respond(receipt);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_WARNING("[GrapherRecordingService] Could not answer the StoryChunk sender: {}, ThreadID={}",
-                        ex.what(),
-                        tl::thread::self_id());
-        }
-    }
-
     GrapherRecordingService(tl::engine& tl_engine,
                             uint16_t service_provider_id,
                             ChunkIngestionQueue& ingestion_queue,
