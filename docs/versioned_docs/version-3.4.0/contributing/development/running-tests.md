@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 798 CTest entries: 751 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 805 CTest entries: 758 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -82,7 +82,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoCommon_DataStoreConf` | 6 | `chrono_common_data_store_conf_test.cpp` | Validation of the DataStoreInternals settings |
 | `Unit_ChronoCommon_ExtractionModule` | 5 | `chrono_common_extraction_module_test.cpp` | The drain loop shared by the keeper and the grapher |
 | `Unit_ChronoCommon_LogEventCodec` | 5 | `chrono_common_log_event_codec_test.cpp` | The byte layout of a keeper WAL event, and how a cut, oversized or newer-version encoding is refused |
-| `Unit_ChronoCommon_ChunkSenderAnswer` | 4 | `chrono_common_chunk_sender_answer_test.cpp` | The grapher's and the player's answer to a chunk sender: a thallium error from it does not leave the handler, and both handlers answer only through it |
+| `Unit_ChronoCommon_ChunkSenderAnswer` | 6 | `chrono_common_chunk_sender_answer_test.cpp` | The answer an RPC handler gives its caller: a thallium error from it does not leave the handler, and the grapher's, the player's and the keeper's handlers answer only through it |
 | `Unit_ChronoCommon_Crc32c` | 3 | `chrono_common_crc32c_test.cpp` | The SSE4.2 path and the boost fallback of CRC-32C agree |
 | `Unit_ChronoCommon_ChunkExtractorCSV` | 2 | `chrono_common_chunk_extractor_csv_test.cpp` | The CSV extractor and empty windows |
 | `Unit_ChronoCommon_ExtractionChainConfig` | 1 | `chrono_common_extraction_chain_config_test.cpp` | Parsing extraction chain configurations (custom `main`, not GTest) |
@@ -96,7 +96,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoKeeper_WalRecoveryTest` | 37 | `chrono_keeper_wal_recovery_test.cpp` | Reading a WAL at startup: log order, torn tails, bad records in the last group and in earlier ones, the copy of a zeroed tail, unknown versions, dropped stories and `dropped-unlogged` |
 | `Unit_ChronoKeeper_WalFileSinkTest` | 22 | `chrono_keeper_wal_file_sink_test.cpp` | The WAL's file layer and its fault-injecting test sink: `flock`, zeroed files, `writev`, renames, directory sync, held and failed syncs |
 | `Unit_ChronoKeeper_WalSegmentManagerTest` | 17 | `chrono_keeper_wal_segment_manager_test.cpp` | Segment headers, the spare prepared ahead on its own stream, adopting a header-only segment, and an idle preparer that does not spin |
-| `Unit_ChronoKeeper_KeeperDurableWriter` | 18 | `chrono_keeper_durable_writer_test.cpp` | The durable write path: its checks and their order, the cap on unconfirmed chunks, the pipeline it starts for an unknown story, ingestion only after the sync, a retry that joins an earlier attempt, and shutdown |
+| `Unit_ChronoKeeper_KeeperDurableWriter`, `Unit_ChronoKeeper_KeeperWriteGate` | 23 | `chrono_keeper_durable_writer_test.cpp` | The durable write path: its checks and their order, the cap on unconfirmed chunks, the shutdown gate for accepted writes, a pipeline a durable write started kept while events arrive, the pipeline it starts for an unknown story, ingestion only after the sync, a retry that joins an earlier attempt, and shutdown |
 | `Unit_ChronoKeeper_WalFormat` | 14 | `chrono_keeper_wal_format_test.cpp` | The record frames: length, CRC32C, segment header and group record, and how a cut or flipped frame is read |
 | `Unit_ChronoKeeper_KeeperWalConf` | 12 | `chrono_keeper_wal_conf_test.cpp` | Parsing and validating the `WAL` configuration block |
 | `Unit_ChronoKeeper_WalMountCheck` | 11 | `chrono_keeper_wal_mount_check_test.cpp` | The startup warnings about the WAL directory: NFS, tmpfs, overlay, the root device and low space |

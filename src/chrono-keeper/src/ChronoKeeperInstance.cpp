@@ -727,6 +727,9 @@ int main(int argc, char** argv)
     // Every durable handler has its answer now; let them, and any write that
     // arrived just before stopAcceptingWrites, return before the service and
     // its RPCs go.
+    // A handler still answering when the service is deleted crashes the
+    // keeper in Mercury (the delete deregisters its RPC). Waiting longer is no
+    // cure: refused writes keep starting handlers while clients write.
     if(!keeperRecordingService->waitForWriteHandlers(std::chrono::milliseconds(200), std::chrono::seconds(10)))
     {
         LOG_WARNING("[ChronoKeeperInstance] Write handlers still running 10 s after the WAL stopped; deleting the "

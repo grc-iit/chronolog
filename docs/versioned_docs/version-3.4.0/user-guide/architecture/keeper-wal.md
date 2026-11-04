@@ -49,7 +49,7 @@ RPC, `record_event_durable`, that also carries the chronicle and story names. Th
    concurrent durable writes share a sync;
 7. after the sync, puts the event into the ingestion queue like any accepted event, and answers
    `CL_SUCCESS`. From here on the event is sealed, shipped, archived, tail-read and replayed exactly
-   as an accepted event is. Only the call that queued the event's record ingests it: a retry that
+   as an accepted event is, except after a keeper restart (see [Recovery](#recovery)). Only the call that queued the event's record ingests it: a retry that
    found the first attempt still on its way to the WAL, and joined it, does not ingest the event a
    second time.
 
@@ -177,7 +177,10 @@ registers with the visor:
 7. It splits the recovered events into sealed chunks aligned to `story_chunk_duration_secs`, and the
    normal extraction path sends them to the grapher. The grapher usually has no pipeline for those
    stories and adopts the chunks by their chronicle and story names. Its confirmations come back to
-   this keeper and release the records.
+   this keeper and release the records. A replay returns the recovered events from this keeper
+   until they are archived, and from the archive after that. Tail reads (`playback`) do not return
+   them: the keeper holds them for shipping, not in a story's tail, so a tail read after a restart
+   shows only the events written since.
 
 A story whose chronicle and story names the WAL does not hold cannot be replayed. The keeper logs an
 error naming the story and its segments, and its events do not keep their segments, so they cannot
@@ -208,7 +211,9 @@ for its sync is still synced and answered, and a client that holds a story on th
 answer. The keeper then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its
 chunks, stops the WAL, which syncs and answers everything queued and writes `exit-summary`, and
 deletes the recording service once no write handler has run for 200 ms (waiting at most 10
-seconds).
+seconds). A handler still answering a client when the service is deleted crashes the keeper at that
+point: for example one answering a client that has gone, over `ofi+tcp`. By then the WAL has
+stopped and `exit-summary` is written, so no acknowledged durable write is lost.
 
 Deleting the service deregisters all its RPCs, including `tail_get_sequences`. From then on a
 durable write fails as it does against a dead keeper: the client's probe gets no answer, so it
