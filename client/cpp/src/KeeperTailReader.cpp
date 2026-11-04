@@ -17,6 +17,7 @@ struct TailMailbox
 {
     std::atomic<bool> ready{false}, selected{false};
     int status = CL_ERR_UNKNOWN;
+    bool timedOut = false;
     std::vector<EventSequence> sequences, selection;
 };
 struct TailShared
@@ -60,6 +61,7 @@ public:
         auto& mailbox = shared_->sources[index_];
         auto sequences = request_->sequences(operation, story_, n_, cap_, shared_->sequenceIssued);
         mailbox.status = sequences.status;
+        mailbox.timedOut = request_->timedOut();
         if(sequences.reply)
             mailbox.sequences = std::move(*sequences.reply);
         mailbox.ready.store(true, std::memory_order_release);
@@ -134,14 +136,17 @@ int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
         pending[i] = runtime.submit<TailReply>(
                 std::move(reservations[i]),
                 std::make_shared<TailChild>(shared, i, keepers[i]->prepareTail(), story, n, cap));
-    bool incomplete = false;
+    bool incomplete = false, sourceTimedOut = false;
     size_t answered = 0;
     std::map<EventSequence, size_t> sequences;
     for(size_t i = 0; i < keepers.size(); ++i)
     {
         auto& source = shared->sources[i];
         while(!source.ready.load(std::memory_order_acquire) && !deadline.expired()) pause(deadline);
-        if(!source.ready.load(std::memory_order_acquire) || source.status != CL_SUCCESS)
+        bool ready = source.ready.load(std::memory_order_acquire);
+        if(ready)
+            sourceTimedOut |= source.timedOut;
+        if(!ready || source.status != CL_SUCCESS)
         {
             incomplete = true;
             continue;
@@ -180,7 +185,7 @@ int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
     output.reserve(assembled.size());
     for(auto& event: assembled) output.push_back(std::move(event.second));
     if(!answered)
-        return deadline.expired() ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
+        return deadline.expired() || sourceTimedOut ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_UNKNOWN;
     if(assembled.size() < take || incomplete)
         return output.empty() && deadline.expired() ? CL_ERR_QUERY_TIMED_OUT : CL_ERR_PARTIAL_RESULT;
     return CL_SUCCESS;

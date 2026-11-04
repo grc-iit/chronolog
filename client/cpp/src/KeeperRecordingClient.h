@@ -164,6 +164,8 @@ public:
                                                sequences);
         }
 
+        bool timedOut() const noexcept { return timedOut_; }
+
     private:
         template <class Reply, class... Args>
         rpc::RpcResult<Reply> call(rpc::OperationContext& operation,
@@ -172,6 +174,7 @@ public:
                                    rpc::FanoutIssueBarrier& issued,
                                    Args const&... args)
         {
+            timedOut_ = false;
             bool dispatched = false, arrived = false;
             struct Arrival
             {
@@ -211,6 +214,13 @@ public:
                 call_.reset();
                 return {CL_SUCCESS, true, std::move(reply)};
             }
+            catch(tl::timeout const&)
+            {
+                // Preserve the caller-visible cause independently of native
+                // settlement. The unknown callable and slot remain retained.
+                timedOut_ = true;
+                return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
+            }
             catch(...)
             {
                 // Never destroy a possibly active request after a local timeout.
@@ -225,6 +235,7 @@ public:
         using Call = decltype(std::declval<tl::remote_procedure>().on(std::declval<tl::provider_handle>()));
         std::optional<Call> call_;
         std::optional<tl::async_response> pending_;
+        bool timedOut_ = false;
     };
     std::unique_ptr<TailRequest> prepareTail()
     {

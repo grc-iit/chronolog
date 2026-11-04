@@ -145,6 +145,37 @@ TEST_P(TailDeadline, FailedSourceReturnsUsablePartialAndKeepsItsUnknownSlotCharg
     EXPECT_EQ(CL_ERR_RPC_CAPACITY, handle.second->playback(2, events));
     EXPECT_EQ(2u, peer.state().sequenceCalls.load());
 }
+TEST_P(TailDeadline, TwoSourceTimeoutsKeepClassificationBeforeTotalExpiryAndRetainUnknownSlots)
+{
+    test::NativePeer peer(GetParam(), true);
+    peer.state().keeperCount = 2;
+    peer.state().sequenceDelayMs = 100;
+    peer.portal.RPC_POLICY.tail_ms = 300;
+    peer.portal.RPC_POLICY.attempt_ms = 40;
+    auto owner = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
+    ASSERT_EQ(CL_SUCCESS, owner->Connect());
+    auto handle = owner->AcquireStory("tail", "a");
+    ASSERT_EQ(CL_SUCCESS, handle.first);
+    std::vector<Event> events;
+    Clock::duration elapsed{};
+    EXPECT_EQ(CL_ERR_QUERY_TIMED_OUT, playbackWhenAdmitted(handle.second, 2, events, peer.state(), &elapsed));
+    EXPECT_LT(elapsed, 300ms);
+    EXPECT_EQ(2u, peer.state().sequenceCalls.load());
+    EXPECT_EQ(0u, peer.state().payloadCalls.load());
+    EXPECT_TRUE(events.empty());
+    std::fprintf(stderr,
+                 "B08 source attempts: elapsed=%lld ms forwards=%u replies=%u\n",
+                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()),
+                 peer.state().sequenceCalls.load(),
+                 peer.state().sequenceReplies.load());
+    events.emplace_back(999, 7, 3, "caller-owned sentinel");
+    ASSERT_TRUE(peer.until([&] { return peer.state().sequenceReplies.load() == 2; }));
+    ASSERT_EQ(1u, events.size());
+    EXPECT_EQ("caller-owned sentinel", events.front().log_record());
+    EXPECT_EQ(CL_ERR_RPC_CAPACITY, handle.second->playback(2, events));
+    EXPECT_EQ(2u, peer.state().sequenceCalls.load());
+    EXPECT_EQ(0u, peer.state().payloadCalls.load());
+}
 TEST_P(TailDeadline, ReleaseAndFinalFacadeDropRetainTailChildAndNeverTouchReturnedOutput)
 {
     test::NativePeer peer(GetParam(), true);

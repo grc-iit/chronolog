@@ -1,6 +1,7 @@
 #ifndef PLAYBACK_SERVICE_H
 #define PLAYBACK_SERVICE_H
 
+#include <functional>
 #include <string>
 #include <cstdint>
 #include <iostream>
@@ -32,9 +33,7 @@ public:
                                                   PlayerDataStore& activeDataStore,
                                                   ArchiveReadingRequestQueue& archiveReadingQueue)
     {
-        auto* service = new PlaybackService(owner, service_provider_id, activeDataStore, archiveReadingQueue);
-        owner->provider.reset(service);
-        return service;
+        return CreatePlaybackService(owner, service_provider_id, activeDataStore, archiveReadingQueue, {});
     }
 
     ~PlaybackService();
@@ -51,10 +50,34 @@ public:
                                 chrono_time const& end_time);
 
 private:
+    friend struct PlaybackServiceTestAccess;
+    using RegistrationObserver = std::function<void(PlaybackService&, bool)>;
+    static PlaybackService* CreatePlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
+                                                  uint16_t service_provider_id,
+                                                  PlayerDataStore& activeDataStore,
+                                                  ArchiveReadingRequestQueue& archiveReadingQueue,
+                                                  RegistrationObserver observer)
+    {
+        if(owner->provider)
+            throw tl::exception("Playback service provider already exists");
+        auto service = std::shared_ptr<PlaybackService>(new PlaybackService(owner,
+                                                                            service_provider_id,
+                                                                            activeDataStore,
+                                                                            archiveReadingQueue,
+                                                                            std::move(observer)));
+        // Registration publishes callbacks containing this provider's address.
+        // Keep the actual object even if registration or later setup throws.
+        owner->provider = service;
+        service->registerProcedures();
+        return service.get();
+    }
     PlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                     uint16_t service_provider_id,
                     PlayerDataStore& activeDataStore,
-                    ArchiveReadingRequestQueue& reading_queue);
+                    ArchiveReadingRequestQueue& reading_queue,
+                    RegistrationObserver observer);
+
+    void registerProcedures();
 
     PlaybackService() = delete;
     PlaybackService(PlaybackService const&) = delete;
@@ -73,6 +96,8 @@ private:
     // guards the hot-fetch client cache only; never held across RPCs
     std::mutex hotFetchMutex;
     std::map<service_endpoint, KeeperHotFetchClient*> hotFetchClients;
+    // Private fault observer; empty in production. It replaces no registration.
+    RegistrationObserver registrationObserver_;
 };
 
 } // namespace chronolog

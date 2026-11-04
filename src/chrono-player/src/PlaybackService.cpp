@@ -16,20 +16,29 @@ namespace chl = chronolog;
 chronolog::PlaybackService::PlaybackService(std::shared_ptr<PlaybackRpcOwner> const& owner,
                                             uint16_t service_provider_id,
                                             chronolog::PlayerDataStore& activeDataStore,
-                                            chronolog::ArchiveReadingRequestQueue& archive_reading_queue)
+                                            chronolog::ArchiveReadingRequestQueue& archive_reading_queue,
+                                            RegistrationObserver observer)
     : tl::provider<PlaybackService>(*owner->engine, service_provider_id)
     , owner_(owner)
     , playbackEngine(*owner->engine)
     , theActiveDataStore(activeDataStore)
     , theArchiveReadingRequestQueue(archive_reading_queue)
+    , registrationObserver_(std::move(observer))
+{}
+
+void chronolog::PlaybackService::registerProcedures()
 {
+    if(registrationObserver_)
+        registrationObserver_(*this, false);
     define("playback_service_available", &PlaybackService::playback_service_available);
+    if(registrationObserver_)
+        registrationObserver_(*this, true);
     define("story_playback_request", &PlaybackService::story_playback_request);
 
 
     std::stringstream ss;
     ss << get_engine().self();
-    LOG_INFO("[PlaybackService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
+    LOG_INFO("[PlaybackService] Constructed at {}. ProviderID={}", ss.str(), get_provider_id());
 }
 
 ////////////////////

@@ -101,3 +101,33 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(playback_service_test DESTINATION tests)
 endif()
 
+
+# Real provider startup, including failure after the first native registration.
+find_package(GTest REQUIRED)
+include(GoogleTest)
+add_executable(playback_service_startup_test
+    chrono_player_playback_service_startup_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
+)
+target_include_directories(playback_service_startup_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(playback_service_startup_test PRIVATE
+    GTest::gtest_main chrono_common chronolog_client thallium
+)
+set_target_properties(playback_service_startup_test PROPERTIES
+    OUTPUT_NAME chronolog-test-player-playback-service-startup
+    BUILD_WITH_INSTALL_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+)
+gtest_discover_tests(playback_service_startup_test
+    TEST_PREFIX "Functional_ChronoPlayer_" PROPERTIES TIMEOUT 30
+)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(playback_service_startup_test DESTINATION tests)
+endif()
