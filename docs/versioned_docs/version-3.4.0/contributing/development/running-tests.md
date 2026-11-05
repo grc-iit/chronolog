@@ -269,16 +269,22 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/watermark_exact_split_test.sh   # ~3 min, expect 20/20
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
-  tests/integration/keeper_wal_crash_test.sh        # ~3 min, expect 8/8
+  tests/integration/keeper_wal_crash_test.sh        # ~4 min, expect 11/11
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/keeper_wal_off_test.sh          # ~3 min, expect 8/8
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/keeper_restart_held_test.sh     # ~8 min, expect 11/11 on ofi+sockets, 8/11 on ofi+tcp
 WORK_DIR=~/chronolog-install/chronolog \
   tests/integration/keeper_wal_group_test.sh        # ~2 min, expect 2/2
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_wal_cap_test.sh          # ~3 min, expect 5/5
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_wal_shutdown_test.sh     # ~2 min, expect 5/5
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/keeper_wal_startup_test.sh      # ~3 min, expect 6/6
 ```
 
-The first three `keeper_*` scripts run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations of the four are estimates from the scripts' timing settings.
+`keeper_wal_crash_test.sh`, `keeper_wal_off_test.sh`, `keeper_restart_held_test.sh`, `keeper_wal_cap_test.sh`, `keeper_wal_shutdown_test.sh` and `keeper_wal_startup_test.sh` run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. The startup script also runs `chronolog-test-wal-fixture`, and the shutdown script preloads `libchronolog_wal_sync_hold.so`, both from the same build directory. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations are estimates from the scripts' timing settings.
 
 | Script | What it protects |
 |---|---|
@@ -286,7 +292,10 @@ The first three `keeper_*` scripts run `chronolog-test-durable-probe`, which is 
 | `watermark_replay_split_test.sh` | A replay returns the same events whether they are on the keepers, archived, or split across both, with no duplicates. |
 | `replay_fanout_timing_test.sh` | The player fetches from its keepers together: two keepers frozen with SIGSTOP cost one deadline, not two. |
 | `watermark_exact_split_test.sh` | A replay splits exactly where the watermark puts it, while the data is on the keepers, archived, split, with the grapher stopped and after it resumes; one archive file per window, none rewritten. |
-| `keeper_wal_crash_test.sh` | A keeper killed with SIGKILL right after it acknowledged durable writes ships every one of them to the archive once restarted, each exactly once in a replay, and the WAL segment is deleted after the grapher confirms. Accepted writes made just before the same kill are lost, which is the negative control. |
+| `keeper_wal_crash_test.sh` | A keeper killed with SIGKILL right after it acknowledged durable writes ships every one of them to the archive once restarted, each exactly once in a replay, and the WAL segment is deleted after the grapher confirms. Before that archive write, a replay already returns them from the restarted keeper, and sending the same identities again does not store a second copy. Accepted writes made just before the same kill are lost, which is the negative control. |
+| `keeper_wal_cap_test.sh` | With the grapher stopped and `durable_cap_mb` at 1, durable writes that sealed into an unconfirmed chunk make the next durable write return `CL_ERR_DURABILITY_FULL` with nothing stored. After the grapher runs, durable writes are admitted again and every acknowledged identity is replayed once. |
+| `keeper_wal_shutdown_test.sh` | A durable write observed inside its group `fdatasync` is still answered `CL_SUCCESS` when the keeper is sent SIGTERM, a durable write after that gets `CL_ERR_DURABILITY_UNAVAILABLE` and is not stored, and the exit summary reports the events the grapher had not confirmed. |
+| `keeper_wal_startup_test.sh` | A keeper whose older WAL segment contains a bad record exits without changing the files. A bad record in the last group, with an intact record after it, is copied aside and zeroed, the keeper stays up, and a replay returns the earlier event and not the intact one that followed the bad record. |
 | `keeper_wal_off_test.sh` | A durable write to a keeper with the WAL off, and to a v3.3.0 keeper, gets `CL_ERR_DURABILITY_UNAVAILABLE` at once with no retry and stores nothing, while accepted writes to the same keepers still work. The v3.3.0 keeper is `V330_KEEPER`; if that file is missing, the script builds the `v3.3.0` tag on first use, which takes several minutes. |
 | `keeper_restart_held_test.sh` | A keeper restarted while clients hold stories gets its pipelines back from the visor, accepts and durably stores new writes, is reached by the player's hot fetch, and the client reconnects at the same address; the durable events it acknowledged before the kill are recovered from its WAL. It runs once per protocol (the template's, then `ofi+tcp`). On `ofi+tcp` 3 of the 11 checks fail until two missing RPC deadlines are fixed: an accepted `record_event` to a dead keeper, and the visor's `start_story_recording` to it, wait without a deadline. |
 | `keeper_wal_group_test.sh` | One `fdatasync` covers many durable writes: with 64 MPI ranks writing to one keeper whose RPC pool has 4 streams, a synced group holds more than 4 events. |

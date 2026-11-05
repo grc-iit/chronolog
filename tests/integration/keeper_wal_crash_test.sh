@@ -19,18 +19,27 @@
 #   1. The kill came within KILL_WITHIN_SECS of the last durable ack and less
 #      than K_ACCEPT_SECS after the first accepted event, and the killed keeper
 #      left no exit-summary.
-#   2. The restarted keeper recovers the WAL and ships the durable events: the
-#      archive holds at least EVENTS events of the durable story, and the
-#      segment that held their records stays until it does.
-#   3. A replay of the durable story returns every acknowledged identity
+#   2. Before the grapher has written the durable story, a replay returns every
+#      acknowledged durable identity exactly once. The grapher windows are
+#      pinned long enough that this replay happens while the events are still
+#      only on the restarted keeper.
+#   3. Sending those same identities again, through record_event_durable, is
+#      answered CL_SUCCESS and does not grow a WAL segment.
+#   4. The restarted keeper ships the durable events: the archive holds at
+#      least EVENTS events of the durable story, and the segment that held
+#      their records stays until it does.
+#   5. A replay of the durable story returns every acknowledged identity
 #      exactly once (no identity missing, no (time, client id) twice).
-#   4. Negative control: a replay of the accepted story, answered CL_SUCCESS,
+#   6. Negative control: a replay of the accepted story, answered CL_SUCCESS,
 #      misses at least one acknowledged event.
-#   5. Once the grapher confirmed the recovered chunks, the segment that held
+#   7. Once the grapher confirmed the recovered chunks, the segment that held
 #      the durable records is deleted and the WAL directory holds at most two
 #      *.wal files: the active segment and the spare.
-#   6. deploy_local.sh --stop reads the keeper's exit-summary with no pending
+#   8. deploy_local.sh --stop reads the keeper's exit-summary with no pending
 #      durable events.
+#
+# The script reports 11 checks. The kill's timing and the acceptance window
+# are counted separately, as are the retry's answer and the segment sizes.
 #
 # The accepted and durable writes share one deployment and one kill, so the
 # negative control runs under the same conditions as the durable run.
@@ -58,6 +67,7 @@ MONITOR_DIR="$WORK_DIR/monitor"
 OUTPUT_DIR="$WORK_DIR/output"
 CONF_TEMPLATE="$WORK_DIR/conf/default-chrono-conf.json"
 CLIENT_CONF="$WORK_DIR/conf/default-chrono-client-conf.json"
+KEEPER_CONF="$WORK_DIR/conf/chrono-keeper-conf-1.json"
 DEPLOY="$WORK_DIR/tools/deploy/deploy_local.sh"
 PROBE="$BUILD_DIR/tests/integration/keeper-wal/chronolog-test-durable-probe"
 # deploy_local.sh puts keeper n's WAL in work_dir/wal/keeper-<n>
@@ -73,9 +83,10 @@ KILL_WITHIN_SECS=2
 # before any accepted chunk ships (see above)
 K_CHUNK_SECS=10
 K_ACCEPT_SECS=15
-# grapher windows patched small so the archive is written soon after the restart
-G_CHUNK_SECS=10
-G_ACCEPT_SECS=15
+# grapher windows pinned long enough that the hot replay and the identity retry
+# both finish before the archive is written; the archive wait below covers them
+G_CHUNK_SECS=30
+G_ACCEPT_SECS=60
 REPORT_SECS=1
 VISIBILITY_SECS=3
 ARCHIVE_DEADLINE=240
@@ -104,6 +115,7 @@ now_ns() { date +%s%N; }
 keeper_pid() { pgrep -f "$WORK_DIR/bin/chrono-keeper --config" | head -1; }
 
 wal_segments() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' 2> /dev/null | wc -l; }
+wal_sizes() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' -printf '%f %s\n' 2> /dev/null | sort; }
 oldest_segment() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' -printf '%f\n' 2> /dev/null | sort | head -1; }
 
 h5_story_events() { # $1 = story; total events across its archive files
@@ -184,7 +196,7 @@ if [ "$(pgrep -c -f "$WORK_DIR/bin/chrono-")" -lt 4 ]; then
 fi
 # the writer and each replay probe bind their query services on ports of their
 # own, so a probe never waits for the previous one's port to be released
-for client in writer:${WRITER_QUERY_PORT:-5564} durable:${PROBE_QUERY_PORT:-5563} accepted:${ACCEPTED_QUERY_PORT:-5565}; do
+for client in writer:${WRITER_QUERY_PORT:-5564} durable:${PROBE_QUERY_PORT:-5563} accepted:${ACCEPTED_QUERY_PORT:-5565} hot:5566; do
     jq ".chrono_client.ClientQueryService.rpc.service_base_port = ${client#*:}" \
         "$CLIENT_CONF" > "$RUN_DIR/${client%%:*}_client_conf.json" || { say "${client%%:*} client conf patch failed"; exit 2; }
 done
@@ -230,6 +242,74 @@ say "restarting keeper 1"
 "$DEPLOY" --restart-keeper 1 -w "$WORK_DIR" > "$RUN_DIR/restart.out" 2>&1 ||
     { bad "restart: deploy_local.sh --restart-keeper 1 failed"; cat "$RUN_DIR/restart.out"; exit 1; }
 restart_ns=$(now_ns)
+
+# ---------------------------------------------------- hot replay ----
+# The grapher has not written these events yet. A keeper that recovered them
+# only by shipping them, and did not serve them itself, fails here.
+say "replaying $DURABLE_STORY from the restarted keeper, before the archive has it"
+hot_status=""
+hot_missing=-1
+hot_twice=-1
+hot_archived=-1
+deadline=$((SECONDS + 30))
+while [ $SECONDS -lt $deadline ]; do
+    [ -n "$(keeper_pid)" ] || break
+    hot_archived=$(h5_story_events "$DURABLE_STORY")
+    if [ "$hot_archived" -ne 0 ]; then
+        break
+    fi
+    replay_story "$DURABLE_STORY" hot
+    hot_status=$R_STATUS
+    hot_missing=$(comm -23 "$RUN_DIR/acked_durable" <(sort -u "$RUN_DIR/replay_hot.ids") | wc -l)
+    hot_twice=$(awk 'NR == FNR { acked[$1 " " $2] = 1; next } ($1 " " $2) in acked { n[$1 " " $2]++ }
+                     END { c = 0; for(k in n) if(n[k] > 1) c++; print c }' \
+                    "$RUN_DIR/acked_durable" "$RUN_DIR/replay_hot.ids")
+    if [ "$hot_status" = "CL_SUCCESS" ] && [ "$hot_missing" -eq 0 ] && [ "$hot_twice" -eq 0 ]; then
+        break
+    fi
+    sleep 2
+done
+if [ -z "$(keeper_pid)" ]; then
+    bad "hot replay: the restarted keeper exited; see $MONITOR_DIR/chrono-keeper-1.launch.log"
+elif [ "$hot_archived" -ne 0 ]; then
+    bad "hot replay: $hot_archived event(s) of $DURABLE_STORY were already in the archive; the replay did not test the keeper"
+elif [ "$hot_status" = "CL_SUCCESS" ] && [ "$hot_missing" -eq 0 ] && [ "$hot_twice" -eq 0 ]; then
+    ok "hot replay: all $EVENTS acknowledged durable identities came back, and the archive does not have them yet"
+else
+    bad "hot replay: status ${hot_status:-none}, $hot_missing missing, $hot_twice returned more than once, after 30s"
+fi
+
+# ---------------------------------------------------------- retry ----
+# The same identities again, while the recovered copies are still pending.
+# log_event would assign a new index, so the probe calls record_event_durable.
+keeper_proto=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "$KEEPER_CONF")
+keeper_ip=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_ip' "$KEEPER_CONF")
+keeper_port=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$KEEPER_CONF")
+keeper_provider=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_provider_id' "$KEEPER_CONF")
+wal_sizes > "$RUN_DIR/wal_before_retry"
+if [ "$hot_status" != "CL_SUCCESS" ] || [ "${hot_missing:-1}" -ne 0 ] || [ "${hot_archived:-1}" -ne 0 ]; then
+    bad "retry: skipped; the durable events were not still only on the restarted keeper"
+    bad "retry: WAL segment sizes not compared"
+else
+    "$PROBE" --chronicle "$CHRONICLE" --story "$DURABLE_STORY" --retry-file "$RUN_DIR/acked_durable" \
+        --keeper-protocol "$keeper_proto" --keeper-ip "$keeper_ip" --keeper-port "$keeper_port" \
+        --keeper-provider "$keeper_provider" > "$RUN_DIR/retry.out" 2>&1
+    retry_ok=$(sed -n 's/^RETRY_OK \([0-9][0-9]*\) .*/\1/p' "$RUN_DIR/retry.out")
+    retry_total=$(sed -n 's/^RETRY_OK [0-9][0-9]* \([0-9][0-9]*\)/\1/p' "$RUN_DIR/retry.out")
+    wal_sizes > "$RUN_DIR/wal_after_retry"
+    if [ "${retry_ok:-0}" -eq "$EVENTS" ] && [ "${retry_total:-0}" -eq "$EVENTS" ]; then
+        ok "retry: all $EVENTS acknowledged identities were answered CL_SUCCESS again"
+    else
+        bad "retry: ${retry_ok:-0} of ${retry_total:-0} identities answered CL_SUCCESS, wanted $EVENTS"
+        grep '^RETRY ' "$RUN_DIR/retry.out" | grep -v 'CL_SUCCESS' | head -5 | sed 's/^/    /'
+    fi
+    if cmp -s "$RUN_DIR/wal_before_retry" "$RUN_DIR/wal_after_retry"; then
+        ok "retry: no WAL segment grew"
+    else
+        bad "retry: a WAL segment changed size, so an identity already durable was written again"
+        diff -u "$RUN_DIR/wal_before_retry" "$RUN_DIR/wal_after_retry" | sed 's/^/    /'
+    fi
+fi
 
 say "waiting up to ${ARCHIVE_DEADLINE}s for $EVENTS events of $DURABLE_STORY in the archive"
 # The keeper may delete the held segment only after the grapher confirmed the
