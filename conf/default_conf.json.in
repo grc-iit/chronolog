@@ -96,6 +96,17 @@
       "shutdown_confirm_timeout_secs": 150,
       "live_tail_read": false
     },
+    "WAL": {
+      "enabled": false,
+      "dir": "",
+      "segment_bytes": 67108864,
+      "max_bytes": 1073741824,
+      "group_commit_max_bytes": 4194304,
+      "group_commit_window_us": 0,
+      "reserve_min_bytes": 268435456,
+      "reserve_percent": 10,
+      "durable_cap_mb": 4096
+    },
     "ExtractionModule": {
         "extraction_stream_count":2,
         "extraction_protocol": "ofi+sockets",

@@ -26,8 +26,11 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <deque>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include <abt.h>
 
@@ -40,6 +43,7 @@
 #include <KeeperStoryPipeline.h>
 #include <KeeperChunkRetentionStore.h>
 #include <StoryChunkExtractionQueue.h>
+#include <WalObserver.h>
 
 namespace chl = chronolog;
 
@@ -372,4 +376,68 @@ TEST(KeeperReleaseDataLoss, OrphanedEventIsDrainedBeforeHandleRemovalAtRetiremen
                             << " reached the extraction queue. The retirement path removed the "
                                "ingestion handle without draining the orphan queue, so the "
                                "orphaned event was stranded and lost.";
+}
+
+// ---------------------------------------------------------------------------
+// An event the pipeline cannot place in any chunk is dropped. With a WAL, the
+// record holding that event would otherwise wait for a chunk that never
+// carries it, so the pipeline reports every drop through the retention
+// store's eventDiscarded.
+// ---------------------------------------------------------------------------
+class DiscardRecordingWalObserver: public chl::WalObserver
+{
+public:
+    void chunkWritten(chl::StoryId, chl::StoryChunk const&) override {}
+    void chunkDiscarded(chl::StoryId, chl::StoryChunk const&) override {}
+    void eventDiscarded(chl::StoryId story, chl::EventSequence const& event) override
+    {
+        discardedEvents.emplace_back(story, event);
+    }
+    void storyDropped(chl::StoryId) override {}
+
+    std::vector<std::pair<chl::StoryId, chl::EventSequence>> discardedEvents;
+};
+
+TEST(KeeperReleaseDataLoss, PipelineDiscardReportsTheEvent)
+{
+    ensureLogger();
+    DiscardRecordingWalObserver wal;
+    chl::StoryChunkExtractionQueue eq;
+    chl::KeeperChunkRetentionStore tail(eq, 1024);
+    tail.setWalObserver(&wal);
+
+    const chl::StoryId sid = 5;
+    chl::KeeperStoryPipeline pipeline(eq,
+                                      tail,
+                                      "chron",
+                                      "story",
+                                      sid,
+                                      /*start_time=*/nowNs(),
+                                      /*chunk_granularity=*/30,
+                                      /*acceptance_window=*/60);
+    const uint64_t start = pipeline.TimelineStart();
+    const uint64_t end = pipeline.TimelineEnd();
+
+    // A placed event is not reported.
+    std::deque<chl::LogEvent> placed;
+    placed.push_back(chl::LogEvent(sid, start + 10, /*client=*/1, /*idx=*/0, "placed"));
+    pipeline.mergeEvents(placed);
+    EXPECT_TRUE(wal.discardedEvents.empty());
+
+    // StoryChunk::insertEvent refuses an event with an empty record or another
+    // story's id, so each of these is dropped: two inside the timeline (the
+    // "Discarded event" branch), one past its end (the forward branch) and one
+    // before its start (the prepend branch).
+    std::deque<chl::LogEvent> dropped;
+    dropped.push_back(chl::LogEvent(sid, start + 20, /*client=*/2, /*idx=*/1, ""));
+    dropped.push_back(chl::LogEvent(sid + 1, start + 30, /*client=*/3, /*idx=*/2, "other-story"));
+    dropped.push_back(chl::LogEvent(sid, end + 40, /*client=*/4, /*idx=*/3, ""));
+    dropped.push_back(chl::LogEvent(sid, start - 50, /*client=*/5, /*idx=*/4, ""));
+    pipeline.mergeEvents(dropped);
+
+    std::vector<std::pair<chl::StoryId, chl::EventSequence>> expected = {{sid, chl::EventSequence{start + 20, 2, 1}},
+                                                                         {sid, chl::EventSequence{start + 30, 3, 2}},
+                                                                         {sid, chl::EventSequence{end + 40, 4, 3}},
+                                                                         {sid, chl::EventSequence{start - 50, 5, 4}}};
+    EXPECT_EQ(wal.discardedEvents, expected);
 }

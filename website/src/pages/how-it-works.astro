@@ -248,7 +248,7 @@ import Layout from '../layouts/Layout.astro';
             <h3 class="font-bold text-sm text-lime">ChronoKeeper</h3>
             <span class="text-[10px] text-text-muted bg-bg/50 px-1.5 py-0.5 rounded">Hot</span>
           </div>
-          <p class="text-xs text-text-muted leading-relaxed">Fast ingestion on compute nodes via <strong class="text-text">RDMA</strong>. Serves record() and real-time playback() with microsecond latency.</p>
+          <p class="text-xs text-text-muted leading-relaxed">Fast ingestion on compute nodes via <strong class="text-text">RDMA</strong>. Serves record() and real-time playback() with microsecond latency. With its write-ahead log on, a <strong class="text-text">durable</strong> record() returns once the event is synced to disk.</p>
           <div class="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 text-lime">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
           </div>

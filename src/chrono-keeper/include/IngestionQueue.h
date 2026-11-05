@@ -57,6 +57,17 @@ public:
         }
     }
 
+    // Whether the story has a pipeline engaged with this queue. Takes only the
+    // shared lock, so the durable write path can ask without the data store's
+    // mutex. The answer may be stale by the time the caller ingests: a story
+    // retired in between leaves its event an orphan, which
+    // KeeperDataStore::sealOrphanedEvents seals.
+    bool hasStoryIngestionHandle(StoryId const& story_id) const
+    {
+        std::shared_lock<std::shared_mutex> lock(handleMapMutex);
+        return storyIngestionHandles.find(story_id) != storyIngestionHandles.end();
+    }
+
     // Hot path: called concurrently by the keeper's RPC handler threads
     // (rpc_thread_count = INGESTION_THREAD_COUNT). The map lookup is guarded
     // by a shared lock so multiple ingest threads can resolve handles in

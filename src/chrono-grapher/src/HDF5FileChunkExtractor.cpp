@@ -125,6 +125,29 @@ int chronolog::HDF5FileChunkExtractor::recordDeletion(std::string const& chronic
     return archiveManifest->append(record);
 }
 
+bool chronolog::HDF5FileChunkExtractor::manifestFailed() const
+{
+    return archiveManifest != nullptr && archiveManifest->failed();
+}
+
+int chronolog::HDF5FileChunkExtractor::holdForFailedManifest(chl::StoryChunk* story_chunk)
+{
+    LOG_ERROR("[HDF5FileChunkExtractor] Not reporting StoryId={} {}-{} {}-{} written: the archive manifest {} failed "
+              "a sync",
+              story_chunk->getStoryId(),
+              story_chunk->getChronicleName(),
+              story_chunk->getStoryName(),
+              story_chunk->getStartTime(),
+              story_chunk->getEndTime(),
+              archiveManifest->logPath());
+    // also bars a re-registration of the story from covering the gap
+    if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
+    {
+        watermarkRegistry->persistFailed(story_chunk->getStoryId());
+    }
+    return chl::CL_ERR_UNKNOWN;
+}
+
 //////
 
 
@@ -334,6 +357,10 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
 
     if(story_chunk->empty())
     {
+        if(manifestFailed())
+        {
+            return holdForFailedManifest(story_chunk);
+        }
         // an idle-gap window: nothing to write, but the interval is vacuously
         // durable and must extend the persisted watermark or the contiguous
         // prefix would hold at the gap forever
@@ -356,6 +383,12 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
         return chl::CL_SUCCESS;
     }
 
+    if(manifestFailed())
+    {
+        // no record could name the file, so it is not written at all
+        return holdForFailedManifest(story_chunk);
+    }
+
     StoryChunkWriter chunkWriter(rootDirectory,
                                  "story_chunks",
                                  "data",
@@ -366,7 +399,9 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
     {
         // Before W moves and receipts settle: once they do, keepers free the
         // chunk, and a player finds the file only through this record. A file
-        // no record names is removed and the window counts as failed.
+        // no record names is removed and the window counts as failed. A record
+        // whose sync failed is such a record: it may never reach the disk, and
+        // the manifest is latched from then on (see manifestFailed).
         ArchiveManifestRecord record;
         record.op = ArchiveManifestRecord::Op::PUBLISH;
         record.chronicle = story_chunk->getChronicleName();
@@ -401,6 +436,14 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
     }
     else
     {
+        // another extraction stream's manifest sync may have failed after this
+        // record's returned: once the manifest is latched nothing is reported.
+        // The file and its record stay; a keeper's re-send writes the window
+        // again, and the copies collapse on read.
+        if(manifestFailed())
+        {
+            return holdForFailedManifest(story_chunk);
+        }
         LOG_INFO("[HDF5FileChunkExtractor] StoryChunk written to file: StoryId={} {}-{} {}-{} eventCount {}",
                  story_chunk->getStoryId(),
                  story_chunk->getChronicleName(),
@@ -408,8 +451,9 @@ int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chun
                  story_chunk->getStartTime(),
                  story_chunk->getEndTime(),
                  story_chunk->getEventCount());
-        // StoryChunkWriter flushes H5F_SCOPE_GLOBAL before returning, so the
-        // window counts as persisted here. Salvage chunks are exempt: they are
+        // StoryChunkWriter synced the file and the directories holding its
+        // name before returning, and append synced the record, so the window
+        // counts as persisted here. Salvage chunks are exempt: they are
         // one keeper's rescued events, not a merged timeline window.
         if(watermarkRegistry != nullptr && !story_chunk->isWatermarkExempt())
         {
