@@ -10,8 +10,10 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -87,6 +89,41 @@ struct KeeperSide
     chl::KeeperDataStore dataStore{ingestionQueue, extractionQueue, retentionStore};
 };
 
+// Receipt callbacks retain this heap state through the actual owners. The
+// engine fields are the original owning objects moved out of the base fixture,
+// never copied wrappers. There are no owner/runtime back-links here.
+struct ReceiptIngestion
+{
+    std::mutex mutex;
+    chl::StoryChunkDeque active, passive;
+    chl::ChunkIngestionQueue queue;
+    std::unique_ptr<chl::StoryChunkIngestionHandle> handle;
+    ~ReceiptIngestion()
+    {
+        for(auto* chunk: active) delete chunk;
+        for(auto* chunk: passive) delete chunk;
+    }
+};
+struct ReceiptDependencies
+{
+    std::unique_ptr<KeeperSide> keeper1, keeper2;
+    chl::StoryWatermarkRegistry registry;
+    ReceiptIngestion ingestion;
+    // Last declared: on a pre-exposure failure engines retire before the stores.
+    std::shared_ptr<tl::engine> keeperEngine, grapherEngine;
+};
+struct ReceiptPause
+{
+    std::atomic<bool> allocated{false}, release{false};
+};
+struct ReceiptTransfer
+{
+    std::shared_ptr<ReceiptDependencies> dependencies;
+    std::shared_ptr<chl::rpc::RpcRuntime> sendRuntime, receiveRuntime;
+    std::shared_ptr<chl::rpc::RpcBulkOwner> sendOwner, receiveOwner;
+    std::unique_ptr<chl::RDMATransferAgent> sender;
+};
+
 // Reports are one-way, so delivery is only observable through its effect.
 bool waitFor(std::function<bool()> const& condition, std::chrono::milliseconds timeout = std::chrono::seconds(5))
 {
@@ -120,9 +157,11 @@ protected:
     void TearDown() override
     {
         publisher.reset();
-        grapherEngine->finalize();
+        if(grapherEngine)
+            grapherEngine->finalize();
         // deletes the admin service providers before the data stores they use
-        keeperEngine->finalize();
+        if(keeperEngine)
+            keeperEngine->finalize();
         keeper1.reset();
         keeper2.reset();
     }
@@ -153,14 +192,61 @@ protected:
     chl::StoryWatermarkRegistry registry;
     std::unique_ptr<chl::WatermarkReportPublisher> publisher;
 
-    // Where the grapher's recording service ingests received chunks. Members,
-    // so they outlive the engines TearDown finalizes: a handler that ingests
-    // after answering can never reach a destroyed queue.
-    std::mutex grapherIngestionMutex;
-    chl::StoryChunkDeque grapherActiveDeque;
-    chl::StoryChunkDeque grapherPassiveDeque;
-    chl::ChunkIngestionQueue grapherIngestionQueue;
-    std::unique_ptr<chl::StoryChunkIngestionHandle> grapherIngestionHandle;
+    std::shared_ptr<ReceiptTransfer> startReceiptTransfer(chl::RpcTimeoutPolicy policy = {},
+                                                          std::shared_ptr<ReceiptPause> pause = {})
+    {
+        auto transfer = std::make_shared<ReceiptTransfer>();
+        auto dependencies = std::make_shared<ReceiptDependencies>();
+        transfer->dependencies = dependencies;
+        // shared_ptr conversion can allocate. Keep stores in the original
+        // fixture until both actual owning engines have moved successfully.
+        dependencies->keeperEngine = std::move(keeperEngine);
+        dependencies->grapherEngine = std::move(grapherEngine);
+        dependencies->keeper1 = std::move(keeper1);
+        dependencies->keeper2 = std::move(keeper2);
+        transfer->sendRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+        transfer->receiveRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+        transfer->sendOwner =
+                chl::rpc::RpcBulkOwner::Create(dependencies->keeperEngine, transfer->sendRuntime, policy, false);
+        transfer->sendOwner->dependencies = dependencies;
+        // This MID already exposes keeper admin callbacks. Root their stores
+        // before either outbound registration can throw during setup.
+        transfer->sendOwner->receiveChunk = dependencies->keeperEngine->define("receive_story_chunk");
+        transfer->sendOwner->available = dependencies->keeperEngine->define("receiver_available");
+        transfer->receiveOwner =
+                chl::rpc::RpcBulkOwner::Create(dependencies->grapherEngine, transfer->receiveRuntime, policy, false);
+        transfer->receiveOwner->dependencies = dependencies;
+        auto& ingestion = dependencies->ingestion;
+        ingestion.handle = std::make_unique<chl::StoryChunkIngestionHandle>(ingestion.mutex,
+                                                                            &ingestion.active,
+                                                                            &ingestion.passive);
+        ingestion.queue.addStoryIngestionHandle(5, ingestion.handle.get());
+        if(pause)
+        {
+            // The barrier retains no engine, owner or callback dependencies;
+            // lifetime is provided by the real receive/source contexts.
+            auto mid = dependencies->grapherEngine->get_margo_instance();
+            transfer->receiveOwner->incoming.observers.allocated = [pause, mid]
+            {
+                pause->allocated.store(true, std::memory_order_release);
+                while(!pause->release.load(std::memory_order_acquire)) margo_thread_sleep(mid, 1);
+            };
+        }
+        chl::GrapherRecordingService::CreateRecordingService(transfer->receiveOwner,
+                                                             kGrapherRecordingProvider,
+                                                             ingestion.queue,
+                                                             nullptr,
+                                                             &dependencies->registry);
+        std::string const self = dependencies->grapherEngine->self();
+        auto port = static_cast<uint16_t>(std::stoul(self.substr(self.rfind(':') + 1)));
+        transfer->sender.reset(chl::RDMATransferAgent::CreateRDMATransferAgent(
+                transfer->sendOwner,
+                chl::ServiceId(kProtocol, "127.0.0.1", port, kGrapherRecordingProvider)));
+        // These owners intentionally remain process-retained: the fixture has
+        // no B12 provider/native retirement proof, even after known receipts.
+        // Base TearDown no longer owns or explicitly finalizes their engines.
+        return transfer;
+    }
 };
 } // namespace
 
@@ -238,68 +324,111 @@ TEST_F(WatermarkReportTransport, PublishWithinTheIntervalSendsNothing)
 
 TEST_F(WatermarkReportTransport, ChunkAckCarriesTheGraphersReceipt)
 {
-    auto sendRuntime = std::make_shared<chl::rpc::RpcRuntime>();
-    auto receiveRuntime = std::make_shared<chl::rpc::RpcRuntime>();
-    auto sendOwner = chl::rpc::RpcBulkOwner::Create(std::make_shared<tl::engine>(*keeperEngine),
-                                                    sendRuntime,
-                                                    chl::RpcTimeoutPolicy{},
-                                                    true);
-    auto receiveOwner = chl::rpc::RpcBulkOwner::Create(std::make_shared<tl::engine>(*grapherEngine),
-                                                       receiveRuntime,
-                                                       chl::RpcTimeoutPolicy{},
-                                                       false);
-    constexpr chl::StoryId kStory = 5;
-    grapherIngestionHandle = std::make_unique<chl::StoryChunkIngestionHandle>(grapherIngestionMutex,
-                                                                              &grapherActiveDeque,
-                                                                              &grapherPassiveDeque);
-    grapherIngestionQueue.addStoryIngestionHandle(kStory, grapherIngestionHandle.get());
-    chl::GrapherRecordingService::CreateRecordingService(*grapherEngine,
-                                                         kGrapherRecordingProvider,
-                                                         grapherIngestionQueue,
-                                                         nullptr,
-                                                         &registry);
-    std::string const grapher_self = grapherEngine->self();
-    auto const grapher_port = static_cast<uint16_t>(std::stoul(grapher_self.substr(grapher_self.rfind(':') + 1)));
-    std::unique_ptr<chl::RDMATransferAgent> sender(chl::RDMATransferAgent::CreateRDMATransferAgent(
-            *keeperEngine,
-            chl::ServiceId(kProtocol, "127.0.0.1", grapher_port, kGrapherRecordingProvider)));
-    ASSERT_NE(sender, nullptr);
+    auto transfer = startReceiptTransfer();
+    auto& dependencies = *transfer->dependencies;
+    auto& registry = dependencies.registry;
+    auto& ingestion = dependencies.ingestion;
+    ASSERT_NE(transfer->sender, nullptr);
 
-    // serialized as the keeper's RDMA extractor does
-    chl::StoryChunk chunk("chron", "story", kStory, 100, 200);
-    chunk.insertEvent(chl::LogEvent(kStory, 150, 1, 0, "event"));
+    // Serialized as the keeper's RDMA extractor does.
+    chl::StoryChunk chunk("chron", "story", 5, 100, 200);
+    chunk.insertEvent(chl::LogEvent(5, 150, 1, 0, "event"));
     std::ostringstream serialized(std::ios::binary);
     {
         cereal::BinaryOutputArchive archive(serialized);
         archive(chunk);
     }
-
+    auto bytes = serialized.str();
     chl::ChunkReceipt first;
-    ASSERT_EQ(sender->transfer_serialized_story_chunk(serialized.str(), keeper1Id, &first), chl::CL_SUCCESS);
+    ASSERT_EQ(transfer->sender->transfer_serialized_story_chunk(bytes, keeper1Id, &first), chl::CL_SUCCESS);
     chl::ChunkReceipt second;
-    ASSERT_EQ(sender->transfer_serialized_story_chunk(serialized.str(), keeper1Id, &second), chl::CL_SUCCESS);
+    ASSERT_EQ(transfer->sender->transfer_serialized_story_chunk(bytes, keeper1Id, &second), chl::CL_SUCCESS);
 
+    EXPECT_EQ(first.bytes, bytes.size());
+    EXPECT_EQ(second.bytes, bytes.size());
     EXPECT_EQ(first.grapher_instance, registry.instanceId());
     EXPECT_EQ(first.receipt, 1u);
     EXPECT_EQ(second.receipt, 2u);
-    sender.reset();
+    transfer->sender.reset();
 
-    // the grapher ingests each chunk after answering, carrying its receipt
+    // Ingestion precedes the answer and carries both distinct receipt ids.
     ASSERT_TRUE(waitFor(
             [&]
             {
-                std::lock_guard<std::mutex> lock(grapherIngestionMutex);
-                return grapherActiveDeque.size() == 2;
+                std::lock_guard<std::mutex> lock(ingestion.mutex);
+                return ingestion.active.size() == 2;
             }));
-    std::lock_guard<std::mutex> lock(grapherIngestionMutex);
+    std::lock_guard<std::mutex> lock(ingestion.mutex);
     std::set<uint64_t> carried;
-    for(chl::StoryChunk* received: grapherActiveDeque)
+    for(chl::StoryChunk* received: ingestion.active)
     {
         carried.insert(received->carriedReceipts().begin(), received->carriedReceipts().end());
         delete received;
     }
-    grapherActiveDeque.clear();
+    ingestion.active.clear();
     EXPECT_EQ(carried, (std::set<uint64_t>{1, 2}));
+}
+
+TEST_F(WatermarkReportTransport, UnknownReceiptRetainsActualFixtureThroughTeardownAndLatePull)
+{
+    chl::RpcTimeoutPolicy policy;
+    policy.attempt_ms = 80;
+    policy.transfer_ms = 160;
+    auto pause = std::make_shared<ReceiptPause>();
+    auto transfer = startReceiptTransfer(policy, pause);
+    ASSERT_NE(transfer->sender, nullptr);
+    std::weak_ptr<ReceiptDependencies> weak = transfer->dependencies;
+    std::weak_ptr<chl::rpc::RpcBulkOwner> send = transfer->sendOwner, receive = transfer->receiveOwner;
+    chl::StoryChunk chunk("chron", "story", 5, 100, 200);
+    chunk.insertEvent(chl::LogEvent(5, 150, 1, 0, "late-owned-event"));
+    std::ostringstream stream(std::ios::binary);
+    {
+        cereal::BinaryOutputArchive archive(stream);
+        archive(chunk);
+    }
+    std::string bytes = stream.str();
+    chl::ChunkReceipt receipt;
+    ASSERT_EQ(transfer->sender->transfer_serialized_story_chunk(bytes, keeper1Id, &receipt),
+              chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    ASSERT_TRUE(waitFor([&] { return pause->allocated.load(std::memory_order_acquire); }));
+    EXPECT_EQ(receipt.bytes, 0u);
+    EXPECT_EQ(transfer->sendOwner->sources.used(), 1u);
+    EXPECT_EQ(transfer->receiveOwner->incoming.used(), 1u);
+    std::cout << "before fixture teardown: unconfirmed, receipt0, source1, incoming1" << std::endl;
+    bytes.assign(bytes.size(), 'X');
+    bytes.clear();
+    bytes.shrink_to_fit();
+
+    // Reproduce an early ASSERT/fixture exit while the actual pull is paused.
+    // Drop every fixture transfer handle first; only charged native owners
+    // retain the actual engine objects and all exposed provider dependencies.
+    transfer.reset();
+    TearDown();
+    auto retained = weak.lock();
+    ASSERT_NE(retained, nullptr);
+    pause->release.store(true, std::memory_order_release);
+    ASSERT_TRUE(waitFor(
+            [&]
+            {
+                auto source = send.lock(), target = receive.lock();
+                if(!source || !target || source->sources.used() != 0 || target->incoming.used() != 0)
+                    return false;
+                std::lock_guard<std::mutex> lock(retained->ingestion.mutex);
+                return retained->ingestion.active.size() == 1;
+            }));
+    std::lock_guard<std::mutex> lock(retained->ingestion.mutex);
+    auto* received = retained->ingestion.active.front();
+    ASSERT_NE(received, nullptr);
+    ASSERT_EQ(received->getEventCount(), 1);
+    ASSERT_EQ(received->begin()->second.logRecord, "late-owned-event");
+    EXPECT_EQ(received->carriedReceipts(), (std::set<uint64_t>{1}));
+    delete received;
+    retained->ingestion.active.clear();
+    std::cout << "after fixture teardown/resume: original event, receipt1, source0, incoming0; native owners "
+                 "process-retained"
+              << std::endl;
+    // This establishes late data/receipt and source/receive settlement only.
+    // The native engines/providers remain process-retained, not B12-retired.
 }
 
 TEST_F(WatermarkReportTransport, PendingReceiptKeepsTheKeepersChunkUntilItSettles)
