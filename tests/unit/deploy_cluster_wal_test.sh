@@ -28,6 +28,10 @@ for fn in work_dir_hash list_keeper_wal_dirs keeper_wal_remote_cmd collect_keepe
     source <(sed -n "/^${fn}() {/,/^}/p" "$script")
 done
 ERR='' INFO='' DEBUG='' WARN='' NC=''
+# The fixture's WAL paths follow the <mount>/$USER layout. deploy_cluster.sh
+# sets USER from whoami at its top, which is not loaded here, and a container
+# may not set it.
+USER=${USER:-$(whoami)}
 verbose=false JOB_ID="" NUM_RECORDING_GROUP=1 force=false
 usage() { exit 1; }
 
