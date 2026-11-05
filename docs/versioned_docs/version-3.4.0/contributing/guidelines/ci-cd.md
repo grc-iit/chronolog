@@ -13,7 +13,7 @@ ChronoLog uses **GitHub Actions**. Three workflows check every pull request to `
 | Local Pipeline | `.github/workflows/local-pipeline.yml` | Build, install, a single-host deployment and the CTest suite |
 | Distributed Pipeline | `.github/workflows/distributed-pipeline.yml` | A 7-container deployment: cross-host RPC, MPI clients on several containers, replay from the archive and the keepers, and the archive on NFS |
 
-The two pipelines share `.github/workflows/chronolog-base.yml`, which provides the base image. Other workflows publish images and releases; see [Other workflows](#other-workflows).
+The two pipelines share `.github/workflows/chronolog-base.yml`, which provides the base image. The integration scripts run every night instead, in the [Nightly Integration](#nightly-integration) workflow, which does not check pull requests. Other workflows publish images and releases; see [Other workflows](#other-workflows).
 
 ## Check Format
 
@@ -110,6 +110,23 @@ Stage 11c redeploys with the keeper WAL on a volume in each keeper container, wr
 
 Run it before a pull request that changes RPC endpoints, ports, configuration plumbing, the deploy scripts or the workflow itself, with `--nfs` for changes to the archive layout, the manifest, the player's archive reads or destroy, and with `--wal-restart` for changes to the keeper WAL, durable writes or a keeper restart.
 
+## Nightly Integration
+
+| | |
+|---|---|
+| **Triggers** | A schedule, every night at 07:00 UTC, against `develop`; manual dispatch against any branch, tag or commit; pull requests that change the workflow or `tests/integration/run_integration_tests.sh` |
+| **Runner** | `ubuntu-24.04`, one per job |
+| **Timeout** | 300 minutes (integration), 120 minutes (distributed WAL restart) |
+
+`.github/workflows/nightly-integration.yml` runs the tests that take too long for every pull request. It does not gate a merge: a failure shows as a failed run on the Actions tab, and GitHub emails it to whoever last changed the schedule. GitHub runs a schedule, and offers the dispatch button, only from the copy of the workflow on the default branch, `main`, so the nightly run starts once the workflow is released.
+
+Two jobs, each on its own runner:
+
+1. **integration**: in one container from the base image, a Debug build, then every `tests/integration/*_test.sh` one at a time through `tests/integration/run_integration_tests.sh` (see [Running Tests](../development/running-tests.md#integration-scripts)). `keeper_restart_held_test.sh` runs over `ofi+sockets` only unless the dispatch input `protocols` says otherwise, and `keeper_wal_off_test.sh` builds its v3.3.0 keeper from the `v3.3.0` tag. The job summary has one row per script: pass, fail, error or timeout, its check count and its time. The `integration-logs-<run>-<attempt>` artifact has each script's output and the daemons' logs.
+2. **distributed-wal-restart**: `docker/local_distributed_ci.sh --wal-restart-only` on the 7-container deployment of the Distributed Pipeline, which runs its stage 11c: a keeper killed with SIGKILL after durable writes, restarted, and checked to archive and replay every acknowledged durable event. Its log is the `wal-restart-log-<run>-<attempt>` artifact.
+
+The dispatch inputs are `ref` (default `develop`), `scripts` (names separated by spaces; empty runs all) and `protocols`.
+
 ## Other workflows
 
 | Workflow | Trigger | What it does |
@@ -118,6 +135,7 @@ Run it before a pull request that changes RPC endpoints, ports, configuration pl
 | Create Release (`create-release.yml`) | A `v*.*.*` tag | Builds the Release image (`ghcr.io/grc-iit/chronolog:v<version>` and `:latest`) and the Debug image (`ghcr.io/grc-iit/chronolog-debug:v<version>`), tarballs, DEB and RPM packages, and publishes the GitHub release |
 | Deploy Website (`deploy-website.yml`) | Push to `main` that changes `website/` or `docs/` | Builds the website and these docs and publishes them to GitHub Pages |
 | Collect Traffic (`collect-traffic.yml`) | Weekly | Commits the repository's traffic statistics to the `repo-traffic-data` branch |
+| Nightly Integration (`nightly-integration.yml`) | Nightly | The integration scripts and the distributed keeper WAL restart; see [above](#nightly-integration) |
 
 ## Troubleshooting CI Failures
 
@@ -134,4 +152,5 @@ The pull-request comment lists the files and the fix commands. You can also down
 
 - Local pipeline: the job summary lists the failed tests; the `ctest-results-<branch>` artifact has the log.
 - Distributed pipeline: each stage's step prints its own output and the daemon logs it reads. To debug, run `docker/local_distributed_ci.sh --keep` and look inside the containers.
+- Nightly integration: the job summary names each script's result; the `integration-logs-<run>-<attempt>` artifact has the script's output and the daemon logs under `<script>/monitor/`. To rerun one script, dispatch the workflow with `scripts` set to its name, or run it locally (see [Running Tests](../development/running-tests.md#integration-scripts)).
 - New configuration options need defaults that work in both pipelines' deployments.

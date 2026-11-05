@@ -257,7 +257,7 @@ The other five functional tests are disabled (see above).
 
 ## Integration Scripts
 
-These deploy real daemons on one host, run a scenario and stop the daemons. They take minutes and are not in CI; run them by hand before a pull request that touches the keeper's retention store, the watermark protocol, the replay path, the player or the keeper's write-ahead log.
+These deploy real daemons on one host, run a scenario and stop the daemons. They take minutes, so CI runs them every night instead of on each pull request (see [Nightly Integration](../guidelines/ci-cd.md#nightly-integration)); run them by hand before a pull request that touches the keeper's retention store, the watermark protocol, the replay path, the player or the keeper's write-ahead log.
 
 ```bash
 WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
@@ -285,6 +285,17 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
 ```
 
 `keeper_wal_crash_test.sh`, `keeper_wal_off_test.sh`, `keeper_restart_held_test.sh`, `keeper_wal_cap_test.sh`, `keeper_wal_shutdown_test.sh` and `keeper_wal_startup_test.sh` run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. The startup script also runs `chronolog-test-wal-fixture` to write its WAL directories, the crash script runs it to count the E records in the keeper's WAL, and the shutdown script preloads `libchronolog_wal_sync_hold.so`, both from the same build directory. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations are estimates from the scripts' timing settings.
+
+`tests/integration/run_integration_tests.sh`, which the nightly workflow runs, runs them one at a time:
+
+```bash
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/run_integration_tests.sh                       # every *_test.sh, ~25 min
+WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
+  tests/integration/run_integration_tests.sh keeper_wal_crash_test keeper_wal_cap_test
+```
+
+Between scripts it stops any daemon left running from `WORK_DIR`'s `bin/`, and puts the installed conf template back if a script left it patched, which happens when the time limit kills a script before its own cleanup. It writes each script's output, the daemons' logs and a `summary.md` with one row per script to `LOG_DIR`, a new directory under `${TMPDIR:-/tmp}` unless set. `SCRIPT_TIMEOUT` (1800 s by default) limits each script, and other variables, such as `PROTOCOLS=ofi+sockets` for `keeper_restart_held_test.sh` and `V330_KEEPER` for `keeper_wal_off_test.sh`, pass through to the scripts. It exits 0 only when every script passed.
 
 | Script | What it protects |
 |---|---|
