@@ -1,93 +1,46 @@
-#include <cstdint>
-#include <string>
-
-#include <thallium.hpp>
-#include <thallium/serialization/serialize.hpp>
-#include <thallium/serialization/stl/string.hpp>
-#include <thallium/serialization/stl/map.hpp>
-
-#include <chrono_monitor.h>
-#include <client_errcode.h>
-#include <ServiceId.h>
-
 #include "PlaybackQueryRpcClient.h"
 #include "ClientQueryService.h"
-
-
-namespace tl = thallium;
-
-namespace chl = chronolog;
-
-// constructor is private to make sure thalium rpc objects are created on the heap, not stack
-chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService& clientQueryService,
-                                                    chl::ServiceId const& playback_service_id)
-    : theClientQueryService(clientQueryService)
-    , playback_service_id(playback_service_id)
+#include <thallium/serialization/stl/string.hpp>
+namespace chronolog
 {
-    std::string service_addr_string;
-    playback_service_id.get_service_as_string(service_addr_string);
-
-    playback_service_handle = tl::provider_handle(theClientQueryService.get_engine().lookup(service_addr_string),
-                                                  playback_service_id.getProviderId());
-
-    playback_service_available = theClientQueryService.procedures()->calls[ClientRpcProcedures::PlaybackAvailable];
-    story_playback_request = theClientQueryService.procedures()->calls[ClientRpcProcedures::PlaybackRequest];
-}
-
-chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient() = default;
-//////////////
-
-int chl::PlaybackQueryRpcClient::is_playback_service_available()
+rpc::RpcResult<uint32_t> PlaybackQueryRpcClient::send_story_playback_request(ClientRpcContext& owner,
+                                                                             rpc::OperationContext& operation,
+                                                                             rpc::RpcCallState& native,
+                                                                             ServiceId const& receiver,
+                                                                             PlaybackQuery const& query,
+                                                                             uint64_t attemptMs) const
 {
-
     try
     {
-        return (playback_service_available.on(playback_service_handle)());
+        auto status =
+                owner.procedures->provision(ClientRpcProcedures::PlaybackRequest, provider_, operation.deadline());
+        if(status != CL_SUCCESS)
+            return {status, false, {}};
+        native.bind(*owner.engine, owner.procedures->calls[ClientRpcProcedures::PlaybackRequest], address_, provider_);
+        auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(attemptMs));
+        if(!timeout || !operation.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
+        try
+        {
+            uint32_t reply = native.callable().timed(*timeout,
+                                                     receiver,
+                                                     query.queryId,
+                                                     query.storyId,
+                                                     query.chronicleName,
+                                                     query.storyName,
+                                                     query.startTime,
+                                                     query.endTime);
+            native.clearKnown();
+            return {CL_SUCCESS, true, reply};
+        }
+        catch(...)
+        {
+            return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+        }
     }
-    catch(tl::exception const& ex)
+    catch(...)
     {
-        LOG_ERROR("[PlaybackQueryRpcClient] Playback Service unavailable at {}, exceptiomn:{}",
-                  chl::to_string(playback_service_id),
-                  ex.what());
+        return {operation.deadline().expired() ? CL_ERR_DEADLINE_EXCEEDED : CL_ERR_UNKNOWN, false, {}};
     }
-
-    return chronolog::CL_ERR_UNKNOWN;
 }
-
-int chl::PlaybackQueryRpcClient::send_story_playback_request(uint32_t query_id,
-                                                             chl::StoryId const& story_id,
-                                                             chl::ChronicleName const& chronicle_name,
-                                                             chl::StoryName const& story_name,
-                                                             uint64_t start_time,
-                                                             uint64_t end_time)
-{
-    int return_code = chronolog::CL_ERR_UNKNOWN;
-
-    //uint32_t query_id = theClientQueryService.start_new_query( chronicle_name,story_name,start_time,end_time);
-
-    try
-    {
-        LOG_DEBUG("[PlaybackQueryRpcClient] {} ; send_story_playback_request for Story {} {}-{}",
-                  chl::to_string(playback_service_id),
-                  story_id,
-                  chronicle_name,
-                  story_name);
-        story_playback_request.on(playback_service_handle)(theClientQueryService.get_service_id(),
-                                                           query_id,
-                                                           story_id,
-                                                           chronicle_name,
-                                                           story_name,
-                                                           start_time,
-                                                           end_time);
-
-        return chronolog::CL_SUCCESS;
-    }
-    catch(tl::exception const& ex)
-    {
-        LOG_ERROR("[PlaybackQueryRpcClient] {} ; send_story_playback_request exception {}",
-                  chl::to_string(playback_service_id),
-                  ex.what());
-    }
-
-    return return_code;
-}
+} // namespace chronolog

@@ -100,6 +100,9 @@ public:
     std::unique_ptr<StorytellerClient> storyteller;
     ClientQueryService* reader = nullptr;
     rpc::BulkReceives incomingResponses;
+    // Logical replay records: public waiters, queued/running submissions and
+    // receive owners share these two permits. Unknown work keeps its permit.
+    rpc::BulkPermits replayQueries;
 
 private:
     friend struct ClientRpcContextTestAccess;

@@ -261,6 +261,13 @@ public:
 
     std::pair<int, std::vector<std::string>> ShowStories(std::string const& chronicle_name);
 
+    // One replay_ms budget (180000 ms by default) covers query admission,
+    // map/queue waits, lookup, submission and response completion. Each native
+    // submission has at most attempt_ms (5000 ms by default) and the remaining
+    // replay budget. Query expiry returns CL_ERR_QUERY_TIMED_OUT without later
+    // writes to event_series. Reader admission expiry can return CL_ERR_DEADLINE_EXCEEDED. At most two logical replay queries share this context;
+    // full admission or exhausted query identifiers returns CL_ERR_RPC_CAPACITY.
+    // Unknown native work keeps its capacity; a timeout does not cancel it.
     int ReplayStory(std::string const& chronicle,
                     std::string const& story,
                     uint64_t start,

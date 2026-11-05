@@ -385,11 +385,24 @@ chronolog::PlaybackService::prepareQuery(ServiceId const& receiver,
         anyTruncated |= hot.back().truncated;
     }
     auto split = splitHotRange(hot, start, end);
+    LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",
+              query,
+              story,
+              start,
+              end,
+              keepers.size(),
+              split.boundary,
+              split.hotEvents.size());
     auto plan = planReplay(split, start, end, allAnswered, anyTruncated);
     response = std::make_shared<PlaybackQueryResponse>(query);
     response->complete = plan.complete;
     for(auto const& event: split.hotEvents)
         response->events.push_back(Event{event.eventTime, event.clientId, event.eventIndex, event.logRecord});
+    LOG_DEBUG("[PlaybackService] query {} for story_id {} got {} hot events from {} keeper(s)",
+              query,
+              story,
+              response->events.size(),
+              keepers.size());
     if(agent->stashOwnedQueryResponse(query, response, !plan.archiveNeeded) != CL_SUCCESS)
         return nullptr;
     if(plan.archiveNeeded)

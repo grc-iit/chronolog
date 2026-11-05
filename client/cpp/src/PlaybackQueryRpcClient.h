@@ -1,68 +1,38 @@
 #ifndef PLAYBACK_QUERY_RPC_CLIENT_H
 #define PLAYBACK_QUERY_RPC_CLIENT_H
-
-#include <cstdint>
-#include <string>
-
-#include <thallium.hpp>
-
+#include "ClientRpcContext.h"
+#include <private/RpcCallState.h>
 #include <ServiceId.h>
 #include <chronolog_types.h>
-#include <chrono_monitor.h>
-
-#include "ClientQueryService.h"
-
-namespace tl = thallium;
-
+#include <memory>
+#include <string>
 namespace chronolog
 {
-
+struct PlaybackQuery;
+// Lookup-free immutable route. Actual native state belongs to charged work;
+// destroying a cached route never deregisters the context's shared procedures.
 class PlaybackQueryRpcClient
 {
 public:
-    // Service should be created on the heap not the stack thus the constructor is private...
-    static PlaybackQueryRpcClient* CreatePlaybackQueryRpcClient(ClientQueryService& localQueryService,
-                                                                ServiceId const& playback_service_id)
+    static std::shared_ptr<PlaybackQueryRpcClient> CreatePlaybackQueryRpcClient(ServiceId const& service)
     {
-        try
-        {
-            return new PlaybackQueryRpcClient(localQueryService, playback_service_id);
-        }
-        catch(tl::exception const& ex)
-        {
-            LOG_ERROR("[PlaybackQueryRpcClient] Failed to create PlaybackQueryRpcClient for {}",
-                      to_string(playback_service_id));
-        }
-
-        return nullptr;
+        return std::shared_ptr<PlaybackQueryRpcClient>(new PlaybackQueryRpcClient(service));
     }
-
-    ~PlaybackQueryRpcClient();
-
-    int is_playback_service_available();
-
-    int send_story_playback_request(uint32_t query_id,
-                                    StoryId const& story_id,
-                                    ChronicleName const& chronicle_name,
-                                    StoryName const& story_name,
-                                    uint64_t start_time,
-                                    uint64_t end_time);
+    rpc::RpcResult<uint32_t> send_story_playback_request(ClientRpcContext&,
+                                                         rpc::OperationContext&,
+                                                         rpc::RpcCallState&,
+                                                         ServiceId const& receiver,
+                                                         PlaybackQuery const&,
+                                                         uint64_t attemptMs) const;
 
 private:
-    PlaybackQueryRpcClient() = delete;
-    PlaybackQueryRpcClient(PlaybackQueryRpcClient const&) = delete;
-    PlaybackQueryRpcClient& operator=(PlaybackQueryRpcClient const&) = delete;
-
-    ClientQueryService& theClientQueryService;   // ClientQueryService instance
-    ServiceId playback_service_id;               // ServiceId of remote PlaybackService
-    tl::provider_handle playback_service_handle; // tl::provider_handle for remote PlaybackService
-    tl::remote_procedure playback_service_available;
-    tl::remote_procedure story_playback_request;
-
-    // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    PlaybackQueryRpcClient(ClientQueryService&, ServiceId const& playback_service_id);
+    explicit PlaybackQueryRpcClient(ServiceId const& service)
+        : provider_(service.getProviderId())
+    {
+        service.get_service_as_string(address_);
+    }
+    std::string address_;
+    uint16_t const provider_;
 };
-
 } // namespace chronolog
-
 #endif

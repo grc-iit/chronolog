@@ -8,6 +8,7 @@
 #include <chrono_monitor.h>
 #include <atomic>
 #include <functional>
+#include <future>
 #include <limits>
 #include <iostream>
 #include <thread>
@@ -29,15 +30,32 @@ struct ClientRpcContextTestAccess
 };
 struct ClientQueryServiceTestAccess
 {
-    static void timeout(ClientQueryService& service, int seconds) { service.queryTimeoutInSecs = seconds; }
     static size_t stagedCapacity(ClientQueryService& service)
     {
-        std::lock_guard<std::mutex> lock(service.queryServiceMutex);
-        return service.activeQueryMap.size() == 1 ? service.activeQueryMap.begin()->second->events.capacity()
-                                                  : std::numeric_limits<size_t>::max();
+        std::lock_guard<std::timed_mutex> lock(service.queryServiceMutex);
+        return service.activeQueryMap.size() == 1
+                       ? service.activeQueryMap.begin()->second->events.capacity()
+                       : (service.activeQueryMap.empty() ? 0 : std::numeric_limits<size_t>::max());
     }
 };
 } // namespace chronolog
+// The test's direct reader entry captures one expiry and real leases. Private
+// production adapters require that expiry explicitly; no fallback resets it.
+template <class Output>
+int replay(std::shared_ptr<chl::ClientRpcContext> const& owner,
+           Output&& output,
+           std::chrono::milliseconds budget = 180s)
+{
+    auto started = chl::rpc::RpcDeadline::Clock::now();
+    auto native = owner->acquireNative();
+    auto policy = owner->policy->tryAcquire();
+    if(!native || !policy)
+        return chl::CL_ERR_RPC_CAPACITY;
+    auto deadline = chl::rpc::RpcDeadline::fromStart(started, budget);
+    auto retained = std::make_shared<chl::ReplayEntry>(std::move(*native), std::move(*policy));
+    return owner->reader
+            ->replay_story("chron", "story", 100, 200, std::forward<Output>(output), deadline, std::move(retained));
+}
 struct Work: chl::rpc::OwnedRpcWork<int>
 {
     std::function<int(chl::rpc::OperationContext&)> body;
@@ -259,9 +277,10 @@ int main(int argc, char** argv)
     if(initialized != chl::CL_SUCCESS)
         return 3;
     client.context->reader->addStoryReader("chron", "story", 19, chl::ServiceId(protocol, "127.0.0.1", peer->port, 25));
-    if(scenario == "late-private" || scenario == "staged-expiry" || scenario == "callback-active" ||
-       scenario == "callback-late")
-        chl::ClientQueryServiceTestAccess::timeout(*client.context->reader, 1);
+    auto budget = (scenario == "late-private" || scenario == "staged-expiry" || scenario == "callback-active" ||
+                   scenario == "callback-late")
+                          ? 1s
+                          : 180s;
     if(scenario.rfind("callback-", 0) == 0)
     {
         struct CallbackState
@@ -283,38 +302,37 @@ int main(int argc, char** argv)
         auto state = std::make_shared<CallbackState>();
         auto actual = client.context;
         auto facade = client.facade;
-        auto call = std::make_shared<Work>(
-                [actual, facade, state, scenario](auto&) -> int
-                {
-                    auto lease = actual->acquireNative();
-                    if(!lease)
-                        return chl::CL_ERR_RPC_CAPACITY;
-                    auto caller = std::this_thread::get_id();
-                    auto capture = std::make_shared<CallbackCapture>();
-                    capture->state = state;
-                    chl::Client::EventCallback callback =
-                            [state, facade, caller, scenario, capture = std::move(capture)](chl::Event const&)
-                    {
-                        ABT_unit_id native = 0;
-                        if(ABT_thread_self_id(&native) != ABT_SUCCESS || std::this_thread::get_id() == caller)
-                            state->native = false;
-                        if(state->returned)
-                            ++state->afterReturn;
-                        unsigned call = ++state->calls;
-                        if(scenario == "callback-active" && call == 1)
-                            std::this_thread::sleep_for(1200ms);
-                        if(scenario == "callback-control")
-                            state->control = facade->CreateChronicle("from_callback");
-                        state->finished = true;
-                        if(scenario == "callback-throw" && call == 1)
-                            throw std::runtime_error("user callback failure");
-                    };
-                    int status = actual->reader->replay_story("chron", "story", 100, 200, std::move(callback));
-                    state->returned = true;
-                    return status;
-                });
+        auto call = [actual, facade, state, scenario, budget]() -> int
+        {
+            auto lease = actual->acquireNative();
+            if(!lease)
+                return chl::CL_ERR_RPC_CAPACITY;
+            auto caller = std::this_thread::get_id();
+            auto capture = std::make_shared<CallbackCapture>();
+            capture->state = state;
+            chl::Client::EventCallback callback =
+                    [state, facade, caller, scenario, capture = std::move(capture)](chl::Event const&)
+            {
+                ABT_unit_id native = 0;
+                if(ABT_thread_self_id(&native) != ABT_SUCCESS || std::this_thread::get_id() == caller)
+                    state->native = false;
+                if(state->returned)
+                    ++state->afterReturn;
+                unsigned call = ++state->calls;
+                if(scenario == "callback-active" && call == 1)
+                    std::this_thread::sleep_for(1200ms);
+                if(scenario == "callback-control")
+                    state->control = facade->CreateChronicle("from_callback");
+                state->finished = true;
+                if(scenario == "callback-throw" && call == 1)
+                    throw std::runtime_error("user callback failure");
+            };
+            int status = replay(actual, std::move(callback), budget);
+            state->returned = true;
+            return status;
+        };
         auto begin = std::chrono::steady_clock::now();
-        int status = client.runtime->invoke<int>(chl::rpc::RpcDeadline::after(10s), call).reply.value_or(-999);
+        int status = call();
         auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
         auto settled = std::chrono::steady_clock::now() + 2s;
@@ -332,8 +350,7 @@ int main(int argc, char** argv)
             success = success && status == chl::CL_SUCCESS && state->calls == 2;
             auto followupLease = actual->acquireNative();
             std::vector<chl::Event> events;
-            success = success && actual->reader->replay_story("chron", "story", 100, 200, events) == chl::CL_SUCCESS &&
-                      events.size() == 2;
+            success = success && replay(actual, events) == chl::CL_SUCCESS && events.size() == 2;
         }
         else if(scenario == "callback-control")
             success = success && status == chl::CL_SUCCESS && state->control == chl::CL_SUCCESS &&
@@ -352,15 +369,15 @@ int main(int argc, char** argv)
     auto output = std::make_shared<std::vector<chl::Event>>();
     output->push_back(chl::Event{9, 9, 9, "unchanged"});
     auto actualClient = client.context;
-    auto call = std::make_shared<Work>(
-            [actualClient, output](auto&) -> int
-            {
-                auto lease = actualClient->acquireNative();
-                if(!lease)
-                    return chl::CL_ERR_RPC_CAPACITY;
-                return actualClient->reader->replay_story("chron", "story", 100, 200, *output);
-            });
-    auto pending = client.runtime->submit<int>(client.runtime->reserve(chl::rpc::RpcDeadline::after(5s)), call);
+    auto call = [actualClient, output, budget]() -> int
+    {
+        auto lease = actualClient->acquireNative();
+        if(!lease)
+            return chl::CL_ERR_RPC_CAPACITY;
+        return replay(actualClient, *output, budget);
+    };
+    // The coordinator is an ordinary caller, leaving Runtime2 for native work.
+    auto pending = std::async(std::launch::async, std::move(call));
     bool stagingFreed = true;
     if(scenario == "staged-expiry")
     {
@@ -368,16 +385,16 @@ int main(int argc, char** argv)
         while((!peer->shared->delivered || actualClient->incomingResponses.used() != 0) &&
               std::chrono::steady_clock::now() < until)
             std::this_thread::sleep_for(1ms);
-        // The original ACK is still withheld, so its map record remains live.
-        // Incoming release must also release the discarded vector allocation.
+        // The ACK is still withheld. B09 can consume a matching response before
+        // that ACK; incoming release must leave no private staging allocation.
         size_t capacity = chl::ClientQueryServiceTestAccess::stagedCapacity(*actualClient->reader);
         stagingFreed = peer->shared->delivered && actualClient->incomingResponses.used() == 0 && capacity == 0;
         std::cout << "discarded_staging_capacity=" << capacity << std::endl;
         peer->shared->allowAck = true;
     }
-    int status = pending.wait().reply.value_or(-999);
+    int status = pending.get();
     bool success;
-    if(scenario == "late-private" || scenario == "staged-expiry")
+    if(scenario == "late-private")
         success = status == chl::CL_ERR_QUERY_TIMED_OUT && output->size() == 1 &&
                   output->front().log_record() == "unchanged";
     else

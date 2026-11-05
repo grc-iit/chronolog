@@ -234,3 +234,16 @@ target_link_libraries(client_append_deadline_test PRIVATE GTest::gtest_main chro
 target_compile_definitions(client_append_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
 add_dependencies(client_append_deadline_test client_native_peer)
 gtest_discover_tests(client_append_deadline_test TEST_PREFIX "Integration_ClientAppendDeadline_" PROPERTIES TIMEOUT 30)
+
+# Each case starts a cold native child and uses the actual client ABI owner.
+add_executable(client_replay_deadline_test client_replay_deadline_test.cpp)
+target_include_directories(client_replay_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)
+target_link_libraries(client_replay_deadline_test PRIVATE chronolog_client chrono_common chrono_rpc thallium)
+foreach(transport IN ITEMS sockets tcp)
+    foreach(scenario IN ITEMS submission original map-lock cleanup-lock admission unknown-capacity last-id response-before-ack bad-ack negative-ack drop-late drop-output-late duplicate-owner callback-active callback-late callback-throw callback-control callback-append)
+        add_test(NAME Integration_ClientReplayDeadline_${transport}_${scenario}
+            COMMAND client_replay_deadline_test ofi+${transport} ${scenario})
+        set_tests_properties(Integration_ClientReplayDeadline_${transport}_${scenario}
+            PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
+    endforeach()
+endforeach()

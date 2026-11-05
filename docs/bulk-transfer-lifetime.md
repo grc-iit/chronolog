@@ -61,7 +61,8 @@ events in owned query state. They keep no caller vector reference.
 The public replay caller publishes staged vector data. The owned callback runs
 on the receive thread outside map locks. An atomic close/active gate stops new
 callbacks at expiry/return and waits only for an already running cooperative
-callback to finish. Full outbound replay-control deadline conversion remains separate.
+callback to finish. Outbound controls use the original replay entry deadline;
+see [Replay deadlines and retained queries](replay-deadlines.md).
 
 Native provider/main-stack retirement remains incomplete until all incoming,
 bulk and native access is proved settled. The scope gates keep the process and

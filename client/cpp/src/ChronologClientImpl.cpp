@@ -403,8 +403,8 @@ int ChronologClientImpl::replay_story(ChronicleName const& c,
     auto admission = context_->admitReader(deadline);
     if(admission.first != CL_SUCCESS)
         return admission.first;
-    // B09 must pass this original deadline through the legacy replay RPC path.
-    return admission.second->replay_story(c, s, begin, end, events);
+    auto retained = std::make_shared<ReplayEntry>(std::move(*lease), std::move(*snapshot));
+    return admission.second->replay_story(c, s, begin, end, events, deadline, std::move(retained));
 }
 int ChronologClientImpl::replay_story(ChronicleName const& c,
                                       StoryName const& s,
@@ -427,7 +427,7 @@ int ChronologClientImpl::replay_story(ChronicleName const& c,
     auto admission = context_->admitReader(deadline);
     if(admission.first != CL_SUCCESS)
         return admission.first;
-    // B09 must pass this original deadline through the legacy replay RPC path.
-    return admission.second->replay_story(c, s, begin, end, std::move(callback));
+    auto retained = std::make_shared<ReplayEntry>(std::move(*lease), std::move(*snapshot));
+    return admission.second->replay_story(c, s, begin, end, std::move(callback), deadline, std::move(retained));
 }
 } // namespace chronolog
