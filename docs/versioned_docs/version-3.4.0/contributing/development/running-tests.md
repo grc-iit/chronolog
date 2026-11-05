@@ -333,7 +333,7 @@ tools/deploy/local_single_user_deploy.sh -i -t Debug -B ~/chronolog-build/Asan -
 ASAN_OPTIONS=detect_leaks=1 ctest --test-dir ~/chronolog-build/Asan/Debug -R 'Unit_' --output-on-failure
 ```
 
-Keep ASan and normal objects in separate build trees. As of 3.3.0, 26 unit tests fail under ASan, all with leaks: the StoryPipeline tests (its ingestion handle is never freed) and the ChronoKVS, ChronoPubSub and ChronoSQL configuration tests. Compare a run against that, not against a clean result.
+Keep ASan and normal objects in separate build trees. As of 3.4.0, 28 unit tests fail under ASan, none with an AddressSanitizer error: 26 with leaks, from the StoryPipeline tests (its ingestion handle is never freed) and the ChronoKVS, ChronoPubSub and ChronoSQL configuration tests; `Unit_PyClient_DurableBinding`, because Python cannot load an ASan-built module; and `KeeperDurableWriter.StopAcceptingWritesLetsRunningHandlersFinish`, a 32-byte leak in margo 0.13.1 when a provider with a finalize callback is deleted. Compare a run against that, not against a clean result.
 
 ---
 

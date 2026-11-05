@@ -78,7 +78,8 @@ A scenario that needs control over the daemons themselves (stopping a grapher, f
 | New public API or component | Unit tests covering the new interface |
 | Bug fix | At least one test that reproduces the bug |
 | Inter-component changes | Integration tests exercising the affected interaction |
-| Keeper retention, watermark protocol, replay path or player | The four integration scripts, with their results in the PR |
+| Keeper retention, watermark protocol, replay path or player | The four watermark and replay integration scripts, with their results in the PR |
+| Keeper WAL, durable writes, restarting a keeper | The seven `keeper_*` integration scripts, with their results in the PR, and `docker/local_distributed_ci.sh --wal-restart` |
 | RPC endpoints, ports, configuration plumbing, deploy scripts | `docker/local_distributed_ci.sh` |
 | Archive layout, manifest, archive reads or destroy | `docker/local_distributed_ci.sh --nfs` |
 | All PRs | Existing tests must continue to pass |
