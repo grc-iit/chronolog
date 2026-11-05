@@ -26,6 +26,9 @@
 #   11 keeper shutdown delivers its retained chunks
 #   11b NFS pass (only with --nfs): the archive tests again, once per mount
 #       profile, with the archive on an NFS export of this host
+#   11c keeper WAL kill and restart (only with --wal-restart): durable writes
+#       from c2, the keeper holding them killed with SIGKILL and restarted,
+#       the archive and a replay checked
 #   12 stop, clean archive, tear down
 #
 # Usage:
@@ -58,6 +61,15 @@
 #   --nfs-cache-secs N          longest attribute cache time of the profiles
 #                               (default 60; raise it with acregmax/acdirmax above 60)
 #
+# Keeper WAL kill and restart, kept out of CI:
+#   --wal-restart               run stage 11c after stage 11 (and 11b): redeploy
+#                               with the keeper WAL on a container volume at /wal
+#                               in each keeper container (--wal-dir /wal), write
+#                               accepted then durable events from c2, SIGKILL the
+#                               keeper whose WAL holds them, restart it with
+#                               --restart-keeper and check the archive
+#   --wal-restart-only          as --wal-restart, but skip stages 7-11
+#
 # Requires: docker, docker compose. Everything else lives in the image.
 
 set -uo pipefail
@@ -82,6 +94,9 @@ NFS_CACHE_SECS=60
 NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
 NFS_OVERRIDE_NEW=""
 NFS_SERVER_UP=0
+WAL_RESTART=0
+WAL_RESTART_ONLY=0
+WAL_CONF_PATCHED=0
 CONTAINERS_CREATED=0
 
 # Paths inside the containers -- identical to the workflow's.
@@ -89,7 +104,7 @@ WORK_DIR="/home/grc-iit/chronolog-install/chronolog"
 INSTALL_DIR="/home/grc-iit/chronolog-install"
 REPO_DIR="/home/grc-iit/chronolog-repo"
 
-usage() { sed -n '3,61p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
+usage() { sed -n '3,73p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-1}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -106,6 +121,8 @@ while [ $# -gt 0 ]; do
         --nfs-destroy-profile) NFS_DESTROY_PROFILE="$2"; shift 2 ;;
         --nfs-export) NFS_EXPORT="$2"; shift 2 ;;
         --nfs-cache-secs) NFS_CACHE_SECS="$2"; shift 2 ;;
+        --wal-restart) WAL_RESTART=1; shift ;;
+        --wal-restart-only) WAL_RESTART=1; WAL_RESTART_ONLY=1; shift ;;
         -h|--help) usage 0 ;;
         *) echo "unknown option: $1"; usage 1 ;;
     esac
@@ -168,6 +185,8 @@ summary() {
 cleanup() {
     local rc=$?
     if [ "${KEEP}" = "1" ]; then
+        # stage 11c patched the conf template of the cluster left up
+        [ "${WAL_CONF_PATCHED}" = 1 ] && wal_restore_conf
         if [ "${CONTAINERS_CREATED}" = 1 ]; then
             echo ""
             echo "ℹ️  --keep: leaving containers up. Inspect with:"
@@ -200,6 +219,15 @@ cleanup() {
 dex() { local c="$1"; shift; docker exec --user grc-iit "chronolog-${c}" "$@"; }
 dex_root() { local c="$1"; shift; docker exec --user root "chronolog-${c}" "$@"; }
 
+# Stage 11c keeps the conf template it patches here: "single_user_deploy.sh -c"
+# removes every default-chrono-conf.json.* in the conf directory.
+WAL_C1_DIR=/home/grc-iit/wal-restart
+WAL_CONF_TEMPLATE="${WORK_DIR}/conf/default-chrono-conf.json"
+wal_restore_conf() {
+    dex c1 bash -c "[ -f ${WAL_C1_DIR}/conf-template.backup ] && cp -f ${WAL_C1_DIR}/conf-template.backup ${WAL_CONF_TEMPLATE}" \
+        && WAL_CONF_PATCHED=0
+}
+
 # Installed before the NFS setup so that a setup that fails halfway is torn
 # down too. Containers are torn down only once this run has created them: a
 # compose file left by an earlier --keep run may describe containers still in
@@ -230,6 +258,7 @@ fi
 echo "image     : ${IMAGE}"
 echo "topology  : ${NUM_CONTAINERS} containers = 1 visor + ${NUM_KEEPERS} keeper + ${NUM_GRAPHERS} grapher + ${NUM_PLAYERS} player"
 echo "repo      : ${REPO_ROOT}"
+[ "${WAL_RESTART}" = 1 ] && echo "wal       : stage 11c, keeper WAL on a /wal volume in each keeper container"
 if [ "${NFS}" = 1 ]; then
     echo "nfs       : export ${NFS_EXPORT}; profiles ${NFS_PROFILES[*]}; passes ${NFS_PASSES[*]}"
     echo "            exporting needs sudo"
@@ -284,6 +313,11 @@ EOF
       - shared_home_localci:/home/grc-iit
       - ${REPO_ROOT}:/workspace:ro
 EOF
+        # --wal-restart: each keeper container gets a volume of its own at
+        # /wal, as a node would have a local drive, for stage 11c's WAL
+        if [ "${WAL_RESTART}" = 1 ] && [ "$i" -ge 2 ] && [ "$i" -le $(( NUM_KEEPERS + 1 )) ]; then
+            echo "      - wal_c${i}_localci:/wal"
+        fi
         [ "$i" -gt 1 ] && printf "    depends_on:\n      - c1\n"
     done
     cat <<EOF
@@ -294,6 +328,9 @@ networks:
 volumes:
   shared_home_localci:
 EOF
+    if [ "${WAL_RESTART}" = 1 ]; then
+        for i in $(seq 2 $(( NUM_KEEPERS + 1 ))); do echo "  wal_c${i}_localci:"; done
+    fi
 } > "${COMPOSE_FILE}"
 
 if [ "${NFS}" = 1 ]; then
@@ -457,8 +494,9 @@ if [ "${DEPLOY_BAD}" != "0" ]; then
 fi
 stage_ok
 
-# Stages 7-11 are skipped under --nfs-only; the fi is before stage 11b.
-if [ "${NFS_ONLY}" = 0 ]; then
+# Stages 7-11 are skipped under --nfs-only and --wal-restart-only; the fi is
+# before stage 11b.
+if [ "${NFS_ONLY}" = 0 ] && [ "${WAL_RESTART_ONLY}" = 0 ]; then
 
 # --------------------------------------------------- 7. perf test -------------
 stage "7. Client performance test (write path)"
@@ -701,6 +739,333 @@ if [ "${NFS}" = 1 ]; then
         docker cp chronolog-c1:/home/grc-iit/nfs-pass-logs/. "${nfs_logs}/" > /dev/null 2>&1 || true
         stage_fail "NFS pass failed (logs copied to ${nfs_logs})"
     fi
+    stage_ok
+fi
+
+# --------------------------------------------------- 11c. WAL kill and restart --
+# The distributed form of tests/integration/keeper_wal_crash_test.sh. ChronoLog
+# is redeployed with the keeper WAL on the /wal volume of each keeper container
+# and the keeper and grapher timings that test pins. From c2, one client writes
+# WAL_EVENTS accepted events to a story and releases it, then a second client
+# writes WAL_EVENTS durable events to the same story. One story, not one per
+# mode as in that test: the visor picks a story's recording group from its id,
+# so with several groups a second story could land on a keeper that is not
+# killed. The keeper whose WAL holds the story's records is killed with SIGKILL
+# within WAL_KILL_WITHIN_SECS of the last durable ack, before any of the
+# story's chunks can ship, and restarted with --restart-keeper, which reuses
+# its conf and WAL directory. Checks:
+#   1. the kill came within WAL_KILL_WITHIN_SECS of the last durable ack and
+#      less than WAL_K_ACCEPT_SECS after the first accepted event, and the
+#      killed keeper left no exit-summary;
+#   2. the restarted keeper recovers its WAL: the archive holds at least
+#      WAL_EVENTS events of the story, and the segment that held the durable
+#      records stays until it does;
+#   3. after the grapher confirmed them, that segment is deleted and the WAL
+#      directory holds at most two *.wal files;
+#   4. a replay from another container returns every acknowledged durable
+#      identity exactly once;
+#   5. negative control: the same replay misses at least one acknowledged
+#      accepted event;
+#   6. single_user_deploy.sh -s finds every keeper's exit-summary clean.
+# With more than one keeper in the story's group, the other keepers' accepted
+# events reach the archive too, so check 2 alone shows less; checks 4 and 5
+# still hold.
+if [ "${WAL_RESTART}" = 1 ]; then
+    stage "11c. Keeper WAL kill and restart"
+    WAL_PROBE=/home/grc-iit/chronolog-build/Release/tests/integration/keeper-wal/chronolog-test-durable-probe
+    WAL_H5DUMP="${REPO_DIR}/.spack-env/view/bin/h5dump"
+    WAL_CLIENT_CONF="${WORK_DIR}/conf/default-chrono-client-conf.json"
+    WAL_CHRONICLE=KeeperWalRestartChronicle
+    WAL_STORY=WalRestartStory
+    WAL_EVENTS=200
+    WAL_KILL_WITHIN_SECS=2
+    # as in keeper_wal_crash_test.sh: keeper chunks ship at chunk end plus the
+    # acceptance window, so a kill less than WAL_K_ACCEPT_SECS after the first
+    # event comes before any of them shipped; small grapher windows write the
+    # archive soon after the restart
+    WAL_K_CHUNK_SECS=10
+    WAL_K_ACCEPT_SECS=15
+    WAL_G_CHUNK_SECS=10
+    WAL_G_ACCEPT_SECS=15
+    WAL_ARCHIVE_DEADLINE=240
+    WAL_DEADLINE=120
+    WAL_WRITER=c2
+    WAL_READER="c${NUM_CONTAINERS}"
+    WAL_LOGS=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-wal-restart-logs.XXXXXX")
+    WAL_PASS=0
+    WAL_FAIL=0
+
+    wal_ok() { echo "  ✅ PASS: $*"; WAL_PASS=$(( WAL_PASS + 1 )); }
+    wal_bad() { echo "  ❌ FAIL: $*"; WAL_FAIL=$(( WAL_FAIL + 1 )); }
+    now_ns() { date +%s%N; }
+
+    # single_user_deploy.sh in c1 with the spack env, as stage 5 runs it
+    wal_deploy() {
+        dex c1 bash -c "cd ${REPO_DIR} && source /home/grc-iit/spack/share/spack/setup-env.sh && \
+            { spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true; } && \
+            ./tools/deploy/single_user_deploy.sh $(printf '%q ' "$@")"
+    }
+    wal_kill_all() {
+        local i
+        for i in $(seq 1 "${NUM_CONTAINERS}"); do
+            dex "c${i}" pkill -9 -f "chrono-(visor|keeper|grapher|player) --config" > /dev/null 2>&1
+        done
+        sleep 2
+    }
+    # wal_probe HOST CLIENT_CONF ARGS...: the durable probe on HOST, on the story
+    wal_probe() {
+        local host=$1 conf=$2
+        shift 2
+        dex "${host}" env "LD_LIBRARY_PATH=${WORK_DIR}/lib" "${WAL_PROBE}" --config "${WAL_C1_DIR}/${conf}" \
+            --chronicle "${WAL_CHRONICLE}" --story "${WAL_STORY}" "$@"
+    }
+    wal_keeper_pid() { dex "$1" pgrep -f "chrono-keeper --config" 2> /dev/null | head -1; }
+    wal_segments() { dex "${WAL_KILL_HOST}" find "${WAL_KILL_DIR}" -maxdepth 1 -name '*.wal' 2> /dev/null | wc -l; }
+    # the oldest segment of keeper host $1's WAL directory $2 whose N record names the chronicle
+    wal_held_segment() {
+        dex "$1" bash -c "grep -lF -- '${WAL_CHRONICLE}' '$2'/*.wal 2>/dev/null | sort | head -1 | xargs -r basename"
+    }
+    wal_held_present() { [ -z "${WAL_HELD}" ] || dex "${WAL_KILL_HOST}" test -e "${WAL_KILL_DIR}/${WAL_HELD}"; }
+    # events of the story across its archive files
+    wal_archived() {
+        docker exec -i --user grc-iit chronolog-c1 bash -s -- "${WAL_H5DUMP}" \
+            "${WORK_DIR}/output/${WAL_CHRONICLE}/${WAL_STORY}" <<'EOF'
+total=0
+for f in "$2"/*.h5; do
+    [ -f "$f" ] || continue
+    n=$("$1" -H -d /story_chunks/data.vlen_bytes "$f" 2> /dev/null |
+        sed -n 's/.*DATASPACE *SIMPLE *{ *( *\([0-9]*\) *).*/\1/p' | head -1)
+    total=$((total + ${n:-0}))
+done
+echo "$total"
+EOF
+    }
+    identities() { grep -E '^[0-9]+ [0-9]+ [0-9]+$' "$1" | sort -u; }
+
+    # wal_write MODE: WAL_EVENTS events from the writer; acknowledged identities to $WAL_LOGS/acked_MODE
+    wal_write() {
+        local out="${WAL_LOGS}/write_$1.out"
+        wal_probe "${WAL_WRITER}" writer_client_conf.json --write "${WAL_EVENTS}" --mode "$1" > "${out}" 2>&1
+        identities "${out}" > "${WAL_LOGS}/acked_$1"
+        echo "  $1 writes from ${WAL_WRITER}: $(sed -n 's/^WRITE_ACKED //p' "${out}") acked/sent; codes: $(sed -n 's/^WRITE_CODE //p' "${out}" | paste -sd ',' -)"
+        [ "$(wc -l < "${WAL_LOGS}/acked_$1")" -eq "${WAL_EVENTS}" ]
+    }
+
+    wal_restart_pass() {
+        dex c1 test -x "${WAL_PROBE}" || { wal_bad "probe not found in c1: ${WAL_PROBE}"; return 1; }
+        dex c1 grep -qa 'durable|accepted' "${WAL_PROBE}" ||
+            { wal_bad "${WAL_PROBE} has no durable mode: it was built from older sources; rebuild it"; return 1; }
+        dex c1 test -x "${WAL_H5DUMP}" || { wal_bad "h5dump not found in c1: ${WAL_H5DUMP}"; return 1; }
+
+        echo "  stopping the running deployment and cleaning it"
+        wal_deploy -s -w "${WORK_DIR}" > "${WAL_LOGS}/stop-before.log" 2>&1
+        wal_kill_all
+        wal_deploy -c -w "${WORK_DIR}" > "${WAL_LOGS}/clean-before.log" 2>&1
+        # a WAL left in a volume would be recovered into this run
+        local h
+        for h in ${KEEPER_HOSTS}; do
+            dex_root "${h}" bash -c "find /wal -mindepth 1 -maxdepth 1 -exec rm -rf {} + && chown grc-iit:grc-iit /wal" ||
+                { wal_bad "cannot prepare /wal in ${h}"; return 1; }
+        done
+
+        echo "  patching the conf template: keeper ${WAL_K_CHUNK_SECS}s chunks / ${WAL_K_ACCEPT_SECS}s window, grapher ${WAL_G_CHUNK_SECS}s / ${WAL_G_ACCEPT_SECS}s"
+        dex c1 bash -c "mkdir -p ${WAL_C1_DIR} && cp -f ${WAL_CONF_TEMPLATE} ${WAL_C1_DIR}/conf-template.backup" ||
+            { wal_bad "cannot back up ${WAL_CONF_TEMPLATE}"; return 1; }
+        WAL_CONF_PATCHED=1
+        dex c1 bash -c "jq '.chrono_keeper.DataStoreInternals.story_chunk_duration_secs = ${WAL_K_CHUNK_SECS} |
+            .chrono_keeper.DataStoreInternals.acceptance_window_secs = ${WAL_K_ACCEPT_SECS} |
+            .chrono_keeper.DataStoreInternals.archive_visibility_delay_secs = 3 |
+            .chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs = 30 |
+            .chrono_grapher.DataStoreInternals.story_chunk_duration_secs = ${WAL_G_CHUNK_SECS} |
+            .chrono_grapher.DataStoreInternals.acceptance_window_secs = ${WAL_G_ACCEPT_SECS} |
+            .chrono_grapher.DataStoreInternals.watermark_report_interval_secs = 1' \
+            ${WAL_C1_DIR}/conf-template.backup > ${WAL_C1_DIR}/conf-template.patched &&
+            cp -f ${WAL_C1_DIR}/conf-template.patched ${WAL_CONF_TEMPLATE}" ||
+            { wal_bad "conf template patch failed"; return 1; }
+
+        echo "  deploying with the keeper WAL in /wal"
+        if ! wal_deploy -d -w "${WORK_DIR}" --wal-dir /wal > "${WAL_LOGS}/deploy.log" 2>&1; then
+            tail -20 "${WAL_LOGS}/deploy.log"
+            wal_bad "deploy with --wal-dir /wal failed"
+            return 1
+        fi
+        grep -E 'WAL directory|WARNING' "${WAL_LOGS}/deploy.log" | sed 's/\x1b\[[0-9;]*m//g; s/^/    /'
+        sleep 15
+
+        # host -> WAL directory, from the keeper confs the deploy generated
+        declare -gA WAL_DIR_OF=()
+        local d
+        while read -r h d; do
+            [ -n "${h}" ] && WAL_DIR_OF["${h}"]="${d}"
+        done < <(dex c1 bash -c "for c in ${WAL_CONF_TEMPLATE}.*.keeper.*; do [ -f \"\$c\" ] && echo \"\${c##*.keeper.} \$(jq -r '.chrono_keeper.WAL.dir' \"\$c\")\"; done")
+        for h in ${KEEPER_HOSTS}; do
+            if [ -z "$(wal_keeper_pid "${h}")" ]; then
+                wal_bad "deploy: no keeper running on ${h}"
+                return 1
+            fi
+            case "${WAL_DIR_OF[${h}]:-}" in
+                /wal/*) ;;
+                *) wal_bad "deploy: keeper conf for ${h} has WAL dir '${WAL_DIR_OF[${h}]:-}', not under /wal"; return 1 ;;
+            esac
+        done
+
+        # the writer and the reader bind their query services on ports of their own
+        dex c1 bash -c "jq '.chrono_client.ClientQueryService.rpc.service_base_port = 5564' ${WAL_CLIENT_CONF} > ${WAL_C1_DIR}/writer_client_conf.json &&
+            jq '.chrono_client.ClientQueryService.rpc.service_base_port = 5563' ${WAL_CLIENT_CONF} > ${WAL_C1_DIR}/reader_client_conf.json" ||
+            { wal_bad "client conf patch failed"; return 1; }
+
+        # ------------------------------------------------ write, then kill --
+        wal_write accepted || { wal_bad "accepted writes: not every event was acknowledged"; return 1; }
+        wal_write durable || { wal_bad "durable writes: not every event was acknowledged"; return 1; }
+        local last_ack_ns first_accepted_ns
+        last_ack_ns=$(sed -n 's/^LAST_ACK_NS //p' "${WAL_LOGS}/write_durable.out")
+        first_accepted_ns=$(cut -d' ' -f1 "${WAL_LOGS}/acked_accepted" | sort -n | head -1)
+
+        # the keeper whose WAL holds the story's records; with one keeper, no search
+        WAL_KILL_HOST=""
+        read -ra keeper_list <<< "${KEEPER_HOSTS}"
+        if [ "${#keeper_list[@]}" -eq 1 ]; then
+            WAL_KILL_HOST=${keeper_list[0]}
+        else
+            for h in "${keeper_list[@]}"; do
+                [ -n "$(wal_held_segment "${h}" "${WAL_DIR_OF[${h}]}")" ] && { WAL_KILL_HOST=${h}; break; }
+            done
+        fi
+        [ -n "${WAL_KILL_HOST}" ] || { wal_bad "kill: no keeper WAL names ${WAL_CHRONICLE}"; return 1; }
+        WAL_KILL_DIR=${WAL_DIR_OF[${WAL_KILL_HOST}]}
+        local pid kill_ns gap_ms span_ms
+        pid=$(wal_keeper_pid "${WAL_KILL_HOST}")
+        [ -n "${pid}" ] || { wal_bad "kill: no keeper running on ${WAL_KILL_HOST} after the writes"; return 1; }
+        dex "${WAL_KILL_HOST}" bash -c "kill -9 ${pid}"
+        kill_ns=$(now_ns)
+        gap_ms=$(( (kill_ns - last_ack_ns) / 1000000 ))
+        span_ms=$(( (kill_ns - first_accepted_ns) / 1000000 ))
+        local i
+        for i in $(seq 1 50); do [ -z "$(wal_keeper_pid "${WAL_KILL_HOST}")" ] && break; sleep 0.1; done
+        if [ -n "$(wal_keeper_pid "${WAL_KILL_HOST}")" ]; then
+            wal_bad "kill: keeper ${pid} on ${WAL_KILL_HOST} still running after SIGKILL"
+            return 1
+        elif [ "${gap_ms}" -lt $(( WAL_KILL_WITHIN_SECS * 1000 )) ]; then
+            wal_ok "kill: keeper ${pid} on ${WAL_KILL_HOST} killed ${gap_ms} ms after the last durable ack"
+        else
+            wal_bad "kill: keeper on ${WAL_KILL_HOST} killed ${gap_ms} ms after the last durable ack, over ${WAL_KILL_WITHIN_SECS}s"
+        fi
+        if [ "${span_ms}" -lt $(( WAL_K_ACCEPT_SECS * 1000 )) ]; then
+            wal_ok "kill: ${span_ms} ms after the first accepted event, under the ${WAL_K_ACCEPT_SECS}s acceptance window"
+        else
+            wal_bad "kill: ${span_ms} ms after the first accepted event, not under the ${WAL_K_ACCEPT_SECS}s acceptance window; chunks may have shipped"
+        fi
+        WAL_HELD=$(wal_held_segment "${WAL_KILL_HOST}" "${WAL_KILL_DIR}")
+        if dex "${WAL_KILL_HOST}" test -e "${WAL_KILL_DIR}/exit-summary"; then
+            wal_bad "kill: the killed keeper left ${WAL_KILL_DIR}/exit-summary, as only a clean exit should"
+        else
+            wal_ok "kill: no exit-summary in ${WAL_KILL_HOST}:${WAL_KILL_DIR}; $(wal_segments) *.wal file(s), records in ${WAL_HELD:-none}"
+        fi
+
+        # ---------------------------------------------------------- restart --
+        echo "  restarting the keeper on ${WAL_KILL_HOST}"
+        if ! wal_deploy --restart-keeper "${WAL_KILL_HOST}" -w "${WORK_DIR}" > "${WAL_LOGS}/restart.log" 2>&1; then
+            cat "${WAL_LOGS}/restart.log"
+            wal_bad "restart: single_user_deploy.sh --restart-keeper ${WAL_KILL_HOST} failed"
+            return 1
+        fi
+        local restart_ns archived early_release=0 deadline
+        restart_ns=$(now_ns)
+        echo "  waiting up to ${WAL_ARCHIVE_DEADLINE}s for ${WAL_EVENTS} events of ${WAL_STORY} in the archive"
+        # the segment is looked at before the archive is counted, so a segment
+        # gone while the count is short was deleted before the archive held them
+        deadline=$(( SECONDS + WAL_ARCHIVE_DEADLINE ))
+        wal_held_present || early_release=1
+        archived=$(wal_archived)
+        while [ "${archived:-0}" -lt "${WAL_EVENTS}" ] && [ "${early_release}" -eq 0 ] && [ "${SECONDS}" -lt "${deadline}" ]; do
+            [ -n "$(wal_keeper_pid "${WAL_KILL_HOST}")" ] || break
+            sleep 5
+            wal_held_present || early_release=1
+            archived=$(wal_archived)
+        done
+        if [ "${early_release}" -eq 1 ] && [ "${archived:-0}" -lt "${WAL_EVENTS}" ]; then
+            wal_bad "recovery: ${WAL_HELD} deleted while only ${archived} of ${WAL_EVENTS} event(s) were in the archive"
+        elif [ -z "$(wal_keeper_pid "${WAL_KILL_HOST}")" ]; then
+            wal_bad "recovery: the restarted keeper on ${WAL_KILL_HOST} exited"
+            return 1
+        elif [ "${archived:-0}" -ge "${WAL_EVENTS}" ]; then
+            wal_ok "recovery: ${archived} event(s) of ${WAL_STORY} in the archive $(( ($(now_ns) - restart_ns) / 1000000000 ))s after the restart"
+        else
+            wal_bad "recovery: only ${archived:-0} of ${WAL_EVENTS} event(s) in the archive after ${WAL_ARCHIVE_DEADLINE}s"
+        fi
+
+        echo "  waiting up to ${WAL_DEADLINE}s for ${WAL_HELD:-the held segment} to go and the WAL to drop to at most 2 segments"
+        deadline=$(( SECONDS + WAL_DEADLINE ))
+        while { wal_held_present || [ "$(wal_segments)" -gt 2 ]; } && [ "${SECONDS}" -lt "${deadline}" ]; do
+            sleep 2
+        done
+        local segments
+        segments=$(wal_segments)
+        if [ -z "${WAL_HELD}" ]; then
+            wal_bad "WAL: no *.wal file in ${WAL_KILL_DIR} names ${WAL_CHRONICLE} after the kill"
+        elif wal_held_present; then
+            wal_bad "WAL: ${WAL_HELD}, which held the durable records, still in ${WAL_KILL_DIR} after ${WAL_DEADLINE}s"
+        elif [ "${segments}" -le 2 ]; then
+            wal_ok "WAL: ${WAL_HELD} deleted after confirmation; ${segments} *.wal file(s) left in ${WAL_KILL_DIR}"
+        else
+            wal_bad "WAL: still ${segments} *.wal file(s) in ${WAL_KILL_DIR} after ${WAL_DEADLINE}s"
+        fi
+
+        # ------------------------------------------------------------ replay --
+        wal_probe "${WAL_READER}" reader_client_conf.json --replay > "${WAL_LOGS}/replay.out" 2>&1
+        local status missing twice unexpected lost
+        status=$(sed -n 's/^REPLAY_STATUS \(.*\)$/\1/p' "${WAL_LOGS}/replay.out")
+        grep -E '^[0-9]+ [0-9]+ [0-9]+$' "${WAL_LOGS}/replay.out" > "${WAL_LOGS}/replay.ids"
+        echo "  replay from ${WAL_READER}: status ${status:-?}, $(wc -l < "${WAL_LOGS}/replay.ids") event(s)"
+        missing=$(comm -23 "${WAL_LOGS}/acked_durable" <(sort -u "${WAL_LOGS}/replay.ids") | wc -l)
+        # an identity returned twice, or a second event at the same (time,
+        # client id) under another index, is a second copy of an acked event
+        twice=$(awk 'NR == FNR { acked[$1 " " $2] = 1; next } ($1 " " $2) in acked { n[$1 " " $2]++ }
+                     END { c = 0; for(k in n) if(n[k] > 1) c++; print c }' \
+                    "${WAL_LOGS}/acked_durable" "${WAL_LOGS}/replay.ids")
+        unexpected=$(comm -13 <(sort -u "${WAL_LOGS}/acked_durable" "${WAL_LOGS}/acked_accepted") \
+                         <(sort -u "${WAL_LOGS}/replay.ids") | wc -l)
+        lost=$(comm -23 "${WAL_LOGS}/acked_accepted" <(sort -u "${WAL_LOGS}/replay.ids") | wc -l)
+        if [ "${status}" != "CL_SUCCESS" ]; then
+            wal_bad "replay: status ${status:-none}"
+            grep -Ev '^[0-9]+ [0-9]+ [0-9]+$' "${WAL_LOGS}/replay.out" | tail -5 | sed 's/^/    /'
+        else
+            if [ "${missing}" -eq 0 ] && [ "${twice}" -eq 0 ]; then
+                wal_ok "durable replay: every one of the ${WAL_EVENTS} acknowledged durable identities appears exactly once (${unexpected} unacknowledged)"
+            else
+                wal_bad "durable replay: ${missing} acknowledged durable identities missing, ${twice} returned more than once"
+            fi
+            if [ "${lost}" -ge 1 ]; then
+                wal_ok "negative control: ${lost} of ${WAL_EVENTS} acknowledged accepted events lost in the kill"
+            else
+                wal_bad "negative control: every acknowledged accepted event survived the kill; the kill did not test the WAL"
+            fi
+        fi
+
+        # -------------------------------------------------------------- stop --
+        echo "  stopping the deployment"
+        if wal_deploy -s -w "${WORK_DIR}" > "${WAL_LOGS}/stop.log" 2>&1; then
+            wal_ok "stop: every keeper's exit-summary is clean"
+        else
+            wal_bad "stop: single_user_deploy.sh -s reported a missing exit-summary or unconfirmed durable events"
+        fi
+        grep -A "${NUM_KEEPERS}" 'PENDING_EVENTS' "${WAL_LOGS}/stop.log" | sed 's/\x1b\[[0-9;]*m//g; s/^/    /'
+        dex c1 bash -c "cat \$(ls -r ${WORK_DIR}/monitor/chrono-keeper-${WAL_KILL_HOST}.[0-9]*.log 2>/dev/null) ${WORK_DIR}/monitor/chrono-keeper-${WAL_KILL_HOST}.log 2>/dev/null | grep 'WAL replay from' | tail -1" |
+            sed 's/^/    /'
+        return 0
+    }
+
+    wal_restart_pass
+    wal_kill_all
+    wal_restore_conf || echo "  could not restore ${WAL_CONF_TEMPLATE} from ${WAL_C1_DIR}/conf-template.backup"
+    echo "  ${WAL_PASS} passed, ${WAL_FAIL} failed"
+    if [ "${WAL_FAIL}" -ne 0 ] || [ "${WAL_PASS}" -eq 0 ]; then
+        # the daemon logs are on the shared volume, which the teardown deletes
+        mkdir -p "${WAL_LOGS}/monitor"
+        docker cp chronolog-c1:"${WORK_DIR}/monitor/." "${WAL_LOGS}/monitor/" > /dev/null 2>&1 || true
+        stage_fail "keeper WAL kill and restart failed (logs in ${WAL_LOGS})"
+    fi
+    rm -rf "${WAL_LOGS}"
     stage_ok
 fi
 

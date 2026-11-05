@@ -1,6 +1,7 @@
 #ifndef CHRONOLOG_ARCHIVE_MANIFEST_H
 #define CHRONOLOG_ARCHIVE_MANIFEST_H
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -90,20 +91,40 @@ public:
     ArchiveManifestWriter(std::string const& archive_root, std::string const& writer_id);
 
     // Creates the manifest directory and the log if they do not exist yet. An
-    // archive root that does not exist is an error; it is never created.
+    // archive root that does not exist is an error; it is never created. Syncs
+    // the log, the manifest directory and the archive root, so the log's name
+    // is on disk before any record in it is reported.
     int open();
 
     // Appends one record. Each append opens and closes the log, so a reader on
-    // another NFS client that opens it afterwards sees the record.
+    // another NFS client that opens it afterwards sees the record. The record
+    // is synced (with archiveFsync, see FileSync.h) before it returns
+    // CL_SUCCESS, and so are the directories of a log it had to create again.
     int append(ArchiveManifestRecord const& record);
+
+    // true once a sync of the log or of a directory above it failed, in open or
+    // in append. The writer is latched until the process restarts: after a
+    // failed fsync, Linux may have dropped the log's dirty pages, so no later
+    // append could be shown to be on disk either. Every later append returns
+    // CL_ERR_UNKNOWN without writing.
+    bool failed() const { return theFailed.load(); }
 
     std::string const& logPath() const { return theLogPath; }
 
 private:
     std::mutex theMutex;
+    std::atomic<bool> theFailed{false};
     // Creates the manifest directory if the archive root exists. Caller holds
     // theMutex.
     bool createManifestDirectory();
+
+    // Sets the latch after a failed sync of path and logs it. Returns
+    // CL_ERR_UNKNOWN.
+    int latch(std::string const& path, int error);
+
+    // Syncs the manifest directory and the archive root; a failure latches.
+    // Caller holds theMutex.
+    int syncDirectories();
 
     // the OPEN record that starts a log this writer creates
     std::string headerLine() const;

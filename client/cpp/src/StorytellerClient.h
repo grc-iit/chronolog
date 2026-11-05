@@ -81,7 +81,7 @@ private:
     ChronologTimer& theTimer;
     thallium::engine& client_engine;
     ClientId clientId;
-    std::atomic<int> atomic_index;
+    std::atomic<int> atomic_index{0};
 
     std::mutex recordingClientMapMutex;
     std::mutex acquiredStoryMapMutex;
@@ -114,7 +114,14 @@ public:
 
     virtual ~StoryHandleImpl();
 
+    using StoryHandle::log_event;
+
     virtual uint64_t log_event(std::string const&) override;
+
+    // Accepted: today's record_event path, returning the keeper's status.
+    // Durable: record_event_durable, resending the identical event on a
+    // timeout or transport error up to options.attempts times.
+    virtual int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time) override;
 
     virtual int playback(size_t n, std::vector<Event>& events) override;
 
@@ -124,6 +131,8 @@ public:
     void removeRecordingClient(ServiceId const&);
 
 private:
+    int log_durable_event(LogEvent const& event, LogEventOptions const& options, uint64_t& event_time);
+
     StorytellerClient& theClient;
     ChronicleName chronicle;
     StoryName story;

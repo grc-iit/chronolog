@@ -377,6 +377,7 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
     }
 
     std::lock_guard<std::mutex> lock(sequencingMutex);
+    lastArrival.store(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     chl::LogEvent event;
     // the last chunk is most likely the one that would get the events, so we'd start with the last
     // chunk and do the lookup only if it's not the one
@@ -413,6 +414,7 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
                     LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarded event with timestamp: {}",
                               storyId,
                               event.time());
+                    theTailStore.eventDiscarded(storyId, {event.time(), event.getClientId(), event.index()});
                 }
             }
         }
@@ -426,15 +428,12 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
                     break;
                 }
             }
-            if(chunk_to_merge_iter != storyTimelineMap.end())
-            {
-                (*chunk_to_merge_iter).second->insertEvent(event);
-            }
-            else
+            if(chunk_to_merge_iter == storyTimelineMap.end() || !(*chunk_to_merge_iter).second->insertEvent(event))
             {
                 LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}",
                           storyId,
                           event.time());
+                theTailStore.eventDiscarded(storyId, {event.time(), event.getClientId(), event.index()});
             }
         }
         else
@@ -465,15 +464,12 @@ void chronolog::KeeperStoryPipeline::mergeEvents(chronolog::EventDeque& event_de
                     break;
                 }
             }
-            if(chunk_to_merge_iter != storyTimelineMap.end())
-            {
-                (*chunk_to_merge_iter).second->insertEvent(event);
-            }
-            else
+            if(chunk_to_merge_iter == storyTimelineMap.end() || !(*chunk_to_merge_iter).second->insertEvent(event))
             {
                 LOG_ERROR("[KeeperStoryPipeline] StoryID: {} - Discarding event with timestamp: {}",
                           storyId,
                           event.time());
+                theTailStore.eventDiscarded(storyId, {event.time(), event.getClientId(), event.index()});
             }
         }
         event_deque.pop_front();

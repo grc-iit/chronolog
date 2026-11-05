@@ -48,6 +48,21 @@ int chl::StoryChunk::insertEvent(chl::LogEvent const& event)
     }
 }
 
+int chl::StoryChunk::insertEvent(chl::LogEvent&& event)
+{
+    if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) &&
+       !event.logRecord.empty())
+    {
+        chl::EventSequence const sequence{event.time(), event.clientId, event.index()};
+        logEvents.insert(std::pair<chl::EventSequence, chl::LogEvent>(sequence, std::move(event)));
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
 //
 //  merge into this master chunk all the events from the events map startign at iterator position merge_start
 //  return the merged even count

@@ -6,6 +6,7 @@
 #include <thallium.hpp>
 
 #include <ChunkReceipt.h>
+#include <ChunkSenderAnswer.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <cereal/archives/binary.hpp>
 
@@ -81,7 +82,7 @@ public:
                 LOG_ERROR("[StoryChunkConsumerService] Discarding the story chunk, responding {} to Keeper", ret);
                 ChunkReceipt failure;
                 failure.bytes = ret;
-                request.respond(failure);
+                answerChunkSender(request, failure, "StoryChunkConsumerService");
                 return;
             }
 #ifndef NDEBUG
@@ -98,9 +99,12 @@ public:
                       tl::thread::self_id());
 
             // the player tracks no durability: no receipt
-            ChunkReceipt answer;
-            answer.bytes = b.size();
-            request.respond(answer);
+            ChunkReceipt receipt;
+            receipt.bytes = b.size();
+            // When the keeper cannot be answered (it died, or the network timed
+            // the handle out), the chunk is kept: the keeper sends it again later and
+            // reads drop the second copy.
+            answerChunkSender(request, receipt, "StoryChunkConsumerService");
             LOG_TRACE("[StoryChunkConsumerService] StoryChunk recording RPC responded {}, ThreadID={}",
                       b.size(),
                       tl::thread::self_id());
@@ -113,8 +117,19 @@ public:
                       tl::thread::self_id());
             ChunkReceipt failure;
             failure.bytes = 20000000 + tl::thread::self_id();
-            request.respond(failure);
+            answerChunkSender(request, failure, "StoryChunkConsumerService");
             return;
+        }
+        catch(tl::exception const& ex)
+        {
+            // the bulk pull failed: nothing was received or stored, and the
+            // keeper sends the chunk again
+            LOG_WARNING("[StoryChunkConsumerService] Could not receive a StoryChunk: {}, ThreadID={}",
+                        ex.what(),
+                        tl::thread::self_id());
+            ChunkReceipt failure;
+            failure.bytes = 30000000 + tl::thread::self_id();
+            answerChunkSender(request, failure, "StoryChunkConsumerService");
         }
     }
 

@@ -76,6 +76,14 @@ install=false
 start=false
 stop=false
 clean=false
+restart=false
+force=false
+RESTART_KEEPER_HOST=""
+
+# Keeper WAL options, passed to deploy_cluster.sh on start. WAL_ENABLED=1 in the
+# environment reaches deploy_cluster.sh as it is.
+wal=false
+WAL_DIR_LIST=""
 
 # Verbose flag
 verbose=false
@@ -92,6 +100,11 @@ usage() {
   echo "  -d|--start          Start ChronoLog Deployment (default: false)"
   echo "  -s|--stop           Stop ChronoLog Deployment (default: false)"
   echo "  -c|--clean          Clean ChronoLog logging artifacts and output of previous deployments (default: false)"
+  echo "  --restart-keeper <host>  Relaunch the keeper on <host> with the configuration start generated for it;"
+  echo "                           it relaunches every keeper conf for <host>, so it cannot restart one of two"
+  echo "                           keepers on one host (two cannot run there today: every conf has the same ports)."
+  echo "                           Like --stop and --clean, it needs the options start was given (--keeper-bin,"
+  echo "                           --work-dir, --conf-file, ...): it finds a running keeper by its binary and conf"
   echo "  Note: Only one execution mode can be selected per run."
   echo ""
   echo "Build & Install Options:"
@@ -120,6 +133,12 @@ usage() {
   echo "Configuration Settings:"
   echo "  -f|--conf-file <path>            Path to the configuration file (default: work_dir/conf/default-chrono-conf.json) [Modes: Start]"
   echo "  -n|--client-conf-file <path>     Path to the client configuration file (default: work_dir/conf/chrono-client-conf.json) [Modes: Start]"
+  echo ""
+  echo "Keeper WAL Settings:"
+  echo "  --wal                            Turn the keeper WAL on, in a directory discovered on each keeper host (also WAL_ENABLED=1) [Modes: Start]"
+  echo "  --wal-dir <A[:B:...]>            Turn the keeper WAL on and try these base directories in order instead; the deploy fails"
+  echo "                                   when no entry is usable on a keeper host. A single path is used as given [Modes: Start]"
+  echo "  --force                          Remove keeper WAL directories that hold unconfirmed events [Modes: Clean]"
   echo ""
   echo "Miscellaneous Options:"
   echo "  -e|--verbose                     Enable verbose output (default: false)"
@@ -158,9 +177,10 @@ check_op_validity() {
   [[ $start == true ]] && count=$((count + 1))
   [[ $stop == true ]] && count=$((count + 1))
   [[ $clean == true ]] && count=$((count + 1))
+  [[ $restart == true ]] && count=$((count + 1))
 
   if [[ $count -ne 1 ]]; then
-    echo -e "${ERR}Error: Please select exactly one operation in build (-b), install (-i), start (-d), stop (-s), and clean (-c).${NC}" >&2
+    echo -e "${ERR}Error: Please select exactly one operation in build (-b), install (-i), start (-d), stop (-s), clean (-c) and restart-keeper.${NC}" >&2
     usage
   fi
 }
@@ -209,6 +229,7 @@ delegate_to_deploy_cluster() {
 
   # Build the argument list
   local args=("${mode}")
+  [[ "${mode}" == "--restart-keeper" ]] && args+=("${RESTART_KEEPER_HOST}")
 
   # Pass through relevant parameters
   args+=("--work-dir" "${WORK_DIR}")
@@ -233,6 +254,13 @@ delegate_to_deploy_cluster() {
   [[ "${GRAPHER_HOSTS}" != "${WORK_DIR}/conf/hosts_grapher" ]] && args+=("--grapher-hosts" "${GRAPHER_HOSTS}")
   [[ "${KEEPER_HOSTS}" != "${WORK_DIR}/conf/hosts_keeper" ]] && args+=("--keeper-hosts" "${KEEPER_HOSTS}")
 
+  # Pass the keeper WAL options when starting
+  if [[ "${mode}" == "--start" ]]; then
+    [[ "${wal}" == "true" ]] && args+=("--wal")
+    [[ -n "${WAL_DIR_LIST}" ]] && args+=("--wal-dir" "${WAL_DIR_LIST}")
+  fi
+  [[ "${mode}" == "--clean" && "${force}" == "true" ]] && args+=("--force")
+
   echo -e "${DEBUG}Delegating to: ${DEPLOY_CLUSTER_SCRIPT} ${args[*]}${NC}"
   "${DEPLOY_CLUSTER_SCRIPT}" "${args[@]}"
 }
@@ -249,8 +277,12 @@ clean() {
   delegate_to_deploy_cluster "--clean"
 }
 
+restart() {
+  delegate_to_deploy_cluster "--restart-keeper"
+}
+
 parse_args() {
-  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:,build-dir:,install-dir:,work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,help,build,install,start,stop,clean,verbose -- "$@")
+  TEMP=$(getopt -o t:B:I:w:m:u:v:g:p:a:q:k:o:f:n:j:r:hbidsce --long build-type:,build-dir:,install-dir:,work-dir:,monitor-dir:,output-dir:,visor-bin:,grapher-bin:,keeper-bin:,player-bin:,visor-hosts:,grapher-hosts:,keeper-hosts:,conf-file:,client-conf-file:,job-id:,record-groups:,wal,wal-dir:,restart-keeper:,force,help,build,install,start,stop,clean,verbose -- "$@")
   if [ $? != 0 ]; then
     echo -e "${ERR}Terminating ...${NC}" >&2
     exit 1
@@ -372,6 +404,23 @@ parse_args() {
       NUM_RECORDING_GROUP="$2"
       shift 2
       ;;
+    --wal)
+      wal=true
+      shift
+      ;;
+    --wal-dir)
+      WAL_DIR_LIST="$2"
+      shift 2
+      ;;
+    --restart-keeper)
+      restart=true
+      RESTART_KEEPER_HOST="$2"
+      shift 2
+      ;;
+    --force)
+      force=true
+      shift
+      ;;
     -h | --help)
       usage
       shift 2
@@ -433,6 +482,8 @@ elif ${stop}; then
   stop || rc=$?
 elif ${clean}; then
   clean || rc=$?
+elif ${restart}; then
+  restart || rc=$?
 fi
 
 if [ $rc -ne 0 ]; then
