@@ -1,0 +1,251 @@
+name: "ChronoLog: Nightly Integration"
+
+# Two jobs, on separate runners:
+# - integration: the scripts in tests/integration/ one at a time, in one
+#   container from the base image. Each deploys its own daemons on that one
+#   host and takes minutes.
+# - distributed-wal-restart: stage 11c of docker/local_distributed_ci.sh, the
+#   keeper WAL kill and restart across 7 containers. It is skipped while the
+#   tested ref's script has no --wal-restart-only.
+# They take too long to run on every PR, and this workflow does not gate a
+# merge.
+#
+# - schedule: every night, against develop. GitHub fires a schedule only from
+#   the copy of this file on the default branch (main), so the nightly run
+#   starts once this file reaches main.
+# - workflow_dispatch: against any branch, tag or commit, with a choice of
+#   scripts. Like the schedule, it needs this file on main.
+# - pull_request: against a PR that changes this file or the runner, so a
+#   change to them is tried before it merges.
+#
+# The job summary has one row per script, and the integration-logs artifact
+# has each script's output and the daemons' logs.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to test"
+        required: false
+        default: develop
+      scripts:
+        description: "Scripts to run, separated by spaces (empty: every *_test.sh)"
+        required: false
+        default: ""
+      protocols:
+        description: "Protocols keeper_restart_held_test.sh runs over"
+        required: false
+        default: "ofi+sockets"
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - .github/workflows/nightly-integration.yml
+      - tests/integration/run_integration_tests.sh
+
+concurrency:
+  group: nightly-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chronolog-base:
+    uses: ./.github/workflows/chronolog-base.yml
+    with:
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref || 'develop' }}
+    permissions:
+      contents: read
+      packages: write
+
+  integration:
+    runs-on: ubuntu-24.04
+    needs: chronolog-base
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 300
+    env:
+      TEST_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref || 'develop' }}
+      # keeper_restart_held_test.sh fails over ofi+tcp until its missing RPC
+      # deadlines are fixed; the default leaves that protocol out
+      PROTOCOLS: ${{ inputs.protocols || 'ofi+sockets' }}
+      SCRIPTS: ${{ inputs.scripts || '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TEST_REF }}
+
+      # keeper_wal_off_test.sh builds a v3.3.0 keeper from this tag
+      - name: Fetch the v3.3.0 tag
+        run: git fetch --depth=1 origin tag v3.3.0 || echo "v3.3.0 tag not fetched; keeper_wal_off_test.sh cannot build its keeper"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base Docker image
+        run: docker pull "${{ needs.chronolog-base.outputs.image-name }}"
+
+      - name: Create container
+        id: create-container
+        run: |
+          set -e
+          # grc-iit, as in the Local Pipeline: the cached base image may
+          # default to root
+          CONTAINER_ID=$(docker create --user grc-iit --init \
+            -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
+            -w /home/grc-iit/chronolog-repo \
+            "${{ needs.chronolog-base.outputs.image-name }}" \
+            bash -c "tail -f /dev/null")
+          echo "container-id=${CONTAINER_ID}" >> "$GITHUB_OUTPUT"
+          docker start "$CONTAINER_ID"
+          # the bind-mounted checkout arrives root-owned, and the base image
+          # leaves spack's database root-owned
+          docker exec --user root "$CONTAINER_ID" chown -R grc-iit:grc-iit /home/grc-iit
+
+      - name: Set up the Spack environment
+        run: |
+          docker exec "${{ steps.create-container.outputs.container-id }}" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            if [ ! -d .spack-env/view/bin ] || [ ! -d .spack-env/view/lib ]; then
+              spack concretize --force
+            fi
+          "
+
+      - name: Build and install ChronoLog (Debug)
+        run: |
+          docker exec "${{ steps.create-container.outputs.container-id }}" bash -c "
+            set -e
+            source /home/grc-iit/spack/share/spack/setup-env.sh
+            spack env activate -p .
+            ./tools/deploy/local_single_user_deploy.sh -b -t Debug \
+              -B /home/grc-iit/chronolog-build -I /home/grc-iit/chronolog-install
+            ./tools/deploy/local_single_user_deploy.sh -i -t Debug \
+              -B /home/grc-iit/chronolog-build -I /home/grc-iit/chronolog-install
+          "
+
+      - name: Run the integration scripts
+        id: run
+        run: |
+          set +e
+          docker exec \
+            -e PROTOCOLS="$PROTOCOLS" \
+            -e SCRIPTS="$SCRIPTS" \
+            "${{ steps.create-container.outputs.container-id }}" bash -c '
+              source /home/grc-iit/spack/share/spack/setup-env.sh
+              spack env activate -p .
+              export USER=$(id -un)
+              export WORK_DIR=/home/grc-iit/chronolog-install/chronolog
+              export BUILD_DIR=/home/grc-iit/chronolog-build/Debug
+              export LOG_DIR=/home/grc-iit/integration-logs
+              export H5DUMP=$(command -v h5dump) MPIEXEC=$(command -v mpiexec)
+              tests/integration/run_integration_tests.sh $SCRIPTS
+            '
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Copy logs out of the container
+        if: always()
+        run: |
+          rm -rf ./integration-logs
+          docker cp "${{ steps.create-container.outputs.container-id }}:/home/grc-iit/integration-logs" ./integration-logs ||
+            mkdir -p ./integration-logs
+          {
+            echo "## Integration scripts at \`${TEST_REF}\`"
+            echo
+            if [ -f ./integration-logs/summary.md ]; then
+              cat ./integration-logs/summary.md
+            else
+              echo "The runner wrote no summary; see the step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ./integration-logs
+          retention-days: 14
+
+      - name: Remove the container
+        if: always()
+        run: docker rm -f "${{ steps.create-container.outputs.container-id }}" || true
+
+      - name: Fail when a script did not pass
+        if: steps.run.outputs.status != '0'
+        run: |
+          echo "A script did not pass (runner exit ${{ steps.run.outputs.status }}); see the job summary and the integration-logs artifact."
+          exit 1
+
+  # Stage 11c of docker/local_distributed_ci.sh: the keeper WAL kill and
+  # restart across the 7-container deployment, the distributed form of
+  # keeper_wal_crash_test.sh. The Distributed Pipeline leaves it out.
+  distributed-wal-restart:
+    runs-on: ubuntu-24.04
+    needs: chronolog-base
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 120
+    env:
+      TEST_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref || 'develop' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TEST_REF }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base Docker image
+        run: docker pull "${{ needs.chronolog-base.outputs.image-name }}"
+
+      - name: Run stage 11c
+        id: run
+        run: |
+          set +e
+          if ! grep -q -- '--wal-restart-only' docker/local_distributed_ci.sh; then
+            echo "docker/local_distributed_ci.sh at ${TEST_REF} has no --wal-restart-only; stage 11c skipped" |
+              tee -a "$GITHUB_STEP_SUMMARY"
+            echo "status=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          docker/local_distributed_ci.sh -i "${{ needs.chronolog-base.outputs.image-name }}" --wal-restart-only \
+            2>&1 | tee wal-restart.log
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Stage 11c (keeper WAL kill and restart, 7 containers) at \`${TEST_REF}\`"
+            echo
+            if [ "$status" -eq 0 ]; then echo "Passed."; else echo "Failed (exit ${status}); see wal-restart.log in the artifact."; fi
+            echo
+            echo '```'
+            grep -E 'PASS|FAIL|passed|failed' wal-restart.log | tail -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wal-restart-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wal-restart.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Fail when stage 11c did not pass
+        if: steps.run.outputs.status != '0'
+        run: exit 1
