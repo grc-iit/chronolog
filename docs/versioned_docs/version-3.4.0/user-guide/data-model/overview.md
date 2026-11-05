@@ -22,7 +22,7 @@ For detailed definitions and configuration options, see [Concepts](./concepts.md
 
 ## Data Lifecycle
 
-Events follow a well-defined path through the system. Client applications create Events and send them to ChronoKeeper processes running on compute nodes. ChronoKeepers batch these Events into StoryChunks during time-windowed acceptance periods. When the window closes, the StoryChunk is shipped to a ChronoGrapher process on a storage node, which merges partial chunks from different ChronoKeepers into a unified StoryPipeline. Finally, completed StoryChunks are extracted and persisted to the storage layer (HDF5 files). For a detailed walkthrough of this pipeline, see [Distributed Story Pipeline](./story-pipeline.md).
+Events follow a well-defined path through the system. Client applications create Events and send them to ChronoKeeper processes running on compute nodes; a durable Event is written to the keeper's write-ahead log and synced before the client is answered (see [Keeper WAL](../architecture/keeper-wal.md)). ChronoKeepers batch these Events into StoryChunks during time-windowed acceptance periods. When the window closes, the StoryChunk is shipped to a ChronoGrapher process on a storage node, which merges partial chunks from different ChronoKeepers into a unified StoryPipeline. Finally, completed StoryChunks are extracted and persisted to the storage layer (HDF5 files). For a detailed walkthrough of this pipeline, see [Distributed Story Pipeline](./story-pipeline.md).
 
 ## Further Reading
 

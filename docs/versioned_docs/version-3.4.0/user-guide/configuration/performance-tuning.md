@@ -126,6 +126,15 @@ Controls the mechanism used to generate event timestamps across all components.
 
 Interval between clock drift calibration runs (default: every 10 seconds). The drift calibration corrects for slow clock drift between the ChronoLog clock and the system wall clock. Reducing this interval increases correction frequency at a small CPU cost; increasing it reduces CPU overhead but allows more drift to accumulate between corrections. The fields are parsed but have no runtime effect in v3.0.0.
 
+## Keeper WAL
+
+These matter only for durable writes, with `chrono_keeper.WAL.enabled` set. See [Keeper WAL](../architecture/keeper-wal.md) and the [`WAL` block](./server-configuration.md#wal--keeper-write-ahead-log).
+
+- **Where the WAL lives decides its cost.** A durable write waits for an `fdatasync` of the WAL's drive: about 0.23–0.25 ms at the median for a 1 KB event with one writer on a local NVMe drive (Debug build), and about 0.1 ms on tmpfs, which does not survive a node reboot. Put it on a local NVMe or SSD drive, not NFS or the boot disk.
+- **`group_commit_window_us`** (default `0`): how long the committer waits for more events before a sync. `0` syncs as soon as the previous sync returns, which already groups every write that arrived during it; with 8 writers that reached about 15,000 durable events/s. A window helps only when writers arrive just after a sync, and it adds up to its length to a durable write's latency.
+- **`group_commit_max_bytes`** (default 4 MiB): the largest group written and synced at once.
+- **`durable_cap_mb`** (default `4096`): the memory of chunks the grapher has not confirmed above which durable writes get `CL_ERR_DURABILITY_FULL`. Size it for the longest grapher outage durable writers should ride out.
+
 ## Shutdown Grace Period
 
 ```json
@@ -148,4 +157,6 @@ Number of seconds ChronoVisor waits after receiving a shutdown signal before ter
 | Prevent data loss at shutdown under heavy load | Increase `delayed_data_admin_exit_in_secs` to `10` or more                                    |
 | High client fan-in into ChronoKeeper           | Raise `KeeperRecordingService.IngestionThreadCount` (e.g., `8` or `16`)                       |
 | Many ChronoKeepers draining one ChronoGrapher  | Raise `KeeperGrapherDrainService.IngestionThreadCount` to match concurrent drain RPCs         |
+| Lower durable write latency                    | Put the keeper WAL on a local NVMe drive and keep `group_commit_window_us` at `0`             |
+| Durable writes refused during a grapher outage | Raise `WAL.durable_cap_mb` on ChronoKeeper, with keeper memory to match                       |
 | Extraction-bound ChronoKeeper or ChronoGrapher | Raise `ExtractionModule.extraction_stream_count` until storage/network saturates              |

@@ -52,8 +52,9 @@ Exactly one mode must be specified per invocation:
 | Mode | Description |
 |------|-------------|
 | `--start` | Start all ChronoLog processes |
-| `--stop` | Stop all ChronoLog processes gracefully (force-kills after timeout) |
-| `--clean` | Remove generated config files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. Requires all processes to be stopped first. |
+| `--stop` | Stop all ChronoLog processes gracefully (force-kills after timeout). With the keeper WAL on, it reads each keeper's `exit-summary` and reports durable events still pending in a WAL |
+| `--clean` | Remove generated config files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. Requires all processes to be stopped first. A keeper WAL directory is removed only when its `exit-summary` shows no pending events; one with pending events or no summary is reported and nothing is removed, unless `--force` is given |
+| `--restart-keeper <n>` | Start keeper `n` again with the configuration `--start` generated for it, so it reuses the same ports and WAL directory |
 
 ## Options
 
@@ -68,6 +69,8 @@ Exactly one mode must be specified per invocation:
 | `-g, --grapher-bin <path>` | `<work-dir>/bin/chrono-grapher` | Path to the ChronoGrapher binary |
 | `-p, --keeper-bin <path>` | `<work-dir>/bin/chrono-keeper` | Path to the ChronoKeeper binary |
 | `-a, --player-bin <path>` | `<work-dir>/bin/chrono-player` | Path to the ChronoPlayer binary |
+| `--wal` | off | Turn the keeper WAL on, with each keeper's WAL in `<work-dir>/wal/keeper-<n>` (`WAL_ENABLED=1` does the same). Needed for durable writes; see [Keeper WAL](../architecture/keeper-wal.md) |
+| `--force` | off | With `--clean`, also remove keeper WAL directories that hold unconfirmed events |
 | `-f, --conf-file <path>` | `<work-dir>/conf/default-chrono-conf.json` | Main configuration template. The generated per-component confs go in its directory, also with `--work-dir`; give `--stop`, `--restart-keeper` and `--clean` the same `-f` |
 | `-n, --client-conf-file <path>` | `<work-dir>/conf/default-chrono-client-conf.json` | Client configuration template |
 
@@ -112,4 +115,11 @@ Clean up generated files (run after stopping):
 
 ```bash
 ./deploy_local.sh --clean
+```
+
+Start with the keeper WAL on, so durable writes are accepted, and restart keeper 1 after it stops or crashes:
+
+```bash
+./deploy_local.sh --start --wal
+./deploy_local.sh --restart-keeper 1
 ```

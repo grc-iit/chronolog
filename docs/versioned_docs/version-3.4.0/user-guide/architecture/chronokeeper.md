@@ -9,12 +9,12 @@ title: "ChronoKeeper"
 
 Most ChronoLog deployments would have ChronoKeeper processes running on the majority of the compute nodes and each Recording Group is expected to have multiple ChronoKeeper processes.
 
-<svg viewBox="0 0 720 590" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
-  <rect x="0" y="0" width="720" height="590" rx="10" fill="#1e2330"/>
+<svg viewBox="0 0 720 654" width="100%" xmlns="http://www.w3.org/2000/svg" fontFamily="system-ui, sans-serif">
+  <rect x="0" y="0" width="720" height="654" rx="10" fill="#1e2330"/>
 
   {/* Title and outer border */}
   <text x="360" y="20" textAnchor="middle" fill="#c3e04d" fontSize="10" fontWeight="600">CHRONOKEEPER COMPONENTS</text>
-  <rect x="20" y="30" width="680" height="550" rx="8" fill="none" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.25" strokeDasharray="8,4"/>
+  <rect x="20" y="30" width="680" height="614" rx="8" fill="none" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.25" strokeDasharray="8,4"/>
   <text x="32" y="44" fill="#c3e04d" fontSize="8" fontWeight="600" fillOpacity="0.6">CHRONOKEEPER</text>
 
   <g transform="translate(0, 30)">
@@ -31,10 +31,40 @@ Most ChronoLog deployments would have ChronoKeeper processes running on the majo
   <circle cx="206" cy="65" r="3" fill="#c3e04d" fillOpacity="0.8"/>
   <text x="214" y="69" fill="#c3e04d" fontSize="10" fontWeight="600">Keeper Recording Service</text>
 
-  {/* Arrow: Recording Service -> Ingestion Queue */}
-  <line x1="440" y1="82" x2="440" y2="94" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
-  <polygon points="440,96 436,90 444,90" fill="#c3e04d" fillOpacity="0.6"/>
+  {/* Accepted writes: Recording Service -> Ingestion Queue */}
+  <line x1="545" y1="82" x2="545" y2="158" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="545,160 541,154 549,154" fill="#c3e04d" fillOpacity="0.6"/>
+  <text x="551" y="118" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">accepted writes (record_event)</text>
 
+  {/* Durable writes: Recording Service -> Keeper Durable Writer */}
+  <line x1="295" y1="82" x2="295" y2="94" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="295,96 291,90 299,90" fill="#c3e04d" fillOpacity="0.6"/>
+  <text x="301" y="92" fill="#9ca3b0" fontSize="6.5" fontStyle="italic">durable writes (record_event_durable)</text>
+
+  {/* Keeper Durable Writer */}
+  <rect x="190" y="96" width="230" height="56" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="206" cy="113" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="214" y="117" fill="#c3e04d" fontSize="10" fontWeight="600">Keeper Durable Writer</text>
+  <text x="202" y="131" fill="#9ca3b0" fontSize="6.5">Appends the event to the WAL, answers CL_SUCCESS</text>
+  <text x="202" y="142" fill="#9ca3b0" fontSize="6.5">after the sync, then passes it to the queue</text>
+
+  {/* Durable Writer -> Keeper WAL */}
+  <line x1="190" y1="124" x2="177" y2="124" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="175,124 181,120 181,128" fill="#c3e04d" fillOpacity="0.6"/>
+
+  {/* Keeper WAL */}
+  <rect x="10" y="96" width="165" height="56" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
+  <circle cx="26" cy="113" r="3" fill="#c3e04d" fillOpacity="0.8"/>
+  <text x="34" y="117" fill="#c3e04d" fontSize="9" fontWeight="600">Keeper WAL</text>
+  <text x="18" y="129" fill="#9ca3b0" fontSize="6.5">Group commit and fdatasync to segments</text>
+  <text x="18" y="138" fill="#9ca3b0" fontSize="6.5">on a local drive; released once ChronoGrapher</text>
+  <text x="18" y="147" fill="#9ca3b0" fontSize="6.5">confirms, replayed into chunks at a restart</text>
+
+  {/* Durable Writer -> Ingestion Queue */}
+  <line x1="295" y1="152" x2="295" y2="158" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.5"/>
+  <polygon points="295,160 291,154 299,154" fill="#c3e04d" fillOpacity="0.6"/>
+
+  <g transform="translate(0, 64)">
   {/* Event Ingestion Queue */}
   <rect x="190" y="96" width="500" height="34" rx="6" fill="#252b3b" stroke="#c3e04d" strokeWidth="1" strokeOpacity="0.5"/>
   <circle cx="206" cy="113" r="3" fill="#c3e04d" fillOpacity="0.8"/>
@@ -219,12 +249,15 @@ Most ChronoLog deployments would have ChronoKeeper processes running on the majo
   {/* Bottom annotation */}
   <text x="360" y="545" textAnchor="middle" fill="#9ca3b0" fontSize="7" fontStyle="italic">Partial StoryChunks are drained to the ChronoGrapher or extracted to the local files</text>
   </g>
+  </g>
 </svg>
 
 | Component                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Keeper Data Store**           | The main ChronoKeeper module. A collection of Story pipelines for all actively recorded Stories in the Recording Group. Instantiates a Story pipeline when ChronoKeeper receives a StartStoryRecording notification and dismantles it after StopStoryRecording. Sequencing threads are responsible for ordering ingested log events and grouping them into time-range bound StoryChunks. (See ChronoLog Story Pipeline Data Model for reference.) |
-| **Keeper Recording Service**    | Listens to incoming streams of log events from client applications (`record_event`), serves on-demand tail reads directly from keeper memory via `tail_get_sequences` and `tail_get_events`, and serves ChronoPlayer's replay range fetches (`story_range_fetch`). |
+| **Keeper Recording Service**    | Listens to incoming streams of log events from client applications (`record_event` for accepted writes, `record_event_durable` for durable ones), serves on-demand tail reads directly from keeper memory via `tail_get_sequences` and `tail_get_events`, and serves ChronoPlayer's replay range fetches (`story_range_fetch`). |
+| **Keeper Durable Writer (`KeeperDurableWriter`)** | Answers `record_event_durable`. It checks that the story id matches the chronicle and story names, refuses the write with `CL_ERR_DURABILITY_FULL` above `durable_cap_mb` of chunks ChronoGrapher has not confirmed, appends the event to the WAL, and answers `CL_SUCCESS` only after the WAL's sync; then it passes the event to the Ingestion Queue. A retry of an event the WAL already holds gets the first attempt's answer. See [Keeper WAL](./keeper-wal.md). |
+| **Keeper WAL (`KeeperWal`)** | The write-ahead log, used only when `WAL.enabled` is set. It writes every durable event queued while the previous `fdatasync` ran as one group to pre-zeroed segments on a local drive, and answers the whole group after the sync. The retention store tells it when a chunk is confirmed, and a segment is deleted once none of its events are pending. At startup the keeper recovers the WAL and replays its events into sealed chunks before it takes requests. See [Keeper WAL](./keeper-wal.md). |
 | **Keeper Chunk Retention Store (`KeeperChunkRetentionStore`)** | Owns every sealed StoryChunk until ChronoGrapher confirms it is written to HDF5, and indexes the most recent sealed events per story to serve `playback(N)` from memory with no payload copy. See [Durable Chunk Retention](./durable-retention.md). |
 | **Ingestion Queue**             | A collection of IngestionHandles for actively recorded stories the ChronoKeeper is expecting events for. Receives log events from the Keeper Recording Service and attributes them to the appropriate Story Ingestion Handles. Also recovers late orphaned events for retired stories before archival.                                                                                                                                            |
 | **StoryChunk Extraction Queue** | A mutex-protected deque of StoryChunk pointers, serving as the communication boundary between the Chunk Retention Store and the ExtractionModule. |

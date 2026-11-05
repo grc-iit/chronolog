@@ -451,7 +451,7 @@ The lifecycle of a single StoryChunk follows these phases:
 1. **Chunk Duration** — During the chunk's time window (default: 30 seconds), the ChronoKeeper groups arriving events into the chunk by StoryId and timestamp.
 2. **Keeper Acceptance Window** — After the chunk's time range ends, the Keeper continues accepting late events for a configurable window (default: 60 seconds from chunk start) to tolerate network delays.
 3. **Extract and Transfer** — When the acceptance window expires, the chunk seals and the Keeper sends the partial StoryChunk to the ChronoGrapher via RDMA bulk transfer. A chunk whose transfer fails is sent again.
-4. **Keeper Retention** — The Keeper keeps the sealed chunk in memory, where it serves low-latency `playback()` (tail-read) queries and the recent part of replays, until the ChronoGrapher confirms it is written to HDF5. See [Durable Chunk Retention](../architecture/durable-retention.md).
+4. **Keeper Retention** — The Keeper keeps the sealed chunk in memory, where it serves low-latency `playback()` (tail-read) queries and the recent part of replays, until the ChronoGrapher confirms it is written to HDF5. With the keeper WAL on, the chunk's durable events also stay in the WAL until then. See [Durable Chunk Retention](../architecture/durable-retention.md) and [Keeper WAL](../architecture/keeper-wal.md).
 5. **Grapher Acceptance Window** — The ChronoGrapher holds the chunk in its own pipeline (default: 180 seconds), during which it merges partial chunks from different Keepers into complete StoryChunks.
 6. **Archive** — When the Grapher's acceptance window expires, the complete StoryChunk is extracted and written to HDF5 persistent storage.
 
