@@ -132,5 +132,5 @@ into other data.
 ## Archives from earlier releases
 
 Releases before 3.3.0 wrote every file into the archive directory itself, as
-`<chronicle>.<story>.<start second>.vlen.h5`, without a manifest. 3.3.0 does not read or delete
-those files: start a 3.3.0 deployment on a new archive directory.
+`<chronicle>.<story>.<start second>.vlen.h5`, without a manifest. 3.3.0 and later do not read or
+delete those files: start a deployment of 3.3.0 or later on a new archive directory.

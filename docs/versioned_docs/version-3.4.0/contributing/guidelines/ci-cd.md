@@ -100,11 +100,15 @@ docker/local_distributed_ci.sh -i IMAGE -k 1 -g 1 -p 1  # 4 containers, faster
 docker/local_distributed_ci.sh -i IMAGE --keep          # leave the containers up to debug
 docker/local_distributed_ci.sh -i IMAGE --skip-build    # reuse the install in the volume
 docker/local_distributed_ci.sh -i IMAGE --nfs           # also run the NFS pass
+docker/local_distributed_ci.sh -i IMAGE --wal-restart   # also run stage 11c, the keeper WAL kill and restart
+docker/local_distributed_ci.sh -i IMAGE --wal-restart-only  # stage 11c alone, after the setup stages
 ```
 
 `IMAGE` is the base image above. `--nfs` needs sudo: it exports a directory (`/srv/chronolog-nfs-localci` by default) to `127.0.0.1`, turns file leases off while it runs, and undoes both on exit. `--nfs-only` skips stages 3 to 7 to try mount options, and `--nfs-profile NAME=OPTIONS`, `--nfs-pass PROFILE:clean|omission[:warn|nowarn]`, `--nfs-destroy-profile` and `--nfs-cache-secs` match the dispatch inputs. A full run with `--nfs` takes about 22 minutes.
 
-Run it before a pull request that changes RPC endpoints, ports, configuration plumbing, the deploy scripts or the workflow itself, and with `--nfs` for changes to the archive layout, the manifest, the player's archive reads or destroy.
+Stage 11c redeploys with the keeper WAL on a volume in each keeper container, writes accepted and then durable events, kills the keeper that holds them with SIGKILL, restarts it with `--restart-keeper`, and checks that every acknowledged durable event is archived and replayed exactly once, that a replay misses at least one acknowledged accepted event (the negative control), and that the WAL segment is deleted after the grapher confirms. The Distributed Pipeline leaves it out.
+
+Run it before a pull request that changes RPC endpoints, ports, configuration plumbing, the deploy scripts or the workflow itself, with `--nfs` for changes to the archive layout, the manifest, the player's archive reads or destroy, and with `--wal-restart` for changes to the keeper WAL, durable writes or a keeper restart.
 
 ## Other workflows
 
