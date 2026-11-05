@@ -34,6 +34,7 @@ public:
     RpcTimeoutPolicy const policy;
     std::shared_ptr<void> dependencies;
     std::shared_ptr<void> provider;
+    std::shared_ptr<void> watermarkReports; // One publisher Core per actual data-admin MID.
     thallium::remote_procedure receiveChunk, available;
     BulkPermits sources, pendingOutcomes;
     using ChunkIdentity = std::tuple<std::string,

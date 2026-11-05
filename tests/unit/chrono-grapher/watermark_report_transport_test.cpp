@@ -106,7 +106,7 @@ struct ReceiptIngestion
 };
 struct ReceiptDependencies
 {
-    std::unique_ptr<KeeperSide> keeper1, keeper2;
+    std::shared_ptr<KeeperSide> keeper1, keeper2;
     chl::StoryWatermarkRegistry registry;
     ReceiptIngestion ingestion;
     // Last declared: on a pre-exposure failure engines retire before the stores.
@@ -147,9 +147,9 @@ protected:
         ensureLogger();
         ensureArgobots();
         keeperEngine =
-                std::make_unique<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+                std::make_shared<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
         grapherEngine =
-                std::make_unique<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+                std::make_shared<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
         keeper1 = startKeeper(kKeeper1Provider, keeper1Id);
         keeper2 = startKeeper(kKeeper2Provider, keeper2Id);
     }
@@ -157,18 +157,18 @@ protected:
     void TearDown() override
     {
         publisher.reset();
-        if(grapherEngine)
+        if(grapherEngine && !reportOwner)
             grapherEngine->finalize();
         // deletes the admin service providers before the data stores they use
-        if(keeperEngine)
+        if(keeperEngine && !reportOwner)
             keeperEngine->finalize();
         keeper1.reset();
         keeper2.reset();
     }
 
-    std::unique_ptr<KeeperSide> startKeeper(uint16_t provider_id, chl::ServiceId& service_id)
+    std::shared_ptr<KeeperSide> startKeeper(uint16_t provider_id, chl::ServiceId& service_id)
     {
-        auto keeper = std::make_unique<KeeperSide>();
+        auto keeper = std::make_shared<KeeperSide>();
         chl::DataStoreAdminService::CreateDataStoreAdminService(*keeperEngine, provider_id, keeper->dataStore);
         // the identity a keeper puts on its chunks, built from the engine's
         // actual address as the keeper does
@@ -180,16 +180,27 @@ protected:
 
     void startPublisher(uint32_t report_interval_secs)
     {
-        publisher = std::make_unique<chl::WatermarkReportPublisher>(*grapherEngine, registry, report_interval_secs);
+        reportRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+        reportOwner = chl::rpc::RpcBulkOwner::Create(grapherEngine, reportRuntime, {}, false);
+        struct Dependencies
+        {
+            std::shared_ptr<tl::engine> keeperEngine;
+            std::shared_ptr<KeeperSide> keeper1, keeper2;
+        };
+        reportOwner->dependencies = std::make_shared<Dependencies>(Dependencies{keeperEngine, keeper1, keeper2});
+        publisher = std::make_unique<chl::WatermarkReportPublisher>(reportOwner, registryOwner, report_interval_secs);
     }
 
-    std::unique_ptr<tl::engine> keeperEngine;
-    std::unique_ptr<tl::engine> grapherEngine;
-    std::unique_ptr<KeeperSide> keeper1;
-    std::unique_ptr<KeeperSide> keeper2;
+    std::shared_ptr<tl::engine> keeperEngine;
+    std::shared_ptr<tl::engine> grapherEngine;
+    std::shared_ptr<KeeperSide> keeper1;
+    std::shared_ptr<KeeperSide> keeper2;
     chl::ServiceId keeper1Id;
     chl::ServiceId keeper2Id;
-    chl::StoryWatermarkRegistry registry;
+    std::shared_ptr<chl::StoryWatermarkRegistry> registryOwner = std::make_shared<chl::StoryWatermarkRegistry>();
+    chl::StoryWatermarkRegistry& registry = *registryOwner;
+    std::shared_ptr<chl::rpc::RpcRuntime> reportRuntime;
+    std::shared_ptr<chl::rpc::RpcBulkOwner> reportOwner;
     std::unique_ptr<chl::WatermarkReportPublisher> publisher;
 
     std::shared_ptr<ReceiptTransfer> startReceiptTransfer(chl::RpcTimeoutPolicy policy = {},
@@ -498,26 +509,21 @@ TEST_F(WatermarkReportTransport, ReceiptPendingBeforeWReachesItsChunkStillHoldsT
     EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.retainedChunkCount(kStory) == 0; }));
 }
 
-// A report that cannot be delivered is sent again. Building a report clears the
-// story's dirty mark, so without a retry a lost report for a story that has gone
-// quiet is never repeated, and its keepers later re-send chunks the grapher
-// already wrote. A keeper that stays unreachable is not retried every round for
-// good: after three failures in a row only new changes reach it.
-TEST_F(WatermarkReportTransport, AReportThatFailsToSendIsSentAgainAFewTimes)
+// A stale endpoint must not consume canonical progress. Unknown native sends
+// retain their slot; a later W remains pending rather than confirming any chunk.
+TEST_F(WatermarkReportTransport, FailedReportKeepsLaterCanonicalProgressPending)
 {
     startPublisher(0);
     constexpr chl::StoryId kStory = 5;
     registry.registerStory(kStory, 100);
-    // nothing listens on port 1
     publisher->recordContributor(kStory, chl::ServiceId(kProtocol, "127.0.0.1", 1, 99));
     registry.advancePersisted(kStory, 100, 200);
-
-    // each failed round marks the story for the next one
-    for(int round = 0; round < 3; ++round) { publisher->publish(); }
+    publisher->publish();
     EXPECT_EQ(registry.snapshotDirty().count(kStory), 1u);
 
-    // a fourth failure in a row does not
     registry.advancePersisted(kStory, 200, 300);
     publisher->publish();
-    EXPECT_TRUE(registry.snapshotDirty().empty());
+    auto pending = registry.snapshotDirty();
+    ASSERT_EQ(pending.count(kStory), 1u);
+    EXPECT_EQ(pending.at(kStory).watermark, 300u);
 }

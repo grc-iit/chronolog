@@ -230,3 +230,21 @@ gtest_discover_tests(grapher_rpc_policy_configuration_test TEST_PREFIX "Unit_Chr
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(grapher_rpc_policy_configuration_test DESTINATION tests)
 endif()
+
+# One-way report deadlines, admission and retained pending progress.
+add_executable(watermark_rpc_deadline_test
+    watermark_rpc_deadline_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp
+)
+target_include_directories(watermark_rpc_deadline_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+target_link_libraries(watermark_rpc_deadline_test PRIVATE
+    GTest::gtest_main chrono_common chronolog_client thallium)
+gtest_discover_tests(watermark_rpc_deadline_test TEST_PREFIX "Unit_ChronoGrapher_"
+    PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE ENVIRONMENT "FI_TCP_IFACE=lo")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(watermark_rpc_deadline_test DESTINATION tests)
+endif()

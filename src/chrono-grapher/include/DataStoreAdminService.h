@@ -7,6 +7,7 @@
 #include <thallium/serialization/stl/string.hpp>
 
 #include <chronolog_types.h>
+#include <private/RpcBulkOwner.h>
 
 #include "GrapherDataStore.h"
 
@@ -23,14 +24,34 @@ public:
                                                               uint16_t service_provider_id,
                                                               GrapherDataStore& dataStoreInstance)
     {
-        return new DataStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
+        auto* service = new DataStoreAdminService(tl_engine, service_provider_id, dataStoreInstance);
+        service->registerProcedures();
+        service->legacy_ = true;
+        tl_engine.push_finalize_callback(service, [service] { delete service; });
+        return service;
+    }
+
+    static DataStoreAdminService* CreateDataStoreAdminService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                                                              uint16_t provider,
+                                                              GrapherDataStore& store)
+    {
+        if(!owner || owner->closing)
+            return nullptr;
+        if(owner->provider)
+            throw std::logic_error("Grapher admin provider already exists");
+        auto service =
+                std::shared_ptr<DataStoreAdminService>(new DataStoreAdminService(*owner->engine, provider, store));
+        owner->provider = service; // Retain partial registration and its borrowed store.
+        service->registerProcedures();
+        return service.get();
     }
 
     ~DataStoreAdminService()
     {
         LOG_DEBUG("[DataStoreAdminService] Destructor called. Cleaning up...");
         //remove provider finalization callback from the engine's list
-        get_engine().pop_finalize_callback(this);
+        if(legacy_)
+            get_engine().pop_finalize_callback(this);
     }
 
     void collection_service_available(tl::request const& request) { request.respond(1); }
@@ -84,6 +105,8 @@ private:
     DataStoreAdminService(tl::engine& tl_engine, uint16_t service_provider_id, GrapherDataStore& data_store_instance)
         : tl::provider<DataStoreAdminService>(tl_engine, service_provider_id)
         , theDataStore(data_store_instance)
+    {}
+    void registerProcedures()
     {
         define("collection_service_available", &DataStoreAdminService::collection_service_available);
         define("shutdown_data_collection", &DataStoreAdminService::shutdown_data_collection);
@@ -91,18 +114,17 @@ private:
         define("stop_story_recording", &DataStoreAdminService::StopStoryRecording);
         define("destroy_story", &DataStoreAdminService::DestroyStory);
         define("destroy_chronicle", &DataStoreAdminService::DestroyChronicle);
-        //set up callback for the case when the engine is being finalized while this provider is still alive
-        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
 
         std::stringstream ss;
         ss << get_engine().self();
-        LOG_INFO("[DataStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), service_provider_id);
+        LOG_INFO("[DataStoreAdminService] Constructed at {}. ProviderID={}", ss.str(), get_provider_id());
     }
 
     DataStoreAdminService(DataStoreAdminService const&) = delete;
 
     DataStoreAdminService& operator=(DataStoreAdminService const&) = delete;
 
+    bool legacy_ = false;
     GrapherDataStore& theDataStore;
 };
 

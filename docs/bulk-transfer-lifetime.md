@@ -81,3 +81,21 @@ does not deploy daemons. Run the standard-config replay_fanout_timing_test.sh
 separately for the real daemon regression. Loopback TCP interface overrides
 apply only to explicitly all-loopback tests, never distributed deployments.
 Harness process termination is cleanup, not a production settlement proof.
+
+Watermark reports use the grapher's data-admin MID and its fixed two-slot
+runtime. Each pass uses one attempt budget (5000 ms by default), including
+preparation, provider registration, lookup and forwarding. Capacity is reserved
+before copying report maps. Targets beyond available slots rotate through
+later passes. Definite failures keep quiet progress pending with bounded
+backoff; unknown native attempts retain their immutable maps, callable and
+actual MID owner without retry or replacement. Two unknown attempts can exhaust
+this owner until process exit. No new engine or runtime bypasses that limit.
+
+A successful one-way report proves local send completion only. It does not
+confirm Keeper application or create an archive receipt. Each admitted attempt
+reads the current complete watermark/receipt envelope; report failure does not
+advance persistence or settle a receipt. Local incarnation tokens invalidate
+queued reports after drop/recreate. They cannot revoke an already dispatched
+old drop: the existing wire has no story incarnation, so that documented race
+remains. Final forced publication still obeys admission, deadlines, generations
+and native ownership. Complete incoming/provider/MID retirement remains B12.

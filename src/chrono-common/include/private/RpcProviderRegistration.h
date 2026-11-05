@@ -24,8 +24,21 @@ public:
         hg_bool_t registered = HG_FALSE;
         if(margo_provider_registered_name(mid_, name, provider, &id, &registered) != HG_SUCCESS)
             return CL_ERR_UNKNOWN;
+        hg_id_t base = 0;
+        hg_bool_t baseRegistered = HG_FALSE;
+        int disabled = 0;
+        if(margo_provider_registered_name(mid_, name, MARGO_DEFAULT_PROVIDER_ID, &base, &baseRegistered) !=
+                   HG_SUCCESS ||
+           !baseRegistered || margo_registered_disabled_response(mid_, base, &disabled) != HG_SUCCESS)
+            return CL_ERR_UNKNOWN;
         if(registered)
-            return CL_SUCCESS;
+        {
+            int existing = 0;
+            if(margo_registered_disabled_response(mid_, id, &existing) != HG_SUCCESS)
+                return CL_ERR_UNKNOWN;
+            // Never toggle an exposed ID while an earlier call can use it.
+            return existing == disabled ? CL_SUCCESS : CL_ERR_INVALID_ARG;
+        }
         // These are the same public callbacks as Thallium's engine.define.
         // Mercury's registered callbacks are Margo wrappers, not these inputs.
         id = margo_provider_register_name(mid_,
@@ -35,7 +48,9 @@ public:
                                           nullptr,
                                           provider,
                                           ABT_POOL_NULL);
-        return id ? CL_SUCCESS : CL_ERR_UNKNOWN;
+        // Pre-registration skips Margo's lazy copy of the base response mode.
+        // Set it once before publishing this binding; reuse only validates it.
+        return id && margo_registered_disable_response(mid_, id, disabled) == HG_SUCCESS ? CL_SUCCESS : CL_ERR_UNKNOWN;
     }
     // No lookup, serialization, forward or per-call deregistration under this
     // mutex. Registrations remain native-owned through actual engine cleanup.

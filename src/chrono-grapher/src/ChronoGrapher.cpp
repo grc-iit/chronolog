@@ -166,7 +166,8 @@ int main(int argc, char** argv)
     // Per-story persisted watermark W; fed by the HDF5 extractor, consumed by
     // the keeper report publisher. Declared before the extraction module so it
     // outlives the extractors holding a pointer to it.
-    chronolog::StoryWatermarkRegistry theWatermarkRegistry;
+    auto watermarkRegistryOwner = std::make_shared<chronolog::StoryWatermarkRegistry>();
+    auto& theWatermarkRegistry = *watermarkRegistryOwner;
 
     chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
 
@@ -208,6 +209,11 @@ int main(int argc, char** argv)
     auto retainRecordingDependencies = [&] { chl::rpc::retainBulkDependencies(recordingOwner, recordingRuntime); };
     chl::rpc::BulkScopeFence recordingFence(recordingOwner, recordingRuntime);
 
+    // Main creates this MID and transfers its original wrapper and native
+    // lifecycle authority to one retained owner. B12 owns actual retirement.
+    std::shared_ptr<chl::rpc::RpcBulkOwner> dataAdminOwner;
+    auto dataAdminRuntime = std::make_shared<chl::rpc::RpcRuntime>();
+    chl::rpc::BulkScopeFence dataAdminFence(dataAdminOwner, dataAdminRuntime);
     tl::engine* dataAdminEngine = nullptr;
 
     chronolog::DataStoreAdminService* grapherDataAdminService = nullptr;
@@ -217,13 +223,15 @@ int main(int argc, char** argv)
         margo_instance_id collection_margo_id =
                 margo_init(DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
 
-        dataAdminEngine = new tl::engine(collection_margo_id);
+        auto native = std::make_shared<tl::engine>(collection_margo_id);
+        dataAdminOwner = chl::rpc::RpcBulkOwner::Create(native, dataAdminRuntime, GRAPHER_CONF.RPC_POLICY, false);
+        dataAdminEngine = native.get();
 
         std::stringstream s3;
         s3 << dataAdminEngine->self();
         LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at {} ", chl::to_string(dataStoreServiceId));
         grapherDataAdminService =
-                chronolog::DataStoreAdminService::CreateDataStoreAdminService(*dataAdminEngine,
+                chronolog::DataStoreAdminService::CreateDataStoreAdminService(dataAdminOwner,
                                                                               datastore_service_provider_id,
                                                                               theDataStore);
     }
@@ -244,11 +252,11 @@ int main(int argc, char** argv)
     // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
     // recording service (contributors) and the HDF5 extractor via the
     // registry; driven by the data-collection loop.
-    chronolog::WatermarkReportPublisher* watermarkPublisher =
-            new chronolog::WatermarkReportPublisher(*dataAdminEngine,
-                                                    theWatermarkRegistry,
-                                                    GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
-    theDataStore.attachWatermarkPublisher(watermarkPublisher);
+    auto watermarkPublisher = std::make_shared<chronolog::WatermarkReportPublisher>(
+            dataAdminOwner,
+            watermarkRegistryOwner,
+            GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
+    theDataStore.attachWatermarkPublisher(watermarkPublisher.get());
 
     // Instantiate RecordingService
     tl::engine* recordingEngine = nullptr;
@@ -285,8 +293,8 @@ int main(int argc, char** argv)
     {
         LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
         retainRecordingDependencies();
-        delete watermarkPublisher;
-        delete grapherDataAdminService;
+        watermarkPublisher.reset();
+        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
         return (-1);
     }
 
@@ -309,8 +317,8 @@ int main(int argc, char** argv)
         retainRecordingDependencies();
         grapherRecordingService = nullptr;
         retainRecordingDependencies();
-        delete watermarkPublisher;
-        delete grapherDataAdminService;
+        watermarkPublisher.reset();
+        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
         return (-1);
     }
 
@@ -337,8 +345,8 @@ int main(int argc, char** argv)
         retainRecordingDependencies();
         grapherRecordingService = nullptr;
         retainRecordingDependencies();
-        delete watermarkPublisher;
-        delete grapherDataAdminService;
+        watermarkPublisher.reset();
+        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
         return (-1);
     }
     LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
@@ -373,7 +381,7 @@ int main(int argc, char** argv)
     LOG_INFO("[ChronoGrapher] Initiating shutdown procedures.");
     // Stop recording events
     grapherRecordingService = nullptr;
-    delete grapherDataAdminService;
+    grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
     // Shutdown the Data Collection
     theDataStore.shutdownDataCollection();
     // Shutdown extraction module
@@ -386,13 +394,14 @@ int main(int argc, char** argv)
     {
         watermarkPublisher->publish(/*force=*/true);
     }
-    // no publish() can be in flight: the data-collection ULTs are joined
-    delete watermarkPublisher;
+    // Collector exit does not settle native sends. The data-admin scope fence
+    // retains the provider, registry and stack dependencies on incomplete stop.
+    watermarkPublisher.reset();
     // these are not probably needed as thallium handles the engine finalization...
     //  recordingEngine.finalize();
     //  collectionEngine.finalize();
     recordingEngine = nullptr;
-    delete dataAdminEngine;
+    dataAdminEngine = nullptr; // Native retirement requires B12 settlement proof.
     LOG_INFO("[ChronoGrapher] Shutdown completed. Exiting.");
     return exit_code;
 }

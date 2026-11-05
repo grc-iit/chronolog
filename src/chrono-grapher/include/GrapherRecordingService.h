@@ -18,7 +18,7 @@ public:
     static GrapherRecordingService* CreateRecordingService(tl::engine& engine,
                                                            uint16_t provider,
                                                            ChunkIngestionQueue& queue,
-                                                           WatermarkReportPublisher* publisher = nullptr,
+                                                           std::shared_ptr<WatermarkReportPublisher> publisher = {},
                                                            StoryWatermarkRegistry* registry = nullptr)
     {
         return CreateRecordingService(rpc::RpcBulkOwner::Find(engine.get_margo_instance()),
@@ -30,7 +30,7 @@ public:
     static GrapherRecordingService* CreateRecordingService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
                                                            uint16_t provider,
                                                            ChunkIngestionQueue& queue,
-                                                           WatermarkReportPublisher* publisher = nullptr,
+                                                           std::shared_ptr<WatermarkReportPublisher> publisher = {},
                                                            StoryWatermarkRegistry* registry = nullptr)
     {
         if(!owner || owner->closing)
@@ -75,16 +75,17 @@ public:
                 return;
             }
             auto* chunk = context->chunk.get();
-            if(publisher_)
-                publisher_->recordContributor(chunk->getStoryId(), reporter);
+            StoryWatermarkRegistry::Incarnation incarnation;
             ChunkReceipt reply;
             reply.bytes = context->bytes.size();
             if(registry_)
             {
                 reply.grapher_instance = registry_->instanceId();
-                reply.receipt = registry_->assignReceipt(chunk->getStoryId());
+                reply.receipt = registry_->assignReceipt(chunk->getStoryId(), &incarnation);
                 chunk->carryReceipt(reply.receipt);
             }
+            if(publisher_)
+                publisher_->recordContributor(chunk->getStoryId(), reporter, std::move(incarnation));
             queue_.ingestStoryChunk(chunk);
             context->chunk.release(); // Received data survives a failed reply.
             if(!context->answer(reply))
@@ -111,7 +112,7 @@ private:
     GrapherRecordingService(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
                             uint16_t provider,
                             ChunkIngestionQueue& queue,
-                            WatermarkReportPublisher* publisher,
+                            std::shared_ptr<WatermarkReportPublisher> publisher,
                             StoryWatermarkRegistry* registry)
         : tl::provider<GrapherRecordingService>(*owner->engine, provider)
         , owner_(owner)
@@ -121,7 +122,7 @@ private:
     {}
     std::weak_ptr<rpc::RpcBulkOwner> owner_;
     ChunkIngestionQueue& queue_;
-    WatermarkReportPublisher* publisher_;
+    std::shared_ptr<WatermarkReportPublisher> publisher_;
     StoryWatermarkRegistry* registry_;
 };
 } // namespace chronolog

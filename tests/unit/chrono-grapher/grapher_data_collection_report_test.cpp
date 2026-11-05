@@ -98,20 +98,28 @@ protected:
     {
         ensureLogger();
         keeperEngine =
-                std::make_unique<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+                std::make_shared<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
         grapherEngine =
-                std::make_unique<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
-        keeper1 = std::make_unique<RecordingKeeper>(*keeperEngine, kKeeper1Provider);
-        keeper2 = std::make_unique<RecordingKeeper>(*keeperEngine, kKeeper2Provider);
+                std::make_shared<tl::engine>(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+        keeper1 = std::make_shared<RecordingKeeper>(*keeperEngine, kKeeper1Provider);
+        keeper2 = std::make_shared<RecordingKeeper>(*keeperEngine, kKeeper2Provider);
+        runtime = std::make_shared<chl::rpc::RpcRuntime>();
+        owner = chl::rpc::RpcBulkOwner::Create(grapherEngine, runtime, {}, false);
+        struct Dependencies
+        {
+            std::shared_ptr<tl::engine> engine;
+            std::shared_ptr<RecordingKeeper> keeper1, keeper2;
+        };
+        owner->dependencies = std::make_shared<Dependencies>(Dependencies{keeperEngine, keeper1, keeper2});
     }
 
     void TearDown() override
     {
         publisher.reset();
-        grapherEngine->finalize();
+        // Actual sender/receiver engines and providers stay in the retained root.
+        // Local one-way send completion does not prove incoming retirement.
         keeper1.reset();
         keeper2.reset();
-        keeperEngine->finalize();
     }
 
     chl::ServiceId keeperServiceId(uint16_t provider_id)
@@ -121,18 +129,21 @@ protected:
         return chl::ServiceId(kProtocol, "127.0.0.1", port, provider_id);
     }
 
-    std::unique_ptr<tl::engine> keeperEngine;
-    std::unique_ptr<tl::engine> grapherEngine;
-    std::unique_ptr<RecordingKeeper> keeper1;
-    std::unique_ptr<RecordingKeeper> keeper2;
-    chl::StoryWatermarkRegistry registry;
+    std::shared_ptr<tl::engine> keeperEngine;
+    std::shared_ptr<tl::engine> grapherEngine;
+    std::shared_ptr<RecordingKeeper> keeper1;
+    std::shared_ptr<RecordingKeeper> keeper2;
+    std::shared_ptr<chl::StoryWatermarkRegistry> registryOwner = std::make_shared<chl::StoryWatermarkRegistry>();
+    chl::StoryWatermarkRegistry& registry = *registryOwner;
+    std::shared_ptr<chl::rpc::RpcRuntime> runtime;
+    std::shared_ptr<chl::rpc::RpcBulkOwner> owner;
     std::unique_ptr<chl::WatermarkReportPublisher> publisher;
 };
 } // namespace
 
 TEST_F(GrapherDataCollectionReport, ReportRoundFromTheLoopReachesEveryKeeper)
 {
-    publisher = std::make_unique<chl::WatermarkReportPublisher>(*grapherEngine, registry, 0);
+    publisher = std::make_unique<chl::WatermarkReportPublisher>(owner, registryOwner, 0);
     registry.registerStory(kStory, 100);
     publisher->recordContributor(kStory, keeperServiceId(kKeeper1Provider));
     publisher->recordContributor(kStory, keeperServiceId(kKeeper2Provider));
@@ -154,7 +165,7 @@ TEST_F(GrapherDataCollectionReport, TheLastReportGoesOutInsideTheInterval)
 {
     // the grapher's final drain advances W after the data-collection loop has
     // stopped; the report interval must not swallow the report that follows
-    publisher = std::make_unique<chl::WatermarkReportPublisher>(*grapherEngine, registry, 3600);
+    publisher = std::make_unique<chl::WatermarkReportPublisher>(owner, registryOwner, 3600);
     registry.registerStory(kStory, 100);
     publisher->recordContributor(kStory, keeperServiceId(kKeeper1Provider));
     registry.advancePersisted(kStory, 100, 200);
