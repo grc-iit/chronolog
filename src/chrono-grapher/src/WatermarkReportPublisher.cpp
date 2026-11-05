@@ -164,6 +164,10 @@ void WatermarkReportPublisher::recordContributor(StoryId story,
     reporter.get_service_as_string(key);
     key += "@" + std::to_string(reporter.getProviderId());
     std::lock_guard<std::timed_mutex> lock(core_->mutex);
+    // A delayed receive must not replace the current incarnation installed by
+    // another receive. Validate here, not before acquiring the publication lock.
+    if(!incarnation->load(std::memory_order_acquire))
+        return;
     auto& target = core_->targets[key];
     if(!target)
     {

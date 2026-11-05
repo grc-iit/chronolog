@@ -45,6 +45,7 @@ CONF_TEMPLATE="$WORK_DIR/conf/default-chrono-conf.json"
 CLIENT_CONF="$WORK_DIR/conf/default-chrono-client-conf.json"
 DEPLOY="$WORK_DIR/tools/deploy/deploy_local.sh"
 TAIL_EXAMPLE="$BUILD_DIR/client/cpp/examples/chrono-client-example-tail-reader"
+WRITE_PROBE="$BUILD_DIR/tests/integration/watermark-replay/chronolog-test-exact-split-probe"
 
 # grapher windows patched small so the whole loop closes quickly
 G_CHUNK_SECS=10
@@ -137,6 +138,7 @@ h5_story_events() { # total events across the TailChronicle/TailStory files
 say "patching installed conf template (keeper tail_capacity=1, resend=${RESEND_SECS}s; grapher ${G_CHUNK_SECS}s/${G_ACCEPT_SECS}s windows)"
 command -v jq >/dev/null || { say "jq not found"; exit 2; }
 [ -x "$TAIL_EXAMPLE" ] || { say "tail-reader example not found at $TAIL_EXAMPLE"; exit 2; }
+[ -x "$WRITE_PROBE" ] || { say "held writer probe not found at $WRITE_PROBE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 
 # jq writes to a side file that replaces the template only on success, so a failed
@@ -255,20 +257,34 @@ else
 fi
 
 # ------------------------------------------ scenario 4: stopped report target ----
-# Stop one keeper after acquisition/write, while the other keeper and grapher
-# continue sealing and persisting. A one-way local send can complete while the
-# target is stopped; it is not proof that the keeper applied the report.
+# Hold a write-only client after 30 acknowledged appends, then stop one keeper.
+# The original tail example also polls a paused Keeper: its late sequence reply
+# currently throws HG_NOENTRY and aborts the daemon. That separate response-
+# containment defect remains a lifecycle regression; do not hide the failed run.
+# Here no playback/metadata request runs while the report target is paused.
 say "scenario 4: SIGSTOP one keeper, then restore it and verify reports + archive"
 paused_keeper_pid=$(pgrep -f "$WORK_DIR/bin/chrono-keeper" | head -1)
 [ -n "$paused_keeper_pid" ] || { bad "report target: no keeper pid"; exit 1; }
-"$TAIL_EXAMPLE" --config "$CLIENT_CONF" > /dev/null 2>&1 &
+writer_artifacts=$(mktemp -d "${TMPDIR:-/tmp}/wmark_report_target.XXXXXX")
+writer_output="$writer_artifacts/writer.log"
+"$WRITE_PROBE" --config "$CLIENT_CONF" write TailChronicle TailStory 30 75 > "$writer_output" 2>&1 &
 example_pid=$!
-sleep 8
-kill -STOP "$paused_keeper_pid"
+# WRITTEN uses std::endl in the probe. This barrier follows every acknowledged
+# append and is independent of the daemon logs' delayed flush.
+written_deadline=$((SECONDS + 30))
+while ! grep -q '^WRITTEN$' "$writer_output" && kill -0 "$example_pid" 2>/dev/null && [ $SECONDS -lt $written_deadline ]; do
+    sleep 1
+done
+if ! grep -q '^WRITTEN$' "$writer_output" || [ "$(grep -c '^WROTE [1-9][0-9]*$' "$writer_output")" -ne 30 ]; then
+    bad "report target: writer did not acknowledge 30 events; see $writer_output"
+    exit 1
+fi
+say "report target: 30 appends acknowledged; transcript $writer_output"
+kill -STOP "$paused_keeper_pid" || { bad "report target: keeper could not be stopped"; exit 1; }
 sleep 45
-kill -CONT "$paused_keeper_pid"
+kill -CONT "$paused_keeper_pid" || { bad "report target: keeper could not be resumed"; exit 1; }
 paused_keeper_pid=""
-wait "$example_pid" 2>/dev/null
+wait "$example_pid" || { bad "report target: held writer failed; see $writer_output"; exit 1; }
 if wait_freed_but_tail $((RESEND_SECS + FREE_DEADLINE + 30)); then
     ok "report target: every chunk below each keeper's tail freed after restoration"
 else

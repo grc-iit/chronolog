@@ -374,6 +374,30 @@ TEST_P(WatermarkRpcDeadline, QueuedPreparationUsesCurrentCompleteEnvelope)
     EXPECT_EQ(report.highest_receipt, 2u);
     EXPECT_EQ(report.pending_receipts, std::vector<uint64_t>{pending});
 }
+// Replay two admitted receive continuations whose receipt/token capture and
+// contributor publication straddle drop/recreate. A resumes after B publishes.
+TEST_P(WatermarkRpcDeadline, DelayedOldContributorCannotReplaceCurrentIncarnation)
+{
+    start();
+    chl::StoryWatermarkRegistry::Incarnation old;
+    ASSERT_EQ(registry->assignReceipt(5, &old), 1u);
+    registry->dropStory(5);
+    registry->registerStory(5, 300);
+    chl::StoryWatermarkRegistry::Incarnation current;
+    ASSERT_EQ(registry->assignReceipt(5, &current), 2u);
+    ASSERT_EQ(registry->assignReceipt(5), 3u);
+    registry->receiptMerged(5, 2);
+    publisher->recordContributor(5, endpoints[0], current);
+    publisher->recordContributor(5, endpoints[0], old);
+    publisher->publish(true);
+    // No later chunk/contributor update may be needed to repair quiet progress.
+    ASSERT_TRUE(waitFor([&] { return received[0]->count() == 1; }));
+    auto report = received[0]->latest();
+    EXPECT_EQ(report.watermark, 300u);
+    EXPECT_EQ(report.grapher_instance, registry->instanceId());
+    EXPECT_EQ(report.highest_receipt, 3u);
+    EXPECT_EQ(report.pending_receipts, std::vector<uint64_t>{3});
+}
 TEST_P(WatermarkRpcDeadline, ExpiredPreparationNeverDispatchesAndFreshPassKeepsProgress)
 {
     chl::RpcTimeoutPolicy policy;
