@@ -10,7 +10,10 @@
 //       "<time> <client id> <index>" for each one answered CL_SUCCESS. After
 //       the last call it prints LAST_ACK_NS <wall clock ns>, then releases the
 //       story and prints WRITE_ACKED <acked> <n> and one
-//       WRITE_CODE <CL_...> <count> per return code. Without --bytes the record
+//       WRITE_CODE <CL_...> <count> per return code. A call answered with
+//       anything else prints "NOT_ACKED <CL_...> <client id> <index>": the
+//       client does not return the timestamp of an event it was refused, so a
+//       script looks for that client id and index in a replay. Without --bytes the record
 //       is "<mode> event <index>". With --bytes it is that many 'x' bytes.
 //       --timeout-ms and --attempts override LogEventOptions for a durable
 //       write; omitted, the defaults (10000 ms, 3 attempts) stay.
@@ -37,14 +40,19 @@
 //       names. Prints one "RETRY <CL_...> <time> <client id> <index>" line and
 //       then RETRY_OK <ok> <total>. This is the client's retry of an event the
 //       keeper already has: the public log_event API would assign a new index.
+//   --direct-write --keeper-protocol <p> --keeper-ip <ip>
+//       --keeper-port <port> --keeper-provider <id>
+//       sends one record_event_durable with client id 1 and index 1 straight
+//       to the keeper, without AcquireStory, and prints
+//       "DIRECT <CL_...> <time> 1 1" and then DIRECT_MS <ms the RPC took>.
 //
 // Usage: durable_probe --config <client conf> --chronicle <name> --story <name>
 //                      (--write <n> --mode durable|accepted [--bytes <n>] |
 //                       --replay |
 //                       --loop --stop-file <path> --release-file <path>
 //                       [--interval-ms <ms>] [--timeout-ms <ms>] [--attempts <n>] |
-//                       --retry-file <path> --keeper-protocol <p> --keeper-ip <ip>
-//                       --keeper-port <port> --keeper-provider <id>)
+//                       (--retry-file <path> | --direct-write) --keeper-protocol <p>
+//                       --keeper-ip <ip> --keeper-port <port> --keeper-provider <id>)
 //
 // The client API does not return an event's index. This client is new and logs
 // nothing else, and every call that returns CL_SUCCESS or a keeper's error took
@@ -244,13 +252,17 @@ int direct_write(std::string const& chronicle,
     uint64_t const time = wall_clock_ns();
     chronolog::LogEvent event(chronolog::storyIdOf(chronicle, story), time, 1, 1, "direct event");
     int keeper_code = chronolog::CL_ERR_UNKNOWN;
+    auto const start = std::chrono::steady_clock::now();
     chronolog::DurableSendOutcome const outcome =
             keeper->send_durable_event_msg(chronicle, story, event, 2000, keeper_code);
+    auto const took =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
     if(outcome != chronolog::DurableSendOutcome::Answered)
     {
         keeper_code = chronolog::CL_ERR_DURABILITY_UNKNOWN;
     }
     std::cout << "DIRECT " << chronolog::to_string_client(keeper_code) << " " << time << " 1 1" << std::endl;
+    std::cout << "DIRECT_MS " << took << std::endl;
     return EXIT_SUCCESS;
 }
 
@@ -521,6 +533,10 @@ int main(int argc, char** argv)
             // (no keeper chosen): later indexes would be unknown
             stopped_early = true;
             break;
+        }
+        else
+        {
+            std::cout << "NOT_ACKED " << chronolog::to_string_client(code) << " " << client_id << " " << i << std::endl;
         }
     }
     std::cout << "LAST_ACK_NS " << wall_clock_ns() << std::endl;

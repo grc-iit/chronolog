@@ -284,7 +284,7 @@ WORK_DIR=~/chronolog-install/chronolog BUILD_DIR=~/chronolog-build/Debug \
   tests/integration/keeper_wal_startup_test.sh      # ~3 min, expect 6/6
 ```
 
-`keeper_wal_crash_test.sh`, `keeper_wal_off_test.sh`, `keeper_restart_held_test.sh`, `keeper_wal_cap_test.sh`, `keeper_wal_shutdown_test.sh` and `keeper_wal_startup_test.sh` run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. The startup script also runs `chronolog-test-wal-fixture`, and the shutdown script preloads `libchronolog_wal_sync_hold.so`, both from the same build directory. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations are estimates from the scripts' timing settings.
+`keeper_wal_crash_test.sh`, `keeper_wal_off_test.sh`, `keeper_restart_held_test.sh`, `keeper_wal_cap_test.sh`, `keeper_wal_shutdown_test.sh` and `keeper_wal_startup_test.sh` run `chronolog-test-durable-probe`, which is built but not installed, so they need `BUILD_DIR`. The startup script also runs `chronolog-test-wal-fixture` to write its WAL directories, the crash script runs it to count the E records in the keeper's WAL, and the shutdown script preloads `libchronolog_wal_sync_hold.so`, both from the same build directory. `keeper_wal_group_test.sh` runs `chrono-bench` from the install tree. The durations are estimates from the scripts' timing settings.
 
 | Script | What it protects |
 |---|---|

@@ -13,13 +13,16 @@
 #   2. That write is answered CL_SUCCESS after the hold is released.
 #   3. A record_event_durable sent to the keeper after it has stopped taking
 #      writes, and while the held sync is still what keeps the process up,
-#      gets CL_ERR_DURABILITY_UNAVAILABLE. The visor has already been told the
-#      keeper is gone, so this call does not go through AcquireStory.
+#      gets CL_ERR_DURABILITY_UNAVAILABLE, and the RPC is answered within 2 s
+#      (the probe times the RPC, not its own start-up). The visor has already
+#      been told the keeper is gone, so this call does not go through
+#      AcquireStory.
 #   4. The keeper exits and leaves an exit-summary. The one event is still
 #      unconfirmed, or the grapher confirmed it during shutdown; either count
 #      is reported, and the replay below still returns that event.
 #   5. After the keeper is started again, a replay returns every identity
-#      that was answered CL_SUCCESS, exactly once.
+#      that was answered CL_SUCCESS, exactly once, and not the refused write
+#      from check 3, so that write stored nothing.
 #
 # The preload stalls only a "<20 digits>.wal" file, and only while the hold
 # file exists, so startup and the exit summary are not held. Requires an
@@ -84,8 +87,6 @@ client_conf() {
     jq ".chrono_client.ClientQueryService.rpc.service_base_port = $2" \
         "$CLIENT_CONF" > "$RUN_DIR/$1_client_conf.json" || { say "$1 client conf patch failed"; exit 2; }
 }
-
-now_ms() { echo $(($(date +%s%N) / 1000000)); }
 
 command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$PROBE" ] || { say "probe not found at $PROBE"; exit 2; }
@@ -168,12 +169,16 @@ keeper_proto=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "
 keeper_ip=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_ip' "$KEEPER_CONF")
 keeper_port=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$KEEPER_CONF")
 keeper_provider=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_provider_id' "$KEEPER_CONF")
-start_ms=$(now_ms)
+# the probe times the RPC itself, so its own start-up is not counted
 "$PROBE" --chronicle "$CHRONICLE" --story "$STORY" --direct-write \
     --keeper-protocol "$keeper_proto" --keeper-ip "$keeper_ip" --keeper-port "$keeper_port" \
     --keeper-provider "$keeper_provider" > "$RUN_DIR/write_later.out" 2>&1 || true
-refused_ms=$(($(now_ms) - start_ms))
-if grep -q '^DIRECT CL_ERR_DURABILITY_UNAVAILABLE ' "$RUN_DIR/write_later.out" && [ "$refused_ms" -lt 2000 ]; then
+refused_ms=$(sed -n 's/^DIRECT_MS \([0-9][0-9]*\)$/\1/p' "$RUN_DIR/write_later.out")
+refused_ms=${refused_ms:-99999}
+# "<time> 1 1", the identity the replay must not return
+sed -n 's/^DIRECT CL_ERR_DURABILITY_UNAVAILABLE \([0-9][0-9]* [0-9][0-9]* [0-9][0-9]*\)$/\1/p' \
+    "$RUN_DIR/write_later.out" > "$RUN_DIR/refused.ids"
+if [ -s "$RUN_DIR/refused.ids" ] && [ "$refused_ms" -lt 2000 ]; then
     ok "shutdown: a durable write sent to the keeper got CL_ERR_DURABILITY_UNAVAILABLE in ${refused_ms} ms"
 else
     bad "shutdown: the direct durable write did not get CL_ERR_DURABILITY_UNAVAILABLE quickly (${refused_ms} ms)"
@@ -234,8 +239,13 @@ while [ $SECONDS -lt $deadline ]; do
     sleep 2
 done
 expected=$(wc -l < "$RUN_DIR/expect.ids")
-if [ "$found" -eq 1 ]; then
-    ok "replay: all $expected identities answered CL_SUCCESS came back exactly once"
+stored_refused=$(grep -cxFf "$RUN_DIR/refused.ids" "$RUN_DIR/replay.ids" 2> /dev/null)
+if [ "$found" -eq 1 ] && [ -s "$RUN_DIR/refused.ids" ] && [ "${stored_refused:-0}" -eq 0 ]; then
+    ok "replay: all $expected identities answered CL_SUCCESS came back exactly once, and the refused write did not"
+elif [ "$found" -eq 1 ] && [ ! -s "$RUN_DIR/refused.ids" ]; then
+    bad "replay: the later write was not refused with CL_ERR_DURABILITY_UNAVAILABLE, so there is no refused identity to look for"
+elif [ "$found" -eq 1 ]; then
+    bad "replay: the write refused with CL_ERR_DURABILITY_UNAVAILABLE came back ($(cat "$RUN_DIR/refused.ids"))"
 else
     bad "replay: status ${R_STATUS:-none}, $missing of $expected missing, $twice returned more than once"
 fi

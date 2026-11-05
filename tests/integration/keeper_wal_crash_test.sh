@@ -24,7 +24,9 @@
 #      pinned long enough that this replay happens while the events are still
 #      only on the restarted keeper.
 #   3. Sending those same identities again, through record_event_durable, is
-#      answered CL_SUCCESS and does not grow a WAL segment.
+#      answered CL_SUCCESS and writes no E record: the WAL holds as many E
+#      records as before, and no identity twice. Segments are created at
+#      their full size, so their file sizes would not show a second copy.
 #   4. The restarted keeper ships the durable events: the archive holds at
 #      least EVENTS events of the durable story, and the segment that held
 #      their records stays until it does.
@@ -39,7 +41,7 @@
 #      durable events.
 #
 # The script reports 11 checks. The kill's timing and the acceptance window
-# are counted separately, as are the retry's answer and the segment sizes.
+# are counted separately, as are the retry's answer and the WAL's E records.
 #
 # The accepted and durable writes share one deployment and one kill, so the
 # negative control runs under the same conditions as the durable run.
@@ -70,6 +72,7 @@ CLIENT_CONF="$WORK_DIR/conf/default-chrono-client-conf.json"
 KEEPER_CONF="$WORK_DIR/conf/chrono-keeper-conf-1.json"
 DEPLOY="$WORK_DIR/tools/deploy/deploy_local.sh"
 PROBE="$BUILD_DIR/tests/integration/keeper-wal/chronolog-test-durable-probe"
+FIXTURE="$BUILD_DIR/tests/integration/keeper-wal/chronolog-test-wal-fixture"
 # deploy_local.sh puts keeper n's WAL in work_dir/wal/keeper-<n>
 WAL_DIR="$(realpath -m "$WORK_DIR/wal/keeper-1")"
 
@@ -115,7 +118,8 @@ now_ns() { date +%s%N; }
 keeper_pid() { pgrep -f "$WORK_DIR/bin/chrono-keeper --config" | head -1; }
 
 wal_segments() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' 2> /dev/null | wc -l; }
-wal_sizes() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' -printf '%f %s\n' 2> /dev/null | sort; }
+# "EVENTS <n>" and "DUPLICATES <n>" for the E records in the WAL directory
+wal_events() { "$FIXTURE" --dir "$WAL_DIR" --count-events 2>&1; }
 oldest_segment() { find "$WAL_DIR" -maxdepth 1 -name '*.wal' -printf '%f\n' 2> /dev/null | sort | head -1; }
 
 h5_story_events() { # $1 = story; total events across its archive files
@@ -153,6 +157,7 @@ replay_story() {
 # ---------------------------------------------------------------- setup ----
 command -v jq > /dev/null || { say "jq not found"; exit 2; }
 [ -x "$PROBE" ] || { say "probe not found at $PROBE"; exit 2; }
+[ -x "$FIXTURE" ] || { say "WAL fixture not found at $FIXTURE"; exit 2; }
 [ -x "$H5DUMP" ] || { say "h5dump not found at $H5DUMP"; exit 2; }
 [ -x "$DEPLOY" ] || { say "deploy script not found at $DEPLOY"; exit 2; }
 
@@ -286,28 +291,32 @@ keeper_proto=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "
 keeper_ip=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_ip' "$KEEPER_CONF")
 keeper_port=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_base_port' "$KEEPER_CONF")
 keeper_provider=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.service_provider_id' "$KEEPER_CONF")
-wal_sizes > "$RUN_DIR/wal_before_retry"
+wal_events > "$RUN_DIR/wal_before_retry"
 if [ "$hot_status" != "CL_SUCCESS" ] || [ "${hot_missing:-1}" -ne 0 ] || [ "${hot_archived:-1}" -ne 0 ]; then
     bad "retry: skipped; the durable events were not still only on the restarted keeper"
-    bad "retry: WAL segment sizes not compared"
+    bad "retry: WAL E records not counted"
 else
     "$PROBE" --chronicle "$CHRONICLE" --story "$DURABLE_STORY" --retry-file "$RUN_DIR/acked_durable" \
         --keeper-protocol "$keeper_proto" --keeper-ip "$keeper_ip" --keeper-port "$keeper_port" \
         --keeper-provider "$keeper_provider" > "$RUN_DIR/retry.out" 2>&1
     retry_ok=$(sed -n 's/^RETRY_OK \([0-9][0-9]*\) .*/\1/p' "$RUN_DIR/retry.out")
     retry_total=$(sed -n 's/^RETRY_OK [0-9][0-9]* \([0-9][0-9]*\)/\1/p' "$RUN_DIR/retry.out")
-    wal_sizes > "$RUN_DIR/wal_after_retry"
+    wal_events > "$RUN_DIR/wal_after_retry"
     if [ "${retry_ok:-0}" -eq "$EVENTS" ] && [ "${retry_total:-0}" -eq "$EVENTS" ]; then
         ok "retry: all $EVENTS acknowledged identities were answered CL_SUCCESS again"
     else
         bad "retry: ${retry_ok:-0} of ${retry_total:-0} identities answered CL_SUCCESS, wanted $EVENTS"
         grep '^RETRY ' "$RUN_DIR/retry.out" | grep -v 'CL_SUCCESS' | head -5 | sed 's/^/    /'
     fi
-    if cmp -s "$RUN_DIR/wal_before_retry" "$RUN_DIR/wal_after_retry"; then
-        ok "retry: no WAL segment grew"
+    events_before=$(sed -n 's/^EVENTS \([0-9][0-9]*\)$/\1/p' "$RUN_DIR/wal_before_retry")
+    events_after=$(sed -n 's/^EVENTS \([0-9][0-9]*\)$/\1/p' "$RUN_DIR/wal_after_retry")
+    dups_after=$(sed -n 's/^DUPLICATES \([0-9][0-9]*\)$/\1/p' "$RUN_DIR/wal_after_retry")
+    if [ -n "$events_before" ] && [ "${events_before:-0}" -ge "$EVENTS" ] &&
+        [ "$events_after" = "$events_before" ] && [ "$dups_after" = "0" ]; then
+        ok "retry: the WAL still holds $events_after E records and no identity twice"
     else
-        bad "retry: a WAL segment changed size, so an identity already durable was written again"
-        diff -u "$RUN_DIR/wal_before_retry" "$RUN_DIR/wal_after_retry" | sed 's/^/    /'
+        bad "retry: E records ${events_before:-?} before and ${events_after:-?} after, ${dups_after:-?} identities twice"
+        cat "$RUN_DIR/wal_before_retry" "$RUN_DIR/wal_after_retry" | sed 's/^/    /'
     fi
 fi
 

@@ -1,7 +1,10 @@
-// Builds the WAL directories keeper_wal_startup_test.sh starts a real keeper on.
+// Builds the WAL directories keeper_wal_startup_test.sh starts a real keeper
+// on, and counts the event records in a keeper's WAL directory for
+// keeper_wal_crash_test.sh.
 //
 //   wal_fixture --dir <path> --chronicle <name> --story <name>
 //               --mode older-bad|last-group
+//   wal_fixture --dir <path> --count-events
 //
 // older-bad writes two segments. Segment 1 has a record whose CRC is wrong and
 // an intact record after it. Segment 2 has a valid event, so segment 1 is not
@@ -16,6 +19,12 @@
 // Events are stamped 180 seconds before the fixture runs, so a grapher whose
 // acceptance window is shorter than that can archive the kept event at once.
 // KEPT and DROPPED lines are "<time> <client id> <index>".
+//
+// --count-events reads every "<n>.wal" segment in the directory up to its end
+// of data or its first bad frame, and prints EVENTS <E records> and
+// DUPLICATES <identities found in more than one E record>. A segment's size
+// does not change as records are written, so this is how the crash test sees
+// whether a resent identity was written a second time.
 
 #include <chrono>
 #include <cstdint>
@@ -23,9 +32,13 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <map>
+#include <tuple>
 #include <stdexcept>
 #include <string>
 
+#include <LogEventCodec.h>
 #include <StoryIdOf.h>
 #include <WalFormat.h>
 #include <chronolog_types.h>
@@ -88,7 +101,55 @@ chl::LogEvent eventOf(chl::StoryId story, uint64_t time, uint32_t index, std::st
 void usage(char const* name)
 {
     std::cerr << "Usage: " << name << " --dir <path> --chronicle <name> --story <name> --mode older-bad|last-group"
-              << std::endl;
+              << std::endl
+              << "       " << name << " --dir <path> --count-events" << std::endl;
+}
+
+int countEvents(fs::path const& dir)
+{
+    using Identity = std::tuple<chl::StoryId, uint64_t, chl::ClientId, uint32_t>;
+    std::map<Identity, long> seen;
+    long events = 0;
+    for(auto const& entry: fs::directory_iterator(dir))
+    {
+        if(!entry.is_regular_file() || !wal::parseSegmentFileName(entry.path().filename().string()))
+        {
+            continue;
+        }
+        std::ifstream in(entry.path(), std::ios::binary);
+        if(!in)
+        {
+            throw std::runtime_error("cannot read " + entry.path().string());
+        }
+        // kept in a variable: the scanned records point into it
+        std::string const bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        wal::ScanResult const scan = wal::scanSegment(bytes);
+        for(wal::ScannedRecord const& record: scan.records)
+        {
+            if(record.type != static_cast<uint8_t>(wal::RecordType::Event))
+            {
+                continue;
+            }
+            chl::LogEvent event;
+            if(chl::decodeLogEvent(record.body.data() + 1, record.body.size() - 1, event) != chl::CodecStatus::Ok)
+            {
+                throw std::runtime_error("an E record in " + entry.path().string() + " does not decode");
+            }
+            ++events;
+            ++seen[Identity{event.getStoryId(), event.time(), event.getClientId(), event.index()}];
+        }
+    }
+    long duplicates = 0;
+    for(auto const& [identity, count]: seen)
+    {
+        if(count > 1)
+        {
+            ++duplicates;
+        }
+    }
+    std::cout << "EVENTS " << events << std::endl;
+    std::cout << "DUPLICATES " << duplicates << std::endl;
+    return 0;
 }
 
 } // namespace
@@ -99,6 +160,7 @@ int main(int argc, char** argv)
     std::string chronicle;
     std::string story;
     std::string mode;
+    bool count_events = false;
     for(int i = 1; i < argc; ++i)
     {
         std::string const arg = argv[i];
@@ -127,10 +189,31 @@ int main(int argc, char** argv)
         {
             mode = need();
         }
+        else if(arg == "--count-events")
+        {
+            count_events = true;
+        }
         else
         {
             usage(argv[0]);
             return 2;
+        }
+    }
+    if(count_events)
+    {
+        if(dir.empty() || !chronicle.empty() || !story.empty() || !mode.empty())
+        {
+            usage(argv[0]);
+            return 2;
+        }
+        try
+        {
+            return countEvents(dir);
+        }
+        catch(std::exception const& ex)
+        {
+            std::cerr << "[wal_fixture] " << ex.what() << std::endl;
+            return 1;
         }
     }
     if(dir.empty() || chronicle.empty() || story.empty() || (mode != "older-bad" && mode != "last-group"))

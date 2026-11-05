@@ -127,9 +127,18 @@ jq ".chrono_client.ClientQueryService.rpc.service_base_port = 5601" \
 
 # -------------------------------------------------------- older bad ----
 replace_wal older-bad older
+# restart_keeper returns once the launch is in the background, so no keeper
+# process right after it may mean one that has not started yet. It has exited
+# only once it was seen running, or once it logged that recovery failed.
 exited=0
+seen=0
 for _ in $(seq 1 40); do
-    [ -z "$(keeper_pid)" ] && exited=1 && break
+    if [ -n "$(keeper_pid)" ]; then
+        seen=1
+    elif [ "$seen" -eq 1 ] || log_since | grep -q "WAL recovery failed"; then
+        exited=1
+        break
+    fi
     sleep 0.5
 done
 (cd "$WAL_DIR" && find . -maxdepth 1 -name '*.wal' -print0 | sort -z | xargs -0 sha256sum) > "$RUN_DIR/older_after.sha"
@@ -138,11 +147,16 @@ if [ "$exited" -eq 1 ] && log_since | grep -q "WAL recovery failed"; then
 elif [ "$exited" -eq 1 ]; then
     bad "older segment: the keeper exited without logging 'WAL recovery failed'"
     log_since | tail -20 | sed 's/^/    /'
-else
+elif [ "$seen" -eq 1 ]; then
     bad "older segment: the keeper was still running 20s after restart"
+else
+    bad "older segment: no keeper process or recovery log line within 20s of the restart"
 fi
-if cmp -s "$RUN_DIR/older_before.sha" "$RUN_DIR/older_after.sha"; then
+# unchanged files mean nothing unless the keeper read them
+if [ "$exited" -eq 1 ] && cmp -s "$RUN_DIR/older_before.sha" "$RUN_DIR/older_after.sha"; then
     ok "older segment: the WAL files were not changed"
+elif [ "$exited" -eq 0 ]; then
+    bad "older segment: WAL files not compared; the keeper did not run recovery and exit"
 else
     bad "older segment: the WAL files changed"
     diff -u "$RUN_DIR/older_before.sha" "$RUN_DIR/older_after.sha" | sed 's/^/    /'
@@ -151,13 +165,14 @@ fi
 # -------------------------------------------------------- last group ----
 rm -rf "${OUTPUT_DIR:?}/$CHRONICLE"
 replace_wal last-group last
-stayed=0
-for _ in $(seq 1 20); do
-    [ -n "$(keeper_pid)" ] && stayed=1 && break
-    sleep 0.25
+# up after recovery has logged the zeroed records, not merely launched
+recovered=0
+for _ in $(seq 1 40); do
+    log_since | grep -q "whole record" && recovered=1 && break
+    sleep 0.5
 done
 sleep 2
-if [ "$stayed" -eq 1 ] && [ -n "$(keeper_pid)" ]; then
+if [ "$recovered" -eq 1 ] && [ -n "$(keeper_pid)" ]; then
     ok "last group: the keeper stayed up"
 else
     bad "last group: the keeper did not stay up"

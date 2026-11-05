@@ -7,16 +7,18 @@
 # not call it again and nothing it has not confirmed can leave the cap. The
 # writer sends a burst of 64 KiB events that stays under a chunk's seal time,
 # so every one of them is acknowledged. Once that chunk has sealed, the next
-# durable write gets CL_ERR_DURABILITY_FULL and is not stored. The grapher is
-# then continued. Durable writes are admitted again, and a replay returns
-# every acknowledged identity exactly once.
+# durable write gets CL_ERR_DURABILITY_FULL. The grapher is then continued.
+# Durable writes are admitted again, and a replay returns every acknowledged
+# identity exactly once and none of the refused writes.
 #
 #   1. Every event in the burst is acknowledged while the grapher is stopped.
 #   2. The archive is still empty, so the cap is not being released underneath
 #      the test.
-#   3. The next durable write is CL_ERR_DURABILITY_FULL and stores nothing.
+#   3. The next durable write is CL_ERR_DURABILITY_FULL.
 #   4. After the grapher runs, a durable write is acknowledged again.
-#   5. A replay returns every acknowledged identity exactly once.
+#   5. A replay returns every acknowledged identity exactly once, and no event
+#      with the client id and index of a write refused with
+#      CL_ERR_DURABILITY_FULL, so a refused write stored nothing.
 #
 # Requires an installed tree and the build tree for the probe. The script
 # patches the installed conf template, deploys 1 keeper / 1 recording group,
@@ -111,13 +113,17 @@ client_conf() {
         "$CLIENT_CONF" > "$RUN_DIR/$1_client_conf.json" || { say "$1 client conf patch failed"; exit 2; }
 }
 
-# write <label> <n>: sets W_ACKED and W_CODES; identities go to acked_<label>
+# write <label> <n>: sets W_ACKED and W_CODES; identities go to acked_<label>,
+# and the "<client id> <index>" of each CL_ERR_DURABILITY_FULL refusal is added
+# to refused_full
 write_story() {
     local out="$RUN_DIR/write_$1.out"
     "$PROBE" --config "$RUN_DIR/$1_client_conf.json" --chronicle "$CHRONICLE" --story "$STORY" \
         --write "$2" --mode durable --bytes "$PAYLOAD_BYTES" --attempts 1 --timeout-ms 10000 \
         > "$out" 2>&1
     identities "$out" > "$RUN_DIR/acked_$1"
+    sed -n 's/^NOT_ACKED CL_ERR_DURABILITY_FULL \([0-9][0-9]*\) \([0-9][0-9]*\)$/\1 \2/p' "$out" \
+        >> "$RUN_DIR/refused_full"
     W_ACKED=$(wc -l < "$RUN_DIR/acked_$1")
     W_CODES=$(sed -n 's/^WRITE_CODE //p' "$out" | paste -sd ',' -)
     say "durable write ($1): $W_ACKED acked of $2; codes: ${W_CODES:-none}"
@@ -160,6 +166,7 @@ remove_wal() {
     rmdir -- "$WORK_DIR/wal" 2> /dev/null || true
 }
 trap 'cleanup; remove_wal; restore_conf; rm -rf "$RUN_DIR"' EXIT
+: > "$RUN_DIR/refused_full"
 
 kill_daemons
 sleep 2
@@ -223,7 +230,7 @@ fi
 write_story full 1
 full_count=$(code_count CL_ERR_DURABILITY_FULL)
 if [ "$W_ACKED" -eq 0 ] && [ "${full_count:-0}" -eq 1 ]; then
-    ok "cap: the next durable write got CL_ERR_DURABILITY_FULL and stored nothing"
+    ok "cap: the next durable write got CL_ERR_DURABILITY_FULL"
 else
     bad "cap: wanted one CL_ERR_DURABILITY_FULL and no ack, got $W_ACKED acked, codes ${W_CODES:-none}"
 fi
@@ -252,6 +259,7 @@ expected=$(wc -l < "$RUN_DIR/expect.ids")
 # the write that was admitted again may still be in an open chunk
 missing=-1
 twice=-1
+stored_refused=-1
 deadline=$((SECONDS + 60))
 while [ $SECONDS -lt $deadline ]; do
     replay_story
@@ -259,16 +267,20 @@ while [ $SECONDS -lt $deadline ]; do
     twice=$(awk 'NR == FNR { acked[$1 " " $2] = 1; next } ($1 " " $2) in acked { n[$1 " " $2]++ }
                  END { c = 0; for(k in n) if(n[k] > 1) c++; print c }' \
                 "$RUN_DIR/expect.ids" "$RUN_DIR/replay.ids")
+    stored_refused=$(awk 'NR == FNR { refused[$1 " " $2] = 1; next } ($2 " " $3) in refused { c++ } END { print c + 0 }' \
+                         "$RUN_DIR/refused_full" "$RUN_DIR/replay.ids")
     if [ "$R_STATUS" = "CL_SUCCESS" ] && [ "$missing" -eq 0 ] && [ "$twice" -eq 0 ]; then
         break
     fi
     sleep 2
 done
+refused=$(wc -l < "$RUN_DIR/refused_full")
 unexpected=$(comm -13 "$RUN_DIR/expect.ids" <(sort -u "$RUN_DIR/replay.ids") | wc -l)
-if [ "$R_STATUS" = "CL_SUCCESS" ] && [ "$missing" -eq 0 ] && [ "$twice" -eq 0 ]; then
-    ok "replay: all $expected acknowledged identities came back exactly once ($unexpected unacknowledged)"
+if [ "$R_STATUS" = "CL_SUCCESS" ] && [ "$missing" -eq 0 ] && [ "$twice" -eq 0 ] && [ "$refused" -ge 1 ] &&
+    [ "$stored_refused" -eq 0 ]; then
+    ok "replay: all $expected acknowledged identities came back exactly once, and none of the $refused refused writes ($unexpected unacknowledged)"
 else
-    bad "replay: status ${R_STATUS:-none}, $missing of $expected acknowledged identities missing, $twice returned more than once"
+    bad "replay: status ${R_STATUS:-none}, $missing of $expected acknowledged identities missing, $twice returned more than once, $stored_refused of $refused refused writes returned"
 fi
 
 say "${PASS} passed, ${FAIL} failed"
