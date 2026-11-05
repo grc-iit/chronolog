@@ -77,10 +77,7 @@ int fdatasync(int fd)
                 close(flag_fd);
             }
         }
-        while(access(hold, F_OK) == 0)
-        {
-            usleep(20000);
-        }
+        while(access(hold, F_OK) == 0) { usleep(20000); }
     }
     return call_fdatasync(fd);
 }
