@@ -238,6 +238,9 @@ on the grapher node once written.
 Measured on a workstation NVMe with 1,000 stories, writing a window took 1.85 ms on average in a
 burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 
+`chrono-bench --durable` writes every event durable (`--timeout-ms` and `--attempts` set its
+`LogEventOptions`), so the same run with and without it shows a deployment's durable cost.
+
 ---
 
 ## Failure behavior

@@ -15,7 +15,7 @@ A top-down look at how ChronoLog is structured, from the high-level data flow to
 
 - [System Overview](./architecture/system-overview.md) — tiered storage, data flow, and component interactions
 - [On-Demand Tail Read](./architecture/on-demand-tail-read.md) — millisecond-scale in-memory tail reads from ChronoKeeper RAM
-- **Component deep-dives** — [ChronoVisor](./architecture/chronovisor.md), [ChronoKeeper](./architecture/chronokeeper.md), [ChronoGrapher](./architecture/chronographer.md), and [ChronoPlayer](./architecture/chronoplayer.md)
+- **Component deep-dives** — [ChronoVisor](./architecture/chronovisor.md), [ChronoKeeper](./architecture/chronokeeper.md), [ChronoGrapher](./architecture/chronographer.md), and [ChronoPlayer](./architecture/chronoplayer.md), with the [Keeper WAL](./architecture/keeper-wal.md) for durable writes
 
 ### Data Model
 

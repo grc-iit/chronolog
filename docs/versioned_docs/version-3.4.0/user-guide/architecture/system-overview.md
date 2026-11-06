@@ -111,7 +111,7 @@ A **Recording Group** is a logical grouping of recording processes that work tog
 1. Client app calls `log_event()` with payload → passes to Client library
 2. Client library timestamps the Event → sends to ChronoVisor
 3. ChronoVisor assigns the Story to a Recording Group → notifies all group processes
-4. ChronoKeeper ingests Events into in-memory Story Pipeline → groups into partial StoryChunks
+4. ChronoKeeper ingests Events into in-memory Story Pipeline → groups into partial StoryChunks. A durable write (`LogEventOptions{Durability::Durable}`) is first written to the keeper's write-ahead log and synced, and only then answered `CL_SUCCESS` (see [Keeper WAL](./keeper-wal.md))
 5. Sealed chunks are sent via RDMA bulk transfer to ChronoGrapher; each keeper keeps a chunk until ChronoGrapher reports it written (see [Durable Chunk Retention](./durable-retention.md))
 6. ChronoGrapher merges partials from all Keepers → archives complete StoryChunks to HDF5 archive files
 
@@ -210,6 +210,7 @@ ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) 
 1. Each Keeper, Grapher, and Player process starts by sending a **Register** RPC to ChronoVisor's Recording Process Registry Service (port 8888).
 2. After registration, processes send periodic **Heartbeat/Statistics** messages so ChronoVisor can track liveness and load.
 3. ChronoVisor maintains **DataStoreAdminClient** connections to every registered process and uses them to push **StartStoryRecording** / **StopStoryRecording** notifications when clients acquire or release stories.
+4. A ChronoKeeper that registers again, after a restart, gets a **StartStoryRecording** for every story of its recording group that clients still hold.
 
 ## Key Concepts
 
@@ -230,7 +231,7 @@ ChronoLog implements a three-tier storage hierarchy that progressively trades la
 
 | Tier     | Location      | Component                    | Medium                         | Purpose                                      |
 | ----------| ---------------| ------------------------------| --------------------------------| ----------------------------------------------|
-| **Hot**  | Compute nodes | ChronoKeeper                 | In-memory (Story Pipeline)     | Fast event ingestion with sub-second latency |
+| **Hot**  | Compute nodes | ChronoKeeper                 | In-memory (Story Pipeline), and the WAL on a local drive for durable writes | Fast event ingestion with sub-second latency |
 | **Warm** | Storage node  | ChronoGrapher / ChronoPlayer | In-memory (Story Pipeline)     | Chunk merging, recent-data playback          |
 | **Cold** | Storage node  | ChronoGrapher                | HDF5 files on POSIX filesystem | Long-term persistent archive                 |
 
@@ -253,5 +254,6 @@ Tiering policy can be set per-Chronicle (`normal`, `hot`, or `cold`) to bias tow
 ## Further Reading
 
 - **Component deep-dives:** [ChronoVisor](./chronovisor.md) | [ChronoKeeper](./chronokeeper.md) | [ChronoGrapher](./chronographer.md) | [ChronoPlayer](./chronoplayer.md)
+- **Durability:** [Durable Chunk Retention](./durable-retention.md) | [Keeper WAL and Durable Writes](./keeper-wal.md)
 - **Tail Reads:** [On-Demand Tail Read Architecture](./on-demand-tail-read.md)
 - **Data Model:** [Overview](../data-model/overview.md)
