@@ -98,6 +98,5 @@ Configuration fragments that appear in more than one component are defined once 
 
 - **Independent evolution.** A change to Keeper-specific fields no longer forces a rebuild of ChronoVisor, ChronoGrapher, and ChronoPlayer.
 - **Smaller blast radius.** Each process parses and validates only the section it cares about; an unknown field inside `chrono_keeper` cannot affect ChronoVisor start-up.
-- **Foundation for dynamic reload.** Because `ConfigurationManager` no longer owns per-component state, it can re-load the JSON on signal without touching the running component configurations.
 
-This split was introduced in [PR #564](https://github.com/grc-iit/ChronoLog/pull/564) as preparation for the upcoming extractor-module sections inside the ChronoKeeper configuration.
+This split was introduced in [PR #564](https://github.com/grc-iit/ChronoLog/pull/564). A process reads its configuration once, at startup; changing the file takes effect when the process is restarted.
