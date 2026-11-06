@@ -33,16 +33,16 @@ Each service in `default_conf.json` contains an `rpc` sub-block:
 
 ## Protocol Options
 
-The transport is set via `protocol_conf`. The three supported values correspond to the `ChronoLogRPCImplementation` enum:
+The transport is set via `protocol_conf`. ChronoLog passes the string to Mercury as the address prefix (`<protocol_conf>://<service_ip>:<service_base_port>`), so any transport that the installed Mercury and libfabric support can be named. These are the ones ChronoLog is run with:
 
-| `protocol_conf` value | Enum constant | Use case |
-|---|---|---|
-| `"ofi+sockets"` | `CHRONOLOG_THALLIUM_SOCKETS` (0) | TCP sockets via libfabric. Works everywhere, no special hardware required. Recommended for development and single-node testing. |
-| `"ofi+verbs"` | `CHRONOLOG_THALLIUM_TCP` (1) | InfiniBand Verbs via libfabric. Requires InfiniBand hardware. Use on HPC clusters with IB interconnects. |
-| `"ofi+roce"` | `CHRONOLOG_THALLIUM_ROCE` (2) | RDMA over Converged Ethernet. Requires RoCE-capable NICs. Use for high-performance Ethernet deployments. |
+| `protocol_conf` value | Use case |
+|---|---|
+| `"ofi+sockets"` | TCP through libfabric's sockets provider. Works everywhere, no special hardware required. The template's value, and what CI uses. |
+| `"ofi+tcp"` | TCP through libfabric's tcp provider. Known problem: when a keeper dies, an accepted `log_event` to it and ChronoVisor's start-recording call to it wait with no deadline, so `keeper_restart_held_test.sh` passes 8 of its 11 checks on `ofi+tcp` and the nightly run leaves it out. |
+| `"ofi+verbs"` | RDMA through libfabric's verbs provider, on InfiniBand or RoCE NICs. |
 
 :::note
-All components in a deployment must use the same `protocol_conf`. Mixing transports is not supported.
+Each service has its own `protocol_conf`. A service and every component that connects to it must use the same value. The template uses `ofi+sockets` everywhere; running different transports on different services is not covered by CI.
 :::
 
 ## Default Port Assignments

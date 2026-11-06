@@ -248,7 +248,7 @@ Tiering policy can be set per-Chronicle (`normal`, `hot`, or `cold`) to bias tow
 - **Double-buffering** — StoryPipelines use a two-deque pattern (active and passive queues) so that ingestion and extraction can proceed in parallel without blocking each other. The active deque receives new data while the passive deque is drained by sequencing/extraction threads; they swap atomically when conditions are met.
 - **Parallelized ingestion** — Multiple ChronoKeepers per Recording Group accept events concurrently, distributing ingestion load across compute nodes.
 - **Batch data movement** — Retired StoryChunks are transferred in bulk from Keepers to Graphers, amortizing RPC overhead.
-- **RDMA-capable transport** — The Keeper→Grapher drain path uses Thallium's `tl::bulk` for zero-copy RDMA transfers when the OFI provider supports it (`ofi+verbs`), falling back to `ofi+sockets` otherwise.
+- **RDMA-capable transport** — The Keeper→Grapher drain path uses Thallium's `tl::bulk`, which is a zero-copy RDMA transfer with an RDMA provider such as `ofi+verbs` and a copy over TCP with `ofi+sockets` or `ofi+tcp`.
 - **Single-writer per tier** — Each Recording Group has exactly one Grapher and one Player, avoiding write conflicts at the merge and archive stages.
 
 ## Further Reading

@@ -43,7 +43,7 @@ Backed by `ClockConf` in `src/chrono-common/include/ConfigurationBlocks.h`.
 | Field             | Type   | Default  | Description                                                |
 | ----------------- | ------ | -------- | ---------------------------------------------------------- |
 | `auth_type`       | string | `"RBAC"` | Authentication mechanism. Currently only `"RBAC"` is used. |
-| `module_location` | string | `""`     | Path to the authentication module shared object.           |
+| `module_location` | string | `"/path/to/auth_module"` | Path to the authentication module shared object. The template's value is a placeholder; a file without the key gets `""`. |
 
 Backed by `AuthConf` in `src/chrono-common/include/ConfigurationBlocks.h`.
 
@@ -96,12 +96,14 @@ Per-component log sink. Wrapped under a `monitor` key and parsed by `LogConf`.
 
 Appears in `chrono_keeper`, `chrono_grapher`, and `chrono_player`. Parsed by `DataStoreConf`. See [Performance Tuning → Story Chunk Settings](./performance-tuning.md#story-chunk-settings) for the semantics of each field.
 
+The defaults below are the template's. The first four keys have a different template value in each component. A key left out of the file takes the value compiled into the component instead, which for those four keys differs from the template: `story_chunk_duration_secs` 30 on the keeper and 60 on the grapher and player, `acceptance_window_secs` 10 on the keeper and 180 on the grapher and player, `inactive_story_delay_secs` 180 on the keeper and 300 on the grapher and player, and `max_story_chunk_size` 4096. The other keys compile to their template values.
+
 | Field                       | Type    | Default | Description                                                           |
 | --------------------------- | ------- | ------- | --------------------------------------------------------------------- |
-| `max_story_chunk_size`      | integer | `64`    | Maximum number of events in a single chunk.                           |
-| `story_chunk_duration_secs` | integer | `30`    | How long a chunk remains open.                                        |
-| `acceptance_window_secs`    | integer | `60`    | Maximum allowed age of an incoming event relative to wall-clock time. |
-| `inactive_story_delay_secs` | integer | `180`   | Idle time before an in-memory story is evicted.                       |
+| `max_story_chunk_size`      | integer | `4096`  | Not used for now. Each component reads it, but nothing limits a chunk by its event count: a chunk covers a time range of `story_chunk_duration_secs`. |
+| `story_chunk_duration_secs` | integer | keeper `10`, grapher `30`, player `60` | How long a chunk remains open. |
+| `acceptance_window_secs`    | integer | keeper `15`, grapher `60`, player `300` | Maximum allowed age of an incoming event relative to wall-clock time. |
+| `inactive_story_delay_secs` | integer | keeper `120`, grapher `300`, player `300` | Idle time before an in-memory story is evicted. |
 | `tail_capacity`             | integer | `65536` | *(Keeper only)* Maximum most-recent sealed events indexed per story for tail reads. A chunk with events in the index stays in memory; the index is released when the story retires. Must be $>0$. |
 | `live_tail_read`            | boolean | `false` | *(Keeper only)* When true, tail reads also serve unsealed events from the active timeline in addition to sealed chunks, dropping visibility latency to sub-second. |
 | `retention_cap_mb`          | integer | `4096`  | *(Keeper only)* Retained-chunk memory, in MB, above which the keeper logs a warning while it waits for ChronoGrapher to persist chunks. Nothing is dropped. Set it above the memory a healthy keeper holds, or the warning fires in normal operation: about `3 × 125 s × peak per-keeper MB/s` with the template's windows. `0` turns the warning off. See [Durable Chunk Retention](../architecture/durable-retention.md). The keeper's [`WAL`](#wal--keeper-write-ahead-log) block has its own cap, `durable_cap_mb`, on the part of that memory the grapher has not confirmed. |
@@ -188,17 +190,18 @@ Present under `chrono_keeper` and `chrono_grapher`. Parsed by `ExtractionModuleC
 | Field                     | Type    | Description                                                                                                                                                                       |
 | ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `extraction_stream_count` | integer | Number of parallel extraction-stream threads draining the extraction queue. Default: `2`.                                                                                         |
-| `extraction_protocol`     | string  | Thallium protocol used by RDMA-based extractors. Default: `"ofi+sockets"`.                                                                                                        |
-| `extractors`              | object  | Map of extractor instances keyed by an arbitrary label. Each entry must set `"type"` to one of the supported extractor types listed below; additional fields depend on the type.  |
+| `extraction_protocol`     | string  | Thallium protocol of the keeper's engine for its RDMA extractors. Default: `"ofi+sockets"`. Read by the keeper only.                                                              |
+| `extractors`              | object  | Map of extractor entries. Each key is a label of your choice (the template uses `extractor_to_grapher` and `hdf5_archive_extractor`), and each entry must set `"type"` to one of the extractor types listed below; additional fields depend on the type. A component keeps one extractor per type: of two entries with the same `type`, only the last one in the file is used. An entry whose `type` the component does not know is ignored. |
 
 **Supported extractor types**
 
 | `type`                            | Available in        | Required fields                                                                            | Behavior                                                                                                              |
 | --------------------------------- | ------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `csv_extractor`                   | keeper, grapher     | `csv_archive_dir` (string)                                                                 | Writes each StoryChunk as a CSV file under `csv_archive_dir`.                                                         |
-| `single_endpoint_rdma_extractor`  | keeper, grapher     | `receiving_endpoint` (object: `protocol_conf`, `service_ip`, `service_base_port`, `service_provider_id`) | Drains each StoryChunk to one RDMA endpoint (typically a ChronoGrapher's `KeeperGrapherDrainService`).                |
-| `dual_endpoint_rdma_extractor`    | keeper              | Two `receiving_endpoint` entries                                                            | Fans each StoryChunk out to two RDMA endpoints simultaneously (e.g. ChronoGrapher + ChronoPlayer).                    |
+| `single_endpoint_rdma_extractor`  | keeper              | `receiving_endpoint` (object: `protocol_conf`, `service_ip`, `service_base_port`, `service_provider_id`) | Drains each StoryChunk to one RDMA endpoint, the ChronoGrapher's `KeeperGrapherDrainService`.                |
+| `dual_endpoint_rdma_extractor`    | keeper              | `grapher_receiving_endpoint` and `player_receiving_endpoint` (objects with the same fields as `receiving_endpoint`) | Sends each StoryChunk to the ChronoGrapher's `KeeperGrapherDrainService` and to the ChronoPlayer's `PlayerRecordingService`. |
 | `hdf5_extractor`                  | grapher (required)  | `hdf5_archive_dir` (string)                                                                 | Serializes each StoryChunk into the HDF5 archive under `hdf5_archive_dir`.                                            |
+| `logging_extractor`               | keeper, grapher     | none                                                                                        | Logs one INFO line per StoryChunk (story, time range, event count) and stores nothing.                                |
 
 A ChronoGrapher's chain must include `hdf5_extractor`: it is the only extractor that confirms chunks written, and keepers free a chunk only once the grapher confirms it. A grapher whose `extractors` list is empty or absent gets an `hdf5_extractor` with `hdf5_archive_dir` `/tmp`; one whose list leaves it out, such as a `csv_extractor` alone, fails to start. Other extractors may run alongside it.
 
@@ -223,6 +226,7 @@ A scalar field that sits inside the ingestion service object of each component:
 | ChronoKeeper   | `chrono_keeper.KeeperRecordingService.IngestionThreadCount`   | `4`     | Number of worker threads serving the Keeper recording RPC.                   |
 | ChronoGrapher  | `chrono_grapher.KeeperGrapherDrainService.IngestionThreadCount` | `1`   | Number of worker threads serving the Grapher drain RPC.                      |
 | ChronoPlayer   | `chrono_player.PlaybackQueryService.IngestionThreadCount`     | `1`     | Number of worker threads serving the Player playback-query RPC.              |
+| ChronoPlayer   | `chrono_player.PlayerRecordingService.IngestionThreadCount`   | `1`     | Number of worker threads receiving chunks from a keeper's `dual_endpoint_rdma_extractor`. |
 
 ---
 
@@ -235,7 +239,7 @@ Parsed by `VisorConfiguration` (`src/chrono-visor/include/ChronoVisorConfigurati
 | `VisorClientPortalService`        | object  | `{ "rpc": { ... } }` — endpoint used by clients to connect to ChronoVisor.                    |
 | `VisorKeeperRegistryService`      | object  | `{ "rpc": { ... } }` — endpoint where ChronoKeeper/Grapher/Player register and heartbeat.     |
 | `Monitoring`                      | object  | See [`Monitoring`](#monitoring--logging).                                                     |
-| `delayed_data_admin_exit_in_secs` | integer | Shutdown grace period for the data administration service. Clamped to `(0, 60)`; default `5`. |
+| `delayed_data_admin_exit_in_secs` | integer | Seconds ChronoVisor keeps its admin RPC client for a keeper, grapher or player after that process unregisters or registers again, and while ChronoVisor shuts down, before destroying it, so calls already sent on it can finish. It holds no events. Default `3`; a value outside 1–59 becomes `5`. |
 
 ## `chrono_keeper`
 
@@ -283,12 +287,13 @@ Parsed by `PlayerConfiguration` (`src/chrono-player/include/ChronoPlayerConfigur
 | `VisorRegistryService`    | object  | `{ "rpc": { ... } }` — endpoint **on ChronoVisor** where this player registers.            |
 | `Monitoring`              | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`      | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
+| `PlayerRecordingService`  | object  | `{ "rpc": { ... } }` — endpoint that receives chunks from a keeper's `dual_endpoint_rdma_extractor`. Keepers ship with `single_endpoint_rdma_extractor`, so nothing sends to it by default. |
 | `ArchiveReaders`          | object  | See [`ArchiveReaders`](#archivereaders--story-files-directory).                            |
 
-`PlaybackQueryService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
+`PlaybackQueryService` and `PlayerRecordingService` carry an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
 ---
 
 ## Full Example
 
-The repository ships a fully expanded example at [`conf/default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/conf/default_conf.json.in). Default values for every field are defined in the constructors of the configuration classes listed above.
+The repository ships a fully expanded example at [`conf/default_conf.json.in`](https://github.com/grc-iit/ChronoLog/blob/develop/conf/default_conf.json.in). A key left out of the file takes the value set in the constructor of the component's configuration class, which is not always the template's value; see [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).

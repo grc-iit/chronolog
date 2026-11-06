@@ -9,19 +9,11 @@ This page covers the configuration knobs that most directly affect ChronoLog's t
 
 ## Story Chunk Settings
 
-A *story chunk* is the unit of data that flows through the pipeline: Keeper buffers events into chunks, drains them to Grapher, which persists them to storage. Three parameters govern chunk behavior in `DataStoreInternals`.
+A *story chunk* is the unit of data that flows through the pipeline: Keeper buffers events into chunks, drains them to Grapher, which persists them to storage. These settings live in `DataStoreInternals`. The defaults are the template's; a key left out of the file takes a different compiled value (see [Server Configuration → DataStoreInternals](./server-configuration.md#datastoreinternals--story-chunk-tuning)). If you change them, keep the [timing rules across components](./server-configuration.md#timing-rules-across-components).
 
 ### `max_story_chunk_size`
 
-Maximum size of a single story chunk in the number of Events.
-
-| Component     | Default |
-| ---------------| ---------|
-| ChronoKeeper  | `4096`  |
-| ChronoGrapher | `4096`  |
-| ChronoPlayer  | `4096`  |
-
-**Effect**: larger chunks reduce per-chunk overhead (fewer RPC calls, fewer I/O operations) but increase memory usage and the minimum latency before an event reaches persistent storage. Tune this based on your expected event payload size.
+Not used for now. Every component reads it (the template sets `4096`), but nothing limits a chunk by its number of events: a chunk covers a time range of `story_chunk_duration_secs`, so changing this key has no effect.
 
 ### `story_chunk_duration_secs`
 
@@ -30,7 +22,7 @@ How long (in seconds) a chunk remains open, accumulating events, before it is se
 | Component | Default |
 |---|---|
 | ChronoKeeper | `10` |
-| ChronoGrapher | `60` |
+| ChronoGrapher | `30` |
 | ChronoPlayer | `60` |
 
 **Effect**: shorter durations reduce end-to-end latency from write to persistent storage at the cost of more frequent RPC round-trips. Longer durations improve batching efficiency. The ChronoKeeper value is the most latency-sensitive; the ChronoGrapher/ChronoPlayer values affect how quickly data becomes queryable.
@@ -42,7 +34,8 @@ Maximum age (in seconds) of an incoming event timestamp, relative to the current
 | Component | Default |
 |---|---|
 | ChronoKeeper | `15` |
-| ChronoGrapher | `180` |
+| ChronoGrapher | `60` |
+| ChronoPlayer | `300` |
 
 **Effect**: a wider window accommodates clock skew between client hosts and the ChronoKeeper nodes, and allows late-arriving events to be stored correctly. Narrowing the window tightens the ordering guarantee but rejects events from slow or clock-skewed producers.
 
@@ -54,6 +47,7 @@ How long (in seconds) a story with no new events is kept in memory before being 
 |---|---|
 | ChronoKeeper | `120` |
 | ChronoGrapher | `300` |
+| ChronoPlayer | `300` |
 
 **Effect**: longer delays keep story state warm, reducing re-initialization cost when a story becomes active again. Shorter delays free memory sooner in workloads with many short-lived or bursty stories.
 
@@ -81,6 +75,8 @@ Number of parallel worker threads draining the extraction queue through the conf
 | ------------- | ------- |
 | ChronoKeeper  | `2`     |
 | ChronoGrapher | `2`     |
+
+A file without the key gets `1`.
 
 **Effect**: higher values increase chunk-throughput when downstream extractors (CSV writes, RDMA fan-out, HDF5 archive) are the bottleneck. The benefit plateaus when storage or network bandwidth saturates.
 
@@ -135,26 +131,27 @@ These matter only for durable writes, with `chrono_keeper.WAL.enabled` set. See 
 - **`group_commit_max_bytes`** (default 4 MiB): the largest group written and synced at once.
 - **`durable_cap_mb`** (default `4096`): the memory of chunks the grapher has not confirmed above which durable writes get `CL_ERR_DURABILITY_FULL`. Size it for the longest grapher outage durable writers should ride out.
 
-## Shutdown Grace Period
+## Shutdown
 
 ```json
-"chrono_visor": {
-  "delayed_data_admin_exit_in_secs": 3
+"chrono_keeper": {
+  "DataStoreInternals": { "shutdown_confirm_timeout_secs": 150 }
 }
 ```
 
-Number of seconds ChronoVisor waits after receiving a shutdown signal before terminating the data administration service. This grace period allows in-flight RPC calls and pending data acknowledgements to complete cleanly. Increase this value if you observe data loss at shutdown under heavy write load.
+A keeper stopped with SIGTERM waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its chunks written, then logs any chunk still unconfirmed and exits. Keep it above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template), stop the graphers only after the keepers have exited, and give a keeper more time to stop than this timeout. See [Durable Chunk Retention](../architecture/durable-retention.md#failure-behavior).
+
+ChronoVisor's `delayed_data_admin_exit_in_secs` (template `3`) is not a data setting: it is how long the visor keeps its admin RPC client for a process that left before destroying it, and it holds no events.
 
 ## Summary of Tuning Recommendations
 
 | Goal                                           | Recommended change                                                                            |
 | ------------------------------------------------| -----------------------------------------------------------------------------------------------|
-| Lower write-to-query latency                   | Reduce `story_chunk_duration_secs` on ChronoKeeper (e.g., `5`) and ChronoGrapher (e.g., `30`) |
-| Higher throughput / better batching            | Increase `max_story_chunk_size` (e.g., `16384` or `65536`)                                    |
-| Tolerate high clock skew across nodes          | Increase `acceptance_window_secs` on ChronoKeeper (e.g., `60`)                                |
+| Lower write-to-query latency                   | Reduce `story_chunk_duration_secs` on ChronoKeeper (e.g., `5`) and ChronoGrapher (e.g., `15`), keeping the [timing rules](./server-configuration.md#timing-rules-across-components) |
+| Tolerate high clock skew across nodes          | Increase `acceptance_window_secs` on ChronoKeeper (e.g., `60`), and the grapher's above the keeper's `story_chunk_duration_secs` plus `acceptance_window_secs` |
 | Reduce memory usage with many stories          | Decrease `inactive_story_delay_secs` on Keeper and Grapher                                    |
 | Minimum timestamp latency on bare-metal HPC    | Set `clocksource_type` to `"TSC"` (verify invariant TSC first)                                |
-| Prevent data loss at shutdown under heavy load | Increase `delayed_data_admin_exit_in_secs` to `10` or more                                    |
+| Keepers exit before their last chunks are written | Raise `shutdown_confirm_timeout_secs` on ChronoKeeper above the grapher's write window, and stop graphers after keepers |
 | High client fan-in into ChronoKeeper           | Raise `KeeperRecordingService.IngestionThreadCount` (e.g., `8` or `16`)                       |
 | Many ChronoKeepers draining one ChronoGrapher  | Raise `KeeperGrapherDrainService.IngestionThreadCount` to match concurrent drain RPCs         |
 | Lower durable write latency                    | Put the keeper WAL on a local NVMe drive and keep `group_commit_window_us` at `0`             |
