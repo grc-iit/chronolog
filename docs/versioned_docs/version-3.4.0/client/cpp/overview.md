@@ -72,7 +72,7 @@ A typical session follows this sequence:
 1. **Connect** — establish a session with ChronoVisor.
 2. **CreateChronicle** — create a named chronicle (top-level namespace).
 3. **AcquireStory** — open a story within the chronicle and obtain a `StoryHandle`.
-4. **log_event** — append events through the `StoryHandle`.
+4. **log_event** — append events through the `StoryHandle`. With `LogEventOptions{Durability::Durable}` the call returns `CL_SUCCESS` only once the keeper has synced the event to its write-ahead log (see [`StoryHandle`](./api.md#storyhandle-class)).
 5. **playback** — retrieve the most recent $N$ events from keeper memory (writer or reader mode).
 6. **ReplayStory** — read back historical events within a time range (READER mode only).
 7. **ReleaseStory** — release the story handle.

@@ -141,7 +141,7 @@ int main(int argc, char** argv)
 | **Connect** | Opens a session with ChronoVisor over the configured transport (`ofi+sockets` by default). |
 | **CreateChronicle** | Registers a top-level namespace. Returns `CL_ERR_CHRONICLE_EXISTS` if one already exists with that name, which is safe to ignore if you just want to ensure it exists. |
 | **AcquireStory** | Opens (and creates if necessary) a story within the chronicle. The returned `StoryHandle*` is used for all subsequent writes. |
-| **log_event** | Appends an event record to the story. The call is non-blocking; events are buffered and flushed in the background. |
+| **log_event** | Appends an event record to the story. The call is non-blocking; events are buffered and flushed in the background. A durable write (`LogEventOptions{Durability::Durable}`) blocks until the keeper has synced the event to its write-ahead log; see [`StoryHandle`](./api.md#storyhandle-class). |
 | **sleep(120)** | Waits for background persistence to complete before issuing a replay. See the note in the code above. |
 | **ReplayStory** | Fetches every event in the given time range, from the archive and, for the most recent ones, from keeper memory. Requires the client to have been constructed with a `ClientQueryServiceConf` (READER mode). |
 | **ReleaseStory** | Flushes buffered events and releases the story handle. Must be called before `DestroyStory`. |

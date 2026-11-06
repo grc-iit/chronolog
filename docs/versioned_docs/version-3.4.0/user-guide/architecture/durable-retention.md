@@ -26,6 +26,9 @@ outage therefore lost every chunk sent during it, with nothing recording the los
    window or a separate file. So the grapher also tracks which receipts still have events that are
    not written. Every `watermark_report_interval_secs` it sends, to each keeper that contributed to
    a story, the story's watermark and its unwritten receipts, for every story where either changed.
+   A window counts as written only once its file, its story directory and the manifest record that
+   names it are synced, so a chunk the grapher confirms survives a power loss on the grapher node
+   (see [Grapher fsync](./keeper-wal.md#grapher-fsync)).
 3. **Free.** A keeper frees a chunk only when all of these hold:
    - the grapher acknowledged receiving the chunk;
    - the reported watermark has reached the end of the chunk;
@@ -44,6 +47,9 @@ outage therefore lost every chunk sent during it, with nothing recording the los
    `watermark_resend_timeout_secs`, is sent again. That wait matters: each delivery gets its own
    receipt, and the grapher can only confirm one once it has written the window holding it, so a
    chunk sent again sooner loses the receipt it was waiting on and starts over.
+
+With the [keeper WAL](./keeper-wal.md) on, the same confirmation also releases the chunk's durable
+events from the WAL, and a WAL segment is deleted once none of its events are pending.
 
 Events leave a story's tail index when the story holds more than `tail_capacity` events there, or
 when the story retires on the keeper: no client has it acquired and its acceptance window has
@@ -97,8 +103,8 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 | Grapher paused or unreachable for a while | Keepers keep the chunks they cannot deliver, warn once memory passes `retention_cap_mb`, and send them again when the grapher is back. No events are lost; a chunk that reached the grapher before the outage can be written twice, and a replay returns its events once. |
 | Grapher restarts | The watermark and the receipts live in grapher memory and start over. Keepers send again the chunks they still hold, since the new process's reports confirm none of the old receipts; events both processes wrote are on disk twice and a replay returns them once. |
 | An HDF5 write fails | The story's watermark stops advancing, and the receipts of the chunks in that write stay unconfirmed. Keepers keep the affected chunks and send them again until a write succeeds. |
-| Keeper stopped with SIGTERM | The keeper stops accepting events, seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. A chunk the grapher did acknowledge waits for its receipt on the same `watermark_resend_timeout_secs` timer as a running keeper. It logs any chunk still unconfirmed and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
-| Keeper crashes | Chunks that keeper held and the grapher had not yet written are lost. Chunks are not replicated across keepers. |
+| Keeper stopped with SIGTERM | The keeper unregisters from ChronoVisor and stops accepting events (a durable write then gets `CL_ERR_DURABILITY_UNAVAILABLE` and nothing is stored), seals what it holds, sends again every chunk the grapher has not acknowledged, and waits until the grapher confirms every chunk written or `shutdown_confirm_timeout_secs` passes. A chunk the grapher did acknowledge waits for its receipt on the same `watermark_resend_timeout_secs` timer as a running keeper. It logs any chunk still unconfirmed, writes the events still pending in its WAL to `<wal dir>/exit-summary` when the WAL is on, and exits. Stop the graphers only after the keepers have exited, and give a keeper more time to stop than `shutdown_confirm_timeout_secs`. |
+| Keeper crashes | Accepted events in chunks that keeper held and the grapher had not yet written are lost. Events written durable to a keeper with the WAL on are not: restarted on the same WAL directory (`--restart-keeper`), the keeper reads them back and sends them to the grapher (see [Keeper WAL](./keeper-wal.md)). Chunks are not replicated across keepers. |
 | Story destroyed before its last chunks are written | Those chunks are refused by the grapher and never written; its next report tells the keepers the story is gone and they free them. Their events are lost, which is what destroying a story means. A story destroyed on a grapher that has restarted, or through `destroy_chronicle` after the grapher retired the story's pipeline, is not reported: its keepers hold those chunks until they restart. |
 | Story recreated under the same name right after a destroy | Story ids are a hash of chronicle and story name, so both incarnations share one id. If the new acquisition reaches the grapher before the drop report goes out, the drop is dropped and the old chunks stay retained; if the drop report reaches a keeper after it has sealed chunks for the new story, those are freed too. |
 
@@ -108,7 +114,10 @@ a watermark yet, no keeper has freed anything, and `B` is the oldest event time 
 
 Keeper memory grows while the grapher falls behind, since nothing is freed until it is written.
 `retention_cap_mb` does not limit that: it logs a warning each time retained memory crosses it, and
-drops nothing. Size keeper memory for the longest grapher outage you want to ride out.
+drops nothing. Size keeper memory for the longest grapher outage you want to ride out. Durable writes
+are the exception: above `durable_cap_mb` of chunks the grapher has not confirmed, a durable write
+gets `CL_ERR_DURABILITY_FULL` and nothing is stored, until the keeper is back under three quarters of
+the cap. Accepted writes are not refused.
 
 Even with nothing wrong, a keeper holds roughly **125 seconds of ingest**: 25 s until it seals and
 ships a chunk (`story_chunk_duration_secs` + `acceptance_window_secs`), up to 90 s until the grapher

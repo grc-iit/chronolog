@@ -327,6 +327,8 @@ Archival no longer waits for the tail: every chunk is sent to ChronoGrapher as s
    When a story's tail index holds more events than `tail_capacity`, the oldest entries leave the index. That only shortens the tail `playback` can return; the chunk itself is freed once it is also persisted and `archive_visibility_delay_secs` has passed (see [Durable Chunk Retention](./durable-retention.md)).
 2. **Release at Retirement**:
    When a story retires on the keeper (no client has it acquired and its acceptance window has passed), its whole tail index is released and `playback` returns nothing more from this keeper. A low-volume story that never fills `tail_capacity` therefore keeps its last events in memory only while it is recorded.
+3. **After a Keeper Restart**:
+   A restarted keeper's tail index starts empty. The durable events it recovers from its [WAL](./keeper-wal.md) are sent to ChronoGrapher and returned by a replay, but `playback` does not return them.
 3. **No Time-Based Age-Out**:
    `tail_retention_secs` is removed. A low-volume story is archived anyway, because its chunks are sent at seal.
 3. **Between the Two Phases**:
