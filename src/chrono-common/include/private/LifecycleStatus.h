@@ -7,6 +7,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <sstream>
+#include <optional>
 #include <unistd.h>
 namespace chronolog::rpc
 {
@@ -18,6 +19,11 @@ class LifecycleStatus
     uid_t const uid_ = geteuid();
 
 public:
+    struct Startup
+    {
+        bool succeeded;
+        bool interrupted;
+    };
     explicit LifecycleStatus(std::string const& config)
         : config_(std::filesystem::canonical(config).string())
     {
@@ -61,7 +67,8 @@ public:
                  uint64_t attempt,
                  RpcDeadline::Clock::time_point entered,
                  NativeRetirementSnapshot const* native = nullptr,
-                 std::size_t applicationHandles = 0) const
+                 std::size_t applicationHandles = 0,
+                 std::optional<Startup> startup = std::nullopt) const
     {
         auto json = std::shared_ptr<json_object>(json_object_new_object(),
                                                  [](json_object* object) { json_object_put(object); });
@@ -85,6 +92,15 @@ public:
                : state == ShutdownState::Draining  ? "Draining"
                                                    : "Stopped");
         integer("status", status);
+        if(startup)
+        {
+            json_object_object_add(json.get(), "startup_succeeded", json_object_new_boolean(startup->succeeded));
+            json_object_object_add(json.get(), "startup_interrupted", json_object_new_boolean(startup->interrupted));
+            if(state != ShutdownState::Running && native && native->generation)
+                string("drain_id",
+                       "drain:" + boot_ + ":" + std::to_string(pid_) + ":" + ticks_ + ":" +
+                               std::to_string(native->generation));
+        }
         integer("attempt", attempt);
         integer("elapsed_ms",
                 std::chrono::duration_cast<std::chrono::milliseconds>(RpcDeadline::Clock::now() - entered).count());

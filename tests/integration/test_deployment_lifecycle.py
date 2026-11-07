@@ -484,6 +484,152 @@ class ManagedStopController(unittest.TestCase):
         self.assertFalse(Path(self.grapher['config'] + '.stop-evidence.json').exists())
 
 
+class FailedStartTerminal(unittest.TestCase):
+    """Synthetic file/controller bindings, not native cleanup evidence."""
+    def setUp(self):
+        self.temporary=tempfile.TemporaryDirectory(prefix='chronolog-partial-terminal-')
+        self.addCleanup(self.temporary.cleanup)
+        self.work=Path(self.temporary.name)
+        (self.work/'conf').mkdir()
+        config=self.work/'conf/player.json'
+        config.write_text(json.dumps({'chrono_player':{'RecordingGroup':1}}))
+        self.record=dict(host='host-A',pid=123,uid=1000,executable='/test/chrono-player',
+            argv=['/test/chrono-player','--config',str(config)],config=str(config),
+            config_bytes=config.read_text(),status_file=str(config)+'.lifecycle.json',
+            component='player',start_ticks='7',boot_id='boot-A',deployment_id='partial-A')
+        self.manifest=dict(id='partial-A',state='stopping',stop_attempt='stop-A',
+            records=[self.record],keepers=[],hosts=['local'],stop_inventory_routes=['local'],
+            inventory_complete=True,stop_inventory_complete=True,keeper_launches_closed=True)
+        lifecycle.atomic_json(self.work/'monitor/lifecycle/deployment.json',self.manifest)
+        self.lock=(self.work/'monitor/lifecycle/control.lock').open('a+')
+        lifecycle.fcntl.flock(self.lock,lifecycle.fcntl.LOCK_EX|lifecycle.fcntl.LOCK_NB)
+        self.addCleanup(self.lock.close)
+        native=dict(generation=7,complete=True,abt_uninitialized=True,same_primary=True,
+            application_handles=0,primary_releases=1,streams_before_release=1,
+            rpc_streams_created=2,rpc_streams_retired=2)
+        for key in ('initialized_mids','finalized_mids','finalize_calls','finalize_returns',
+                    'constructor_units_created','constructor_units_retired','pools_created','pools_retired'):
+            native[key]=2
+        self.terminal=self.record|dict(state='Stopped',status=0,startup_succeeded=False,
+            startup_interrupted=True,drain_id='drain:boot-A:123:7:7',native_proof=native)
+        self.permit=dict(deployment_id='partial-A',stop_attempt='stop-A',recipient=self.record,
+            recipient_config_bytes=config.read_text(),recipient_native_generation=7,
+            recipient_drain_id=self.terminal['drain_id'],services=[],empty_keeper_roster=True,
+            keeper_launches_closed=True)
+        self.permit_path=Path(str(config)+'.ingestion-stop-permit.json')
+        self.save()
+
+    def save(self):
+        Path(self.record['status_file']).write_text(json.dumps(self.terminal))
+        self.permit_path.write_text(json.dumps(self.permit))
+        lifecycle.atomic_json(self.work/'monitor/lifecycle/deployment.json',self.manifest)
+
+    def retain(self):
+        observation=dict(state='stopped',authoritative_absent=True,
+            terminal_bytes=Path(self.record['status_file']).read_text())
+        return lifecycle.retain_terminal(self.work,self.record,observation,self.manifest)
+
+    def test_exact_interrupted_two_mid_terminal_retains_original_permit_bytes(self):
+        result=self.retain()
+        self.assertEqual(result['failed_start']['permit_path'],str(self.permit_path))
+        self.assertEqual(result['failed_start']['permit_bytes'],self.permit_path.read_text())
+        self.assertEqual(json.loads(result['terminal_bytes'])['native_proof']['initialized_mids'],2)
+        for key in ('initialized_mids','finalized_mids','finalize_calls','finalize_returns',
+                    'constructor_units_created','constructor_units_retired','pools_created','pools_retired',
+                    'rpc_streams_created','rpc_streams_retired'):
+            self.terminal['native_proof'][key]=1
+        self.save()
+        self.assertIn('failed_start',self.retain())
+
+    def test_missing_or_successful_start_marker_never_uses_partial_exception(self):
+        for field,value in (('startup_succeeded',True),('startup_succeeded',None),
+                            ('startup_interrupted',False),('startup_interrupted',None)):
+            with self.subTest(field=field,value=value):
+                original=self.terminal.copy();self.terminal[field]=value;self.save()
+                with self.assertRaises(RuntimeError):self.retain()
+                self.terminal=original
+
+    def test_unknown_cleanup_or_constructor_never_becomes_terminal(self):
+        for field,value in (('complete',False),('abt_uninitialized',False),('application_handles',1),
+                            ('constructor_units_retired',1),('constructor_units_created',3),
+                            ('finalize_returns',1),('rpc_streams_retired',1),('same_primary',False)):
+            with self.subTest(field=field):
+                old=self.terminal['native_proof'][field];self.terminal['native_proof'][field]=value;self.save()
+                with self.assertRaises(RuntimeError):self.retain()
+                self.terminal['native_proof'][field]=old
+
+    def test_stale_process_config_drain_generation_or_stop_permit_is_refused(self):
+        for field,value in (('recipient_config_bytes','wrong'),('recipient_native_generation',8),
+                            ('recipient_drain_id','other-drain'),('stop_attempt','other-stop'),
+                            ('deployment_id','other-deployment'),('empty_keeper_roster',False)):
+            with self.subTest(field=field):
+                old=self.permit[field];self.permit[field]=value;self.save()
+                with self.assertRaises(RuntimeError):self.retain()
+                self.permit[field]=old
+        for field,value in (('pid',124),('boot_id','restarted'),('start_ticks','8')):
+            with self.subTest(identity=field):
+                self.permit['recipient']=self.record|{field:value};self.save()
+                with self.assertRaises(RuntimeError):self.retain()
+        self.permit['recipient']=self.record
+
+    def test_missing_inventory_pending_launch_or_new_keeper_refuses_partial_proof(self):
+        for field,value in (('inventory_complete',False),('stop_inventory_complete',False),
+                            ('keeper_launches_closed',False),('hosts',[]),
+                            ('stop_inventory_routes',['unverified']),('pending_launch',None),('records',None),
+                            ('keepers',[self.record|{'component':'keeper'}])):
+            with self.subTest(field=field):
+                old=self.manifest.copy();self.manifest[field]=value;self.save()
+                try:
+                    with self.assertRaises(RuntimeError):self.retain()
+                finally:
+                    self.manifest=old
+        self.manifest['records'].append(self.record|{'component':'keeper','config':'another'})
+        self.save()
+        with self.assertRaises(RuntimeError):self.retain()
+
+    def test_unrecorded_player_never_uses_empty_roster_exception(self):
+        self.manifest['records']=[]
+        self.save()
+        with self.assertRaises(RuntimeError):self.retain()
+
+    def test_malformed_permit_or_recipient_is_explicitly_incomplete(self):
+        for packet in ([],self.permit|{'recipient':None}):
+            with self.subTest(packet=packet):
+                self.permit_path.write_text(json.dumps(packet))
+                with self.assertRaises(RuntimeError):self.retain()
+
+    def test_partial_proof_requires_actual_closed_start_fence(self):
+        lifecycle.fcntl.flock(self.lock,lifecycle.fcntl.LOCK_UN)
+        with self.assertRaises(RuntimeError):self.retain()
+
+    def test_normal_three_mid_proof_is_not_reduced_to_two(self):
+        self.terminal['startup_succeeded']=True
+        self.save()
+        with self.assertRaises(RuntimeError):self.retain()
+        for key in ('initialized_mids','finalized_mids','finalize_calls','finalize_returns',
+                    'constructor_units_created','constructor_units_retired','pools_created','pools_retired'):
+            self.terminal['native_proof'][key]=3
+        self.save()
+        self.assertNotIn('failed_start',self.retain())
+
+    def test_ingestion_permit_is_immutable_across_later_caller_attempts(self):
+        live=self.record|{'state':'alive'}
+        self.terminal['state']='Draining';self.terminal['status']=-27
+        Path(self.record['status_file']).write_text(json.dumps(self.terminal))
+        self.permit_path.unlink()
+        lifecycle.terminal_evidence(self.work,[live],{},self.manifest)
+        original=self.permit_path.read_bytes()
+        self.terminal['attempt']=9;self.terminal['elapsed_ms']=999
+        Path(self.record['status_file']).write_text(json.dumps(self.terminal))
+        lifecycle.terminal_evidence(self.work,[live],{},self.manifest)
+        self.assertEqual(original,self.permit_path.read_bytes())
+        self.terminal['drain_id']='another-drain'
+        Path(self.record['status_file']).write_text(json.dumps(self.terminal))
+        with self.assertRaises(RuntimeError):
+            lifecycle.terminal_evidence(self.work,[live],{},self.manifest)
+        self.assertEqual(original,self.permit_path.read_bytes())
+
+
 class ShippedConfigContract(unittest.TestCase):
     def test_keeper_endpoint_is_read_from_the_actual_shipped_config(self):
         config = MODULE.parents[2] / 'conf/default_conf.json.in'

@@ -204,6 +204,85 @@ class ManagedStopBarrier
         }
         IO::require(expected == observed, "Missing managed Visor public proof");
     }
+    void emptyKeeperInventory() const
+    {
+        for(auto flag: {"inventory_complete", "stop_inventory_complete", "keeper_launches_closed"})
+            IO::require(json_object_is_type(IO::field(manifest_.get(), flag), json_type_boolean) &&
+                                json_object_get_boolean(IO::field(manifest_.get(), flag)),
+                        "Start/host inventory is unproved");
+        IO::require(json_object_array_length(array(manifest_.get(), "keepers")) == 0,
+                    "Managed Keeper roster is not empty");
+        auto roster = array(manifest_.get(), "records");
+        for(size_t i = 0; i < json_object_array_length(roster); ++i)
+            IO::require(IO::string(json_object_array_get_idx(roster, i), "component") != "keeper",
+                        "A managed Keeper can still need ingestion");
+        json_object* pending = nullptr;
+        IO::require(!json_object_object_get_ex(manifest_.get(), "pending_launch", &pending),
+                    "Original launch remains pending");
+        auto hosts = array(manifest_.get(), "hosts");
+        IO::require(json_object_array_length(hosts) > 0 &&
+                            json_object_equal(hosts, array(manifest_.get(), "stop_inventory_routes")),
+                    "Authoritative host inventory changed");
+        std::set<std::string> unique;
+        for(size_t i = 0; i < json_object_array_length(hosts); ++i)
+        {
+            auto host = json_object_array_get_idx(hosts, i);
+            IO::require(json_object_is_type(host, json_type_string) && json_object_get_string_len(host) > 0 &&
+                                unique.insert(json_object_get_string(host)).second,
+                        "Authoritative host inventory is ambiguous");
+        }
+        auto work = IO::deploymentRoot(config_);
+        int lock = open((work / "monitor/lifecycle/control.lock").c_str(), O_RDWR | O_CLOEXEC);
+        IO::require(lock >= 0, "Closed-start fence is missing");
+        int claimed = flock(lock, LOCK_EX | LOCK_NB);
+        int error = errno;
+        if(claimed == 0)
+            flock(lock, LOCK_UN);
+        close(lock);
+        IO::require(claimed != 0 && (error == EWOULDBLOCK || error == EAGAIN), "Closed-start fence is not held");
+    }
+    void emptyIngestionPermit(json_object* record, json_object* packet, uint64_t generation) const
+    {
+        managed(record, "player");
+        emptyKeeperInventory();
+        IO::identity(record, IO::field(packet, "recipient"));
+        IO::require(IO::string(packet, "deployment_id") == deployment_ && IO::string(packet, "stop_attempt") == stop_ &&
+                            IO::string(packet, "recipient_config_bytes") == IO::bytes(IO::string(record, "config")) &&
+                            number(packet, "recipient_native_generation") == static_cast<int64_t>(generation) &&
+                            json_object_array_length(array(packet, "services")) == 0,
+                    "Empty ingestion permit identity mismatch");
+        for(auto flag: {"empty_keeper_roster", "keeper_launches_closed"})
+            IO::require(json_object_is_type(IO::field(packet, flag), json_type_boolean) &&
+                                json_object_get_boolean(IO::field(packet, flag)),
+                        "Empty Keeper permit is unproved");
+    }
+    static std::string playerDrain(json_object* record, uint64_t generation)
+    {
+        return "drain:" + IO::string(record, "boot_id") + ":" + std::to_string(number(record, "pid")) + ":" +
+               IO::string(record, "start_ticks") + ":" + std::to_string(generation);
+    }
+    int64_t failedPlayer(json_object* record, json_object* value, json_object* native, json_object* item) const
+    {
+        auto succeeded = IO::field(value, "startup_succeeded");
+        auto interrupted = IO::field(value, "startup_interrupted");
+        auto mids = number(native, "initialized_mids");
+        auto generation = number(native, "generation");
+        IO::require(json_object_is_type(succeeded, json_type_boolean) && !json_object_get_boolean(succeeded) &&
+                            json_object_is_type(interrupted, json_type_boolean) &&
+                            json_object_get_boolean(interrupted) && mids >= 1 && mids <= 2 && generation > 0,
+                    "Partial Player lacks explicit interrupted-start proof");
+        auto drain = playerDrain(record, generation);
+        IO::require(IO::string(value, "drain_id") == drain, "Partial Player drain identity mismatch");
+        auto failed = IO::field(item, "failed_start");
+        auto path = IO::string(record, "config") + ".ingestion-stop-permit.json";
+        auto encoded = IO::string(failed, "permit_bytes");
+        IO::require(IO::string(failed, "permit_path") == path && encoded == IO::bytes(path),
+                    "Retained partial Player permit changed");
+        auto packet = IO::parse(encoded);
+        emptyIngestionPermit(record, packet.get(), generation);
+        IO::require(IO::string(packet.get(), "recipient_drain_id") == drain, "Partial Player permit drain changed");
+        return mids;
+    }
     void terminal(json_object* item) const
     {
         auto record = IO::field(item, "record");
@@ -224,7 +303,9 @@ class ManagedStopBarrier
                             IO::string(value.get(), "state") == "Stopped" && number(value.get(), "status") == 0,
                     "Final dependency is not normally Stopped");
         auto native = IO::field(value.get(), "native_proof");
-        auto mids = role == "grapher" ? 2 : 3;
+        int64_t mids = role == "grapher" ? 2 : 3;
+        if(role == "player" && number(native, "initialized_mids") != 3)
+            mids = failedPlayer(record, value.get(), native, item);
         for(auto count: {"initialized_mids",
                          "finalized_mids",
                          "finalize_calls",
@@ -514,33 +595,17 @@ public:
             IO::require(expected == keeperRoster, "Managed Keeper roster is incomplete");
             if(expected.empty())
             {
-                // This is only known failed-start cleanup. The controller must
-                // own the exclusive start fence after complete host inventory;
-                // original remote launch intent was retained BEFORE SSH.
-                for(auto flag: {"inventory_complete", "stop_inventory_complete", "keeper_launches_closed"})
-                    IO::require(json_object_is_type(IO::field(proof.manifest_.get(), flag), json_type_boolean) &&
-                                        json_object_get_boolean(IO::field(proof.manifest_.get(), flag)),
-                                "Start/host inventory is unproved");
-                IO::require(json_object_get_boolean(IO::field(input, "empty_keeper_roster")) &&
-                                    json_object_get_boolean(IO::field(input, "keeper_launches_closed")),
-                            "Empty Keeper permit is unproved");
-                json_object* pending = nullptr;
-                IO::require(!json_object_object_get_ex(proof.manifest_.get(), "pending_launch", &pending),
-                            "Original launch remains pending");
-                auto hosts = array(proof.manifest_.get(), "hosts");
-                IO::require(json_object_array_length(hosts) > 0 &&
-                                    json_object_equal(hosts, array(proof.manifest_.get(), "stop_inventory_routes")),
-                            "Authoritative host inventory changed");
-                auto work = IO::deploymentRoot(proof.config_);
-                int lock = open((work / "monitor/lifecycle/control.lock").c_str(), O_RDWR | O_CLOEXEC);
-                IO::require(lock >= 0, "Closed-start fence is missing");
-                int claimed = flock(lock, LOCK_EX | LOCK_NB);
-                int error = errno;
-                if(claimed == 0)
-                    flock(lock, LOCK_UN);
-                close(lock);
-                IO::require(claimed != 0 && (error == EWOULDBLOCK || error == EAGAIN),
-                            "Closed-start fence is not held");
+                proof.emptyIngestionPermit(IO::field(input, "recipient"), input, generation);
+                auto own = IO::parse(IO::bytes(proof.config_ + ".lifecycle.json"));
+                json_object* succeeded = nullptr;
+                if(json_object_object_get_ex(own.get(), "startup_succeeded", &succeeded) &&
+                   json_object_is_type(succeeded, json_type_boolean) && !json_object_get_boolean(succeeded))
+                {
+                    auto drain = playerDrain(IO::field(input, "recipient"), generation);
+                    IO::require(IO::string(own.get(), "drain_id") == drain &&
+                                        IO::string(input, "recipient_drain_id") == drain,
+                                "Failed-start ingestion permit drain mismatch");
+                }
             }
             else
                 proof.queryProof(IO::field(input, "recipient"), IO::string(input, "query_quiesced_bytes"));

@@ -480,6 +480,64 @@ def progress_barrier(work, records, observations, manifest, deadline, worker, pu
             atomic_json(item['record']['config']+'.retirement-permit.json', packet)
 
 
+def require_closed_empty_keeper_inventory(work, manifest):
+    hosts=manifest.get('hosts')
+    records=manifest.get('records')
+    if (manifest.get('state')!='stopping' or not manifest.get('stop_attempt')
+        or manifest.get('inventory_complete') is not True
+        or manifest.get('stop_inventory_complete') is not True
+        or manifest.get('keeper_launches_closed') is not True
+        or not isinstance(hosts,list) or not hosts or not all(isinstance(host,str) and host for host in hosts)
+        or len(hosts)!=len(set(hosts)) or hosts!=manifest.get('stop_inventory_routes')
+        or 'pending_launch' in manifest or manifest.get('keepers')!=[]
+        or not isinstance(records,list) or not all(isinstance(record,dict) for record in records)
+        or any(record.get('component')=='keeper' for record in records)
+        or json.loads(manifest_path(work).read_text())!=manifest):
+        raise RuntimeError('empty Keeper roster lacks closed authoritative start/host inventory')
+    with (Path(work)/'monitor/lifecycle/control.lock').open('r+') as fence:
+        try:
+            fcntl.flock(fence,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            fcntl.flock(fence,fcntl.LOCK_UN)
+            raise RuntimeError('closed-start fence is not held')
+
+
+def player_drain_id(record, generation):
+    return 'drain:'+record['boot_id']+':'+str(record['pid'])+':'+record['start_ticks']+':'+str(generation)
+
+
+def failed_player_terminal(work, record, value, manifest):
+    native=value.get('native_proof',{})
+    mids=native.get('initialized_mids')
+    generation=native.get('generation')
+    if (record['component']!='player' or value.get('startup_succeeded') is not False
+        or value.get('startup_interrupted') is not True or type(mids) is not int or not 1<=mids<=2
+        or type(generation) is not int or generation<=0
+        or value.get('drain_id')!=player_drain_id(record,generation)):
+        raise RuntimeError('partial Player lacks explicit interrupted-start/drain proof')
+    require_closed_empty_keeper_inventory(work,manifest)
+    managed=[candidate for candidate in manifest['records'] if candidate.get('component')=='player'
+             and same_identity(candidate,record) and candidate.get('config_bytes')==record['config_bytes']]
+    if len(managed)!=1:
+        raise RuntimeError('partial Player identity is absent or ambiguous in the managed roster')
+    permit_path=Path(record['config']+'.ingestion-stop-permit.json')
+    encoded=permit_path.read_text()
+    packet=json.loads(encoded)
+    if not isinstance(packet,dict) or not isinstance(packet.get('recipient'),dict):
+        raise RuntimeError('partial Player permit/recipient is not an object')
+    if (packet.get('deployment_id')!=manifest['id'] or packet.get('stop_attempt')!=manifest['stop_attempt']
+        or not same_identity(packet.get('recipient',{}),record)
+        or packet.get('recipient_config_bytes')!=Path(record['config']).read_text()
+        or packet.get('recipient_native_generation')!=generation
+        or packet.get('recipient_drain_id')!=value['drain_id']
+        or packet.get('services')!=[] or packet.get('empty_keeper_roster') is not True
+        or packet.get('keeper_launches_closed') is not True):
+        raise RuntimeError('partial Player ingestion permit identity/drain mismatch')
+    return mids,{'permit_path':str(permit_path),'permit_bytes':encoded}
+
+
 def retain_terminal(work, record, observation, manifest):
     encoded = observation.get('terminal_bytes')
     if observation.get('state') != 'stopped' or observation.get('authoritative_absent') is not True or not encoded:
@@ -491,13 +549,16 @@ def retain_terminal(work, record, observation, manifest):
         raise RuntimeError('dependency terminal/config identity mismatch')
     native = value.get('native_proof', {})
     mids = 2 if record['component'] == 'grapher' else 3
+    failed_start = None
+    if record['component']=='player' and native.get('initialized_mids')!=3:
+        mids,failed_start=failed_player_terminal(work,record,value,manifest)
     if (not all(native.get(flag) is True for flag in ('complete','abt_uninitialized','same_primary'))
         or native.get('application_handles') != 0 or native.get('primary_releases') != 1
         or native.get('streams_before_release') != 1 or native.get('generation', 0) <= 0
         or type(native.get('rpc_streams_created')) is not int or native['rpc_streams_created'] < 0
         or type(native.get('rpc_streams_retired')) is not int
         or native.get('rpc_streams_created') != native.get('rpc_streams_retired')
-        or not all(native.get(field) == mids for field in ('initialized_mids','finalized_mids',
+        or not all(type(native.get(field)) is int and native[field] == mids for field in ('initialized_mids','finalized_mids',
              'finalize_calls','finalize_returns','constructor_units_created','constructor_units_retired',
              'pools_created','pools_retired'))):
         raise RuntimeError('dependency physical native release is incomplete')
@@ -506,9 +567,12 @@ def retain_terminal(work, record, observation, manifest):
     retained['terminal_sha256'] = digest
     path = record_path(work, record['host'], record['config'])
     atomic_json(path, retained)
-    return {'record':retained, 'authoritative_absent':True, 'terminal_bytes':encoded,
-            'terminal_sha256':digest, 'record_path':str(path), 'record_bytes':path.read_text(),
-            'config_bytes':Path(record['config']).read_text()}
+    result = {'record':retained, 'authoritative_absent':True, 'terminal_bytes':encoded,
+              'terminal_sha256':digest, 'record_path':str(path), 'record_bytes':path.read_text(),
+              'config_bytes':Path(record['config']).read_text()}
+    if failed_start is not None:
+        result['failed_start']=failed_start
+    return result
 
 
 def terminal_evidence(work, records, observations, manifest):
@@ -543,12 +607,18 @@ def terminal_evidence(work, records, observations, manifest):
         if keepers:
             packet['query_quiesced_bytes'] = Path(player['config']+'.queries-quiesced.json').read_text()
         else:
-            if (manifest.get('inventory_complete') is not True or manifest.get('stop_inventory_complete') is not True
-                or not manifest.get('hosts') or set(manifest['hosts']) != set(manifest.get('stop_inventory_routes',[]))
-                or 'pending_launch' in manifest):
-                raise RuntimeError('empty Keeper roster lacks closed authoritative start/host inventory')
+            require_closed_empty_keeper_inventory(work,manifest)
             packet['empty_keeper_roster'] = True
-        atomic_json(player['config']+'.ingestion-stop-permit.json',packet)
+            if current.get('startup_succeeded') is False:
+                if current.get('drain_id')!=player_drain_id(player,generation):
+                    raise RuntimeError('failed-start Player drain identity mismatch')
+                packet['recipient_drain_id']=current['drain_id']
+        permit_path=Path(player['config']+'.ingestion-stop-permit.json')
+        if permit_path.exists():
+            if json.loads(permit_path.read_text())!=packet:
+                raise RuntimeError('retained Player ingestion permit changed')
+        else:
+            atomic_json(permit_path,packet)
 
 
 def final_visor_permits(work, records, observations, manifest, public_proofs):

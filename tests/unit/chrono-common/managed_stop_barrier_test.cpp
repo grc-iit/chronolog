@@ -401,3 +401,191 @@ TEST_F(ManagedBarrier, EmptyKeeperPartialPlayerNeedsCompleteHostInventoryAndClos
     ASSERT_EQ(flock(held, LOCK_UN), 0);
     EXPECT_FALSE(rpc::ManagedStopBarrier::PermitPlayerIngestionStop(player, 1, 7));
 }
+
+class PartialPlayerTerminal: public ManagedBarrier
+{
+protected:
+    std::string player, visor, drain;
+    Json playerRecord, visorRecord, terminalValue, ingestion, finalPacket, terminalItem;
+    int held = -1;
+    void saveTerminal()
+    {
+        write(player + ".lifecycle.json", terminalValue.get());
+        string(terminalItem.get(), "terminal_bytes", bytes(player + ".lifecycle.json"));
+        write(visor + ".retirement-permit.json", finalPacket.get());
+    }
+    void SetUp() override
+    {
+        ManagedBarrier::SetUp();
+        player = (work / "conf/partial-player.json").string();
+        visor = (work / "conf/visor.json").string();
+        std::ofstream(player) << R"({"chrono_player":{"RecordingGroup":1}})";
+        std::ofstream(visor)
+                << R"({"chrono_visor":{"VisorKeeperRegistryService":{"rpc":{"protocol_conf":"ofi+sockets","service_ip":"127.0.0.1","service_base_port":8888,"service_provider_id":88}}}})";
+        // These counters exercise file validation only, not native retirement.
+        native.initializedMids = native.finalizedMids = native.finalizeCalls = native.finalizeReturns = 2;
+        native.constructorUnitsCreated = native.constructorUnitsRetired = native.poolsCreated = native.poolsRetired = 2;
+        native.rpcStreamsCreated = native.rpcStreamsRetired = 2;
+        native.primaryReleases = 1;
+        native.streamsBeforeRelease = 1;
+        native.complete = native.abtUninitialized = native.samePrimary = true;
+        playerRecord = record(player, "player");
+        rpc::LifecycleStatus status(player);
+        ASSERT_TRUE(status.publish(rpc::ShutdownState::Stopped,
+                                   0,
+                                   2,
+                                   rpc::RpcDeadline::Clock::now(),
+                                   &native,
+                                   0,
+                                   rpc::LifecycleStatus::Startup{false, true}));
+        terminalValue = load(player + ".lifecycle.json");
+        drain = "drain:" + std::string(json_object_get_string(get(playerRecord.get(), "boot_id"))) + ":" +
+                std::to_string(getpid()) + ":" + json_object_get_string(get(playerRecord.get(), "start_ticks")) + ":7";
+        ASSERT_EQ(std::string(json_object_get_string(get(terminalValue.get(), "drain_id"))), drain);
+        native = {};
+        native.generation = 7;
+        native.initializedMids = 2;
+        visorRecord = record(visor, "visor");
+        auto roster = json_object_new_array();
+        json_object_array_add(roster, json_object_get(playerRecord.get()));
+        json_object_array_add(roster, json_object_get(visorRecord.get()));
+        json_object_object_add(manifest.get(), "records", roster);
+        json_object_object_add(manifest.get(), "keepers", json_object_new_array());
+        auto hosts = parse(R"(["local"])");
+        json_object_object_add(manifest.get(), "hosts", json_object_get(hosts.get()));
+        json_object_object_add(manifest.get(), "stop_inventory_routes", json_object_get(hosts.get()));
+        for(auto flag: {"inventory_complete", "stop_inventory_complete", "keeper_launches_closed"})
+            json_object_object_add(manifest.get(), flag, json_object_new_boolean(true));
+        write((work / "monitor/lifecycle/deployment.json").string(), manifest.get());
+        ingestion = parse(
+                R"({"deployment_id":"unit-managed-deployment","stop_attempt":"stable-stop","recipient_native_generation":7,"services":[],"empty_keeper_roster":true,"keeper_launches_closed":true})");
+        json_object_object_add(ingestion.get(), "recipient", json_object_get(playerRecord.get()));
+        string(ingestion.get(), "recipient_config_bytes", bytes(player));
+        string(ingestion.get(), "recipient_drain_id", drain);
+        write(player + ".ingestion-stop-permit.json", ingestion.get());
+        ASSERT_TRUE(rpc::ManagedStopBarrier::PublishPublicQuiesced(visor,
+                                                                   7,
+                                                                   "ofi+sockets://127.0.0.1:8888@88",
+                                                                   {true, true, true}));
+        terminalItem = parse(R"({"authoritative_absent":true,"failed_start":{}})");
+        json_object_object_add(terminalItem.get(), "record", json_object_get(playerRecord.get()));
+        string(terminalItem.get(), "config_bytes", bytes(player));
+        auto digest = std::string(64, 'a');
+        string(playerRecord.get(), "terminal_sha256", digest);
+        auto retained = (work / "monitor/lifecycle/player-retained.json").string();
+        write(retained, playerRecord.get());
+        string(terminalItem.get(), "record_path", retained);
+        string(terminalItem.get(), "record_bytes", bytes(retained));
+        string(terminalItem.get(), "terminal_sha256", digest);
+        string(get(terminalItem.get(), "failed_start"), "permit_path", player + ".ingestion-stop-permit.json");
+        string(get(terminalItem.get(), "failed_start"), "permit_bytes", bytes(player + ".ingestion-stop-permit.json"));
+        finalPacket = parse(
+                R"({"deployment_id":"unit-managed-deployment","stop_attempt":"stable-stop","recipient_native_generation":7,"services":[]})");
+        json_object_object_add(finalPacket.get(), "recipient", json_object_get(visorRecord.get()));
+        string(finalPacket.get(), "recipient_config_bytes", bytes(visor));
+        string(finalPacket.get(), "public_quiesced_bytes", bytes(visor + ".public-quiesced.json"));
+        json_object_array_add(get(finalPacket.get(), "services"), json_object_get(terminalItem.get()));
+        saveTerminal();
+        held = open((work / "monitor/lifecycle/control.lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+        ASSERT_GE(held, 0);
+        ASSERT_EQ(flock(held, LOCK_EX | LOCK_NB), 0);
+    }
+    void TearDown() override
+    {
+        if(held >= 0)
+            close(held);
+        ManagedBarrier::TearDown();
+    }
+};
+TEST_F(PartialPlayerTerminal, ExactInterruptedTwoMidTerminalPermitsFinalVisorCleanup)
+{
+    EXPECT_TRUE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+}
+TEST_F(PartialPlayerTerminal, MarkerUnknownCleanupStalePermitAndOpenStartRemainIncomplete)
+{
+    ASSERT_TRUE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+    for(auto field: {"startup_succeeded", "startup_interrupted"})
+    {
+        json_object_object_add(terminalValue.get(),
+                               field,
+                               json_object_new_boolean(std::string(field) == "startup_succeeded"));
+        saveTerminal();
+        EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+        json_object_object_add(terminalValue.get(),
+                               field,
+                               json_object_new_boolean(std::string(field) != "startup_succeeded"));
+    }
+    auto proof = get(terminalValue.get(), "native_proof");
+    integer(proof, "constructor_units_retired", 1);
+    saveTerminal();
+    EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+    integer(proof, "constructor_units_retired", 2);
+    saveTerminal();
+    for(auto field: {"recipient_drain_id", "stop_attempt", "recipient_config_bytes"})
+    {
+        auto original = bytes(player + ".ingestion-stop-permit.json");
+        auto altered = parse(original);
+        string(altered.get(), field, "wrong");
+        write(player + ".ingestion-stop-permit.json", altered.get());
+        string(get(terminalItem.get(), "failed_start"), "permit_bytes", bytes(player + ".ingestion-stop-permit.json"));
+        saveTerminal();
+        EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+        std::ofstream(player + ".ingestion-stop-permit.json") << original;
+        string(get(terminalItem.get(), "failed_start"), "permit_bytes", original);
+    }
+    saveTerminal();
+    std::ofstream(player + ".ingestion-stop-permit.json", std::ios::app) << ' ';
+    EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+    write(player + ".ingestion-stop-permit.json", ingestion.get());
+    json_object_object_add(manifest.get(), "pending_launch", nullptr);
+    write((work / "monitor/lifecycle/deployment.json").string(), manifest.get());
+    EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+    json_object_object_del(manifest.get(), "pending_launch");
+    write((work / "monitor/lifecycle/deployment.json").string(), manifest.get());
+    ASSERT_EQ(flock(held, LOCK_UN), 0);
+    EXPECT_FALSE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+}
+
+TEST_F(PartialPlayerTerminal, IngestionPermitAndNormalCodeMarkerUseTheSameStableDrain)
+{
+    ASSERT_TRUE(rpc::ManagedStopBarrier::PermitPlayerIngestionStop(player, 1, 7));
+    rpc::LifecycleStatus status(player);
+    ASSERT_TRUE(status.publish(rpc::ShutdownState::Draining,
+                               -27,
+                               9,
+                               rpc::RpcDeadline::Clock::now(),
+                               &native,
+                               0,
+                               rpc::LifecycleStatus::Startup{false, true}));
+    auto later = load(player + ".lifecycle.json");
+    EXPECT_EQ(std::string(json_object_get_string(get(later.get(), "drain_id"))), drain);
+    EXPECT_FALSE(json_object_get_boolean(get(later.get(), "startup_succeeded")));
+    EXPECT_TRUE(json_object_get_boolean(get(later.get(), "startup_interrupted")));
+    EXPECT_TRUE(rpc::ManagedStopBarrier::PermitPlayerIngestionStop(player, 1, 7));
+    string(ingestion.get(), "recipient_drain_id", "another-drain");
+    write(player + ".ingestion-stop-permit.json", ingestion.get());
+    EXPECT_FALSE(rpc::ManagedStopBarrier::PermitPlayerIngestionStop(player, 1, 7));
+}
+
+TEST_F(PartialPlayerTerminal, OneActuallyConstructedMidUsesItsOwnCounts)
+{
+    rpc::NativeRetirementSnapshot one;
+    one.generation = 7;
+    one.initializedMids = one.finalizedMids = one.finalizeCalls = one.finalizeReturns = 1;
+    one.constructorUnitsCreated = one.constructorUnitsRetired = one.poolsCreated = one.poolsRetired = 1;
+    one.rpcStreamsCreated = one.rpcStreamsRetired = 1;
+    one.primaryReleases = 1;
+    one.streamsBeforeRelease = 1;
+    one.complete = one.abtUninitialized = one.samePrimary = true;
+    rpc::LifecycleStatus status(player);
+    ASSERT_TRUE(status.publish(rpc::ShutdownState::Stopped,
+                               0,
+                               2,
+                               rpc::RpcDeadline::Clock::now(),
+                               &one,
+                               0,
+                               rpc::LifecycleStatus::Startup{false, true}));
+    terminalValue = load(player + ".lifecycle.json");
+    saveTerminal();
+    EXPECT_TRUE(rpc::ManagedStopBarrier::PermitVisorRetirement(visor, 7));
+}

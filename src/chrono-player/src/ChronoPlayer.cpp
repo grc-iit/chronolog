@@ -214,8 +214,10 @@ int main(int argc, char** argv)
                     return int(chl::CL_SUCCESS);
                 });
     };
-    int exitCode = startup == chl::CL_SUCCESS ? 0 : 1;
-    if(startup == chl::CL_SUCCESS && !stop_requests)
+    bool const startupSucceeded = startup == chl::CL_SUCCESS && !stop_requests;
+    rpc::LifecycleStatus::Startup const startupProof{startupSucceeded, !startupSucceeded && stop_requests != 0};
+    int exitCode = startupSucceeded ? 0 : 1;
+    if(startupSucceeded)
     {
         auto native = generation->snapshot();
         statusFile.publish(rpc::ShutdownState::Running,
@@ -223,7 +225,8 @@ int main(int argc, char** argv)
                            0,
                            entered,
                            &native,
-                           data->store.nativeHandleCount() + data->reader.nativeHandleCount());
+                           data->store.nativeHandleCount() + data->reader.nativeHandleCount(),
+                           startupProof);
         auto nextStats = rpc::RpcDeadline::Clock::now();
         while(!stop_requests)
         {
@@ -351,7 +354,8 @@ int main(int argc, char** argv)
                            attempt,
                            start,
                            &retainedProof,
-                           data->store.nativeHandleCount() + data->reader.nativeHandleCount());
+                           data->store.nativeHandleCount() + data->reader.nativeHandleCount(),
+                           startupProof);
         if(stop(stopDeadline))
         {
             auto nativeProof = generation->snapshot();
@@ -362,7 +366,8 @@ int main(int argc, char** argv)
                                   attempt,
                                   start,
                                   &nativeProof,
-                                  applicationHandles))
+                                  applicationHandles,
+                                  startupProof))
                 return exitCode;
         }
         lifecycle.draining();
@@ -372,7 +377,8 @@ int main(int argc, char** argv)
                            attempt,
                            start,
                            &retainedProof,
-                           data->store.nativeHandleCount() + data->reader.nativeHandleCount());
+                           data->store.nativeHandleCount() + data->reader.nativeHandleCount(),
+                           startupProof);
         LOG_WARNING("[ChronoPlayer] stop attempt {} incomplete; retaining native work and data", attempt);
     }
 }

@@ -9,7 +9,7 @@ import shutil
 import signal
 import subprocess
 import time
-from rpc_lifecycle_deadline_test import fixture_processes,signal_owned,dispose_fixture,patch
+from rpc_lifecycle_deadline_test import fixture_processes,signal_owned,dispose_fixture,patch,identity
 
 
 def wait(predicate,seconds,reason):
@@ -46,6 +46,8 @@ def run(args):
         env['FI_TCP_IFACE']='lo'
     owned={}
     starter=None
+    controller=None
+    entered=None
     exits={}
     try:
         with (logs/'start.log').open('w') as output:
@@ -74,12 +76,27 @@ def run(args):
                  'known partial Player did not retain dependencies')
             before=json.loads(status.read_text())
             (logs/'known-partial-before-stop.json').write_text(json.dumps(before,indent=2))
-            if before.get('native_proof',{}).get('initialized_mids')!=2 or before['native_proof']['finalized_mids']!=0:
-                raise RuntimeError('partial fixture did not construct exactly two original MIDs')
+            if (before.get('native_proof',{}).get('initialized_mids')!=2 or before['native_proof']['finalized_mids']!=0
+                or before.get('startup_succeeded') is not False or before.get('startup_interrupted') is not True
+                or not before.get('drain_id')):
+                raise RuntimeError('partial fixture lacks explicit interrupted-start/original two-MID proof')
             starter.wait(timeout=35)
         (logs/'start-return.json').write_text(json.dumps({'returncode':starter.returncode}))
         if starter.returncode!=27:
             raise RuntimeError('interrupted managed start did not preserve incomplete status')
+        def adopted_children():
+            parents={}
+            for pid,expected in owned.items():
+                if identity(pid)!=expected:
+                    raise RuntimeError('original service identity changed before fixture adoption')
+                fields=(Path('/proc')/str(pid)/'stat').read_text().rsplit(')',1)[1].split()
+                parents[pid]=int(fields[1])
+            return parents if all(parent==os.getpid() for parent in parents.values()) else None
+        # The original launch worker can finish just after its caller returns.
+        # Wait for actual subreaper adoption, never infer a normal wait from
+        # ECHILD or race fixture disposal against the active stop controller.
+        parents=wait(adopted_children,5,'original launch workers did not release their children')
+        (logs/'adopted-original-children.json').write_text(json.dumps({'subreaper_pid':os.getpid(),'parents':parents},indent=2))
         manifest=json.loads((work/'monitor/lifecycle/deployment.json').read_text())
         (logs/'failed-start-manifest.json').write_text(json.dumps(manifest,indent=2))
         if manifest.get('pending_launch') or manifest['keepers'] or len(manifest['records'])!=3:
@@ -115,11 +132,55 @@ def run(args):
             and native.get('same_primary') is True and native.get('primary_releases')==1
             and native.get('streams_before_release')==1 and native.get('application_handles')==0):
             raise RuntimeError('known partial Player lacks actual original two-MID physical cleanup/raw failed-start exit')
+        results=[]
+        for record in manifest['records']:
+            state=json.loads(Path(record['status_file']).read_text())
+            (logs/('final-'+record['component']+'-status.json')).write_text(json.dumps(state,indent=2))
+            proof=state.get('native_proof',{})
+            expected_wait=256 if record['component']=='player' else 0
+            if (exits.get(record['pid'])!=expected_wait or state.get('state')!='Stopped' or state.get('status')!=0
+                or not all(proof.get(key)==2 for key in ('initialized_mids','finalized_mids','finalize_calls',
+                    'finalize_returns','constructor_units_created','constructor_units_retired','pools_created','pools_retired'))
+                or not all(proof.get(key) is True for key in ('complete','abt_uninitialized','same_primary'))
+                or proof.get('application_handles')!=0 or proof.get('primary_releases')!=1
+                or proof.get('streams_before_release')!=1 or proof.get('rpc_streams_created',0)<=0
+                or proof['rpc_streams_created']!=proof.get('rpc_streams_retired')):
+                raise RuntimeError('partial deployment lacks actual normal wait/native release: '+record['component'])
+            results.append({'component':record['component'],'wait_status':exits[record['pid']],
+                'exit_code':os.WEXITSTATUS(exits[record['pid']]),'native_proof':proof})
+        if (controller.returncode!=0 or time.monotonic()-entered>33
+            or result.get('startup_succeeded') is not False or result.get('startup_interrupted') is not True
+            or result.get('drain_id')!=before['drain_id']):
+            raise RuntimeError('partial-start stop lost its same-drain/default budget/failed-start identity')
+        visor=next(record for record in manifest['records'] if record['component']=='visor')
+        final_permit=json.loads(Path(visor['config']+'.retirement-permit.json').read_text())
+        retained=next(item for item in final_permit['services'] if item['record']['component']=='player')
+        ingestion_path=Path(str(player_config)+'.ingestion-stop-permit.json')
+        if (retained['failed_start']['permit_path']!=str(ingestion_path)
+            or retained['failed_start']['permit_bytes']!=ingestion_path.read_text()
+            or json.loads(ingestion_path.read_text())['recipient_drain_id']!=before['drain_id']):
+            raise RuntimeError('final Visor permit did not retain the exact original partial-start permit')
         print(json.dumps({'case':'known_partial_player_cleanup','protocol':args.protocol,'trace':args.trace,
-            'status':'SCOPED_PASS','player_raw_wait':exits[player],'player_native':native,
-            'aggregate_return':controller.returncode,'full_deployment_retirement_proved':False}),flush=True)
+            'status':'PASS','player_raw_wait':exits[player],'player_native':native,'results':results,
+            'aggregate_return':controller.returncode,'full_deployment_retirement_proved':True}),flush=True)
     finally:
         (logs/'constructor.release').touch()
+        if controller and controller.poll() is None:
+            until=(entered if entered is not None else time.monotonic())+33
+            while controller.poll() is None and time.monotonic()<until:
+                for pid in owned:
+                    if pid in exits: continue
+                    try:
+                        found,raw=os.waitpid(pid,os.WNOHANG)
+                    except ChildProcessError:
+                        continue  # Still unobserved, never a successful wait.
+                    if found:
+                        exits[pid]=raw
+                        (logs/'raw-wait-statuses.json').write_text(json.dumps(exits,indent=2))
+                time.sleep(.005)
+            if controller.poll() is None:
+                controller.terminate()  # Exact own helper, never a daemon.
+                controller.wait(timeout=3)
         if starter and starter.poll() is None:
             try: starter.wait(timeout=35)
             except subprocess.TimeoutExpired:
