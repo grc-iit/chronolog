@@ -47,6 +47,11 @@ public:
             case AdminAction::DestroyChronicle:
                 reply = native.callable().timed(*attempt, args.chronicle);
                 break;
+            case AdminAction::Shutdown:
+                // The collector's real join can outlast one caller. Keep this
+                // original native continuation charged until its actual ACK.
+                reply = native.callable()();
+                break;
             default:
                 reply = native.callable().timed(*attempt);
                 break;
@@ -68,6 +73,8 @@ private:
     std::shared_ptr<VisorAdminRuntime> owner_;
     std::string address_;
     uint16_t provider_;
+    std::timed_mutex shutdownMutex_;
+    std::shared_ptr<AdminCompletion> shutdown_;
 };
 } // namespace chronolog
 #endif

@@ -215,7 +215,9 @@ target_include_directories(client_acquire_deadline_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include)
 target_link_libraries(client_acquire_deadline_test PRIVATE GTest::gtest_main chrono_rpc chrono_common chronolog_client thallium)
-gtest_discover_tests(client_acquire_deadline_test TEST_PREFIX "Integration_ClientAcquireDeadline_")
+# These native fixtures bind every endpoint to 127.0.0.1, including TCP.
+gtest_discover_tests(client_acquire_deadline_test TEST_PREFIX "Integration_ClientAcquireDeadline_"
+    PROPERTIES RUN_SERIAL TRUE ENVIRONMENT "FI_TCP_IFACE=lo")
 
 add_executable(client_metadata_deadline_test client_metadata_deadline_test.cpp)
 target_include_directories(client_metadata_deadline_test PRIVATE
@@ -240,7 +242,7 @@ add_executable(client_replay_deadline_test client_replay_deadline_test.cpp)
 target_include_directories(client_replay_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)
 target_link_libraries(client_replay_deadline_test PRIVATE chronolog_client chrono_common chrono_rpc thallium)
 foreach(transport IN ITEMS sockets tcp)
-    foreach(scenario IN ITEMS submission original map-lock cleanup-lock admission unknown-capacity last-id response-before-ack bad-ack negative-ack drop-late drop-output-late duplicate-owner callback-active callback-late callback-throw callback-control callback-append)
+    foreach(scenario IN ITEMS submission original map-lock cleanup-lock cleanup-drop admission unknown-capacity last-id response-before-ack bad-ack negative-ack drop-late drop-output-late duplicate-owner callback-active callback-late callback-throw callback-control callback-append)
         add_test(NAME Integration_ClientReplayDeadline_${transport}_${scenario}
             COMMAND client_replay_deadline_test ofi+${transport} ${scenario})
         set_tests_properties(Integration_ClientReplayDeadline_${transport}_${scenario}

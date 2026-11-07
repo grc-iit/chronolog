@@ -122,8 +122,8 @@ target_link_libraries(playback_service_startup_test PRIVATE
 )
 set_target_properties(playback_service_startup_test PROPERTIES
     OUTPUT_NAME chronolog-test-player-playback-service-startup
-    BUILD_WITH_INSTALL_RPATH TRUE
-    SKIP_BUILD_RPATH TRUE
+    BUILD_WITH_INSTALL_RPATH FALSE
+    SKIP_BUILD_RPATH FALSE
 )
 gtest_discover_tests(playback_service_startup_test
     TEST_PREFIX "Functional_ChronoPlayer_" PROPERTIES TIMEOUT 30

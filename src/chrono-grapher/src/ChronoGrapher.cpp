@@ -1,20 +1,8 @@
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <signal.h>
-#include <string>
+#include <cstdint>
 #include <iostream>
-#include <cstdlib>
-#include <utility>
-#include <sstream>
-#include <mutex>
-#include <chrono>
-#include <private/RpcBulkControl.h>
-
-#include <GrapherIdCard.h>
 #include <GrapherRecordingService.h>
 #include <GrapherRegClient.h>
-#include <ChunkIngestionQueue.h>
-#include <StoryChunkExtractionQueue.h>
 #include <GrapherDataStore.h>
 #include <DataStoreAdminService.h>
 #include <ConfigurationManager.h>
@@ -22,386 +10,385 @@
 #include <cmd_arg_parse.h>
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
-#include <StoryWatermarkRegistry.h>
-#include <WatermarkReportPublisher.h>
-
+#include <private/ServiceLifecycle.h>
+#include <private/LifecycleStatus.h>
+#include <private/ManagedStopBarrier.h>
 namespace chl = chronolog;
-namespace tl = thallium;
-
-// we will be using a combination of the uint32_t representation of the service IP address
-// and uint16_t representation of the port number
-int service_endpoint_from_dotted_string(std::string const& ip_string, int port, std::pair<uint32_t, uint16_t>& endpoint)
+namespace rpc = chronolog::rpc;
+using namespace std::chrono_literals;
+namespace
 {
-    // we will be using a combination of the uint32_t representation of the service IP address
-    // and uint16_t representation of the port number
-    // NOTE: both IP and port values in the IdCard are in the host byte order, not the network order)
-    // to identify the Chrono process
-
-    struct sockaddr_in sa;
-    // translate the recording service dotted IP string into 32bit network byte order representation
-    int inet_pton_return = inet_pton(AF_INET, ip_string.c_str(), &sa.sin_addr.s_addr); //returns 1 on success
-    if(1 != inet_pton_return)
-    {
-        LOG_ERROR("[ChronoGrapher] Invalid IP address provided: {}", ip_string);
-        return (-1);
-    }
-
-    // translate 32bit ip from network into the host byte order
-    uint32_t ntoh_ip_addr = ntohl(sa.sin_addr.s_addr);
-    uint16_t ntoh_port = port;
-    endpoint = std::pair<uint32_t, uint16_t>(ntoh_ip_addr, ntoh_port);
-
-    LOG_DEBUG("[ChronoGrapher] Service endpoint created: IP={}, Port={}", ip_string, port);
-    return 1;
-}
-
-volatile sig_atomic_t keep_running = true;
-
-void sigterm_handler(int)
+volatile sig_atomic_t stop_requests = 0;
+void request_stop(int)
 {
-    LOG_INFO("[ChronoGrapher] Received SIGTERM signal. Initiating shutdown procedure.");
-    keep_running = false;
-    return;
+    if(stop_requests < SIG_ATOMIC_MAX)
+        ++stop_requests;
 }
-
-///////////////////////////////////////////////
-
+std::string address(chl::RPCProviderConf const& conf)
+{
+    return conf.PROTO_CONF + "://" + conf.IP + ":" + std::to_string(conf.BASE_PORT);
+}
+struct GrapherData
+{
+    chl::GrapherConfiguration conf;
+    chl::GrapherIdCard id;
+    chl::ServiceId admin;
+    std::shared_ptr<chl::StoryWatermarkRegistry> watermarks = std::make_shared<chl::StoryWatermarkRegistry>();
+    chl::StoryChunkExtractionModule<chl::ChronoGrapherExtractionChain> extraction;
+    chl::ChunkIngestionQueue ingestion;
+    chl::GrapherDataStore store;
+    std::shared_ptr<chl::WatermarkReportPublisher> publisher;
+    std::unique_ptr<chl::GrapherRegistryClient> registry;
+    std::array<std::shared_ptr<rpc::LifecycleStep>, 2> initialized;
+    std::shared_ptr<rpc::LifecycleStep> start, stopCollection, stopExtraction, parkPoll, terminalRead;
+    rpc::StopDependencyEvidence terminal;
+    bool started = false, extractionReady = false, unregistered = false;
+    explicit GrapherData(chl::GrapherConfiguration const& c)
+        : conf(c)
+        , id(c.RECORDING_GROUP,
+             chl::ServiceId(c.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF,
+                            c.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP,
+                            c.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT,
+                            c.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID))
+        , admin(c.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.IP,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT,
+                c.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID)
+        , extraction(c.EXTRACTION_MODULE_CONF.extraction_stream_count)
+        , store(ingestion,
+                extraction.getExtractionQueue(),
+                c.DATA_STORE_CONF.max_story_chunk_size,
+                c.DATA_STORE_CONF.story_chunk_duration_secs,
+                c.DATA_STORE_CONF.acceptance_window_secs,
+                c.DATA_STORE_CONF.inactive_story_delay_secs,
+                &extraction.getExtractionChain(),
+                watermarks.get())
+    {}
+};
+} // namespace
 int main(int argc, char** argv)
 {
-    int exit_code = 0;
-    signal(SIGTERM, sigterm_handler);
-
-    /// Configure SetUp ________________________________________________________________________________________________
-    std::string conf_file_path;
-    conf_file_path = parse_conf_path_arg(argc, argv);
-    if(conf_file_path.empty())
+    auto startupEntered = rpc::RpcDeadline::Clock::now();
+    signal(SIGTERM, request_stop);
+    auto config = parse_conf_path_arg(argc, argv);
+    if(config.empty())
+        return 1;
+    chl::ConfigurationManager manager(config);
+    chl::GrapherConfiguration conf;
+    if(conf.parseJsonConf(manager.GRAPHER_JSON_CONF) != chl::CL_SUCCESS)
+        return 1;
+    if(chl::chrono_monitor::initialize(conf.LOG_CONF.LOGTYPE,
+                                       conf.LOG_CONF.LOGFILE,
+                                       conf.LOG_CONF.LOGLEVEL,
+                                       conf.LOG_CONF.LOGNAME,
+                                       conf.LOG_CONF.LOGFILESIZE,
+                                       conf.LOG_CONF.LOGFILENUM,
+                                       conf.LOG_CONF.FLUSHLEVEL) != 0)
+        return 1;
+    rpc::LifecycleStatus statusFile(config);
+    rpc::LifecycleRecord lifecycle;
+    auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
+    auto data = std::make_shared<GrapherData>(conf);
+    auto generation = std::make_shared<rpc::NativeProcessGeneration>(2);
+    std::vector<std::shared_ptr<rpc::RpcRuntime>> runtimes;
+    std::vector<std::shared_ptr<rpc::RpcBulkOwner>> owners;
+    for(int i = 0; i != 2; ++i)
     {
-        std::cerr << " ChronoGrapher needs the configuration file to start";
-        std::exit(EXIT_FAILURE);
+        auto runtime = std::make_shared<rpc::RpcRuntime>();
+        auto owner = rpc::RpcBulkOwner::Prepare(runtime,
+                                                conf.RPC_POLICY,
+                                                false,
+                                                std::make_unique<rpc::NativeMidRuntime>(generation));
+        owner->dependencies = data;
+        runtimes.push_back(std::move(runtime));
+        owners.push_back(std::move(owner));
     }
-
-    chronolog::ConfigurationManager confManager(conf_file_path);
-    chronolog::GrapherConfiguration GRAPHER_CONF;
-    if(GRAPHER_CONF.parseJsonConf(confManager.GRAPHER_JSON_CONF) != chronolog::CL_SUCCESS)
+    int startupStatus = rpc::initializeService(
+            owners[0],
+            *runtimes[0],
+            {address(conf.DATA_STORE_ADMIN_SERVICE_CONF), MARGO_SERVER_MODE, 1},
+            startup,
+            data->initialized[0],
+            data,
+            [data, owner = owners[0]]
+            {
+                int result = data->extraction.getExtractionChain().activate(data->id.getRecordingServiceId(),
+                                                                            data->conf.EXTRACTION_MODULE_CONF,
+                                                                            data->watermarks.get(),
+                                                                            std::to_string(data->conf.RECORDING_GROUP));
+                if(result != chl::CL_SUCCESS)
+                    return result;
+                result = data->extraction.initialize(data->conf.EXTRACTION_MODULE_CONF.extraction_stream_count);
+                data->extractionReady = result == chl::CL_SUCCESS;
+                if(result != chl::CL_SUCCESS)
+                    return result;
+                data->publisher = std::make_shared<chl::WatermarkReportPublisher>(
+                        owner,
+                        data->watermarks,
+                        data->conf.DATA_STORE_CONF.watermark_report_interval_secs);
+                data->store.attachWatermarkPublisher(data->publisher.get());
+                return chl::DataStoreAdminService::CreateDataStoreAdminService(
+                               owner,
+                               data->conf.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID,
+                               data->store)
+                               ? int(chl::CL_SUCCESS)
+                               : int(chl::CL_ERR_UNKNOWN);
+            },
+            &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS)
     {
-        std::cerr << "[ChronoGrapher] Invalid GRAPHER configuration. Exiting";
-        exit(EXIT_FAILURE);
+        startupStatus = rpc::startLifecycleStep(*runtimes[0],
+                                                startup,
+                                                data->start,
+                                                data,
+                                                [data]
+                                                {
+                                                    data->started = true;
+                                                    data->store.startDataCollection(3);
+                                                    data->extraction.startExtraction();
+                                                    return chl::CL_SUCCESS;
+                                                });
+        if(startupStatus == chl::CL_SUCCESS)
+            startupStatus = rpc::waitLifecycleStep(data->start, startup, &stop_requests);
     }
-
-    int result = chronolog::chrono_monitor::initialize(GRAPHER_CONF.LOG_CONF.LOGTYPE,
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILE,
-                                                       GRAPHER_CONF.LOG_CONF.LOGLEVEL,
-                                                       GRAPHER_CONF.LOG_CONF.LOGNAME,
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILESIZE,
-                                                       GRAPHER_CONF.LOG_CONF.LOGFILENUM,
-                                                       GRAPHER_CONF.LOG_CONF.FLUSHLEVEL);
-    if(result == 1)
+    if(startupStatus == chl::CL_SUCCESS)
+        startupStatus = rpc::initializeService(
+                owners[1],
+                *runtimes[1],
+                {address(conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF),
+                 MARGO_SERVER_MODE,
+                 conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.INGESTION_THREAD_COUNT},
+                startup,
+                data->initialized[1],
+                data,
+                [data, owner = owners[1]]
+                {
+                    return chl::GrapherRecordingService::CreateRecordingService(
+                                   owner,
+                                   data->conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,
+                                   data->ingestion,
+                                   data->publisher,
+                                   data->watermarks.get())
+                                   ? chl::CL_SUCCESS
+                                   : chl::CL_ERR_UNKNOWN;
+                },
+                &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS)
     {
-        std::cerr << " ChronoGrapher failed to initialize chrono_monitor, check the configuration settings";
-        exit(EXIT_FAILURE);
+        data->registry.reset(
+                chl::GrapherRegistryClient::CreateRegistryClient(owners[0],
+                                                                 address(conf.VISOR_REGISTRY_SERVICE_CONF),
+                                                                 conf.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID,
+                                                                 startup));
+        startupStatus = data->registry ? chl::CL_ERR_UNKNOWN : chl::CL_ERR_SHUTDOWN_INCOMPLETE;
+        while(data->registry && !startup.expired() && !stop_requests)
+        {
+            startupStatus = data->registry->send_register_msg(chl::GrapherRegistrationMsg(data->id, data->admin),
+                                                              startup,
+                                                              &stop_requests);
+            if(startupStatus == chl::CL_SUCCESS)
+                break;
+            std::this_thread::sleep_for(1ms);
+        }
     }
-
-    LOG_INFO("{ChronoGrapher] Running ChronoGrapher ");
-    LOG_INFO("[ChronoGrapher] Configuration {}", GRAPHER_CONF.to_String());
-
-    // Instantiate MemoryDataStore
-    // instantiate DataStoreAdminService
-
-    /// DataStoreAdminService setup ____________________________________________________________________________________
-    std::string datastore_service_ip = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.IP;
-    int datastore_service_port = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.BASE_PORT;
-    std::string DATASTORE_SERVICE_NA_STRING = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF + "://" +
-                                              datastore_service_ip + ":" + std::to_string(datastore_service_port);
-
-    uint16_t datastore_service_provider_id = GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
-    chronolog::service_endpoint datastore_endpoint;
-    // validate ip address, instantiate DataAdminService and create ServiceId to be included in RegistrationMsg
-
-    if(-1 == service_endpoint_from_dotted_string(datastore_service_ip, datastore_service_port, datastore_endpoint))
+    auto pollPark = [&](std::optional<rpc::RpcDeadline> supplied = std::nullopt)
     {
-        LOG_CRITICAL("[ChronoGrapher] Failed to start DataStoreAdminService. Invalid endpoint provided.");
-        return (-1);
-    }
-
-    chronolog::ServiceId dataStoreServiceId(GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.PROTO_CONF,
-                                            datastore_endpoint,
-                                            GRAPHER_CONF.DATA_STORE_ADMIN_SERVICE_CONF.SERVICE_PROVIDER_ID);
-
-    // Instantiate GrapherRecordingService
-    chronolog::RecordingGroupId recording_group_id = GRAPHER_CONF.RECORDING_GROUP;
-
-    chl::ServiceId recordingServiceId(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.PROTO_CONF,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT,
-                                      GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID);
-
-
-    std::string RECORDING_SERVICE_NA_STRING;
-    recordingServiceId.get_service_as_string(RECORDING_SERVICE_NA_STRING);
-
-    // validate ip address, instantiate Recording Service and create IdCard
-
-    chronolog::service_endpoint recording_endpoint;
-    if(-1 == service_endpoint_from_dotted_string(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.IP,
-                                                 GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.BASE_PORT,
-                                                 recording_endpoint))
+        if(!data->publisher)
+            return;
+        auto deadline = rpc::RpcDeadline::after(std::chrono::milliseconds(conf.RPC_POLICY.attempt_ms));
+        if(supplied && supplied->expiresAt() < deadline.expiresAt())
+            deadline = *supplied;
+        if(data->parkPoll && data->parkPoll->done.load(std::memory_order_acquire) && !data->parkPoll->unsafe)
+            data->parkPoll.reset(); // A completed local observation; no native send is restarted.
+        rpc::startLifecycleStep(
+                *runtimes[0],
+                deadline,
+                data->parkPoll,
+                data,
+                [data, config, generation, deadline]
+                {
+                    auto batch = rpc::ManagedStopBarrier::LoadPublisher(config,
+                                                                        data->conf.RECORDING_GROUP,
+                                                                        generation->snapshot().generation);
+                    if(!batch.valid())
+                        return int(chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+                    std::vector<rpc::PublisherParkProof> settled;
+                    for(auto const& request: batch.requests())
+                    {
+                        if(data->publisher->park(request, deadline) == chl::CL_SUCCESS)
+                            settled.push_back(request);
+                        if(deadline.expired())
+                            break;
+                    }
+                    return batch.acknowledge(settled) ? int(chl::CL_SUCCESS) : int(chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+                });
+    };
+    int exitCode = startupStatus == chl::CL_SUCCESS ? 0 : 1;
+    if(startupStatus == chl::CL_SUCCESS && !stop_requests)
     {
-        LOG_CRITICAL("[ChronoGrapher] Failed to start RecordingService. Invalid endpoint provided.");
-        return (-1);
+        auto native = generation->snapshot();
+        statusFile.publish(rpc::ShutdownState::Running,
+                           chl::CL_SUCCESS,
+                           0,
+                           startupEntered,
+                           &native,
+                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
+        auto nextStats = rpc::RpcDeadline::Clock::now();
+        while(!stop_requests)
+        {
+            pollPark();
+            if(rpc::RpcDeadline::Clock::now() >= nextStats)
+            {
+                data->registry->send_stats_msg(chl::GrapherStatsMsg(data->id));
+                nextStats = rpc::RpcDeadline::Clock::now() + 10s;
+            }
+            std::this_thread::sleep_for(100ms);
+        }
     }
-    LOG_INFO("[ChronoGrapher] RecordingService started successfully.");
-
-    // create GrapherIdCard to identify this Grapher process in ChronoVisor's Registry
-    chronolog::GrapherIdCard processIdCard(recording_group_id, recordingServiceId);
-
-    LOG_INFO("[ChronoGrapher] GrapherIdCard: {}", chl::to_string(processIdCard));
-
-    // Instantiate StoryChunkExtractionModule
-
-    std::string log_string;
-    GRAPHER_CONF.EXTRACTION_MODULE_CONF.to_string(log_string);
-    LOG_INFO("[ChronoGrapherInstance] Initializing StoryChunkExtractionModule with {}", log_string);
-
-    // Per-story persisted watermark W; fed by the HDF5 extractor, consumed by
-    // the keeper report publisher. Declared before the extraction module so it
-    // outlives the extractors holding a pointer to it.
-    auto watermarkRegistryOwner = std::make_shared<chronolog::StoryWatermarkRegistry>();
-    auto& theWatermarkRegistry = *watermarkRegistryOwner;
-
-    chronolog::StoryChunkExtractionModule<chronolog::ChronoGrapherExtractionChain> theExtractionModule;
-
-    // the recording group id names this grapher's log in the archive manifest:
-    // it stays the same across restarts, and no two graphers share it
-    if(theExtractionModule.getExtractionChain().activate(processIdCard.getRecordingServiceId(),
-                                                         GRAPHER_CONF.EXTRACTION_MODULE_CONF,
-                                                         &theWatermarkRegistry,
-                                                         std::to_string(recording_group_id)) != chronolog::CL_SUCCESS)
+    auto stop = [&](rpc::RpcDeadline const& deadline, uint64_t attempt)
     {
-        LOG_ERROR("[ChronoGrapher] Extraction chain failed to activate, exiting");
-        return (-1);
-    }
-
-    theExtractionModule.initialize(GRAPHER_CONF.EXTRACTION_MODULE_CONF.extraction_stream_count);
-
-    if(!theExtractionModule.is_initialized())
+        owners[0]->quiescePublic(); // Needed receipt/report paths remain open.
+        for(auto const& initialized: data->initialized)
+            if(initialized)
+            {
+                rpc::waitLifecycleStep(initialized, deadline);
+                if(!initialized->done.load(std::memory_order_acquire) || initialized->unsafe)
+                    return false;
+            }
+        if(data->start)
+        {
+            rpc::waitLifecycleStep(data->start, deadline);
+            if(!data->start->done.load(std::memory_order_acquire) || data->start->unsafe)
+                return false;
+        }
+        if(data->terminalRead && data->terminalRead->done.load(std::memory_order_acquire) &&
+           !data->terminalRead->unsafe)
+            data->terminalRead.reset();
+        if(rpc::startLifecycleStep(
+                   *runtimes[0],
+                   deadline,
+                   data->terminalRead,
+                   data,
+                   [data, config, attempt]
+                   {
+                       data->terminal = rpc::StopDependencyEvidence::Load(config, attempt, data->conf.RECORDING_GROUP);
+                       return chl::CL_SUCCESS;
+                   }) != chl::CL_SUCCESS ||
+           rpc::waitLifecycleStep(data->terminalRead, deadline) != chl::CL_SUCCESS)
+            return false;
+        auto terminal = data->terminal;
+        if(owners[1]->provider && !terminal.valid())
+        {
+            // A live/unknown Keeper may still need ingestion/archive/reporting.
+            // Retain those dependencies until exact normal-Stopped+absence proof.
+            pollPark(deadline);
+            if(data->publisher)
+                data->publisher->publishFinal(deadline);
+            return false;
+        }
+        owners[1]->quiesce();
+        while(!owners[0]->publicIdle() || owners[1]->incoming.used() != 0)
+        {
+            if(deadline.expired())
+                return false;
+            std::this_thread::sleep_for(1ms);
+        }
+        auto phase = [&](std::shared_ptr<rpc::LifecycleStep>& step, std::function<int()> action)
+        {
+            while(!deadline.expired())
+            {
+                int result = rpc::startLifecycleStep(*runtimes[0], deadline, step, data, action);
+                if(result == chl::CL_SUCCESS)
+                    return rpc::waitLifecycleStep(step, deadline) == chl::CL_SUCCESS;
+                if(result != chl::CL_ERR_RPC_CAPACITY)
+                    return false;
+                std::this_thread::sleep_for(1ms);
+            }
+            return false;
+        };
+        if(data->started && !phase(data->stopCollection,
+                                   [data]
+                                   {
+                                       data->store.shutdownDataCollection();
+                                       return chl::CL_SUCCESS;
+                                   }))
+            return false;
+        if(data->extractionReady && !phase(data->stopExtraction,
+                                           [data]
+                                           {
+                                               data->extraction.shutdownExtraction();
+                                               return chl::CL_SUCCESS;
+                                           }))
+            return false;
+        if(data->publisher)
+        {
+            while(!deadline.expired() && data->publisher->finish(deadline, terminal) != chl::CL_SUCCESS)
+                std::this_thread::sleep_for(1ms);
+            if(deadline.expired())
+                return false;
+        }
+        if(!data->unregistered)
+        {
+            if(!rpc::allControlIdle(*runtimes[0], 2, deadline) || !rpc::allControlIdle(*runtimes[1], 2, deadline))
+                return false;
+            while(data->registry && !deadline.expired())
+            {
+                int result = data->registry->send_unregister_msg(data->id, deadline);
+                if(result == chl::CL_SUCCESS)
+                    break;
+                if(result == chl::CL_ERR_OUTCOME_UNCONFIRMED)
+                    return false;
+                std::this_thread::sleep_for(1ms);
+            }
+            if(deadline.expired())
+                return false;
+            data->unregistered = true;
+        }
+        return rpc::retireServices(owners, runtimes, deadline);
+    };
+    bool first = true;
+    sig_atomic_t observed = 0;
+    for(;;)
     {
-        LOG_ERROR("[ChronoGrapher] StoryChunkExtractionModule failed to initialize, exiting");
-        return (-1);
+        if(!first && observed == stop_requests)
+        {
+            pollPark();
+            std::this_thread::sleep_for(100ms);
+            continue;
+        }
+        first = false;
+        observed = stop_requests;
+        auto entered = rpc::RpcDeadline::Clock::now();
+        auto deadline = rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(conf.RPC_POLICY.shutdown_ms));
+        auto attempt = ++lifecycle.attempts;
+        lifecycle.quiesce();
+        auto native = generation->snapshot();
+        statusFile.publish(rpc::ShutdownState::Quiescing,
+                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                           attempt,
+                           entered,
+                           &native,
+                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
+        if(stop(deadline, attempt))
+        {
+            native = generation->snapshot();
+            lifecycle.stopped();
+            if(statusFile.publish(rpc::ShutdownState::Stopped,
+                                  chl::CL_SUCCESS,
+                                  attempt,
+                                  entered,
+                                  &native,
+                                  data->store.nativeHandleCount() + data->extraction.nativeHandleCount()))
+                return exitCode;
+        }
+        lifecycle.draining();
+        native = generation->snapshot();
+        statusFile.publish(rpc::ShutdownState::Draining,
+                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                           attempt,
+                           entered,
+                           &native,
+                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
+        LOG_WARNING("[ChronoGrapher] stop attempt {} incomplete; retaining data and native owners", attempt);
     }
-
-    // Instantiate MemoryDataStore. The DataStore takes a non-owning reference
-    // to the extraction chain; the async destroy path uses it directly to
-    // delete persisted HDF5 artifacts once persistence has caught up.
-    chronolog::ChunkIngestionQueue ingestionQueue;
-    auto& grapherExtractionChain = theExtractionModule.getExtractionChain();
-    chronolog::GrapherDataStore theDataStore(ingestionQueue,
-                                             theExtractionModule.getExtractionQueue(),
-                                             GRAPHER_CONF.DATA_STORE_CONF.max_story_chunk_size,
-                                             GRAPHER_CONF.DATA_STORE_CONF.story_chunk_duration_secs,
-                                             GRAPHER_CONF.DATA_STORE_CONF.acceptance_window_secs,
-                                             GRAPHER_CONF.DATA_STORE_CONF.inactive_story_delay_secs,
-                                             &grapherExtractionChain,
-                                             &theWatermarkRegistry);
-
-    std::shared_ptr<chl::rpc::RpcBulkOwner> recordingOwner;
-    auto recordingRuntime = std::make_shared<chl::rpc::RpcRuntime>();
-    auto retainRecordingDependencies = [&] { chl::rpc::retainBulkDependencies(recordingOwner, recordingRuntime); };
-    chl::rpc::BulkScopeFence recordingFence(recordingOwner, recordingRuntime);
-
-    // Main creates this MID and transfers its original wrapper and native
-    // lifecycle authority to one retained owner. B12 owns actual retirement.
-    std::shared_ptr<chl::rpc::RpcBulkOwner> dataAdminOwner;
-    auto dataAdminRuntime = std::make_shared<chl::rpc::RpcRuntime>();
-    chl::rpc::BulkScopeFence dataAdminFence(dataAdminOwner, dataAdminRuntime);
-    tl::engine* dataAdminEngine = nullptr;
-
-    chronolog::DataStoreAdminService* grapherDataAdminService = nullptr;
-
-    try
-    {
-        margo_instance_id collection_margo_id =
-                margo_init(DATASTORE_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, 1);
-
-        auto native = std::make_shared<tl::engine>(collection_margo_id);
-        dataAdminOwner = chl::rpc::RpcBulkOwner::Create(native, dataAdminRuntime, GRAPHER_CONF.RPC_POLICY, false);
-        dataAdminEngine = native.get();
-
-        std::stringstream s3;
-        s3 << dataAdminEngine->self();
-        LOG_DEBUG("[ChronoGrapher] starting DataStoreAdminService at {} ", chl::to_string(dataStoreServiceId));
-        grapherDataAdminService =
-                chronolog::DataStoreAdminService::CreateDataStoreAdminService(dataAdminOwner,
-                                                                              datastore_service_provider_id,
-                                                                              theDataStore);
-    }
-    catch(tl::exception const&)
-    {
-        LOG_ERROR("[ChronoGrapher]  failed to create DataStoreAdminService");
-        grapherDataAdminService = nullptr;
-    }
-
-    if(nullptr == grapherDataAdminService)
-    {
-        LOG_CRITICAL("[ChronoGrapher] failed to create DataStoreAdminService exiting");
-        return (-1);
-    }
-    LOG_INFO("[ChronoGrapher] DataStoreAdminService started successfully.");
-
-    // Watermark report publisher: pushes dirty per-story watermarks to the
-    // contributing keepers over the dataAdminEngine (one-way RPC). Fed by the
-    // recording service (contributors) and the HDF5 extractor via the
-    // registry; driven by the data-collection loop.
-    auto watermarkPublisher = std::make_shared<chronolog::WatermarkReportPublisher>(
-            dataAdminOwner,
-            watermarkRegistryOwner,
-            GRAPHER_CONF.DATA_STORE_CONF.watermark_report_interval_secs);
-    theDataStore.attachWatermarkPublisher(watermarkPublisher.get());
-
-    // Instantiate RecordingService
-    tl::engine* recordingEngine = nullptr;
-    chronolog::GrapherRecordingService* grapherRecordingService = nullptr;
-
-    try
-    {
-        int rpc_thread_count = static_cast<int>(GRAPHER_CONF.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.INGESTION_THREAD_COUNT);
-        margo_instance_id margo_id =
-                margo_init(RECORDING_SERVICE_NA_STRING.c_str(), MARGO_SERVER_MODE, 1, rpc_thread_count);
-        auto native = std::make_shared<tl::engine>(margo_id);
-        recordingOwner = chl::rpc::RpcBulkOwner::Create(native, recordingRuntime, GRAPHER_CONF.RPC_POLICY, false);
-        recordingEngine = native.get();
-
-        std::stringstream s1;
-        s1 << recordingEngine->self();
-        LOG_INFO("[ChronoGrapher] starting RecordingService at {} with provider_id {}",
-                 s1.str(),
-                 recordingServiceId.getProviderId());
-        grapherRecordingService =
-                chronolog::GrapherRecordingService::CreateRecordingService(*recordingEngine,
-                                                                           recordingServiceId.getProviderId(),
-                                                                           ingestionQueue,
-                                                                           watermarkPublisher,
-                                                                           &theWatermarkRegistry);
-    }
-    catch(tl::exception const&)
-    {
-        LOG_ERROR("[ChronoGrapher] failed to create RecordingService");
-        grapherRecordingService = nullptr;
-    }
-
-    if(nullptr == grapherRecordingService)
-    {
-        LOG_CRITICAL("[ChronoGrapher] failed to create RecordingService exiting");
-        retainRecordingDependencies();
-        watermarkPublisher.reset();
-        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
-        return (-1);
-    }
-
-    /// RegistryClient SetUp _____________________________________________________________________________________
-    // create RegistryClient and register the new Recording service with the Registry
-    std::string REGISTRY_SERVICE_NA_STRING = GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.PROTO_CONF + "://" +
-                                             GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.IP + ":" +
-                                             std::to_string(GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.BASE_PORT);
-
-    uint16_t REGISTRY_SERVICE_PROVIDER_ID = GRAPHER_CONF.VISOR_REGISTRY_SERVICE_CONF.SERVICE_PROVIDER_ID;
-
-    chronolog::GrapherRegistryClient* grapherRegistryClient =
-            chronolog::GrapherRegistryClient::CreateRegistryClient(*dataAdminEngine,
-                                                                   REGISTRY_SERVICE_NA_STRING,
-                                                                   REGISTRY_SERVICE_PROVIDER_ID);
-
-    if(nullptr == grapherRegistryClient)
-    {
-        LOG_CRITICAL("[ChronoGrapher] failed to create RegistryClient; exiting");
-        retainRecordingDependencies();
-        grapherRecordingService = nullptr;
-        retainRecordingDependencies();
-        watermarkPublisher.reset();
-        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
-        return (-1);
-    }
-
-    /// Registration with ChronoVisor __________________________________________________________________________________
-    // try to register with chronoVisor a few times than log ERROR and exit...
-    int registration_status = grapherRegistryClient->send_register_msg(
-            chronolog::GrapherRegistrationMsg(processIdCard, dataStoreServiceId));
-    //if the first attemp failes retry
-    int retries = 5;
-    while((chronolog::CL_SUCCESS != registration_status) && (retries > 0))
-    {
-        registration_status = grapherRegistryClient->send_register_msg(
-                chronolog::GrapherRegistrationMsg(processIdCard, dataStoreServiceId));
-
-        sleep(5);
-        retries--;
-    }
-
-    if(chronolog::CL_SUCCESS != registration_status)
-    {
-        LOG_CRITICAL("[ChronoGrapher] Failed to register with ChronoVisor after multiple attempts. Exiting.");
-        retainRecordingDependencies();
-        delete grapherRegistryClient;
-        retainRecordingDependencies();
-        grapherRecordingService = nullptr;
-        retainRecordingDependencies();
-        watermarkPublisher.reset();
-        grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
-        return (-1);
-    }
-    LOG_INFO("[ChronoGrapher] Successfully registered with ChronoVisor.");
-
-    /// Start data collection and extraction threads ___________________________________________________________________
-    // services are successfully created and keeper process had registered with ChronoVisor
-    // start all dataCollection and Extraction threads...
-    tl::abt scope;
-    theDataStore.startDataCollection(3);
-    // start extraction streams & threads
-    theExtractionModule.startExtraction();
-
-    /// Main loop for sending stats message until receiving SIGTERM ____________________________________________________
-    // now we are ready to ingest records coming from the storyteller clients ....
-    // main thread would be sending stats message until keeper process receives
-    // sigterm signal
-    chronolog::GrapherStatsMsg grapherStatsMsg(processIdCard);
-    while(keep_running)
-    {
-        grapherRegistryClient->send_stats_msg(grapherStatsMsg);
-        sleep(10);
-    }
-
-    retainRecordingDependencies();
-
-    /// Unregister from ChronoVisor ____________________________________________________________________________________
-    // Unregister from the chronoVisor so that no new story requests would be coming
-    grapherRegistryClient->send_unregister_msg(processIdCard);
-    delete grapherRegistryClient;
-
-    /// Stop services and shut down ____________________________________________________________________________________
-    LOG_INFO("[ChronoGrapher] Initiating shutdown procedures.");
-    // Stop recording events
-    grapherRecordingService = nullptr;
-    grapherDataAdminService = nullptr; // Retained by the actual data-admin owner.
-    // Shutdown the Data Collection
-    theDataStore.shutdownDataCollection();
-    // Shutdown extraction module
-    // drain extractionQueue and stop extraction xStreams
-    theExtractionModule.shutdownExtraction();
-    // That drain wrote the story's remaining windows, which advanced W and
-    // settled their receipts. Send that last round before going away, or the
-    // keepers hold those chunks and send them all again to the next grapher.
-    if(watermarkPublisher != nullptr)
-    {
-        watermarkPublisher->publish(/*force=*/true);
-    }
-    // Collector exit does not settle native sends. The data-admin scope fence
-    // retains the provider, registry and stack dependencies on incomplete stop.
-    watermarkPublisher.reset();
-    // these are not probably needed as thallium handles the engine finalization...
-    //  recordingEngine.finalize();
-    //  collectionEngine.finalize();
-    recordingEngine = nullptr;
-    dataAdminEngine = nullptr; // Native retirement requires B12 settlement proof.
-    LOG_INFO("[ChronoGrapher] Shutdown completed. Exiting.");
-    return exit_code;
 }

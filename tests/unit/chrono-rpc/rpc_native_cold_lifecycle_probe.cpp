@@ -1,6 +1,7 @@
 #include <RpcRuntime.h>
 #include <gtest/gtest.h>
 #include <margo.h>
+#include <margo-monitoring.h>
 #include <thallium.hpp>
 #include <atomic>
 #include <chrono>
@@ -108,7 +109,10 @@ private:
             owner->done = true;
             return nullptr;
         }
-        owner->initStatus = ABT_init(0, nullptr);
+        if(margo_set_environment(nullptr) != 0)
+            owner->initStatus = ABT_ERR_OTHER;
+        else
+            owner->initStatus = ABT_init(0, nullptr);
         owner->ready.store(true, std::memory_order_release);
         while(!owner->stop_.load(std::memory_order_acquire)) std::this_thread::sleep_for(1ms);
         ABT_bool primary = ABT_FALSE;
@@ -136,6 +140,9 @@ struct Observation
     std::atomic<unsigned> initCalls{0}, finalizeCalls{0}, rpcCalls{0};
     std::atomic<int> nativeError{0};
     std::shared_ptr<Gate> constructorGate, cleanupGate;
+    std::shared_ptr<Gate> beforeEntryGate, responseGate, postWrapperGate;
+    std::atomic<bool> nativeQueued{false}, providerCleared{false};
+    std::thread::id providerCleanupWorker;
 };
 struct NativeContext
 {
@@ -146,6 +153,8 @@ struct NativeContext
     ABT_xstream rpcES = ABT_XSTREAM_NULL;
     ABT_thread constructor = ABT_THREAD_NULL;
     margo_instance_id mid = MARGO_INSTANCE_NULL;
+    ABT_thread blocker = ABT_THREAD_NULL;
+    margo_monitor monitor{};
     std::unique_ptr<thallium::engine> engine;
     thallium::remote_procedure ping;
     std::string address;
@@ -170,6 +179,27 @@ struct NativeContext
             margo_init_info options = MARGO_INIT_INFO_INITIALIZER;
             options.json_config = R"({"use_progress_thread":true,"rpc_thread_count":1})";
             options.rpc_pool = self.rpcPool;
+            self.monitor.uargs = self.observation.get();
+            self.monitor.initialize = [](margo_instance_id, void* arg, json_object*) { return arg; };
+            self.monitor.on_rpc_handler =
+                    [](void* arg, double, margo_monitor_event_t event, margo_monitor_rpc_handler_args_t args)
+            {
+                if(event == MARGO_MONITOR_FN_END && args->ret == HG_SUCCESS)
+                    static_cast<Observation*>(arg)->nativeQueued = true;
+            };
+            self.monitor.on_respond = [](void* arg, double, margo_monitor_event_t event, margo_monitor_respond_args_t)
+            {
+                auto& observed = *static_cast<Observation*>(arg);
+                if(event == MARGO_MONITOR_FN_START && observed.responseGate)
+                    observed.responseGate->wait();
+            };
+            self.monitor.on_rpc_ult = [](void* arg, double, margo_monitor_event_t event, margo_monitor_rpc_ult_args_t)
+            {
+                auto& observed = *static_cast<Observation*>(arg);
+                if(event == MARGO_MONITOR_FN_END && observed.postWrapperGate)
+                    observed.postWrapperGate->wait();
+            };
+            options.monitor = &self.monitor;
             ++observed.initCalls;
             self.mid = margo_init_ext((self.protocol + "://127.0.0.1:0").c_str(), MARGO_SERVER_MODE, &options);
             if(self.mid == MARGO_INSTANCE_NULL)
@@ -221,10 +251,24 @@ struct NativeContext
             observation->cleanupGate->wait();
         if(!observation->initialized.load(std::memory_order_acquire) || !observation->constructorULTFreed.load())
             throw std::runtime_error("native initialization not proven settled");
-        ping.deregister();
-        ping = {};
+        margo_push_finalize_callback(
+                mid,
+                [](void* arg)
+                {
+                    auto& self = *static_cast<NativeContext*>(arg);
+                    self.ping.deregister();
+                    self.ping = {};
+                    self.observation->providerCleanupWorker = std::this_thread::get_id();
+                    self.observation->providerCleared.store(true, std::memory_order_release);
+                },
+                this);
         ++observation->finalizeCalls;
         margo_finalize_and_wait(mid);
+        if(blocker != ABT_THREAD_NULL)
+        {
+            checked(ABT_thread_join(blocker), "ABT_thread_join blocker");
+            checked(ABT_thread_free(&blocker), "ABT_thread_free blocker");
+        }
         mid = MARGO_INSTANCE_NULL;
         engine.reset(); // non-owning: no duplicate native finalize
         checked(ABT_xstream_join(rpcES), "ABT_xstream_join RPC");
@@ -484,5 +528,104 @@ TEST_P(ColdLifecycleProbe, SimulatedBlockedCleanupKeepsCountAndOtherOwnerReaping
               << " threads_blocked=" << blockedThreads << " final=" << threads()
               << " application_workers=2 retries=8 no_growth=1 full_retirement=1\n";
 }
+
+// This child owns only the source context and a copied route. A barrier or a
+// caller reference must not keep the receiver alive during its retirement.
+class AddressPingWork final: public OwnedRpcWork<int>
+{
+    std::shared_ptr<NativeContext> from_;
+    std::string address_;
+
+public:
+    AddressPingWork(std::shared_ptr<NativeContext> from, std::string address)
+        : from_(std::move(from))
+        , address_(std::move(address))
+    {}
+    RpcResult<int> run(OperationContext& operation) override
+    {
+        auto endpoint = from_->engine->lookup(address_);
+        auto attempt = operation.deadline().cappedAttempt(5s);
+        if(!attempt || !operation.tryBeginDispatch())
+            return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
+        int result = from_->ping.on(endpoint).timed(*attempt, 40);
+        return {CL_SUCCESS, true, result};
+    }
+};
+TEST_P(ColdLifecycleProbe, OwnedFinalizerFencesQueuedResponseAndPostWrapperNativeWork)
+{
+    ASSERT_EQ(ABT_ERR_UNINITIALIZED, ABT_initialized());
+    auto life = std::make_shared<Lifecycle>();
+    for(unsigned phase = 0; phase != 3; ++phase)
+    {
+        Owner source(life, GetParam()), receiver(life, GetParam());
+        ASSERT_EQ(CL_SUCCESS, source.initialize().status);
+        ASSERT_EQ(CL_SUCCESS, receiver.initialize().status);
+        auto observed = receiver.observation;
+        auto gate = std::make_shared<Gate>();
+        struct OpenOnExit
+        {
+            std::shared_ptr<Gate> gate;
+            ~OpenOnExit() { gate->open = true; }
+        } release{gate};
+        if(phase == 0)
+        {
+            observed->beforeEntryGate = gate;
+            checked(ABT_thread_create(
+                            receiver.native->rpcPool,
+                            [](void* arg) { static_cast<Gate*>(arg)->wait(); },
+                            gate.get(),
+                            ABT_THREAD_ATTR_NULL,
+                            &receiver.native->blocker),
+                    "ABT_thread_create queued-entry blocker");
+            ASSERT_TRUE(eventually([&] { return gate->entered.load(); }));
+        }
+        else if(phase == 1)
+            observed->responseGate = gate;
+        else
+            observed->postWrapperGate = gate;
+        auto reply =
+                source.runtime->submit<int>(source.runtime->reserve(RpcDeadline::after(5s)),
+                                            std::make_shared<AddressPingWork>(source.native, receiver.native->address));
+        ASSERT_TRUE(eventually([&] { return observed->nativeQueued.load(); }));
+        if(phase != 0)
+        {
+            ASSERT_TRUE(eventually([&] { return gate->entered.load(); }));
+        }
+        std::weak_ptr<NativeContext> weak = receiver.native;
+        receiver.native.reset();
+        auto started = Clock::now();
+        EXPECT_EQ(CL_ERR_SHUTDOWN_INCOMPLETE, receiver.runtime->drain(RpcDeadline::fromStart(started, 40ms)));
+        EXPECT_LT(Clock::now() - started, 200ms);
+        ASSERT_TRUE(eventually([&] { return observed->finalizeCalls.load() == 1; }));
+        EXPECT_FALSE(weak.expired());
+        EXPECT_FALSE(observed->providerCleared.load());
+        EXPECT_FALSE(observed->retired.load());
+        if(phase == 0)
+        {
+            EXPECT_EQ(0u, observed->rpcCalls.load());
+        }
+        // Even the caller's runtime facade is gone while native finalize is
+        // held. Only its accepted process-lifetime owner retains the receiver.
+        receiver.runtime.reset();
+        gate->open = true;
+        auto result = reply.wait();
+        ASSERT_TRUE(result.reply.has_value());
+        EXPECT_EQ(41, *result.reply);
+        ASSERT_TRUE(eventually([&] { return observed->retired.load() && weak.expired(); }));
+        EXPECT_TRUE(weak.expired());
+        EXPECT_TRUE(observed->providerCleared.load());
+        EXPECT_EQ(observed->cleanupWorker, observed->providerCleanupWorker);
+        EXPECT_EQ(1u, observed->finalizeCalls.load());
+        receiver.runtime.reset();
+        EXPECT_TRUE(source.retire());
+        std::cout << "incoming fence transport=" << GetParam() << " phase=" << phase
+                  << " caller_bound_ms=40 provider_destroyed_on_finalizer=1 native_wrapper_fenced=1\n";
+    }
+    ASSERT_TRUE(life->stopAndJoin());
+    EXPECT_EQ(ABT_SUCCESS, life->finalizeStatus.load());
+    EXPECT_EQ(life->initializer, life->finalizer);
+    EXPECT_EQ(ABT_ERR_UNINITIALIZED, ABT_initialized());
+}
+
 INSTANTIATE_TEST_SUITE_P(Native, ColdLifecycleProbe, ::testing::Values("ofi+sockets", "ofi+tcp"));
 } // namespace

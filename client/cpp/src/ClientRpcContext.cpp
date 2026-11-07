@@ -37,10 +37,9 @@ int ClientRpcProcedures::provision(Name name, uint16_t provider, rpc::RpcDeadlin
     auto index = static_cast<size_t>(name);
     return index < Count ? registrations_.provision(names[index], provider, deadline) : CL_ERR_INVALID_ARG;
 }
-ClientRpcProcedures::~ClientRpcProcedures()
-{
-    for(auto& call: calls) call.deregister();
-}
+// Margo owns these once-defined registrations through its final incoming fence.
+// Descriptor destruction is std-only even when a reader still shares the cache.
+ClientRpcProcedures::~ClientRpcProcedures() = default;
 ClientRpcContext::ClientRpcContext(ClientPortalServiceConf const& portal,
                                    bool mode,
                                    ClientQueryServiceConf const& query,
@@ -184,19 +183,28 @@ void ClientRpcContext::cleanup()
     nativeUses_.fetch_or(Closed, std::memory_order_acq_rel);
     if(storyteller)
         storyteller->quiesceNativeEntries();
-    while(nativeUses_.load(std::memory_order_acquire) != Closed)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    // B09/B12 must establish incoming provider quiescence before reader native
-    // cleanup can be proved safe. Keep this existing cleanup slot quarantined.
     if(mutations.unresolved())
         throw std::runtime_error("Client metadata outcome remains unresolved");
-    if(reader)
-        throw std::runtime_error("Client reader incoming work is not proven settled");
+    for(;;)
+    {
+        // Bounded public expiry can leave a consumed record behind a contended
+        // map lock. Prune before its retained lease is used as an idle test.
+        bool pruned = !reader || reader->pruneConsumedQueries();
+        if(pruned && nativeUses_.load(std::memory_order_acquire) == Closed && incomingResponses.used() == 0 &&
+           replayQueries.used() == 0)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     storyteller.reset();
     visor.reset();
+    // Copied requests/bulk/native leases are settled. Keep the actual reader,
+    // procedure cache and engine wrapper rooted through Margo's final pending-
+    // handler fence, including rejected entries and post-wrapper destruction.
+    native_.cleanup();
+    delete reader;
+    reader = nullptr;
     procedures.reset();
     engine.reset();
-    native_.cleanup();
     cleanupComplete.store(true, std::memory_order_release);
 }
 } // namespace chronolog

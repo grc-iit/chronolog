@@ -373,6 +373,7 @@ install(
         tools/deploy/archive_cleanup.sh
         tools/deploy/deploy_local.sh
         tools/deploy/deploy_cluster.sh
+        tools/deploy/deployment_lifecycle.py
     DESTINATION ${CHRONOLOG_INSTALL_DEPLOY_DIR}
 )
 

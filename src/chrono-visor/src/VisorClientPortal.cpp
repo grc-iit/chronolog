@@ -1,6 +1,7 @@
 #include <VisorClientPortal.h>
 #include <KeeperRegistry.h>
 #include <ClientPortalService.h>
+#include <private/RpcReply.h>
 #include <ConnectResponseMsg.h>
 #include <chronolog_client.h>
 #include <thallium/serialization/stl/pair.hpp>
@@ -62,18 +63,18 @@ struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
             switch(action)
             {
                 case VisorControlAction::Connect:
-                    request->respond(
-                            ConnectResponseMsg(reply->status, reply->status == CL_SUCCESS ? client : ClientId{0}));
+                    rpc::respond(*request,
+                                 ConnectResponseMsg(reply->status, reply->status == CL_SUCCESS ? client : ClientId{0}));
                     break;
                 case VisorControlAction::Acquire:
-                    request->respond(reply->acquisition);
+                    rpc::respond(*request, reply->acquisition);
                     break;
                 case VisorControlAction::ShowChronicles:
                 case VisorControlAction::ShowStories:
-                    request->respond(std::make_pair(reply->status, reply->names));
+                    rpc::respond(*request, std::make_pair(reply->status, reply->names));
                     break;
                 default:
-                    request->respond(reply->status);
+                    rpc::respond(*request, reply->status);
                     break;
             }
         }
@@ -117,6 +118,32 @@ int VisorClientPortal::Core::StartServices(RPCProviderConf const& conf, std::sha
     // outgoing settlement before breaking this lease and finalizing engines.
     return CL_SUCCESS;
 }
+int VisorClientPortal::Core::StartOwnedServices(RPCProviderConf const& conf,
+                                                std::shared_ptr<KeeperRegistry> r,
+                                                std::shared_ptr<thallium::engine> const& native)
+{
+    if(engine || !native)
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    registry = std::move(r);
+    engine = native;
+    provider = ClientPortalService::CreateOwned(*native, conf.SERVICE_PROVIDER_ID, shared_from_this(), ownedProvider);
+    return CL_SUCCESS;
+}
+void VisorClientPortal::Core::releaseOwnedServices()
+{
+    ownedProvider.reset();
+    provider = nullptr;
+    engine.reset();
+    registry.reset();
+}
+bool VisorClientPortal::Core::quiesce(rpc::RpcDeadline const& deadline)
+{
+    shuttingDown.store(true, std::memory_order_release);
+    std::unique_lock<std::timed_mutex> admission(admissionMutex, std::defer_lock);
+    // Joining this short admission gate observes every older reserve/copy/submit.
+    // Original admitted work still settles on the same C32 before proof.
+    return admission.try_lock_until(deadline.expiresAt()) && !deadline.expired();
+}
 std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Invoke(VisorControlAction action,
                                                                    ClientId client,
                                                                    std::string const& chronicle,
@@ -128,6 +155,11 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Invoke(VisorControlA
         return failure(CL_ERR_SHUTDOWN_INCOMPLETE);
     auto owner = registry->adminOwner();
     auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.control_ms));
+    std::unique_lock<std::timed_mutex> admission(admissionMutex, std::defer_lock);
+    if(!admission.try_lock_until(deadline.expiresAt()) || deadline.expired())
+        return failure(CL_ERR_DEADLINE_EXCEEDED);
+    if(shuttingDown.load(std::memory_order_acquire))
+        return failure(CL_ERR_SHUTDOWN_INCOMPLETE);
     auto token = owner->runtime.reserve(deadline);
     if(!token)
         return failure(token.status());
@@ -139,7 +171,9 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Invoke(VisorControlA
                                              account,
                                              CLIENT_PROTOCOL_VERSION,
                                              nullptr);
-    auto result = owner->runtime.invoke<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+    auto pending = owner->runtime.submit<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+    admission.unlock();
+    auto result = pending.wait();
     return result.reply ? std::move(*result.reply) : failure(result.status);
 }
 void VisorClientPortal::Core::Dispatch(thallium::request const& request,
@@ -155,6 +189,10 @@ void VisorClientPortal::Core::Dispatch(thallium::request const& request,
         return;
     auto owner = registry->adminOwner();
     auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(owner->policy.control_ms));
+    std::unique_lock<std::timed_mutex> admission(admissionMutex, std::defer_lock);
+    if(!admission.try_lock_until(deadline.expiresAt()) || deadline.expired() ||
+       shuttingDown.load(std::memory_order_acquire))
+        return;
     auto token = owner->runtime.reserve(deadline);
     // At saturation no request copy, argument ownership, response context or
     // mutation is created. The unchanged-wire client must bound its own wait.
@@ -168,7 +206,9 @@ void VisorClientPortal::Core::Dispatch(thallium::request const& request,
                                              account,
                                              protocol,
                                              &request);
-    owner->runtime.invoke<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+    auto pending = owner->runtime.submit<std::shared_ptr<VisorControlReply>>(std::move(token), std::move(work));
+    admission.unlock();
+    pending.wait();
 }
 std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControlAction action,
                                                                     ClientId client,
@@ -183,6 +223,8 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
         std::this_thread::sleep_for(std::min(deadline.remaining(), rpc::RpcDeadline::Clock::duration(1ms)));
     if(!lock.owns_lock() || deadline.expired())
         return failure(CL_ERR_DEADLINE_EXCEEDED);
+    if(shuttingDown.load(std::memory_order_acquire))
+        return failure(CL_ERR_SHUTDOWN_INCOMPLETE);
     auto r = failure(CL_ERR_UNKNOWN);
     StoryId id = 0;
     bool last = false;

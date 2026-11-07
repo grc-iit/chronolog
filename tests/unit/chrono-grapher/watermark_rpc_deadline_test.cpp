@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <StoryWatermarkRegistry.h>
 #include <WatermarkReportPublisher.h>
+#include <private/StopDependencyEvidence.h>
 #include <private/RpcProviderRegistration.h>
 #include <chrono_monitor.h>
 #include <abt.h>
@@ -24,6 +25,18 @@ struct WatermarkRegistryTestAccess
     }
 };
 } // namespace chronolog
+namespace chronolog::rpc
+{
+struct StopPublicationTestAccess
+{
+    static PublisherParkProof proof(ServiceId const& keeper, std::string identity = "same-generation-drain")
+    {
+        std::string target;
+        keeper.get_service_as_string(target);
+        return {target + "@" + std::to_string(keeper.getProviderId()), std::move(identity)};
+    }
+};
+} // namespace chronolog::rpc
 namespace
 {
 using namespace std::chrono_literals;
@@ -273,6 +286,104 @@ TEST_P(WatermarkRpcDeadline, FinalForcedReportIncludesProgressAfterAnEarlierSend
     ASSERT_TRUE(pump([&] { return received[0]->count() != 0; }));
     registry->advancePersisted(5, 200, 300);
     ASSERT_TRUE(pump([&] { return received[0]->latest().watermark == 300; }, 300ms));
+}
+// The old stop loop calls publish(force=true) on every attempt. A known
+// unchanged local completion must not manufacture another native send.
+TEST_P(WatermarkRpcDeadline, RepeatedStopPassDoesNotResendUnchangedFinalEnvelope)
+{
+    start(1, {}, 3600);
+    EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return received[0]->count() == 1 && idle(runtime); }));
+    // Reservation destruction returns fixed slots on the existing worker poll.
+    std::this_thread::sleep_for(30ms);
+    for(unsigned attempt = 0; attempt != 3; ++attempt)
+    {
+        EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+        ASSERT_TRUE(waitFor([&] { return idle(runtime); }));
+        std::this_thread::sleep_for(30ms);
+    }
+    EXPECT_EQ(received[0]->count(), 1u);
+}
+TEST_P(WatermarkRpcDeadline, ChangedFinalEnvelopeUsesTheSameOwnerAndLiveCompletionIsNotExitProof)
+{
+    start(1, {}, 3600);
+    EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return received[0]->count() == 1 && idle(runtime); }));
+    std::this_thread::sleep_for(30ms);
+    registry->advancePersisted(5, 200, 300);
+    EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return received[0]->count() == 2 && idle(runtime); }));
+    EXPECT_EQ(received[0]->latest().watermark, 300u);
+    EXPECT_EQ(publisher->finish(chl::rpc::RpcDeadline::after(1s), {}), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+TEST_P(WatermarkRpcDeadline, ParkCoversOrdinaryAndForcedDispatchAfterTheKeeperReadinessBoundary)
+{
+    start();
+    auto proof = chl::rpc::StopPublicationTestAccess::proof(endpoints[0]);
+    EXPECT_EQ(publisher->park({}, chl::rpc::RpcDeadline::after(1s)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    for(unsigned pass = 0; pass != 3; ++pass)
+    {
+        EXPECT_EQ(publisher->publish(false), chl::CL_SUCCESS);
+        EXPECT_EQ(publisher->publish(true), chl::CL_SUCCESS);
+        EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    }
+    ASSERT_TRUE(idle(runtime));
+    EXPECT_EQ(received[0]->count(), 0u);
+    // Retry the stable drain identity, not the caller attempt number.
+    EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(1s)), chl::CL_SUCCESS);
+    EXPECT_EQ(publisher->park(chl::rpc::StopPublicationTestAccess::proof(endpoints[0], "another-drain"),
+                              chl::rpc::RpcDeadline::after(1s)),
+              chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+TEST_P(WatermarkRpcDeadline, ParkWaitsForPreadmittedNativePreparationAndPreventsItsForward)
+{
+    start();
+    auto gate = std::make_shared<Gate>();
+    ReleaseGate release{gate};
+    owner->beforeDispatch = [gate]
+    {
+        ++gate->entered;
+        while(!gate->release) std::this_thread::sleep_for(1ms);
+    };
+    EXPECT_EQ(publisher->publish(false), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return gate->entered.load() == 1; }));
+    auto proof = chl::rpc::StopPublicationTestAccess::proof(endpoints[0]);
+    EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(50ms)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+    gate->release = true;
+    ASSERT_TRUE(waitFor([&] { return publisher->park(proof, chl::rpc::RpcDeadline::after(50ms)) == chl::CL_SUCCESS; }));
+    ASSERT_TRUE(waitFor([&] { return idle(runtime); }));
+    EXPECT_EQ(received[0]->count(), 0u);
+}
+TEST_P(WatermarkRpcDeadline, ParkDoesNotAcknowledgeAHeldOriginalNativeSend)
+{
+    start();
+    ReleaseGate release{nativeGate};
+    nativeGate->pause = true;
+    EXPECT_EQ(publisher->publish(false), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return nativeGate->entered.load() == 1; }));
+    auto proof = chl::rpc::StopPublicationTestAccess::proof(endpoints[0]);
+    EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(30ms)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+    nativeGate->release = true;
+    ASSERT_TRUE(waitFor([&] { return publisher->park(proof, chl::rpc::RpcDeadline::after(50ms)) == chl::CL_SUCCESS; }));
+    ASSERT_TRUE(waitFor([&] { return received[0]->count() == 1 && idle(runtime); }));
+    EXPECT_EQ(publisher->publish(true), chl::CL_SUCCESS);
+    EXPECT_EQ(received[0]->count(), 1u);
+}
+TEST_P(WatermarkRpcDeadline, ParkNeverAcknowledgesOrReclaimsUnknownOriginalSends)
+{
+    chl::RpcTimeoutPolicy policy;
+    policy.attempt_ms = 40;
+    start(0, policy);
+    chl::ServiceId first(GetParam(), "127.0.0.1", 1, 71), second(GetParam(), "127.0.0.1", 2, 72);
+    publisher->recordContributor(5, first);
+    publisher->recordContributor(5, second);
+    EXPECT_EQ(publisher->publish(true), chl::CL_SUCCESS);
+    std::this_thread::sleep_for(100ms);
+    auto proof = chl::rpc::StopPublicationTestAccess::proof(first);
+    EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(50ms)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_EQ(runtime->reserve(chl::rpc::RpcDeadline::after(20ms)).status(), chl::CL_ERR_RPC_CAPACITY);
 }
 TEST_P(WatermarkRpcDeadline, LocalSendCompletionDoesNotMeanKeeperApplication)
 {

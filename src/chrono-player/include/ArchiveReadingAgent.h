@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <thallium.hpp>
+#include <LifecycleRecord.h>
 
 #include "ArchiveReadingRequestQueue.h"
 #include "HDF5ArchiveReadingAgent.h"
@@ -48,6 +49,7 @@ public:
     {}
 
     ~ArchiveReadingAgent();
+    std::size_t nativeHandleCount() const noexcept { return nativeHandles_.load(std::memory_order_acquire); }
 
     bool is_running() const { return (RUNNING == agentState); }
 
@@ -66,8 +68,10 @@ private:
 
     ArchiveReadingRequestQueue& theReadingRequestQueue;
 
+    std::atomic<std::size_t> nativeHandles_{0};
     std::mutex agentStateMutex;
-    ReadingAgentState agentState;
+    std::atomic<ReadingAgentState> agentState;
+    rpc::JoinRecord readingJoin;
     std::vector<thallium::managed<thallium::xstream>> archiveReadingStreams;
     std::vector<thallium::managed<thallium::thread>> archiveReadingThreads;
 

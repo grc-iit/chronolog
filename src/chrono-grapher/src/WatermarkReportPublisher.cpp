@@ -1,6 +1,7 @@
 #include <thallium/serialization/stl/map.hpp>
 #include <WatermarkReportPublisher.h>
 #include <private/RpcCallState.h>
+#include <private/StopDependencyEvidence.h>
 #include <chrono_monitor.h>
 #include <algorithm>
 #include <mutex>
@@ -18,6 +19,10 @@ struct WatermarkReportPublisher::Core
     struct Attempt
     {
         std::atomic<State> state{State::Queued};
+        std::atomic<bool> cleaned{false};
+        bool final = false;
+        uint64_t contributions = 0;
+        std::map<StoryId, StoryWatermarkRegistry::Incarnation> snapshots;
     };
     struct Target
     {
@@ -26,6 +31,8 @@ struct WatermarkReportPublisher::Core
         std::shared_ptr<Attempt> active;
         unsigned failures = 0;
         rpc::RpcDeadline::Clock::time_point eligible{};
+        uint64_t contributions = 0, finalContributions = 0;
+        std::map<StoryId, StoryWatermarkRegistry::Incarnation> finalSnapshots;
     };
     std::weak_ptr<rpc::RpcBulkOwner> owner;
     std::shared_ptr<StoryWatermarkRegistry> registry;
@@ -34,6 +41,7 @@ struct WatermarkReportPublisher::Core
     std::timed_mutex mutex;
     std::map<std::string, std::shared_ptr<Target>> targets;
     std::string cursor;
+    std::map<std::string, std::string> parked;
     std::atomic<bool> closing{false};
     thallium::remote_procedure remote;
     Core(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
@@ -46,8 +54,19 @@ struct WatermarkReportPublisher::Core
         , remote(owner->engine->define("report_story_watermarks").disable_response())
     {}
 
+    static std::string key(ServiceId const& keeper)
+    {
+        std::string result;
+        keeper.get_service_as_string(result);
+        return result + "@" + std::to_string(keeper.getProviderId());
+    }
     class Work final: public rpc::OwnedRpcWork<int>
     {
+        struct NativeCleanup
+        {
+            std::shared_ptr<Attempt> attempt;
+            ~NativeCleanup() { attempt->cleaned.store(true, std::memory_order_release); }
+        } cleanup_; // Declared first: published only AFTER all native members die.
         std::shared_ptr<rpc::RpcBulkOwner> owner_;
         std::shared_ptr<Core> core_;
         std::shared_ptr<Target> target_;
@@ -68,7 +87,8 @@ struct WatermarkReportPublisher::Core
              std::shared_ptr<Core> core,
              std::shared_ptr<Target> target,
              std::shared_ptr<Attempt> attempt)
-            : owner_(std::move(owner))
+            : cleanup_{attempt}
+            , owner_(std::move(owner))
             , core_(std::move(core))
             , target_(std::move(target))
             , attempt_(std::move(attempt))
@@ -91,7 +111,10 @@ struct WatermarkReportPublisher::Core
                     if(!lock.try_lock_until(operation.deadline().expiresAt()) || operation.deadline().expired() ||
                        core_->closing)
                         return finish(CL_ERR_DEADLINE_EXCEEDED, State::NotSubmitted, false);
+                    if(core_->parked.count(key(target_->keeper)))
+                        return finish(CL_SUCCESS, State::NotSubmitted, false);
                     stories = target_->stories;
+                    attempt_->contributions = target_->contributions;
                 }
                 int status = core_->registry->snapshotFor(stories, operation.deadline(), publication_);
                 if(status != CL_SUCCESS || publication_.reports.empty())
@@ -106,10 +129,22 @@ struct WatermarkReportPublisher::Core
                 // A fresh owned route per settled attempt also invalidates stale
                 // cached endpoints. An unknown callable is never overwritten.
                 native_.bind(*owner_->engine, core_->remote, address, target_->keeper.getProviderId());
-                status = core_->registry->beginReport(publication_, operation);
-                if(status != CL_SUCCESS || publication_.reports.empty())
-                    return finish(status, State::NotSubmitted, false);
-                dispatched = true;
+                if(owner_->beforeDispatch)
+                    owner_->beforeDispatch();
+                {
+                    std::unique_lock<std::timed_mutex> lock(core_->mutex, std::defer_lock);
+                    if(!lock.try_lock_until(operation.deadline().expiresAt()) || operation.deadline().expired())
+                        return finish(CL_ERR_DEADLINE_EXCEEDED, State::NotSubmitted, false);
+                    // This is the same irrevocable dispatch boundary for both
+                    // ordinary and final jobs, including jobs prepared earlier.
+                    if(core_->closing || core_->parked.count(key(target_->keeper)))
+                        return finish(CL_SUCCESS, State::NotSubmitted, false);
+                    status = core_->registry->beginReport(publication_, operation);
+                    if(status != CL_SUCCESS || publication_.reports.empty())
+                        return finish(status, State::NotSubmitted, false);
+                    attempt_->snapshots = publication_.versions;
+                    dispatched = true;
+                }
                 auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
                 if(!timeout)
                     return finish(CL_ERR_OUTCOME_UNCONFIRMED, State::Unknown, true);
@@ -174,6 +209,9 @@ void WatermarkReportPublisher::recordContributor(StoryId story,
         target = std::make_shared<Core::Target>();
         target->keeper = reporter;
     }
+    auto previous = target->stories.find(story);
+    if(previous == target->stories.end() || previous->second != incarnation)
+        ++target->contributions;
     target->stories[story] = std::move(incarnation);
 }
 int WatermarkReportPublisher::publish(bool force)
@@ -184,6 +222,46 @@ int WatermarkReportPublisher::publish(bool force)
     return publish(rpc::RpcDeadline::after(std::chrono::milliseconds(owner->policy.attempt_ms)), force);
 }
 int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool force)
+{
+    return publishImpl(supplied, force, false, nullptr);
+}
+int WatermarkReportPublisher::publishFinal(rpc::RpcDeadline const& supplied)
+{
+    return publishImpl(supplied, true, true, nullptr);
+}
+int WatermarkReportPublisher::finish(rpc::RpcDeadline const& supplied, rpc::StopDependencyEvidence const& evidence)
+{
+    int result = publishImpl(supplied, true, true, &evidence);
+    if(result != CL_SUCCESS)
+        return result;
+    std::unique_lock<std::timed_mutex> lock(core_->mutex, std::defer_lock);
+    if(!lock.try_lock_until(supplied.expiresAt()) || supplied.expired())
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    return evidence.valid() && core_->targets.empty() ? CL_SUCCESS : CL_ERR_SHUTDOWN_INCOMPLETE;
+}
+int WatermarkReportPublisher::park(rpc::PublisherParkProof const& proof, rpc::RpcDeadline const& deadline)
+{
+    if(!proof.valid())
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    std::unique_lock<std::timed_mutex> lock(core_->mutex, std::defer_lock);
+    if(!lock.try_lock_until(deadline.expiresAt()) || deadline.expired())
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    auto [gate, inserted] = core_->parked.emplace(proof.target(), proof.identity());
+    if(!inserted && gate->second != proof.identity())
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    auto it = core_->targets.find(proof.target());
+    if(it == core_->targets.end() || !it->second->active)
+        return CL_SUCCESS;
+    auto const& attempt = it->second->active;
+    return attempt->state.load(std::memory_order_acquire) != Core::State::Unknown &&
+                           attempt->cleaned.load(std::memory_order_acquire)
+                   ? CL_SUCCESS
+                   : CL_ERR_SHUTDOWN_INCOMPLETE;
+}
+int WatermarkReportPublisher::publishImpl(rpc::RpcDeadline const& supplied,
+                                          bool force,
+                                          bool final,
+                                          rpc::StopDependencyEvidence const* evidence)
 {
     auto started = rpc::RpcDeadline::Clock::now();
     auto owner = core_->owner.lock();
@@ -204,7 +282,7 @@ int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool for
         return CL_SUCCESS;
     core_->lastPublish = now;
     int result = CL_SUCCESS;
-    for(std::size_t visited = 0, count = core_->targets.size(); visited < count; ++visited)
+    for(std::size_t visited = 0, count = core_->targets.size(); visited < count && !core_->targets.empty(); ++visited)
     {
         auto it = core_->targets.upper_bound(core_->cursor);
         if(it == core_->targets.end())
@@ -212,6 +290,8 @@ int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool for
         auto previousCursor = core_->cursor;
         core_->cursor = it->first;
         auto target = it->second;
+        if(evidence && evidence->contains(it->first))
+            core_->parked.emplace(it->first, "terminal");
         if(target->active)
         {
             auto state = target->active->state.load(std::memory_order_acquire);
@@ -220,8 +300,13 @@ int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool for
                 result = CL_ERR_OUTCOME_UNCONFIRMED;
                 continue;
             }
-            if(state == Core::State::Queued)
+            if(state == Core::State::Queued || !target->active->cleaned.load(std::memory_order_acquire))
                 continue;
+            if(state == Core::State::LocalSendComplete && target->active->final)
+            {
+                target->finalSnapshots = target->active->snapshots;
+                target->finalContributions = target->active->contributions;
+            }
             target->failures = state == Core::State::LocalSendComplete ? 0 : std::min(target->failures + 1, 6u);
             target->eligible =
                     now + (target->failures
@@ -230,6 +315,20 @@ int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool for
                                    : core_->interval);
             target->active.reset();
         }
+        if(evidence && evidence->contains(it->first))
+        {
+            // Only original native-cleaned or never-dispatched work reaches
+            // here. Terminal peer proof never reclaims an unknown/active send.
+            core_->targets.erase(it);
+            continue;
+        }
+        if(core_->parked.count(it->first))
+            continue;
+        if(final && !target->finalSnapshots.empty() && target->finalContributions == target->contributions &&
+           std::all_of(target->finalSnapshots.begin(),
+                       target->finalSnapshots.end(),
+                       [](auto const& item) { return item.second->load(std::memory_order_acquire); }))
+            continue;
         if(now < target->eligible && (!force || target->failures != 0))
             continue;
         auto reservation = runtime->reserve(deadline);
@@ -242,6 +341,7 @@ int WatermarkReportPublisher::publish(rpc::RpcDeadline const& supplied, bool for
             break;
         }
         auto attempt = std::make_shared<Core::Attempt>();
+        attempt->final = final;
         target->active = attempt;
         runtime->submit<int>(std::move(reservation), std::make_shared<Core::Work>(owner, core_, target, attempt))
                 .releaseToRuntime();

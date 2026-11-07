@@ -3,6 +3,11 @@
 #include <private/RpcBulkOwner.h>
 #include <StoryWatermarkRegistry.h>
 #include <ServiceId.h>
+#include <private/StopPublicationProof.h>
+namespace chronolog::rpc
+{
+class StopDependencyEvidence;
+}
 #include <memory>
 namespace chronolog
 {
@@ -21,9 +26,16 @@ public:
     recordContributor(StoryId story, ServiceId const& reporter, StoryWatermarkRegistry::Incarnation incarnation = {});
     int publish(bool force = false);
     int publish(rpc::RpcDeadline const& deadline, bool force = false);
+    // Local completion only. Repeated final passes do not resend an unchanged
+    // known envelope; a changed envelope still uses the original actual C2.
+    int publishFinal(rpc::RpcDeadline const& deadline);
+    int finish(rpc::RpcDeadline const& deadline, rpc::StopDependencyEvidence const& evidence);
+    // ACK requires native cleanup of every original send to this exact target.
+    int park(rpc::PublisherParkProof const& proof, rpc::RpcDeadline const& deadline);
     void quiesce() noexcept;
 
 private:
+    int publishImpl(rpc::RpcDeadline const&, bool force, bool final, rpc::StopDependencyEvidence const*);
     struct Core;
     std::shared_ptr<Core> core_;
 };

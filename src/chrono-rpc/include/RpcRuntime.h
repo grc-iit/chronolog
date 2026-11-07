@@ -273,6 +273,15 @@ public:
     template <class Reply>
     RpcPending<Reply> submit(RpcReservation&& reservation, std::shared_ptr<OwnedRpcWork<Reply>> work)
     {
+        return submitReserved<Reply>(std::move(reservation), std::move(work));
+    }
+
+    // The token retains the exact original RuntimeState/slot/deadline. A weak
+    // service facade must transfer reserved native work even after its public
+    // RpcRuntime handle expires; cleanup still runs on that original worker.
+    template <class Reply>
+    static RpcPending<Reply> submitReserved(RpcReservation&& reservation, std::shared_ptr<OwnedRpcWork<Reply>> work)
+    {
         static_assert(std::is_nothrow_move_constructible_v<Reply>, "RPC reply must be nothrow movable");
         if(!reservation)
             return RpcPending<Reply>(CL_ERR_INVALID_ARG);

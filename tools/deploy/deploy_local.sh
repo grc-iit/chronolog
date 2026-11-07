@@ -5,6 +5,7 @@
 # without requiring the source repository.
 
 set -e
+ORIGINAL_ARGUMENTS=("$@")
 
 # Colors
 ERR='\033[7;37m\033[41m'
@@ -46,79 +47,25 @@ clean=false
 EXEC_MODE_COUNT=0
 
 # Helper Methods -----------------------------------------------------------------------------------
+lifecycle() {
+    python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" "$@"
+}
+
 start_service() {
-    local bin="$1"
-    local args="$2"
-    local monitor_file="$3"
-    echo -e "${DEBUG}Launching $bin $args ...${NC}"
-    nohup ${bin} ${args} > "${MONITOR_DIR}/${monitor_file}" 2>&1 &
+    local bin="$1" config="$2" component="$3" monitor_file="$4"
+    lifecycle launch --executable "$bin" --config "$config" --component "$component" \
+        --output "${MONITOR_DIR}/${monitor_file}"
 }
 
-kill_service() {
-    local bin="$1"
-    local name
-    name=$(basename "$bin")
-    echo -e "${DEBUG}Killing ${name} ...${NC}"
-    pkill -9 -f "${bin}"
-}
-
-stop_service() {
-    local bin="$1"
-    local name
-    name=$(basename "$bin")
-    # Grace period (seconds) to wait for a clean SIGTERM shutdown before
-    # escalating to SIGKILL. Defaults to 30s when not supplied.
-    local timeout="${2:-30}"
-    # Poll interval (seconds). Kept small so that a fast graceful shutdown is
-    # detected almost immediately instead of being rounded up to the interval.
-    local poll_interval=1
-
-    # Nothing to do if the service is not running.
-    if ! pgrep -f "${bin}" >/dev/null; then
-        echo -e "${DEBUG}${name} is not running.${NC}"
-        echo ""
-        return 0
+fence_mutation() {
+    local operation="$1"
+    if [[ -z "${CHRONOLOG_DEPLOYMENT_GUARD:-}" ]]; then
+        exec python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" \
+            --occupied-executable "${VISOR_BIN}" --occupied-executable "${GRAPHER_BIN}" \
+            --occupied-executable "${PLAYER_BIN}" --occupied-executable "${KEEPER_BIN}" \
+            "run-${operation}" -- bash "${BASH_SOURCE[0]}" "${ORIGINAL_ARGUMENTS[@]}"
     fi
-
-    echo -e "${DEBUG}Stopping ${name} (SIGTERM, up to ${timeout}s) ...${NC}"
-    pkill -f "${bin}" || true
-
-    # Wait for graceful shutdown, polling frequently and giving up after the
-    # grace period. Using an elapsed-time bound (rather than a fixed number of
-    # sleeps) keeps the total wait honest even if a poll takes longer than
-    # expected.
-    local waited=0
-    while (( waited < timeout )); do
-        if ! pgrep -f "${bin}" >/dev/null; then
-            echo -e "${DEBUG}All ${name} processes stopped gracefully.${NC}"
-            echo ""
-            return 0
-        fi
-        sleep "${poll_interval}"
-        waited=$(( waited + poll_interval ))
-    done
-
-    # Grace period expired: the service ignored SIGTERM or is stuck in
-    # shutdown. Escalate to SIGKILL and confirm the processes are gone.
-    echo -e "${DEBUG}Timeout (${timeout}s) reached while stopping ${name}. Forcing termination.${NC}"
-    kill_service "${bin}"
-
-    local kill_waited=0
-    while (( kill_waited < 5 )); do
-        if ! pgrep -f "${bin}" >/dev/null; then
-            echo -e "${DEBUG}Killed: ${name}.${NC}"
-            echo ""
-            return 0
-        fi
-        sleep "${poll_interval}"
-        kill_waited=$(( kill_waited + poll_interval ))
-    done
-
-    # Still present after SIGKILL -- typically an uninterruptible (D-state)
-    # process. Report it but do not block the rest of the shutdown sequence.
-    echo -e "${ERR}${name} still present after SIGKILL (possibly stuck in uninterruptible I/O).${NC}"
-    echo ""
-    return 0
+    lifecycle guard
 }
 
 generate_config_files() {
@@ -274,7 +221,7 @@ generate_config_files() {
 }
 
 check_dependencies() {
-    local dependencies=("jq" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+    local dependencies=("jq" "ldd" "python3" "readlink" "realpath" "chrpath")
     echo -e "${DEBUG}Checking required dependencies...${NC}"
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
@@ -357,41 +304,24 @@ check_work_dir() {
     fi
 }
 
-check_execution_stopped() {
-    echo -e "${DEBUG}Checking if ChronoLog processes are running...${NC}"
-    local active_processes
-    active_processes=$(pgrep -la chrono || true)
-
-    if [[ -n "${active_processes}" ]]; then
-        echo -e "${ERR}ChronoLog processes are still running:${NC}"
-        echo "${active_processes}"
-        echo -e "${ERR}Please stop all ChronoLog processes before cleaning.${NC}"
-        exit 1
-    else
-        echo -e "${DEBUG}No active ChronoLog processes detected. Proceeding with cleaning.${NC}"
-    fi
-}
-
 # Main functions ------------------------------------------------------------------------------------
 start() {
     echo -e "${INFO}Preparing to start ChronoLog...${NC}"
     check_work_dir
+    fence_mutation start
     mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
     check_installation
     generate_config_files "${NUM_KEEPERS}" "${CONF_FILE}" "${CONF_DIR}" "${OUTPUT_DIR}" "${NUM_RECORDING_GROUPS}" "${MONITOR_DIR}" "${CLIENT_CONF_FILE}"
     echo -e "${INFO}Starting ChronoLog...${NC}"
-    start_service "${VISOR_BIN}" "--config ${CONF_DIR}/chrono-visor-conf.json" "chrono-visor.launch.log"
-    sleep 2
+    start_service "${VISOR_BIN}" "${CONF_DIR}/chrono-visor-conf.json" visor "chrono-visor.launch.log"
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${GRAPHER_BIN}" "--config ${CONF_DIR}/chrono-grapher-conf-$i.json" "chrono-grapher-$i.launch.log"
+        start_service "${GRAPHER_BIN}" "${CONF_DIR}/chrono-grapher-conf-$i.json" grapher "chrono-grapher-$i.launch.log"
     done
-    sleep 2
     for (( i=1; i<=NUM_RECORDING_GROUPS; i++ )); do
-        start_service "${PLAYER_BIN}" "--config ${CONF_DIR}/chrono-player-conf-$i.json" "chrono-player-$i.launch.log"
+        start_service "${PLAYER_BIN}" "${CONF_DIR}/chrono-player-conf-$i.json" player "chrono-player-$i.launch.log"
     done
-    sleep 2
     for (( i=1; i<=NUM_KEEPERS; i++ )); do
-        start_service "${KEEPER_BIN}" "--config ${CONF_DIR}/chrono-keeper-conf-$i.json" "chrono-keeper-$i.launch.log"
+        start_service "${KEEPER_BIN}" "${CONF_DIR}/chrono-keeper-conf-$i.json" keeper "chrono-keeper-$i.launch.log"
     done
     echo -e "${INFO}ChronoLog Started.${NC}"
 }
@@ -399,27 +329,14 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
-    # Keeper first, while the grapher is still up: on SIGTERM it sends again every
-    # chunk the grapher has not acked, then waits until the grapher confirms every
-    # chunk written, for up to shutdown_confirm_timeout_secs (default 150).
-    # Stopping the grapher first would leave nothing to send to or confirm.
-    #
-    # Its grace is larger than the others' because it is the only service with
-    # real shutdown work: sealing and sending what it holds, then that wait. The
-    # grace is a ceiling, not a fixed wait -- stop_service polls every 1s and
-    # returns as soon as the process is gone -- so a fast shutdown still costs
-    # about a second.
-    stop_service "${KEEPER_BIN}" 240
-    stop_service "${PLAYER_BIN}" 30
-    stop_service "${GRAPHER_BIN}" 30
-    stop_service "${VISOR_BIN}" 30
-    echo -e "${INFO}All ChronoLog processes stopped.${NC}"
+    lifecycle stop
+    echo -e "${INFO}All recorded ChronoLog processes stopped.${NC}"
 }
 
 clean() {
     echo -e "${INFO}Cleaning ChronoLog...${NC}"
     check_work_dir
-    check_execution_stopped
+    fence_mutation clean
     echo -e "${DEBUG}Removing config files${NC}"
     rm -f "${CONF_DIR}/chrono-grapher-conf"*.json
     rm -f "${CONF_DIR}/chrono-player-conf"*.json

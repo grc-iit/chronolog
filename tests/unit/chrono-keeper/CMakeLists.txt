@@ -176,3 +176,8 @@ gtest_discover_tests(keeper_rpc_policy_configuration_test TEST_PREFIX "Unit_Chro
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_rpc_policy_configuration_test DESTINATION tests)
 endif()
+
+add_executable(registry_lifecycle_test registry_lifecycle_test.cpp)
+target_include_directories(registry_lifecycle_test PRIVATE ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include)
+target_link_libraries(registry_lifecycle_test PRIVATE GTest::gtest_main chrono_common chrono_rpc chronolog_client thallium)
+gtest_discover_tests(registry_lifecycle_test TEST_PREFIX "Integration_ChronologRegistryLifecycle_" PROPERTIES TIMEOUT 20)

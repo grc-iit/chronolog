@@ -43,7 +43,7 @@ private:
     // Borrowed input is copied once after admission. That O(input-size)
     // CPU/allocation boundary is not independently preemptible; elapsed time
     // consumes the original deadline. No worker retains a raw caller input.
-    std::shared_ptr<rpc::RpcBulkOwner> owner_;
+    std::weak_ptr<rpc::RpcBulkOwner> owner_;
     ServiceId route_;
 };
 } // namespace chronolog

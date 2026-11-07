@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #ifndef CHRONO_CHUNK_LOGGING_EXTRACTOR_H
 #define CHRONO_CHUNK_LOGGING_EXTRACTOR_H
 
@@ -17,7 +18,7 @@ public:
     int process_chunk(StoryChunk* story_chunk)
     {
         LOG_INFO("[LoggingExtractor] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
-                 thallium::thread::self_id(),
+                 chronolog::rpc::nativeThreadLabel(),
                  story_chunk->getStoryId(),
                  story_chunk->getChronicleName(),
                  story_chunk->getStoryName(),

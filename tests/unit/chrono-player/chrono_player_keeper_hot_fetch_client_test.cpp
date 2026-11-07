@@ -28,6 +28,7 @@
 #include <KeeperRecordingService.h>
 
 #include <KeeperHotFetchClient.h>
+#include <PlaybackService.h>
 
 namespace chl = chronolog;
 namespace tl = thallium;
@@ -138,7 +139,7 @@ protected:
                 std::make_unique<tl::engine>(std::string(GetParam()) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
 
         playerOwner = std::make_shared<chl::PlaybackRpcOwner>(std::move(playerEngine), chl::RpcTimeoutPolicy{});
-        runtime = std::make_shared<chl::rpc::RpcRuntime>();
+        runtime = std::make_shared<chl::rpc::RpcRuntime>(runtimeCapacity);
         playerOwner->attach(runtime);
         playerOwner->initializeProcedure();
 
@@ -188,6 +189,7 @@ protected:
     chl::KeeperChunkRetentionStore retentionStore{extractionQueue, 0};
     std::unique_ptr<tl::engine> keeperEngine;
     std::unique_ptr<tl::engine> playerEngine;
+    unsigned runtimeCapacity = 2;
     std::shared_ptr<chl::PlaybackRpcOwner> playerOwner;
     std::shared_ptr<chl::rpc::RpcRuntime> runtime;
     std::unique_ptr<HungKeeper> hungKeeper;
@@ -319,4 +321,69 @@ TEST_P(KeeperHotFetch, QuiescenceRetainsActualEngineProviderAndRejectsNewEntries
     EXPECT_FALSE(retained.expired());
     EXPECT_NE(playerOwner->engine, nullptr);
 }
+class KeeperHotFetchC6: public KeeperHotFetch
+{
+    void SetUp() override
+    {
+        runtimeCapacity = 6;
+        KeeperHotFetch::SetUp();
+    }
+};
+TEST_P(KeeperHotFetchC6, ActualUnknownNeverProvesQueryCleanupAfterLatePeerReply)
+{
+    hungClient = clientOf(kHungKeeperProvider);
+    ASSERT_NE(hungClient, nullptr);
+    EXPECT_FALSE(hungClient->fetchRange(kStory, 0, 1000, 100).answered);
+    ASSERT_EQ(hungKeeper->active.load(), 1); // Actual dispatch, not capacity refusal.
+    EXPECT_FALSE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::milliseconds(20))));
+    EXPECT_FALSE(playerOwner->queriesSettled.load());
+    hungKeeper->released = true;
+    auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while(hungKeeper->active.load() && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_EQ(hungKeeper->active.load(), 0);
+    EXPECT_FALSE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::milliseconds(20))));
+    EXPECT_FALSE(playerOwner->queriesSettled.load());
+    EXPECT_NE(playerOwner->engine, nullptr);
+}
+TEST_P(KeeperHotFetchC6, ActivationAfterClosureAndActualCallbackStartNoQueryOrHotFetch)
+{
+    struct Data
+    {
+        chl::StoryChunkIngestionQueue ingestion;
+        chl::PlayerDataStore store{ingestion};
+        chl::ArchiveReadingRequestQueue requests;
+    };
+    auto data = std::make_shared<Data>();
+    playerOwner->dependencies = data;
+    data->store.setStoryKeepers(kStory, {keeperServiceId(kHungKeeperProvider)});
+    ASSERT_TRUE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::milliseconds(100))));
+    auto* service = chl::PlaybackService::CreatePlaybackService(playerOwner, 91, data->store, data->requests);
+    ASSERT_NE(service, nullptr);
+    auto calls = std::make_shared<std::atomic<unsigned>>(0);
+    auto receiver = keeperServiceId(kLiveKeeperProvider);
+    // Native test relay invokes the actual production callback with its real
+    // request. Its reply acknowledges only this test observation, not a query.
+    auto relay = playerOwner->engine->define(
+            "test_closed_query_callback",
+            [service, data, calls, receiver](tl::request const& request)
+            {
+                service->story_playback_request(request, receiver, 1, kStory, "chron", "story", 0, 1000);
+                ++*calls;
+                request.respond(1);
+            });
+    auto endpoint = playerOwner->engine->lookup(static_cast<std::string>(playerOwner->engine->self()));
+    auto deadline = chl::rpc::RpcDeadline::after(std::chrono::seconds(1));
+    auto attempt = deadline.cappedAttempt(std::chrono::seconds(1));
+    ASSERT_TRUE(attempt);
+    int observed = relay.on(endpoint).timed(*attempt);
+    EXPECT_EQ(observed, 1);
+    EXPECT_EQ(calls->load(), 1u);
+    EXPECT_FALSE(playerOwner->enter());
+    EXPECT_EQ(hungKeeper->active.load(), 0);
+    EXPECT_EQ(playerOwner->queryPermits.used(), 0u);
+    EXPECT_EQ(playerOwner->hotPermits.used(), 0u);
+    EXPECT_TRUE(chl::rpc::allControlIdle(*runtime, 6, chl::rpc::RpcDeadline::after(std::chrono::milliseconds(100))));
+}
+INSTANTIATE_TEST_SUITE_P(Transports, KeeperHotFetchC6, ::testing::Values("ofi+sockets", "ofi+tcp"));
 INSTANTIATE_TEST_SUITE_P(Transports, KeeperHotFetch, ::testing::Values("ofi+sockets", "ofi+tcp"));

@@ -110,7 +110,9 @@ target_include_directories(tail_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client
 target_compile_definitions(tail_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
 target_link_libraries(tail_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
 add_dependencies(tail_deadline_test client_native_peer)
-gtest_discover_tests(tail_deadline_test TEST_PREFIX "Unit_ChronologClient_" PROPERTIES TIMEOUT 30)
+# This fixture and its child native peer bind only 127.0.0.1.
+gtest_discover_tests(tail_deadline_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 30 ENVIRONMENT "FI_TCP_IFACE=lo")
 
 add_executable(replay_deadline_test replay_deadline_test.cpp)
 target_include_directories(replay_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)

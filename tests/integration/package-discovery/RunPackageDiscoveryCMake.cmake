@@ -63,7 +63,7 @@ endif()
 set(CMAKE_LISTS "cmake_minimum_required(VERSION 3.25)\nproject(DiscoveryTest LANGUAGES CXX)\nset(CMAKE_PREFIX_PATH \"${SUBPROJECT_PREFIX_PATH}\")\nfind_package(Chronolog REQUIRED)\nadd_executable(tiny tiny.cpp)\ntarget_link_libraries(tiny PRIVATE Chronolog::chronolog_client)\n")
 file(WRITE "${SUBDIR}/CMakeLists.txt" "${CMAKE_LISTS}")
 
-set(TINY_CPP "#include <chronolog_client.h>\nint main() { (void)chronolog::ClientPortalServiceConf(); return 0; }\n")
+set(TINY_CPP "#include <chronolog_client.h>\n#include <RpcPolicy.h>\nint main() { chronolog::RpcTimeoutPolicy policy; if(chronolog::validateRpcTimeoutPolicy(policy) != chronolog::CL_SUCCESS) return 1; chronolog::Client client(chronolog::ClientPortalServiceConf{}); return client.SetRpcTimeoutPolicy(policy) == chronolog::CL_SUCCESS ? 0 : 2; }\n")
 file(WRITE "${SUBDIR}/tiny.cpp" "${TINY_CPP}")
 
 set(SUBPROJECT_CMAKE_ARGS -B build -S . -DCMAKE_BUILD_TYPE=Release)
@@ -91,6 +91,20 @@ execute_process(
 if(BUILD_RESULT)
     message(FATAL_ERROR "Package discovery (installed CMake): FAILED - build of discovery test failed.\n"
                         "stdout:\n${BUILD_OUT}\nstderr:\n${BUILD_ERR}")
+endif()
+
+# A header-only inline object can let --as-needed discard the client DSO.
+# Run the actual public client call with no build-tree loader environment, so
+# its private shared runtime and packaged dependency RPATH must really work.
+execute_process(
+    COMMAND env -u LD_LIBRARY_PATH -u LIBRARY_PATH -u CPATH -u CPLUS_INCLUDE_PATH
+        "${SUBDIR}/build/tiny"
+    RESULT_VARIABLE RUN_RESULT
+    OUTPUT_VARIABLE RUN_OUT
+    ERROR_VARIABLE RUN_ERR
+)
+if(RUN_RESULT)
+    message(FATAL_ERROR "Installed SDK consumer failed to run: ${RUN_RESULT}\n${RUN_OUT}\n${RUN_ERR}")
 endif()
 
 message(STATUS "Package discovery (installed CMake): PASSED - find_package(Chronolog) works for installed prefix.")

@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <filesystem>
 #include <fstream>
 #include <json-c/json.h>
@@ -76,7 +77,7 @@ int chronolog::StoryChunkExtractorCSV::process_chunk(StoryChunk* story_chunk)
 {
 
     LOG_DEBUG("[StoryChunkExtractorCSV] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
-              thallium::thread::self_id(),
+              chronolog::rpc::nativeThreadLabel(),
               story_chunk->getStoryId(),
               story_chunk->getChronicleName(),
               story_chunk->getStoryName(),

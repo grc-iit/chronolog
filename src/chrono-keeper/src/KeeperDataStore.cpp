@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <unistd.h>
 #include <map>
 #include <mutex>
@@ -119,10 +120,10 @@ void chronolog::KeeperDataStore::collectIngestedEvents()
     LOG_DEBUG("[KeeperDataStore] Initiating collection of ingested events. Current state={}, Active "
               "KeeperStoryPipelines={}, "
               "PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
     theIngestionQueue.drainOrphanEvents();
 
     std::lock_guard storeLock(dataStoreMutex);
@@ -139,10 +140,10 @@ void chronolog::KeeperDataStore::extractDecayedStoryChunks()
 {
     LOG_DEBUG("[KeeperDataStore] Initiating extraction of decayed story chunks. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
 
@@ -159,10 +160,10 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
 {
     LOG_DEBUG("[KeeperDataStore] Initiating retirement of decayed pipelines. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     if(!theMapOfStoryPipelines.empty())
     {
@@ -204,10 +205,10 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
     //swipe through pipelineswaiting and remove all those with nullptr
     LOG_DEBUG("[KeeperDataStore] Completed retirement of decayed pipelines. Current state={}, Active "
               "KeeperStoryPipelines={}, PipelinesWaitingForExit={}, ThreadID={}",
-              state,
+              state.load(),
               theMapOfStoryPipelines.size(),
               pipelinesWaitingForExit.size(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 }
 
 void chronolog::KeeperDataStore::sealOrphanedEvents()
@@ -307,13 +308,13 @@ void chronolog::KeeperDataStore::dataCollectionTask()
     tl::xstream es = tl::xstream::self();
     LOG_DEBUG("[KeeperDataStore] Initiating DataCollectionTask. ESrank={}, ThreadID={}",
               es.get_rank(),
-              tl::thread::self_id());
+              chronolog::rpc::nativeThreadLabel());
 
     while(!is_shutting_down() || !theIngestionQueue.is_empty() || !theMapOfStoryPipelines.empty())
     {
         LOG_DEBUG("[KeeperDataStore] Running DataCollection iteration. ESrank={}, ThreadID={}",
                   es.get_rank(),
-                  tl::thread::self_id());
+                  chronolog::rpc::nativeThreadLabel());
         for(int i = 0; i < 1; ++i)
         {
             collectIngestedEvents();
@@ -329,7 +330,7 @@ void chronolog::KeeperDataStore::dataCollectionTask()
         // report that made them durable
         theTailStore.freeDurableChunks();
     }
-    LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", tl::thread::self_id());
+    LOG_DEBUG("[KeeperDataStore] Exiting DataCollectionTask thread {}", chronolog::rpc::nativeThreadLabel());
 }
 
 ////////////////////////
@@ -344,13 +345,14 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
 
     LOG_INFO("[KeeperDataStore] Starting data collection. StreamCount={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
     state = RUNNING;
 
     for(int i = 0; i < stream_count; ++i)
     {
         tl::managed<tl::xstream> es = tl::xstream::create();
         dataStoreStreams.push_back(std::move(es));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     for(int i = 0; i < 2 * stream_count; ++i)
@@ -358,58 +360,68 @@ void chronolog::KeeperDataStore::startDataCollection(int stream_count)
         tl::managed<tl::thread> th =
                 dataStoreStreams[i % (dataStoreStreams.size())]->make_thread([p = this]() { p->dataCollectionTask(); });
         dataStoreThreads.push_back(std::move(th));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
     LOG_INFO("[KeeperDataStore] Data collection started successfully. Stream count={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
 }
 //////////////////////////////
 
 void chronolog::KeeperDataStore::shutdownDataCollection()
 {
-    LOG_INFO(
-            "[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active KeeperStoryPipelines={}, "
-            "PipelinesWaitingForExit={}",
-            state,
-            theMapOfStoryPipelines.size(),
-            pipelinesWaitingForExit.size());
-
-    // switch the state to shuttingDown
-    std::lock_guard storeLock(dataStoreStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[KeeperDataStore] Data collection is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
-    state = SHUTTING_DOWN;
-
-    if(!theMapOfStoryPipelines.empty())
-    {
-        // label all existing Pipelines as waiting to exit
-        std::lock_guard storeLock(dataStoreMutex);
-        uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-
-        for(auto pipeline_iter = theMapOfStoryPipelines.begin(); pipeline_iter != theMapOfStoryPipelines.end();
-            ++pipeline_iter)
-        {
-            if(pipelinesWaitingForExit.find((*pipeline_iter).first) == pipelinesWaitingForExit.end())
+    collectionJoin.finish(
+            [this]
             {
-                uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
-                pipelinesWaitingForExit[(*pipeline_iter).first] =
-                        (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
-            }
-        }
-    }
+                LOG_INFO("[KeeperDataStore] Initiating shutdown of DataCollection. CurrentState={}, Active "
+                         "KeeperStoryPipelines={}, "
+                         "PipelinesWaitingForExit={}",
+                         state.load(),
+                         theMapOfStoryPipelines.size(),
+                         pipelinesWaitingForExit.size());
 
-    // Join threads & execution streams while holding stateMutex
-    // and just wait until all the events are collected and
-    // all the storyPipelines decay and retire
-    for(auto& th: dataStoreThreads) { th->join(); }
-    LOG_INFO("[KeeperDataStore] All data collection threads have been joined.");
+                // switch the state to shuttingDown
+                {
+                    std::lock_guard stateLock(dataStoreStateMutex);
+                    state = SHUTTING_DOWN;
+                }
 
-    for(auto& es: dataStoreStreams) { es->join(); }
-    LOG_INFO("[KeeperDataStore] All data collection streams have been joined.");
-    LOG_INFO("[KeeperDataStore] DataCollection shutdown completed.");
+                if(!theMapOfStoryPipelines.empty())
+                {
+                    // label all existing Pipelines as waiting to exit
+                    std::lock_guard storeLock(dataStoreMutex);
+                    uint64_t current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+
+                    for(auto pipeline_iter = theMapOfStoryPipelines.begin();
+                        pipeline_iter != theMapOfStoryPipelines.end();
+                        ++pipeline_iter)
+                    {
+                        if(pipelinesWaitingForExit.find((*pipeline_iter).first) == pipelinesWaitingForExit.end())
+                        {
+                            uint64_t exit_time = current_time + (*pipeline_iter).second->getAcceptanceWindow();
+                            pipelinesWaitingForExit[(*pipeline_iter).first] =
+                                    (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second,
+                                                                                    exit_time));
+                        }
+                    }
+                }
+
+                // Join threads & execution streams after publishing state under a short lock
+                // and just wait until all the events are collected and
+                // all the storyPipelines decay and retire
+                for(auto& th: dataStoreThreads) { th->join(); }
+                auto dataStoreThreadsCount = dataStoreThreads.size();
+                dataStoreThreads.clear();
+                nativeHandles_.fetch_sub(dataStoreThreadsCount, std::memory_order_release);
+                LOG_INFO("[KeeperDataStore] All data collection threads have been joined.");
+
+                for(auto& es: dataStoreStreams) { es->join(); }
+                auto dataStoreStreamsCount = dataStoreStreams.size();
+                dataStoreStreams.clear();
+                nativeHandles_.fetch_sub(dataStoreStreamsCount, std::memory_order_release);
+                LOG_INFO("[KeeperDataStore] All data collection streams have been joined.");
+                LOG_INFO("[KeeperDataStore] DataCollection shutdown completed.");
+            });
 }
 
 ///////////////////////

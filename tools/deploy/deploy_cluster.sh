@@ -4,6 +4,7 @@
 # without requiring the source repository.
 
 set -e
+ORIGINAL_ARGUMENTS=("$@")
 
 # Define some colors
 ERR='\033[7;37m\033[41m'
@@ -117,7 +118,7 @@ usage() {
 }
 
 check_dependencies() {
-  local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "nohup" "pkill" "readlink" "realpath" "chrpath")
+  local dependencies=("jq" "parallel-ssh" "ssh" "ldd" "python3" "readlink" "realpath" "chrpath")
 
   echo -e "${DEBUG}Checking required dependencies...${NC}"
   for dep in "${dependencies[@]}"; do
@@ -551,74 +552,42 @@ check_work_dir() {
   fi
 }
 
-parallel_remote_launch_processes() {
-  local bin_dir=$1
-  local lib_dir=$2
-  local hosts_file=$3
-  local bin_filename=$4
-  local args="$5"
-  local hostname_suffix=""
-  local simple_output_grep_keyword=""
+lifecycle_hosts() {
+  LIFECYCLE_HOST_ARGS=()
+  local host file
+  for file in "${VISOR_HOSTS}" "${GRAPHER_HOSTS}" "${KEEPER_HOSTS}" "${PLAYER_HOSTS}"; do
+    check_file_existence "$file"
+  done
+  while IFS= read -r host; do
+    [[ -z "$host" || "$host" == \#* ]] && continue
+    LIFECYCLE_HOST_ARGS+=(--host "$host")
+  done < <(cat "${VISOR_HOSTS}" "${GRAPHER_HOSTS}" "${KEEPER_HOSTS}" "${PLAYER_HOSTS}" | sort -u)
+}
 
-  hostname_suffix="-\$(hostname)"
-  if [[ "${verbose}" == "false" ]]; then
-    simple_output_grep_keyword="ares-"
+lifecycle() {
+  python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" \
+    "${LIFECYCLE_HOST_ARGS[@]}" "$@"
+}
+
+fence_mutation() {
+  local operation="$1"
+  if [[ -z "${CHRONOLOG_DEPLOYMENT_GUARD:-}" ]]; then
+    exec python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" \
+      "${LIFECYCLE_HOST_ARGS[@]}" --occupied-executable "${VISOR_BIN}" \
+      --occupied-executable "${GRAPHER_BIN}" --occupied-executable "${PLAYER_BIN}" \
+      --occupied-executable "${KEEPER_BIN}" "run-${operation}" -- bash "${BASH_SOURCE[0]}" "${ORIGINAL_ARGUMENTS[@]}"
   fi
-
-  bin_path=${bin_dir}/${bin_filename}
-  parallel-ssh -h ${hosts_file} -i "cd ${bin_dir}; nohup ${bin_path} ${args} > ${MONITOR_DIR}/${bin_filename}${hostname_suffix}.launch.log 2>&1 &" | grep "${simple_output_grep_keyword}" 2>&1 || true
+  lifecycle guard
 }
 
-parallel_remote_stop_processes() {
-  local hosts_file=$1
-  local bin_path=$2
-  # seconds to wait for a graceful exit before SIGKILL
-  local grace_secs=${3:-300}
-
-  local bin_name
-  bin_name=$(basename "${bin_path}")
-  local timer=0
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 15 -ef ${bin_path}" 2>/dev/null || true
-  while [[ -n $(parallel_remote_check_processes ${hosts_file} ${bin_path}) ]]; do
-    echo -e "${DEBUG}${bin_name} processes are still running, waiting for 10 seconds ...${NC}"
-    sleep 10
-    timer=$((timer + 10))
-    if [[ ${timer} -gt ${grace_secs} ]]; then
-      echo -e "${ERR}Killing ${bin_name} processes after ${grace_secs} seconds ...${NC}" >&2
-      parallel_remote_kill_processes ${hosts_file} ${bin_path}
-      echo -e "${ERR}${bin_name} processes are killed${NC}" >&2
-    fi
-  done
-}
-
-parallel_remote_kill_processes() {
-  local hosts_file=$1
-  local bin_path=$2
-
-  parallel-ssh -h ${hosts_file} -i "pkill --signal 9 -ef ${bin_path}" 2>/dev/null || true
-}
-
-parallel_remote_check_processes() {
-  local hosts_file=$1
-  local bin_path=$2
-
-  parallel-ssh -h ${hosts_file} -i "pgrep -fla ${bin_path}" 2>/dev/null | sed '/^$/d' | grep -vE '^\[|ssh' || true
-}
-
-parallel_remote_check_all() {
-  echo -e "${DEBUG}Running ChronoVisor:${NC}"
-  parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN}
-
-  echo -e "${DEBUG}Running ChronoGraphers, ChronoKeepers, and ChronoPlayers:${NC}"
-  for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
-    echo -e "${DEBUG}RecordingGroup ${i}:${NC}"
-    grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
-    keeper_hosts_file="${KEEPER_HOSTS}.${i}"
-    player_hosts_file="${PLAYER_HOSTS}.${i}"
-    parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN}
-    parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN}
-    parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN}
-  done
+launch_hosts() {
+  local hosts_file="$1" executable="$2" config="$3" component="$4" host
+  while IFS= read -r host; do
+    [[ -z "$host" || "$host" == \#* ]] && continue
+    python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" --host "$host" \
+      launch --executable "$executable" --config "$config" --component "$component" \
+      --output "${MONITOR_DIR}/chrono-${component}-{hostname}.launch.log"
+  done < "$hosts_file"
 }
 
 start() {
@@ -627,6 +596,15 @@ start() {
   echo -e "${INFO}Starting ...${NC}"
   mkdir -p "${MONITOR_DIR}" "${OUTPUT_DIR}"
 
+  if [[ -n "${JOB_ID}" ]]; then
+    mapfile -t START_HOSTS < <(scontrol show hostnames "$(squeue -h -j "${JOB_ID}" -o '%N')")
+    [[ ${#START_HOSTS[@]} -gt 0 ]] || { echo "Cannot resolve job hosts" >&2; return 27; }
+    LIFECYCLE_HOST_ARGS=()
+    for host in "${START_HOSTS[@]}"; do LIFECYCLE_HOST_ARGS+=(--host "$host"); done
+  else
+    lifecycle_hosts
+  fi
+  fence_mutation start
   prepare_hosts
   check_bin_files
 
@@ -637,97 +615,25 @@ start() {
   check_rpc_comm_conf
   check_archive_mount
 
-  hostname_suffix=".\$(hostname)"
-  if [[ "${verbose}" == "false" ]]; then
-    simple_output_grep_keyword="ares-"
-  fi
-
-  echo -e "${DEBUG}Launching ChronoVisor ...${NC}"
-  VISOR_BIN="${VISOR_BIN_DIR}/${VISOR_BIN_FILE_NAME}"
-  VISOR_ARGS="--config ${CONF_FILE}"
-  parallel_remote_launch_processes ${VISOR_BIN_DIR} ${LIB_DIR} ${VISOR_HOSTS} ${VISOR_BIN_FILE_NAME} "${VISOR_ARGS}"
-
-  for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
-    local grapher_conf_file="${CONF_FILE}.${i}.grapher${hostname_suffix}"
-    GRAPHER_BIN="${GRAPHER_BIN_DIR}/${GRAPHER_BIN_FILE_NAME}"
-    GRAPHER_ARGS="--config ${grapher_conf_file}"
-    grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
-    echo -e "${DEBUG}Launching ChronoGraphers from ${grapher_hosts_file} using conf file ${grapher_conf_file} ...${NC}"
-    parallel_remote_launch_processes ${GRAPHER_BIN_DIR} ${LIB_DIR} ${grapher_hosts_file} ${GRAPHER_BIN_FILE_NAME} "${GRAPHER_ARGS}"
-
-    local keeper_conf_file="${CONF_FILE}.${i}.keeper${hostname_suffix}"
-    KEEPER_BIN="${KEEPER_BIN_DIR}/${KEEPER_BIN_FILE_NAME}"
-    KEEPER_ARGS="--config ${keeper_conf_file}"
-    keeper_hosts_file="${KEEPER_HOSTS}.${i}"
-    echo -e "${DEBUG}Launching ChronoKeepers from ${keeper_hosts_file} using conf file ${keeper_conf_file} ...${NC}"
-    parallel_remote_launch_processes ${KEEPER_BIN_DIR} ${LIB_DIR} ${keeper_hosts_file} ${KEEPER_BIN_FILE_NAME} "${KEEPER_ARGS}" &
-
-    local player_conf_file="${CONF_FILE}.${i}.player${hostname_suffix}"
-    PLAYER_BIN="${PLAYER_BIN_DIR}/${PLAYER_BIN_FILE_NAME}"
-    PLAYER_ARGS="--config ${player_conf_file}"
-    player_hosts_file="${PLAYER_HOSTS}.${i}"
-    echo -e "${DEBUG}Launching ChronoPlayers from ${player_hosts_file} using conf file ${player_conf_file} ...${NC}"
-    parallel_remote_launch_processes ${PLAYER_BIN_DIR} ${LIB_DIR} ${player_hosts_file} ${PLAYER_BIN_FILE_NAME} "${PLAYER_ARGS}" &
-
-    wait
+  launch_hosts "${VISOR_HOSTS}" "${VISOR_BIN}" "${CONF_FILE}" visor
+  for i in $(seq 1 "${NUM_RECORDING_GROUP}"); do
+    launch_hosts "${GRAPHER_HOSTS}.${i}" "${GRAPHER_BIN}" "${CONF_FILE}.${i}.grapher.{hostname}" grapher
+    launch_hosts "${PLAYER_HOSTS}.${i}" "${PLAYER_BIN}" "${CONF_FILE}.${i}.player.{hostname}" player
+    launch_hosts "${KEEPER_HOSTS}.${i}" "${KEEPER_BIN}" "${CONF_FILE}.${i}.keeper.{hostname}" keeper
   done
-
-  parallel_remote_check_all
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Start done${NC}" || true
 }
 
 stop() {
   check_work_dir
-
-  echo -e "${INFO}Stopping ...${NC}"
-
-  if [[ -z ${JOB_ID} ]]; then
-    echo -e "${DEBUG}No JOB_ID provided, use hosts files in ${CONF_DIR}${NC}"
-    check_hosts_files
-  else
-    echo -e "${DEBUG}JOB_ID is provided, prepare hosts file first${NC}"
-    prepare_hosts
-  fi
-
-  echo -e "${DEBUG}Stopping ChronoPlayer ...${NC}"
-  parallel_remote_stop_processes ${PLAYER_HOSTS} ${PLAYER_BIN} &
-
-  echo -e "${DEBUG}Stopping ChronoKeeper ...${NC}"
-  # a keeper waits up to shutdown_confirm_timeout_secs (default 150) for the
-  # grapher, which is stopped only after the keepers, to confirm its chunks
-  parallel_remote_stop_processes ${KEEPER_HOSTS} ${KEEPER_BIN} 240 &
-
-  wait
-
-  echo -e "${DEBUG}Stopping ChronoGrapher ...${NC}"
-  parallel_remote_stop_processes ${GRAPHER_HOSTS} ${GRAPHER_BIN}
-
-  wait
-
-  echo -e "${DEBUG}Stopping ChronoVisor ...${NC}"
-  parallel_remote_stop_processes ${VISOR_HOSTS} ${VISOR_BIN}
-
-  parallel_remote_check_all
-
-  [[ "${verbose}" == "true" ]] && echo -e "${DEBUG}Stop done${NC}" || true
+  lifecycle_hosts
+  lifecycle stop
 }
 
 clean() {
   echo -e "${INFO}Cleaning ...${NC}"
 
-  echo -e "${DEBUG}Checking if ChronoVisor is still running${NC}"
-  [[ -n $(parallel_remote_check_processes ${VISOR_HOSTS} ${VISOR_BIN}) ]] && echo -e "${ERR}ChronoVisor is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-
-  echo -e "${DEBUG}Checking if ChronoGraphers, ChronoKeepers, and ChronoPlayers are still running${NC}"
-  for i in $(seq 1 ${NUM_RECORDING_GROUP}); do
-    echo -e "${DEBUG}Checking RecordingGroup ${i}:${NC}"
-    grapher_hosts_file="${GRAPHER_HOSTS}.${i}"
-    keeper_hosts_file="${KEEPER_HOSTS}.${i}"
-    player_hosts_file="${PLAYER_HOSTS}.${i}"
-    [[ -n $(parallel_remote_check_processes ${grapher_hosts_file} ${GRAPHER_BIN}) ]] && echo -e "${ERR}ChronoGrapher is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-    [[ -n $(parallel_remote_check_processes ${keeper_hosts_file} ${KEEPER_BIN}) ]] && echo -e "${ERR}ChronoKeeper is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-    [[ -n $(parallel_remote_check_processes ${player_hosts_file} ${PLAYER_BIN}) ]] && echo -e "${ERR}ChronoPlayer is still running, please use stop (-s) to stop it first, exiting ...${NC}" >&2 && exit 1
-  done
+  lifecycle_hosts
+  fence_mutation clean
 
   echo -e "${DEBUG}Removing conf and hosts files ...${NC}"
   rm -f ${KEEPER_HOSTS}*.*
@@ -763,7 +669,6 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
     -w | --work-dir)
-      mkdir -p "$2"
       WORK_DIR=$(realpath -m "${2%/}")
       LIB_DIR="${WORK_DIR}/lib"
       CONF_DIR="${WORK_DIR}/conf"
@@ -792,8 +697,6 @@ parse_args() {
       KEEPER_HOSTS="${CONF_DIR}/hosts_keeper"
       PLAYER_HOSTS="${CONF_DIR}/hosts_player"
       [ -s "${GRAPHER_HOSTS}" ] && NUM_RECORDING_GROUP=$(wc -l <"${GRAPHER_HOSTS}")
-      mkdir -p ${MONITOR_DIR}
-      mkdir -p ${OUTPUT_DIR}
       shift 2
       ;;
     -m | --monitor-dir)
@@ -802,7 +705,6 @@ parse_args() {
       ;;
     -u | --output-dir)
       OUTPUT_DIR=$(realpath -m "$2")
-      mkdir -p ${OUTPUT_DIR}
       shift 2
       ;;
     -v | --visor-bin)

@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <unistd.h>
 #include <list>
 #include <mutex>
@@ -20,8 +21,8 @@ namespace tl = thallium;
 void chronolog::ArchiveReadingAgent::archiveReadingTask()
 {
     LOG_DEBUG("[ReadingAgent] executing archiveReadingTask ReadingAgent state={}, ThreadID={}",
-              agentState,
-              tl::thread::self_id());
+              agentState.load(),
+              chronolog::rpc::nativeThreadLabel());
 
     while(!is_shutting_down())
     {
@@ -103,7 +104,7 @@ void chronolog::ArchiveReadingAgent::startArchiveReading(int stream_count)
 
     LOG_INFO("[ReadingAgent] Starting reading streams. StreamCount={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
 
     agentState = RUNNING;
 
@@ -111,6 +112,7 @@ void chronolog::ArchiveReadingAgent::startArchiveReading(int stream_count)
     {
         tl::managed<tl::xstream> es = tl::xstream::create();
         archiveReadingStreams.push_back(std::move(es));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     for(int i = 0; i < 2 * stream_count; ++i)
@@ -118,41 +120,49 @@ void chronolog::ArchiveReadingAgent::startArchiveReading(int stream_count)
         tl::managed<tl::thread> th = archiveReadingStreams[i % (archiveReadingStreams.size())]->make_thread(
                 [p = this]() { p->archiveReadingTask(); });
         archiveReadingThreads.push_back(std::move(th));
+        nativeHandles_.fetch_add(1, std::memory_order_release);
     }
 
     LOG_INFO("[ReadingAgent] reading streams started successfully. Stream count={}, ThreadID={}",
              stream_count,
-             tl::thread::self_id());
+             chronolog::rpc::nativeThreadLabel());
 }
 //////////////////////////////
 
 void chronolog::ArchiveReadingAgent::shutdownArchiveReading()
 {
-    LOG_INFO("[ReadingAgent] Initiating shutdown of archive reading. agentState={}", agentState);
+    readingJoin.finish(
+            [this]
+            {
+                LOG_INFO("[ReadingAgent] Initiating shutdown of archive reading. agentState={}", agentState.load());
 
-    // switch the state to shuttingDown
-    std::lock_guard lock(agentStateMutex);
-    if(is_shutting_down())
-    {
-        LOG_INFO("[ReadingAgent] reading agent is already shutting down. Ignoring additional shutdown request.");
-        return;
-    }
+                // switch the state to shuttingDown
 
-    agentState = SHUTTING_DOWN;
+                {
+                    std::lock_guard stateLock(agentStateMutex);
+                    agentState = SHUTTING_DOWN;
+                }
 
-    theReadingRequestQueue.clear();
+                theReadingRequestQueue.clear();
 
-    // Join threads & execution streams while holding stateMutex
-    // and just wait until all the events are collected and
-    // all the storyPipelines decay and retire
-    for(auto& th: archiveReadingThreads) { th->join(); }
-    LOG_INFO("[ReadingAgent] All archive reading threads have been joined.");
+                // Join threads & execution streams after publishing state under a short lock
+                // and just wait until all the events are collected and
+                // all the storyPipelines decay and retire
+                for(auto& th: archiveReadingThreads) { th->join(); }
+                auto archiveReadingThreadsCount = archiveReadingThreads.size();
+                archiveReadingThreads.clear();
+                nativeHandles_.fetch_sub(archiveReadingThreadsCount, std::memory_order_release);
+                LOG_INFO("[ReadingAgent] All archive reading threads have been joined.");
 
-    for(auto& es: archiveReadingStreams) { es->join(); }
+                for(auto& es: archiveReadingStreams) { es->join(); }
+                auto archiveReadingStreamsCount = archiveReadingStreams.size();
+                archiveReadingStreams.clear();
+                nativeHandles_.fetch_sub(archiveReadingStreamsCount, std::memory_order_release);
 
-    theReadingAgent.shutdown();
+                theReadingAgent.shutdown();
 
-    LOG_INFO("[ReadingAgent] Archive reading is shutdown.");
+                LOG_INFO("[ReadingAgent] Archive reading is shutdown.");
+            });
 }
 
 ///////////////////////

@@ -332,6 +332,28 @@ int main(int argc, char** argv)
         release.get();
         pass = first.get() == chl::CL_SUCCESS && second.get() == chl::CL_SUCCESS && pass;
     }
+    else if(scenario == "cleanup-drop")
+    {
+        // The actual submission has a known ACK. No incoming source exists;
+        // only consumed query-map roots keep the native lease charged.
+        peer.shared->sendResponse = false;
+        auto replay =
+                std::async(std::launch::async, [&] { return client->ReplayStory("chron", "story", 100, 200, output); });
+        pass = until([&] { return peer.shared->acks == 1; });
+        chl::ClientQueryServiceTestAccess::lock(*reader);
+        auto ready = replay.wait_for(150ms);
+        bool retained = context->replayQueries.used() == 1;
+        client.reset();
+        facade.reset();
+        bool retainedAtClose = !context->cleanupComplete.load();
+        chl::ClientQueryServiceTestAccess::unlock(*reader);
+        status = replay.get();
+        pass = pass && ready == std::future_status::ready && retained && retainedAtClose &&
+               status == chl::CL_ERR_QUERY_TIMED_OUT;
+        pass = until([&] { return context->cleanupComplete.load(std::memory_order_acquire); }) && pass;
+        pass = pass && !context->engine && context->reader == nullptr && context->replayQueries.used() == 0 &&
+               ABT_initialized() == ABT_ERR_UNINITIALIZED;
+    }
     else if(scenario == "cleanup-lock")
     {
         peer.shared->holdResponse = true;

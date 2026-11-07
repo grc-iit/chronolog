@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #ifndef STORY_CHUNK_EXTRACTION_MODULE_H
 #define STORY_CHUNK_EXTRACTION_MODULE_H
 
@@ -7,6 +8,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <thallium.hpp>
+#include <LifecycleRecord.h>
 
 #include <chronolog_types.h>
 #include <chronolog_errcode.h>
@@ -78,6 +80,8 @@ public:
 
     StoryChunkExtractionQueue& getExtractionQueue() { return chunkExtractionQueue; }
 
+    std::size_t nativeHandleCount() const noexcept { return nativeHandles_.load(std::memory_order_acquire); }
+
     T& getExtractionChain() { return theExtractionChain; }
 
     bool is_initialized() const { return (state == INITIALIZED); }
@@ -95,7 +99,7 @@ public:
         LOG_DEBUG("[StoryChunkExtractionModule] DrainExtractionQueue called by stream rank={}, tl::thread_id={} "
                   "extractionQueue size {} ",
                   es.get_rank(),
-                  thallium::thread::self_id(),
+                  chronolog::rpc::nativeThreadLabel(),
                   chunkExtractionQueue.size());
 
         // while state== RUNNING keep draining the queue
@@ -114,7 +118,7 @@ public:
                 {
                     LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
                               "eventCount {}",
-                              thallium::thread::self_id(),
+                              chronolog::rpc::nativeThreadLabel(),
                               story_chunk->getStoryId(),
                               story_chunk->getChronicleName(),
                               story_chunk->getStoryName(),
@@ -161,6 +165,7 @@ public:
         {
             tl::managed<tl::xstream> es = tl::xstream::create();
             extractionStreams.push_back(std::move(es));
+            nativeHandles_.fetch_add(1, std::memory_order_release);
         }
 
         for(int i = 0; i < stream_count; ++i)
@@ -168,62 +173,67 @@ public:
             tl::managed<tl::thread> th = extractionStreams[i % extractionStreams.size()]->make_thread(
                     [p = this]() { p->drainExtractionQueue(); });
             extractionThreads.push_back(std::move(th));
+            nativeHandles_.fetch_add(1, std::memory_order_release);
         }
         LOG_DEBUG("[StoryChunkExtractionModule] Started extraction threads.");
     }
 
     void shutdownExtraction()
     {
+        extractionJoin.finish(
+                [this]
+                {
+                    state = SHUTTING_DOWN;
 
-        if(state == SHUTTING_DOWN)
-        {
-            LOG_INFO("[StoryChunkExtractionModule] ExtractionModule already shutting down. Ignoring shutdown request.");
-            return;
-        }
+                    // make sure extractionQueue is drained before the extraction streams are shut down
+                    LOG_INFO("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
+                             chunkExtractionQueue.size());
 
-        state = SHUTTING_DOWN;
+                    // make the best to drain the extraction queue before exiting
+                    while(!chunkExtractionQueue.empty())
+                    {
+                        // chunkExtractionQueue has internal mutex protecting its integrity
+                        StoryChunk* story_chunk = chunkExtractionQueue.ejectStoryChunk();
 
-        // make sure extractionQueue is drained before the extraction streams are shut down
-        LOG_INFO("[StoryChunkExtractionModule] Initiating shutdown: extractionQueue size {}",
-                 chunkExtractionQueue.size());
+                        // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
+                        // in this case the nullptr is returned..
+                        if(story_chunk == nullptr)
+                        {
+                            continue;
+                        }
 
-        // make the best to drain the extraction queue before exiting
-        while(!chunkExtractionQueue.empty())
-        {
-            // chunkExtractionQueue has internal mutex protecting its integrity
-            StoryChunk* story_chunk = chunkExtractionQueue.ejectStoryChunk();
+                        LOG_DEBUG(
+                                "[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
+                                "eventCount {}",
+                                chronolog::rpc::nativeThreadLabel(),
+                                story_chunk->getStoryId(),
+                                story_chunk->getChronicleName(),
+                                story_chunk->getStoryName(),
+                                story_chunk->getStartTime(),
+                                story_chunk->getEndTime(),
+                                story_chunk->getEventCount());
 
-            // the queue might have been drained by another thread before the current thread acquired extractionQueue mutex
-            // in this case the nullptr is returned..
-            if(story_chunk == nullptr)
-            {
-                continue;
-            }
+                        int status = theExtractionChain.process_chunk(story_chunk);
+                        theExtractionChain.dispose_chunk(story_chunk, status);
+                        chunkExtractionQueue.chunkProcessed();
+                    }
 
-            LOG_DEBUG("[StoryChunkExtractionModule] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} "
-                      "eventCount {}",
-                      thallium::thread::self_id(),
-                      story_chunk->getStoryId(),
-                      story_chunk->getChronicleName(),
-                      story_chunk->getStoryName(),
-                      story_chunk->getStartTime(),
-                      story_chunk->getEndTime(),
-                      story_chunk->getEventCount());
+                    // if any of the extractors still have chunks in their individual
+                    // outage buffers, try to flush them one last time
+                    theExtractionChain.flush_outage_buffers();
 
-            int status = theExtractionChain.process_chunk(story_chunk);
-            theExtractionChain.dispose_chunk(story_chunk, status);
-            chunkExtractionQueue.chunkProcessed();
-        }
-
-        // if any of the extractors still have chunks in their individual
-        // outage buffers, try to flush them one last time
-        theExtractionChain.flush_outage_buffers();
-
-        // join and stop threads & executionstreams
-        for(auto& eth: extractionThreads) { eth->join(); }
-        LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");
-        for(auto& es: extractionStreams) { es->join(); }
-        LOG_DEBUG("[StoryChunkExtractionModule] Streams have been successfully closed.");
+                    // join and stop threads & executionstreams
+                    for(auto& eth: extractionThreads) { eth->join(); }
+                    auto extractionThreadsCount = extractionThreads.size();
+                    extractionThreads.clear();
+                    nativeHandles_.fetch_sub(extractionThreadsCount, std::memory_order_release);
+                    LOG_DEBUG("[StoryChunkExtractionModule] Extraction threads have been successfully shut down.");
+                    for(auto& es: extractionStreams) { es->join(); }
+                    auto extractionStreamsCount = extractionStreams.size();
+                    extractionStreams.clear();
+                    nativeHandles_.fetch_sub(extractionStreamsCount, std::memory_order_release);
+                    LOG_DEBUG("[StoryChunkExtractionModule] Streams have been successfully closed.");
+                });
     }
 
     //////////////////////
@@ -245,7 +255,9 @@ private:
 
     StoryChunkExtractionModule& operator=(StoryChunkExtractionModule const&) = delete;
 
+    std::atomic<std::size_t> nativeHandles_{0};
     std::atomic<State> state;
+    rpc::JoinRecord extractionJoin;
     StoryChunkExtractionQueue chunkExtractionQueue;
 
     int stream_count;

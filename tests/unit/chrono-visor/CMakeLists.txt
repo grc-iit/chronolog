@@ -78,4 +78,6 @@ target_include_directories(visor_admin_deadline_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include)
 target_link_libraries(visor_admin_deadline_test PRIVATE GTest::gtest_main chrono_rpc chrono_common chronolog_client thallium)
-gtest_discover_tests(visor_admin_deadline_test TEST_PREFIX "Unit_ChronoVisor_")
+# Native peer providers and both actual registry/portal routes are loopback.
+gtest_discover_tests(visor_admin_deadline_test TEST_PREFIX "Unit_ChronoVisor_"
+    PROPERTIES RUN_SERIAL TRUE ENVIRONMENT "FI_TCP_IFACE=lo")

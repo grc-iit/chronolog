@@ -1,119 +1,68 @@
-#ifndef GRAPHER_REG_CLIENT_H
-#define GRAPHER_REG_CLIENT_H
-
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <thallium.hpp>
-#include <thallium/serialization/stl/string.hpp>
-
-#include <GrapherIdCard.h>
+#ifndef CHRONOLOG_GRAPHER_REG_CLIENT_H
+#define CHRONOLOG_GRAPHER_REG_CLIENT_H
+#include <chrono_monitor.h>
 #include <GrapherRegistrationMsg.h>
 #include <GrapherStatsMsg.h>
-#include <chronolog_errcode.h>
-
-
-namespace tl = thallium;
-
-
+#include <private/RegistrySession.h>
 namespace chronolog
 {
-
 class GrapherRegistryClient
 {
-
 public:
     static GrapherRegistryClient*
-    CreateRegistryClient(tl::engine& tl_engine, std::string const& registry_service_addr, uint16_t registry_provider_id)
+    CreateRegistryClient(thallium::engine& engine, std::string const& address, uint16_t provider)
     {
-        try
-        {
-            return new GrapherRegistryClient(tl_engine, registry_service_addr, registry_provider_id);
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[GrapherRegistryClient] Failed to create GrapherRegistryClient");
+        auto owner = rpc::RpcBulkOwner::Find(engine.get_margo_instance());
+        if(!owner)
             return nullptr;
-        }
+        return CreateRegistryClient(owner,
+                                    address,
+                                    provider,
+                                    rpc::RpcDeadline::after(std::chrono::milliseconds(owner->policy.startup_ms)));
     }
-
-    int send_register_msg(GrapherRegistrationMsg const& grapherMsg)
+    static GrapherRegistryClient* CreateRegistryClient(std::shared_ptr<rpc::RpcBulkOwner> const& owner,
+                                                       std::string const& address,
+                                                       uint16_t provider,
+                                                       rpc::RpcDeadline const& deadline)
     {
-        try
-        {
-            std::stringstream ss;
-            ss << grapherMsg;
-            LOG_DEBUG("[GrapherRegistryClient] Sending Registration Message: {}", ss.str());
-            return register_grapher.on(reg_service_ph)(grapherMsg);
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[GrapherRegistryClient] Failed Sending Registration Message.");
-            return chronolog::CL_ERR_UNKNOWN;
-        }
+        auto session = rpc::RegistrySession::Create(owner, "grapher", address, provider, deadline);
+        return session ? new GrapherRegistryClient(std::move(session), owner->policy) : nullptr;
     }
-
-    int send_unregister_msg(GrapherIdCard const& grapherIdCard)
+    int send_register_msg(GrapherRegistrationMsg const& message)
     {
-        try
-        {
-            std::stringstream ss;
-            ss << grapherIdCard;
-            LOG_DEBUG("[GrapherRegistryClient] Sending Unregister Message: {}", ss.str());
-            return unregister_grapher.on(reg_service_ph)(grapherIdCard);
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[GrapherRegistryClient] Failed Sending Unregistered Message.");
-            return chronolog::CL_ERR_UNKNOWN;
-        }
+        return send_register_msg(message, rpc::RpcDeadline::after(std::chrono::milliseconds(policy_.attempt_ms)));
     }
-
-    void send_stats_msg(GrapherStatsMsg const& statsMsg)
+    int send_register_msg(GrapherRegistrationMsg const& message,
+                          rpc::RpcDeadline const& deadline,
+                          volatile sig_atomic_t const* interrupt = nullptr)
     {
-        try
-        {
-            std::stringstream stats;
-            stats << statsMsg;
-            LOG_DEBUG("[GrapherRegistryClient] Sending Stats Message: {}", stats.str());
-            handle_grapher_stats_msg.on(reg_service_ph)(statsMsg);
-        }
-        catch(tl::exception const&)
-        {
-            LOG_ERROR("[GrapherRegisterClient] Failed Sending Stats Message.");
-        }
+        return session_->send(rpc::RegistrySession::Register, message, deadline, true, interrupt);
     }
-
-    ~GrapherRegistryClient()
+    int send_unregister_msg(GrapherIdCard const& id)
     {
-        LOG_DEBUG("[GrapherRegistryClient] Destructor called. Cleaning up resources...");
-        register_grapher.deregister();
-        unregister_grapher.deregister();
-        handle_grapher_stats_msg.deregister();
+        return send_unregister_msg(id, rpc::RpcDeadline::after(std::chrono::milliseconds(policy_.attempt_ms)));
     }
+    int send_unregister_msg(GrapherIdCard const& id, rpc::RpcDeadline const& deadline)
+    {
+        return session_->send(rpc::RegistrySession::Unregister, id, deadline);
+    }
+    void send_stats_msg(GrapherStatsMsg const& message)
+    {
+        // Coalesce one active send; main never waits for a stats RPC before TERM.
+        session_->send(rpc::RegistrySession::Stats,
+                       message,
+                       rpc::RpcDeadline::after(std::chrono::milliseconds(policy_.attempt_ms)),
+                       false);
+    }
+    ~GrapherRegistryClient() = default;
 
 private:
-    std::string reg_service_addr;       // na address of Keeper Registry Service
-    uint16_t reg_service_provider_id;   // KeeperRegistryService provider id
-    tl::provider_handle reg_service_ph; //provider_handle for remote registry service
-    tl::remote_procedure register_grapher;
-    tl::remote_procedure unregister_grapher;
-    tl::remote_procedure handle_grapher_stats_msg;
-
-    // constructor is private to make sure thalium rpc objects are created on the heap, not stack
-    GrapherRegistryClient(tl::engine& tl_engine, std::string const& registry_addr, uint16_t registry_provider_id)
-        : reg_service_addr(registry_addr)
-        , reg_service_provider_id(registry_provider_id)
-        , reg_service_ph(tl_engine.lookup(registry_addr), registry_provider_id)
-    {
-        LOG_DEBUG("[GrapherRegistryClient] Initialized for RegistryService at {} with ProviderID={}",
-                  registry_addr,
-                  registry_provider_id);
-        register_grapher = tl_engine.define("register_grapher");
-        unregister_grapher = tl_engine.define("unregister_grapher");
-        handle_grapher_stats_msg = tl_engine.define("handle_grapher_stats_msg").disable_response();
-    }
+    GrapherRegistryClient(std::shared_ptr<rpc::RegistrySession> session, RpcTimeoutPolicy policy)
+        : session_(std::move(session))
+        , policy_(policy)
+    {}
+    std::shared_ptr<rpc::RegistrySession> session_;
+    RpcTimeoutPolicy const policy_;
 };
 } // namespace chronolog
-
 #endif

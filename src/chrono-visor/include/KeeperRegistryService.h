@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include <thallium.hpp>
+#include <private/RpcReply.h>
 #include <thallium/serialization/stl/string.hpp>
 
 #include "KeeperIdCard.h"
@@ -31,6 +32,7 @@ private:
     friend struct KeeperRegistryTestAccess;
     std::shared_ptr<char> lifetimeToken_ = std::make_shared<char>();
     KeeperRegistry& theKeeperProcessRegistry;
+    bool legacy_ = false;
 
     void register_keeper(tl::request const& request, chronolog::KeeperRegistrationMsg const& keeperMsg)
     {
@@ -40,7 +42,7 @@ private:
         s1 << keeperMsg.getAdminServiceId();
         LOG_INFO("[RegistryService] New Keeper Registered: KeeperIdCard: {}, AdminServiceId: {}", ss.str(), s1.str());
         return_code = theKeeperProcessRegistry.registerKeeperProcess(keeperMsg);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void unregister_keeper(tl::request const& request, chronolog::KeeperIdCard const& keeper_id_card)
@@ -50,7 +52,7 @@ private:
         ss << keeper_id_card;
         LOG_INFO("[RegistryService] Keeper Unregistered: KeeperIdCard: {}", ss.str());
         return_code = theKeeperProcessRegistry.unregisterKeeperProcess(keeper_id_card);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void handle_stats_msg(chronolog::KeeperStatsMsg const& keeper_stats_msg)
@@ -70,14 +72,14 @@ private:
         ss << registrationMsg;
         LOG_INFO("[RegistryService] register_grapher: {}", ss.str());
         return_code = theKeeperProcessRegistry.registerGrapherProcess(registrationMsg);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void unregister_grapher(tl::request const& request, chronolog::GrapherIdCard const& id_card)
     {
         int return_code = 0;
         return_code = theKeeperProcessRegistry.unregisterGrapherProcess(id_card);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void handle_grapher_stats_msg(chronolog::GrapherStatsMsg const& stats_msg)
@@ -97,7 +99,7 @@ private:
         ss << registrationMsg;
         LOG_INFO("[RegistryService] register_player: {}", chronolog::to_string(registrationMsg));
         return_code = theKeeperProcessRegistry.registerPlayerProcess(registrationMsg);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void unregister_player(tl::request const& request, chronolog::PlayerIdCard const& id_card)
@@ -105,7 +107,7 @@ private:
         int return_code = 0;
         LOG_INFO("[RegistryService] unregister_player: {}", chronolog::to_string(id_card));
         return_code = theKeeperProcessRegistry.unregisterPlayerProcess(id_card);
-        request.respond(return_code);
+        rpc::respond(request, return_code);
     }
 
     void handle_player_stats_msg(chronolog::PlayerStatsMsg const& stats_msg)
@@ -120,6 +122,8 @@ private:
     KeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id, KeeperRegistry& keeperRegistry)
         : tl::provider<KeeperRegistryService>(tl_engine, service_provider_id)
         , theKeeperProcessRegistry(keeperRegistry)
+    {}
+    void registerProcedures()
     {
         define("register_keeper", &KeeperRegistryService::register_keeper);
         define("unregister_keeper", &KeeperRegistryService::unregister_keeper);
@@ -130,8 +134,6 @@ private:
         define("register_player", &KeeperRegistryService::register_player);
         define("unregister_player", &KeeperRegistryService::unregister_player);
         define("handle_player_stats_msg", &KeeperRegistryService::handle_player_stats_msg, tl::ignore_return_value());
-        //setup finalization callback in case this ser vice provider is still alive when the engine is finalized
-        get_engine().push_finalize_callback(this, [p = this]() { delete p; });
     }
 
     KeeperRegistryService(KeeperRegistryService const&) = delete;
@@ -143,10 +145,29 @@ public:
     static KeeperRegistryService*
     CreateKeeperRegistryService(tl::engine& tl_engine, uint16_t service_provider_id, KeeperRegistry& keeperRegistry)
     {
-        return new KeeperRegistryService(tl_engine, service_provider_id, keeperRegistry);
+        auto service = new KeeperRegistryService(tl_engine, service_provider_id, keeperRegistry);
+        service->registerProcedures();
+        service->legacy_ = true;
+        tl_engine.push_finalize_callback(service, [service] { delete service; });
+        return service;
     }
 
-    ~KeeperRegistryService() { get_engine().pop_finalize_callback(this); }
+    static KeeperRegistryService* CreateOwned(tl::engine& engine,
+                                              uint16_t provider,
+                                              KeeperRegistry& registry,
+                                              std::shared_ptr<KeeperRegistryService>& root)
+    {
+        if(root)
+            throw std::logic_error("Registry provider already exists for this MID");
+        root.reset(new KeeperRegistryService(engine, provider, registry));
+        root->registerProcedures(); // Root partial provider before first admission.
+        return root.get();
+    }
+    ~KeeperRegistryService()
+    {
+        if(legacy_)
+            get_engine().pop_finalize_callback(this);
+    }
 };
 } // namespace chronolog
 

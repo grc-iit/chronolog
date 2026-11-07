@@ -223,3 +223,26 @@ gtest_discover_tests(chunk_extractor_csv_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(chunk_extractor_csv_test DESTINATION tests)
 endif()
+
+add_executable(extraction_lifecycle_test extraction_lifecycle_test.cpp)
+target_link_libraries(extraction_lifecycle_test PRIVATE GTest::gtest_main chrono_common chronolog_client thallium)
+gtest_discover_tests(extraction_lifecycle_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 15)
+
+# Pure managed-stop proof binding; no native initialization or daemon retirement.
+add_executable(managed_stop_barrier_test managed_stop_barrier_test.cpp)
+target_include_directories(managed_stop_barrier_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(managed_stop_barrier_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(managed_stop_barrier_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(managed_stop_barrier_test DESTINATION tests)
+endif()
+
+add_executable(extraction_configuration_ownership_test extraction_configuration_ownership_test.cpp)
+target_include_directories(extraction_configuration_ownership_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(extraction_configuration_ownership_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(extraction_configuration_ownership_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(extraction_configuration_ownership_test DESTINATION tests)
+endif()

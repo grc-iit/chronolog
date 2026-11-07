@@ -47,6 +47,7 @@ protected:
     bool suppressShutdownReply[5]{};
     int shutdownAcks[5]{1, 1, 1, 1, 1};
     std::atomic<unsigned> shutdownEntries[5]{};
+    std::atomic<bool> holdShutdown[5]{};
     virtual std::shared_ptr<AdminLookup> lookupDependency() { return {}; }
     std::mutex rosterMutex;
     int delays[5]{0, 300, 300, 0, 0};
@@ -120,6 +121,8 @@ protected:
                     [this, i](tl::request const& req)
                     {
                         ++shutdownEntries[i];
+                        while(holdShutdown[i].load(std::memory_order_acquire))
+                            margo_thread_sleep(peers->get_margo_instance(), 1);
                         if(suppressShutdownReply[i])
                             return;
                         try

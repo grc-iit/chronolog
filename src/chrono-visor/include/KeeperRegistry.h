@@ -173,19 +173,36 @@ public:
     static std::shared_ptr<KeeperRegistry> Create(RpcTimeoutPolicy const& policy = {},
                                                   std::size_t control_capacity = 32);
 
+    static std::shared_ptr<KeeperRegistry> CreateOwned(RpcTimeoutPolicy const&,
+                                                       std::shared_ptr<rpc::RpcRuntime> const& actualC32);
+    int InitializeOwnedRegistryService(std::shared_ptr<thallium::engine> const&, uint16_t provider, size_t delayedExit);
+    void releaseOwnedRegistryService(); // Charged worker, after native handler fence.
+    void quiescePublic() noexcept
+    {
+        publicClosed.store(true, std::memory_order_release);
+        registryState.store(SHUTTING_DOWN, std::memory_order_release);
+    }
+    bool quiescePublic(rpc::RpcDeadline const&);
+    bool noRecordedDependencies(rpc::RpcDeadline const&);
+
     ~KeeperRegistry();
 
     std::shared_ptr<VisorAdminRuntime> adminOwner() const { return adminRuntime; }
 
     bool is_initialized() const { return (INITIALIZED == registryState); }
 
-    bool is_running() const { return (RUNNING == registryState); }
+    bool is_running() const { return !publicClosed.load(std::memory_order_acquire) && RUNNING == registryState; }
 
-    bool is_shutting_down() const { return (SHUTTING_DOWN == registryState); }
+    bool is_shutting_down() const
+    {
+        return publicClosed.load(std::memory_order_acquire) || SHUTTING_DOWN == registryState;
+    }
 
     int InitializeRegistryService(RPCProviderConf const&, size_t delayed_exit_secs);
 
     int ShutdownRegistryService();
+    int ShutdownRegistryService(rpc::RpcDeadline const& deadline);
+    bool dependenciesUnregistered(rpc::RpcDeadline const& deadline);
 
     int registerKeeperProcess(KeeperRegistrationMsg const& keeper_reg_msg);
     int unregisterKeeperProcess(KeeperIdCard const& keeper_id_card);
@@ -228,18 +245,25 @@ private:
     friend struct KeeperRegistryTestAccess;
     explicit KeeperRegistry(RpcTimeoutPolicy const&,
                             std::size_t control_capacity,
-                            std::shared_ptr<AdminLookup> lookup = {});
+                            std::shared_ptr<AdminLookup> lookup = {},
+                            std::shared_ptr<rpc::RpcRuntime> actual = {});
     KeeperRegistry(KeeperRegistry const&) = delete; //disable copying
     KeeperRegistry& operator=(KeeperRegistry const&) = delete;
 
     std::atomic<RegistryState> registryState;
+    std::atomic<bool> publicClosed{false}; // Irreversible despite an older in-flight registration commit.
     int shutdownStatus = CL_SUCCESS;
+    bool shutdownPrepared = false;
+    std::vector<std::shared_ptr<DataStoreAdminClient>> shutdownKeepers;
+    std::vector<std::shared_ptr<DataStoreAdminClient>> shutdownDependencies;
     std::shared_ptr<VisorAdminRuntime> adminRuntime;
     uint64_t nextGeneration = 0;
     std::map<std::string, bool> chronicleDestructions;
     std::mutex registryLock;
     std::shared_ptr<thallium::engine> registryEngine;
     KeeperRegistryService* keeperRegistryService;
+    std::shared_ptr<KeeperRegistryService> ownedProvider;
+    bool nativeOwned = false;
     std::string dataStoreAdminServiceProtocol;
     size_t delayedDataAdminExitSeconds;
 

@@ -1,11 +1,86 @@
 
 #include <json-c/json.h>
 #include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 
 #include <ExtractionModuleConfiguration.h>
 
 
 namespace chl = chronolog;
+
+chronolog::ExtractionModuleConfiguration::ExtractionModuleConfiguration(ExtractionModuleConfiguration const& source)
+    : ExtractionModuleConfiguration()
+{
+    extraction_stream_count = source.extraction_stream_count;
+    extraction_protocol = source.extraction_protocol;
+    for(auto const& extractor: source.extractors)
+    {
+        std::unique_ptr<json_object, decltype(&json_object_put)> owned(nullptr, &json_object_put);
+        if(extractor.second)
+        {
+            // Configurations cross worker lifetimes. Own an independent JSON
+            // value, including its children: the installed json-c reference
+            // counters are not atomic. Userdata belongs to the source owner.
+            json_object* cloned = nullptr;
+            auto copyValue = [](json_object* source,
+                                json_object* parent,
+                                char const* key,
+                                size_t index,
+                                json_object** destination)
+            {
+                int status = json_c_shallow_copy_default(source, parent, key, index, destination);
+                if(status < 0)
+                    return status;
+                // Parsed doubles may carry a serializer using source userdata.
+                // Reset the clone to value serialization without touching the
+                // source cache or copying its ownership/deletion callbacks.
+                json_object_set_serializer(*destination, nullptr, nullptr, nullptr);
+                return 2; // json-c must not attempt its userdata-copy phase.
+            };
+            int status = json_object_deep_copy(extractor.second, &cloned, copyValue);
+            owned.reset(cloned); // Also owns a partial clone on checked failure.
+            if(status != 0 || !owned)
+                throw std::runtime_error("Cannot own extractor configuration copy");
+        }
+        extractors.emplace(extractor.first, owned.get());
+        owned.release();
+    }
+}
+chronolog::ExtractionModuleConfiguration&
+chronolog::ExtractionModuleConfiguration::operator=(ExtractionModuleConfiguration const& source)
+{
+    if(this != &source)
+    {
+        ExtractionModuleConfiguration owned(source);
+        swap(owned);
+    }
+    return *this;
+}
+chronolog::ExtractionModuleConfiguration::ExtractionModuleConfiguration(ExtractionModuleConfiguration&& source) noexcept
+    : extraction_stream_count(source.extraction_stream_count)
+    , extraction_protocol(std::move(source.extraction_protocol))
+    , extractors(std::move(source.extractors))
+{
+    source.extractors.clear();
+}
+chronolog::ExtractionModuleConfiguration&
+chronolog::ExtractionModuleConfiguration::operator=(ExtractionModuleConfiguration&& source) noexcept
+{
+    if(this != &source)
+    {
+        ExtractionModuleConfiguration owned(std::move(source));
+        swap(owned);
+    }
+    return *this;
+}
+void chronolog::ExtractionModuleConfiguration::swap(ExtractionModuleConfiguration& other) noexcept
+{
+    std::swap(extraction_stream_count, other.extraction_stream_count);
+    extraction_protocol.swap(other.extraction_protocol);
+    extractors.swap(other.extractors);
+}
 
 chronolog::ExtractionModuleConfiguration::~ExtractionModuleConfiguration()
 {

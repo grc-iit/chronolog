@@ -74,6 +74,9 @@ endif()
 # ofi+sockets on 127.0.0.1
 add_executable(keeper_hot_fetch_client_test
     chrono_player_keeper_hot_fetch_client_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlaybackService.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/PlayerDataStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
 )
 
 target_include_directories(keeper_hot_fetch_client_test PRIVATE
@@ -92,7 +95,7 @@ target_link_libraries(keeper_hot_fetch_client_test PRIVATE
 )
 
 set_target_properties(keeper_hot_fetch_client_test PROPERTIES OUTPUT_NAME chronolog-test-player-keeper-hot-fetch-client)
-gtest_discover_tests(keeper_hot_fetch_client_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+gtest_discover_tests(keeper_hot_fetch_client_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE ENVIRONMENT "FI_TCP_IFACE=lo")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_hot_fetch_client_test DESTINATION tests)
 endif()
@@ -318,3 +321,8 @@ gtest_discover_tests(player_rpc_policy_configuration_test TEST_PREFIX "Unit_Chro
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(player_rpc_policy_configuration_test DESTINATION tests)
 endif()
+
+add_executable(player_query_quiescence_test player_query_quiescence_test.cpp)
+target_include_directories(player_query_quiescence_test PRIVATE ${CMAKE_SOURCE_DIR}/src/chrono-player/include)
+target_link_libraries(player_query_quiescence_test PRIVATE GTest::gtest_main chrono_common chronolog_client thallium)
+gtest_discover_tests(player_query_quiescence_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 10)

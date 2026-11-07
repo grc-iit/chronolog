@@ -1,3 +1,4 @@
+#include <private/NativeThreadLabel.h>
 #include <filesystem>
 #include <chrono>
 #include <sys/stat.h>
@@ -324,7 +325,7 @@ int chronolog::HDF5FileChunkExtractor::delete_chronicle_files(std::string const&
 int chronolog::HDF5FileChunkExtractor::process_chunk(chl::StoryChunk* story_chunk)
 {
     LOG_INFO("[HDF5FileChunkExtractor] tl::thread_id={} processing chunk StoryId={} {}-{} {}-{} eventCount {}",
-             thallium::thread::self_id(),
+             chronolog::rpc::nativeThreadLabel(),
              story_chunk->getStoryId(),
              story_chunk->getChronicleName(),
              story_chunk->getStoryName(),

@@ -40,6 +40,11 @@ public:
     {
         Core();
         int StartServices(RPCProviderConf const&, std::shared_ptr<KeeperRegistry>);
+        int StartOwnedServices(RPCProviderConf const&,
+                               std::shared_ptr<KeeperRegistry>,
+                               std::shared_ptr<thallium::engine> const&);
+        void releaseOwnedServices(); // Charged worker, after actual native handler fence.
+        bool quiesce(rpc::RpcDeadline const&);
         void Dispatch(thallium::request const&,
                       VisorControlAction,
                       ClientId,
@@ -64,9 +69,11 @@ public:
         std::shared_ptr<KeeperRegistry> registry;
         std::shared_ptr<thallium::engine> engine;
         ClientPortalService* provider = nullptr;
+        std::shared_ptr<ClientPortalService> ownedProvider;
         ClientRegistryManager clients;
         ChronicleMetaDirectory directory;
         std::mutex operationMutex;
+        std::timed_mutex admissionMutex;
     };
     VisorClientPortal();
     ~VisorClientPortal();

@@ -1,4 +1,5 @@
 #include "admin_test_fixture.h"
+#include <private/LifecycleStep.h>
 TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
 {
     std::vector<KeeperIdCard> roster;
@@ -335,14 +336,16 @@ TEST_P(RegistryShutdownOwnership, ShutdownLookupRetainsActualOwnerUntilNativeWor
     EXPECT_FALSE(probe->engine.expired());
     EXPECT_EQ(probe->finalizers.load(), 0u);
     if(auto lease = probe->registry.lock())
+    {
         EXPECT_EQ(lease->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    }
     gate->released.store(true, std::memory_order_release);
     EXPECT_TRUE(eventually(
             [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
     EXPECT_EQ(probe->finalizers.load(), 1u);
     for(auto const& count: shutdownEntries) EXPECT_EQ(count.load(), 0u);
 }
-TEST_P(RegistryShutdownOwnership, ShutdownNoReplyRetainsActualOwnerAfterWorkerReturn)
+TEST_P(RegistryShutdownOwnership, ShutdownMissingAckRetainsTheUntimedNativeContinuation)
 {
     suppressShutdownReply[0] = true;
     for(int i = 1; i <= 3; ++i) ASSERT_EQ(registry->unregisterKeeperProcess(keeper(i)), CL_SUCCESS);
@@ -361,13 +364,11 @@ TEST_P(RegistryShutdownOwnership, ShutdownNoReplyRetainsActualOwnerAfterWorkerRe
     // It is not a proof of remote cancellation or registry-side settlement.
     peers->finalize();
     peerFinalized = true;
-    EXPECT_TRUE(eventually([&]() { return observation->shutdownNoReplyRunReturns.load() != 0; }));
+    // A missing reply can leave an untimed call running even after the peer
+    // engine exits. Neither worker return nor peer death proves settlement.
+    std::this_thread::sleep_for(100ms);
     EXPECT_EQ(probe->finalizers.load(), 0u);
-    EXPECT_GT(observation->shutdownExceptionKind.load(), 0);
-    std::cout << "native_shutdown_exception_kind=" << observation->shutdownExceptionKind.load()
-              << " hg_error=" << observation->nativeShutdownError.load() << " name="
-              << tl::translate_margo_error_code(static_cast<hg_return_t>(observation->nativeShutdownError.load()))
-              << std::endl;
+    EXPECT_EQ(shutdownEntries[0].load(), 1u);
     registry.reset();
     EXPECT_EQ(result.load(), CL_ERR_SHUTDOWN_INCOMPLETE);
     EXPECT_FALSE(probe->registry.expired());
@@ -375,21 +376,60 @@ TEST_P(RegistryShutdownOwnership, ShutdownNoReplyRetainsActualOwnerAfterWorkerRe
     EXPECT_FALSE(probe->engine.expired());
     EXPECT_EQ(probe->finalizers.load(), 0u);
     if(auto lease = probe->registry.lock())
+    {
         EXPECT_EQ(lease->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    }
     EXPECT_FALSE(probe->registry.expired());
     EXPECT_EQ(probe->finalizers.load(), 0u);
 }
-TEST_P(RegistryShutdownOwnership, ShutdownConfirmedReclaimsDirectRegistryAndProvider)
+TEST_P(RegistryShutdownOwnership, ShutdownCollectionRetainsLateAckWithoutDispatchingAnotherJoin)
 {
-    EXPECT_EQ(registry->ShutdownRegistryService(), CL_SUCCESS);
-    EXPECT_EQ(registry->ShutdownRegistryService(), CL_SUCCESS);
+    holdShutdown[0] = true;
+    struct Release
+    {
+        std::atomic<bool>& held;
+        ~Release() { held = false; }
+    } release{holdShutdown[0]};
+    auto owner = registry->adminOwner();
+    std::string address;
+    service(1).get_service_as_string(address);
+    auto client = DataStoreAdminClient::CreateDataStoreAdminClient(owner, address, 1);
+    auto began = rpc::RpcDeadline::Clock::now();
+    EXPECT_NE(CL_SUCCESS, client->shutdown_collection(registry, rpc::RpcDeadline::fromStart(began, 80ms)));
+    EXPECT_LT(rpc::RpcDeadline::Clock::now() - began, 250ms);
+    ASSERT_TRUE(eventually([&] { return shutdownEntries[0].load() == 1; }));
+    // Exceed the fixture's native attempt cap while the original live join is held.
+    std::this_thread::sleep_for(100ms);
+    EXPECT_EQ(0u, observation->shutdownNoReplyRunReturns.load());
+    holdShutdown[0] = false;
+    EXPECT_EQ(CL_SUCCESS, client->shutdown_collection(registry, rpc::RpcDeadline::after(1s)));
+    EXPECT_EQ(1u, shutdownEntries[0].load());
+    EXPECT_EQ(0u, observation->shutdownNoReplyRunReturns.load());
+}
+TEST_P(RegistryShutdownOwnership, ShutdownRetryKeepsDependenciesUntilKeeperUnregisters)
+{
+    holdShutdown[1] = true;
+    struct Release
+    {
+        std::atomic<bool>& held;
+        ~Release() { held = false; }
+    } release{holdShutdown[1]};
+    EXPECT_EQ(registry->ShutdownRegistryService(), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_EQ(shutdownEntries[0].load(), 0u); // Grapher still receives Keeper chunks.
+    EXPECT_EQ(shutdownEntries[4].load(), 0u);
+    holdShutdown[1] = false;
+    // These empty mock Keepers have no pending data. Only their matching
+    // unregister permits dependency collection to stop; ACK1 alone cannot.
+    for(int i = 1; i <= 3; ++i) ASSERT_EQ(registry->unregisterKeeperProcess(keeper(i)), CL_SUCCESS);
+    EXPECT_TRUE(eventually([&] { return registry->ShutdownRegistryService() == CL_SUCCESS; }));
+    for(int i = 0; i <= 4; ++i) EXPECT_EQ(shutdownEntries[i].load(), 1u);
     registry.reset();
     EXPECT_TRUE(eventually(
             [&]() { return probe->registry.expired() && probe->provider.expired() && probe->engine.expired(); }));
     EXPECT_EQ(probe->finalizers.load(), 1u);
-    EXPECT_EQ(shutdownEntries[0].load(), 1u);
-    for(int i = 1; i <= 3; ++i) EXPECT_EQ(shutdownEntries[i].load(), 1u);
+    // This is local registry/collection phase cleanup, never daemon retirement.
 }
+
 TEST_P(RegistryShutdownOwnership, LocalDropStartsNoImplicitRemoteShutdown)
 {
     registry.reset();
@@ -403,3 +443,256 @@ TEST_P(RegistryShutdownOwnership, ShutdownUnexpectedPositiveAckIsIncomplete) { c
 TEST_P(RegistryShutdownOwnership, ShutdownNegativeAckIsIncomplete) { checkIsolatedInvalidShutdownAck(CL_ERR_UNKNOWN); }
 INSTANTIATE_TEST_SUITE_P(Native, RegistryShutdownOwnership, ::testing::Values("ofi+sockets", "ofi+tcp"));
 INSTANTIATE_TEST_SUITE_P(Native, AdminDeadline, ::testing::Values("ofi+sockets", "ofi+tcp"));
+
+TEST(VisorOwnedRuntime, PortalAndRegistryConsumeTheOriginal32Slots)
+{
+    auto actual = std::make_shared<rpc::RpcRuntime>(32);
+    auto registry = KeeperRegistry::CreateOwned({}, actual);
+    VisorClientPortal portal;
+    portal.core()->registry = registry;
+    auto deadline = rpc::RpcDeadline::after(1s);
+    std::vector<rpc::RpcReservation> held;
+    for(unsigned n = 0; n != 32; ++n)
+    {
+        auto slot = actual->reserve(deadline);
+        ASSERT_TRUE(slot);
+        held.push_back(std::move(slot));
+    }
+    EXPECT_EQ(registry->adminOwner()->runtime.reserve(deadline).status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(portal.core()->Invoke(VisorControlAction::Connect, 123)->status, CL_ERR_RPC_CAPACITY);
+    held.clear();
+    EXPECT_EQ(actual->drain(rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+}
+TEST(VisorOwnedRuntime, ReservedWorkStillDiesOnItsOriginalWorkerAfterPublicHandleDrop)
+{
+    auto actual = std::make_shared<rpc::RpcRuntime>(32);
+    std::weak_ptr<rpc::RpcRuntime> weak = actual;
+    auto registry = KeeperRegistry::CreateOwned({}, actual);
+    auto token = actual->reserve(rpc::RpcDeadline::after(1s));
+    ASSERT_TRUE(token);
+    actual.reset();
+    ASSERT_TRUE(weak.expired()); // No idle registry-to-runtime backlink.
+    struct Observed final: rpc::OwnedRpcWork<int>
+    {
+        std::thread::id caller;
+        std::atomic<bool>& destroyed;
+        std::atomic<bool>& onCaller;
+        Observed(std::thread::id caller, std::atomic<bool>& destroyed, std::atomic<bool>& onCaller)
+            : caller(caller)
+            , destroyed(destroyed)
+            , onCaller(onCaller)
+        {}
+        ~Observed() override
+        {
+            onCaller.store(std::this_thread::get_id() == caller, std::memory_order_relaxed);
+            destroyed.store(true, std::memory_order_release);
+        }
+        rpc::RpcResult<int> run(rpc::OperationContext&) override { return {CL_SUCCESS, false, 0}; }
+    };
+    std::atomic<bool> destroyed{false}, onCaller{false};
+    registry->adminOwner()
+            ->runtime
+            .submit<int>(std::move(token), std::make_shared<Observed>(std::this_thread::get_id(), destroyed, onCaller))
+            .wait();
+    auto expiry = std::chrono::steady_clock::now() + 1s;
+    while(!destroyed.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < expiry)
+        std::this_thread::sleep_for(1ms);
+    ASSERT_TRUE(destroyed.load(std::memory_order_acquire));
+    EXPECT_FALSE(onCaller.load());
+}
+
+TEST(VisorOwnedRuntime, ExpiredReservationUsesOriginalDeadlineAndWorkerAfterHandleDrop)
+{
+    auto actual = std::make_shared<rpc::RpcRuntime>(32);
+    auto registry = KeeperRegistry::CreateOwned({}, actual);
+    auto token = actual->reserve(rpc::RpcDeadline::after(10ms));
+    ASSERT_TRUE(token);
+    actual.reset();
+    std::this_thread::sleep_for(20ms);
+    struct Expired final: rpc::OwnedRpcWork<int>
+    {
+        std::atomic<bool>& destroyed;
+        std::atomic<bool>& onCaller;
+        std::atomic<unsigned>& runs;
+        std::thread::id caller = std::this_thread::get_id();
+        Expired(std::atomic<bool>& destroyed, std::atomic<bool>& onCaller, std::atomic<unsigned>& runs)
+            : destroyed(destroyed)
+            , onCaller(onCaller)
+            , runs(runs)
+        {}
+        ~Expired() override
+        {
+            onCaller.store(std::this_thread::get_id() == caller, std::memory_order_relaxed);
+            destroyed.store(true, std::memory_order_release);
+        }
+        rpc::RpcResult<int> run(rpc::OperationContext&) override
+        {
+            ++runs;
+            return {CL_SUCCESS, false, 0};
+        }
+    };
+    std::atomic<bool> destroyed{false}, onCaller{false};
+    std::atomic<unsigned> runs{0};
+    auto result = registry->adminOwner()
+                          ->runtime.submit<int>(std::move(token), std::make_shared<Expired>(destroyed, onCaller, runs))
+                          .wait();
+    EXPECT_EQ(result.status, CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_FALSE(result.may_have_dispatched);
+    auto expiry = std::chrono::steady_clock::now() + 1s;
+    while(!destroyed.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < expiry)
+        std::this_thread::sleep_for(1ms);
+    ASSERT_TRUE(destroyed.load(std::memory_order_acquire));
+    EXPECT_FALSE(onCaller.load());
+    EXPECT_EQ(runs.load(), 0u);
+}
+
+TEST(VisorOwnedRuntime, QueuedMutationObservesQuiescenceBeforeTakingTheMetadataLock)
+{
+    auto actual = std::make_shared<rpc::RpcRuntime>(32);
+    auto registry = KeeperRegistry::CreateOwned({}, actual);
+    VisorClientPortal portal;
+    auto core = portal.core();
+    core->registry = registry;
+    std::unique_lock<std::mutex> held(core->operationMutex);
+    struct Queued final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
+    {
+        std::shared_ptr<VisorClientPortal::Core> core;
+        std::atomic<bool>& entered;
+        Queued(std::shared_ptr<VisorClientPortal::Core> core, std::atomic<bool>& entered)
+            : core(std::move(core))
+            , entered(entered)
+        {}
+        rpc::RpcResult<std::shared_ptr<VisorControlReply>> run(rpc::OperationContext& operation) override
+        {
+            entered.store(true, std::memory_order_release);
+            auto reply = core->Execute(VisorControlAction::Connect, 1234, "", "", 0, 3, operation.deadline());
+            return {reply->status, false, std::move(reply)};
+        }
+    };
+    std::atomic<bool> entered{false};
+    auto deadline = rpc::RpcDeadline::after(1s);
+    auto pending = actual->submit<std::shared_ptr<VisorControlReply>>(actual->reserve(deadline),
+                                                                      std::make_shared<Queued>(core, entered));
+    auto expiry = std::chrono::steady_clock::now() + 500ms;
+    while(!entered.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < expiry)
+        std::this_thread::sleep_for(1ms);
+    ASSERT_TRUE(entered.load(std::memory_order_acquire));
+    portal.ShutdownServices();
+    held.unlock();
+    auto result = pending.wait();
+    ASSERT_TRUE(result.reply);
+    EXPECT_EQ((*result.reply)->status, CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_EQ(actual->drain(rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+TEST(VisorLifecycleAdmission, TransientProbeCleanupAdmitsOneOriginalStep)
+{
+    rpc::RpcRuntime actual(32);
+    auto deadline = rpc::RpcDeadline::after(100ms);
+    std::vector<rpc::RpcReservation> probes;
+    for(unsigned n = 0; n != 32; ++n)
+    {
+        auto slot = actual.reserve(deadline);
+        ASSERT_TRUE(slot);
+        probes.push_back(std::move(slot));
+    }
+    auto actions = std::make_shared<std::atomic<unsigned>>(0);
+    std::shared_ptr<rpc::LifecycleStep> step;
+    std::thread release(
+            [&]
+            {
+                std::this_thread::sleep_for(15ms);
+                probes.clear();
+            });
+    int result = rpc::startLifecycleStepWhenAvailable(actual,
+                                                      deadline,
+                                                      step,
+                                                      actions,
+                                                      [actions]
+                                                      {
+                                                          ++*actions;
+                                                          return CL_SUCCESS;
+                                                      });
+    release.join();
+    EXPECT_EQ(result, CL_SUCCESS);
+    if(step)
+    {
+        EXPECT_EQ(rpc::waitLifecycleStep(step, deadline), CL_SUCCESS);
+    }
+    EXPECT_EQ(actions->load(), 1u);
+    EXPECT_EQ(actual.drain(rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+}
+TEST(VisorLifecycleAdmission, PermanentCapacityConsumesOriginalCallerBudgetWithoutAdmission)
+{
+    rpc::RpcRuntime actual(32);
+    auto deadline = rpc::RpcDeadline::after(80ms);
+    std::vector<rpc::RpcReservation> held;
+    for(unsigned n = 0; n != 32; ++n)
+    {
+        auto slot = actual.reserve(deadline);
+        ASSERT_TRUE(slot);
+        held.push_back(std::move(slot));
+    }
+    auto actions = std::make_shared<std::atomic<unsigned>>(0);
+    std::shared_ptr<rpc::LifecycleStep> step;
+    auto entered = std::chrono::steady_clock::now();
+    int result = rpc::startLifecycleStepWhenAvailable(actual,
+                                                      deadline,
+                                                      step,
+                                                      actions,
+                                                      [actions]
+                                                      {
+                                                          ++*actions;
+                                                          return CL_SUCCESS;
+                                                      });
+    EXPECT_EQ(result, CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_GE(std::chrono::steady_clock::now() - entered, 60ms);
+    EXPECT_LT(std::chrono::steady_clock::now() - entered, 250ms);
+    EXPECT_FALSE(step);
+    EXPECT_EQ(actions->load(), 0u);
+    held.clear();
+    EXPECT_EQ(actual.drain(rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+}
+TEST(VisorLifecycleAdmission, RunningOriginalStepIsNotReplacedByAnotherCaller)
+{
+    rpc::RpcRuntime actual(32);
+    struct State
+    {
+        std::atomic<unsigned> started{0}, replacement{0};
+        std::atomic<bool> release{false};
+    };
+    auto state = std::make_shared<State>();
+    std::shared_ptr<rpc::LifecycleStep> step;
+    ASSERT_EQ(rpc::startLifecycleStepWhenAvailable(actual,
+                                                   rpc::RpcDeadline::after(1s),
+                                                   step,
+                                                   state,
+                                                   [state]
+                                                   {
+                                                       ++state->started;
+                                                       while(!state->release) std::this_thread::sleep_for(1ms);
+                                                       return CL_SUCCESS;
+                                                   }),
+              CL_SUCCESS);
+    auto original = step;
+    auto expiry = std::chrono::steady_clock::now() + 500ms;
+    while(!state->started && std::chrono::steady_clock::now() < expiry) std::this_thread::sleep_for(1ms);
+    auto caller = rpc::RpcDeadline::after(20ms);
+    EXPECT_EQ(rpc::startLifecycleStepWhenAvailable(actual,
+                                                   caller,
+                                                   step,
+                                                   state,
+                                                   [state]
+                                                   {
+                                                       ++state->replacement;
+                                                       return CL_SUCCESS;
+                                                   }),
+              CL_SUCCESS);
+    EXPECT_EQ(rpc::waitLifecycleStep(step, caller), CL_ERR_SHUTDOWN_INCOMPLETE);
+    EXPECT_EQ(step, original);
+    EXPECT_EQ(state->started.load(), 1u);
+    EXPECT_EQ(state->replacement.load(), 0u);
+    state->release = true;
+    EXPECT_EQ(rpc::waitLifecycleStep(step, rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+    EXPECT_EQ(actual.drain(rpc::RpcDeadline::after(1s)), CL_SUCCESS);
+}

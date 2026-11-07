@@ -30,18 +30,54 @@ struct AdminObservation
     std::atomic<int> shutdownExceptionKind{0};
     std::atomic<int> nativeShutdownError{0};
 };
+// Legacy fixtures own their existing runtime here. The native daemon binds
+// weakly to its one externally retained C32; no owner/Core backlink cycle.
+class VisorControlRuntime
+{
+    std::shared_ptr<rpc::RpcRuntime> legacy_;
+    std::weak_ptr<rpc::RpcRuntime> actual_;
+
+public:
+    VisorControlRuntime(std::size_t capacity, std::shared_ptr<rpc::RpcRuntime> const& actual)
+    {
+        if(actual)
+            actual_ = actual;
+        else
+        {
+            legacy_ = std::make_shared<rpc::RpcRuntime>(capacity);
+            actual_ = legacy_;
+        }
+    }
+    rpc::RpcReservation reserve(rpc::RpcDeadline const& deadline)
+    {
+        auto runtime = actual_.lock();
+        return runtime ? runtime->reserve(deadline) : rpc::RpcReservation{};
+    }
+    template <class Reply>
+    rpc::RpcPending<Reply> submit(rpc::RpcReservation&& token, std::shared_ptr<rpc::OwnedRpcWork<Reply>> work)
+    {
+        return rpc::RpcRuntime::submitReserved<Reply>(std::move(token), std::move(work));
+    }
+    template <class Reply>
+    rpc::RpcResult<Reply> invoke(rpc::RpcReservation&& token, std::shared_ptr<rpc::OwnedRpcWork<Reply>> work)
+    {
+        return submit<Reply>(std::move(token), std::move(work)).wait();
+    }
+};
 struct VisorAdminRuntime
 {
     explicit VisorAdminRuntime(RpcTimeoutPolicy const& policy,
                                std::size_t capacity,
-                               std::shared_ptr<AdminLookup> lookup = {});
+                               std::shared_ptr<AdminLookup> lookup = {},
+                               std::shared_ptr<rpc::RpcRuntime> actual = {});
     const RpcTimeoutPolicy policy;
-    rpc::RpcRuntime runtime;
+    VisorControlRuntime runtime;
     const std::shared_ptr<AdminLookup> lookup;
     const std::shared_ptr<AdminObservation> observation = std::make_shared<AdminObservation>();
     std::shared_ptr<thallium::engine> engine;
     std::array<thallium::remote_procedure, 7> procedures;
     void initializeRpcDefinitions();
+    void releaseNativeDescriptors(); // Only after the actual MID's native fence.
     int provision(AdminAction, uint16_t provider, rpc::RpcDeadline const&);
 
 private:
@@ -70,6 +106,7 @@ struct AdminCompletion
     std::atomic<bool> done{false};
     int status = CL_ERR_OUTCOME_UNCONFIRMED;
     bool confirmed = false;
+    bool dispatched = false;
 };
 class AdminWork final: public rpc::OwnedRpcWork<int>
 {
@@ -78,6 +115,7 @@ public:
               AdminArguments,
               std::shared_ptr<AdminCompletion>,
               std::shared_ptr<KeeperRegistry>);
+    ~AdminWork() override;
     rpc::RpcResult<int> run(rpc::OperationContext&) override;
 
 private:
@@ -86,6 +124,7 @@ private:
     std::shared_ptr<AdminCompletion> completion_;
     std::shared_ptr<KeeperRegistry> registry_;
     rpc::RpcCallState native_;
+    bool entered_ = false;
 };
 struct StoryRecording
 {

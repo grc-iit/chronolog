@@ -86,11 +86,42 @@ std::shared_ptr<KeeperRegistry> KeeperRegistry::Create(RpcTimeoutPolicy const& p
     return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(policy, capacity));
 }
 
+std::shared_ptr<KeeperRegistry> KeeperRegistry::CreateOwned(RpcTimeoutPolicy const& policy,
+                                                            std::shared_ptr<rpc::RpcRuntime> const& actual)
+{
+    if(!actual)
+        throw std::invalid_argument("Visor needs its actual shared C32 owner");
+    return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(policy, 32, {}, actual));
+}
+int KeeperRegistry::InitializeOwnedRegistryService(std::shared_ptr<thallium::engine> const& engine,
+                                                   uint16_t provider,
+                                                   size_t delayedExit)
+{
+    if(registryEngine || !engine)
+        return CL_ERR_SHUTDOWN_INCOMPLETE;
+    nativeOwned = true;
+    registryEngine = engine;
+    adminRuntime->engine = engine;
+    adminRuntime->initializeRpcDefinitions();
+    delayedDataAdminExitSeconds = delayedExit;
+    keeperRegistryService = KeeperRegistryService::CreateOwned(*engine, provider, *this, ownedProvider);
+    RegistryState expected = UNKNOWN;
+    registryState.compare_exchange_strong(expected, INITIALIZED, std::memory_order_acq_rel);
+    return CL_SUCCESS; // A concurrent quiesce is never reopened.
+}
+void KeeperRegistry::releaseOwnedRegistryService()
+{
+    ownedProvider.reset();
+    keeperRegistryService = nullptr;
+    adminRuntime->releaseNativeDescriptors();
+    registryEngine.reset();
+}
 KeeperRegistry::KeeperRegistry(RpcTimeoutPolicy const& policy,
                                std::size_t capacity,
-                               std::shared_ptr<AdminLookup> lookup)
+                               std::shared_ptr<AdminLookup> lookup,
+                               std::shared_ptr<rpc::RpcRuntime> actual)
     : registryState(UNKNOWN)
-    , adminRuntime(std::make_shared<VisorAdminRuntime>(policy, capacity, std::move(lookup)))
+    , adminRuntime(std::make_shared<VisorAdminRuntime>(policy, capacity, std::move(lookup), std::move(actual)))
     , registryEngine(nullptr)
     , keeperRegistryService(nullptr)
     , delayedDataAdminExitSeconds(3)
@@ -100,137 +131,112 @@ KeeperRegistry::KeeperRegistry(RpcTimeoutPolicy const& policy,
 
 int KeeperRegistry::ShutdownRegistryService()
 {
+    auto entered = rpc::RpcDeadline::Clock::now();
+    return ShutdownRegistryService(
+            rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(adminRuntime->policy.shutdown_ms)));
+}
 
-
-    auto started = rpc::RpcDeadline::Clock::now();
-    // Acquire the real state owner before any timed work can outlive this call.
+int KeeperRegistry::ShutdownRegistryService(rpc::RpcDeadline const& deadline)
+{
     auto registryLease = shared_from_this();
-    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(adminRuntime->policy.shutdown_ms));
-    std::lock_guard<std::mutex> lock(registryLock);
-
-    if(is_shutting_down())
+    auto takeLock = [&]()
     {
-        LOG_INFO("[ChronoProcessRegistry] Shutdown");
-        return shutdownStatus;
-    }
-
-    registryState = SHUTTING_DOWN;
-    shutdownStatus = CL_ERR_SHUTDOWN_INCOMPLETE;
-    int aggregate = CL_SUCCESS;
-    auto shutdown = [&](std::shared_ptr<DataStoreAdminClient> const& client)
-    {
-        if(!client || client->shutdown_collection(registryLease, deadline) != CL_SUCCESS)
-            aggregate = CL_ERR_SHUTDOWN_INCOMPLETE;
+        std::unique_lock<std::mutex> lock(registryLock, std::defer_lock);
+        while(!deadline.expired())
+        {
+            if(lock.try_lock())
+                return lock;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return lock;
     };
-    LOG_INFO("[ChronoProcessRegistry] Shutting down...");
-
-    activeGroups.clear();
-    activeStories.clear();
-
-    while(!recordingGroups.empty())
+    std::vector<std::shared_ptr<DataStoreAdminClient>> keepers, dependencies;
     {
-        std::time_t current_time =
-                std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-        std::time_t delayedExitTime = std::chrono::high_resolution_clock::to_time_t(
-                std::chrono::high_resolution_clock::now() + std::chrono::seconds(delayedDataAdminExitSeconds));
-
-        for(auto group_iter = recordingGroups.begin(); group_iter != recordingGroups.end();)
+        auto lock = takeLock();
+        if(!lock.owns_lock() || deadline.expired())
+            return CL_ERR_SHUTDOWN_INCOMPLETE;
+        registryState = SHUTTING_DOWN;
+        if(!shutdownPrepared)
         {
-            RecordingGroup& recording_group = ((*group_iter).second);
-
-            if(recording_group.grapherProcess != nullptr)
+            // Keep the exact descriptors and roster. Neither ACK1 nor elapsed
+            // grace permits freeing a dependency still needed by a Keeper.
+            for(auto const& item: recordingGroups)
             {
-                std::stringstream id_string;
-                id_string << recording_group.grapherProcess->idCard;
-
-                auto grapher_process = recording_group.grapherProcess;
-                if(grapher_process->active)
-                {
-                    LOG_INFO("[ChronoProcessRegistry] Sending shutdown to grapher {}", id_string.str());
-                    if(grapher_process->adminClient != nullptr)
-                    {
-                        shutdown(grapher_process->adminClient);
-                    }
-
-                    // start delayed destruction for the lingering Adminclient to be safe...
-                    recording_group.startDelayedGrapherExit(*grapher_process, delayedExitTime);
-                }
-                else
-                {
-                    //check if any existing delayed exit grapher processes can be cleared...
-                    recording_group.clearDelayedExitGrapher(*grapher_process, current_time);
-                }
-
-                if(grapher_process->delayedExitGrapherClients.empty())
-                {
-                    LOG_INFO("[ChronoProcessRegistry] shudown: destroyed old entry for grapher {}", id_string.str());
-                    grapher_process.reset();
-                    recording_group.grapherProcess = nullptr;
-                }
+                auto const& group = item.second;
+                for(auto const& entry: group.keeperProcesses)
+                    if(entry.second.active)
+                        shutdownKeepers.push_back(entry.second.keeperAdminClient);
+                if(group.playerProcess && group.playerProcess->active)
+                    shutdownDependencies.push_back(group.playerProcess->adminClient);
+                if(group.grapherProcess && group.grapherProcess->active)
+                    shutdownDependencies.push_back(group.grapherProcess->adminClient);
             }
-
-            // send out shutdown instructions to all active keeper processes
-            // then start delayedExit procedure for them
-            for(auto process_iter = recording_group.keeperProcesses.begin();
-                process_iter != recording_group.keeperProcesses.end();)
-            {
-                std::stringstream id_string;
-                id_string << (*process_iter).second.idCard;
-
-                if((*process_iter).second.active)
-                {
-                    LOG_INFO("[ChronoProcessRegistry] Sending shutdown to keeper {}", id_string.str());
-                    shutdown((*process_iter).second.keeperAdminClient);
-
-                    LOG_INFO("[ChronoProcessRegistry] shutdown: starting delayedExit for keeper {} delayedExitTime={}",
-                             id_string.str(),
-                             std::ctime(&delayedExitTime));
-                    recording_group.startDelayedKeeperExit((*process_iter).second, delayedExitTime);
-                }
-                else
-                {
-                    LOG_INFO("[ChronoProcessRegistry] shutdown: clear delayedAdminClient for keeper {}",
-                             id_string.str());
-                    recording_group.clearDelayedExitKeeper((*process_iter).second, current_time);
-                }
-
-                if((*process_iter).second.delayedExitClients.empty())
-                {
-                    LOG_INFO("[ChronoProcessRegistry] shutdown : destroys old keeperProcessEntry for {}",
-                             id_string.str());
-                    process_iter = recording_group.keeperProcesses.erase(process_iter);
-                }
-                else
-                {
-                    LOG_INFO("[ChronoProcessRegistry] shutdown: old dataAdminClient for {} can't yet be destroyed",
-                             id_string.str());
-                    ++process_iter;
-                }
-            }
-            if(recording_group.grapherProcess == nullptr && recording_group.keeperProcesses.empty())
-            {
-                LOG_INFO("[ChronoProcessRegistry] shutdown: recordingGroup {} is destroyed", recording_group.groupId);
-                group_iter = recordingGroups.erase(group_iter);
-            }
-            else
-            {
-                LOG_INFO("[ChronoProcessRegistry] shutdown: recordingGroup {} can't yet be destroyed",
-                         recording_group.groupId);
-                ++group_iter;
-            }
+            shutdownPrepared = true;
         }
-
-        if(!recordingGroups.empty())
-        {
-            sleep(1);
-        }
+        keepers = shutdownKeepers;
+        dependencies = shutdownDependencies;
     }
+    int aggregate = CL_SUCCESS;
+    for(auto const& client: keepers)
+        if(deadline.expired() || !client || client->shutdown_collection(registryLease, deadline) != CL_SUCCESS)
+            aggregate = CL_ERR_SHUTDOWN_INCOMPLETE;
+    {
+        auto lock = takeLock();
+        if(!lock.owns_lock() || deadline.expired())
+            return CL_ERR_SHUTDOWN_INCOMPLETE;
+        // A collection ACK says only that its join finished. The Keeper must
+        // retain and archive its data before it sends matching unregister.
+        for(auto const& group: recordingGroups)
+            for(auto const& entry: group.second.keeperProcesses)
+                if(entry.second.active)
+                    aggregate = CL_ERR_SHUTDOWN_INCOMPLETE;
+    }
+    if(aggregate == CL_SUCCESS)
+        for(auto const& client: dependencies)
+            if(deadline.expired() || !client || client->shutdown_collection(registryLease, deadline) != CL_SUCCESS)
+                aggregate = CL_ERR_SHUTDOWN_INCOMPLETE;
+    {
+        auto lock = takeLock();
+        if(!lock.owns_lock() || deadline.expired())
+            return CL_ERR_SHUTDOWN_INCOMPLETE;
+        shutdownStatus = aggregate;
+    }
+    return aggregate; // Collection phase only, never a daemon-exit certificate.
+}
 
-
-    // The existing engine-finalize callback is the provider's deletion owner.
-    // Shared registry/engine leases keep admitted work alive until settlement.
-    shutdownStatus = aggregate;
-    return shutdownStatus;
+bool KeeperRegistry::quiescePublic(rpc::RpcDeadline const& deadline)
+{
+    quiescePublic();
+    std::unique_lock<std::mutex> lock(registryLock, std::defer_lock);
+    while(!deadline.expired() && !lock.try_lock()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if(!lock.owns_lock() || deadline.expired())
+        return false;
+    registryState = SHUTTING_DOWN; // Observe every older registration critical section.
+    return true;
+}
+bool KeeperRegistry::noRecordedDependencies(rpc::RpcDeadline const& deadline)
+{
+    std::unique_lock<std::mutex> lock(registryLock, std::defer_lock);
+    while(!deadline.expired() && !lock.try_lock()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return lock.owns_lock() && !deadline.expired() && recordingGroups.empty();
+}
+bool KeeperRegistry::dependenciesUnregistered(rpc::RpcDeadline const& deadline)
+{
+    std::unique_lock<std::mutex> lock(registryLock, std::defer_lock);
+    while(!deadline.expired() && !lock.try_lock()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if(!lock.owns_lock() || deadline.expired())
+        return false;
+    for(auto const& item: recordingGroups)
+    {
+        auto const& group = item.second;
+        for(auto const& entry: group.keeperProcesses)
+            if(entry.second.active)
+                return false;
+        if((group.grapherProcess && group.grapherProcess->active) ||
+           (group.playerProcess && group.playerProcess->active))
+            return false;
+    }
+    return true;
 }
 
 KeeperRegistry::~KeeperRegistry()
@@ -245,7 +251,7 @@ KeeperRegistry::~KeeperRegistry()
         activeStories.clear();
         recordingGroups.clear();
     }
-    if(registryEngine)
+    if(registryEngine && !nativeOwned)
         registryEngine->finalize();
     keeperRegistryService = nullptr;
 }
@@ -398,17 +404,9 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
 
 int KeeperRegistry::unregisterKeeperProcess(KeeperIdCard const& keeper_id_card)
 {
-    if(is_shutting_down())
-    {
-        return chronolog::CL_ERR_UNKNOWN;
-    }
 
     std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is acquired
-    if(is_shutting_down())
-    {
-        return chronolog::CL_ERR_UNKNOWN;
-    }
 
     auto group_iter = recordingGroups.find(keeper_id_card.getGroupId());
     if(group_iter == recordingGroups.end())
@@ -1046,10 +1044,6 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
 {
     std::lock_guard<std::mutex> lock(registryLock);
     //check again after the lock is acquired
-    if(is_shutting_down())
-    {
-        return chronolog::CL_ERR_UNKNOWN;
-    }
 
     auto group_iter = recordingGroups.find(grapher_id_card.getGroupId());
     if(group_iter == recordingGroups.end())
@@ -1097,7 +1091,7 @@ int KeeperRegistry::unregisterGrapherProcess(GrapherIdCard const& grapher_id_car
              recordingGroups.size());
 
     // update registryState in case this was the last active recordingGroup
-    if(activeGroups.size() == 0)
+    if(!is_shutting_down() && activeGroups.size() == 0)
     {
         registryState = INITIALIZED;
     }
@@ -1265,10 +1259,6 @@ int chl::KeeperRegistry::registerPlayerProcess(chl::PlayerRegistrationMsg const&
 int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_card)
 {
     std::lock_guard<std::mutex> lock(registryLock);
-    if(is_shutting_down())
-    {
-        return chronolog::CL_ERR_UNKNOWN;
-    }
 
     auto group_iter = recordingGroups.find(id_card.getGroupId());
     if(group_iter == recordingGroups.end())
@@ -1307,7 +1297,7 @@ int chl::KeeperRegistry::unregisterPlayerProcess(chl::PlayerIdCard const& id_car
              recordingGroups.size());
 
     // update registryState in case this was the last active recordingGroup
-    if(activeGroups.size() == 0)
+    if(!is_shutting_down() && activeGroups.size() == 0)
     {
         registryState = INITIALIZED;
     }

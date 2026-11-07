@@ -48,6 +48,7 @@ public:
     {
         std::map<StoryId, StoryWatermarkReport> reports;
         std::map<StoryId, Incarnation> snapshots;
+        std::map<StoryId, Incarnation> versions; // Local complete-envelope identity only.
     };
     Incarnation contributorToken(StoryId story)
     {
@@ -81,6 +82,7 @@ public:
                 for(auto const& pending: receipt->second.pending) report.pending_receipts.push_back(pending.first);
             out.reports.emplace(contribution.first, std::move(report));
             out.snapshots.emplace(contribution.first, pub->second.snapshot);
+            out.versions.emplace(contribution.first, pub->second.version);
         }
         return CL_SUCCESS;
     }
@@ -119,6 +121,7 @@ public:
         {
             publication.incarnation->store(false, std::memory_order_release);
             publication.snapshot->store(false, std::memory_order_release);
+            publication.version->store(false, std::memory_order_release);
             publication = PublicationState{};
         }
         auto iter = stories.find(story_id);
@@ -180,6 +183,7 @@ public:
                      start_time,
                      entry.w);
             entry.w = start_time;
+            envelopeChanged(story_id);
             dirty.insert(story_id);
         }
         // else: re-acquired story, W stands
@@ -209,6 +213,7 @@ public:
     void dropStory(StoryId const& story_id)
     {
         std::lock_guard<std::timed_mutex> lock(mtx);
+        envelopeChanged(story_id);
         auto& publication = publicationState(story_id);
         if(!publication.dropped)
         {
@@ -314,6 +319,7 @@ public:
         absorbContiguous(entry);
         if(entry.w != previous_w)
         {
+            envelopeChanged(story_id);
             dirty.insert(story_id);
             LOG_INFO("[StoryWatermarkRegistry] StoryId={} W advanced {} -> {}", story_id, previous_w, entry.w);
         }
@@ -354,6 +360,7 @@ public:
         story.pending.emplace(receipt, ReceiptState{});
         if(publication.dropped)
             publication.dropHighest = receipt;
+        envelopeChanged(story_id);
         return receipt;
     }
 
@@ -475,10 +482,21 @@ private:
     {
         Incarnation incarnation = std::make_shared<std::atomic<bool>>(true);
         Incarnation snapshot = std::make_shared<std::atomic<bool>>(true);
+        Incarnation version = std::make_shared<std::atomic<bool>>(true);
         bool dropped = false;
         uint64_t dropHighest = 0;
     };
     PublicationState& publicationState(StoryId story) { return publications[story]; }
+    void envelopeChanged(StoryId story)
+    {
+        auto& version = publicationState(story).version;
+        // No retained snapshot needs invalidation when this is the only owner.
+        if(version.use_count() != 1)
+        {
+            version->store(false, std::memory_order_release);
+            version = std::make_shared<std::atomic<bool>>(true);
+        }
+    }
     std::map<StoryId, PublicationState> publications;
     struct Entry
     {
@@ -544,6 +562,7 @@ private:
             return;
         }
         receipts[story_id].pending.erase(receipt);
+        envelopeChanged(story_id);
         dirty.insert(story_id);
     }
 
