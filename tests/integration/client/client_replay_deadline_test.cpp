@@ -232,7 +232,9 @@ int main(int argc, char** argv)
     portal.IP = "127.0.0.1";
     portal.PORT = peer.port;
     portal.PROVIDER_ID = 25;
-    portal.RPC_POLICY.replay_ms = (scenario == "admission" || scenario == "duplicate-owner") ? 500 : 90;
+    portal.RPC_POLICY.replay_ms = scenario == "shipped-default"                                ? 180000
+                                  : (scenario == "admission" || scenario == "duplicate-owner") ? 500
+                                                                                               : 90;
     portal.RPC_POLICY.attempt_ms = scenario == "unknown-capacity" ? 35 : 5000;
     chl::ClientQueryServiceConf query{protocol, "127.0.0.1", 23087, 75};
     auto facade = chl::ChronologClientImpl::GetClientImplInstance(portal, chl::READER_MODE, query);
@@ -248,7 +250,18 @@ int main(int argc, char** argv)
     int status = 123;
     auto started = Clock::now();
     std::vector<chl::Event> output{{9, 9, 9, "sentinel"}};
-    if(scenario == "submission" || scenario == "original" || scenario == "drop-late" || scenario == "drop-output-late")
+    if(scenario == "shipped-default")
+    {
+        peer.shared->holdAck = true;
+        started = Clock::now();
+        status = client->ReplayStory("chron", "story", 100, 200, output);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count();
+        pass = status == chl::CL_ERR_QUERY_TIMED_OUT && elapsed >= 175000 && elapsed <= 185000 &&
+               peer.shared->submissions == 1 && peer.shared->acks == 0 && peer.shared->deliveries == 0 &&
+               output.size() == 1 && output.front().log_record() == "sentinel";
+    }
+    else if(scenario == "submission" || scenario == "original" || scenario == "drop-late" ||
+            scenario == "drop-output-late")
     {
         peer.shared->ackFirst = false;
         peer.shared->ackDelayMs = scenario == "original" ? 65 : 210;

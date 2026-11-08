@@ -36,6 +36,8 @@
 #   -k N         keepers  (default 2, as in CI)
 #   -g N         graphers (default 2, as in CI)
 #   -p N         players  (default 2, as in CI)
+#   --rpc-protocol P      daemon/client RPC transport: ofi+sockets or ofi+tcp
+#   --rpc-tcp-iface IFACE reachable container interface for ofi+tcp (default eth0)
 #   --skip-build reuse whatever is already installed in the shared volume
 #   --keep       leave containers running after the run (for debugging)
 #   -h           this help
@@ -79,6 +81,8 @@ NFS_PASSES=()
 NFS_DESTROY_PROFILE=default
 NFS_EXPORT=/srv/chronolog-nfs-localci
 NFS_CACHE_SECS=60
+RPC_PROTOCOL=ofi+sockets
+RPC_TCP_IFACE=eth0
 NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
 NFS_OVERRIDE_NEW=""
 NFS_SERVER_UP=0
@@ -97,6 +101,8 @@ while [ $# -gt 0 ]; do
         -k) NUM_KEEPERS="$2"; shift 2 ;;
         -g) NUM_GRAPHERS="$2"; shift 2 ;;
         -p) NUM_PLAYERS="$2"; shift 2 ;;
+        --rpc-protocol) RPC_PROTOCOL="$2"; shift 2 ;;
+        --rpc-tcp-iface) RPC_TCP_IFACE="$2"; shift 2 ;;
         --skip-build) SKIP_BUILD=1; shift ;;
         --keep) KEEP=1; shift ;;
         --nfs) NFS=1; shift ;;
@@ -110,6 +116,16 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1"; usage 1 ;;
     esac
 done
+
+case "${RPC_PROTOCOL}" in
+    ofi+sockets) ;;
+    ofi+tcp)
+        [[ "${RPC_TCP_IFACE}" =~ ^[a-zA-Z0-9_.:-]+$ ]] || { echo "invalid --rpc-tcp-iface: ${RPC_TCP_IFACE}" >&2; exit 2; }
+        case "${RPC_TCP_IFACE}" in lo|lo[0-9]*) echo "loopback is not allowed for distributed TCP: ${RPC_TCP_IFACE}" >&2; exit 2 ;; esac
+        ;;
+    *) echo "unsupported --rpc-protocol: ${RPC_PROTOCOL}" >&2; exit 2 ;;
+esac
+
 
 NUM_CONTAINERS=$(( NUM_KEEPERS + NUM_GRAPHERS + NUM_PLAYERS + 1 ))
 if [ "${NFS}" = 1 ]; then
@@ -167,6 +183,16 @@ summary() {
 
 cleanup() {
     local rc=$?
+    if [ "${rc}" -ne 0 ] && [ "${CONTAINERS_CREATED}" = 1 ] && [ "${KEEP}" != 1 ]; then
+        local failure_dir
+        failure_dir=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-distributed-failure.XXXXXX")
+        docker cp "chronolog-c1:${WORK_DIR}/monitor" "${failure_dir}/monitor" >/dev/null 2>&1 || true
+        docker cp "chronolog-c1:${WORK_DIR}/conf" "${failure_dir}/conf" >/dev/null 2>&1 || true
+        for artifact in telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log; do
+            docker cp "chronolog-c1:/tmp/${artifact}" "${failure_dir}/${artifact}" >/dev/null 2>&1 || true
+        done
+        echo "failure logs and configs saved: ${failure_dir}"
+    fi
     if [ "${KEEP}" = "1" ]; then
         if [ "${CONTAINERS_CREATED}" = 1 ]; then
             echo ""
@@ -204,7 +230,9 @@ dex_root() { local c="$1"; shift; docker exec --user root "chronolog-${c}" "$@";
 # down too. Containers are torn down only once this run has created them: a
 # compose file left by an earlier --keep run may describe containers still in
 # use.
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # ------------------------------------------------------------------ preflight --
 stage "Preflight"
@@ -280,6 +308,8 @@ EOF
     <<: *x-common
     hostname: c${i}
     container_name: chronolog-c${i}
+    environment:
+      - FI_TCP_IFACE=${RPC_TCP_IFACE}
     volumes:
       - shared_home_localci:/home/grc-iit
       - ${REPO_ROOT}:/workspace:ro
@@ -319,7 +349,7 @@ stage_ok
 stage "2. Create grc-iit user, SSH and hosts files"
 for i in $(seq 1 "${NUM_CONTAINERS}"); do
     dex_root "c${i}" bash -c "
-        apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath >/dev/null 2>&1 || true
+        apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server sudo pssh dnsutils jq chrpath iproute2 >/dev/null 2>&1 || true
         if ! id -u grc-iit >/dev/null 2>&1; then
             useradd -m -s /bin/bash grc-iit
             echo 'grc-iit ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
@@ -328,6 +358,20 @@ for i in $(seq 1 "${NUM_CONTAINERS}"); do
         service ssh start >/dev/null 2>&1 || /etc/init.d/ssh start >/dev/null 2>&1 || true
     " || stage_fail "user/ssh setup failed on c${i}"
 done
+
+if [ "${RPC_PROTOCOL}" = "ofi+tcp" ]; then
+    for i in $(seq 1 "${NUM_CONTAINERS}"); do
+        dex "c${i}" bash -c "ip -o link show dev '${RPC_TCP_IFACE}' | grep -qv 'LOOPBACK'" \
+            || stage_fail "TCP interface ${RPC_TCP_IFACE} is missing, loopback, or iproute2 is unavailable in c${i}"
+    done
+    for i in $(seq 1 "${NUM_CONTAINERS}"); do
+        peer=$(( i % NUM_CONTAINERS + 1 ))
+        peer_ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" "chronolog-c${peer}")
+        dex "c${i}" bash -c "ip route get '${peer_ip}' | grep -q 'dev ${RPC_TCP_IFACE}'" \
+            || stage_fail "TCP interface ${RPC_TCP_IFACE} does not route from c${i} to c${peer}"
+    done
+    echo "TCP interface verified: ${RPC_TCP_IFACE} routes between the actual containers"
+fi
 
 dex c1 bash -c "mkdir -p /home/grc-iit/.ssh && ssh-keygen -t rsa -b 4096 -f /home/grc-iit/.ssh/id_rsa -N '' >/dev/null 2>&1 || true"
 dex c1 bash -c "cat /home/grc-iit/.ssh/id_rsa.pub > /home/grc-iit/.ssh/authorized_keys"
@@ -385,6 +429,31 @@ else
         ./tools/deploy/local_single_user_deploy.sh -i -I ${INSTALL_DIR}
     " || stage_fail "build/install failed"
 fi
+stage_ok
+
+# Set protocol fields in the installed runtime configuration, never in the
+# tracked source template. The same value reaches every daemon endpoint,
+# Keeper/Grapher extraction engine, and public client endpoint.
+stage "3b. Set and audit the selected RPC transport"
+dex c1 bash -c "
+    set -e
+    CONF=${WORK_DIR}/conf/default-chrono-conf.json
+    CLIENT=${WORK_DIR}/conf/default-chrono-client-conf.json
+    jq --arg protocol '${RPC_PROTOCOL}' \
+      '(.. | objects | select(has(\"protocol_conf\"))) |= (.protocol_conf = \$protocol) |
+       (.. | objects | select(has(\"extraction_protocol\"))) |= (.extraction_protocol = \$protocol)' \
+      \$CONF > \$CONF.tmp && mv \$CONF.tmp \$CONF
+    jq --arg protocol '${RPC_PROTOCOL}' \
+      '(.. | objects | select(has(\"protocol_conf\"))) |= (.protocol_conf = \$protocol)' \
+      \$CLIENT > \$CLIENT.tmp && mv \$CLIENT.tmp \$CLIENT
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 10 and (\$v|all(. == \$p)))' \$CONF >/dev/null
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] as \$v | (\$v|length) == 2 and (\$v|all(. == \$p)))' \$CONF >/dev/null
+    jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 1 and (\$v|all(. == \$p)))' \$CLIENT >/dev/null
+    echo 'RPC service protocols:'
+    jq '[.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] | unique' \$CONF
+    echo 'Keeper/Grapher extraction protocols:'
+    jq '[.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] | unique' \$CONF
+" || stage_fail "could not configure and audit all RPC/extraction endpoints"
 stage_ok
 
 # --------------------------------------------------- 4. verify install --------
@@ -455,6 +524,26 @@ if [ "${DEPLOY_BAD}" != "0" ]; then
     echo "--- processes seen ---"; printf '%s\n' "${PROCLIST}"
     stage_fail "deployment verification failed"
 fi
+dex c1 bash -c "
+    set -e
+    shopt -s nullglob
+    configs=(\"${WORK_DIR}/conf/default-chrono-conf.json.*\")
+    [ \${#configs[@]} -gt 0 ] || { echo 'no generated component configs found'; exit 1; }
+    for config in \"\${configs[@]}\"; do
+        [[ -f \"\$config\" && \"\$config\" != *.lifecycle.json && \"\$config\" != *.public-quiesced.json ]] || continue
+        jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 1 and (\$v|all(. == \$p)))' \"\$config\" >/dev/null
+        case \"\$(basename \"\$config\")\" in
+            *.keeper.*|*.grapher.*)
+                jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] as \$v | (\$v|length) == 1 and (\$v|all(. == \$p)))' \"\$config\" >/dev/null
+                ;;
+            *)
+                jq -e '[.. | objects | select(has(\"extraction_protocol\"))] | length == 0' \"\$config\" >/dev/null
+                ;;
+        esac
+        printf 'audited: %s\\n' \"\$(basename \"\$config\")\"
+    done
+" || stage_fail "generated daemon configs do not use the selected RPC/extraction protocol"
+echo "  ✅ Generated group and component configs use ${RPC_PROTOCOL}; keeper/grapher extraction fields match"
 stage_ok
 
 # Stages 7-11 are skipped under --nfs-only; the fi is before stage 11b.
@@ -463,7 +552,7 @@ if [ "${NFS_ONLY}" = 0 ]; then
 # --------------------------------------------------- 7. perf test -------------
 stage "7. Client performance test (write path)"
 dex c1 bash -c "
-    set -e
+    set -euo pipefail
     cd ${REPO_DIR}
     source /home/grc-iit/spack/share/spack/setup-env.sh
     spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
