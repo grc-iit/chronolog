@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PIPELINE="${REPO_ROOT}/docker/local_distributed_ci.sh"
 
-IMAGE="chronolog-base:spack122-local"
+IMAGE=""
 IFACE="eth0"
 SELF_CHECK=0
 while [[ $# -gt 0 ]]; do
@@ -17,8 +17,8 @@ while [[ $# -gt 0 ]]; do
             cat <<'HELP'
 Run the distributed ChronoLog pipeline and NFS pass on ofi+sockets and ofi+tcp.
 Runs are serial. Each is built from this worktree; --skip-build is not used.
-The default image is chronolog-base:spack122-local and the TCP iface is eth0.
-  tests/distributed/rpc_deadline_test.sh [-i IMAGE] [--rpc-tcp-iface IFACE]
+Pass the immutable CI image matching this checkout with -i; TCP iface is eth0.
+  tests/distributed/rpc_deadline_test.sh -i IMAGE [--rpc-tcp-iface IFACE]
   tests/distributed/rpc_deadline_test.sh --self-check
 Logs are saved in B13_LOG_DIR or a new directory under /tmp.
 HELP
@@ -80,6 +80,11 @@ DOCKER
     fi
     echo "PASS: invalid transports and loopback are rejected; SIGINT exits 130"
     exit 0
+fi
+
+if [[ -z "${IMAGE}" ]]; then
+    echo "-i IMAGE is required; use the immutable CI image matching this checkout" >&2
+    exit 2
 fi
 
 RUNS_DIR="${B13_LOG_DIR:-$(mktemp -d -t chronolog-b13.XXXXXX)}"

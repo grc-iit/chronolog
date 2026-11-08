@@ -866,7 +866,13 @@ int main(int argc, char** argv)
 
     std::string username = getpwuid(getuid())->pw_name;
     ret_i = connectTimer.timeBlock(&chronolog::Client::Connect, client);
-    assert(ret_i == chronolog::CL_SUCCESS);
+    if(ret_i != chronolog::CL_SUCCESS)
+    {
+        std::cerr << "Rank " << rank << " failed to connect to " << server_address
+                  << ", ret: " << chronolog::to_string_client(ret_i) << " (" << ret_i << ")" << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        return EXIT_FAILURE;
+    }
 
     if(rank == 0)
     {

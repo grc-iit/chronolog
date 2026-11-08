@@ -188,7 +188,7 @@ cleanup() {
         failure_dir=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-distributed-failure.XXXXXX")
         docker cp "chronolog-c1:${WORK_DIR}/monitor" "${failure_dir}/monitor" >/dev/null 2>&1 || true
         docker cp "chronolog-c1:${WORK_DIR}/conf" "${failure_dir}/conf" >/dev/null 2>&1 || true
-        for artifact in telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log; do
+        for artifact in chrono_bench_write.log telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log; do
             docker cp "chronolog-c1:/tmp/${artifact}" "${failure_dir}/${artifact}" >/dev/null 2>&1 || true
         done
         echo "failure logs and configs saved: ${failure_dir}"
@@ -563,7 +563,7 @@ dex c1 bash -c "
     cd ${WORK_DIR}
     timeout 300 \$MPIEXEC -l -n ${CLIENT_HOSTS} -f conf/hosts_client \
       tools/benchmark/chrono-bench --config conf/default-chrono-client-conf.json \
-      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tail -20
+      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/chrono_bench_write.log | tail -20
 " || stage_fail "performance test failed"
 stage_ok
 
