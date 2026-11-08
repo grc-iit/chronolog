@@ -11,6 +11,7 @@ namespace chronolog::rpc
 // runtime; each admitted call retains both, its callable, and copied arguments.
 class RegistrySession: public std::enable_shared_from_this<RegistrySession>
 {
+    friend struct RegistrySessionTestAccess; // Private test observation, no runtime hook or state.
 public:
     enum Action
     {

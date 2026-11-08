@@ -253,7 +253,7 @@ int main(int argc, char** argv)
         // response still needs them. Native unknown stays in its original C6.
         if(!data->unregistered && !playback->quiesceQueries(stopDeadline))
             return false;
-        if(!data->unregistered && std::getenv("CHRONOLOG_DEPLOYMENT_ID"))
+        if(!data->unregistered)
         {
             if(data->ingestionPermit && data->ingestionPermit->done.load(std::memory_order_acquire) &&
                !data->ingestionPermit->unsafe && data->ingestionPermit->status != chl::CL_SUCCESS)

@@ -75,3 +75,13 @@ set_target_properties(rpc_lifecycle_archive_probe PROPERTIES
 add_library(rpc_player_init_hold SHARED rpc_player_init_hold.cpp)
 target_include_directories(rpc_player_init_hold PRIVATE $<TARGET_PROPERTY:thallium,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries(rpc_player_init_hold PRIVATE ${CMAKE_DL_LIBS})
+
+# Default-budget lifecycle evidence against an actual separately launched Visor.
+add_executable(rpc_registry_budget_probe rpc_registry_budget_probe.cpp)
+target_include_directories(rpc_registry_budget_probe PRIVATE ${CMAKE_SOURCE_DIR}/src/chrono-keeper/include)
+target_link_libraries(rpc_registry_budget_probe PRIVATE chrono_common chrono_rpc chronolog_client thallium)
+set_target_properties(rpc_registry_budget_probe PROPERTIES OUTPUT_NAME chronolog-test-rpc-registry-budget-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+add_library(rpc_lifecycle_native_spy SHARED rpc_lifecycle_native_spy.cpp)
+target_include_directories(rpc_lifecycle_native_spy PRIVATE $<TARGET_PROPERTY:thallium,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(rpc_lifecycle_native_spy PRIVATE ${CMAKE_DL_LIBS})
