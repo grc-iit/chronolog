@@ -188,7 +188,7 @@ cleanup() {
         failure_dir=$(mktemp -d "${TMPDIR:-/tmp}/chronolog-distributed-failure.XXXXXX")
         docker cp "chronolog-c1:${WORK_DIR}/monitor" "${failure_dir}/monitor" >/dev/null 2>&1 || true
         docker cp "chronolog-c1:${WORK_DIR}/conf" "${failure_dir}/conf" >/dev/null 2>&1 || true
-        for artifact in chrono_bench_write.log telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log; do
+        for artifact in chrono_bench_write.log telemetry_writer.log tail_read_output.log reader_to_csv.log py_tail_writer.log shutdown_writer.log shutdown_stop.log shutdown_events.log shutdown_events.ids shutdown_data_check.json; do
             docker cp "chronolog-c1:/tmp/${artifact}" "${failure_dir}/${artifact}" >/dev/null 2>&1 || true
         done
         echo "failure logs and configs saved: ${failure_dir}"
@@ -524,25 +524,9 @@ if [ "${DEPLOY_BAD}" != "0" ]; then
     echo "--- processes seen ---"; printf '%s\n' "${PROCLIST}"
     stage_fail "deployment verification failed"
 fi
-dex c1 bash -c "
-    set -e
-    shopt -s nullglob
-    configs=(\"${WORK_DIR}/conf/default-chrono-conf.json.*\")
-    [ \${#configs[@]} -gt 0 ] || { echo 'no generated component configs found'; exit 1; }
-    for config in \"\${configs[@]}\"; do
-        [[ -f \"\$config\" && \"\$config\" != *.lifecycle.json && \"\$config\" != *.public-quiesced.json ]] || continue
-        jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"protocol_conf\")) | .protocol_conf] as \$v | (\$v|length) >= 1 and (\$v|all(. == \$p)))' \"\$config\" >/dev/null
-        case \"\$(basename \"\$config\")\" in
-            *.keeper.*|*.grapher.*)
-                jq -e --arg p '${RPC_PROTOCOL}' '([.. | objects | select(has(\"extraction_protocol\")) | .extraction_protocol] as \$v | (\$v|length) == 1 and (\$v|all(. == \$p)))' \"\$config\" >/dev/null
-                ;;
-            *)
-                jq -e '[.. | objects | select(has(\"extraction_protocol\"))] | length == 0' \"\$config\" >/dev/null
-                ;;
-        esac
-        printf 'audited: %s\\n' \"\$(basename \"\$config\")\"
-    done
-" || stage_fail "generated daemon configs do not use the selected RPC/extraction protocol"
+dex c1 python3 "${REPO_DIR}/tests/distributed/rpc_config_audit.py" "${WORK_DIR}" \
+    "${RPC_PROTOCOL}" "${NUM_KEEPERS}" "${NUM_GRAPHERS}" "${NUM_PLAYERS}" \
+    || stage_fail "actual launched daemon configs or native identities do not match the selected RPC/extraction protocol"
 echo "  ✅ Generated group and component configs use ${RPC_PROTOCOL}; keeper/grapher extraction fields match"
 stage_ok
 
@@ -699,75 +683,13 @@ stage_ok
 
 # --------------------------------------------------- 11. keeper shutdown ------
 stage "11. Keeper shutdown delivers its retained chunks"
-dex c1 bash -c "
-    set -e
-    cd ${REPO_DIR}
-    source /home/grc-iit/spack/share/spack/setup-env.sh
-    spack env activate -d . 2>/dev/null || spack env activate -p . 2>/dev/null || true
-    MPIEXEC=${REPO_DIR}/.spack-env/view/bin/mpiexec
-    [ -x \"\$MPIEXEC\" ] || MPIEXEC=\$(command -v mpiexec)
-    export LD_LIBRARY_PATH=${WORK_DIR}/lib:\$LD_LIBRARY_PATH
-    cd ${WORK_DIR}
-
-    # Write a burst and SIGTERM the keepers as soon as the writer returns: its
-    # stories are still open on the keepers (their pipelines wait out the
-    # acceptance window), so their last chunks seal during shutdown and must be
-    # delivered on the way out. Waiting for them to seal first would leave the
-    # shutdown nothing to deliver and let this stage pass without testing it.
-    echo \"  writing a burst, then stopping the keepers while its last chunks are still open ...\"
-    RC=0
-    timeout 120 \$MPIEXEC -n 2 -f conf/hosts_client \
-      examples/chrono-client-example-distributed-telemetry-writer \
-      --config conf/default-chrono-client-conf.json -d 15 -i 3 > /tmp/shutdown_writer.log 2>&1 || RC=\$?
-    if [ \$RC -ne 0 ]; then
-        echo \"  telemetry writer failed (exit \$RC)\"
-        tail -8 /tmp/shutdown_writer.log | sed 's/^/    /' || true
-        exit 1
-    fi
-
-    # SIGTERM only the keepers: the graphers must stay up to receive what the
-    # keepers send on the way out and to confirm it written. SIGKILL would
-    # bypass shutdown entirely. A keeper waits up to shutdown_confirm_timeout_secs
-    # (150) for that confirmation, so allow 240s.
-    parallel-ssh -h conf/hosts_keeper -t 30 'pkill -TERM -f chrono-keeper' >/dev/null 2>&1 || true
-    for i in \$(seq 1 80); do
-        REMAIN=\$(parallel-ssh -h conf/hosts_keeper -i -t 10 'pgrep -c -x chrono-keeper || true' 2>/dev/null | grep -cE '^[1-9]' || true)
-        [ \"\$REMAIN\" = 0 ] && break
-        sleep 3
-    done
-    sleep 10
-
-    # Every chunk the retention store still holds when it is destroyed is logged
-    # as 'shutdown with unconfirmed'. shipped=0 never reached a grapher; shipped=1
-    # reached it but was not confirmed written. Both count, as in CI. A transfer
-    # logged after 'Initiating shutdown procedures' is a chunk delivered on the
-    # way out; at least one keeper must have one, or the shutdown path was not
-    # exercised. A log rotated past 1 MB continues in <name>.<n>.log, oldest
-    # highest, so each keeper's files are read oldest first.
-    EXPECTED=\$(wc -l < conf/hosts_keeper)
-    LOGS=\$(ls monitor/chrono-keeper*.log 2>/dev/null | grep -v -E '\\.launch\\.log\$|\\.[0-9]+\\.log\$' || true)
-    DONE=0
-    LOST_TOTAL=0
-    SHUT_SENT_TOTAL=0
-    for f in \$LOGS; do
-        FILES=\"\$(ls -r \${f%.log}.[0-9]*.log 2>/dev/null || true) \$f\"
-        SENT=\$(cat \$FILES | grep -c 'ChunkExtractorRDMA\\] Transfered StoryChunk' || true)
-        SHUT_SENT=\$(cat \$FILES | awk '/ChronoKeeperInstance\\] Initiating shutdown procedures/ { s = 1 } s && /ChunkExtractorRDMA\\] Transfered StoryChunk/ { n++ } END { print n + 0 }')
-        LOST=\$(cat \$FILES | grep -c 'shutdown with unconfirmed' || true)
-        if cat \$FILES | grep -q 'ChronoKeeperInstance\\] Shutdown completed'; then
-            DONE=\$(( DONE + 1 ))
-            echo \"  \$(basename \$f): shut down; \$SENT chunk(s) delivered, \$SHUT_SENT of them after SIGTERM, \$LOST unconfirmed at exit\"
-        else
-            echo \"  ❌ \$(basename \$f): no 'Shutdown completed'; \$SENT chunk(s) delivered, \$SHUT_SENT after SIGTERM, \$LOST unconfirmed\"
-        fi
-        cat \$FILES | grep -h 'Flushed .* unshipped chunk' | sed 's/^/    /' || true
-        cat \$FILES | grep -h 'shutdown with unconfirmed' | head -5 | sed 's/^/    /' || true
-        LOST_TOTAL=\$(( LOST_TOTAL + LOST ))
-        SHUT_SENT_TOTAL=\$(( SHUT_SENT_TOTAL + SHUT_SENT ))
-    done
-    echo \"  keepers that completed shutdown: \$DONE / \$EXPECTED; chunks delivered after SIGTERM: \$SHUT_SENT_TOTAL; unconfirmed at exit: \$LOST_TOTAL\"
-    [ \$DONE -ge \$EXPECTED ] && [ \$LOST_TOTAL -eq 0 ] && [ \$SHUT_SENT_TOTAL -gt 0 ]
-" || stage_fail "the writer failed, a keeper delivered nothing on shutdown, or a chunk was never confirmed written"
+# A fresh named story supplies acknowledged identities. The verifier checks an
+# empty archive before stop, an unsealed Keeper window at actual shutdown, all
+# original native owners retired, and the exact archive identities afterward.
+dex c1 env LD_LIBRARY_PATH="${WORK_DIR}/lib" python3 \
+    "${REPO_DIR}/tests/distributed/rpc_shutdown_data_check.py" "${WORK_DIR}" "${REPO_DIR}" \
+    /home/grc-iit/chronolog-build/Release \
+    || stage_fail "retained shutdown events, original native retirement, or archive identity verification failed"
 stage_ok
 
 fi # stages 7-11

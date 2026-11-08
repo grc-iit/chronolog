@@ -207,8 +207,11 @@ class ChronologClientImpl;
 // The client library must remain loaded until process exit because its fixed
 // lifecycle infrastructure thread has process lifetime.
 // The old MultiArgobots/HybridArgobots test pattern (Connect, then main calls
-// ABT_init/ABT_xstream_self) is unsupported. Ordinary C++ and MPI callers remain
-// supported. Rebuild applications after this private ownership-layout change.
+// ABT_init/ABT_xstream_self) is unsupported. Ordinary C++ and MPI callers are
+// supported when MPI does not own Argobots (the shipped MPICH uses POSIX threads).
+// MPICH +argobots is unsupported in either startup order. Rebuild dependencies
+// and MPI applications when changing that backend; no MPI binary ABI is promised.
+// Rebuild applications after this private ownership-layout change.
 // Startup, native lookup and metadata RPCs consume the original entry budget.
 // Expiry before dispatch returns CL_ERR_DEADLINE_EXCEEDED; a dispatched mutation
 // without a confirmed result returns CL_ERR_OUTCOME_UNCONFIRMED. Do not retry

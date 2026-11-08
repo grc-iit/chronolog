@@ -85,3 +85,24 @@ set_target_properties(rpc_registry_budget_probe PROPERTIES OUTPUT_NAME chronolog
 add_library(rpc_lifecycle_native_spy SHARED rpc_lifecycle_native_spy.cpp)
 target_include_directories(rpc_lifecycle_native_spy PRIVATE $<TARGET_PROPERTY:thallium,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries(rpc_lifecycle_native_spy PRIVATE ${CMAKE_DL_LIBS})
+
+# MPI must leave Argobots cold for the ChronoLog-owned runtime. Run against a
+# real deployment; every rank writes and observes physical retirement.
+find_package(MPI REQUIRED)
+add_executable(rpc_mpi_lifecycle_probe rpc_mpi_lifecycle_probe.cpp)
+target_link_libraries(rpc_mpi_lifecycle_probe PRIVATE chronolog_client thallium MPI::MPI_CXX)
+set_target_properties(rpc_mpi_lifecycle_probe PROPERTIES
+    OUTPUT_NAME chronolog-test-mpi-lifecycle-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rpc_mpi_lifecycle_probe DESTINATION tests)
+endif()
+
+# Named, retained identities for the distributed managed-shutdown data check.
+add_executable(rpc_shutdown_writer_probe rpc_shutdown_writer_probe.cpp)
+target_link_libraries(rpc_shutdown_writer_probe PRIVATE chronolog_client thallium)
+set_target_properties(rpc_shutdown_writer_probe PROPERTIES OUTPUT_NAME chronolog-test-shutdown-writer-probe
+    BUILD_WITH_INSTALL_RPATH TRUE SKIP_BUILD_RPATH TRUE)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(rpc_shutdown_writer_probe DESTINATION tests)
+endif()
