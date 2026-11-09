@@ -56,6 +56,8 @@ public:
                                  owner->engine.reset();
                                  owner->dependencies.reset();
                                  owner->cleanupComplete.store(true, std::memory_order_release);
+                                 if(owner->afterCleanup)
+                                     owner->afterCleanup();
                              });
         return owner;
     }
@@ -223,6 +225,10 @@ public:
     std::shared_ptr<void> provider;
     std::weak_ptr<rpc::RpcRuntime> runtime;
     RpcTimeoutPolicy const policy;
+    // Set before this owner's runtime is closed. Runs std-only on the cleanup
+    // worker after the physical native cleanup; the Player writes its Stopped
+    // record here. The runtime's drain stays incomplete until it returns.
+    std::function<void()> afterCleanup;
 
 private:
     explicit PlaybackRpcOwner(RpcTimeoutPolicy policy)

@@ -238,6 +238,13 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(managed_stop_barrier_test DESTINATION tests)
 endif()
 
+# Daemon status publication on owned runtime work; std-only, no native runtime.
+add_executable(lifecycle_publisher_test lifecycle_publisher_test.cpp)
+target_include_directories(lifecycle_publisher_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(lifecycle_publisher_test PRIVATE GTest::gtest_main chrono_common chronolog_client)
+gtest_discover_tests(lifecycle_publisher_test TEST_PREFIX "Unit_ChronoCommon_" PROPERTIES TIMEOUT 30)
+
 add_executable(extraction_configuration_ownership_test extraction_configuration_ownership_test.cpp)
 target_include_directories(extraction_configuration_ownership_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include ${CMAKE_SOURCE_DIR}/client/cpp/include)

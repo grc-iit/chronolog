@@ -84,6 +84,8 @@ std::shared_ptr<RpcBulkOwner> RpcBulkOwner::Prepare(std::shared_ptr<RpcRuntime> 
                 owner->engine.reset();
                 owner->dependencies.reset();
                 owner->cleanupComplete.store(true, std::memory_order_release);
+                if(owner->afterCleanup)
+                    owner->afterCleanup();
             });
     return owner;
 }

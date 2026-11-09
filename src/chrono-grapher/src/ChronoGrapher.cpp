@@ -11,7 +11,7 @@
 #include <ChronoGrapherConfiguration.h>
 #include <GrapherExtractionChain.h>
 #include <private/ServiceLifecycle.h>
-#include <private/LifecycleStatus.h>
+#include <private/LifecyclePublisher.h>
 #include <private/ManagedStopBarrier.h>
 namespace chl = chronolog;
 namespace rpc = chronolog::rpc;
@@ -85,7 +85,7 @@ int main(int argc, char** argv)
                                        conf.LOG_CONF.LOGFILENUM,
                                        conf.LOG_CONF.FLUSHLEVEL) != 0)
         return 1;
-    rpc::LifecycleStatus statusFile(config);
+    auto publisher = rpc::LifecyclePublisher::Create(config);
     rpc::LifecycleRecord lifecycle;
     auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
     auto data = std::make_shared<GrapherData>(conf);
@@ -102,6 +102,24 @@ int main(int argc, char** argv)
         owner->dependencies = data;
         runtimes.push_back(std::move(runtime));
         owners.push_back(std::move(owner));
+    }
+    {
+        // retireServices drains the recording runtime last, so this callback
+        // runs after both MIDs are finalized and every status step on the
+        // admin runtime has settled.
+        std::weak_ptr<GrapherData> weak = data;
+        owners[1]->afterCleanup = [publisher, generation, weak]
+        {
+            std::size_t handles = 0;
+            if(auto alive = weak.lock())
+                handles = alive->store.nativeHandleCount() + alive->extraction.nativeHandleCount();
+            publisher->publishTerminal(rpc::LifecyclePublisher::record(rpc::ShutdownState::Stopped,
+                                                                       chl::CL_SUCCESS,
+                                                                       0,
+                                                                       {},
+                                                                       generation->snapshot(),
+                                                                       handles));
+        };
     }
     int startupStatus = rpc::initializeService(
             owners[0],
@@ -226,16 +244,17 @@ int main(int argc, char** argv)
     int exitCode = startupStatus == chl::CL_SUCCESS ? 0 : 1;
     if(startupStatus == chl::CL_SUCCESS && !stop_requests)
     {
-        auto native = generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Running,
-                           chl::CL_SUCCESS,
-                           0,
-                           startupEntered,
-                           &native,
-                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
+        publisher->request(rpc::LifecyclePublisher::record(rpc::ShutdownState::Running,
+                                                           chl::CL_SUCCESS,
+                                                           0,
+                                                           startupEntered,
+                                                           generation->snapshot(),
+                                                           data->store.nativeHandleCount() +
+                                                                   data->extraction.nativeHandleCount()));
         auto nextStats = rpc::RpcDeadline::Clock::now();
         while(!stop_requests)
         {
+            publisher->pump(*runtimes[0], startup, data);
             pollPark();
             if(rpc::RpcDeadline::Clock::now() >= nextStats)
             {
@@ -245,7 +264,7 @@ int main(int argc, char** argv)
             std::this_thread::sleep_for(100ms);
         }
     }
-    auto stop = [&](rpc::RpcDeadline const& deadline, uint64_t attempt)
+    auto stop = [&](rpc::RpcDeadline const& deadline, uint64_t attempt, uint64_t quiescing)
     {
         owners[0]->quiescePublic(); // Needed receipt/report paths remain open.
         for(auto const& initialized: data->initialized)
@@ -261,6 +280,10 @@ int main(int argc, char** argv)
             if(!data->start->done.load(std::memory_order_acquire) || data->start->unsafe)
                 return false;
         }
+        // StopDependencyEvidence requires this attempt's own Quiescing record.
+        // Wait for that write without doing it here; a held write expires.
+        if(!publisher->waitPublished(quiescing, *runtimes[0], deadline, data))
+            return false;
         if(data->terminalRead && data->terminalRead->done.load(std::memory_order_acquire) &&
            !data->terminalRead->unsafe)
             data->terminalRead.reset();
@@ -348,10 +371,13 @@ int main(int argc, char** argv)
     };
     bool first = true;
     sig_atomic_t observed = 0;
+    std::optional<rpc::RpcDeadline> previous;
     for(;;)
     {
         if(!first && observed == stop_requests)
         {
+            // Admission of a refused status write ends with its attempt.
+            publisher->pump(*runtimes[0], *previous, data);
             pollPark();
             std::this_thread::sleep_for(100ms);
             continue;
@@ -360,35 +386,43 @@ int main(int argc, char** argv)
         observed = stop_requests;
         auto entered = rpc::RpcDeadline::Clock::now();
         auto deadline = rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(conf.RPC_POLICY.shutdown_ms));
+        previous = deadline;
         auto attempt = ++lifecycle.attempts;
+        publisher->beginAttempt(attempt, entered);
         lifecycle.quiesce();
-        auto native = generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Quiescing,
-                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
-                           attempt,
-                           entered,
-                           &native,
-                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
-        if(stop(deadline, attempt))
+        // Close public admission before any status write is requested.
+        owners[0]->quiescePublic();
+        auto quiescing = publisher->request(rpc::LifecyclePublisher::record(
+                rpc::ShutdownState::Quiescing,
+                chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                attempt,
+                entered,
+                generation->snapshot(),
+                data->store.nativeHandleCount() + data->extraction.nativeHandleCount()));
+        publisher->pump(*runtimes[0], deadline, data);
+        // The Stopped record is written by the recording owner's cleanup callback.
+        if(stop(deadline, attempt, quiescing) && publisher->terminalPublished())
         {
-            native = generation->snapshot();
             lifecycle.stopped();
-            if(statusFile.publish(rpc::ShutdownState::Stopped,
-                                  chl::CL_SUCCESS,
-                                  attempt,
-                                  entered,
-                                  &native,
-                                  data->store.nativeHandleCount() + data->extraction.nativeHandleCount()))
-                return exitCode;
+            return exitCode;
         }
         lifecycle.draining();
-        native = generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Draining,
-                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
-                           attempt,
-                           entered,
-                           &native,
-                           data->store.nativeHandleCount() + data->extraction.nativeHandleCount());
-        LOG_WARNING("[ChronoGrapher] stop attempt {} incomplete; retaining data and native owners", attempt);
+        // An expired attempt admits no more work; it stays Draining in memory.
+        if(!deadline.expired())
+        {
+            publisher->request(rpc::LifecyclePublisher::record(
+                    rpc::ShutdownState::Draining,
+                    chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                    attempt,
+                    entered,
+                    generation->snapshot(),
+                    data->store.nativeHandleCount() + data->extraction.nativeHandleCount(),
+                    std::nullopt,
+                    [attempt] {
+                        LOG_WARNING("[ChronoGrapher] stop attempt {} incomplete; retaining data and native owners",
+                                    attempt);
+                    }));
+            publisher->pump(*runtimes[0], deadline, data);
+        }
     }
 }

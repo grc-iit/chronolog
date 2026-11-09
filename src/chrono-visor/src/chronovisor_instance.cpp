@@ -8,7 +8,7 @@
 #include <ChronoVisorConfiguration.h>
 #include <private/LifecycleStep.h>
 #include <private/ServiceLifecycle.h>
-#include <private/LifecycleStatus.h>
+#include <private/LifecyclePublisher.h>
 #include <private/ManagedStopBarrier.h>
 namespace chl = chronolog;
 namespace rpc = chronolog::rpc;
@@ -63,13 +63,13 @@ int main(int argc, char** argv)
                                        conf.VISOR_LOG_CONF.LOGFILENUM,
                                        conf.VISOR_LOG_CONF.FLUSHLEVEL) != 0)
         return 1;
-    rpc::LifecycleStatus statusFile(config);
+    auto publisher = rpc::LifecyclePublisher::Create(config);
     rpc::LifecycleRecord lifecycle;
     auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
     auto actual = std::make_shared<rpc::RpcRuntime>(32);
     auto data = std::make_shared<VisorData>(conf, actual);
     actual->retainOwner(data,
-                        [data]
+                        [data, publisher]
                         {
                             while(!data->retirementReady.load(std::memory_order_acquire) ||
                                   data->portal.core()->incomingRequests.load(std::memory_order_acquire) != 0)
@@ -82,6 +82,15 @@ int main(int argc, char** argv)
                             data->mids[0]->cleanup();
                             data->registry->releaseOwnedRegistryService();
                             data->cleanupComplete.store(true, std::memory_order_release);
+                            // Every status step ran on this C32 and settled before
+                            // this callback could start. Write the final snapshot.
+                            publisher->publishTerminal(rpc::LifecyclePublisher::record(
+                                    rpc::ShutdownState::Stopped,
+                                    chl::CL_SUCCESS,
+                                    0,
+                                    {},
+                                    data->generation->snapshot(),
+                                    data->portal.core()->incomingRequests.load(std::memory_order_acquire)));
                         });
     auto initialize = [&](unsigned index, chl::RPCProviderConf const& spec, std::function<int()> setup)
     {
@@ -120,10 +129,20 @@ int main(int argc, char** argv)
     int exitCode = startupStatus == chl::CL_SUCCESS ? 0 : 1;
     if(startupStatus == chl::CL_SUCCESS && !stop_requests)
     {
-        auto native = data->generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Running, chl::CL_SUCCESS, 0, startupEntered, &native, 0);
-        while(!stop_requests) std::this_thread::sleep_for(100ms);
+        publisher->request(rpc::LifecyclePublisher::record(rpc::ShutdownState::Running,
+                                                           chl::CL_SUCCESS,
+                                                           0,
+                                                           startupEntered,
+                                                           data->generation->snapshot(),
+                                                           0));
+        while(!stop_requests)
+        {
+            publisher->pump(*actual, startup, data);
+            std::this_thread::sleep_for(100ms);
+        }
     }
+    // Why the current attempt returned early; logged by its Draining step.
+    std::string incomplete;
     auto stop = [&](rpc::RpcDeadline const& deadline)
     {
         data->portal.ShutdownServices();
@@ -173,13 +192,13 @@ int main(int argc, char** argv)
                         });
                 if(result != chl::CL_SUCCESS)
                 {
-                    LOG_WARNING("[ChronoVisor] public proof admission incomplete: {}", result);
+                    incomplete = "public proof admission incomplete: " + std::to_string(result);
                     return false;
                 }
                 int observed = rpc::waitLifecycleStep(data->publicFile, deadline);
                 if(observed != chl::CL_SUCCESS)
                 {
-                    LOG_WARNING("[ChronoVisor] public proof publication incomplete: {}", observed);
+                    incomplete = "public proof publication incomplete: " + std::to_string(observed);
                     return false;
                 }
             }
@@ -238,10 +257,13 @@ int main(int argc, char** argv)
     };
     bool first = true;
     sig_atomic_t observed = 0;
+    std::optional<rpc::RpcDeadline> previous;
     for(;;)
     {
         if(!first && observed == stop_requests)
         {
+            // Admission of a refused status write ends with its attempt.
+            publisher->pump(*actual, *previous, data);
             std::this_thread::sleep_for(100ms);
             continue;
         }
@@ -249,37 +271,47 @@ int main(int argc, char** argv)
         observed = stop_requests;
         auto entered = rpc::RpcDeadline::Clock::now();
         auto deadline = rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(conf.RPC_POLICY.shutdown_ms));
+        previous = deadline;
         auto attempt = ++lifecycle.attempts;
+        publisher->beginAttempt(attempt, entered);
         lifecycle.quiesce();
         data->portal.ShutdownServices();
         data->registry->quiescePublic();
-        auto native = data->generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Quiescing,
-                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
-                           attempt,
-                           entered,
-                           &native,
-                           data->portal.core()->incomingRequests.load(std::memory_order_acquire));
-        if(stop(deadline))
+        publisher->request(
+                rpc::LifecyclePublisher::record(rpc::ShutdownState::Quiescing,
+                                                chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                                                attempt,
+                                                entered,
+                                                data->generation->snapshot(),
+                                                data->portal.core()->incomingRequests.load(std::memory_order_acquire)));
+        publisher->pump(*actual, deadline, data);
+        incomplete.clear();
+        // The Stopped record is written by the C32 owner cleanup callback.
+        if(stop(deadline) && publisher->terminalPublished())
         {
-            native = data->generation->snapshot();
             lifecycle.stopped();
-            if(statusFile.publish(rpc::ShutdownState::Stopped,
-                                  chl::CL_SUCCESS,
-                                  attempt,
-                                  entered,
-                                  &native,
-                                  data->portal.core()->incomingRequests.load(std::memory_order_acquire)))
-                return exitCode;
+            return exitCode;
         }
         lifecycle.draining();
-        native = data->generation->snapshot();
-        statusFile.publish(rpc::ShutdownState::Draining,
-                           chl::CL_ERR_SHUTDOWN_INCOMPLETE,
-                           attempt,
-                           entered,
-                           &native,
-                           data->portal.core()->incomingRequests.load(std::memory_order_acquire));
-        LOG_WARNING("[ChronoVisor] stop attempt {} incomplete; retaining both MIDs and original C32", attempt);
+        // An expired attempt admits no more work; it stays Draining in memory.
+        if(!deadline.expired())
+        {
+            publisher->request(rpc::LifecyclePublisher::record(
+                    rpc::ShutdownState::Draining,
+                    chl::CL_ERR_SHUTDOWN_INCOMPLETE,
+                    attempt,
+                    entered,
+                    data->generation->snapshot(),
+                    data->portal.core()->incomingRequests.load(std::memory_order_acquire),
+                    std::nullopt,
+                    [attempt, reason = incomplete]
+                    {
+                        if(!reason.empty())
+                            LOG_WARNING("[ChronoVisor] {}", reason);
+                        LOG_WARNING("[ChronoVisor] stop attempt {} incomplete; retaining both MIDs and original C32",
+                                    attempt);
+                    }));
+            publisher->pump(*actual, deadline, data);
+        }
     }
 }

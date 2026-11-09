@@ -62,6 +62,11 @@ add_library(rpc_archive_write_hold SHARED rpc_archive_write_hold.cpp)
 target_include_directories(rpc_archive_write_hold PRIVATE ${HDF5_INCLUDE_DIRS})
 target_link_libraries(rpc_archive_write_hold PRIVATE ${CMAKE_DL_LIBS})
 
+# Only preloaded by rpc_lifecycle_status_hold_test.py: holds or fails one
+# rename of a daemon's own lifecycle status record.
+add_library(rpc_lifecycle_status_hold SHARED rpc_lifecycle_status_hold.cpp)
+target_link_libraries(rpc_lifecycle_status_hold PRIVATE ${CMAKE_DL_LIBS})
+
 add_executable(rpc_lifecycle_archive_probe rpc_lifecycle_archive_probe.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp)
 target_include_directories(rpc_lifecycle_archive_probe PRIVATE

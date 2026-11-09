@@ -110,6 +110,11 @@ public:
     // Set only after component data/dependency progress no longer needs this MID.
     std::atomic<bool> retirementReady{false};
     std::atomic<bool> cleanupComplete{false};
+    // Set before this owner's runtime is closed. Runs std-only on its cleanup
+    // worker after the physical native cleanup; the daemon's last original
+    // owner writes its Stopped record here. It may block that worker, and the
+    // runtime's drain stays incomplete until it returns.
+    std::function<void()> afterCleanup;
 
 private:
     RpcBulkOwner(std::shared_ptr<thallium::engine> native, RpcTimeoutPolicy const& policy)
