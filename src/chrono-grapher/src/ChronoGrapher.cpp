@@ -280,6 +280,12 @@ int main(int argc, char** argv)
             if(!data->start->done.load(std::memory_order_acquire) || data->start->unsafe)
                 return false;
         }
+        // An earlier attempt passed every phase below and began retireServices,
+        // which closes the admin runtime first: nothing can be admitted there
+        // again. Continue the same retirement, which also lets the recording
+        // owner's callback retry a failed Stopped write.
+        if(data->unregistered)
+            return rpc::retireServices(owners, runtimes, deadline);
         // StopDependencyEvidence requires this attempt's own Quiescing record.
         // Wait for that write without doing it here; a held write expires.
         if(!publisher->waitPublished(quiescing, *runtimes[0], deadline, data))

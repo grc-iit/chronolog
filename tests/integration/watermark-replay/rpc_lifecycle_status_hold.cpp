@@ -10,6 +10,8 @@
 // result to <prefix>.completed.
 // CHRONOLOG_TEST_STATUS_FAIL_STATE=<state>: the first such rename writes
 // <prefix>.failed and returns -1 with EIO without renaming.
+// CHRONOLOG_TEST_STATUS_ONLY=<text>: act only on destinations containing it,
+// so one daemon of a deployment can be chosen (e.g. "chrono-grapher-conf").
 #include <dlfcn.h>
 #include <atomic>
 #include <cerrno>
@@ -72,6 +74,9 @@ extern "C" int rename(char const* from, char const* to)
     }
     auto gate = std::getenv("CHRONOLOG_TEST_STATUS_GATE");
     if(!gate || !*gate || !from || !to || !endsWith(to, ".lifecycle.json"))
+        return original(from, to);
+    auto only = std::getenv("CHRONOLOG_TEST_STATUS_ONLY");
+    if(only && *only && !std::strstr(to, only))
         return original(from, to);
     std::string prefix(gate);
     auto state = stateOf(from);

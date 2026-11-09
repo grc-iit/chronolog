@@ -160,6 +160,10 @@ def dispose_fixture(owned, work, logs):
 def run(args):
     work = Path(os.environ.get('WORK_DIR', str(Path.home()/'chronolog-install-bounded-rpc-monotonic/chronolog'))).resolve()
     build = Path(os.environ.get('BUILD_DIR', str(Path.home()/'chronolog-build/bounded-rpc-monotonic/Debug'))).resolve()
+    if args.grapher_stopped_fail:
+        if args.archive_recovery:
+            raise RuntimeError('--grapher-stopped-fail and --archive-recovery each preload their own gate')
+        args.managed_orderly = True
     managed = args.managed_empty_partial or args.managed_orderly or args.archive_recovery
     logs = Path(args.logs).resolve()
     logs.mkdir(parents=True, exist_ok=False)
@@ -198,6 +202,12 @@ def run(args):
         args.managed_orderly = True
         env['LD_PRELOAD'] = str(build/'tests/integration/watermark-replay/librpc_archive_write_hold.so')
         env['CHRONOLOG_TEST_ARCHIVE_HOLD'] = str(logs/'archive-write')
+    if args.grapher_stopped_fail:
+        # Fail only the Grapher's first Stopped rename, with EIO.
+        env['LD_PRELOAD'] = str(build/'tests/integration/watermark-replay/librpc_lifecycle_status_hold.so')
+        env['CHRONOLOG_TEST_STATUS_GATE'] = str(logs/'grapher-status')
+        env['CHRONOLOG_TEST_STATUS_FAIL_STATE'] = 'Stopped'
+        env['CHRONOLOG_TEST_STATUS_ONLY'] = 'chrono-grapher-conf'
     owned, probe = {}, None
     probe_output = None
     recovery_result = None
@@ -428,6 +438,41 @@ def run(args):
                     original_player_guard_unchanged=True, stop_attempt=stop_identity)
                 (logs/'archive-before-final-stop.json').write_text(json.dumps({str(path):hashlib.sha256(path.read_bytes()).hexdigest()
                     for path in (work/'output').rglob('*.h5')}, indent=2))
+            if args.grapher_stopped_fail:
+                # The Grapher retires its native owners, then its Stopped write
+                # fails. It must stay alive through this whole managed stop,
+                # and the final managed stop below must let it retry and exit.
+                grapher = next(r for r in records if r['component'] == 'grapher')
+                first_log = logs/'grapher-stopped-fail-first-stop.log'
+                first_entered = time.monotonic()
+                with first_log.open('w') as output:
+                    first = subprocess.Popen([str(work/'tools/deploy/deploy_local.sh'), '-s', '-w', str(work)],
+                        stdout=output, stderr=subprocess.STDOUT, env=env)
+                    while first.poll() is None:
+                        for process in owned:
+                            if process not in exits:
+                                waited, wait_status = os.waitpid(process, os.WNOHANG)
+                                if waited:
+                                    exits[process] = wait_status
+                        if time.monotonic()-first_entered > 40:
+                            first.terminate()
+                            first.wait(timeout=3)
+                            raise RuntimeError('first managed stop exceeded its one30s budget')
+                        time.sleep(.005)
+                first_rows = [json.loads(line) for line in first_log.read_text().splitlines() if line.startswith('{')]
+                first_aggregate = [row for row in first_rows if row.get('aggregate')]
+                failed = logs/'grapher-status.failed'
+                state = json.loads(Path(grapher['status_file']).read_text())
+                if (first.returncode != 27 or not first_aggregate or first_aggregate[-1]['status'] != -27
+                    or not failed.exists() or int(failed.read_text().split()[0]) != grapher['pid']):
+                    raise RuntimeError('failed Grapher Stopped write did not leave the first stop incomplete: '
+                                       +repr(first_rows))
+                if (grapher['pid'] in exits or not lifecycle.matching(lifecycle.process_identity(grapher['pid']), grapher)
+                    or state.get('state') == 'Stopped'):
+                    raise RuntimeError('Grapher exited or claimed Stopped after its Stopped write failed')
+                (logs/'grapher-after-failed-stopped.json').write_text(json.dumps({
+                    'first_aggregate': first_aggregate[-1], 'grapher_record': state,
+                    'exited_in_first_stop': {str(k): v for k, v in exits.items()}}, indent=2))
             with (logs/'managed-stop.log').open('w') as output:
                 controller = subprocess.Popen([str(work/'tools/deploy/deploy_local.sh'), '-s', '-w', str(work)],
                     stdout=output, stderr=subprocess.STDOUT, env=env)
@@ -651,4 +696,6 @@ if __name__ == '__main__':
     parser.add_argument('--prequiesce-grapher', action='store_true')
     parser.add_argument('--prequiesce-player', action='store_true')
     parser.add_argument('--dual-extractor', action='store_true')
+    parser.add_argument('--grapher-stopped-fail', action='store_true',
+                        help='managed orderly stop whose first Grapher Stopped rename fails')
     run(parser.parse_args())
