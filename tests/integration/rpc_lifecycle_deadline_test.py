@@ -525,6 +525,18 @@ def run(args):
             expected_return, expected_status = (0, 0) if args.managed_orderly else (27, -27)
             if controller.returncode != expected_return or not aggregate or aggregate[-1]['status'] != expected_status:
                 raise RuntimeError('managed aggregate mismatch: '+repr(aggregate))
+            if args.grapher_stopped_fail:
+                # Exactly one retry of the same Stopped write, on the same
+                # cleanup worker, after the second stop's new request.
+                grapher = next(r for r in records if r['component'] == 'grapher')
+                first_attempt = json.loads((logs/'grapher-after-failed-stopped.json').read_text())['grapher_record']['attempt']
+                renames = [line.split() for line in (logs/'grapher-status.renames').read_text().splitlines()]
+                stopped = [row for row in renames if row[-1] == 'Stopped']
+                final = json.loads(Path(grapher['status_file']).read_text())
+                if (len(stopped) != 2 or stopped[0][1] != stopped[1][1]
+                    or final.get('attempt') != first_attempt+1):
+                    raise RuntimeError('Grapher Stopped write was not retried exactly once on its cleanup worker: '
+                                       +repr({'renames': renames, 'final_attempt': final.get('attempt')}))
             if args.dual_extractor and args.prequiesce_player:
                 player_log = (work/'monitor/chrono-player-1.log').read_text()
                 stopped = player_log.find('[ChronoPlayer] stop attempt 1 incomplete')

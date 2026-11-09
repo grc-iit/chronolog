@@ -222,8 +222,12 @@ class ChronologClientImpl;
 // drops this wrapper's shared context lease without waiting for remote work.
 // When the last Client of a connected context is destroyed, the context's own
 // cleanup worker sends one Disconnect after its admitted work settles, with a
-// fresh control budget. If that Disconnect is not confirmed, the context stays
-// retained and this process cannot create a replacement Client context.
+// fresh control budget. If that Disconnect is not confirmed, including a
+// definite rejection, the context stays retained and this process cannot
+// create a replacement Client context. A Client constructed after the last
+// one is destroyed but before that cleanup finishes (up to one control
+// budget) also gets the closing context; its calls return
+// CL_ERR_RPC_CAPACITY for its whole life.
 class Client
 {
 public:
