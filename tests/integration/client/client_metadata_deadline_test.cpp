@@ -153,6 +153,66 @@ TEST_P(ClientMetadataDeadline, MultipleWrappersAndCopiesRetainActualContext)
     EXPECT_EQ(CL_SUCCESS, other.Connect());
     EXPECT_EQ(CL_SUCCESS, other.Disconnect());
 }
+TEST_P(ClientMetadataDeadline, FinalHealthyOwnerDisconnectsRegistryAndReleasesAcquisitions)
+{
+    MetadataPeer peer(GetParam());
+    peer.state().registryFaithful = true;
+    peer.state().roster = true;
+    auto conf = peer.portal;
+    conf.RPC_POLICY.control_ms = 5000;
+    auto first = ChronologClientImpl::GetClientImplInstance(conf, WRITER_MODE, ClientQueryServiceConf{});
+    auto survivor = ChronologClientImpl::GetClientImplInstance(conf, WRITER_MODE, ClientQueryServiceConf{});
+    ASSERT_EQ(CL_SUCCESS, first->Connect());
+    ASSERT_EQ(CL_SUCCESS, first->AcquireStory("drop", "held").first);
+    auto context = first->context();
+    auto identity = context->clientId.load();
+    std::weak_ptr<thallium::engine> engine = context->engine;
+    first.reset();
+    EXPECT_EQ(0u, peer.state().disconnects.load());
+    EXPECT_EQ(identity, peer.state().registeredClient.load());
+    EXPECT_EQ(1u, peer.state().liveAcquisitions.load());
+    EXPECT_EQ(CL_SUCCESS, survivor->CreateChronicle("survives"));
+    auto entered = Clock::now();
+    survivor.reset();
+    EXPECT_LT(Clock::now() - entered, std::chrono::milliseconds(120));
+    ASSERT_TRUE(peer.until([&] { return context->cleanupComplete.load(); }));
+    EXPECT_EQ(1u, peer.state().disconnects.load());
+    EXPECT_EQ(0u, peer.state().registeredClient.load());
+    EXPECT_EQ(0u, peer.state().liveAcquisitions.load());
+    EXPECT_TRUE(engine.expired());
+    EXPECT_EQ(ABT_ERR_UNINITIALIZED, ABT_initialized());
+    auto next = ChronologClientImpl::GetClientImplInstance(conf, WRITER_MODE, ClientQueryServiceConf{});
+    EXPECT_NE(context.get(), next->context().get());
+    EXPECT_EQ(CL_SUCCESS, next->Connect());
+    EXPECT_EQ(identity, next->context()->clientId.load());
+    EXPECT_EQ(CL_SUCCESS, next->Disconnect());
+    auto nextContext = next->context();
+    next.reset();
+    ASSERT_TRUE(peer.until([&] { return nextContext->cleanupComplete.load(); }));
+    EXPECT_EQ(2u, peer.state().disconnects.load()); // No duplicate after explicit Disconnect.
+}
+TEST_P(ClientMetadataDeadline, AutomaticDisconnectUnknownRetainsOriginalContextWithoutRetry)
+{
+    MetadataPeer peer(GetParam());
+    peer.state().registryFaithful = true;
+    auto owner = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
+    ASSERT_EQ(CL_SUCCESS, connectReady(owner));
+    auto context = owner->context();
+    std::weak_ptr<thallium::engine> engine = context->engine;
+    peer.state().delayDisconnect = true;
+    auto entered = Clock::now();
+    owner.reset();
+    EXPECT_LT(Clock::now() - entered, std::chrono::milliseconds(120));
+    EXPECT_TRUE(peer.until([&] { return peer.state().disconnects.load() == 1; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT_FALSE(context->cleanupComplete.load());
+    EXPECT_FALSE(engine.expired());
+    auto rejected = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
+    EXPECT_EQ(context.get(), rejected->context().get());
+    EXPECT_EQ(nullptr, rejected->runtime());
+    EXPECT_EQ(CL_ERR_RPC_CAPACITY, rejected->Connect());
+    EXPECT_EQ(1u, peer.state().disconnects.load());
+}
 TEST_P(ClientMetadataDeadline, ConcurrentCallersUseIndependentEntryBudgets)
 {
     MetadataPeer peer(GetParam());
@@ -269,6 +329,7 @@ TEST_P(ClientMetadataDeadline, InternalReleaseRetainsAdmittedNativeCallThenRecla
 TEST_P(ClientMetadataDeadline, InternalFacadeDropRetainsActualEngineDuringAdmittedNativeCall)
 {
     MetadataPeer peer(GetParam());
+    peer.state().registryFaithful = true;
     peer.state().roster = true;
     auto owner = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
     ASSERT_EQ(CL_SUCCESS, connectReady(owner));
@@ -293,10 +354,15 @@ TEST_P(ClientMetadataDeadline, InternalFacadeDropRetainsActualEngineDuringAdmitt
     EXPECT_EQ(context.get(), rejected->context().get());
     EXPECT_EQ(nullptr, rejected->runtime());
     EXPECT_EQ(CL_ERR_RPC_CAPACITY, rejected->Connect());
+    EXPECT_EQ(0u, peer.state().disconnects.load());
+    EXPECT_EQ(1u, peer.state().liveAcquisitions.load());
     peer.state().blockRecords = false;
     EXPECT_NE(0u, logged.get());
     EXPECT_TRUE(peer.until([&] { return context->cleanupComplete.load(); }));
     EXPECT_TRUE(engine.expired());
+    EXPECT_EQ(1u, peer.state().disconnects.load());
+    EXPECT_EQ(0u, peer.state().registeredClient.load());
+    EXPECT_EQ(0u, peer.state().liveAcquisitions.load());
 }
 TEST_P(ClientMetadataDeadline, UnknownMutationKeepsActualSingletonAfterFacadeDrop)
 {

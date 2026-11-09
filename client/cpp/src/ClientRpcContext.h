@@ -7,6 +7,7 @@
 #include <RpcRuntime.h>
 #include <private/RpcProviderRegistration.h>
 #include <private/RpcBulkLifetime.h>
+#include <private/RpcCallState.h>
 #include <ClientConfiguration.h>
 #include <chronolog_client.h>
 #include <thallium.hpp>
@@ -117,6 +118,11 @@ private:
     std::timed_mutex initializeMutex_;
     ClientNativeRuntime native_;
     int initializeStatus_ = CL_SUCCESS;
+    // Disconnect sent by cleanup() for a context that is still connected when
+    // its last facade drops. The call state is a member so an unconfirmed
+    // dispatch stays rooted with the quarantined owner.
+    void disconnectFinalOwner();
+    rpc::RpcCallState finalDisconnect_;
 };
 } // namespace chronolog
 #endif

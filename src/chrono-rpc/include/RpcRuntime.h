@@ -35,6 +35,10 @@ public:
     // A false return forbids forwarding. A winning reservation can conservatively
     // report dispatch even when the worker is descheduled before the native call.
     bool tryBeginDispatch() noexcept;
+    // Only for a retainOwner cleanup callback, which already runs on that
+    // owner's charged cleanup slot. A dispatched call without a reply must
+    // fail the callback, which quarantines the owner with its native fields.
+    static OperationContext forOwnerCleanup(RpcDeadline deadline) noexcept { return OperationContext(deadline); }
 
 private:
     friend struct detail::JobBase;

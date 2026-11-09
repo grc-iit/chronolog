@@ -32,6 +32,9 @@ struct PeerEvent
 struct PeerState
 {
     std::atomic<bool> stop{false}, delay{false}, roster{false}, blockRecords{false};
+    std::atomic<bool> registryFaithful{false};
+    std::atomic<uint64_t> registeredClient{0};
+    std::atomic<unsigned> liveAcquisitions{0};
     std::atomic<bool> delayConnect{false}, delayDisconnect{false}, dropRecordReply{false};
     std::atomic<unsigned> keeperCount{3}, sequenceCalls{0}, payloadCalls{0}, sequenceReplies{0}, payloadReplies{0},
             releases{0};

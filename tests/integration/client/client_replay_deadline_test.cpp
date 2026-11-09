@@ -55,7 +55,7 @@ struct Peer
     struct Shared
     {
         std::atomic<unsigned> submissions{0}, acks{0}, deliveries{0}, responseAttempts{0}, controls{0}, records{0},
-                lastQuery{0};
+                lastQuery{0}, disconnects{0};
         std::atomic<bool> holdAck{false}, holdResponse{false}, ackFirst{true}, sendResponse{true}, badAck{false},
                 negativeAck{false}, duplicate{false}, duplicateDone{false};
         std::atomic<uint64_t> duplicateReceipt{std::numeric_limits<uint64_t>::max()};
@@ -91,6 +91,15 @@ struct Peer
                     "Connect",
                     [](tl::request const& request, uint32_t, chl::ClientId id, uint32_t)
                     { request.respond(chl::ConnectResponseMsg(chl::CL_SUCCESS, id)); },
+                    uint16_t{25}));
+            // Dropping the last connected Client sends one Disconnect.
+            procedures.push_back(engine.define(
+                    "Disconnect",
+                    [this](tl::request const& request, chl::ClientId)
+                    {
+                        ++shared->disconnects;
+                        request.respond(int(chl::CL_SUCCESS));
+                    },
                     uint16_t{25}));
             procedures.push_back(engine.define(
                     "CreateChronicle",
@@ -364,8 +373,9 @@ int main(int argc, char** argv)
         pass = pass && ready == std::future_status::ready && retained && retainedAtClose &&
                status == chl::CL_ERR_QUERY_TIMED_OUT;
         pass = until([&] { return context->cleanupComplete.load(std::memory_order_acquire); }) && pass;
+        // The automatic Disconnect waits for the retained query, then runs once.
         pass = pass && !context->engine && context->reader == nullptr && context->replayQueries.used() == 0 &&
-               ABT_initialized() == ABT_ERR_UNINITIALIZED;
+               ABT_initialized() == ABT_ERR_UNINITIALIZED && peer.shared->disconnects == 1;
     }
     else if(scenario == "cleanup-lock")
     {

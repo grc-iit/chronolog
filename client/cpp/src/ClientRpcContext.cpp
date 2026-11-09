@@ -178,6 +178,58 @@ std::optional<ClientRpcContext::NativeLease> ClientRpcContext::acquireNative()
             return NativeLease(shared_from_this());
     return std::nullopt;
 }
+// Dropping the last facade of a connected context sends one Disconnect, as the
+// baseline Impl destructor did, so the Visor releases the acquisitions and the
+// client record before this process can reconnect with the same packed
+// identity. It runs on the owner's cleanup worker after all admitted work has
+// settled. It is a separate operation from any earlier call: its control budget
+// starts here and covers the policy snapshot, the metadata lock, the endpoint
+// lookup and the dispatch. Only a CL_SUCCESS reply lets native retirement go
+// on. Any other outcome throws, and the runtime quarantines this owner: the
+// context, engine and call state stay rooted, cleanupComplete stays false, the
+// Disconnect is never sent again and the factory refuses a replacement.
+void ClientRpcContext::disconnectFinalOwner()
+{
+    if(!visor)
+        return; // Connect never initialized the context, so nothing is registered.
+    auto entered = rpc::RpcDeadline::Clock::now();
+    // Connect froze the policy. Every holder of its mutex is a short
+    // nonblocking section, so this loop ends; its time counts in the budget.
+    auto snapshot = [this]
+    {
+        for(;;)
+        {
+            if(auto acquired = policy->tryAcquire())
+                return std::move(*acquired);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }();
+    auto deadline = rpc::RpcDeadline::fromStart(entered, std::chrono::milliseconds(snapshot.policy().control_ms));
+    // No facade or admitted job remains, so nothing else contends for this
+    // lock; it is held across the call for the same reason.
+    std::unique_lock<std::timed_mutex> lock(metadataMutex, std::defer_lock);
+    if(!lock.try_lock_until(deadline.expiresAt()))
+        throw std::runtime_error("Final Client Disconnect could not lock metadata state");
+    if(!connected)
+        return; // Never connected, or an explicit Disconnect was confirmed.
+    auto ticket = mutations.begin("", "");
+    if(!ticket)
+        throw std::runtime_error("Final Client Disconnect could not begin");
+    auto operation = rpc::OperationContext::forOwnerCleanup(deadline);
+    auto result = visor->call<int>(ClientRpcProcedures::Disconnect,
+                                   operation,
+                                   snapshot.policy().attempt_ms,
+                                   finalDisconnect_,
+                                   clientId.load(std::memory_order_acquire));
+    if(!result.reply || *result.reply != CL_SUCCESS)
+    {
+        mutations.finish(*ticket, false);
+        throw std::runtime_error("Final Client Disconnect outcome is not confirmed");
+    }
+    mutations.finish(*ticket, true);
+    connected = false;
+    clientId.store(0, std::memory_order_release);
+}
 void ClientRpcContext::cleanup()
 {
     nativeUses_.fetch_or(Closed, std::memory_order_acq_rel);
@@ -195,6 +247,7 @@ void ClientRpcContext::cleanup()
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    disconnectFinalOwner();
     storyteller.reset();
     visor.reset();
     // Copied requests/bulk/native leases are settled. Keep the actual reader,

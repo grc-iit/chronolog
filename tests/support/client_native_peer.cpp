@@ -41,16 +41,30 @@ int main(int argc, char** argv)
                 ++state->connects;
                 if(state->delayConnect.load())
                     margo_thread_sleep(mid, 150);
-                req.respond(ConnectResponseMsg(CL_SUCCESS, id));
+                int status = CL_SUCCESS;
+                if(state->registryFaithful.load())
+                {
+                    uint64_t absent = 0;
+                    if(!state->registeredClient.compare_exchange_strong(absent, id))
+                        status = CL_ERR_INVALID_ARG;
+                }
+                req.respond(ConnectResponseMsg(status, id));
             },
             provider));
     calls.push_back(engine.define(
             "Disconnect",
-            [state, mid](thallium::request const& req, ClientId)
+            [state, mid](thallium::request const& req, ClientId id)
             {
                 ++state->disconnects;
                 if(state->delayDisconnect.load())
                     margo_thread_sleep(mid, 150);
+                if(state->registryFaithful.load())
+                {
+                    // Match the Visor's Disconnect contract: release every
+                    // acquisition, then remove the packed client identity.
+                    state->liveAcquisitions = 0;
+                    state->registeredClient.compare_exchange_strong(id, 0);
+                }
                 req.respond(CL_SUCCESS);
             },
             provider));
@@ -189,6 +203,8 @@ int main(int argc, char** argv)
                 ++state->acquisitions;
                 if(state->delay.load())
                     margo_thread_sleep(mid, 150);
+                if(state->registryFaithful.load() && state->acquireStatus.load() == CL_SUCCESS && state->roster.load())
+                    ++state->liveAcquisitions;
                 auto assigned = roster;
                 if(clock && state->keeperCount.load() < assigned.size())
                     assigned.resize(state->keeperCount.load());

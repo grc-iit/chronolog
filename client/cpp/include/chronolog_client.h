@@ -220,6 +220,10 @@ class ChronologClientImpl;
 // Disconnect() auto-releases any stories still acquired by the client so the
 // caller never has to walk its own acquisitions to clean up. The destructor
 // drops this wrapper's shared context lease without waiting for remote work.
+// When the last Client of a connected context is destroyed, the context's own
+// cleanup worker sends one Disconnect after its admitted work settles, with a
+// fresh control budget. If that Disconnect is not confirmed, the context stays
+// retained and this process cannot create a replacement Client context.
 class Client
 {
 public:
