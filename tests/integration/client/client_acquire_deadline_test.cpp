@@ -13,6 +13,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <functional>
 
 extern char** environ;
 struct NativeAcquire final: rpc::OwnedRpcWork<std::shared_ptr<AcquireStoryResponseMsg>>
@@ -119,6 +120,13 @@ INSTANTIATE_TEST_SUITE_P(Native, ClientAcquireDeadline, ::testing::Values("ofi+s
 
 namespace
 {
+struct PublicProbeStartupCalls
+{
+    std::function<int(int*, int)> pipe = ::pipe2;
+    decltype(&::posix_spawn_file_actions_init) initializeActions = ::posix_spawn_file_actions_init;
+    decltype(&::posix_spawn) spawn = ::posix_spawn;
+};
+
 class PublicClientProbe
 {
 public:
@@ -127,16 +135,31 @@ public:
     PublicClientProbe& operator=(PublicClientProbe const&) = delete;
     ~PublicClientProbe() { cleanup(); }
 
-    bool start(std::string const& protocol, uint16_t port)
+    bool start(std::string const& protocol, uint16_t port, PublicProbeStartupCalls const& calls = {})
     {
-        int toChild[2]{};
-        int fromChild[2]{};
-        if(::pipe2(toChild, O_CLOEXEC) != 0 || ::pipe2(fromChild, O_CLOEXEC) != 0)
+        int toChild[2]{-1, -1};
+        int fromChild[2]{-1, -1};
+        auto closePipes = [&]
+        {
+            for(int descriptor: toChild)
+                if(descriptor >= 0)
+                    ::close(descriptor);
+            for(int descriptor: fromChild)
+                if(descriptor >= 0)
+                    ::close(descriptor);
+        };
+        if(calls.pipe(toChild, O_CLOEXEC) != 0 || calls.pipe(fromChild, O_CLOEXEC) != 0)
+        {
+            closePipes();
             return false;
+        }
 
         posix_spawn_file_actions_t actions;
-        if(posix_spawn_file_actions_init(&actions) != 0)
+        if(calls.initializeActions(&actions) != 0)
+        {
+            closePipes();
             return false;
+        }
         bool actionsOk = posix_spawn_file_actions_adddup2(&actions, toChild[0], 100) == 0 &&
                          posix_spawn_file_actions_adddup2(&actions, fromChild[1], 101) == 0 &&
                          posix_spawn_file_actions_addclose(&actions, toChild[0]) == 0 &&
@@ -155,12 +178,13 @@ public:
                                 const_cast<char*>("40"),
                                 nullptr};
         int spawnStatus =
-                actionsOk ? posix_spawn(&pid_, CHRONOLOG_PUBLIC_PROBE_PATH, &actions, nullptr, args.data(), environ)
+                actionsOk ? calls.spawn(&pid_, CHRONOLOG_PUBLIC_PROBE_PATH, &actions, nullptr, args.data(), environ)
                           : EINVAL;
         posix_spawn_file_actions_destroy(&actions);
         if(spawnStatus != 0)
         {
             pid_ = -1;
+            closePipes();
             return false;
         }
         ::close(toChild[0]);
@@ -310,6 +334,70 @@ private:
     std::string buffered_;
     std::string startupLine_;
 };
+
+enum class ProbeStartupFailure
+{
+    SecondPipe,
+    ActionInit,
+    Spawn
+};
+
+void expectProbeStartupFailureClosesDescriptors(ProbeStartupFailure failure)
+{
+    std::vector<int> created;
+    int pipeCalls = 0;
+    PublicProbeStartupCalls calls;
+    calls.pipe = [&](int* ends, int flags)
+    {
+        if(++pipeCalls == 2 && failure == ProbeStartupFailure::SecondPipe)
+        {
+            errno = EMFILE;
+            return -1;
+        }
+        int result = ::pipe2(ends, flags);
+        if(result == 0)
+            created.insert(created.end(), ends, ends + 2);
+        return result;
+    };
+    if(failure == ProbeStartupFailure::ActionInit)
+        calls.initializeActions = [](posix_spawn_file_actions_t*) noexcept { return ENOMEM; };
+    if(failure == ProbeStartupFailure::Spawn)
+        calls.spawn = [](pid_t*,
+                         char const*,
+                         posix_spawn_file_actions_t const*,
+                         posix_spawnattr_t const*,
+                         char* const*,
+                         char* const*) noexcept { return ENOENT; };
+    {
+        PublicClientProbe probe;
+        EXPECT_FALSE(probe.start("ofi+sockets", 1, calls));
+    }
+    EXPECT_EQ(pipeCalls, 2);
+    EXPECT_EQ(created.size(), failure == ProbeStartupFailure::SecondPipe ? 2u : 4u);
+    for(int descriptor: created)
+    {
+        errno = 0;
+        EXPECT_EQ(::fcntl(descriptor, F_GETFD), -1) << "leaked pipe descriptor " << descriptor;
+        EXPECT_EQ(errno, EBADF);
+        // A red regression must not itself leave the intentionally detected FD.
+        (void)::close(descriptor);
+    }
+}
+
+TEST(PublicClientProbeStartup, SecondPipeFailureClosesCreatedDescriptors)
+{
+    expectProbeStartupFailureClosesDescriptors(ProbeStartupFailure::SecondPipe);
+}
+
+TEST(PublicClientProbeStartup, FileActionsInitFailureClosesCreatedDescriptors)
+{
+    expectProbeStartupFailureClosesDescriptors(ProbeStartupFailure::ActionInit);
+}
+
+TEST(PublicClientProbeStartup, SpawnFailureClosesCreatedDescriptors)
+{
+    expectProbeStartupFailureClosesDescriptors(ProbeStartupFailure::Spawn);
+}
 
 struct PublicAcquireResult
 {

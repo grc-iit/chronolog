@@ -18,7 +18,9 @@ def unsealed_until(events, release_started, chunk_seconds, acceptance_seconds):
 
 
 def shutdown_before_seal(text, chronicle, boundary, stop_started=0, stop_finished=2**64):
-    if f"Chronicle={chronicle}, Story=retained," not in text:
+    holder_line = next((line for line in text.splitlines()
+                        if f"Chronicle={chronicle}, Story=retained," in line), None)
+    if holder_line is None:
         return False
     marker = "[KeeperDataStore] Initiating shutdown of DataCollection."
     for line in text.splitlines():
@@ -30,9 +32,44 @@ def shutdown_before_seal(text, chronicle, boundary, stop_started=0, stop_finishe
             # Standard log timestamps have millisecond resolution. Use the end
             # of that interval; file arrival/flush time is not event time.
             if stamp_ns + 1_000_000 <= boundary:
-                return True
+                return dict(shutdown_timestamp_ns=stamp_ns,
+                            shutdown_timestamp_upper_ns=stamp_ns + 1_000_000,
+                            shutdown_line=line, holder_line=holder_line)
             raise ValueError("the retained test story could seal before Keeper shutdown began")
     raise ValueError("missing actual Keeper DataCollection shutdown timestamp")
+
+
+def keeper_shutdown_observation(record, logs, chronicle, boundary, stop_started,
+                                stop_finished, generation, deployment_id):
+    text = "\n".join(content for _, content in logs)
+    if "shutdown with unconfirmed" in text:
+        raise ValueError("unconfirmed data at Keeper exit")
+    selected = shutdown_before_seal(text, chronicle, boundary, stop_started, stop_finished)
+    if not selected:
+        return None
+    for kind in ("holder", "shutdown"):
+        source_line = selected.pop(kind + "_line")
+        selected[kind + "_source"] = next(
+            dict(file=str(path), line_number=index, line=line)
+            for path, content in logs
+            for index, line in enumerate(content.splitlines(), 1) if line == source_line)
+    selected["identity"] = {key: record[key] for key in
+                            ("component", "host", "pid", "uid", "executable", "config", "start_ticks", "boot_id")}
+    selected["identity"].update(generation=generation, deployment_id=deployment_id)
+    return selected
+
+
+def persist_summary(summary, directory=Path("/tmp")):
+    directory = Path(directory)
+    immutable = directory / ("shutdown_data_check." + summary["chronicle"] + ".json")
+    payload = json.dumps(dict(summary, evidence_path=str(immutable)), indent=2) + "\n"
+    # The unique named snapshot cannot be replaced by a later deployment. Keep
+    # the stable artifact name as a copy for existing CI/failure collection.
+    with immutable.open("x") as output:
+        output.write(payload)
+    immutable.chmod(0o444)
+    (directory / "shutdown_data_check.json").write_text(payload)
+    return immutable
 
 
 def run(work, repo, build, deploy=None):
@@ -100,17 +137,18 @@ def run(work, repo, build, deploy=None):
         if proof.get("application_handles") != 0:
             raise ValueError("native application handles remain")
     boundary = unsealed_until(events, release[0], 10, 15)
-    holders = 0
+    observations = []
     for record in keepers:
         conf = json.loads(record["config_bytes"])["chrono_keeper"]
         log = Path(conf["Monitoring"]["monitor"]["file"])
-        paths = list(log.parent.glob(log.stem + "*.log"))
-        text = "\n".join(path.read_text(errors="replace") for path in paths)
-        if "shutdown with unconfirmed" in text:
-            raise ValueError("unconfirmed data at Keeper exit")
-        if shutdown_before_seal(text, chronicle, boundary, stop_started, stop_finished):
-            holders += 1
-    if not holders:
+        paths = sorted(log.parent.glob(log.stem + "*.log"))
+        logs = [(path, path.read_text(errors="replace")) for path in paths]
+        selected = keeper_shutdown_observation(
+            record, logs, chronicle, boundary, stop_started, stop_finished,
+            original_generations[record["config"]], manifest["id"])
+        if selected:
+            observations.append(selected)
+    if not observations:
         raise ValueError("no actual Keeper recorded the retained test story")
     after = subprocess.run(command, capture_output=True, text=True, timeout=15)
     print("After stop:", after.stdout, flush=True)
@@ -118,9 +156,12 @@ def run(work, repo, build, deploy=None):
         raise ValueError("archive must contain all eight acknowledged identities and payloads exactly once")
     summary = dict(chronicle=chronicle, events=events, release_started=release[0],
                    unsealed_until=boundary, stop_started=stop_started, stop_finished=stop_finished,
-                   holders=holders, before_archive_count=0,
+                   holders=len(observations), holder_observations=observations, before_archive_count=0,
                    after_archive_count=8, exact=True, native_stopped=len(records))
-    Path("/tmp/shutdown_data_check.json").write_text(json.dumps(summary, indent=2) + "\n")
+    evidence = persist_summary(summary)
+    print("Shutdown evidence:", evidence, flush=True)
+    # The outer pipeline retains stdout even after it removes the containers.
+    print("SHUTDOWN_EVIDENCE", evidence.read_text().strip(), flush=True)
     print("PASS: eight events unsealed when Keeper shutdown began, archived exactly once; all native owners retired", flush=True)
 
 

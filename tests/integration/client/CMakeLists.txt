@@ -230,7 +230,11 @@ target_compile_definitions(client_acquire_deadline_test PRIVATE
 add_dependencies(client_acquire_deadline_test client_acquire_public_probe)
 # These native fixtures bind every endpoint to 127.0.0.1, including TCP.
 gtest_discover_tests(client_acquire_deadline_test TEST_PREFIX "Integration_ClientAcquireDeadline_"
-    PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE ENVIRONMENT "FI_SOCKETS_IFACE=lo;FI_TCP_IFACE=lo")
+    PROPERTIES TIMEOUT 45 RUN_SERIAL TRUE)
+# Apply the list-valued environment after discovery; pinned GoogleTest.cmake
+# splits list values forwarded through PROPERTIES into separate properties.
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/client_acquire_deadline_properties.cmake")
 
 add_executable(client_metadata_deadline_test client_metadata_deadline_test.cpp)
 target_include_directories(client_metadata_deadline_test PRIVATE
