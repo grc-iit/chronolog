@@ -121,6 +121,51 @@ def status(record):
 
 
 
+def proved_gone(record):
+    """The recorded process no longer exists: its PID is absent, or the PID now
+    names another process (another start time or boot). A zombie of the
+    original, or any observation error, is not proof."""
+    try:
+        current = process_identity(record['pid'])
+    except (OSError, ValueError, KeyError, IndexError):
+        return False
+    if current is None:
+        return True
+    return current.get('boot_id') != record.get('boot_id') or current.get('start_ticks') != record.get('start_ticks')
+
+
+def ancestors():
+    pids, pid = set(), os.getpid()
+    while pid > 1 and pid not in pids:
+        pids.add(pid)
+        try:
+            status = (Path('/proc')/str(pid)/'status').read_text()
+        except OSError:
+            break
+        pid = int(next((line.split()[1] for line in status.splitlines() if line.startswith('PPid:')), '0'))
+    return pids
+
+
+def lifecycle_helpers(work):
+    """PIDs of other lifecycle commands for this work dir on this host, such as
+    a launch helper that outlived the command that started it."""
+    script, root, own = str(Path(__file__).resolve()), str(Path(work).resolve()), ancestors()
+    found = []
+    for directory in Path('/proc').iterdir():
+        if not directory.name.isdigit() or int(directory.name) in own:
+            continue
+        try:
+            argv = [os.fsdecode(x) for x in (directory/'cmdline').read_bytes().split(b'\0') if x]
+        except OSError:
+            continue
+        if '--work-dir' not in argv or argv.index('--work-dir')+1 >= len(argv):
+            continue
+        if (str(Path(argv[argv.index('--work-dir')+1]).resolve()) == root
+                and any(str(Path(value).resolve()) == script for value in argv if value.endswith('.py'))):
+            found.append(int(directory.name))
+    return found
+
+
 def inspect_process(record):
     state = status(record)
     result = {'state': state}
@@ -205,14 +250,17 @@ def signal_process(record):
         os.close(descriptor)
 
 
-def inventory(work, executables=()):
+def inventory(work, executables=(), helpers=False):
     host = socket.gethostname()
     records = []
     for path in sorted((Path(work)/'monitor/lifecycle').glob('*.json')):
         record = json.loads(path.read_text())
         if record.get('host') == host:
             record['state'] = status(record)
+            record['gone'] = record['state'] == 'stopped' or proved_gone(record)
             records.append(record)
+    if helpers and lifecycle_helpers(work):
+        raise RuntimeError('a lifecycle command for this work dir is still running')
     # Detect unrecorded or mismatched occupied deployment before any config
     # rewrite/start. A scan error for an expected process is not absence.
     expected = {str((Path(work)/'bin'/('chrono-'+kind)).resolve()) for kind in COMPONENTS}
@@ -751,17 +799,41 @@ def fenced_command(work, hosts, budget_ms, operation, command, worker=call_worke
         lock = (root/'control.lock').open('a+')
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         path = manifest_path(work)
+        # A deployment whose stop did not finish (or whose start or stop was
+        # killed) leaves its record in another state. It is over once every
+        # process it recorded is gone, and no unrecorded service or lifecycle
+        # command for this work dir remains on any of its hosts; this fence's
+        # lock shows no other lifecycle command holds it. Only then may a start
+        # or clean replace it.
+        unclean = None
+        scan = list(executables)
+        inventoried = list(hosts)
         if path.exists():
             old = json.loads(path.read_text())
             if old.get('state') not in ('stopped','empty') or 'pending_launch' in old:
-                raise RuntimeError('prior deployment is active or incomplete; configs are retained')
+                unclean = old
+                inventoried += [host for host in old.get('hosts', []) if host not in inventoried]
+                pending = old.get('pending_launch', {}).get('specification', {})
+                if pending.get('executable'):
+                    scan.append(pending['executable'])
         records = []
-        for host in hosts:
-            found = worker(host, work, 'inventory', deadline,
-                           {'executables':list(executables)} if executables else None)
-            if any(record['state'] != 'stopped' for record in found['records']):
+        for host in inventoried:
+            request = {'executables':scan} if scan else {}
+            if unclean is not None:
+                request['helpers'] = True
+            found = worker(host, work, 'inventory', deadline, request or None)
+            if unclean is None and any(record['state'] != 'stopped' for record in found['records']):
                 raise RuntimeError('occupied/unverified deployment; configs are retained')
+            if unclean is not None and not all(record.get('gone') for record in found['records']):
+                raise RuntimeError('prior deployment is active or incomplete: a recorded process may '
+                                   'still run; configs are retained')
             records.extend(found['records'])
+        if unclean is not None:
+            seen = {(r.get('host'), r.get('pid'), r.get('start_ticks'), r.get('boot_id')) for r in records}
+            for record in unclean.get('records', []):
+                if (record.get('host'), record.get('pid'), record.get('start_ticks'), record.get('boot_id')) not in seen:
+                    raise RuntimeError('prior deployment is incomplete: a recorded process was not found '
+                                       'by any host inventory; configs are retained')
         archive_previous(work, records)
         deployment = str(uuid.uuid4())
         atomic_json(path, {'id':deployment,'state':'starting' if operation == 'start' else 'cleaning',
@@ -776,8 +848,12 @@ def fenced_command(work, hosts, budget_ms, operation, command, worker=call_worke
         manifest = json.loads(path.read_text())
         manifest['state'] = 'running' if operation == 'start' else 'empty'
         atomic_json(path, manifest)
-        emit({'operation':operation, 'status':0, 'deployment_id':deployment,
-              'elapsed_ms':int((time.monotonic()-started)*1000)})
+        result = {'operation':operation, 'status':0, 'deployment_id':deployment,
+                  'elapsed_ms':int((time.monotonic()-started)*1000)}
+        if unclean is not None:
+            result['replaced'] = {'deployment_id':unclean.get('id'), 'state':unclean.get('state'),
+                                  'reason':'every recorded process was gone'}
+        emit(result)
         return 0
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as error:
         # Only the exact shell helper is terminated on caller expiry. Services
@@ -1009,7 +1085,8 @@ def main():
         emit(record_process(work, args.pid, args.executable, args.config, args.component))
     elif args.command == 'worker':
         if args.action == 'inventory':
-            emit(inventory(work, json.loads(args.record).get('executables',[]) if args.record else ()))
+            request = json.loads(args.record) if args.record else {}
+            emit(inventory(work, request.get('executables',[]), request.get('helpers', False)))
         else:
             record = json.loads(args.record)
             if args.action == 'launch':

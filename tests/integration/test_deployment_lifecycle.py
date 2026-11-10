@@ -137,15 +137,76 @@ class ManagedStartFence(unittest.TestCase):
             return lifecycle.fenced_command(self.work, ['host-A'], 500,
                 operation, ['/bin/true'], worker=worker or self.worker)
 
-    def test_stopping_or_inflight_start_never_runs_config_mutation(self):
-        for phase in ('starting','stopping'):
+    def record(self, host='host-A', pid=4242, gone=False):
+        return {'host':host, 'pid':pid, 'start_ticks':'7', 'boot_id':'boot', 'config':str(self.config),
+                'state':'unknown', 'gone':gone}
+
+    def test_stopping_or_inflight_start_with_a_live_process_never_runs_config_mutation(self):
+        live = self.record()
+        def inventory(*args):
+            return {'host':'host-A', 'records':[live]}
+        for phase in ('starting','stopping','running'):
             with self.subTest(phase=phase):
-                lifecycle.atomic_json(self.manifest, {'id':'old','state':phase,'records':[]})
+                lifecycle.atomic_json(self.manifest, {'id':'old','state':phase,'records':[live]})
                 with mock.patch.object(lifecycle.subprocess, 'Popen') as launch:
-                    self.assertEqual(self.invoke(), 27)
+                    self.assertEqual(self.invoke(worker=inventory), 27)
                     launch.assert_not_called()
                 self.assertEqual(self.config.read_text(), 'original-config')
                 self.assertEqual(json.loads(self.manifest.read_text())['id'], 'old')
+
+    # The sprint launcher's rule: a deployment whose stop was killed or timed
+    # out is over once every process it recorded is gone.
+    def test_unclean_previous_with_every_recorded_process_gone_is_replaced(self):
+        for phase in ('starting','stopping','running'):
+            with self.subTest(phase=phase):
+                gone = self.record(gone=True)
+                lifecycle.atomic_json(self.manifest, {'id':'old-'+phase,'state':phase,'records':[gone],
+                                                      'hosts':['host-A']})
+                requests = []
+                def inventory(host, work, action, deadline, record=None):
+                    requests.append(record)
+                    return {'host':'host-A', 'records':[gone]}
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.subprocess, 'Popen',
+                                       return_value=mock.Mock(wait=lambda timeout: 0)), \
+                     contextlib.redirect_stdout(output):
+                    self.assertEqual(lifecycle.fenced_command(self.work, ['host-A'], 500, 'start',
+                                                              ['/bin/true'], worker=inventory), 0)
+                manifest = json.loads(self.manifest.read_text())
+                self.assertNotEqual(manifest['id'], 'old-'+phase)
+                self.assertEqual(manifest['state'], 'running')
+                self.assertEqual(requests, [{'helpers':True}])
+                replaced = json.loads(output.getvalue())['replaced']
+                self.assertEqual((replaced['deployment_id'], replaced['state']), ('old-'+phase, phase))
+                archived = [json.loads(path.read_text()) for path in
+                            (self.work/'monitor/lifecycle/history').glob('*/deployment.json')]
+                self.assertIn('old-'+phase, [value.get('id') for value in archived])
+
+    def test_unclean_previous_inventories_its_own_hosts_and_needs_every_record(self):
+        other = self.record(host='host-B', gone=True)
+        lifecycle.atomic_json(self.manifest, {'id':'old','state':'stopping','records':[other],
+                                              'hosts':['host-A','host-B']})
+        def without_b(host, work, action, deadline, record=None):
+            self.calls.append((host, action))
+            return {'host':host, 'records':[]}
+        with mock.patch.object(lifecycle.subprocess, 'Popen') as launch:
+            self.assertEqual(self.invoke(worker=without_b), 27)
+            launch.assert_not_called()
+        self.assertEqual(self.calls, [('host-A','inventory'), ('host-B','inventory')])
+        self.assertEqual(json.loads(self.manifest.read_text())['id'], 'old')
+
+    def test_unclean_previous_scans_for_the_pending_launch_executable(self):
+        lifecycle.atomic_json(self.manifest, {'id':'old','state':'starting','records':[],'hosts':['host-A'],
+            'pending_launch':{'route':'host-A','specification':{'executable':'/opt/x/chrono-keeper'}}})
+        requests = []
+        def occupied(host, work, action, deadline, record=None):
+            requests.append(record)
+            raise RuntimeError('unrecorded/mismatched deployment process is occupied')
+        with mock.patch.object(lifecycle.subprocess, 'Popen') as launch:
+            self.assertEqual(self.invoke(worker=occupied), 27)
+            launch.assert_not_called()
+        self.assertEqual(requests, [{'executables':['/opt/x/chrono-keeper'], 'helpers':True}])
+        self.assertIn('pending_launch', json.loads(self.manifest.read_text()))
 
     def test_failed_host_observation_never_runs_config_mutation(self):
         def unknown(*args):
@@ -173,6 +234,14 @@ class ManagedStartFence(unittest.TestCase):
         self.assertEqual(self.calls, [('host-A','inventory')])
         self.assertEqual(json.loads(self.manifest.read_text())['state'], 'running')
 
+    def live_record(self):
+        """A recorded process that is alive: this test process."""
+        record = lifecycle.process_identity(lifecycle.os.getpid())
+        record.update(host=lifecycle.socket.gethostname(), config=str(self.config), component='keeper',
+                      status_file=str(self.config)+'.lifecycle.json', deployment_id='old')
+        lifecycle.atomic_json(lifecycle.record_path(self.work, record['host'], str(self.config)), record)
+        return record
+
     def test_occupied_record_prevents_clean_as_well_as_start(self):
         def occupied(*args):
             return {'host':'host-A','records':[{'state':'unknown'}]}
@@ -193,7 +262,7 @@ class ManagedStartFence(unittest.TestCase):
         (self.work/'bin').mkdir()
         template = self.work/'conf/default-chrono-conf.json'
         template.write_text('unchanged-template')
-        lifecycle.atomic_json(self.manifest, {'id':'old','state':'stopping','records':[]})
+        lifecycle.atomic_json(self.manifest, {'id':'old','state':'stopping','records':[self.live_record()]})
         result = subprocess.run(['bash', str(MODULE.parent/'deploy_local.sh'),
                                  '-d','-w',str(self.work)], capture_output=True, text=True, timeout=2)
         self.assertEqual(result.returncode, 27, result.stdout+result.stderr)
@@ -213,7 +282,7 @@ class ManagedStartFence(unittest.TestCase):
             (self.work/'conf'/('hosts_'+role)).write_text('localhost\n')
         template = self.work/'conf/default-chrono-conf.json'
         template.write_text('unchanged-cluster-template')
-        lifecycle.atomic_json(self.manifest, {'id':'old','state':'stopping','records':[]})
+        lifecycle.atomic_json(self.manifest, {'id':'old','state':'stopping','records':[self.live_record()]})
         result = subprocess.run(['bash', str(MODULE.parent/'deploy_cluster.sh'),
                                  '-d','-w',str(self.work)], capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 27, result.stdout+result.stderr)
@@ -236,6 +305,52 @@ class ManagedStartFence(unittest.TestCase):
                 lifecycle.launch_remote(self.work,'node-B','/bin/service',str(self.config),'keeper','/tmp/log',100)
         self.assertEqual(len(observed),1)
         self.assertEqual(json.loads(self.manifest.read_text())['pending_launch']['specification']['launch_id'],observed[0])
+
+
+class GoneProcess(unittest.TestCase):
+    def own(self):
+        record = lifecycle.process_identity(lifecycle.os.getpid())
+        return {key: record[key] for key in ('pid','start_ticks','boot_id')}
+
+    def test_running_process_is_not_gone(self):
+        self.assertFalse(lifecycle.proved_gone(self.own()))
+
+    def test_exited_and_reaped_process_is_gone(self):
+        child = subprocess.Popen(['/bin/true'])
+        record = {'pid':child.pid, 'start_ticks':'1', 'boot_id':'boot'}
+        child.wait()
+        self.assertTrue(lifecycle.proved_gone(record))
+
+    def test_reused_pid_from_another_start_or_boot_is_gone(self):
+        self.assertTrue(lifecycle.proved_gone(dict(self.own(), start_ticks='0')))
+        self.assertTrue(lifecycle.proved_gone(dict(self.own(), boot_id='another-boot')))
+
+    def test_unreaped_original_is_not_gone(self):
+        child = subprocess.Popen(['/bin/true'])
+        self.addCleanup(child.wait)
+        for _ in range(500):
+            observed = lifecycle.process_identity(child.pid)
+            if observed and observed.get('zombie'):
+                break
+            lifecycle.time.sleep(0.01)
+        self.assertTrue(observed.get('zombie'))
+        record = {'pid':child.pid, 'start_ticks':observed['start_ticks'], 'boot_id':observed['boot_id']}
+        self.assertFalse(lifecycle.proved_gone(record))
+
+    def test_lifecycle_command_for_the_same_work_dir_is_found(self):
+        with tempfile.TemporaryDirectory(prefix='chronolog-helper-') as work, \
+             tempfile.TemporaryDirectory(prefix='chronolog-other-') as other:
+            helper = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)',
+                                       str(MODULE), '--work-dir', work, 'worker', 'launch'])
+            self.addCleanup(helper.wait)
+            self.addCleanup(helper.kill)
+            for _ in range(500):
+                if helper.pid in lifecycle.lifecycle_helpers(work):
+                    break
+                lifecycle.time.sleep(0.01)
+            self.assertIn(helper.pid, lifecycle.lifecycle_helpers(work))
+            self.assertNotIn(helper.pid, lifecycle.lifecycle_helpers(other))
+            self.assertNotIn(lifecycle.os.getpid(), lifecycle.lifecycle_helpers(work))
 
 
 class ManagedStopController(unittest.TestCase):
