@@ -35,6 +35,7 @@ chl::StoryChunk::~StoryChunk() { logEvents.clear(); }
 
 int chl::StoryChunk::insertEvent(chl::LogEvent const& event)
 {
+    serialization.forget();
     if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) &&
        !event.logRecord.empty())
     {
@@ -50,6 +51,7 @@ int chl::StoryChunk::insertEvent(chl::LogEvent const& event)
 
 int chl::StoryChunk::insertEvent(chl::LogEvent&& event)
 {
+    serialization.forget();
     if((event.storyId == storyId) && (event.time() >= startTime) && (event.time() < endTime) &&
        !event.logRecord.empty())
     {
@@ -70,6 +72,7 @@ int chl::StoryChunk::insertEvent(chl::LogEvent&& event)
 uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent>& events,
                                       std::map<chl::EventSequence, chl::LogEvent>::const_iterator& merge_start)
 {
+    serialization.forget();
     LOG_TRACE("[StoryChunk] merge StoryId{} master chunk {}-{} : merging map eventCount {}",
               storyId,
               startTime,
@@ -148,6 +151,7 @@ uint32_t chl::StoryChunk::mergeEvents(std::map<chl::EventSequence, chl::LogEvent
 
 uint32_t chl::StoryChunk::mergeEvents(chl::StoryChunk& other_chunk, uint64_t merge_start_time)
 {
+    serialization.forget();
     LOG_DEBUG("[StoryChunk] merge StoryId{} master chunk {}-{} : merging in chunk {}-{} eventCount {}",
               storyId,
               startTime,
@@ -255,6 +259,7 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator
 chl::StoryChunk::eraseEvents(std::map<chl::EventSequence, chl::LogEvent>::const_iterator& range_start,
                              std::map<chl::EventSequence, chl::LogEvent>::const_iterator& range_end)
 {
+    serialization.forget();
     return logEvents.erase(range_start, range_end);
 }
 
@@ -265,6 +270,7 @@ chl::StoryChunk::eraseEvents(std::map<chl::EventSequence, chl::LogEvent>::const_
 std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEvents(uint64_t start_time,
                                                                                    uint64_t end_time)
 {
+    serialization.forget();
     if(logEvents.empty() || start_time == 0 || start_time >= end_time || start_time >= endTime || end_time < startTime)
     {
         return logEvents.end();
@@ -286,6 +292,7 @@ std::map<chl::EventSequence, chl::LogEvent>::iterator chl::StoryChunk::eraseEven
 // StoryChunk is emptied by this operation
 std::vector<chl::Event>& chl::StoryChunk::extractEventSeries(std::vector<chl::Event>& event_series)
 {
+    serialization.forget();
     // NOTE: event_series is a vector of chronolog::Event ( client facing event representation)
     // while StoryChunk is using LogEvent (internal chronolog event representation)
 
@@ -336,22 +343,18 @@ chl::StoryChunk::copyToEventSeries(std::vector<chl::Event>& event_series, uint64
 }
 
 
-bool chronolog::StoryChunk::sameSerializedData(StoryChunk const& other) const
+std::shared_ptr<chl::SerializedStoryChunk const> chl::StoryChunk::cachedSerialization() const
 {
-    if(chronicleName != other.chronicleName || storyName != other.storyName || storyId != other.storyId ||
-       startTime != other.startTime || endTime != other.endTime || revisionTime != other.revisionTime ||
-       logEvents.size() != other.logEvents.size())
-        return false;
-    auto left = logEvents.begin(), right = other.logEvents.begin();
-    for(; left != logEvents.end(); ++left, ++right)
-    {
-        auto const& a = left->second;
-        auto const& b = right->second;
-        // LogEvent::operator== excludes logRecord. The transfer identity must
-        // compare every serialized field, including payload and map keys.
-        if(left->first != right->first || a.storyId != b.storyId || a.eventTime != b.eventTime ||
-           a.clientId != b.clientId || a.eventIndex != b.eventIndex || a.logRecord != b.logRecord)
-            return false;
-    }
-    return true;
+    std::lock_guard<std::mutex> lock(serialization.mutex);
+    return serialization.bytes.lock();
+}
+
+std::shared_ptr<chl::SerializedStoryChunk const>
+chl::StoryChunk::cacheSerialization(std::shared_ptr<SerializedStoryChunk const> bytes) const
+{
+    std::lock_guard<std::mutex> lock(serialization.mutex);
+    if(auto held = serialization.bytes.lock())
+        return held;
+    serialization.bytes = bytes;
+    return bytes;
 }

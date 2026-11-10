@@ -15,11 +15,11 @@ rpc::RpcDeadline attempt(std::shared_ptr<rpc::RpcBulkOwner> const& owner, rpc::R
 }
 auto bulkWork(std::shared_ptr<rpc::RpcBulkOwner> owner,
               ServiceId route,
-              std::string payload,
+              rpc::BulkPayload payload,
               rpc::BulkPermits::Permit permit,
               ServiceId reporter,
               std::shared_ptr<rpc::BulkReplyState<ChunkReceipt>> state = {},
-              std::function<std::string()> prepare = {},
+              std::function<rpc::BulkPayload()> prepare = {},
               std::function<void()> afterKnown = {})
 {
     return std::make_shared<rpc::BulkSendWork<ChunkReceipt>>(
@@ -37,6 +37,13 @@ auto bulkWork(std::shared_ptr<rpc::RpcBulkOwner> owner,
             std::move(afterKnown));
 }
 } // namespace
+std::shared_ptr<SerializedStoryChunk const> RDMATransferAgent::serialize(StoryChunk const& chunk)
+{
+    if(auto held = chunk.cachedSerialization())
+        return held;
+    return chunk.cacheSerialization(
+            std::make_shared<SerializedStoryChunk const>(SerializedStoryChunk{rpc::serializeBulk(chunk)}));
+}
 int RDMATransferAgent::transfer_serialized_story_chunk(std::string const& payload,
                                                        ServiceId const& reporter,
                                                        ChunkReceipt* receipt)
@@ -79,6 +86,18 @@ int RDMATransferAgent::transfer_story_chunk(StoryChunk const& chunk, ServiceId c
         return CL_ERR_RPC_CAPACITY;
     auto deadline = attempt(owner, started);
     auto runtime = owner->runtime.lock();
+    // Serialized on this caller: every transfer of the chunk still in progress,
+    // and a late receipt waiting to be collected, share these bytes instead of
+    // each holding a copy of the chunk and of its serialized form.
+    std::shared_ptr<SerializedStoryChunk const> serialized;
+    try
+    {
+        serialized = serialize(chunk);
+    }
+    catch(...)
+    {
+        return CL_ERR_UNKNOWN;
+    }
     rpc::RpcBulkOwner::ChunkIdentity identity{route_.getProtocol(),
                                               route_.getIPaddr(),
                                               route_.getPort(),
@@ -106,7 +125,8 @@ int RDMATransferAgent::transfer_story_chunk(StoryChunk const& chunk, ServiceId c
     for(auto found = matches.first; found != matches.second; ++found)
     {
         auto outcome = found->second;
-        bool same = outcome->snapshot && outcome->snapshot->sameSerializedData(chunk);
+        bool same =
+                outcome->payload && (outcome->payload == serialized || outcome->payload->bytes == serialized->bytes);
         if(deadline.expired())
             return CL_ERR_DEADLINE_EXCEEDED;
         if(!same)
@@ -137,25 +157,24 @@ int RDMATransferAgent::transfer_story_chunk(StoryChunk const& chunk, ServiceId c
     {
         outcome = std::make_shared<rpc::RpcBulkOwner::ChunkOutcome>(std::move(*metadata));
         owner->chunks.emplace(identity, outcome);
-        // One admitted immutable snapshot of borrowed input. Serialization
-        // happens on the charged worker, before its independent wait expires.
-        outcome->snapshot = std::make_shared<StoryChunk const>(chunk);
+        outcome->payload = serialized;
         auto before = owner->beforeSerialize;
-        auto prepare = [outcome, before]
+        auto prepare = [serialized, before]
         {
             if(before)
                 before();
-            return rpc::serializeBulk(*outcome->snapshot);
+            return rpc::BulkPayload(std::shared_ptr<std::string const>(serialized, &serialized->bytes));
         };
         auto afterKnown = [owner, outcome, identity]
         {
             // A late receipt retains its immutable identity and charged slot
-            // until the originating chunk consumes it. Large snapshot cleanup
-            // stays on this existing worker, never the receipt collector.
+            // until the originating chunk consumes it. Dropping the last
+            // reference to the bytes stays on this existing worker, never the
+            // receipt collector.
             while(!outcome->consumed.load(std::memory_order_acquire))
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             std::lock_guard<std::timed_mutex> lock(owner->pendingMutex);
-            outcome->snapshot.reset();
+            outcome->payload.reset();
             auto range = owner->chunks.equal_range(identity);
             for(auto found = range.first; found != range.second; ++found)
                 if(found->second == outcome)

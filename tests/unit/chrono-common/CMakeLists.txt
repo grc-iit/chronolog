@@ -16,6 +16,7 @@ add_executable(story_chunk_test
 
 target_include_directories(story_chunk_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-rpc/include
     ${CMAKE_SOURCE_DIR}/client/cpp/include
 )
 

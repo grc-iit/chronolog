@@ -94,7 +94,9 @@ public:
         BulkPermits::Permit permit;
         std::shared_ptr<BulkReplyState<ChunkReceipt>> state = std::make_shared<BulkReplyState<ChunkReceipt>>();
         std::atomic<bool> consumed{false};
-        std::shared_ptr<StoryChunk const> snapshot;
+        // The serialized chunk this transfer sent; a later transfer of the
+        // same bytes collects its receipt.
+        std::shared_ptr<SerializedStoryChunk const> payload;
         explicit ChunkOutcome(BulkPermits::Permit metadata)
             : permit(std::move(metadata))
         {}

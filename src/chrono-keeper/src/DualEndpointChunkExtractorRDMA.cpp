@@ -175,6 +175,17 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
 {
     if(!rdma_sender_for_grapher)
         return chl::CL_ERR_STORY_CHUNK_EXTRACTION;
+    // Held across both transfers so the player and the grapher send the same
+    // serialized copy; it is freed when neither transfer still uses it.
+    std::shared_ptr<chl::SerializedStoryChunk const> serialized;
+    try
+    {
+        serialized = chl::RDMATransferAgent::serialize(*chunk);
+    }
+    catch(...)
+    {
+        return chl::CL_ERR_UNKNOWN;
+    }
     if(rdma_sender_for_player)
         rdma_sender_for_player->transfer_story_chunk(*chunk);
     chl::ChunkReceipt receipt;

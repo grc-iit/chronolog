@@ -6,6 +6,8 @@
 #include <vector>
 
 #include <StoryChunk.h>
+#include <RDMATransferAgent.h>
+#include <private/RpcBulkSerialization.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -1108,3 +1110,70 @@ TEST(StoryChunk_TestExtractEventSeries, testExtractLargePayload)
 // 3. have a main thread insert events into a chunk, have multiple threads simultaneously extracting events
 //    finally the total nb of extracted should be equal to total nb of inserted
 // 4. Do similar as nb 3 for erase events by separate threads
+
+
+/* ----------------------------------
+  The one serialized copy its transfers share
+  ---------------------------------- */
+
+namespace
+{
+chl::StoryChunk chunkWithEvents(int count)
+{
+    chl::StoryChunk chunk("chronicle", "story", 7, 1000, 2000);
+    for(int i = 0; i < count; ++i) chunk.insertEvent(chl::LogEvent(7, 1000 + i, 3, i, "record " + std::to_string(i)));
+    return chunk;
+}
+} // namespace
+
+// While a transfer holds the serialized form, every other transfer of the
+// chunk gets the same bytes rather than a second copy.
+TEST(StoryChunkSerialization, TransfersInProgressShareOneCopy)
+{
+    auto chunk = chunkWithEvents(3);
+    auto first = chl::RDMATransferAgent::serialize(chunk);
+    auto second = chl::RDMATransferAgent::serialize(chunk);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first.get(), second.get());
+    EXPECT_EQ(first->bytes, chl::rpc::serializeBulk(chunk));
+}
+
+// The chunk holds its serialized form weakly: once no transfer uses it, it is
+// freed and the next transfer serializes again.
+TEST(StoryChunkSerialization, CopyIsFreedWhenNoTransferHoldsIt)
+{
+    auto chunk = chunkWithEvents(3);
+    std::weak_ptr<chl::SerializedStoryChunk const> held = chl::RDMATransferAgent::serialize(chunk);
+    EXPECT_TRUE(held.expired());
+    EXPECT_EQ(chunk.cachedSerialization(), nullptr);
+    auto again = chl::RDMATransferAgent::serialize(chunk);
+    EXPECT_EQ(again->bytes, chl::rpc::serializeBulk(chunk));
+}
+
+// A change to the chunk forgets the form taken before it, so no transfer
+// sends bytes that miss the change; one that already holds them keeps them.
+TEST(StoryChunkSerialization, ChangeForgetsTheEarlierForm)
+{
+    auto chunk = chunkWithEvents(2);
+    auto before = chl::RDMATransferAgent::serialize(chunk);
+    ASSERT_EQ(1, chunk.insertEvent(chl::LogEvent(7, 1500, 3, 9, "late record")));
+    EXPECT_EQ(chunk.cachedSerialization(), nullptr);
+    auto after = chl::RDMATransferAgent::serialize(chunk);
+    EXPECT_NE(before.get(), after.get());
+    EXPECT_NE(before->bytes, after->bytes);
+    EXPECT_EQ(after->bytes, chl::rpc::serializeBulk(chunk));
+    auto erasedFrom = chl::RDMATransferAgent::serialize(chunk);
+    chunk.eraseEvents(1500, 1501);
+    EXPECT_EQ(chunk.cachedSerialization(), nullptr);
+    EXPECT_EQ(chl::RDMATransferAgent::serialize(chunk)->bytes, before->bytes);
+}
+
+// A copy of a chunk does not inherit the original's cached form.
+TEST(StoryChunkSerialization, CopyStartsWithoutACachedForm)
+{
+    auto chunk = chunkWithEvents(2);
+    auto held = chl::RDMATransferAgent::serialize(chunk);
+    chl::StoryChunk copy(chunk);
+    EXPECT_EQ(copy.cachedSerialization(), nullptr);
+    EXPECT_EQ(chunk.cachedSerialization().get(), held.get());
+}

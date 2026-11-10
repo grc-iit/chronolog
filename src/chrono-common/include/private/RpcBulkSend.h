@@ -11,6 +11,29 @@
 #include <string>
 namespace chronolog::rpc
 {
+// The bytes a bulk send exposes: owned by this send, or shared read-only with
+// other sends of the same data, such as the one serialized copy of a keeper
+// partial chunk that its player and grapher sends and every retry use.
+class BulkPayload
+{
+public:
+    BulkPayload() = default;
+    BulkPayload(std::string bytes)
+        : bytes_(std::make_shared<std::string const>(std::move(bytes)))
+    {}
+    BulkPayload(std::shared_ptr<std::string const> bytes)
+        : bytes_(std::move(bytes))
+    {}
+    bool empty() const noexcept { return !bytes_ || bytes_->empty(); }
+    std::size_t size() const noexcept { return bytes_ ? bytes_->size() : 0; }
+    // Exposed read-only; the cast is for the registration API only.
+    void* data() const noexcept { return bytes_ ? const_cast<char*>(bytes_->data()) : nullptr; }
+    void reset() noexcept { bytes_.reset(); }
+
+private:
+    std::shared_ptr<std::string const> bytes_;
+};
+
 template <class Reply>
 struct BulkReplyState
 {
@@ -30,11 +53,11 @@ public:
                  thallium::remote_procedure remote,
                  std::function<int(RpcDeadline const&)> provision,
                  ServiceId route,
-                 std::string payload,
+                 BulkPayload payload,
                  BulkPermits::Permit permit,
                  ServiceId reporter = {},
                  std::shared_ptr<BulkReplyState<Reply>> state = {},
-                 std::function<std::string()> prepare = {},
+                 std::function<BulkPayload()> prepare = {},
                  std::function<void()> afterKnown = {})
         : owner_(std::move(owner))
         , engine_(engine)
@@ -103,7 +126,7 @@ public:
                                                   : static_cast<int>(CL_ERR_STORY_CHUNK_EXTRACTION);
             call_.clearKnown();
             bulk_.reset();
-            std::string{}.swap(payload_);
+            payload_.reset();
             if(state_)
             {
                 state_->reply = reply;
@@ -136,8 +159,8 @@ private:
     std::function<int(RpcDeadline const&)> provision_;
     ServiceId route_;
     BulkPermits::Permit permit_;
-    std::function<std::string()> prepare_;
-    std::string payload_;
+    std::function<BulkPayload()> prepare_;
+    BulkPayload payload_;
     ServiceId reporter_;
     std::shared_ptr<BulkReplyState<Reply>> state_;
     // Native state dies before source storage, descriptor or actual engine owner.

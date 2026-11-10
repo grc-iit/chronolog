@@ -2,6 +2,8 @@
 #define STORY_CHUNK_H
 
 #include <map>
+#include <memory>
+#include <mutex>
 #include <set>
 #include <iostream>
 #include <sstream>
@@ -24,6 +26,13 @@ namespace chronolog
 // startTime/endTime are invariant
 
 typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
+
+// The serialized form of a StoryChunk that its transfers send (see
+// RDMATransferAgent::serialize).
+struct SerializedStoryChunk
+{
+    std::string bytes;
+};
 
 class StoryChunk
 {
@@ -167,14 +176,22 @@ public:
 
     std::set<uint64_t> const& carriedReceipts() const { return carriedReceiptSet; }
 
+    // The serialized form that transfers of this chunk still in progress
+    // share, or null. Held weakly, so it is freed once no transfer uses it;
+    // any change to the chunk forgets it. Transient, not serialized.
+    std::shared_ptr<SerializedStoryChunk const> cachedSerialization() const;
+
+    // Remembers bytes as this chunk's serialized form unless one is still
+    // held; returns the form to use.
+    std::shared_ptr<SerializedStoryChunk const>
+    cacheSerialization(std::shared_ptr<SerializedStoryChunk const> bytes) const;
+
 private:
     ChronicleName chronicleName;
     StoryName storyName;
     StoryId storyId;
     uint64_t startTime;
     uint64_t endTime;
-    friend class RDMATransferAgent;
-    bool sameSerializedData(StoryChunk const&) const;
 
     uint64_t revisionTime;
     std::map<EventSequence, LogEvent> logEvents;
@@ -183,6 +200,26 @@ private:
     uint64_t grapherInstance = 0;
     uint64_t grapherReceipt = 0;
     std::set<uint64_t> carriedReceiptSet;
+
+    // A copied chunk starts without a cached form.
+    struct SerializationCache
+    {
+        std::mutex mutex;
+        std::weak_ptr<SerializedStoryChunk const> bytes;
+        SerializationCache() = default;
+        SerializationCache(SerializationCache const&) {}
+        SerializationCache& operator=(SerializationCache const&)
+        {
+            forget();
+            return *this;
+        }
+        void forget()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            bytes.reset();
+        }
+    };
+    mutable SerializationCache serialization;
 };
 
 } // namespace chronolog

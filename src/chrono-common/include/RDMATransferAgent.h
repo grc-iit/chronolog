@@ -33,6 +33,10 @@ public:
                                         ServiceId const& reporter = {},
                                         ChunkReceipt* receipt = nullptr);
     int transfer_story_chunk(StoryChunk const&, ServiceId const& reporter = {}, ChunkReceipt* receipt = nullptr);
+    // The chunk's one serialized copy: the form a transfer still in progress
+    // holds, or a new one. Holding the result across several transfers, such
+    // as one to the player and one to the grapher, makes them share it.
+    static std::shared_ptr<SerializedStoryChunk const> serialize(StoryChunk const&);
     bool is_receiver_available() const;
 
 private:
