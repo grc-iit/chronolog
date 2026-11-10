@@ -182,6 +182,7 @@ private:
                     else
                     {
                         dispatched = true;
+                        SettledOnExit settled{operation};
                         if(action_ == Stats)
                         {
                             native_.callable()(message_);

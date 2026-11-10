@@ -35,6 +35,14 @@ public:
     // A false return forbids forwarding. A winning reservation can conservatively
     // report dispatch even when the worker is descheduled before the native call.
     bool tryBeginDispatch() noexcept;
+    // For work that exposes no bulk region: call once the native forward that
+    // the last tryBeginDispatch began has returned, by reply or by exception.
+    // A Margo forward, timed or not, returns only after Mercury has completed
+    // it (a timed forward cancels it first), so no native access to this
+    // work's memory remains. Work without a reply then gives its slot back
+    // instead of keeping it; its result still reports the unknown outcome.
+    // The next tryBeginDispatch clears the mark.
+    void markNativeSettled() noexcept;
     // Only for a retainOwner cleanup callback, which already runs on that
     // owner's charged cleanup slot. A dispatched call without a reply must
     // fail the callback, which quarantines the owner with its native fields.
@@ -50,15 +58,26 @@ private:
     {
         Abandoned = 1,
         Dispatched = 2,
-        Completed = 4
+        Completed = 4,
+        Settled = 8
     };
     void abandon() noexcept;
     bool complete() noexcept;
     bool dispatched() const noexcept { return (flags_.load(std::memory_order_acquire) & Dispatched) != 0; }
     bool abandoned() const noexcept { return (flags_.load(std::memory_order_acquire) & Abandoned) != 0; }
     bool completed() const noexcept { return (flags_.load(std::memory_order_acquire) & Completed) != 0; }
+    bool settled() const noexcept { return (flags_.load(std::memory_order_acquire) & Settled) != 0; }
     RpcDeadline deadline_;
     std::atomic<unsigned> flags_{0};
+};
+
+// Marks the operation's last forward settled when the scope ends, by return or
+// exception. Construct it after tryBeginDispatch, just before a forward that
+// exposes no bulk region and has returned by the end of the scope.
+struct SettledOnExit
+{
+    OperationContext& operation;
+    ~SettledOnExit() { operation.markNativeSettled(); }
 };
 
 // Trusted private adapters only. Own every argument, endpoint, engine lease and
@@ -66,7 +85,9 @@ private:
 // time per work item. Construct/lookup/finalize inside run when those may block.
 // A reply asserts the adapter's no-future-access settlement boundary, including
 // remote rejection. Reserved dispatch without a reply permanently retains this
-// work and its slot. Local timeout/cancellation/error is not bulk settlement.
+// work and its slot, unless the adapter marked its last forward settled with
+// OperationContext::markNativeSettled. Local timeout/cancellation/error is not
+// bulk settlement: work that exposed a bulk region never marks it.
 // Reply moves and destruction on the receiving caller must be nonblocking.
 template <class Reply>
 class OwnedRpcWork

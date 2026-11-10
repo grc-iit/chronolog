@@ -229,6 +229,7 @@ bool RDMATransferAgent::is_receiver_available() const
                 if(!timeout || !context.tryBeginDispatch())
                     return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
                 dispatched = true;
+                rpc::SettledOnExit settled{context};
                 bool reply = call_.callable().timed(*timeout);
                 call_.clearKnown();
                 return {CL_SUCCESS, true, reply};

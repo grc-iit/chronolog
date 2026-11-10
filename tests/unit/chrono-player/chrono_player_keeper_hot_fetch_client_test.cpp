@@ -295,23 +295,39 @@ TEST_P(KeeperHotFetch, HungKeeperCostsTheDeadlineAndDropsOutOfTheMin)
     EXPECT_FALSE(response.answered);
 }
 
-TEST_P(KeeperHotFetch, LatePeerReplyDoesNotReleaseUnknownNativeCapacity)
+// The keeper holds the fetch without answering. The timed forward is
+// cancelled and returns, so the fetch gives its slot back while the keeper
+// still holds the request, and a late reply changes nothing.
+TEST_P(KeeperHotFetch, UnansweredFetchGivesItsSlotBack)
 {
     hungClient = clientOf(kHungKeeperProvider);
     ASSERT_NE(hungClient, nullptr);
     auto response = hungClient->fetchRange(kStory, 0, 1000, 100);
     EXPECT_FALSE(response.answered);
+    {
+        auto deadline = chl::rpc::RpcDeadline::after(std::chrono::seconds(5));
+        chl::rpc::RpcReservation first, second;
+        while(!(first && second) && !deadline.expired())
+        {
+            if(!first)
+                first = runtime->reserve(deadline);
+            if(!second)
+                second = runtime->reserve(deadline);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_TRUE(first && second);
+        EXPECT_EQ(1, hungKeeper->active.load());
+    }
     hungKeeper->released = true;
     auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while(hungKeeper->active.load() && std::chrono::steady_clock::now() < limit)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_EQ(0, hungKeeper->active.load());
     auto deadline = chl::rpc::RpcDeadline::after(kDeadline);
-    auto remaining = runtime->reserve(deadline);
-    ASSERT_TRUE(remaining);
-    auto exhausted = runtime->reserve(deadline);
-    EXPECT_FALSE(exhausted);
-    EXPECT_EQ(chl::CL_ERR_RPC_CAPACITY, exhausted.status());
+    auto first = runtime->reserve(deadline);
+    auto second = runtime->reserve(deadline);
+    EXPECT_TRUE(first);
+    EXPECT_TRUE(second);
 }
 TEST_P(KeeperHotFetch, QuiescenceRetainsActualEngineProviderAndRejectsNewEntries)
 {
@@ -334,21 +350,23 @@ class KeeperHotFetchC6: public KeeperHotFetch
         KeeperHotFetch::SetUp();
     }
 };
-TEST_P(KeeperHotFetchC6, ActualUnknownNeverProvesQueryCleanupAfterLatePeerReply)
+// An unanswered fetch whose timed forward has returned holds neither a slot
+// nor a hot permit, so the player's queries settle while the keeper still
+// holds the request.
+TEST_P(KeeperHotFetchC6, UnansweredFetchLetsQueriesSettleBeforeTheLatePeerReply)
 {
     hungClient = clientOf(kHungKeeperProvider);
     ASSERT_NE(hungClient, nullptr);
     EXPECT_FALSE(hungClient->fetchRange(kStory, 0, 1000, 100).answered);
     ASSERT_EQ(hungKeeper->active.load(), 1); // Actual dispatch, not capacity refusal.
-    EXPECT_FALSE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::milliseconds(20))));
-    EXPECT_FALSE(playerOwner->queriesSettled.load());
+    EXPECT_TRUE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::seconds(5))));
+    EXPECT_TRUE(playerOwner->queriesSettled.load());
+    EXPECT_EQ(hungKeeper->active.load(), 1);
     hungKeeper->released = true;
     auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while(hungKeeper->active.load() && std::chrono::steady_clock::now() < until)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_EQ(hungKeeper->active.load(), 0);
-    EXPECT_FALSE(playerOwner->quiesceQueries(chl::rpc::RpcDeadline::after(std::chrono::milliseconds(20))));
-    EXPECT_FALSE(playerOwner->queriesSettled.load());
     EXPECT_NE(playerOwner->engine, nullptr);
 }
 TEST_P(KeeperHotFetchC6, ActivationAfterClosureAndActualCallbackStartNoQueryOrHotFetch)

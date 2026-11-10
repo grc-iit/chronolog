@@ -12,7 +12,8 @@ class StopDependencyEvidence;
 namespace chronolog
 {
 // Best-effort one-way reports. Local send completion is not Keeper application
-// or an archive receipt. Unknown attempts retain their owner and fixed charge.
+// or an archive receipt. An Unknown attempt keeps its target from sending
+// again; its slot is given back once the forward has returned.
 class WatermarkReportPublisher
 {
 public:

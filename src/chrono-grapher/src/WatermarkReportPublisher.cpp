@@ -148,6 +148,9 @@ struct WatermarkReportPublisher::Core
                 auto timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
                 if(!timeout)
                     return finish(CL_ERR_OUTCOME_UNCONFIRMED, State::Unknown, true);
+                // A report cancelled at its timeout can still reach the keeper,
+                // so the target stays Unknown, but the slot is given back.
+                rpc::SettledOnExit settled{operation};
                 native_.callable().timed(*timeout, publication_.reports);
                 // No decoded reply exists. Native fields are destroyed by the
                 // charged worker only after this successful local send fence.

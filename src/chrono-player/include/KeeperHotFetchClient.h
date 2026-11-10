@@ -134,6 +134,9 @@ private:
                 if(!timeout || owner_->closing() || !operation.tryBeginDispatch())
                     return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
                 dispatched = true;
+                // Nothing between the issue and wait() throws, so leaving this
+                // scope means wait() has returned and Mercury is done with it.
+                rpc::SettledOnExit settled{operation};
                 pending_.emplace(call_->timed_async(*timeout, story_, start_, end_, max_));
                 arrived = true;
                 if(barrier_)

@@ -467,6 +467,94 @@ TEST(RpcRuntime, CatchesThalliumTimeoutSeparatelyAfterDispatchAndRetainsOwner)
     EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
 }
 
+// A plain forward that timed out has returned, so Mercury is done with it. The
+// work marks it settled: the caller still gets CL_ERR_OUTCOME_UNCONFIRMED, but
+// the work is released and its slot serves the next call.
+TEST(RpcRuntime, SettledForwardWithoutReplyGivesItsSlotBack)
+{
+    RpcRuntime runtime(1);
+    auto owner = std::make_shared<int>(12);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [owner](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  SettledOnExit settled{context};
+                                                  throw thallium::timeout();
+                                              }));
+    owner.reset();
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_FALSE(result.reply);
+    EXPECT_TRUE(eventually([&] { return weak.expired(); }));
+    // The worker empties the slot just after the caller returns.
+    RpcReservation slot;
+    ASSERT_TRUE(eventually(
+            [&]
+            {
+                slot = runtime.reserve(RpcDeadline::after(1s));
+                return static_cast<bool>(slot);
+            }));
+    auto next = runtime.invoke<int>(std::move(slot),
+                                    work(
+                                            [](OperationContext& context)
+                                            {
+                                                EXPECT_TRUE(context.tryBeginDispatch());
+                                                return confirmed(3);
+                                            }));
+    ASSERT_TRUE(next.reply);
+    EXPECT_EQ(*next.reply, 3);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// The mark covers only the forward before it: a later dispatch that returns
+// without its own mark keeps the work and its slot.
+TEST(RpcRuntime, LaterDispatchClearsTheSettledMark)
+{
+    RpcRuntime runtime(1);
+    auto owner = std::make_shared<int>(13);
+    std::weak_ptr<int> weak = owner;
+    auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                      work(
+                                              [owner](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  context.markNativeSettled();
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                              }));
+    owner.reset();
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_FALSE(weak.expired());
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(20ms)).status(), CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(20ms)), CL_ERR_SHUTDOWN_INCOMPLETE);
+}
+
+// A caller that gave up before the settled forward returned does not change
+// that: the slot comes back when the work returns.
+TEST(RpcRuntime, SettledForwardAfterTheCallerExpiredGivesItsSlotBack)
+{
+    RpcRuntime runtime(1);
+    auto forward = std::make_shared<Gate>();
+    ReleaseGates cleanup{{forward}};
+    auto result = runtime.invoke<int>(RpcDeadline::after(50ms),
+                                      work(
+                                              [forward](OperationContext& context) -> RpcResult<int>
+                                              {
+                                                  EXPECT_TRUE(context.tryBeginDispatch());
+                                                  SettledOnExit settled{context};
+                                                  forward->block();
+                                                  return {CL_ERR_OUTCOME_UNCONFIRMED, true, {}};
+                                              }));
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_TRUE(result.may_have_dispatched);
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(20ms)).status(), CL_ERR_RPC_CAPACITY);
+    forward->release();
+    EXPECT_TRUE(eventually([&] { return static_cast<bool>(runtime.reserve(RpcDeadline::after(1s))); }));
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
 TEST(RpcRuntime, ConcurrentCompletionAndCloseDrainEveryAdmittedOwner)
 {
     for(int round = 0; round != 20; ++round)

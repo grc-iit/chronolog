@@ -120,7 +120,9 @@ TEST_P(TailDeadline, TruncatedPayloadIsPartialAndNotAnEmptyCompleteRead)
     EXPECT_EQ(CL_ERR_PARTIAL_RESULT, playbackWhenAdmitted(handle.second, 2, events, peer.state()));
     EXPECT_TRUE(events.empty());
 }
-TEST_P(TailDeadline, FailedSourceReturnsUsablePartialAndKeepsItsUnknownSlotCharged)
+// The slow keeper's forward is cancelled after 40 ms and returns, so its child
+// gives its slot back once it ends: the next read reaches both keepers again.
+TEST_P(TailDeadline, FailedSourceReturnsUsablePartialAndGivesItsSlotBack)
 {
     test::NativePeer peer(GetParam(), true);
     peer.state().keeperCount = 2;
@@ -142,10 +144,15 @@ TEST_P(TailDeadline, FailedSourceReturnsUsablePartialAndKeepsItsUnknownSlotCharg
     ASSERT_EQ(1u, events.size());
     EXPECT_EQ(original, events.front().sequence());
     EXPECT_EQ("tail", events.front().log_record());
-    EXPECT_EQ(CL_ERR_RPC_CAPACITY, handle.second->playback(2, events));
-    EXPECT_EQ(2u, peer.state().sequenceCalls.load());
+    std::vector<Event> again;
+    EXPECT_EQ(CL_ERR_PARTIAL_RESULT, playbackWhenAdmitted(handle.second, 2, again, peer.state()));
+    EXPECT_EQ(1u, again.size());
+    EXPECT_EQ(4u, peer.state().sequenceCalls.load());
 }
-TEST_P(TailDeadline, TwoSourceTimeoutsKeepClassificationBeforeTotalExpiryAndRetainUnknownSlots)
+// Both keepers answer after the attempt's 40 ms, so both timed forwards are
+// cancelled and return. The read times out, and the two children then give
+// their slots back: a second read is sent to both keepers again.
+TEST_P(TailDeadline, TwoSourceTimeoutsKeepClassificationBeforeTotalExpiryAndGiveTheirSlotsBack)
 {
     test::NativePeer peer(GetParam(), true);
     peer.state().keeperCount = 2;
@@ -172,8 +179,8 @@ TEST_P(TailDeadline, TwoSourceTimeoutsKeepClassificationBeforeTotalExpiryAndReta
     ASSERT_TRUE(peer.until([&] { return peer.state().sequenceReplies.load() == 2; }));
     ASSERT_EQ(1u, events.size());
     EXPECT_EQ("caller-owned sentinel", events.front().log_record());
-    EXPECT_EQ(CL_ERR_RPC_CAPACITY, handle.second->playback(2, events));
-    EXPECT_EQ(2u, peer.state().sequenceCalls.load());
+    EXPECT_EQ(CL_ERR_QUERY_TIMED_OUT, playbackWhenAdmitted(handle.second, 2, events, peer.state()));
+    EXPECT_EQ(4u, peer.state().sequenceCalls.load());
     EXPECT_EQ(0u, peer.state().payloadCalls.load());
 }
 TEST_P(TailDeadline, ReleaseAndFinalFacadeDropRetainTailChildAndNeverTouchReturnedOutput)

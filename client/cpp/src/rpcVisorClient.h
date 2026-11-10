@@ -40,6 +40,7 @@ public:
                 return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
             try
             {
+                rpc::SettledOnExit settled{context};
                 Reply reply = native.callable().timed(*timeout, args...);
                 native.clearKnown();
                 return {CL_SUCCESS, true, std::move(reply)};

@@ -35,11 +35,13 @@ bool OperationContext::tryBeginDispatch() noexcept
     auto observed = flags_.load(std::memory_order_acquire);
     while(!(observed & (Abandoned | Completed)))
     {
-        if(flags_.compare_exchange_strong(observed, observed | Dispatched, std::memory_order_acq_rel))
+        if(flags_.compare_exchange_strong(observed, (observed | Dispatched) & ~Settled, std::memory_order_acq_rel))
             return true;
     }
     return false;
 }
+
+void OperationContext::markNativeSettled() noexcept { flags_.fetch_or(Settled, std::memory_order_acq_rel); }
 
 void OperationContext::abandon() noexcept
 {
@@ -215,7 +217,10 @@ struct RuntimeState
             }
         }
         job->normalize();
-        bool quarantine = !job->hasReply() && job->context.dispatched();
+        // A dispatched forward without a reply keeps its work and slot while
+        // Mercury may still use them. Once the adapter marked the forward
+        // settled, only the remote outcome is unknown; the result says so.
+        bool quarantine = !job->hasReply() && job->context.dispatched() && !job->context.settled();
         job->context.complete();
         if(!quarantine)
             job->releaseWork();

@@ -154,13 +154,16 @@ int main(int argc, char** argv)
         std::cout << "query=" << query << " ack=" << ack << " ack_ms=" << ms << " replies=" << state->responses
                   << " hot_calls=" << state->fetches << " hot_permits=" << hotCount(*owner, 0) << std::endl;
     }
-    bool bounded = early && ids && state->responses == 3 && state->fetches == 2 && hotCount(*owner, 0) == 2;
+    // Both keepers hold every fetch. Each fetch's timed forward is cancelled
+    // and returns, so it gives back its slot and hot permit, and every query
+    // fetches from both keepers again.
+    bool bounded = early && ids && state->responses == 3 && state->fetches == 6 && hotCount(*owner, 0) == 0;
     state->stop = true;
     archives->join();
     archiveStream->join();
     state->release = true;
     if(!bounded)
         return 1;
-    std::cout << "PASS response reservation survives two unknown hot children and successor queries" << std::endl;
+    std::cout << "PASS every query answers and unanswered hot children give their slots back" << std::endl;
     return 0;
 }

@@ -370,7 +370,9 @@ TEST_P(WatermarkRpcDeadline, ParkDoesNotAcknowledgeAHeldOriginalNativeSend)
     EXPECT_EQ(publisher->publish(true), chl::CL_SUCCESS);
     EXPECT_EQ(received[0]->count(), 1u);
 }
-TEST_P(WatermarkRpcDeadline, ParkNeverAcknowledgesOrReclaimsUnknownOriginalSends)
+// Neither keeper exists, so both reports end Unknown: park and the final pass
+// stay incomplete. Both forwards have returned, so both slots come back.
+TEST_P(WatermarkRpcDeadline, ParkNeverAcknowledgesUnknownOriginalSends)
 {
     chl::RpcTimeoutPolicy policy;
     policy.attempt_ms = 40;
@@ -383,7 +385,10 @@ TEST_P(WatermarkRpcDeadline, ParkNeverAcknowledgesOrReclaimsUnknownOriginalSends
     auto proof = chl::rpc::StopPublicationTestAccess::proof(first);
     EXPECT_EQ(publisher->park(proof, chl::rpc::RpcDeadline::after(50ms)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
     EXPECT_EQ(publisher->publishFinal(chl::rpc::RpcDeadline::after(1s)), chl::CL_ERR_OUTCOME_UNCONFIRMED);
-    EXPECT_EQ(runtime->reserve(chl::rpc::RpcDeadline::after(20ms)).status(), chl::CL_ERR_RPC_CAPACITY);
+    auto one = runtime->reserve(chl::rpc::RpcDeadline::after(1s));
+    auto two = runtime->reserve(chl::rpc::RpcDeadline::after(1s));
+    EXPECT_TRUE(one);
+    EXPECT_TRUE(two);
 }
 TEST_P(WatermarkRpcDeadline, LocalSendCompletionDoesNotMeanKeeperApplication)
 {
@@ -574,7 +579,10 @@ TEST_P(WatermarkRpcDeadline, DroppingFacadesRetainsActualEnginesRegistryAndCalla
     ASSERT_TRUE(waitFor([&] { return received[0]->count() == 1; }));
     EXPECT_EQ(received[0]->latest().watermark, 200u);
 }
-TEST_P(WatermarkRpcDeadline, UnknownStaleEndpointAttemptsRetainCapacityWithoutRetry)
+// A report cancelled at its timeout may still reach the keeper, so neither
+// target is sent another report. Both forwards have returned, so both slots
+// come back.
+TEST_P(WatermarkRpcDeadline, UnknownStaleEndpointAttemptsGiveCapacityBackWithoutRetry)
 {
     chl::RpcTimeoutPolicy policy;
     policy.attempt_ms = 100;
@@ -591,8 +599,10 @@ TEST_P(WatermarkRpcDeadline, UnknownStaleEndpointAttemptsRetainCapacityWithoutRe
     for(unsigned n = 0; n != 10; ++n) publisher->publish(true);
     EXPECT_EQ(tries->load(), 2u);
     EXPECT_EQ(registry->getPersisted(5), 200u);
-    EXPECT_EQ(runtime->reserve(chl::rpc::RpcDeadline::after(20ms)).status(), chl::CL_ERR_RPC_CAPACITY);
-    EXPECT_EQ(runtime->drain(chl::rpc::RpcDeadline::after(50ms)), chl::CL_ERR_SHUTDOWN_INCOMPLETE);
+    auto first = runtime->reserve(chl::rpc::RpcDeadline::after(1s));
+    auto second = runtime->reserve(chl::rpc::RpcDeadline::after(1s));
+    EXPECT_TRUE(first);
+    EXPECT_TRUE(second);
 }
 TEST_P(WatermarkRpcDeadline, ForcedExpiredPassAndQuiescenceDispatchNothing)
 {

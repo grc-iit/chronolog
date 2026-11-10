@@ -101,8 +101,10 @@ public:
                 }
                 catch(...)
                 {}
-                // A timeout still has no settlement proof. Runtime retains this
-                // request, payload, procedure and actual owner in that case.
+                // The timed forward has returned, so Mercury is done with it.
+                // An unanswered append gives its slot back and still reports
+                // CL_ERR_OUTCOME_UNCONFIRMED.
+                operation.markNativeSettled();
                 if(observers_ && observers_->afterNative)
                     observers_->afterNative();
                 return result;
@@ -246,8 +248,7 @@ public:
                     endpoint_.emplace(engine_.lookup(address));
                     peer_.emplace(*endpoint_, route_.getProviderId());
                 }
-                // Each attempt's native call stays rooted until the job is
-                // released, as an append's does after a timeout.
+                // Each attempt's callable is kept until the job is released.
                 calls_.push_back(procedures_->calls[ClientRpcProcedures::RecordEventDurable].on(*peer_));
                 timeout = operation.deadline().cappedAttempt(std::chrono::milliseconds(timeoutMs));
                 if(!timeout || !operation.tryBeginDispatch())
@@ -263,6 +264,9 @@ public:
             }
             try
             {
+                // Leaving this block, by return or exception, means the timed
+                // forward has returned and Mercury is done with it.
+                rpc::SettledOnExit settled{operation};
                 code = calls_.back().timed(*timeout, chronicle, story, event);
                 answered_->store(true, std::memory_order_release);
                 return Outcome::Answered;
@@ -301,6 +305,7 @@ public:
                         std::chrono::milliseconds(std::min<uint32_t>(timeoutMs, kAliveProbeMs)));
                 if(!timeout || !operation.tryBeginDispatch())
                     return false;
+                rpc::SettledOnExit settled{operation};
                 std::vector<EventSequence> none = probes_.back().timed(*timeout, StoryId(0), size_t(0));
                 return true;
             }
@@ -406,6 +411,9 @@ public:
                 if(!timeout || !operation.tryBeginDispatch())
                     return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
                 dispatched = true;
+                // Nothing between the issue and wait() throws, so leaving this
+                // scope means wait() has returned and Mercury is done with it.
+                rpc::SettledOnExit settled{operation};
                 pending_.emplace(call_->timed_async(*timeout, args...));
                 arrived = true;
                 issued.arriveAndWait(operation.deadline());
@@ -417,13 +425,12 @@ public:
             catch(tl::timeout const&)
             {
                 // Preserve the caller-visible cause independently of native
-                // settlement. The unknown callable and slot remain retained.
+                // settlement.
                 timedOut_ = true;
                 return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
             }
             catch(...)
             {
-                // Never destroy a possibly active request after a local timeout.
                 return {dispatched ? CL_ERR_OUTCOME_UNCONFIRMED : CL_ERR_UNKNOWN, dispatched, std::nullopt};
             }
         }

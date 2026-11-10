@@ -169,8 +169,7 @@ TEST_P(DurableDeadline, AcceptedReturnsTheKeeperStatus)
     EXPECT_EQ(0u, state().durableCalls.load());
 }
 // The attempts of one durable write share one RPC slot: while it is on its
-// later attempts an append still finds the other slot, and once it ends
-// unanswered it has kept only that one.
+// later attempts an append still finds the other slot.
 TEST_P(DurableDeadline, RetriesKeepToOneSlot)
 {
     state().durableDropReplies = 100;
@@ -186,5 +185,22 @@ TEST_P(DurableDeadline, RetriesKeepToOneSlot)
     EXPECT_EQ(3u, state().durableCalls.load());
     EXPECT_EQ(CL_SUCCESS, handle->log_event("after", LogEventOptions{}, accepted_time));
     EXPECT_EQ(2u, state().records.load());
+}
+// Every attempt's timed forward has returned before the write ends, so a write
+// that got no answer gives its slot back: three in a row on a client with two
+// slots all reach the keeper, and an append after them is answered.
+TEST_P(DurableDeadline, UnansweredWritesGiveTheirSlotsBack)
+{
+    state().durableDropReplies = 100;
+    for(int i = 0; i < 3; ++i)
+    {
+        uint64_t event_time = 0;
+        EXPECT_EQ(CL_ERR_DURABILITY_UNKNOWN, logWhenAdmitted(handle, "durable", durable(100, 1), event_time, state()));
+        EXPECT_NE(0u, event_time);
+    }
+    EXPECT_EQ(3u, state().durableCalls.load());
+    uint64_t accepted_time = 0;
+    EXPECT_EQ(CL_SUCCESS, logWhenAdmitted(handle, "accepted", LogEventOptions{}, accepted_time, state()));
+    EXPECT_EQ(1u, state().records.load());
 }
 INSTANTIATE_TEST_SUITE_P(Transports, DurableDeadline, ::testing::Values("ofi+sockets", "ofi+tcp"));

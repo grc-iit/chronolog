@@ -22,6 +22,7 @@ rpc::RpcResult<uint32_t> PlaybackQueryRpcClient::send_story_playback_request(Cli
             return {CL_ERR_DEADLINE_EXCEEDED, false, {}};
         try
         {
+            rpc::SettledOnExit settled{operation};
             uint32_t reply = native.callable().timed(*timeout,
                                                      receiver,
                                                      query.queryId,

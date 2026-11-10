@@ -169,7 +169,6 @@ TEST_P(ClientAppendDeadline, LegacyAppendDoesNotWaitForLateReply)
     auto elapsed = Clock::now() - started;
     EXPECT_EQ(0u, timestamp);
     EXPECT_LT(elapsed, std::chrono::milliseconds(120));
-    healthy = false; // timed native failure has no settlement proof
     EXPECT_TRUE(peer->until([&] { return peer->state().eventCount.load() == 1; }));
     EXPECT_EQ(1u, peer->state().records.load());
 }
@@ -183,7 +182,6 @@ TEST_P(ClientAppendDeadline, LateReplyReportsUnconfirmedStampedIdentityAndNeverR
     EXPECT_EQ(AppendOutcome::Unconfirmed, result.outcome);
     EXPECT_EQ(100u, result.timestamp);
     EXPECT_EQ(1u, result.event_index);
-    healthy = false;
     ASSERT_TRUE(peer->until([&] { return peer->state().eventCount.load() == 1; }));
     auto const& event = peer->state().events[0];
     EXPECT_EQ(100u, event.time);
@@ -206,7 +204,36 @@ TEST_P(ClientAppendDeadline, LostReplyReportsUnconfirmedWithoutSecondEventOrRout
     EXPECT_EQ(1u, peer->state().events[0].eventIndex);
     EXPECT_EQ(1u, peer->state().events[0].route);
     EXPECT_EQ(1u, peer->state().records.load());
-    healthy = false;
+}
+// The timed forward of an unanswered append has returned before its job ends,
+// so the job gives its slot back. Three appends in a row go unanswered on a
+// client with two slots, and the next one is acknowledged. Each append that
+// finds both slots still busy is refused with nothing sent and tried again.
+TEST_P(ClientAppendDeadline, UnansweredAppendsGiveTheirSlotsBack)
+{
+    peer->state().dropRecordReply = true;
+    auto append = [&](std::string const& record)
+    {
+        AppendResult result{};
+        EXPECT_TRUE(test::until(
+                [&]
+                {
+                    result = handle->append_event(record);
+                    return result.status != CL_ERR_RPC_CAPACITY;
+                }));
+        return result;
+    };
+    for(int i = 0; i < 3; ++i)
+    {
+        auto result = append("lost reply " + std::to_string(i));
+        EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, result.status);
+        EXPECT_EQ(AppendOutcome::Unconfirmed, result.outcome);
+    }
+    peer->state().dropRecordReply = false;
+    auto answered = append("answered");
+    EXPECT_EQ(CL_SUCCESS, answered.status);
+    EXPECT_EQ(AppendOutcome::Acknowledged, answered.outcome);
+    EXPECT_EQ(4u, peer->state().records.load());
 }
 TEST_P(ClientAppendDeadline, ExpiryBeforeLookupDoesNotForwardAfterWorkerResumes) { blockedStage("lookup"); }
 TEST_P(ClientAppendDeadline, ExpiryAfterLookupDoesNotForwardAfterWorkerResumes) { blockedStage("afterLookup"); }
@@ -349,7 +376,11 @@ TEST_P(ClientAppendDeadline, LastOwnerDropAfterTimeoutKeepsNativeOwnerUntilKnown
     gate->released = true;
     EXPECT_TRUE(test::until([&] { return context->cleanupComplete.load(); }));
 }
-TEST_P(ClientAppendDeadline, BlockedNativeReplyRetainsSourceAndLeaseAfterReleaseAndLastOwnerDrop)
+// The keeper holds the request without answering. The append's timed forward
+// is cancelled and returns, so the job ends and gives back its slot, the story
+// handle and the payload while the keeper still holds the request. The keeper
+// later stores the payload the client copied before the timeout.
+TEST_P(ClientAppendDeadline, BlockedKeeperDoesNotHoldTheHandleAfterTheForwardReturns)
 {
     auto wrapper = std::make_unique<Client>(peer->portal);
     owner.reset();
@@ -361,18 +392,13 @@ TEST_P(ClientAppendDeadline, BlockedNativeReplyRetainsSourceAndLeaseAfterRelease
     EXPECT_EQ(1u, peer->state().records.load());
     payload.assign("reused");
     EXPECT_EQ(0, wrapper->ReleaseStory("c", "a"));
-    EXPECT_EQ(1u, context->storyteller->retainedHandleCount());
-    wrapper.reset();
-    EXPECT_FALSE(context->cleanupComplete.load());
+    EXPECT_TRUE(test::until([&] { return context->storyteller->retainedHandleCount() == 0; }));
+    EXPECT_EQ(0u, peer->state().eventCount.load());
     peer->state().blockRecords = false;
     ASSERT_TRUE(peer->until([&] { return peer->state().eventCount.load() == 1; }));
     EXPECT_STREQ("owned after timeout", peer->state().events[0].record);
     EXPECT_EQ(1u, peer->state().records.load());
-    EXPECT_FALSE(context->cleanupComplete.load());
-    auto replacement = ChronologClientImpl::GetClientImplInstance(peer->portal, WRITER_MODE, ClientQueryServiceConf{});
-    EXPECT_EQ(context.get(), replacement->context().get());
-    EXPECT_EQ(nullptr, replacement->runtime());
-    replacement.reset();
-    healthy = false; // native timed return is not a known settlement boundary
+    wrapper.reset();
+    EXPECT_TRUE(test::until([&] { return context->cleanupComplete.load(); }));
 }
 INSTANTIATE_TEST_SUITE_P(Native, ClientAppendDeadline, ::testing::Values("ofi+sockets", "ofi+tcp"));

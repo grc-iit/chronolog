@@ -293,12 +293,14 @@ int main(int argc, char** argv)
             client.reset();
             facade.reset();
             auto entryAfterClose = context->acquireNative();
-            pass = pass && context->closing() && !entryAfterClose && !context->cleanupComplete;
+            pass = pass && context->closing() && !entryAfterClose;
+            // The submission's timed forward was cancelled at the replay
+            // deadline and has returned, so its job holds neither the query
+            // nor its permit, and the closed context finishes cleanup without
+            // waiting for the player's late answer.
+            pass = until([&] { return context->cleanupComplete.load(); }) && pass;
+            pass = pass && context->replayQueries.used() == 0;
             pass = until([&] { return peer.shared->responseAttempts == 1; }) && pass;
-            pass = pass && context->engine && context->replayQueries.used() == 1;
-            // Closed native admission intentionally sends no new response. The
-            // child source and its actual engine stay alive on its pending call
-            // until fixture cleanup; no receipt is invented as settlement.
         }
         else
         {
@@ -433,18 +435,19 @@ int main(int argc, char** argv)
         pass = pass && firstState && context->replayQueries.used() == 1 &&
                (!nativeReady || firstState->submissionStatus == chl::CL_ERR_OUTCOME_UNCONFIRMED);
         firstState.reset(); // No test root can hide a missing production permit owner.
+        // Each unanswered submission's timed forward is cancelled after 35 ms
+        // and returns, so its job gives back the query permit: with two
+        // permits, a third and a fourth replay are still admitted and time out.
         int second = client->ReplayStory("chron", "story", 100, 200, output);
-        started = Clock::now();
         status = client->ReplayStory("chron", "story", 100, 200, output);
         pass = pass && first == chl::CL_ERR_QUERY_TIMED_OUT && second == chl::CL_ERR_QUERY_TIMED_OUT &&
-               context->replayQueries.used() == 2 && status == chl::CL_ERR_RPC_CAPACITY &&
-               Clock::now() - started < 60ms && peer.shared->submissions == 2;
-        pass = until([&] { return peer.shared->deliveries == 2; }) && pass;
+               status == chl::CL_ERR_QUERY_TIMED_OUT && peer.shared->submissions == 3;
+        pass = until([&] { return peer.shared->deliveries == 3; }) && pass;
         int afterLate = client->ReplayStory("chron", "story", 100, 200, output);
+        pass = until([&] { return context->replayQueries.used() == 0; }) && pass;
         std::cerr << "after_late=" << afterLate << " queries=" << context->replayQueries.used()
                   << " query_alive=" << !observed.expired() << '\n';
-        pass = pass && afterLate == chl::CL_ERR_RPC_CAPACITY && context->replayQueries.used() == 2 &&
-               !observed.expired();
+        pass = pass && afterLate == chl::CL_ERR_QUERY_TIMED_OUT && peer.shared->submissions == 4 && observed.expired();
         pass = pass && output.size() == 1 && output.front().log_record() == "sentinel";
     }
     else if(scenario == "last-id")

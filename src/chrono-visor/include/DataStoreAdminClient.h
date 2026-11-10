@@ -28,6 +28,9 @@ public:
         auto attempt = context.deadline().cappedAttempt(std::chrono::milliseconds(owner_->policy.attempt_ms));
         if(!attempt || !context.tryBeginDispatch())
             return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
+        // Every case below returns, or throws, only after Mercury is done
+        // with the forward.
+        rpc::SettledOnExit settled{context};
         int reply;
         switch(args.action)
         {
