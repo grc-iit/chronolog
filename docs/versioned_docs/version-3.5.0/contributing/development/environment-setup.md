@@ -19,19 +19,22 @@ This guide walks you through preparing your machine to build and develop ChronoL
 - **C++17 Compiler:** GCC 9+ or Clang 10+
 - **Git:** 2.x+
 - **Python:** 3.6+ (required by Spack)
+- **Fortran compiler:** `gfortran` (see below)
 
 ### Spack
 
-ChronoLog requires various packages managed by Spack. We recommend using Spack version [v0.21.2 (2024-03-01)](https://github.com/spack/spack/releases/tag/v0.21.2):
+ChronoLog requires various packages managed by Spack. Use Spack [v1.2.2 (2026-07-20)](https://github.com/spack/spack/releases/tag/v1.2.2).
 
-:::info
-Spack v0.21.2 is required due to an incompatibility between newer Spack versions and spdlog. This will be resolved in a future release.
-:::
-
-Clone Spack at the required version:
+Spack needs a few system packages, among them a Fortran compiler: Spack builds `py-scikit-build-core`, a build dependency of `py-pybind11`, only when one is installed. On Debian or Ubuntu:
 
 ```bash
-git clone --branch v0.21.2 https://github.com/spack/spack.git
+sudo apt install file bzip2 ca-certificates g++ gcc gfortran git gzip lsb-release patch python3 tar unzip xz-utils zstd
+```
+
+Clone Spack v1.2.2:
+
+```bash
+git clone --depth 1 --branch v1.2.2 https://github.com/spack/spack.git
 ```
 
 Load Spack into your shell environment:
@@ -73,6 +76,10 @@ Activate the Spack environment defined in the repository:
 ```bash
 spack env activate -p .
 ```
+
+:::info
+The repository's `spack.yaml` pins the package recipes to a commit of the `releases/v2026.10` branch of [spack-packages](https://github.com/spack/spack-packages) and takes Margo 0.24.4 from its own recipe in `tools/spack/`. Spack clones the pinned recipes into `.spack-env/` the first time the environment is used, so that step needs network access.
+:::
 
 Install all required dependencies:
 

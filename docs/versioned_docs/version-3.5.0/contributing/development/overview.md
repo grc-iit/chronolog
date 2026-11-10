@@ -11,7 +11,7 @@ The Development section covers everything you need to set up a working developme
 
 ### Environment Setup
 
-ChronoLog builds on Linux with a C++17 compiler and manages its dependency tree through Spack. This page walks through two setup paths: building from source with Spack v0.21.2 or using the pre-built Docker image with all dependencies included. It also covers optional IDE configuration for CLion and VS Code.
+ChronoLog builds on Linux with a C++17 compiler and manages its dependency tree through Spack. This page walks through two setup paths: building from source with Spack v1.2.2 or using the pre-built Docker image with all dependencies included. It also covers optional IDE configuration for CLion and VS Code.
 
 See [Environment Setup](./environment-setup.md) for the full setup instructions.
 

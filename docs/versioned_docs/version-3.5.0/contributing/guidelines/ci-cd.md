@@ -33,7 +33,7 @@ See [Code Style](./code-style.md) for formatting locally.
 
 ## Base image
 
-`chronolog-base.yml` is a reusable workflow. It names the image `ghcr.io/grc-iit/chronolog-base:sha-<hash>`, where the hash covers `spack.yaml`, `client/spack.yaml` and `docker/dockerfile`, pulls it if it exists and builds it otherwise. A new image is pushed except from a fork's pull request. Changing a script under `docker/` does not change the hash and does not rebuild the image.
+`chronolog-base.yml` is a reusable workflow. It names the image `ghcr.io/grc-iit/chronolog-base:sha-<hash>`, where the hash covers `spack.yaml`, `client/spack.yaml`, the recipes under `tools/spack/` and `docker/dockerfile`, pulls it if it exists and builds it otherwise. A new image is pushed except from a fork's pull request. Changing a script under `docker/` does not change the hash and does not rebuild the image.
 
 ## Local Pipeline
 
@@ -146,7 +146,7 @@ The pull-request comment lists the files and the fix commands. You can also down
 ### Build
 
 - The CMake and compiler output is in the build step of either pipeline.
-- If the Spack environment or `docker/dockerfile` changed, the `chronolog-base` job builds a new image; its log has the Spack output.
+- If the Spack environment, a recipe under `tools/spack/` or `docker/dockerfile` changed, the `chronolog-base` job builds a new image; its log has the Spack output.
 
 ### Tests and deployment
 

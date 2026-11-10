@@ -41,6 +41,12 @@ Before you begin, make sure you have the following installed on your system:
   sudo apt install g++  # Debian/Ubuntu
   ```
 
+- **gfortran** – Spack builds one of ChronoLog's build dependencies (`py-scikit-build-core`) only when a Fortran compiler is installed. Install it with:
+
+  ```bash
+  sudo apt install gfortran  # Debian/Ubuntu
+  ```
+
 Once these are installed, you're ready to move on to setting up ChronoLog!
 
 ---
@@ -62,7 +68,7 @@ This will download the project to your local machine. Now you've got all the cod
 Spack is an awesome tool for managing software builds. To get Spack, run:
 
 ```bash
-git clone --branch v0.21.2 https://github.com/spack/spack.git
+git clone --depth 1 --branch v1.2.2 https://github.com/spack/spack.git
 source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
 ```
 
