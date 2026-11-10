@@ -68,6 +68,10 @@ class BulkReceives
     {
         std::array<Slot, 2> slots;
         std::atomic<unsigned> rejected{0};
+        // Refusal replies being sent; also two at most, so a sender that
+        // stopped reading cannot tie up more handler threads.
+        std::atomic<unsigned> refusing{0};
+        std::atomic<unsigned> refused{0};
     };
     std::shared_ptr<State> state_ = std::make_shared<State>();
 
@@ -124,6 +128,31 @@ public:
         return std::nullopt;
     }
     unsigned rejected() const noexcept { return state_->rejected.load(std::memory_order_acquire); }
+    // Answers a request that found no free slot with reply, which must say
+    // nothing was pulled. Without a free refusal permit either it answers
+    // nothing, as before. Never throws; true if the reply was sent.
+    template <class Reply>
+    bool refuse(thallium::request const& request, Reply const& reply) noexcept
+    {
+        unsigned observed = state_->refusing.load(std::memory_order_acquire);
+        do {
+            if(observed >= 2)
+                return false;
+        } while(!state_->refusing.compare_exchange_weak(observed, observed + 1, std::memory_order_acq_rel));
+        bool sent = false;
+        try
+        {
+            request.respond(reply);
+            sent = true;
+            state_->refused.fetch_add(1, std::memory_order_relaxed);
+        }
+        catch(...)
+        {}
+        state_->refusing.fetch_sub(1, std::memory_order_acq_rel);
+        return sent;
+    }
+    // Requests answered by refuse().
+    unsigned refused() const noexcept { return state_->refused.load(std::memory_order_acquire); }
     unsigned used() const noexcept
     {
         unsigned result = 0;

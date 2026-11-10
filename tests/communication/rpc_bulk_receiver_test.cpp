@@ -98,8 +98,11 @@ int main(int argc, char** argv)
     until = Clock::now() + 1s;
     while(!failure && !malformed && receiveOwner->incoming.rejected() == 0 && Clock::now() < until)
         std::this_thread::sleep_for(1ms);
+    // The third sender finds both slots taken. The grapher answers that it
+    // is busy, having pulled nothing, so the keeper hears back at once.
     bool capped = failure || malformed ||
-                  (barriers == 2 && receiveOwner->incoming.used() == 2 && third == chl::CL_ERR_OUTCOME_UNCONFIRMED);
+                  (barriers == 2 && receiveOwner->incoming.used() == 2 && third == chl::CL_ERR_RPC_CAPACITY &&
+                   receiveOwner->incoming.refused() == 1);
     release = true;
     a.join();
     if(b.joinable())
@@ -146,9 +149,10 @@ int main(int argc, char** argv)
     if(malformed && !failure)
         guarded = first == chl::CL_ERR_STORY_CHUNK_EXTRACTION && chunks == 0 && receiveOwner->incoming.used() == 0;
     std::cout << "barriers=" << barriers << " incoming=" << receiveOwner->incoming.used() << " first=" << first
-              << " second=" << second << " excess=" << third << " ingested=" << chunks
-              << " boundary_observed=" << boundaryObserved << " source_permits=" << owners[0]->sources.used() << ","
-              << owners[1]->sources.used() << "," << owners[2]->sources.used() << std::endl;
+              << " second=" << second << " excess=" << third << " refused=" << receiveOwner->incoming.refused()
+              << " ingested=" << chunks << " boundary_observed=" << boundaryObserved
+              << " source_permits=" << owners[0]->sources.used() << "," << owners[1]->sources.used() << ","
+              << owners[2]->sources.used() << std::endl;
     // Harness has no proof for quarantined peers. Deliberately retain the
     // native owners; production gates likewise do not call finalize here.
     if(!capped || !guarded)

@@ -126,6 +126,10 @@ public:
             }();
             int result = bytes == payload_.size() ? static_cast<int>(CL_SUCCESS)
                                                   : static_cast<int>(CL_ERR_STORY_CHUNK_EXTRACTION);
+            // A busy receiver pulled nothing and says so.
+            if constexpr(std::is_same_v<Reply, ChunkReceipt>)
+                if(reply.status != 0)
+                    result = reply.status;
             call_.clearKnown();
             bulk_.reset();
             payload_.reset();

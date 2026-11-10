@@ -1,6 +1,7 @@
 #ifndef KEEPER_CHUNK_RETENTION_STORE_H
 #define KEEPER_CHUNK_RETENTION_STORE_H
 
+#include <algorithm>
 #include <chrono>
 #include <map>
 #include <mutex>
@@ -9,6 +10,7 @@
 #include <vector>
 #include <unordered_map>
 
+#include <chronolog_errcode.h>
 #include <chronolog_types.h>
 #include <ChunkReceipt.h>
 #include <HotRangeResponse.h>
@@ -294,6 +296,8 @@ public:
         chunk_it->second.shipped = true;
         chunk_it->second.in_queue = false;
         chunk_it->second.last_activity = std::chrono::steady_clock::now();
+        chunk_it->second.refusals = 0;
+        chunk_it->second.retry_at = {};
         // the receipt of this delivery; a re-send replaces the earlier one
         chunk_it->second.receipt_instance = chunk->getGrapherInstance();
         chunk_it->second.receipt = chunk->getGrapherReceipt();
@@ -302,8 +306,12 @@ public:
 
     // Drain callback: transfer failed. The chunk stays retained and readable;
     // the stall timer (requeueStalled) re-sends it later — no immediate
-    // re-stash, which would busy-loop against a dead grapher.
-    void markSendFailed(StoryChunk* chunk)
+    // re-stash, which would busy-loop against a dead grapher. A transfer
+    // refused for capacity (CL_ERR_RPC_CAPACITY: no free slot on this keeper,
+    // or the receiver answered that it is busy) sent nothing, so it is tried
+    // again after 1 s, doubling to 30 s while refusals continue, instead of
+    // after the stall age.
+    void markSendFailed(StoryChunk* chunk, int status = CL_ERR_UNKNOWN)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
         auto story_it = storyRetention.find(chunk->getStoryId());
@@ -319,11 +327,29 @@ public:
             return;
         }
         chunk_it->second.in_queue = false;
-        chunk_it->second.last_activity = std::chrono::steady_clock::now();
-        LOG_WARNING("[KeeperChunkRetentionStore] send failed for StoryId={} chunk {}-{}; retained for re-send",
-                    chunk->getStoryId(),
-                    chunk->getStartTime(),
-                    chunk->getEndTime());
+        auto const now = std::chrono::steady_clock::now();
+        chunk_it->second.last_activity = now;
+        if(status == CL_ERR_RPC_CAPACITY)
+        {
+            auto& state = chunk_it->second;
+            state.refusals = std::min(state.refusals + 1, 6u);
+            state.retry_at =
+                    now + std::min(std::chrono::seconds(1) * (1u << (state.refusals - 1)), std::chrono::seconds(30));
+            LOG_DEBUG("[KeeperChunkRetentionStore] send refused for capacity for StoryId={} chunk {}-{}; retrying "
+                      "after refusal {}",
+                      chunk->getStoryId(),
+                      chunk->getStartTime(),
+                      chunk->getEndTime(),
+                      state.refusals);
+        }
+        else
+        {
+            chunk_it->second.retry_at = {};
+            LOG_WARNING("[KeeperChunkRetentionStore] send failed for StoryId={} chunk {}-{}; retained for re-send",
+                        chunk->getStoryId(),
+                        chunk->getStartTime(),
+                        chunk->getEndTime());
+        }
         // a re-send of an already-shipped chunk may fail without demoting it:
         // the first ack still stands; W is what it waits for
         maybeFreeChunk(story_it->second, chunk_it);
@@ -421,12 +447,15 @@ public:
                     {
                         continue;
                     }
-                    if(now - state.last_activity < max_age)
+                    bool const retry_due =
+                            state.retry_at != std::chrono::steady_clock::time_point{} && now >= state.retry_at;
+                    if(!retry_due && now - state.last_activity < max_age)
                     {
                         continue;
                     }
                     state.in_queue = true;
                     state.last_activity = now;
+                    state.retry_at = {};
                     to_stash.push_back(chunk);
                     LOG_INFO("[KeeperChunkRetentionStore] re-sending stalled StoryId={} chunk {}-{} (shipped={}, "
                              "known_W={})",
@@ -745,6 +774,10 @@ private:
         // the WAL was told the chunk is confirmed written; a re-send that
         // replaces the receipt does not tell it again
         bool wal_released = false;
+        // consecutive transfers refused for capacity, and when the next is due
+        // (none if retry_at is the epoch; the stall age applies then)
+        unsigned refusals = 0;
+        std::chrono::steady_clock::time_point retry_at{};
     };
 
     struct StoryRetention

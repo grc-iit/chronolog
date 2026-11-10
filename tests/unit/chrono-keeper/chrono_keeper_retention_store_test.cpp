@@ -383,6 +383,40 @@ TEST(KeeperChunkRetentionStore, MarkSendFailedKeepsChunkReadableAndResendable)
     store.markSendFailed(chunk); // close the drain protocol so nothing dangles
 }
 
+// A transfer refused for capacity (no slot on this keeper, or a busy receiver)
+// sent nothing. It is tried again after 1 s instead of after the stall age, and
+// the wait doubles while refusals continue. Any other failure still waits for
+// the stall age.
+TEST(KeeperChunkRetentionStore, CapacityRefusalIsRetriedSoonWithBackoff)
+{
+    ensureLogger();
+    using namespace std::chrono_literals;
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    chl::StoryChunk* chunk = q.ejectStoryChunk();
+    ASSERT_NE(chunk, nullptr);
+    store.markSendFailed(chunk, chl::CL_ERR_RPC_CAPACITY);
+    EXPECT_EQ(store.requeueStalled(300s), 0u);
+    std::this_thread::sleep_for(1100ms);
+    EXPECT_EQ(store.requeueStalled(300s), 1u) << "first refusal: retried after 1 s";
+    ASSERT_EQ(q.ejectStoryChunk(), chunk);
+    store.markSendFailed(chunk, chl::CL_ERR_RPC_CAPACITY);
+    std::this_thread::sleep_for(1100ms);
+    EXPECT_EQ(store.requeueStalled(300s), 0u) << "second refusal waits 2 s";
+    std::this_thread::sleep_for(1000ms);
+    EXPECT_EQ(store.requeueStalled(300s), 1u);
+    ASSERT_EQ(q.ejectStoryChunk(), chunk);
+    store.markSendFailed(chunk, chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    std::this_thread::sleep_for(1100ms);
+    EXPECT_EQ(store.requeueStalled(300s), 0u) << "another failure waits for the stall age";
+    EXPECT_EQ(store.retainedChunkCount(sid), 1u);
+    EXPECT_EQ(store.requeueStalled(0s), 1u);
+    ASSERT_EQ(q.ejectStoryChunk(), chunk);
+    store.markSendFailed(chunk); // close the drain protocol so nothing dangles
+}
+
 // ---- shutdown flush --------------------------------------------------------
 
 // A chunk whose transfer failed sits unshipped until the stall timer re-sends it,

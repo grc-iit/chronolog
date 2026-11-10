@@ -56,7 +56,14 @@ public:
             return;
         auto lease = owner->incoming.acquire();
         if(!lease)
-            return; // No uncharged potentially blocking rejection send.
+        {
+            // No free receive slot: say so instead of leaving the keeper to
+            // wait for an answer that never comes. Nothing was pulled.
+            ChunkReceipt busy;
+            busy.status = CL_ERR_RPC_CAPACITY;
+            owner->incoming.refuse(request, busy);
+            return;
+        }
         struct Receive: rpc::BulkReceiveContext
         {
             using rpc::BulkReceiveContext::BulkReceiveContext;

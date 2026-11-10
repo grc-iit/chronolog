@@ -21,12 +21,15 @@ namespace chronolog
 // assigned the chunk, from a counter that never repeats a number within the
 // process, and the id of its own process instance, which changes on restart
 // and with it the numbering. A receiver that tracks no durability (the
-// player) leaves both 0.
+// player) leaves both 0. status is 0 for an answer about the chunk. A
+// receiver with no free receive slot answers CL_ERR_RPC_CAPACITY instead,
+// having pulled nothing, so the keeper can send the chunk again soon.
 struct ChunkReceipt
 {
     uint64_t bytes = 0;
     uint64_t grapher_instance = 0;
     uint64_t receipt = 0;
+    int32_t status = 0;
 
     template <typename SerArchiveT>
     void serialize(SerArchiveT& serT)
@@ -34,6 +37,7 @@ struct ChunkReceipt
         serT & bytes;
         serT & grapher_instance;
         serT & receipt;
+        serT & status;
     }
 };
 
