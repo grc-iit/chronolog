@@ -109,6 +109,12 @@ set(CMAKE_INSTALL_RPATH "${CHRONOLOG_INSTALL_LIB_DIR};$ORIGIN/../lib")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--enable-new-dtags")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--enable-new-dtags")
 
+# Targets are linked with the install RPATH above, so when ld resolves a
+# library's own dependency on libchrono_rpc it searches the install tree first.
+# An older installed copy then fails the link with undefined symbols. Search
+# the build tree's copy first; this affects only the link, not the RUNPATH.
+add_link_options(LINKER:-rpath-link,${CMAKE_BINARY_DIR}/src/chrono-rpc)
+
 #------------------------------------------------------------------------------
 # Disallow in-source build. This checks that there is a defined and separate build folder
 #------------------------------------------------------------------------------
