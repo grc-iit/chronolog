@@ -157,6 +157,7 @@
     "RecordingGroup": 7,
     "KeeperGrapherDrainService": {
       "IngestionThreadCount": 1,
+      "transfer_piece_bytes": 1048576,
       "rpc": {
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",
@@ -248,6 +249,7 @@
     },
     "PlayerRecordingService": {
       "IngestionThreadCount": 1,
+      "transfer_piece_bytes": 1048576,
       "rpc": {
         "protocol_conf": "ofi+sockets",
         "service_ip": "127.0.0.1",

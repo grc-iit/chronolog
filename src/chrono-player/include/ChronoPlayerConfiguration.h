@@ -15,11 +15,16 @@ struct RpcServiceConf
 {
     RPCProviderConf RPC_CONF;
     uint32_t INGESTION_THREAD_COUNT = 1;
+    // Read for PlayerRecordingService only.
+    // A keeper partial chunk is pulled in pieces of at most this many bytes
+    // (transfer_piece_bytes); 4096 at least.
+    uint64_t TRANSFER_PIECE_BYTES = 1048576;
 
     [[nodiscard]] std::string to_String() const
     {
         return "[RPC_CONF: " + RPC_CONF.to_String() +
-               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) + "]";
+               ", INGESTION_THREAD_COUNT: " + std::to_string(INGESTION_THREAD_COUNT) +
+               ", TRANSFER_PIECE_BYTES: " + std::to_string(TRANSFER_PIECE_BYTES) + "]";
     }
 };
 

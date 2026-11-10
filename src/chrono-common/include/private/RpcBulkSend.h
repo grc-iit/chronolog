@@ -58,7 +58,8 @@ public:
                  ServiceId reporter = {},
                  std::shared_ptr<BulkReplyState<Reply>> state = {},
                  std::function<BulkPayload()> prepare = {},
-                 std::function<void()> afterKnown = {})
+                 std::function<void()> afterKnown = {},
+                 uint32_t checksum = 0)
         : owner_(std::move(owner))
         , engine_(engine)
         , remote_(std::move(remote))
@@ -70,6 +71,7 @@ public:
         , reporter_(std::move(reporter))
         , state_(std::move(state))
         , afterKnown_(std::move(afterKnown))
+        , checksum_(checksum)
     {}
     ~BulkSendWork() override
     {
@@ -110,7 +112,7 @@ public:
             dispatched_ = true;
             Reply reply;
             if constexpr(std::is_same_v<Reply, ChunkReceipt>)
-                reply = call_.callable()(*bulk_, reporter_);
+                reply = call_.callable()(*bulk_, reporter_, checksum_);
             else
                 reply = call_.callable()(*bulk_);
             // Every peer branch replying here must finish all source access
@@ -165,6 +167,8 @@ private:
     std::shared_ptr<BulkReplyState<Reply>> state_;
     // Native state dies before source storage, descriptor or actual engine owner.
     std::function<void()> afterKnown_;
+    // A chunk send carries the CRC-32C of payload_ for the receiver to check.
+    uint32_t checksum_ = 0;
     bool dispatched_ = false;
     RpcCallState call_;
     std::optional<thallium::bulk> bulk_;

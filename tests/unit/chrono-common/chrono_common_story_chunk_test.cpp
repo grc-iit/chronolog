@@ -8,6 +8,7 @@
 #include <StoryChunk.h>
 #include <RDMATransferAgent.h>
 #include <private/RpcBulkSerialization.h>
+#include <private/Crc32c.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -1176,4 +1177,23 @@ TEST(StoryChunkSerialization, CopyStartsWithoutACachedForm)
     chl::StoryChunk copy(chunk);
     EXPECT_EQ(copy.cachedSerialization(), nullptr);
     EXPECT_EQ(chunk.cachedSerialization().get(), held.get());
+}
+
+// CRC-32C of the standard check string, whole and continued across pieces of
+// sizes that are not multiples of 8; the serialized form carries it.
+TEST(StoryChunkSerialization, ChecksumIsCrc32cOfTheBytes)
+{
+    std::string const check = "123456789";
+    EXPECT_EQ(chl::rpc::crc32c(check.data(), check.size()), 0xE3069283u);
+    EXPECT_EQ(chl::rpc::crc32c(nullptr, 0), 0u);
+    std::string bytes(10007, '\0');
+    for(size_t i = 0; i < bytes.size(); ++i) bytes[i] = static_cast<char>(i * 31 + 7);
+    uint32_t whole = chl::rpc::crc32c(bytes.data(), bytes.size());
+    uint32_t pieces = 0;
+    for(size_t at = 0; at < bytes.size(); at += 1001)
+        pieces = chl::rpc::crc32c(bytes.data() + at, std::min<size_t>(1001, bytes.size() - at), pieces);
+    EXPECT_EQ(pieces, whole);
+    auto chunk = chunkWithEvents(4);
+    auto serialized = chl::RDMATransferAgent::serialize(chunk);
+    EXPECT_EQ(serialized->checksum, chl::rpc::crc32c(serialized->bytes.data(), serialized->bytes.size()));
 }

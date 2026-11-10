@@ -2,6 +2,7 @@
 #define CHRONOLOG_RPC_BULK_LIFETIME_H
 #include <RpcDeadline.h>
 #include <thallium.hpp>
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <atomic>
@@ -10,6 +11,11 @@
 #include <vector>
 namespace chronolog::rpc
 {
+// A receiver pulls a sender's bulk in pieces of at most this many bytes, one
+// piece after the other, as the sprint streams a chunk in 1 MiB frames. The
+// grapher and the player read their own value from the configuration.
+constexpr std::size_t kBulkPieceBytes = std::size_t{1} << 20;
+
 // Separate from the control capacity. Payload sizes are not capped.
 class BulkPermits
 {
@@ -71,9 +77,12 @@ public:
     struct Observers
     {
         std::function<void()> allocated;
+        // Called once for each piece pulled.
         std::function<void(margo_request)> initiated;
         std::function<void()> beforeAnswer;
     } observers;
+    // Set before exposure, as the observers are.
+    std::size_t pieceBytes = kBulkPieceBytes;
     class Lease
     {
         friend class BulkReceives;
@@ -130,10 +139,12 @@ public:
                        thallium::engine& engine,
                        thallium::request const& request,
                        thallium::bulk const& source,
-                       BulkReceives::Observers observers = {})
+                       BulkReceives::Observers observers = {},
+                       std::size_t pieceBytes = kBulkPieceBytes)
         : owner_(std::move(owner))
         , engine_(engine)
         , observers_(std::move(observers))
+        , pieceBytes_(pieceBytes ? pieceBytes : kBulkPieceBytes)
         , request_(request)
         , source_(source)
     {}
@@ -147,23 +158,31 @@ public:
         // Any error after initiation is conservatively unknown. Keep the
         // original descriptor/endpoint and target until actual completion.
         initiated = true;
-        auto rc = margo_bulk_itransfer(engine_.get_margo_instance(),
-                                       HG_BULK_PULL,
-                                       endpoint_->get_addr(),
-                                       source_.get_bulk(),
-                                       0,
-                                       target_->get_bulk(),
-                                       0,
-                                       bytes.size(),
-                                       &native_);
-        if(rc != HG_SUCCESS)
-            return false;
-        if(observers_.initiated)
-            observers_.initiated(native_);
-        rc = margo_wait(native_);
-        native_ = nullptr;
-        if(rc != HG_SUCCESS)
-            return false;
+        // One piece at a time into the same target, at the same offset as in
+        // the source; only the last piece completes the pull.
+        for(std::size_t offset = 0; offset < bytes.size();)
+        {
+            std::size_t const size = std::min(pieceBytes_, bytes.size() - offset);
+            auto rc = margo_bulk_itransfer(engine_.get_margo_instance(),
+                                           HG_BULK_PULL,
+                                           endpoint_->get_addr(),
+                                           source_.get_bulk(),
+                                           offset,
+                                           target_->get_bulk(),
+                                           offset,
+                                           size,
+                                           &native_);
+            if(rc != HG_SUCCESS)
+                return false;
+            if(observers_.initiated)
+                observers_.initiated(native_);
+            rc = margo_wait(native_);
+            native_ = nullptr;
+            if(rc != HG_SUCCESS)
+                return false;
+            offset += size;
+            ++pieces;
+        }
         completed = true;
         return true;
     }
@@ -183,6 +202,7 @@ public:
         }
     }
     bool initiated = false, completed = false;
+    std::size_t pieces = 0;
     std::vector<char> bytes;
 
 private:
@@ -191,6 +211,7 @@ private:
     std::shared_ptr<void> owner_;
     thallium::engine& engine_;
     BulkReceives::Observers observers_;
+    std::size_t pieceBytes_;
     thallium::request request_;
     thallium::bulk source_;
     std::optional<thallium::endpoint> endpoint_;

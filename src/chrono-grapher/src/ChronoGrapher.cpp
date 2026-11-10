@@ -181,6 +181,7 @@ int main(int argc, char** argv)
                 data,
                 [data, owner = owners[1]]
                 {
+                    owner->incoming.pieceBytes = data->conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.TRANSFER_PIECE_BYTES;
                     return chl::GrapherRecordingService::CreateRecordingService(
                                    owner,
                                    data->conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,

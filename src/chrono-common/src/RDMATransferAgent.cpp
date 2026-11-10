@@ -1,6 +1,7 @@
 #include <RDMATransferAgent.h>
 #include <StoryChunk.h>
 #include <private/RpcBulkSerialization.h>
+#include <private/Crc32c.h>
 #include <sstream>
 #include <thread>
 namespace chronolog
@@ -20,7 +21,8 @@ auto bulkWork(std::shared_ptr<rpc::RpcBulkOwner> owner,
               ServiceId reporter,
               std::shared_ptr<rpc::BulkReplyState<ChunkReceipt>> state = {},
               std::function<rpc::BulkPayload()> prepare = {},
-              std::function<void()> afterKnown = {})
+              std::function<void()> afterKnown = {},
+              uint32_t checksum = 0)
 {
     return std::make_shared<rpc::BulkSendWork<ChunkReceipt>>(
             owner,
@@ -34,15 +36,17 @@ auto bulkWork(std::shared_ptr<rpc::RpcBulkOwner> owner,
             std::move(reporter),
             std::move(state),
             std::move(prepare),
-            std::move(afterKnown));
+            std::move(afterKnown),
+            checksum);
 }
 } // namespace
 std::shared_ptr<SerializedStoryChunk const> RDMATransferAgent::serialize(StoryChunk const& chunk)
 {
     if(auto held = chunk.cachedSerialization())
         return held;
-    return chunk.cacheSerialization(
-            std::make_shared<SerializedStoryChunk const>(SerializedStoryChunk{rpc::serializeBulk(chunk)}));
+    SerializedStoryChunk serialized{rpc::serializeBulk(chunk)};
+    serialized.checksum = rpc::crc32c(serialized.bytes.data(), serialized.bytes.size());
+    return chunk.cacheSerialization(std::make_shared<SerializedStoryChunk const>(std::move(serialized)));
 }
 int RDMATransferAgent::transfer_serialized_story_chunk(std::string const& payload,
                                                        ServiceId const& reporter,
@@ -66,9 +70,16 @@ int RDMATransferAgent::transfer_serialized_story_chunk(std::string const& payloa
         return CL_ERR_RPC_CAPACITY;
     try
     {
-        auto result = runtime->invoke<ChunkReceipt>(
-                std::move(reservation),
-                bulkWork(owner, route_, std::string(payload), std::move(*permit), reporter));
+        auto result = runtime->invoke<ChunkReceipt>(std::move(reservation),
+                                                    bulkWork(owner,
+                                                             route_,
+                                                             std::string(payload),
+                                                             std::move(*permit),
+                                                             reporter,
+                                                             {},
+                                                             {},
+                                                             {},
+                                                             rpc::crc32c(payload.data(), payload.size())));
         if(result.status == CL_SUCCESS && result.reply && receipt)
             *receipt = *result.reply;
         return result.status;
@@ -190,7 +201,8 @@ int RDMATransferAgent::transfer_story_chunk(StoryChunk const& chunk, ServiceId c
                              reporter,
                              outcome->state,
                              std::move(prepare),
-                             std::move(afterKnown));
+                             std::move(afterKnown),
+                             serialized->checksum);
         lock.unlock();
         auto result = runtime->invoke<ChunkReceipt>(std::move(reserved), std::move(work));
         if(result.status == CL_SUCCESS && result.reply && receipt)

@@ -6,6 +6,8 @@
 #include <ServiceId.h>
 #include <private/RpcBulkOwner.h>
 #include <private/RpcBulkSerialization.h>
+#include <private/Crc32c.h>
+#include <chrono_monitor.h>
 #include "ChunkIngestionQueue.h"
 #include "StoryWatermarkRegistry.h"
 #include "WatermarkReportPublisher.h"
@@ -44,7 +46,10 @@ public:
         return service.get();
     }
     ~GrapherRecordingService() = default;
-    void receive_story_chunk(tl::request const& request, tl::bulk& source, ServiceId const& reporter) noexcept
+    void receive_story_chunk(tl::request const& request,
+                             tl::bulk& source,
+                             ServiceId const& reporter,
+                             uint32_t checksum) noexcept
     {
         auto owner = owner_.lock();
         if(!owner || owner->closing)
@@ -60,16 +65,28 @@ public:
         std::shared_ptr<Receive> context;
         try
         {
-            context = std::make_shared<Receive>(owner, *owner->engine, request, source, owner->incoming.observers);
+            context = std::make_shared<Receive>(owner,
+                                                *owner->engine,
+                                                request,
+                                                source,
+                                                owner->incoming.observers,
+                                                owner->incoming.pieceBytes);
             lease->retain(context);
             if(!context->pull())
             {
                 lease->quarantine();
                 return;
             }
+            // A chunk whose bytes differ from what the keeper sent is refused
+            // with nothing ingested; the keeper keeps it and sends it again.
             context->chunk = std::make_unique<StoryChunk>();
-            if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
+            if(rpc::crc32c(context->bytes.data(), context->bytes.size()) != checksum ||
+               !rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
             {
+                LOG_WARNING("[GrapherRecordingService] refused a chunk of {} bytes from {}: checksum or format "
+                            "does not match",
+                            context->bytes.size(),
+                            to_string(reporter));
                 if(!context->answer(ChunkReceipt{}))
                     lease->quarantine();
                 return;

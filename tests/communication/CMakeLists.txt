@@ -102,6 +102,24 @@ foreach(transport IN ITEMS sockets tcp)
         PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endforeach()
 
+# A keeper partial chunk through the grapher's real receive handler: pieces,
+# checksum (see the scenario list in the source).
+add_executable(rpc_chunk_receive_test rpc_chunk_receive_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp)
+target_include_directories(rpc_chunk_receive_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-grapher/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include)
+target_link_libraries(rpc_chunk_receive_test PRIVATE chrono_common chronolog_client chrono_rpc thallium pthread)
+foreach(transport IN ITEMS sockets tcp)
+    foreach(scenario IN ITEMS pieces checksum)
+        add_test(NAME Communication_RpcChunkReceive_${transport}_${scenario}
+            COMMAND rpc_chunk_receive_test ofi+${transport} ${scenario})
+        set_tests_properties(Communication_RpcChunkReceive_${transport}_${scenario}
+            PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE ENVIRONMENT "FI_TCP_IFACE=lo")
+    endforeach()
+endforeach()
+
 add_executable(rpc_bulk_receiver_test rpc_bulk_receiver_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp)
 target_include_directories(rpc_bulk_receiver_test PRIVATE

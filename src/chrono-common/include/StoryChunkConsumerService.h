@@ -6,6 +6,7 @@
 #include <private/RpcBulkOwner.h>
 #include <private/RpcBulkControl.h>
 #include <private/RpcBulkSerialization.h>
+#include <private/Crc32c.h>
 #include "StoryChunkIngestionQueue.h"
 namespace tl = thallium;
 namespace chronolog
@@ -35,7 +36,7 @@ public:
     }
     ~StoryChunkConsumerService() = default;
     void receiver_available(tl::request const& request) noexcept { rpc::bulkReady(owner_.lock(), request); }
-    void receive_story_chunk(tl::request const& request, tl::bulk& source, ServiceId const&) noexcept
+    void receive_story_chunk(tl::request const& request, tl::bulk& source, ServiceId const&, uint32_t checksum) noexcept
     {
         auto owner = owner_.lock();
         if(!owner || owner->closing)
@@ -51,7 +52,12 @@ public:
         std::shared_ptr<Receive> context;
         try
         {
-            context = std::make_shared<Receive>(owner, *owner->engine, request, source, owner->incoming.observers);
+            context = std::make_shared<Receive>(owner,
+                                                *owner->engine,
+                                                request,
+                                                source,
+                                                owner->incoming.observers,
+                                                owner->incoming.pieceBytes);
             lease->retain(context);
             if(!context->pull())
             {
@@ -59,7 +65,8 @@ public:
                 return;
             }
             context->chunk = std::make_unique<StoryChunk>();
-            if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
+            if(rpc::crc32c(context->bytes.data(), context->bytes.size()) != checksum ||
+               !rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
             {
                 if(!context->answer(ChunkReceipt{}))
                     lease->quarantine();

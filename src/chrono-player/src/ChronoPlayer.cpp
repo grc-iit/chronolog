@@ -137,6 +137,7 @@ int main(int argc, char** argv)
                 data,
                 [data, recording]
                 {
+                    recording->incoming.pieceBytes = data->conf.RECORDING_SERVICE_CONF.TRANSFER_PIECE_BYTES;
                     return chl::StoryChunkConsumerService::CreateChunkConsumerService(
                                    recording,
                                    data->conf.RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,

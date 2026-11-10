@@ -32,6 +32,8 @@ typedef std::tuple<chrono_time, chrono_index> ArrivalSequence;
 struct SerializedStoryChunk
 {
     std::string bytes;
+    // CRC-32C of bytes; the receiver checks it after pulling them.
+    uint32_t checksum = 0;
 };
 
 class StoryChunk
