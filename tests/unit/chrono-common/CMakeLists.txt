@@ -203,6 +203,35 @@ if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(archive_manifest_test DESTINATION tests)
 endif()
 
+# answerChunkSender (GTest): a failed answer to a chunk sender does not leave
+# the grapher's or the player's receive_story_chunk
+add_executable(chunk_sender_answer_test
+    chrono_common_chunk_sender_answer_test.cpp
+)
+
+target_include_directories(chunk_sender_answer_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_compile_definitions(chunk_sender_answer_test PRIVATE
+    CHRONOLOG_GRAPHER_RECORDING_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-grapher/include/GrapherRecordingService.h"
+    CHRONOLOG_CHUNK_CONSUMER_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-common/include/StoryChunkConsumerService.h"
+    CHRONOLOG_KEEPER_RECORDING_SERVICE="${CMAKE_SOURCE_DIR}/src/chrono-keeper/include/KeeperRecordingService.h"
+)
+
+target_link_libraries(chunk_sender_answer_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(chunk_sender_answer_test PROPERTIES OUTPUT_NAME chronolog-test-common-chunk-sender-answer)
+gtest_discover_tests(chunk_sender_answer_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chunk_sender_answer_test DESTINATION tests)
+endif()
+
 # StoryChunkExtractorCSV (GTest): an empty window leaves no file behind
 add_executable(chunk_extractor_csv_test
     chrono_common_chunk_extractor_csv_test.cpp
@@ -252,4 +281,46 @@ target_link_libraries(extraction_configuration_ownership_test PRIVATE GTest::gte
 gtest_discover_tests(extraction_configuration_ownership_test TEST_PREFIX "Unit_ChronoCommon_")
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(extraction_configuration_ownership_test DESTINATION tests)
+endif()
+
+# Crc32c (GTest): the SSE4.2 path and the boost fallback agree
+add_executable(crc32c_test
+    chrono_common_crc32c_test.cpp
+)
+
+target_include_directories(crc32c_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(crc32c_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+)
+
+set_target_properties(crc32c_test PROPERTIES OUTPUT_NAME chronolog-test-common-crc32c)
+gtest_discover_tests(crc32c_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(crc32c_test DESTINATION tests)
+endif()
+
+# LogEventCodec (GTest): the byte layout of a keeper WAL event, and how a cut,
+# oversized or newer-version encoding is refused
+add_executable(log_event_codec_test
+    chrono_common_log_event_codec_test.cpp
+)
+
+target_include_directories(log_event_codec_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(log_event_codec_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+)
+
+set_target_properties(log_event_codec_test PROPERTIES OUTPUT_NAME chronolog-test-common-log-event-codec)
+gtest_discover_tests(log_event_codec_test TEST_PREFIX "Unit_ChronoCommon_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(log_event_codec_test DESTINATION tests)
 endif()

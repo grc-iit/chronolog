@@ -8,6 +8,8 @@
 #include <RpcPolicy.h>
 #include <thallium.hpp>
 #include <atomic>
+#include <cstddef>
+#include <map>
 #include <memory>
 #include <vector>
 #include <string>
@@ -139,10 +141,66 @@ struct StoryRecording
     std::string chronicle, story;
     StoryId id;
     uint64_t generation;
+    RecordingGroupId group = 0;
     std::vector<KeeperIdCard> keepers, confirmedKeepers;
+    // clients[i] was sent starts[i]. The first originalStarts come from the
+    // first acquire: the grapher, the keepers, then the player. Those after
+    // went to keepers that registered while the story was active.
     std::vector<std::shared_ptr<DataStoreAdminClient>> clients;
     std::vector<std::shared_ptr<AdminCompletion>> starts;
+    std::size_t originalStarts = 0;
     ServiceId player;
 };
+
+// The recordings a keeper of `group` must start when it registers: the active
+// stories of that group. A keeper that registers again after a restart has no
+// pipeline for the stories clients still hold, and an acquire sends
+// start_story_recording only for a story's first holder. A story still
+// starting, closing or unresolved is left out.
+inline std::vector<std::shared_ptr<StoryRecording>>
+storiesToStartOnRegistration(std::map<StoryId, std::shared_ptr<StoryRecording>> const& active, RecordingGroupId group)
+{
+    std::vector<std::shared_ptr<StoryRecording>> stories;
+    for(auto const& [id, recording]: active)
+        if(recording && recording->phase == StoryRecording::Active && recording->group == group)
+            stories.push_back(recording);
+    return stories;
+}
+
+// Which of a story's starts its stop goes to, by index into its clients. Every
+// start must have settled first, so a stop reaches each keeper after the
+// start. A start from the first acquire must have a confirmed answer, and gets
+// a stop only if it succeeded; one with no confirmed answer stays unresolved.
+// A start sent to a keeper that registered later gets a stop whatever its
+// answer was: a failed call may still have run on the keeper, and a keeper
+// that never had the story ignores the stop.
+struct StoryStopTargets
+{
+    enum State
+    {
+        Ready,
+        Pending,    // a start has not settled yet
+        Unconfirmed // a start from the first acquire has no confirmed answer
+    };
+    State state = Ready;
+    std::vector<std::size_t> targets;
+};
+inline StoryStopTargets storyStopTargets(StoryRecording const& recording)
+{
+    StoryStopTargets result;
+    for(std::size_t i = 0; i < recording.starts.size(); ++i)
+    {
+        auto const& start = *recording.starts[i];
+        if(!start.done.load(std::memory_order_acquire))
+            return {StoryStopTargets::Pending, {}};
+        if(i >= recording.originalStarts)
+            result.targets.push_back(i);
+        else if(!start.confirmed)
+            return {StoryStopTargets::Unconfirmed, {}};
+        else if(start.status == CL_SUCCESS)
+            result.targets.push_back(i);
+    }
+    return result;
+}
 } // namespace chronolog
 #endif

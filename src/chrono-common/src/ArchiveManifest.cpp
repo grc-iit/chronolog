@@ -15,6 +15,7 @@
 #include <chronolog_errcode.h>
 
 #include <ArchiveManifest.h>
+#include <FileSync.h>
 
 namespace fs = std::filesystem;
 namespace chl = chronolog;
@@ -145,6 +146,17 @@ bool writeAll(int fd, std::string const& buffer)
         written += static_cast<std::size_t>(n);
     }
     return true;
+}
+
+// archiveFsync on an open log: 0, or the errno it failed with
+int syncFile(int fd)
+{
+    errno = 0;
+    if(chl::archiveFsync(fd) != 0)
+    {
+        return errno != 0 ? errno : EIO;
+    }
+    return 0;
 }
 
 bool endsWithoutNewline(std::string const& path)
@@ -350,13 +362,44 @@ int chl::ArchiveManifestWriter::open()
     // a new log starts with its header
     struct stat st = {};
     bool ok = ::fstat(fd, &st) == 0 && (st.st_size != 0 || writeAll(fd, headerLine()));
+    int const sync_error = ok ? syncFile(fd) : 0;
     ok = (::close(fd) == 0) && ok;
+    if(sync_error != 0)
+    {
+        return latch(theLogPath, sync_error);
+    }
     if(!ok)
     {
         LOG_ERROR("[ArchiveManifest] Could not start {}: {}", theLogPath, std::strerror(errno));
         return CL_ERR_UNKNOWN;
     }
     theLogNeedsNewline = endsWithoutNewline(theLogPath);
+    // whether this process created the log or the manifest directory does not
+    // matter: an earlier one may have created them without these syncs
+    return syncDirectories();
+}
+
+int chl::ArchiveManifestWriter::latch(std::string const& path, int error)
+{
+    theFailed.store(true);
+    LOG_CRITICAL("[ArchiveManifest] Could not sync {}: {}. No window counts as written until the grapher "
+                 "restarts; the keepers keep their copies of the events",
+                 path,
+                 std::strerror(error));
+    return CL_ERR_UNKNOWN;
+}
+
+// the manifest directory holds the log's name, the archive root the manifest
+// directory's
+int chl::ArchiveManifestWriter::syncDirectories()
+{
+    for(std::string const* dir: {&theManifestDir, &theArchiveRoot})
+    {
+        if(int const error = fsyncPath(*dir); error != 0)
+        {
+            return latch(*dir, error);
+        }
+    }
     return CL_SUCCESS;
 }
 
@@ -375,7 +418,13 @@ int chl::ArchiveManifestWriter::append(ArchiveManifestRecord const& record)
         return CL_ERR_INVALID_ARG;
     }
     std::string line = toManifestLine(record) + "\n";
-    std::lock_guard<std::mutex> lock(theMutex);
+    std::unique_lock<std::mutex> lock(theMutex);
+    if(theFailed.load())
+    {
+        LOG_ERROR("[ArchiveManifest] Not appending to {}: a sync failed earlier (see the critical error above)",
+                  theLogPath);
+        return CL_ERR_UNKNOWN;
+    }
     int fd = ::open(theLogPath.c_str(), O_WRONLY | O_APPEND | O_CREAT, 0644);
     if(fd < 0 && errno == ENOENT)
     {
@@ -399,7 +448,8 @@ int chl::ArchiveManifestWriter::append(ArchiveManifestRecord const& record)
     // a log created again (its directory was removed) starts with a header; a
     // log that may end in a cut-short line gets the record on a line of its own
     struct stat st = {};
-    if(::fstat(fd, &st) == 0 && st.st_size == 0)
+    bool const created = ::fstat(fd, &st) == 0 && st.st_size == 0;
+    if(created)
     {
         line.insert(0, headerLine());
     }
@@ -409,18 +459,42 @@ int chl::ArchiveManifestWriter::append(ArchiveManifestRecord const& record)
     }
     bool const written = writeAll(fd, line);
     int const write_errno = errno;
+    // a failed write may leave part of the line: the next record starts on a
+    // line of its own
+    theLogNeedsNewline = !written;
+    // The record must be on disk before the window is reported written, but
+    // the sync runs without the lock, so other extraction streams append
+    // their records meanwhile instead of each waiting for the one before to
+    // sync (an NFS COMMIT round trip). An fsync of this descriptor covers its
+    // own write, and any made before it.
+    lock.unlock();
+    int const sync_error = written ? syncFile(fd) : 0;
     // close is where NFS sends what it buffered, and where it reports a failure
     bool const closed = ::close(fd) == 0;
+    int const close_errno = errno;
+    if(sync_error != 0)
+    {
+        return latch(theLogPath, sync_error);
+    }
     if(!written || !closed)
     {
-        // some of the line may be on disk
-        theLogNeedsNewline = true;
+        if(!closed)
+        {
+            // some of the line may be on disk
+            std::lock_guard<std::mutex> relock(theMutex);
+            theLogNeedsNewline = true;
+        }
         LOG_ERROR("[ArchiveManifest] Could not append to {}: {}",
                   theLogPath,
-                  std::strerror(written ? errno : write_errno));
+                  std::strerror(written ? close_errno : write_errno));
         return CL_ERR_UNKNOWN;
     }
-    theLogNeedsNewline = false;
+    if(created)
+    {
+        // a log created again (or emptied) gets its name synced as at open
+        std::lock_guard<std::mutex> relock(theMutex);
+        return syncDirectories();
+    }
     return CL_SUCCESS;
 }
 

@@ -118,3 +118,64 @@ add_executable(replay_deadline_test replay_deadline_test.cpp)
 target_include_directories(replay_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src)
 target_link_libraries(replay_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
 gtest_discover_tests(replay_deadline_test TEST_PREFIX "Unit_ChronologClient_" PROPERTIES TIMEOUT 30)
+
+# Durability error codes
+add_executable(chronolog_client_errcode_durability_test
+    client_errcode_durability_test.cpp
+)
+
+target_include_directories(chronolog_client_errcode_durability_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+)
+
+target_link_libraries(chronolog_client_errcode_durability_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+)
+
+set_target_properties(chronolog_client_errcode_durability_test PROPERTIES OUTPUT_NAME chronolog-test-client-errcode-durability)
+gtest_discover_tests(chronolog_client_errcode_durability_test TEST_PREFIX "Unit_ChronologClient_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_errcode_durability_test DESTINATION tests)
+endif()
+
+# StoryHandle::log_event(record, options, event_time) and LogEventOptions
+add_executable(chronolog_client_log_event_options_test
+    client_log_event_options_test.cpp
+)
+
+target_include_directories(chronolog_client_log_event_options_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(chronolog_client_log_event_options_test PRIVATE
+    GTest::gtest_main
+    chronolog_client
+)
+
+set_target_properties(chronolog_client_log_event_options_test PROPERTIES OUTPUT_NAME chronolog-test-client-log-event-options)
+gtest_discover_tests(chronolog_client_log_event_options_test TEST_PREFIX "Unit_ChronologClient_")
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(chronolog_client_log_event_options_test DESTINATION tests)
+endif()
+
+# StoryHandle::log_event(record, options, event_time) through the owned RPC
+# runtime, against a keeper in the child native peer.
+add_executable(durable_deadline_test durable_deadline_test.cpp)
+target_include_directories(durable_deadline_test PRIVATE ${CMAKE_SOURCE_DIR}/client/cpp/src ${CMAKE_SOURCE_DIR}/tests/support)
+target_compile_definitions(durable_deadline_test PRIVATE CHRONOLOG_NATIVE_PEER_PATH="$<TARGET_FILE:client_native_peer>")
+target_link_libraries(durable_deadline_test PRIVATE GTest::gtest_main chronolog_client chrono_rpc thallium)
+add_dependencies(durable_deadline_test client_native_peer)
+# This fixture and its child native peer bind only 127.0.0.1.
+gtest_discover_tests(durable_deadline_test TEST_PREFIX "Unit_ChronologClient_"
+    PROPERTIES TIMEOUT 30 ENVIRONMENT "FI_TCP_IFACE=lo")
+
+# Python binding of Durability, LogEventOptions and log_event(record, options)
+if(TARGET py_chronolog_client)
+    find_package(Python COMPONENTS Interpreter REQUIRED)
+    add_test(NAME Unit_PyClient_DurableBinding
+        COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/py_client_durable_binding_test.py)
+    set_tests_properties(Unit_PyClient_DurableBinding PROPERTIES
+        ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+endif()

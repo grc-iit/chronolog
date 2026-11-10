@@ -1,6 +1,7 @@
 #ifndef KEEPER_STORY_PIPELINE_H
 #define KEEPER_STORY_PIPELINE_H
 
+#include <atomic>
 #include <deque>
 #include <list>
 #include <map>
@@ -63,6 +64,10 @@ public:
 
     uint64_t getAcceptanceWindow() const { return acceptanceWindow; }
 
+    // When mergeEvents last took events in (high_resolution_clock ns since the
+    // epoch), 0 before the first; read by the data store's retirement.
+    uint64_t lastEventArrival() const { return lastArrival.load(); }
+
     uint64_t TimelineStart() const { return (*storyTimelineMap.begin()).first; } // storyTimelineMap is never left empty
 
     uint64_t TimelineEnd() const
@@ -89,6 +94,7 @@ private:
     uint64_t chunkGranularity;
     uint64_t acceptanceWindow;
     uint64_t revisionTime; //time of the most recent merge
+    std::atomic<uint64_t> lastArrival{0};
 
     // mutex used to protect the IngestionQueue from concurrent access
     // by RecordingService threads

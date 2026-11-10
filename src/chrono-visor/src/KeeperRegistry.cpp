@@ -266,7 +266,7 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
         return chronolog::CL_ERR_UNKNOWN;
     }
 
-    std::lock_guard<std::mutex> lock(registryLock);
+    std::unique_lock<std::mutex> lock(registryLock);
     //re-check state after ther lock is aquired
     if(is_shutting_down())
     {
@@ -398,7 +398,61 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
     {
         registryState = RUNNING;
     }
+
+    // A keeper registering again after a restart has no pipeline for the
+    // stories clients still hold. Each start joins its story's recording here,
+    // under the lock, so a stop that follows waits for it and also reaches
+    // this keeper. A story whose start cannot be admitted is logged and left
+    // out; the registration still succeeds, and a durable write for the story
+    // starts its pipeline instead.
+    std::vector<HeldStart> held;
+    auto deadline = rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
+    for(auto const& recording: storiesToStartOnRegistration(activeStories, recording_group.groupId))
+    {
+        auto token = adminRuntime->runtime.reserve(deadline);
+        if(!token)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] No admin slot to start StoryId {} on registering keeper {}: {}",
+                        recording->id,
+                        to_string(keeper_id_card),
+                        token.status());
+            continue;
+        }
+        auto completion = std::make_shared<AdminCompletion>();
+        recording->clients.push_back(collectionClient);
+        recording->starts.push_back(completion);
+        held.push_back({recording, collectionClient, completion, std::move(token)});
+    }
+    lock.unlock();
+    if(!held.empty())
+        startHeldStoriesOnKeeper(keeper_id_card, std::move(held));
     return chronolog::CL_SUCCESS;
+}
+
+void KeeperRegistry::startHeldStoriesOnKeeper(KeeperIdCard const& keeper_id_card, std::vector<HeldStart> held)
+{
+    LOG_INFO("[ChronoProcessRegistry] Starting {} held stories on keeper {}", held.size(), to_string(keeper_id_card));
+    uint64_t start = std::chrono::system_clock::now().time_since_epoch().count();
+    for(auto& item: held)
+    {
+        // The keeper's start_story_recording is idempotent, so a story also
+        // started by a concurrent acquire is harmless. Nothing waits for the
+        // start here: the runtime keeps it to the end, and its completion
+        // records the outcome for the story's stop.
+        AdminArguments args{AdminAction::Start,
+                            item.recording->chronicle,
+                            item.recording->story,
+                            item.recording->id,
+                            start,
+                            {}};
+        adminRuntime->runtime
+                .submit<int>(std::move(item.reservation),
+                             std::make_shared<AdminWork>(std::move(item.client),
+                                                         std::move(args),
+                                                         std::move(item.completion),
+                                                         shared_from_this()))
+                .releaseToRuntime();
+    }
 }
 /////////////////
 
@@ -634,6 +688,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         recording->chronicle = chronicle;
         recording->story = story;
         recording->generation = ++nextGeneration;
+        recording->group = group->groupId;
         recording->clients.push_back(group->grapherProcess->adminClient);
         for(auto const& item: group->keeperProcesses)
             if(item.second.active && item.second.keeperAdminClient)
@@ -656,6 +711,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             reservations.push_back(std::move(token));
             recording->starts.push_back(std::make_shared<AdminCompletion>());
         }
+        recording->originalStarts = recording->starts.size();
         activeStories.emplace(id, recording);
     }
     std::vector<rpc::RpcPending<int>> pending;
@@ -742,6 +798,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
     std::shared_ptr<StoryRecording> recording;
     std::vector<rpc::RpcReservation> reservations;
     std::vector<std::size_t> targets;
+    for(;;)
     {
         auto lock = boundedRegistryLock(registryLock, deadline);
         if(!lock.owns_lock())
@@ -752,14 +809,22 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
         recording = it->second;
         if(recording->phase != StoryRecording::Active)
             return CL_ERR_OUTCOME_UNCONFIRMED;
-        // Late start must settle before stop, and no new generation can start
-        // until every stop confirms. Unknown start/stop stays quarantined.
-        for(auto const& c: recording->starts)
-            if(!complete(c) || !c->confirmed)
+        // A late start must settle before the stop, so the stop reaches each
+        // keeper after its start, and no new generation can start until every
+        // stop confirms. An unknown start from the first acquire stays
+        // quarantined.
+        auto stop = storyStopTargets(*recording);
+        if(stop.state == StoryStopTargets::Unconfirmed)
+            return CL_ERR_OUTCOME_UNCONFIRMED;
+        if(stop.state == StoryStopTargets::Pending)
+        {
+            lock.unlock();
+            if(deadline.expired())
                 return CL_ERR_OUTCOME_UNCONFIRMED;
-        for(std::size_t i = 0; i < recording->starts.size(); ++i)
-            if(success(recording->starts[i]))
-                targets.push_back(i);
+            pause(deadline);
+            continue;
+        }
+        targets = std::move(stop.targets);
         for(std::size_t i = 0; i < targets.size(); ++i)
         {
             auto token = adminRuntime->runtime.reserve(deadline);
@@ -768,6 +833,7 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
             reservations.push_back(std::move(token));
         }
         recording->phase = StoryRecording::Closing;
+        break;
     }
     std::vector<rpc::RpcPending<int>> pending;
     for(std::size_t i = 0; i < targets.size(); ++i)

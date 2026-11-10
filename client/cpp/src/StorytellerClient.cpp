@@ -4,9 +4,9 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
-#include <thread>
 
 #include <thallium.hpp>
 
@@ -184,6 +184,138 @@ chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append(s
     }
     return result;
 }
+
+template <class KeeperChoicePolicy>
+class chronolog::StoryHandleImpl<KeeperChoicePolicy>::DurableWork final: public rpc::OwnedRpcWork<int>
+{
+public:
+    DurableWork(std::shared_ptr<ClientRpcContext> owner,
+                EntryLease entry,
+                RpcPolicyContext::Snapshot policy,
+                std::unique_ptr<KeeperRecordingClient::DurableRequest> request,
+                ChronicleName const& chronicle,
+                StoryName const& story,
+                LogEvent event,
+                LogEventOptions const& options)
+        : owner_(std::move(owner))
+        , entry_(std::move(entry))
+        , policy_(std::move(policy))
+        , request_(std::move(request))
+        , chronicle_(chronicle)
+        , story_(story)
+        , event_(std::move(event))
+        , options_(options)
+    {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
+    {
+        return request_->send(operation, chronicle_, story_, event_, options_.timeout_ms, options_.attempts);
+    }
+
+private:
+    std::shared_ptr<ClientRpcContext> owner_;
+    EntryLease entry_;
+    RpcPolicyContext::Snapshot policy_;
+    std::unique_ptr<KeeperRecordingClient::DurableRequest> request_;
+    ChronicleName chronicle_;
+    StoryName story_;
+    LogEvent event_;
+    LogEventOptions options_;
+};
+
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::log_event(std::string const& record,
+                                                              LogEventOptions const& options,
+                                                              uint64_t& event_time)
+{
+    auto started = rpc::RpcDeadline::Clock::now();
+    event_time = 0;
+    if(options.durability == Durability::Durable)
+    {
+        // The keeper drops an empty record after answering, which would make
+        // a durable success false.
+        if(options.attempts == 0 || options.timeout_ms == 0 || record.empty())
+            return CL_ERR_INVALID_ARG;
+        return logDurable(record, options, event_time, started);
+    }
+    if(options.durability != Durability::Accepted)
+        return CL_ERR_INVALID_ARG;
+    auto result = appendFromEntry(record, started);
+    if(result.outcome != AppendOutcome::Acknowledged)
+        return result.status;
+    event_time = result.timestamp;
+    return CL_SUCCESS;
+}
+
+template <class KeeperChoicePolicy>
+int chronolog::StoryHandleImpl<KeeperChoicePolicy>::logDurable(std::string const& record,
+                                                               LogEventOptions const& options,
+                                                               uint64_t& event_time,
+                                                               rpc::RpcDeadline::Clock::time_point started)
+{
+    auto entry = tryEnter();
+    if(!entry)
+        return CL_ERR_NOT_ACQUIRED;
+    auto owner = context_.lock();
+    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
+    if(!native)
+        return CL_ERR_RPC_CAPACITY;
+    entry->retainNative(std::move(*native));
+    auto policy = theClient.acquirePolicy();
+    if(!policy)
+        return CL_ERR_RPC_CAPACITY;
+    auto runtime = owner->runtime.lock();
+    if(!runtime)
+        return CL_ERR_RPC_CAPACITY;
+    // One budget for the whole write, as replay has its own: attempts *
+    // timeout_ms from the call, capped where the clock would overflow.
+    constexpr uint64_t maxBudget =
+            std::chrono::duration_cast<std::chrono::milliseconds>(rpc::RpcDeadline::Clock::duration::max()).count();
+    uint64_t budget = uint64_t(options.timeout_ms) * options.attempts;
+    auto deadline = rpc::RpcDeadline::fromStart(started, std::chrono::milliseconds(std::min(budget, maxBudget)));
+    auto timestamp = theClient.getTimestamp(deadline.expiresAt());
+    if(timestamp.status != CL_SUCCESS)
+        return timestamp.status;
+    // Built once: every attempt carries the same identity.
+    LogEvent event(storyId, timestamp.timestamp, theClient.getClientId(), theClient.get_event_index(), record);
+    if(deadline.expired())
+        return CL_ERR_DEADLINE_EXCEEDED;
+    auto reservation = runtime->reserve(deadline);
+    if(!reservation)
+        return reservation.status();
+    if(storyKeepers.empty())
+    {
+        LOG_WARNING("[StoryHandleImpl] No keepers for Chronicle: {}, Story: {}", chronicle, story);
+        return CL_ERR_NO_KEEPERS;
+    }
+    auto keeper = keeperChoicePolicy->chooseKeeper(storyKeepers, event.time());
+    if(!keeper)
+        return CL_ERR_NO_KEEPERS;
+    auto work = std::make_shared<DurableWork>(owner,
+                                              std::move(*entry),
+                                              std::move(*policy),
+                                              keeper->prepareDurable(),
+                                              chronicle,
+                                              story,
+                                              std::move(event),
+                                              options);
+    auto reply = runtime->invoke<int>(std::move(reservation), std::move(work));
+    if(reply.reply)
+    {
+        // The keeper answers CL_ERR_DURABILITY_UNKNOWN itself when its WAL
+        // failed while writing the event and could not erase it.
+        if(*reply.reply == CL_SUCCESS || *reply.reply == CL_ERR_DURABILITY_UNKNOWN)
+            event_time = timestamp.timestamp;
+        return *reply.reply;
+    }
+    if(!reply.may_have_dispatched)
+        return reply.status;
+    // An attempt went unanswered. A new log_event call would give the event a
+    // new identity, so the caller gets the timestamp to look for it later.
+    event_time = timestamp.timestamp;
+    return CL_ERR_DURABILITY_UNKNOWN;
+}
+
+/////////////////////
 
 // Tail read: delegate to the two-phase scatter/gather over this story's keepers.
 template <class KeeperChoicePolicy>
@@ -467,3 +599,7 @@ void chronolog::StorytellerClient::removeAcquiredStoryHandle(ChronicleName const
 }
 
 /////////////////
+
+// instantiates every member, including removeRecordingClient, which nothing in
+// the library calls yet; the unit tests do
+template class chronolog::StoryHandleImpl<chronolog::RoundRobinKeeperChoice>;

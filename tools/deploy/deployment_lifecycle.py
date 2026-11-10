@@ -830,7 +830,8 @@ def launch(work, specification):
     pending = manifest.get('pending_launch',{})
     if pending.get('specification') != specification or not specification.get('launch_id'):
         raise RuntimeError('original launch reservation is missing or changed')
-    with output.open('w') as log:
+    # A keeper restart appends, so the launch log of the run that died is kept.
+    with output.open('a' if specification.get('append_output') else 'w') as log:
         child = subprocess.Popen([executable, '--config', config], env=environment,
                                  stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                  start_new_session=True, close_fds=True)
@@ -889,6 +890,66 @@ def launch_remote(work, host, executable, config, component, output, budget_ms):
     return call_worker(host, work, 'launch', time.monotonic()+budget_ms/1000.0, specification)
 
 
+def restart_keeper(work, host, budget_ms, executable, config, output, worker=call_worker):
+    """Relaunch one keeper of a running deployment whose recorded process is gone.
+
+    A keeper that was killed, or crashed, leaves a record that can never show
+    an orderly stop, so the managed stop refuses the whole deployment until
+    that record is replaced. The relaunch replaces it only when the host
+    inventory succeeds (no unrecorded service process is running there) and
+    the recorded process is no longer alive. The keeper reuses its generated
+    configuration, so it gets the same ports and WAL directory.
+    """
+    started = time.monotonic()
+    deadline = started+budget_ms/1000.0
+    lock = None
+    try:
+        root = Path(work)/'monitor/lifecycle'
+        root.mkdir(parents=True, exist_ok=True)
+        lock = (root/'control.lock').open('a+')
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        path = manifest_path(work)
+        manifest = json.loads(path.read_text())
+        if (manifest.get('state') != 'running' or 'pending_launch' in manifest
+                or manifest.get('keeper_launches_closed')):
+            raise RuntimeError('a keeper restart needs a running deployment with no launch pending')
+        config = str(Path(config).resolve())
+        old = [record for record in manifest['records']
+               if record.get('component') == 'keeper' and record.get('config') == config]
+        if len(old) != 1:
+            raise RuntimeError('no single recorded keeper uses '+config)
+        old = old[0]
+        found = worker(host, work, 'inventory', deadline)
+        current = [record for record in found['records'] if same_identity(record, old)]
+        if len(current) != 1:
+            raise RuntimeError('the recorded keeper was not found on '+host)
+        if current[0]['state'] == 'alive':
+            raise RuntimeError('the recorded keeper is still running; stop it before restarting it')
+        specification = dict(executable=executable, config=config, component='keeper', output=output,
+                             budget_ms=max(1, int((deadline-time.monotonic())*1000)),
+                             deployment_id=manifest['id'], launch_id=str(uuid.uuid4()), append_output=True)
+        manifest['records'] = [record for record in manifest['records'] if not same_identity(record, old)]
+        manifest['keepers'] = [record for record in manifest['keepers'] if not same_identity(record, old)]
+        manifest['state'] = 'starting'
+        manifest['pending_launch'] = {'route':host, 'specification':specification}
+        atomic_json(path, manifest)
+        launched = worker(host, work, 'launch', deadline, specification)
+        manifest = json.loads(path.read_text())
+        manifest['state'] = 'running'
+        atomic_json(path, manifest)
+        emit({key:launched.get(key) for key in ('host','component','pid','start_ticks','config','deployment_id')}
+             | {'operation':'restart-keeper', 'status':0, 'state':'Running',
+                'elapsed_ms':int((time.monotonic()-started)*1000)})
+        return 0
+    except (OSError, ValueError, KeyError, RuntimeError, TimeoutError, subprocess.TimeoutExpired) as error:
+        emit({'operation':'restart-keeper', 'status':INCOMPLETE,
+              'elapsed_ms':int((time.monotonic()-started)*1000), 'reason':str(error)})
+        return 27
+    finally:
+        if lock is not None:
+            lock.close()
+
+
 def bounded_stop(work, hosts, budget_ms):
     # Bound even shared-filesystem observations in the controller child. The
     # exact overrun controller may be killed; recorded services never are.
@@ -927,6 +988,10 @@ def main():
     launching.add_argument('--config', required=True)
     launching.add_argument('--component', choices=COMPONENTS, required=True)
     launching.add_argument('--output', required=True)
+    restarting = sub.add_parser('restart-keeper')
+    restarting.add_argument('--executable', required=True)
+    restarting.add_argument('--config', required=True)
+    restarting.add_argument('--output', required=True)
     sub.add_parser('verify-empty')
     record = sub.add_parser('record')
     record.add_argument('--pid', type=int, required=True)
@@ -964,6 +1029,9 @@ def main():
                               'start' if args.command == 'run-start' else 'clean', command, executables=args.occupied_executable)
     elif args.command == 'guard':
         validate_guard(work)
+    elif args.command == 'restart-keeper':
+        return restart_keeper(work, (args.host or ['local'])[0], args.budget_ms, args.executable,
+                              args.config, args.output)
     elif args.command == 'launch':
         if 'CHRONOLOG_START_DEADLINE_NS' in os.environ:
             args.budget_ms = min(args.budget_ms, max(0, (int(os.environ['CHRONOLOG_START_DEADLINE_NS'])-time.monotonic_ns())//1000000))

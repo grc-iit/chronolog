@@ -22,11 +22,13 @@ constexpr char const* names[] = {"Connect",
                                  "ShowChronicles",
                                  "ShowStories",
                                  "record_event",
+                                 "record_event_durable",
                                  "tail_get_sequences",
                                  "tail_get_events",
                                  "playback_service_available",
                                  "story_playback_request"};
-}
+static_assert(sizeof(names) / sizeof(names[0]) == ClientRpcProcedures::Count, "one name per procedure");
+} // namespace
 ClientRpcProcedures::ClientRpcProcedures(thallium::engine& engine)
     : registrations_(engine)
 {

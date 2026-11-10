@@ -643,5 +643,99 @@ class ShippedConfigContract(unittest.TestCase):
                          'ofi+sockets://127.0.0.1:2525@25')
 
 
+class KeeperRestart(unittest.TestCase):
+    """restart-keeper replaces the record of a keeper whose process is gone."""
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='chronolog-keeper-restart-')
+        self.addCleanup(self.temporary.cleanup)
+        self.work = Path(self.temporary.name)
+        (self.work/'conf').mkdir()
+        self.config = self.work/'conf/chrono-keeper-conf-1.json'
+        self.config.write_text('{}')
+        self.keeper = dict(host='host-A', pid=123, uid=1000, executable='/test/chrono-keeper',
+                           config=str(self.config.resolve()), component='keeper',
+                           start_ticks='7', boot_id='boot-A', deployment_id='run-A')
+        self.visor = self.keeper | dict(pid=100, executable='/test/chrono-visor', component='visor',
+                                        config=str(self.work/'conf/chrono-visor-conf.json'))
+        self.manifest = self.work/'monitor/lifecycle/deployment.json'
+        self.save(state='running')
+        self.calls = []
+        self.keeper_state = 'unknown'
+
+    def save(self, **fields):
+        lifecycle.atomic_json(self.manifest, dict(id='run-A', records=[self.visor, self.keeper],
+                                                  keepers=[self.keeper], hosts=['local']) | fields)
+
+    def worker(self, host, work, action, deadline, record=None):
+        self.calls.append(action)
+        if action == 'inventory':
+            return {'host':'host-A', 'records':[self.visor | {'state':'alive'},
+                                                self.keeper | {'state':self.keeper_state}]}
+        # launch: what record_process and launch do on the host
+        manifest = json.loads(self.manifest.read_text())
+        self.assertEqual(manifest['state'], 'starting')
+        self.assertEqual(manifest['pending_launch']['specification'], record)
+        self.launched = record
+        replacement = self.keeper | dict(pid=456, start_ticks='9')
+        manifest.pop('pending_launch')
+        manifest['records'].append(replacement)
+        manifest['keepers'].append(replacement)
+        lifecycle.atomic_json(self.manifest, manifest)
+        return replacement
+
+    def restart(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            result = lifecycle.restart_keeper(self.work, 'local', 1000, '/test/chrono-keeper',
+                                              str(self.config), str(self.work/'monitor/keeper-1.launch.log'),
+                                              worker=self.worker)
+        return result, output.getvalue()
+
+    def test_keeper_killed_outside_the_stop_is_replaced_by_its_relaunch(self):
+        result, output = self.restart()
+        self.assertEqual(result, 0, output)
+        self.assertEqual(self.calls, ['inventory', 'launch'])
+        self.assertEqual(self.launched['config'], str(self.config.resolve()))
+        self.assertTrue(self.launched['append_output'])
+        manifest = json.loads(self.manifest.read_text())
+        self.assertEqual(manifest['state'], 'running')
+        self.assertEqual([r['pid'] for r in manifest['records']], [100, 456])
+        self.assertEqual([r['pid'] for r in manifest['keepers']], [456])
+
+    def test_running_keeper_is_never_relaunched(self):
+        self.keeper_state = 'alive'
+        result, output = self.restart()
+        self.assertEqual(result, 27)
+        self.assertIn('still running', output)
+        self.assertEqual(self.calls, ['inventory'])
+        manifest = json.loads(self.manifest.read_text())
+        self.assertEqual(manifest['state'], 'running')
+        self.assertEqual([r['pid'] for r in manifest['records']], [100, 123])
+
+    def test_restart_is_refused_outside_a_running_deployment(self):
+        for fields in (dict(state='stopping', keeper_launches_closed=True), dict(state='starting'),
+                       dict(state='running', pending_launch={'route':'local'})):
+            with self.subTest(fields=fields):
+                self.save(**fields)
+                self.calls.clear()
+                result, output = self.restart()
+                self.assertEqual(result, 27)
+                self.assertEqual(self.calls, [])
+                self.assertEqual(json.loads(self.manifest.read_text())['state'], fields['state'])
+
+    def test_unknown_launch_outcome_keeps_the_pending_launch(self):
+        def unknown(host, work, action, deadline, record=None):
+            if action == 'inventory':
+                return self.worker(host, work, action, deadline, record)
+            raise TimeoutError('SSH outcome is unknown')
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = lifecycle.restart_keeper(self.work, 'local', 1000, '/test/chrono-keeper', str(self.config),
+                                              str(self.work/'monitor/keeper-1.launch.log'), worker=unknown)
+        self.assertEqual(result, 27)
+        manifest = json.loads(self.manifest.read_text())
+        # The managed stop refuses while the launch is pending, as after a start.
+        self.assertEqual(manifest['state'], 'starting')
+        self.assertIn('pending_launch', manifest)
+
+
 if __name__ == '__main__':
     unittest.main()

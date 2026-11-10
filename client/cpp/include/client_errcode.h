@@ -26,7 +26,16 @@ enum ClientErrorCode
     // reusing a value here would silently change what a code means once the two
     // meet. Leaving the gap keeps both sets stable across that merge.
     CL_ERR_PARTIAL_RESULT = -18, // Query returned fewer records than it had promised
-    // -19..-21 are reserved for the parallel keeper-WAL work.
+    // A durable write (Durability::Durable) gets one of the next three codes.
+    CL_ERR_DURABILITY_UNAVAILABLE = -19,    // The keeper has no WAL, its WAL failed, or it lacks the RPC.
+                                            // Nothing was stored; retrying will not help until an operator acts
+    CL_ERR_DURABILITY_FULL = -20,           // The WAL file system is below its reserve, or the keeper holds more
+                                            // unconfirmed data than durable_cap_mb. Nothing was stored; retry later
+    CL_ERR_DURABILITY_UNKNOWN = -21,        // The event may be stored: no attempt was answered, an attempt went
+                                            // unanswered and a later answer could not rule out that it stored the
+                                            // event, or the keeper's WAL failed while writing it and could not
+                                            // erase it. A new log_event call creates a second event with a new
+                                            // identity. event_time holds the event's timestamp
     CL_ERR_DEADLINE_EXCEEDED = -22,         // The local operation budget expired
     CL_ERR_OUTCOME_UNCONFIRMED = -23,       // A dispatched operation has no confirmed outcome
     CL_ERR_RPC_CAPACITY = -24,              // Owned RPC work or policy admission is unavailable
@@ -71,6 +80,12 @@ inline const char* to_string(ClientErrorCode e)
             return "CL_ERR_PROTOCOL_VERSION_MISMATCH";
         case CL_ERR_PARTIAL_RESULT:
             return "CL_ERR_PARTIAL_RESULT";
+        case CL_ERR_DURABILITY_UNAVAILABLE:
+            return "CL_ERR_DURABILITY_UNAVAILABLE";
+        case CL_ERR_DURABILITY_FULL:
+            return "CL_ERR_DURABILITY_FULL";
+        case CL_ERR_DURABILITY_UNKNOWN:
+            return "CL_ERR_DURABILITY_UNKNOWN";
         case CL_ERR_DEADLINE_EXCEEDED:
             return "CL_ERR_DEADLINE_EXCEEDED";
         case CL_ERR_OUTCOME_UNCONFIRMED:
@@ -109,6 +124,9 @@ inline const char* to_string_client(int code)
         case CL_ERR_QUERY_TIMED_OUT:
         case CL_ERR_PROTOCOL_VERSION_MISMATCH:
         case CL_ERR_PARTIAL_RESULT:
+        case CL_ERR_DURABILITY_UNAVAILABLE:
+        case CL_ERR_DURABILITY_FULL:
+        case CL_ERR_DURABILITY_UNKNOWN:
         case CL_ERR_DEADLINE_EXCEEDED:
         case CL_ERR_OUTCOME_UNCONFIRMED:
         case CL_ERR_RPC_CAPACITY:

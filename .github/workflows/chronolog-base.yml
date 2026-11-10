@@ -2,6 +2,12 @@ name: "ChronoLog: Base Image (reusable)"
 
 on:
   workflow_call:
+    inputs:
+      ref:
+        description: "Branch, tag or commit whose spack files and dockerfile pick the image; empty for the caller's own ref"
+        required: false
+        type: string
+        default: ""
     outputs:
       image-name:
         description: "Fully-qualified base image name (ghcr.io/<owner>/chronolog-base:sha-<hash>)"
@@ -24,7 +30,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          ref: ${{ inputs.ref || (github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref) }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx

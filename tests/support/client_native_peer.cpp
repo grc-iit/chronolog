@@ -108,6 +108,26 @@ int main(int argc, char** argv)
     std::array<margo_instance_id, 3> keepers{MARGO_INSTANCE_NULL, MARGO_INSTANCE_NULL, MARGO_INSTANCE_NULL};
     std::vector<std::unique_ptr<thallium::engine>> keeperWrappers;
     std::vector<ServiceId> roster;
+    auto save = [state, mid](LogEvent const& event, unsigned route, bool durable)
+    {
+        while(state->eventWriter.test_and_set(std::memory_order_acquire)) margo_thread_sleep(mid, 1);
+        unsigned index = state->eventCount.load();
+        if(index < 16)
+        {
+            auto& saved = state->events[index];
+            saved.time = event.time();
+            saved.storyId = event.storyId;
+            saved.clientId = event.clientId;
+            saved.size = event.logRecord.size();
+            saved.last = event.logRecord.empty() ? 0 : event.logRecord.back();
+            saved.eventIndex = event.eventIndex;
+            saved.route = route;
+            saved.durable = durable ? 1 : 0;
+            std::strncpy(saved.record, event.logRecord.c_str(), sizeof(saved.record) - 1);
+            state->eventCount.store(index + 1, std::memory_order_release);
+        }
+        state->eventWriter.clear(std::memory_order_release);
+    };
     for(unsigned i = 0; i < (clock ? 3u : 1u); ++i)
     {
         thallium::engine* keeper = &engine;
@@ -160,7 +180,7 @@ int main(int argc, char** argv)
                 clock ? 52 : 74));
         calls.push_back(keeper->define(
                 "record_event",
-                [state, mid, i](thallium::request const& req, LogEvent const& event)
+                [state, mid, i, save](thallium::request const& req, LogEvent const& event)
                 {
                     ++state->records;
                     if(auto delay = state->recordDelayMs.load())
@@ -172,24 +192,28 @@ int main(int argc, char** argv)
                         req.respond(status);
                         return;
                     }
-                    while(state->eventWriter.test_and_set(std::memory_order_acquire)) margo_thread_sleep(mid, 1);
-                    unsigned index = state->eventCount.load();
-                    if(index < 16)
-                    {
-                        auto& saved = state->events[index];
-                        saved.time = event.time();
-                        saved.storyId = event.storyId;
-                        saved.clientId = event.clientId;
-                        saved.size = event.logRecord.size();
-                        saved.last = event.logRecord.empty() ? 0 : event.logRecord.back();
-                        saved.eventIndex = event.eventIndex;
-                        saved.route = i;
-                        std::strncpy(saved.record, event.logRecord.c_str(), sizeof(saved.record) - 1);
-                        state->eventCount.store(index + 1, std::memory_order_release);
-                    }
-                    state->eventWriter.clear(std::memory_order_release);
+                    save(event, i, false);
                     if(!state->dropRecordReply.load())
                         req.respond(0);
+                },
+                clock ? 52 : 74));
+        calls.push_back(keeper->define(
+                "record_event_durable",
+                [state, mid, i, save](thallium::request const& req,
+                                      std::string const& chronicle,
+                                      std::string const& story,
+                                      LogEvent const& event)
+                {
+                    ++state->durableCalls;
+                    if(auto delay = state->durableDelayMs.load())
+                        margo_thread_sleep(mid, delay);
+                    std::strncpy(state->durableChronicle, chronicle.c_str(), sizeof(state->durableChronicle) - 1);
+                    std::strncpy(state->durableStory, story.c_str(), sizeof(state->durableStory) - 1);
+                    save(event, i, true);
+                    unsigned drop = state->durableDropReplies.load();
+                    while(drop > 0 && !state->durableDropReplies.compare_exchange_weak(drop, drop - 1)) {}
+                    if(drop == 0)
+                        req.respond(state->durableStatus.load());
                 },
                 clock ? 52 : 74));
     }

@@ -76,6 +76,9 @@ public:
 
     int insertEvent(LogEvent const&);
 
+    // As above, but moves the event in. A refused event (0) is left as it was.
+    int insertEvent(LogEvent&&);
+
     uint32_t mergeEvents(std::map<EventSequence, LogEvent>& events,
                          std::map<EventSequence, LogEvent>::const_iterator& merge_start);
 

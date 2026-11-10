@@ -1,7 +1,16 @@
 #include <signal.h>
+#include <sys/uio.h>
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <KeeperRecordingService.h>
+#include <KeeperDurableWriter.h>
+#include <KeeperWal.h>
+#include <WalFileSink.h>
+#include <WalMountCheck.h>
+#include <WalRecovery.h>
 #include <KeeperRegClient.h>
 #include <KeeperDataStore.h>
 #include <DataStoreAdminService.h>
@@ -16,6 +25,212 @@
 namespace chl = chronolog;
 namespace rpc = chronolog::rpc;
 using namespace std::chrono_literals;
+
+// The file a keeper with the WAL on leaves in its WAL directory when it exits:
+// "pending_events=<n> pending_bytes=<b>", the durable events the grapher had
+// not confirmed. The deploy scripts read it after a stop; a missing file means
+// the keeper crashed or was killed. Removed at startup.
+static std::string const WAL_EXIT_SUMMARY = "exit-summary";
+
+// Logs where the WAL directory lives and every warning about it: a shared or
+// network file system, tmpfs, overlayfs, the root device, free space below the
+// reserve. The keeper starts either way.
+static void check_wal_mount(chl::WalConf const& wal_conf)
+{
+    chl::WalMountInfo info;
+    int err = chl::inspectWalDirectory(wal_conf.dir, info);
+    if(err != 0)
+    {
+        LOG_WARNING("[ChronoKeeperInstance] Cannot inspect the file system of WAL directory {}: {}",
+                    wal_conf.dir,
+                    std::strerror(err));
+        return;
+    }
+    uint64_t const reserve_bytes =
+            chl::walReserveBytes(info.total_bytes, wal_conf.reserve_min_bytes, wal_conf.reserve_percent);
+    LOG_INFO("[ChronoKeeperInstance] WAL directory {} is on {}: {} bytes free of {}, reserve {} bytes",
+             wal_conf.dir,
+             info.fs_name,
+             info.free_bytes,
+             info.total_bytes,
+             reserve_bytes);
+    for(std::string const& warning: chl::walMountWarnings(info, reserve_bytes))
+    {
+        LOG_WARNING("[ChronoKeeperInstance] WAL directory {}: {}", wal_conf.dir, warning);
+    }
+}
+
+static void log_wal_replay(std::string const& dir,
+                           chl::RecoveredState const& recovered,
+                           std::size_t chunks,
+                           std::chrono::steady_clock::duration elapsed)
+{
+    std::size_t events = 0;
+    for(auto const& [wal_story_id, story]: recovered.stories)
+    {
+        events += story.events.size();
+        if(story.events.empty())
+        {
+            continue;
+        }
+        // events are keyed by (time, client id, index); the replay has moved
+        // their records out, so read the times from the keys
+        LOG_INFO("[ChronoKeeperInstance] WAL replay: StoryID={} {}/{} (WAL StoryID={}): {} events from {} to {}",
+                 chl::recoveredStoryId(story),
+                 story.has_names ? story.chronicle : std::string("<no names>"),
+                 story.has_names ? story.story : std::string("<no names>"),
+                 wal_story_id,
+                 story.events.size(),
+                 std::get<0>(story.events.begin()->first),
+                 std::get<0>(story.events.rbegin()->first));
+    }
+    LOG_INFO("[ChronoKeeperInstance] WAL replay from {}: {} segments, {} bytes read, oldest segment {} s old, "
+             "{} stories, {} events in {} chunks, took {} ms",
+             dir,
+             recovered.segments.size(),
+             recovered.bytes_read,
+             recovered.oldest_segment_age_secs,
+             recovered.stories.size(),
+             events,
+             chunks,
+             std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+}
+
+// Opens the WAL directory, checks its mount, reads it back, starts the WAL on
+// what it holds, makes it the retention store's WalObserver and hands the
+// recovered events to the retention store as sealed chunks. nullptr, with the
+// reason logged, when the keeper must not start.
+static std::unique_ptr<chl::KeeperWal> start_keeper_wal(chl::WalConf const& wal_conf,
+                                                        std::string const& keeper_endpoint,
+                                                        chl::KeeperChunkRetentionStore& tail_store,
+                                                        chl::KeeperDataStore& data_store)
+{
+    auto const started_at = std::chrono::steady_clock::now();
+    auto wal = std::make_unique<chl::KeeperWal>(wal_conf, keeper_endpoint, chl::makePosixWalFileSink());
+
+    int err = wal->fileSink().openDirectory(wal_conf.dir);
+    if(err != 0)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] Cannot open WAL directory {}: {}", wal_conf.dir, std::strerror(err));
+        return nullptr;
+    }
+    check_wal_mount(wal_conf);
+
+    chl::RecoveredState recovered;
+    std::string error;
+    int const recovery_status = chl::recoverWal(wal->fileSink(), wal->segmentManager(), recovered, error);
+    if(wal->segmentManager().isOpen())
+    {
+        // This keeper holds the lock now, so a summary left by the last one is
+        // stale. It goes even when recovery refuses, so a stop after a failed
+        // start does not read the last clean exit's counts.
+        err = wal->fileSink().remove(WAL_EXIT_SUMMARY);
+        if(err == 0)
+        {
+            err = wal->fileSink().syncDirectory();
+        }
+        if(err != 0 && err != ENOENT)
+        {
+            LOG_WARNING("[ChronoKeeperInstance] Cannot remove {} from WAL directory {}: {}",
+                        WAL_EXIT_SUMMARY,
+                        wal_conf.dir,
+                        std::strerror(err));
+        }
+    }
+    if(recovery_status != chl::CL_SUCCESS)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] WAL recovery failed: {}. Exiting.", error);
+        return nullptr;
+    }
+
+    // The WAL starts and becomes the observer before the replay, so an event
+    // the replay cannot place is released like any other discarded event.
+    if(wal->start(recovered, chl::recoveredStoryId) != chl::CL_SUCCESS)
+    {
+        LOG_CRITICAL("[ChronoKeeperInstance] Cannot start the WAL in {}. Exiting.", wal_conf.dir);
+        return nullptr;
+    }
+    tail_store.setWalObserver(wal.get());
+    std::size_t const chunks = data_store.replayRecoveredEvents(recovered);
+    log_wal_replay(wal_conf.dir, recovered, chunks, std::chrono::steady_clock::now() - started_at);
+    return wal;
+}
+
+// Writes the exit summary as <name>.partial, data-syncs it, renames it into
+// place and syncs the directory, so a reader finds the whole line or no file.
+// 0, or the errno of the step `what` names.
+static int write_wal_exit_summary(chl::WalFileSink& sink, chl::WalStats const& stats, std::string& what)
+{
+    std::string const line = "pending_events=" + std::to_string(stats.pending_events) +
+                             " pending_bytes=" + std::to_string(stats.pending_bytes) + "\n";
+    // WalSegmentManager::open removes a leftover *.partial at the next start
+    std::string const partial = WAL_EXIT_SUMMARY + ".partial";
+    what = "create " + partial;
+    int err = sink.createZeroed(partial, 0);
+    int fd = -1;
+    if(err == 0)
+    {
+        what = "open " + partial;
+        err = sink.openForWrite(partial, fd);
+    }
+    if(err == 0)
+    {
+        iovec iov{const_cast<char*>(line.data()), line.size()};
+        what = "write " + partial;
+        err = sink.writeAt(fd, 0, &iov, 1);
+        if(err == 0)
+        {
+            what = "fdatasync " + partial;
+            err = sink.syncData(fd);
+        }
+        sink.closeFile(fd);
+    }
+    if(err == 0)
+    {
+        what = "rename " + partial;
+        err = sink.rename(partial, WAL_EXIT_SUMMARY);
+    }
+    if(err == 0)
+    {
+        what = "fsync the directory";
+        err = sink.syncDirectory();
+    }
+    return err;
+}
+
+// Called once the recording service takes no more requests: commits and
+// answers what is queued, stops the WAL, and leaves the exit summary.
+static void stop_keeper_wal(chl::KeeperWal& wal)
+{
+    wal.stop();
+    chl::WalStats const stats = wal.stats();
+    std::string what;
+    int err = write_wal_exit_summary(wal.fileSink(), stats, what);
+    if(err != 0)
+    {
+        LOG_ERROR("[ChronoKeeperInstance] Cannot write {} in WAL directory {}: {} failed: {}",
+                  WAL_EXIT_SUMMARY,
+                  wal.directory(),
+                  what,
+                  std::strerror(err));
+    }
+    if(stats.pending_events > 0)
+    {
+        LOG_WARNING("[ChronoKeeperInstance] Exiting with {} unconfirmed durable events ({} bytes) in WAL directory {}; "
+                    "a keeper started on that directory replays them",
+                    stats.pending_events,
+                    stats.pending_bytes,
+                    wal.directory());
+    }
+    else
+    {
+        LOG_INFO("[ChronoKeeperInstance] Exiting with {} unconfirmed durable events ({} bytes) in WAL directory {}",
+                 stats.pending_events,
+                 stats.pending_bytes,
+                 wal.directory());
+    }
+}
+
 namespace
 {
 volatile sig_atomic_t stop_requests = 0;
@@ -29,14 +244,19 @@ struct KeeperData
     chl::KeeperConfiguration conf;
     chl::KeeperIdCard id;
     chl::ServiceId admin;
+    // The WAL for durable writes, when WAL.enabled. Declared before the
+    // retention store, which keeps a pointer to it as its WalObserver.
+    std::unique_ptr<chl::KeeperWal> wal;
     chl::StoryChunkExtractionModule<chl::ChronoKeeperExtractionChain> extraction;
     chl::KeeperChunkRetentionStore retained;
     chl::IngestionQueue ingestion;
     chl::KeeperDataStore store;
+    std::unique_ptr<chl::KeeperDurableWriter> durableWriter;
     std::unique_ptr<chl::KeeperRegistryClient> registry;
     bool started = false, extractionReady = false, unregistered = false;
     std::array<std::shared_ptr<rpc::LifecycleStep>, 3> initialized;
-    std::shared_ptr<rpc::LifecycleStep> start, stopCollection, durable, stopExtraction, publisherPermit;
+    std::shared_ptr<rpc::LifecycleStep> walStart, start, stopCollection, durable, stopExtraction, walStop,
+            publisherPermit;
     explicit KeeperData(chl::KeeperConfiguration const& c)
         : conf(c)
         , id(c.RECORDING_GROUP,
@@ -144,6 +364,29 @@ int main(int argc, char** argv)
                 return result;
             },
             &stop_requests);
+    if(startupStatus == chl::CL_SUCCESS && conf.WAL_CONF.enabled)
+    {
+        // Recover the WAL before data collection starts, any service takes a
+        // request or the keeper registers: the recovered events become sealed
+        // chunks that extraction ships once it starts, and their WAL records
+        // stay pending until the grapher confirms them. It needs Argobots, so
+        // it runs after the first native instance is up. Recovery reads at
+        // most WAL.max_bytes and counts against startup_ms.
+        startupStatus = rpc::startLifecycleStep(
+                *runtimes[0],
+                startup,
+                data->walStart,
+                data,
+                [data]
+                {
+                    std::string endpoint;
+                    data->id.getRecordingServiceId().get_service_as_string(endpoint);
+                    data->wal = start_keeper_wal(data->conf.WAL_CONF, endpoint, data->retained, data->store);
+                    return data->wal ? int(chl::CL_SUCCESS) : int(chl::CL_ERR_UNKNOWN);
+                });
+        if(startupStatus == chl::CL_SUCCESS)
+            startupStatus = rpc::waitLifecycleStep(data->walStart, startup, &stop_requests);
+    }
     if(startupStatus == chl::CL_SUCCESS)
     {
         startupStatus = rpc::startLifecycleStep(*runtimes[0],
@@ -191,11 +434,24 @@ int main(int argc, char** argv)
                 data,
                 [data, owner = owners[2]]
                 {
+                    // The keeper side of record_event_durable. With no WAL it
+                    // answers every durable write CL_ERR_DURABILITY_UNAVAILABLE
+                    // and ingests nothing.
+                    data->durableWriter =
+                            std::make_unique<chl::KeeperDurableWriter>(data->wal.get(),
+                                                                       data->ingestion,
+                                                                       data->retained,
+                                                                       data->store,
+                                                                       data->conf.WAL_CONF.durableCapBytes());
                     return chl::KeeperRecordingService::CreateKeeperRecordingService(
                                    owner,
                                    data->conf.KEEPER_RECORDING_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,
                                    data->ingestion,
-                                   data->retained)
+                                   data->retained,
+                                   [writer = data->durableWriter.get()](chl::ChronicleName const& chronicle,
+                                                                        chl::StoryName const& story,
+                                                                        chl::LogEvent const& event)
+                                   { return writer->write(chronicle, story, event); })
                                    ? chl::CL_SUCCESS
                                    : chl::CL_ERR_UNKNOWN;
                 },
@@ -217,6 +473,8 @@ int main(int argc, char** argv)
                 break;
             std::this_thread::sleep_for(1ms);
         }
+        if(startupStatus != chl::CL_SUCCESS)
+            LOG_ERROR("[ChronoKeeper] Registration with ChronoVisor did not succeed: status {}", startupStatus);
     }
     int exitCode = startupStatus == chl::CL_SUCCESS ? 0 : 1;
     if(startupStatus == chl::CL_SUCCESS && !stop_requests)
@@ -235,6 +493,19 @@ int main(int argc, char** argv)
             if(rpc::RpcDeadline::Clock::now() >= nextStats)
             {
                 data->registry->send_stats_msg(chl::KeeperStatsMsg(data->id));
+                if(data->wal)
+                {
+                    chl::WalStats const stats = data->wal->stats();
+                    LOG_INFO("[KeeperWal] stats groups={} events={} bytes={} max_events_per_group={} "
+                             "pending_events={} pending_bytes={} segments={}",
+                             stats.groups,
+                             stats.events,
+                             stats.bytes,
+                             stats.max_events_per_group,
+                             stats.pending_events,
+                             stats.pending_bytes,
+                             stats.segments);
+                }
                 nextStats = rpc::RpcDeadline::Clock::now() + 10s;
             }
             std::this_thread::sleep_for(100ms);
@@ -253,12 +524,13 @@ int main(int argc, char** argv)
                 if(!initialized->done.load(std::memory_order_acquire) || initialized->unsafe)
                     return false;
             }
-        if(data->start)
-        {
-            rpc::waitLifecycleStep(data->start, deadline);
-            if(!data->start->done.load(std::memory_order_acquire) || data->start->unsafe)
-                return false;
-        }
+        for(auto const& step: {data->walStart, data->start})
+            if(step)
+            {
+                rpc::waitLifecycleStep(step, deadline);
+                if(!step->done.load(std::memory_order_acquire) || step->unsafe)
+                    return false;
+            }
         while(!owners[1]->publicIdle() || !owners[2]->publicIdle())
         {
             if(deadline.expired())
@@ -302,6 +574,24 @@ int main(int argc, char** argv)
                                                data->extraction.shutdownExtraction();
                                                return chl::CL_SUCCESS;
                                            }))
+            return false;
+        // Nothing reaches the WAL any more: every durable handler has answered
+        // (public entries are idle), every chunk is archive-confirmed and
+        // extraction is joined. Commit and answer what is queued, leave the
+        // exit summary with the events the grapher did not confirm, which a
+        // keeper started on the directory replays, and free the WAL while
+        // Argobots is still up.
+        if(data->walStart && !phase(data->walStop,
+                                    [data]
+                                    {
+                                        if(data->wal)
+                                        {
+                                            stop_keeper_wal(*data->wal);
+                                            data->retained.setWalObserver(nullptr);
+                                            data->wal.reset();
+                                        }
+                                        return chl::CL_SUCCESS;
+                                    }))
             return false;
         // Safe data is not sufficient if an original outgoing call is unknown.
         // Release only known snapshots, then prove all existing C2 slots idle.

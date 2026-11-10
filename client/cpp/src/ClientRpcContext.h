@@ -36,6 +36,7 @@ struct ClientRpcProcedures
         ShowChronicles,
         ShowStories,
         RecordEvent,
+        RecordEventDurable,
         TailSequences,
         TailEvents,
         PlaybackAvailable,

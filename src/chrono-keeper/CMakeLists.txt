@@ -17,7 +17,15 @@ target_sources(chrono_keeper PRIVATE
     src/ChronoKeeperConfiguration.cpp
     src/KeeperStoryPipeline.cpp
     src/KeeperDataStore.cpp
+    src/KeeperDurableWriter.cpp
     src/DualEndpointChunkExtractorRDMA.cpp
+    src/WalFileSink.cpp
+    src/WalReleaseTracker.cpp
+    src/WalFormat.cpp
+    src/WalMountCheck.cpp
+    src/WalSegmentManager.cpp
+    src/WalRecovery.cpp
+    src/KeeperWal.cpp
 )
 
 target_link_libraries(chrono_keeper

@@ -141,8 +141,16 @@ public:
 
     virtual ~StoryHandleImpl();
 
+    using StoryHandle::log_event;
+
     virtual uint64_t log_event(std::string const&) override;
     virtual AppendResult append_event(std::string const&) override;
+
+    // Accepted: the append_event path, returning its status. Durable:
+    // record_event_durable as one owned job, resending the identical event
+    // after an unanswered attempt up to options.attempts times, all within
+    // attempts * timeout_ms from the call.
+    virtual int log_event(std::string const& record, LogEventOptions const& options, uint64_t& event_time) override;
 
     virtual int playback(size_t n, std::vector<Event>& events) override;
 
@@ -197,6 +205,8 @@ private:
                         EntryLease,
                         std::shared_ptr<ClientRpcContext>);
     AppendResult appendFromEntry(std::string const&, rpc::RpcDeadline::Clock::time_point);
+    class DurableWork;
+    int logDurable(std::string const&, LogEventOptions const&, uint64_t&, rpc::RpcDeadline::Clock::time_point);
     StorytellerClient& theClient;
     std::weak_ptr<ClientRpcContext> context_;
     bool retainedContext_;

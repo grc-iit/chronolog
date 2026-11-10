@@ -1,5 +1,6 @@
 #include <private/NativeThreadLabel.h>
 #include <unistd.h>
+#include <algorithm>
 #include <map>
 #include <mutex>
 #include <chrono>
@@ -12,6 +13,7 @@
 
 #include <chronolog_errcode.h>
 #include <KeeperDataStore.h>
+#include <StoryIdOf.h>
 #include <chrono_monitor.h>
 
 namespace chl = chronolog;
@@ -52,10 +54,22 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
         {
             pipelinesWaitingForExit.erase(waiting_iter);
         }
+        startedByDurableWrite.erase(story_id);
 
         return chronolog::CL_SUCCESS;
     }
 
+    return (addStoryPipeline(chronicle, story, story_id, start_time) != nullptr) ? chronolog::CL_SUCCESS
+                                                                                 : chronolog::CL_ERR_UNKNOWN;
+}
+
+////////////////////////
+
+chronolog::KeeperStoryPipeline* chronolog::KeeperDataStore::addStoryPipeline(std::string const& chronicle,
+                                                                             std::string const& story,
+                                                                             chronolog::StoryId const& story_id,
+                                                                             uint64_t start_time)
+{
     auto result = theMapOfStoryPipelines.emplace(
             std::pair<chl::StoryId, chl::KeeperStoryPipeline*>(story_id,
                                                                new chl::KeeperStoryPipeline(theExtractionQueue,
@@ -70,20 +84,66 @@ int chronolog::KeeperDataStore::startStoryRecording(std::string const& chronicle
     if(result.second)
     {
         LOG_INFO("[KeeperDataStore] New KeeperStoryPipeline created successfully. StoryID: {}", story_id);
-        pipeline_iter = result.first;
         //engage KeeperStoryPipeline with the IngestionQueue
-        StoryIngestionHandle* ingestionHandle = (*pipeline_iter).second->getActiveIngestionHandle();
+        StoryIngestionHandle* ingestionHandle = (*result.first).second->getActiveIngestionHandle();
         theIngestionQueue.addStoryIngestionHandle(story_id, ingestionHandle);
-        return chronolog::CL_SUCCESS;
+        return (*result.first).second;
     }
     else
     {
         LOG_ERROR("[KeeperDataStore] Failed to create KeeperStoryPipeline for StoryID: {}. Possible memory or resource "
                   "issue.",
                   story_id);
-        return chronolog::CL_ERR_UNKNOWN;
+        return nullptr;
     }
 }
+
+////////////////////////
+
+int chronolog::KeeperDataStore::ensureStoryPipeline(std::string const& chronicle,
+                                                    std::string const& story,
+                                                    chronolog::StoryId const& story_id)
+{
+    // No clearDroppedStory here: only a start_story_recording from the visor
+    // says the id belongs to a new story. A durable write may come from a
+    // client that has not learnt of a destroy yet.
+    std::lock_guard storeLock(dataStoreMutex);
+    if(theMapOfStoryPipelines.find(story_id) != theMapOfStoryPipelines.end())
+    {
+        return chronolog::CL_SUCCESS;
+    }
+    // After shutdownDataCollection the collection threads may have exited:
+    // nothing would collect, seal or retire a new pipeline.
+    if(!acceptingPipelines)
+    {
+        LOG_WARNING("[KeeperDataStore] Durable write for Chronicle={}, Story={}, StoryID={} refused: data collection "
+                    "is shutting down",
+                    chronicle,
+                    story,
+                    story_id);
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+
+    LOG_INFO("[KeeperDataStore] Durable write starts a pipeline for a story not recorded here: Chronicle={}, "
+             "Story={}, StoryID={}",
+             chronicle,
+             story,
+             story_id);
+    uint64_t const current_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    KeeperStoryPipeline* pipeline = addStoryPipeline(chronicle, story, story_id, current_time);
+    if(pipeline == nullptr)
+    {
+        return chronolog::CL_ERR_UNKNOWN;
+    }
+    // Nothing on this keeper will stop the story, so it waits for exit as a
+    // stopped story's pipeline does: it retires an acceptance window from now
+    // unless a start_story_recording takes it off the list first. A later
+    // durable write for the retired story starts a new one.
+    pipelinesWaitingForExit[story_id] = std::make_pair(pipeline, current_time + pipeline->getAcceptanceWindow());
+    startedByDurableWrite.insert(story_id);
+    return chronolog::CL_SUCCESS;
+}
+
 ////////////////////////
 
 int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& story_id)
@@ -101,6 +161,8 @@ int chronolog::KeeperDataStore::stopStoryRecording(chronolog::StoryId const& sto
                              (*pipeline_iter).second->getAcceptanceWindow();
         pipelinesWaitingForExit[(*pipeline_iter).first] =
                 (std::pair<chl::KeeperStoryPipeline*, uint64_t>((*pipeline_iter).second, exit_time));
+        // the visor stopped it: it decays as any stopped story's
+        startedByDurableWrite.erase(story_id);
         LOG_INFO(
                 "[KeeperDataStore] Added KeeperStoryPipeline to waiting list for finalization. StoryID={}, ExitTime={}",
                 story_id,
@@ -177,6 +239,17 @@ void chronolog::KeeperDataStore::retireDecayedPipelines()
                 //current_time >= pipeline exit_time
                 KeeperStoryPipeline* pipeline = (*pipeline_iter).second.first;
                 chl::StoryId const story_id = pipeline->getStoryId();
+                // a pipeline a durable write started, still taking events in:
+                // its client may still hold the story, so it stays an
+                // acceptance window past the last of them
+                uint64_t const kept_until = pipeline->lastEventArrival() + pipeline->getAcceptanceWindow();
+                if(acceptingPipelines && startedByDurableWrite.count(story_id) != 0 && kept_until > current_time)
+                {
+                    (*pipeline_iter).second.second = kept_until;
+                    pipeline_iter++;
+                    continue;
+                }
+                startedByDurableWrite.erase(story_id);
                 // remember the story's names before the pipeline is gone so that
                 // any late orphaned events (which carry only a storyId) can still
                 // be sealed with the correct chronicle/story identity.
@@ -287,6 +360,92 @@ void chronolog::KeeperDataStore::sealOrphanedEvents()
 
 ////////////////////////
 
+chronolog::StoryId chronolog::recoveredStoryId(chronolog::RecoveredStory const& story)
+{
+    return story.has_names ? chl::storyIdOf(story.chronicle, story.story) : story.wal_story_id;
+}
+
+std::size_t chronolog::KeeperDataStore::replayRecoveredEvents(chronolog::RecoveredState& recovered)
+{
+    uint64_t const chunk_duration = uint64_t{std::max<uint32_t>(story_chunk_duration_secs, 1)} * 1000000000ULL;
+    std::size_t chunks_handed_over = 0;
+    for(auto& [wal_story_id, story]: recovered.stories)
+    {
+        if(story.events.empty())
+        {
+            continue;
+        }
+        if(!story.has_names)
+        {
+            // only a bug writes an E record before its story's N record; the
+            // WAL keeps the events, but no name means no archive to ship to
+            LOG_WARNING("[KeeperDataStore] WAL replay: StoryID={} has {} recovered event(s) but no names; not "
+                        "shipping them",
+                        wal_story_id,
+                        story.events.size());
+            continue;
+        }
+
+        chl::StoryId const story_id = recoveredStoryId(story);
+        chl::StoryChunk* chunk = nullptr;
+        auto hand_over = [&]()
+        {
+            if(chunk->empty())
+            {
+                delete chunk;
+            }
+            else
+            {
+                theTailStore.ingestSealedChunk(story_id, chunk);
+                ++chunks_handed_over;
+            }
+            chunk = nullptr;
+        };
+        // events are ordered by time first, so each chunk is complete once an
+        // event falls past its end
+        for(auto& [sequence, recovered_event]: story.events)
+        {
+            if(chunk != nullptr && recovered_event.time() >= chunk->getEndTime())
+            {
+                hand_over();
+            }
+            if(chunk == nullptr)
+            {
+                uint64_t const start_time = recovered_event.time() - (recovered_event.time() % chunk_duration);
+                chunk = new chl::StoryChunk(story.chronicle,
+                                            story.story,
+                                            story_id,
+                                            start_time,
+                                            start_time + chunk_duration);
+            }
+            // moved, not copied, so startup does not hold every pending payload
+            // twice; a refused event is left in place for the warning
+            recovered_event.storyId = story_id;
+            if(chunk->insertEvent(std::move(recovered_event)) == 0)
+            {
+                // a durable write never logs an empty record, so this is a bug too
+                LOG_WARNING("[KeeperDataStore] WAL replay: StoryID={} event {}:{}:{} could not be placed; dropping "
+                            "it",
+                            story_id,
+                            recovered_event.time(),
+                            recovered_event.getClientId(),
+                            recovered_event.index());
+                theTailStore.eventDiscarded(story_id, sequence);
+            }
+        }
+        if(chunk != nullptr)
+        {
+            hand_over();
+        }
+        // no pipeline reads these chunks' tail, and without the release they
+        // would never be freed (as in sealOrphanedEvents)
+        theTailStore.releaseStoryTail(story_id);
+    }
+    return chunks_handed_over;
+}
+
+////////////////////////
+
 void chronolog::KeeperDataStore::applyWatermarkReport(chronolog::StoryId const& story_id, uint64_t w)
 {
     theTailStore.confirmPersisted(story_id, w);
@@ -380,6 +539,14 @@ void chronolog::KeeperDataStore::shutdownDataCollection()
                          theMapOfStoryPipelines.size(),
                          pipelinesWaitingForExit.size());
 
+                {
+                    // Closed before the state changes: a collection thread exits only
+                    // once it sees SHUTTING_DOWN and no pipeline left, so a pipeline that
+                    // ensureStoryPipeline added before this keeps the threads running
+                    // until it retires, and none is added after.
+                    std::lock_guard storeLock(dataStoreMutex);
+                    acceptingPipelines = false;
+                }
                 // switch the state to shuttingDown
                 {
                     std::lock_guard stateLock(dataStoreStateMutex);

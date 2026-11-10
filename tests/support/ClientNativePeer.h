@@ -27,6 +27,7 @@ struct PeerEvent
     char last = 0;
     uint32_t eventIndex = 0;
     unsigned route = 0;
+    char durable = 0; // sent by record_event_durable
     char record[128]{};
 };
 struct PeerState
@@ -44,6 +45,11 @@ struct PeerState
     std::atomic<int> acquireStatus{0}, recordStatus{0}, recordDelayMs{0};
     std::atomic<unsigned> connects{0}, disconnects{0}, acquisitions{0}, destroys{0}, records{0};
     std::atomic<unsigned> storyGeneration{1}, destroyedGeneration{0}, eventCount{0};
+    // record_event_durable: the status it answers, how many requests to leave
+    // unanswered, and the names of the last one
+    std::atomic<int> durableStatus{0}, durableDelayMs{0};
+    std::atomic<unsigned> durableCalls{0}, durableDropReplies{0};
+    char durableChronicle[32]{}, durableStory[32]{};
     std::atomic_flag eventWriter = ATOMIC_FLAG_INIT;
     PeerEvent events[16];
 };

@@ -270,6 +270,17 @@ private:
     std::map<RecordingGroupId, RecordingGroup> recordingGroups;
     std::vector<RecordingGroup*> activeGroups;
     std::map<StoryId, std::shared_ptr<StoryRecording>> activeStories;
+    // Sends start_story_recording for each recording to a keeper that just
+    // registered. Called without registryLock; the starts are already in the
+    // recordings, so a later stop waits for them and reaches the keeper.
+    struct HeldStart
+    {
+        std::shared_ptr<StoryRecording> recording;
+        std::shared_ptr<DataStoreAdminClient> client;
+        std::shared_ptr<AdminCompletion> completion;
+        rpc::RpcReservation reservation;
+    };
+    void startHeldStoriesOnKeeper(KeeperIdCard const&, std::vector<HeldStart>);
 };
 } // namespace chronolog
 
