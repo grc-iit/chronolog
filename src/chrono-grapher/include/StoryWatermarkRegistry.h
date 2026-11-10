@@ -10,6 +10,8 @@
 #include <mutex>
 #include <random>
 #include <set>
+#include <string>
+#include <tuple>
 
 #include <chrono_monitor.h>
 #include <chronolog_types.h>
@@ -223,6 +225,12 @@ public:
         publication.dropped = true;
         auto receipt = receipts.find(story_id);
         publication.dropHighest = receipt == receipts.end() ? 0 : receipt->second.last_assigned;
+        if(receipt != receipts.end())
+        {
+            // chunks of a destroyed story are refused, not answered with a receipt
+            receipt->second.deliveries.clear();
+            receipt->second.deliveryOf.clear();
+        }
         dropped.insert(story_id);
         dirty.insert(story_id);
         auto iter = stories.find(story_id);
@@ -351,6 +359,99 @@ public:
     uint64_t assignReceipt(StoryId const& story_id, Incarnation* incarnation = nullptr)
     {
         std::lock_guard<std::timed_mutex> lock(mtx);
+        return assignLocked(story_id, incarnation);
+    }
+
+    // A keeper partial chunk as one keeper delivered it: the keeper that
+    // reported it, its range, and its bytes (size, the CRC-32C the keeper
+    // sent, and a 64-bit hash the grapher takes).
+    struct Delivery
+    {
+        std::string reporter;
+        uint64_t start = 0, end = 0, size = 0;
+        uint32_t checksum = 0;
+        uint64_t hash = 0;
+        bool operator<(Delivery const& other) const
+        {
+            return std::tie(reporter, start, end, size, checksum, hash) <
+                   std::tie(other.reporter, other.start, other.end, other.size, other.checksum, other.hash);
+        }
+    };
+
+    // How long a delivery is remembered once its receipt is written
+    // (duplicate_receipt_hold_secs).
+    void setDeliveryHold(std::chrono::seconds hold)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        deliveryHold = hold;
+    }
+
+    // The receipt for a delivery of a keeper partial chunk. One with the same
+    // reporter, range and bytes as a delivery this instance already received
+    // and wrote gets that delivery's receipt, and fresh is false: its events
+    // are on disk, so the caller ingests nothing and answers the receipt, and
+    // the keeper can free the chunk. Otherwise a new receipt is assigned, as
+    // assignReceipt does, and this delivery is the one remembered: until its
+    // receipt is written and for the hold after that. A duplicate whose first
+    // delivery is still unwritten is ingested again, because the keeper's
+    // stall-age resend (watermark_resend_timeout_secs) is how events whose
+    // write failed get written; the hold should exceed that age. A restarted
+    // grapher remembers nothing; a resend is then ingested again, and reads
+    // drop the copies by EventSequence, as before.
+    uint64_t receiptForDelivery(StoryId const& story_id,
+                                Delivery const& delivery,
+                                bool& fresh,
+                                Incarnation* incarnation = nullptr)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        StoryReceipts& story = receipts[story_id];
+        pruneDeliveries(story, std::chrono::steady_clock::now());
+        auto found = story.deliveries.find(delivery);
+        if(found != story.deliveries.end() && found->second.written != std::chrono::steady_clock::time_point{})
+        {
+            fresh = false;
+            if(incarnation)
+                *incarnation = publicationState(story_id).incarnation;
+            return found->second.receipt;
+        }
+        if(found != story.deliveries.end())
+        {
+            story.deliveryOf.erase(found->second.receipt);
+            story.deliveries.erase(found);
+        }
+        fresh = true;
+        uint64_t const receipt = assignLocked(story_id, incarnation);
+        auto remembered = story.deliveries.emplace(delivery, Remembered{receipt, {}}).first;
+        story.deliveryOf.emplace(receipt, remembered);
+        return receipt;
+    }
+
+    // Forgets a fresh delivery whose chunk was not ingested, so the keeper's
+    // next send of it is.
+    void forgetDelivery(StoryId const& story_id, Delivery const& delivery)
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        auto story = receipts.find(story_id);
+        if(story == receipts.end())
+            return;
+        auto found = story->second.deliveries.find(delivery);
+        if(found == story->second.deliveries.end())
+            return;
+        story->second.deliveryOf.erase(found->second.receipt);
+        story->second.deliveries.erase(found);
+    }
+
+    // Deliveries remembered for the story, for tests.
+    std::size_t rememberedDeliveries(StoryId const& story_id) const
+    {
+        std::lock_guard<std::timed_mutex> lock(mtx);
+        auto story = receipts.find(story_id);
+        return story == receipts.end() ? 0 : story->second.deliveries.size();
+    }
+
+private:
+    uint64_t assignLocked(StoryId const& story_id, Incarnation* incarnation)
+    {
         auto& publication = publicationState(story_id);
         if(incarnation)
             *incarnation = publication.incarnation;
@@ -364,6 +465,7 @@ public:
         return receipt;
     }
 
+public:
     // A timeline window or salvage chunk now holds events of the receipt.
     void holdReceipt(StoryId const& story_id, uint64_t receipt) override
     {
@@ -538,11 +640,35 @@ private:
 
     // Kept apart from Entry: a chunk can arrive before its story registers,
     // and an Entry created then would anchor W at 0.
+    struct Remembered
+    {
+        uint64_t receipt = 0;
+        // when the receipt was written; the epoch while it is pending
+        std::chrono::steady_clock::time_point written{};
+    };
+
     struct StoryReceipts
     {
         uint64_t last_assigned = 0;
         std::map<uint64_t, ReceiptState> pending;
+        std::map<Delivery, Remembered> deliveries;
+        std::map<uint64_t, std::map<Delivery, Remembered>::iterator> deliveryOf;
     };
+
+    void pruneDeliveries(StoryReceipts& story, std::chrono::steady_clock::time_point now)
+    {
+        for(auto it = story.deliveries.begin(); it != story.deliveries.end();)
+        {
+            auto const written = it->second.written;
+            if(written != std::chrono::steady_clock::time_point{} && now - written >= deliveryHold)
+            {
+                story.deliveryOf.erase(it->second.receipt);
+                it = story.deliveries.erase(it);
+            }
+            else
+                ++it;
+        }
+    }
 
     ReceiptState* findPending(StoryId const& story_id, uint64_t receipt)
     {
@@ -561,7 +687,11 @@ private:
         {
             return;
         }
-        receipts[story_id].pending.erase(receipt);
+        auto& story = receipts[story_id];
+        story.pending.erase(receipt);
+        auto remembered = story.deliveryOf.find(receipt);
+        if(remembered != story.deliveryOf.end())
+            remembered->second->second.written = std::chrono::steady_clock::now();
         envelopeChanged(story_id);
         dirty.insert(story_id);
     }
@@ -581,6 +711,7 @@ private:
     // still holding the old story's view takes any number up to that view's
     // highest as written unless a report lists it.
     uint64_t lastReceipt = 0;
+    std::chrono::seconds deliveryHold{600};
     mutable std::timed_mutex mtx;
     std::map<StoryId, Entry> stories;
     std::map<StoryId, StoryReceipts> receipts;

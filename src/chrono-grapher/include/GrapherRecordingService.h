@@ -1,5 +1,7 @@
 #ifndef GRAPHER_RECORDING_SERVICE_H
 #define GRAPHER_RECORDING_SERVICE_H
+#include <functional>
+#include <string_view>
 #include <thallium.hpp>
 #include <StoryChunk.h>
 #include <ChunkReceipt.h>
@@ -70,6 +72,9 @@ public:
             std::unique_ptr<StoryChunk> chunk;
         };
         std::shared_ptr<Receive> context;
+        StoryId story = 0;
+        StoryWatermarkRegistry::Delivery delivery;
+        bool fresh = false;
         try
         {
             context = std::make_shared<Receive>(owner,
@@ -104,8 +109,32 @@ public:
             reply.bytes = context->bytes.size();
             if(registry_)
             {
+                // A keeper that got no answer sends the same chunk again. An
+                // identical delivery whose events are already written gets
+                // the first one's receipt and is not ingested a second time.
+                story = chunk->getStoryId();
+                delivery.reporter = to_string(reporter);
+                delivery.start = chunk->getStartTime();
+                delivery.end = chunk->getEndTime();
+                delivery.size = context->bytes.size();
+                delivery.checksum = checksum;
+                delivery.hash =
+                        std::hash<std::string_view>{}(std::string_view(context->bytes.data(), context->bytes.size()));
                 reply.grapher_instance = registry_->instanceId();
-                reply.receipt = registry_->assignReceipt(chunk->getStoryId(), &incarnation);
+                reply.receipt = registry_->receiptForDelivery(story, delivery, fresh, &incarnation);
+                if(!fresh)
+                {
+                    LOG_INFO("[GrapherRecordingService] StoryId={} chunk {}-{} from {} is already written; "
+                             "answering its receipt {}",
+                             story,
+                             delivery.start,
+                             delivery.end,
+                             delivery.reporter,
+                             reply.receipt);
+                    if(!context->answer(reply))
+                        lease->quarantine();
+                    return;
+                }
                 chunk->carryReceipt(reply.receipt);
             }
             if(publisher_)
@@ -123,6 +152,10 @@ public:
                 // uncertain. Never let the failure-response throw outwards.
                 if((context->initiated && !context->completed) || context->chunk)
                 {
+                    // Not ingested: the keeper's next send must not be taken
+                    // for a duplicate.
+                    if(fresh && context->chunk && registry_)
+                        registry_->forgetDelivery(story, delivery);
                     lease->quarantine();
                     return;
                 }

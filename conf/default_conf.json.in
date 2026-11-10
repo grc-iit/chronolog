@@ -197,7 +197,8 @@
       "story_chunk_duration_secs": 30,
       "acceptance_window_secs": 60,
       "inactive_story_delay_secs": 300,
-      "watermark_report_interval_secs": 1
+      "watermark_report_interval_secs": 1,
+      "duplicate_receipt_hold_secs": 600
     },
     "ExtractionModule": {
         "extraction_stream_count":2,

@@ -182,6 +182,8 @@ int main(int argc, char** argv)
                 [data, owner = owners[1]]
                 {
                     owner->incoming.pieceBytes = data->conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.TRANSFER_PIECE_BYTES;
+                    data->watermarks->setDeliveryHold(
+                            std::chrono::seconds(data->conf.DATA_STORE_CONF.duplicate_receipt_hold_secs));
                     return chl::GrapherRecordingService::CreateRecordingService(
                                    owner,
                                    data->conf.KEEPER_GRAPHER_DRAIN_SERVICE_CONF.RPC_CONF.SERVICE_PROVIDER_ID,

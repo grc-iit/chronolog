@@ -536,3 +536,98 @@ TEST(StoryWatermarkRegistry, WriteFailureBeforeRegistrationDoesNotPinTheWatermar
     registry.advancePersisted(kStory, T2, T3);
     EXPECT_EQ(registry.getPersisted(kStory), T3);
 }
+
+// ---- duplicate deliveries --------------------------------------------------
+// A keeper that got no answer sends the same keeper partial chunk again. Once
+// the first delivery's events are written, an identical one gets the first
+// receipt and is not ingested again. While the first is unwritten, the resend
+// is ingested again: that is how events whose write failed get written.
+
+namespace
+{
+chl::StoryWatermarkRegistry::Delivery delivery(uint32_t checksum = 9, std::string reporter = "keeper-1")
+{
+    chl::StoryWatermarkRegistry::Delivery d;
+    d.reporter = std::move(reporter);
+    d.start = T0;
+    d.end = T1;
+    d.size = 4096;
+    d.checksum = checksum;
+    d.hash = 77;
+    return d;
+}
+void written(chl::StoryWatermarkRegistry& registry, uint64_t receipt)
+{
+    registry.holdReceipt(kStory, receipt);
+    registry.receiptMerged(kStory, receipt);
+    registry.releaseReceipt(kStory, receipt);
+}
+} // namespace
+
+TEST(StoryWatermarkRegistry, WrittenDeliveryAnswersItsReceiptToAnIdenticalResend)
+{
+    chl::StoryWatermarkRegistry registry;
+    bool fresh = false;
+    uint64_t const first = registry.receiptForDelivery(kStory, delivery(), fresh);
+    EXPECT_TRUE(fresh);
+    written(registry, first);
+    EXPECT_EQ(registry.receiptForDelivery(kStory, delivery(), fresh), first);
+    EXPECT_FALSE(fresh);
+    EXPECT_EQ(registry.rememberedDeliveries(kStory), 1u);
+}
+
+TEST(StoryWatermarkRegistry, UnwrittenDeliveryIsIngestedAgainAndTheNewestIsRemembered)
+{
+    chl::StoryWatermarkRegistry registry;
+    bool fresh = false;
+    uint64_t const first = registry.receiptForDelivery(kStory, delivery(), fresh);
+    uint64_t const second = registry.receiptForDelivery(kStory, delivery(), fresh);
+    EXPECT_TRUE(fresh);
+    EXPECT_GT(second, first);
+    EXPECT_EQ(registry.rememberedDeliveries(kStory), 1u);
+    written(registry, second);
+    EXPECT_EQ(registry.receiptForDelivery(kStory, delivery(), fresh), second);
+    EXPECT_FALSE(fresh);
+}
+
+TEST(StoryWatermarkRegistry, OtherBytesOrAnotherKeeperAreNotDuplicates)
+{
+    chl::StoryWatermarkRegistry registry;
+    bool fresh = false;
+    uint64_t const first = registry.receiptForDelivery(kStory, delivery(), fresh);
+    written(registry, first);
+    EXPECT_NE(registry.receiptForDelivery(kStory, delivery(10), fresh), first);
+    EXPECT_TRUE(fresh);
+    EXPECT_NE(registry.receiptForDelivery(kStory, delivery(9, "keeper-2"), fresh), first);
+    EXPECT_TRUE(fresh);
+    auto range = delivery();
+    range.end = T2;
+    EXPECT_NE(registry.receiptForDelivery(kStory, range, fresh), first);
+    EXPECT_TRUE(fresh);
+}
+
+TEST(StoryWatermarkRegistry, WrittenDeliveryIsForgottenAfterTheHold)
+{
+    chl::StoryWatermarkRegistry registry;
+    registry.setDeliveryHold(std::chrono::seconds(0));
+    bool fresh = false;
+    uint64_t const first = registry.receiptForDelivery(kStory, delivery(), fresh);
+    written(registry, first);
+    EXPECT_NE(registry.receiptForDelivery(kStory, delivery(), fresh), first);
+    EXPECT_TRUE(fresh);
+}
+
+TEST(StoryWatermarkRegistry, ForgottenOrDroppedDeliveryIsIngestedAgain)
+{
+    chl::StoryWatermarkRegistry registry;
+    bool fresh = false;
+    uint64_t const first = registry.receiptForDelivery(kStory, delivery(), fresh);
+    registry.forgetDelivery(kStory, delivery());
+    EXPECT_EQ(registry.rememberedDeliveries(kStory), 0u);
+    uint64_t const second = registry.receiptForDelivery(kStory, delivery(), fresh);
+    EXPECT_TRUE(fresh);
+    EXPECT_NE(second, first);
+    written(registry, second);
+    registry.dropStory(kStory);
+    EXPECT_EQ(registry.rememberedDeliveries(kStory), 0u);
+}

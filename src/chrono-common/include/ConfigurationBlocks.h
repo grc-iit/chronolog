@@ -272,6 +272,11 @@ struct DataStoreConf
     // How often the grapher pushes dirty per-story persisted watermarks to
     // the contributing keepers. Grapher-only knob; ignored by keeper/player.
     int watermark_report_interval_secs = 1;
+    // How long the grapher remembers a keeper partial chunk it received after
+    // its events are written, so a keeper that resends it gets the first
+    // receipt instead of the events being written twice. Keep it above the
+    // keepers' watermark_resend_timeout_secs. Grapher-only knob.
+    int duplicate_receipt_hold_secs = 600;
     // When true, playback()/tail reads also serve events from the active
     // (unsealed) timeline in addition to sealed chunks, cutting write-to-visible
     // latency from the seal window (chunk_duration + acceptance_window) down to
@@ -296,6 +301,7 @@ struct DataStoreConf
                " archive_visibility_delay_secs: " + std::to_string(archive_visibility_delay_secs) +
                " shutdown_confirm_timeout_secs: " + std::to_string(shutdown_confirm_timeout_secs) +
                " watermark_report_interval_secs: " + std::to_string(watermark_report_interval_secs) +
+               " duplicate_receipt_hold_secs: " + std::to_string(duplicate_receipt_hold_secs) +
                " live_tail_read: " + (live_tail_read ? "true" : "false") + "]";
     }
 };

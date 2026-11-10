@@ -5,6 +5,8 @@
 //             1 MiB pieces by default, and arrives intact
 //   checksum  bytes that do not match the keeper's CRC-32C are refused with
 //             nothing ingested; the same chunk sent correctly is ingested
+//   duplicate a resend of a written chunk gets the first receipt and is not
+//             ingested again; a resend before the write is ingested again
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <GrapherRecordingService.h>
@@ -84,7 +86,10 @@ int main(int argc, char** argv)
     receiveOwner->incoming.observers.initiated = [pieces](margo_request) { ++*pieces; };
     if(scenario == "pieces")
         receiveOwner->incoming.pieceBytes = 4096;
-    if(!chl::GrapherRecordingService::CreateRecordingService(*engine, 42, ingested->queue))
+    auto registry = std::make_shared<chl::StoryWatermarkRegistry>();
+    receiveOwner->dependencies =
+            std::make_shared<std::pair<std::shared_ptr<Ingested>, std::shared_ptr<void>>>(ingested, registry);
+    if(!chl::GrapherRecordingService::CreateRecordingService(receiveOwner, 42, ingested->queue, {}, registry.get()))
         return 3;
     std::string self = engine->self();
     auto port = static_cast<uint16_t>(std::stoul(self.substr(self.rfind(':') + 1)));
@@ -136,6 +141,32 @@ int main(int argc, char** argv)
         pass = pass && (until([&] { return ingested->count() == 1; }) || fail("correct chunk not ingested"));
         pass = pass && (ingested->firstRecord(0) == "checked record" || fail("correct chunk changed"));
         std::cout << "refused bytes=" << refused.bytes << " then ingested=" << ingested->count() << std::endl;
+    }
+    else if(pass && scenario == "duplicate")
+    {
+        chl::ServiceId reporter(protocol, "127.0.0.1", 5555, 55);
+        chl::StoryChunk chunk("chron", "story", 19, 100, 200);
+        chunk.insertEvent(chl::LogEvent(19, 150, 1, 0, "sent twice"));
+        chl::ChunkReceipt first, second, third;
+        pass = sender->transfer_story_chunk(chunk, reporter, &first) == chl::CL_SUCCESS || fail("first send");
+        pass = pass && (until([&] { return ingested->count() == 1; }) || fail("first send not ingested"));
+        // Not written yet: the resend is ingested again with a new receipt.
+        pass = pass && (sender->transfer_story_chunk(chunk, reporter, &second) == chl::CL_SUCCESS ||
+                        fail("resend before the write"));
+        pass = pass && (until([&] { return ingested->count() == 2; }) || fail("unwritten resend not ingested"));
+        pass = pass && (second.receipt > first.receipt || fail("unwritten resend kept the old receipt"));
+        // The newest delivery is written; a resend now gets its receipt only.
+        registry->holdReceipt(19, second.receipt);
+        registry->receiptMerged(19, second.receipt);
+        registry->releaseReceipt(19, second.receipt);
+        pass = pass && (sender->transfer_story_chunk(chunk, reporter, &third) == chl::CL_SUCCESS ||
+                        fail("resend after the write"));
+        std::this_thread::sleep_for(200ms);
+        pass = pass && (ingested->count() == 2 || fail("a written chunk was ingested again"));
+        pass = pass && (third.receipt == second.receipt || fail("resend after the write got another receipt"));
+        pass = pass && (third.grapher_instance == registry->instanceId() || fail("receipt from another instance"));
+        std::cout << "receipts first=" << first.receipt << " second=" << second.receipt << " third=" << third.receipt
+                  << " ingested=" << ingested->count() << std::endl;
     }
     else if(pass)
         pass = fail("unknown scenario " + scenario);

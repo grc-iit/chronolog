@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include <chrono_monitor.h>
 #include <ChunkReceipt.h>
@@ -152,19 +153,23 @@ TEST(ChunkSenderAnswer, OtherErrorsAreNotSwallowed)
 }
 
 // Every answer in both handlers goes through BulkReceiveContext::answer, which
-// catches a failed reply as answerChunkSender does: the deserialization
-// failure, the received chunk and the failure path. A failed bulk pull keeps
-// its lease and is not answered.
+// catches a failed reply as answerChunkSender does: the checksum or
+// deserialization failure, the received chunk and the failure path, and in
+// the grapher also a duplicate of a written chunk. A request that finds no
+// free slot is refused through BulkReceives::refuse, which catches too. A
+// failed bulk pull keeps its lease and is not answered.
 TEST(ChunkSenderAnswer, BothReceiversAnswerOnlyThroughTheHelper)
 {
-    for(char const* path: {CHRONOLOG_GRAPHER_RECORDING_SERVICE, CHRONOLOG_CHUNK_CONSUMER_SERVICE})
+    for(auto const& [path, answers]: {std::pair<char const*, std::size_t>{CHRONOLOG_GRAPHER_RECORDING_SERVICE, 4},
+                                      std::pair<char const*, std::size_t>{CHRONOLOG_CHUNK_CONSUMER_SERVICE, 3}})
     {
         std::string const file = fileText(path);
         ASSERT_FALSE(file.empty()) << path;
         std::string const handler = handlerText(file);
         ASSERT_FALSE(handler.empty()) << "no receive_story_chunk in " << path;
         EXPECT_EQ(occurrences(handler, "request.respond("), 0u) << path;
-        EXPECT_EQ(occurrences(handler, "context->answer("), 3u) << path;
+        EXPECT_EQ(occurrences(handler, "context->answer("), answers) << path;
+        EXPECT_EQ(occurrences(handler, "incoming.refuse(request"), 1u) << path;
     }
 }
 
