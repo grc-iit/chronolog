@@ -128,7 +128,8 @@ int main(int argc, char** argv)
             if(!secondCollected)
                 secondCollected = senders[1]->transfer_story_chunk(chunk) == chl::CL_SUCCESS;
         }
-        bool settled = failure ? (barriers == 1 && receiveOwner->incoming.used() == 1)
+        // A reply that failed has returned, so even then the slot is free.
+        bool settled = failure ? (barriers == 1 && receiveOwner->incoming.used() == 0)
                                : (receiveOwner->incoming.used() == 0 && owners[0]->sources.used() == 0 &&
                                   owners[1]->sources.used() == 0);
         if(ingested && settled)
@@ -145,7 +146,7 @@ int main(int argc, char** argv)
     }
     capped = capped && chunks == expected && boundaryObserved;
     bool guarded = !failure || (first == chl::CL_ERR_OUTCOME_UNCONFIRMED && barriers == 1 && chunks == expected &&
-                                receiveOwner->incoming.used() == 1);
+                                receiveOwner->incoming.used() == 0);
     if(malformed && !failure)
         guarded = first == chl::CL_ERR_STORY_CHUNK_EXTRACTION && chunks == 0 && receiveOwner->incoming.used() == 0;
     std::cout << "barriers=" << barriers << " incoming=" << receiveOwner->incoming.used() << " first=" << first

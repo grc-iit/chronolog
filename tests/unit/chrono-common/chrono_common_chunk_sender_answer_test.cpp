@@ -153,15 +153,15 @@ TEST(ChunkSenderAnswer, OtherErrorsAreNotSwallowed)
 }
 
 // Every answer in both handlers goes through BulkReceiveContext::answer, which
-// catches a failed reply as answerChunkSender does: the checksum or
-// deserialization failure, the received chunk and the failure path, and in
-// the grapher also a duplicate of a written chunk. A request that finds no
-// free slot is refused through BulkReceives::refuse, which catches too. A
-// failed bulk pull keeps its lease and is not answered.
+// catches a failed reply as answerChunkSender does: a failed pull, the
+// checksum or deserialization failure, the received chunk and the failure
+// path, and in the grapher also a duplicate of a written chunk. A request that
+// finds no free slot is refused through BulkReceives::refuse, which catches
+// too. Only the failure path keeps its slot, when a piece may be in flight.
 TEST(ChunkSenderAnswer, BothReceiversAnswerOnlyThroughTheHelper)
 {
-    for(auto const& [path, answers]: {std::pair<char const*, std::size_t>{CHRONOLOG_GRAPHER_RECORDING_SERVICE, 4},
-                                      std::pair<char const*, std::size_t>{CHRONOLOG_CHUNK_CONSUMER_SERVICE, 3}})
+    for(auto const& [path, answers]: {std::pair<char const*, std::size_t>{CHRONOLOG_GRAPHER_RECORDING_SERVICE, 5},
+                                      std::pair<char const*, std::size_t>{CHRONOLOG_CHUNK_CONSUMER_SERVICE, 4}})
     {
         std::string const file = fileText(path);
         ASSERT_FALSE(file.empty()) << path;
@@ -170,6 +170,7 @@ TEST(ChunkSenderAnswer, BothReceiversAnswerOnlyThroughTheHelper)
         EXPECT_EQ(occurrences(handler, "request.respond("), 0u) << path;
         EXPECT_EQ(occurrences(handler, "context->answer("), answers) << path;
         EXPECT_EQ(occurrences(handler, "incoming.refuse(request"), 1u) << path;
+        EXPECT_EQ(occurrences(handler, "lease->quarantine()"), 1u) << path;
     }
 }
 

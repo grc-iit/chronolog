@@ -7,6 +7,11 @@
 //             nothing ingested; the same chunk sent correctly is ingested
 //   duplicate a resend of a written chunk gets the first receipt and is not
 //             ingested again; a resend before the write is ingested again
+//   pull-error the keeper's buffer is gone before the pull, so the pull fails;
+//             it has returned, so the receive slot is free again and nothing
+//             is ingested. Over ofi+sockets the keeper is answered that
+//             nothing was received; over ofi+tcp the failed read also drops
+//             the connection, so no answer arrives
 #include <thallium.hpp>
 #include <thallium/serialization/stl/string.hpp>
 #include <GrapherRecordingService.h>
@@ -17,6 +22,7 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <optional>
 #include <thread>
 using namespace std::chrono_literals;
 namespace tl = thallium;
@@ -167,6 +173,41 @@ int main(int argc, char** argv)
         pass = pass && (third.grapher_instance == registry->instanceId() || fail("receipt from another instance"));
         std::cout << "receipts first=" << first.receipt << " second=" << second.receipt << " third=" << third.receipt
                   << " ingested=" << ingested->count() << std::endl;
+    }
+    else if(pass && scenario == "pull-error")
+    {
+        auto release = std::make_shared<std::atomic<bool>>(false);
+        receiveOwner->incoming.observers.allocated = [release, engine]
+        {
+            while(!*release) margo_thread_sleep(engine->get_margo_instance(), 1);
+        };
+        chl::StoryChunk chunk("chron", "story", 19, 100, 200);
+        chunk.insertEvent(chl::LogEvent(19, 150, 1, 0, std::string(65536, 'p')));
+        auto serialized = chl::RDMATransferAgent::serialize(chunk);
+        std::string bytes = serialized->bytes;
+        std::optional<tl::bulk> bulk;
+        bulk.emplace(senderEngine->expose({{bytes.data(), bytes.size()}}, tl::bulk_mode::read_only));
+        auto remote = senderEngine->define("receive_story_chunk");
+        tl::provider_handle peer(senderEngine->lookup(self), 42);
+        auto answer = remote.on(peer).timed_async(5000ms, *bulk, chl::ServiceId{}, serialized->checksum);
+        pass = until([&] { return receiveOwner->incoming.used() == 1; }) || fail("pull never started");
+        bulk.reset(); // the registration the grapher is about to read is gone
+        *release = true;
+        chl::ChunkReceipt reply;
+        bool answered = false;
+        try
+        {
+            reply = answer.wait();
+            answered = true;
+        }
+        catch(std::exception const&)
+        {}
+        pass = pass && (!answered || reply.bytes == 0 || fail("a failed pull was acknowledged"));
+        pass = pass && (answered || protocol == "ofi+tcp" || fail("no answer to a failed pull"));
+        pass = pass && (until([&] { return receiveOwner->incoming.used() == 0; }) || fail("receive slot kept"));
+        pass = pass && (ingested->count() == 0 || fail("a failed pull was ingested"));
+        std::cout << "pull-error answered=" << answered << " bytes=" << reply.bytes
+                  << " incoming=" << receiveOwner->incoming.used() << std::endl;
     }
     else if(pass)
         pass = fail("unknown scenario " + scenario);

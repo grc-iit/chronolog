@@ -86,7 +86,10 @@ public:
             lease->retain(context);
             if(!context->pull())
             {
-                lease->quarantine();
+                // The pull has returned, so no piece is in flight and the slot
+                // is free again. A keeper still there learns that nothing was
+                // received; it keeps the chunk and sends it again.
+                context->answer(ChunkReceipt{});
                 return;
             }
             // A chunk whose bytes differ from what the keeper sent is refused
@@ -99,8 +102,7 @@ public:
                             "does not match",
                             context->bytes.size(),
                             to_string(reporter));
-                if(!context->answer(ChunkReceipt{}))
-                    lease->quarantine();
+                context->answer(ChunkReceipt{});
                 return;
             }
             auto* chunk = context->chunk.get();
@@ -131,8 +133,7 @@ public:
                              delivery.end,
                              delivery.reporter,
                              reply.receipt);
-                    if(!context->answer(reply))
-                        lease->quarantine();
+                    context->answer(reply);
                     return;
                 }
                 chunk->carryReceipt(reply.receipt);
@@ -141,15 +142,18 @@ public:
                 publisher_->recordContributor(chunk->getStoryId(), reporter, std::move(incarnation));
             queue_.ingestStoryChunk(chunk);
             context->chunk.release(); // Received data survives a failed reply.
-            if(!context->answer(reply))
-                lease->quarantine();
+            // A reply that fails has returned as well, and holds nothing: the
+            // slot is freed either way.
+            context->answer(reply);
         }
         catch(...)
         {
             if(context)
             {
-                // Keep a received chunk when ingestion or native work is
-                // uncertain. Never let the failure-response throw outwards.
+                // Keep a received chunk when ingestion failed, and the slot
+                // when a piece may still be in flight (an exception between
+                // starting it and waiting for it). Never let the
+                // failure-response throw outwards.
                 if((context->initiated && !context->completed) || context->chunk)
                 {
                     // Not ingested: the keeper's next send must not be taken
@@ -159,8 +163,7 @@ public:
                     lease->quarantine();
                     return;
                 }
-                if(!context->answer(ChunkReceipt{}))
-                    lease->quarantine();
+                context->answer(ChunkReceipt{});
             }
         }
     }

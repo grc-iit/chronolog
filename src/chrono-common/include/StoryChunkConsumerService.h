@@ -68,35 +68,40 @@ public:
             lease->retain(context);
             if(!context->pull())
             {
-                lease->quarantine();
+                // The pull has returned, so no piece is in flight and the slot
+                // is free again. A keeper still there learns that nothing was
+                // received; it keeps the chunk and sends it again.
+                context->answer(ChunkReceipt{});
                 return;
             }
             context->chunk = std::make_unique<StoryChunk>();
             if(rpc::crc32c(context->bytes.data(), context->bytes.size()) != checksum ||
                !rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), *context->chunk))
             {
-                if(!context->answer(ChunkReceipt{}))
-                    lease->quarantine();
+                context->answer(ChunkReceipt{});
                 return;
             }
             queue_.ingestStoryChunk(context->chunk.get());
             context->chunk.release();
             ChunkReceipt reply;
             reply.bytes = context->bytes.size();
-            if(!context->answer(reply))
-                lease->quarantine();
+            // A reply that fails has returned as well, and holds nothing: the
+            // slot is freed either way.
+            context->answer(reply);
         }
         catch(...)
         {
             if(context)
             {
+                // Keep a received chunk when ingestion failed, and the slot
+                // when a piece may still be in flight (an exception between
+                // starting it and waiting for it).
                 if((context->initiated && !context->completed) || context->chunk)
                 {
                     lease->quarantine();
                     return;
                 }
-                if(!context->answer(ChunkReceipt{}))
-                    lease->quarantine();
+                context->answer(ChunkReceipt{});
             }
         }
     }

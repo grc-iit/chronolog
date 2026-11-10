@@ -103,7 +103,7 @@ foreach(transport IN ITEMS sockets tcp)
 endforeach()
 
 # A keeper partial chunk through the grapher's real receive handler: pieces,
-# checksum, duplicate (see the scenario list in the source).
+# checksum, duplicate, pull-error (see the scenario list in the source).
 add_executable(rpc_chunk_receive_test rpc_chunk_receive_test.cpp
     ${CMAKE_SOURCE_DIR}/src/chrono-grapher/src/WatermarkReportPublisher.cpp)
 target_include_directories(rpc_chunk_receive_test PRIVATE
@@ -112,7 +112,7 @@ target_include_directories(rpc_chunk_receive_test PRIVATE
     ${CMAKE_SOURCE_DIR}/client/cpp/include)
 target_link_libraries(rpc_chunk_receive_test PRIVATE chrono_common chronolog_client chrono_rpc thallium pthread)
 foreach(transport IN ITEMS sockets tcp)
-    foreach(scenario IN ITEMS pieces checksum duplicate)
+    foreach(scenario IN ITEMS pieces checksum duplicate pull-error)
         add_test(NAME Communication_RpcChunkReceive_${transport}_${scenario}
             COMMAND rpc_chunk_receive_test ofi+${transport} ${scenario})
         set_tests_properties(Communication_RpcChunkReceive_${transport}_${scenario}
