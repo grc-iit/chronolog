@@ -182,6 +182,12 @@ chronolog::AppendResult chronolog::StoryHandleImpl<KeeperChoicePolicy>::append(s
         result.status = CL_ERR_OUTCOME_UNCONFIRMED;
         result.outcome = AppendOutcome::Unconfirmed;
     }
+    // One line per call the keeper did not answer, naming the keeper, as in
+    // v3.4.0.
+    if(!reply.reply)
+        LOG_ERROR("[KeeperRecordingClient] Failed to send event message to {}: {}",
+                  to_string(keeper->getRecordingServiceId()),
+                  result.status);
     return result;
 }
 
@@ -307,6 +313,9 @@ int chronolog::StoryHandleImpl<KeeperChoicePolicy>::logDurable(std::string const
             event_time = timestamp.timestamp;
         return *reply.reply;
     }
+    LOG_ERROR("[KeeperRecordingClient] Failed to send durable event to {}: {}",
+              to_string(keeper->getRecordingServiceId()),
+              reply.may_have_dispatched ? CL_ERR_DURABILITY_UNKNOWN : reply.status);
     if(!reply.may_have_dispatched)
         return reply.status;
     // An attempt went unanswered. A new log_event call would give the event a

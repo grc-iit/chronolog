@@ -9,7 +9,9 @@
 #include <thallium.hpp>
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <map>
+#include <functional>
 #include <memory>
 #include <vector>
 #include <string>
@@ -109,6 +111,9 @@ struct AdminCompletion
     int status = CL_ERR_OUTCOME_UNCONFIRMED;
     bool confirmed = false;
     bool dispatched = false;
+    // Called once on the worker after done is set, if installed before the
+    // work is submitted.
+    std::function<void(AdminCompletion const&)> finished;
 };
 class AdminWork final: public rpc::OwnedRpcWork<int>
 {

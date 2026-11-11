@@ -433,6 +433,31 @@ void KeeperRegistry::startHeldStoriesOnKeeper(KeeperIdCard const& keeper_id_card
 {
     LOG_INFO("[ChronoProcessRegistry] Starting {} held stories on keeper {}", held.size(), to_string(keeper_id_card));
     uint64_t start = std::chrono::system_clock::now().time_since_epoch().count();
+    // Logs, after the last start returns, how many the keeper confirmed, as
+    // v3.4.0 did when it started them one after the other.
+    struct Tally
+    {
+        std::atomic<size_t> remaining, started{0};
+        size_t total;
+        std::string keeper;
+    };
+    auto tally = std::make_shared<Tally>();
+    tally->remaining = held.size();
+    tally->total = held.size();
+    tally->keeper = to_string(keeper_id_card);
+    for(auto& item: held)
+    {
+        item.completion->finished = [tally](AdminCompletion const& done)
+        {
+            if(done.confirmed && done.status == chronolog::CL_SUCCESS)
+                tally->started.fetch_add(1, std::memory_order_relaxed);
+            if(tally->remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
+                LOG_INFO("[ChronoProcessRegistry] Started {} of {} held stories on keeper {}",
+                         tally->started.load(std::memory_order_relaxed),
+                         tally->total,
+                         tally->keeper);
+        };
+    }
     for(auto& item: held)
     {
         // The keeper's start_story_recording is idempotent, so a story also

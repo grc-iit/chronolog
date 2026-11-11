@@ -113,6 +113,8 @@ AdminWork::~AdminWork()
     {
         completion_->status = CL_ERR_DEADLINE_EXCEEDED;
         completion_->done.store(true, std::memory_order_release);
+        if(completion_->finished)
+            completion_->finished(*completion_);
     }
 }
 rpc::RpcResult<int> AdminWork::run(rpc::OperationContext& context)
@@ -156,6 +158,8 @@ rpc::RpcResult<int> AdminWork::run(rpc::OperationContext& context)
     completion_->confirmed = result.reply.has_value();
     completion_->dispatched = result.may_have_dispatched;
     completion_->done.store(true, std::memory_order_release);
+    if(completion_->finished)
+        completion_->finished(*completion_);
     // Last operation at adapter exit: native invocation and local preparation
     // have returned; this is deliberately NOT a settlement assertion.
     if(arguments_.action == AdminAction::Shutdown && !result.reply)
