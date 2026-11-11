@@ -329,10 +329,20 @@ run_scenario() {
 
     # -------------------------------------------- failures while down ----
     local k1_up_while_down k2_up_while_down fails_outside longest_call
+    # Over ofi+tcp an accepted call to the dead keeper ends at the client's
+    # append deadline (RpcPolicy.append_ms), so that plus a little is the
+    # limit on a call; over ofi+sockets it fails at once. A call that started
+    # less than that before the restart may be answered by the restarted
+    # keeper, so only calls that started before settled_ns must have failed.
+    local append_ms call_limit_ms settled_ns
+    append_ms=$(jq -r '.chrono_client.RpcPolicy.append_ms // 5000' "$CLIENT_CONF" 2> /dev/null)
+    case "$append_ms" in '' | *[!0-9]*) append_ms=5000 ;; esac
+    call_limit_ms=$((append_ms + 500))
+    settled_ns=$((RESTART_NS - call_limit_ms * 1000000))
     k1_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v restart="$RESTART_NS" -v p="$K2_PARITY" \
         '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < restart && $7 != p' | wc -l)
-    k2_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v restart="$RESTART_NS" -v p="$K2_PARITY" \
-        '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < restart && $7 == p' | wc -l)
+    k2_up_while_down=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v settled="$settled_ns" -v p="$K2_PARITY" \
+        '$2 == "CL_SUCCESS" && $6 > kill + 1e9 && $6 < settled && $7 == p' | wc -l)
     # the longest any call of writer A took from the kill on, in ms: a call
     # that waits on the dead keeper holds up every later event of the writer
     longest_call=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v interval="$INTERVAL_MS" \
@@ -350,11 +360,11 @@ run_scenario() {
     log_k2=$(echo "$log_ports" | awk -v k2="$k2_port" 'NF == 2 && $2 == k2 { n += $1 } END { print n + 0 }')
     log_other=$(echo "$log_ports" | awk -v k2="$k2_port" 'NF == 2 && $2 != k2 { n += $1 } END { print n + 0 }')
     if [ "$a_fails" -gt 0 ] && [ "$k1_up_while_down" -gt 0 ] && [ "$k2_up_while_down" -eq 0 ] &&
-       [ "$fails_outside" -eq 0 ] && [ "$longest_call" -lt 5000 ] &&
+       [ "$fails_outside" -eq 0 ] && [ "$longest_call" -le "$call_limit_ms" ] &&
        [ "$log_k2" -ge $((a_fails + b_fails)) ] && [ "$log_other" -eq 0 ]; then
-        ok "$PROTO: down: only keeper 2's events failed: $a_fails failed call(s) of writer A and $b_fails of writer B, all between the kill and the reconnect, while $k1_up_while_down of A's events reached keeper 1; no call took over ${longest_call} ms; the clients logged $log_k2 failure(s), all for keeper 2 (port $k2_port)"
+        ok "$PROTO: down: only keeper 2's events failed: $a_fails failed call(s) of writer A and $b_fails of writer B, all between the kill and the reconnect, while $k1_up_while_down of A's events reached keeper 1; the longest call took ${longest_call} ms (limit ${call_limit_ms}); the clients logged $log_k2 failure(s), all for keeper 2 (port $k2_port)"
     else
-        bad "$PROTO: down: $a_fails failed call(s) of A ($fails_outside outside the down time) and $b_fails of B; while keeper 2 was down $k1_up_while_down of A's events reached keeper 1 and $k2_up_while_down succeeded at keeper 2's parity; the longest call of A took ${longest_call} ms; client failure log lines per keeper port: $(echo $log_ports)"
+        bad "$PROTO: down: $a_fails failed call(s) of A ($fails_outside outside the down time) and $b_fails of B; while keeper 2 was down $k1_up_while_down of A's events reached keeper 1 and $k2_up_while_down succeeded at keeper 2's parity; the longest call of A took ${longest_call} ms (limit ${call_limit_ms}); client failure log lines per keeper port: $(echo $log_ports)"
     fi
     say "$PROTO: codes of the failed calls: $(cat "$RUN_DIR"/writer[AB].out | sed -n 's/^EVENT //p' |
         awk '$2 != "CL_SUCCESS" { c[$1 " " $2]++ } END { for(k in c) printf "%s=%d ", k, c[k] }')"
@@ -374,8 +384,8 @@ run_scenario() {
     durable_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
         '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > restart)' | wc -l)
     accepted_down=$(echo "$down_calls" | awk -v restart="$RESTART_NS" '$1 == "accepted" && $6 < restart' | wc -l)
-    accepted_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
-        '$1 == "accepted" && $6 < restart && $2 == "CL_SUCCESS"' | wc -l)
+    accepted_bad=$(echo "$down_calls" | awk -v settled="$settled_ns" \
+        '$1 == "accepted" && $6 < settled && $2 == "CL_SUCCESS"' | wc -l)
     down_summary=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
         'NF { c[$1 " " $2 " " (($6 > restart) ? "after" : "before")]++ } END { for(k in c) printf "%s=%d, ", k, c[k] }')
     if [ "$durable_down" -gt 0 ] && [ "$durable_bad" -eq 0 ] && [ "$accepted_down" -gt 0 ] && [ "$accepted_bad" -eq 0 ]; then
