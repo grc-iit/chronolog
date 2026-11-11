@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 805 CTest entries: 758 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 808 CTest entries: 761 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -126,10 +126,11 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronoPlayer_ArchiveManifestIndex` | 22 | `chrono_player_archive_manifest_index_test.cpp` | The player finds archive files only through the manifest, and drops the files of destroyed stories |
-| `Unit_ChronoPlayer_HotRangeSplit`, `Unit_ChronoPlayer_ReplayPlan` | 13 | `chrono_player_hot_range_split_test.cpp` | Where a replay splits between the archive and the keepers |
+| `Unit_ChronoPlayer_HotRangeSplit`, `Unit_ChronoPlayer_ReplayPlan` | 14 | `chrono_player_hot_range_split_test.cpp` | Where a replay splits between the archive and the keepers, and where a replay that starts at 0 starts |
 | `Unit_ChronoPlayer_ArchiveNumberedFiles` | 5 | `chrono_player_archive_numbered_files_test.cpp` | A window written more than once is read from every file |
 | `Unit_ChronoPlayer_KeeperHotFetch` | 4 | `chrono_player_keeper_hot_fetch_client_test.cpp` | Fetches from all keepers at once; a silent keeper costs one deadline |
 | `Unit_ChronoPlayer_ReplayEventMerge` | 4 | `chrono_player_replay_event_merge_test.cpp` | Merging archive and keeper events without duplicates |
+| `Unit_ChronoPlayer_ArchiveRequestReply` | 2 | `chrono_player_archive_request_reply_test.cpp` | An archive read the reading agent cannot use still answers its query, short |
 | `Unit_ChronoPlayer_ArchiveClientId` | 2 | `chrono_player_archive_client_id_test.cpp` | The full 64-bit client id survives the archive |
 | `Unit_ChronoPlayer_ArchiveVisibility` | 2 | `chrono_player_archive_visibility_test.cpp` | Archive reads at the split point |
 | `Unit_ChronoPlayer_PlayerReaderConf` | 2 | `chrono_player_reader_conf_test.cpp` | The `ArchiveReaders` block; removed settings are ignored |

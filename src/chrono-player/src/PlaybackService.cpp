@@ -97,7 +97,7 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                         chl::StoryId const& story_id,
                                                         chl::ChronicleName const& chronicle_name,
                                                         chl::StoryName const& story_name,
-                                                        chl::chrono_time const& start_time,
+                                                        chl::chrono_time const& requested_start_time,
                                                         chl::chrono_time const& end_time)
 {
     LOG_INFO("[PlaybackService] story_playback_request for receiver_service {} query_id {} story {} {}-{}",
@@ -106,6 +106,9 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
              story_id,
              chronicle_name,
              story_name);
+
+    // a replay that starts at 0 starts at the earliest event time; see replayStartTime
+    chl::chrono_time const start_time = chl::replayStartTime(requested_start_time);
 
     //ChronoPlayer is running and able to respond
 
