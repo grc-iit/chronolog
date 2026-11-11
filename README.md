@@ -162,6 +162,8 @@ Enter the repo:
 cd ChronoLog
 ```
 
+The dependencies are built with [Spack v1.2.2](https://github.com/spack/spack/releases/tag/v1.2.2), which needs a Fortran compiler such as `gfortran` on the system; see [Environment Setup](https://www.chronolog.dev/docs/contributing/development/environment-setup) for the system packages.
+
 Activate the Spack environment and install dependencies:
 
 ```bash
