@@ -36,14 +36,17 @@ void record(char const* phase, char const* name, void* mid, void* handle, int st
     }
 }
 } // namespace
-extern "C" hg_return_t margo_provider_forward(uint16_t provider, hg_handle_t handle, void* input)
+// Margo 0.24 makes margo_provider_forward an inline wrapper of this one, and
+// thallium sends its timed and untimed forwards through it.
+extern "C" hg_return_t
+margo_provider_forward_timed(uint16_t provider, hg_handle_t handle, void* input, double timeout_ms)
 {
-    using Forward = hg_return_t (*)(uint16_t, hg_handle_t, void*);
-    static auto original = reinterpret_cast<Forward>(dlsym(RTLD_NEXT, "margo_provider_forward"));
+    using Forward = hg_return_t (*)(uint16_t, hg_handle_t, void*, double);
+    static auto original = reinterpret_cast<Forward>(dlsym(RTLD_NEXT, "margo_provider_forward_timed"));
     auto name = margo_handle_get_name(handle);
     auto mid = margo_hg_handle_get_instance(handle);
     record("forward_enter", name, mid, handle, 0);
-    auto result = original(provider, handle, input);
+    auto result = original(provider, handle, input, timeout_ms);
     record("forward_return", name, mid, handle, result);
     return result;
 }
