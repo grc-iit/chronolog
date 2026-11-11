@@ -38,10 +38,31 @@ void chronolog::ArchiveReadingAgent::archiveReadingTask()
 
         chl::ArchiveReadingRequest* readingRequest = theReadingRequestQueue.popReadingRequest();
 
-        if(readingRequest == nullptr || !readingRequest->is_valid())
+        if(readingRequest == nullptr)
         {
             // queue might have been drained by another thread before this this thread got a hold
             // of the reading queue mutex
+            continue;
+        }
+
+        if(!readingRequest->is_valid())
+        {
+            // The query's response waits for this archive read, so a request that cannot be read
+            // still completes it, short: dropping it would leave the client waiting for its timeout.
+            LOG_WARNING("[ReadingAgent] archive read for query {} Chronicle={}, Story={}, TimeRange=[{}, {}) is not "
+                        "a valid request; the replay is answered without its archived events",
+                        readingRequest->queryId,
+                        readingRequest->chronicleName,
+                        readingRequest->storyName,
+                        readingRequest->startTime,
+                        readingRequest->endTime);
+            if(readingRequest->queryResponseAgent != nullptr)
+            {
+                readingRequest->queryResponseAgent->addArchivedEventsToQueryResponse(readingRequest->queryId,
+                                                                                     std::list<chl::StoryChunk*>(),
+                                                                                     chl::CL_ERR_INVALID_ARG);
+            }
+            delete readingRequest;
             continue;
         }
 

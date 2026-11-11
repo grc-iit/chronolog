@@ -1,16 +1,30 @@
 spack:
   specs:
-  - cmake@3.25.1 ^openssl@3.0.0:3.0.999
-  - boost@1.80.0
-  - spdlog@1.12.0
-  - mpich@4.0.2~fortran +verbs ~argobots ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
-  - mochi-thallium@0.10.1 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
-  - mochi-margo@0.13 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
-  - mercury@2.2.0~boostsys ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
-  - hdf5@1.14.1-2 +cxx +threadsafe
-  - py-pybind11@2.11.1
-  - googletest@1.12.1  cxxstd=17
+  - cmake@4.4.4
+  - boost@1.90.0
+  - spdlog@1.17.0
+  - mpich@5.0.2~fortran +verbs ~argobots ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mochi-thallium@0.17.0 ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mochi-margo@0.24.4 ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - mercury@2.4.1~boostsys ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - hdf5@2.2.0 +cxx +threadsafe ~mpi
+  - py-pybind11@3.0.4
+  - googletest@1.18.0  cxxstd=17
   view: true
+  repos:
+    # ChronoLog's own recipes, searched before builtin. They add Margo 0.24.4,
+    # which releases/v2026.10 does not offer yet; see
+    # tools/spack/spack_repo/chronolog/packages/mochi_margo/package.py.
+    chronolog: $env/tools/spack/spack_repo/chronolog
+    # The builtin package recipes. Spack v1.x keeps them in a separate
+    # repository. Pin a commit of its releases/v2026.10 branch so every build
+    # sees the same recipes. Spack honours the pin only when it first clones
+    # the repository and never moves an existing checkout, so the environment
+    # gets its own checkout instead of the shared one in ~/.spack.
+    builtin:
+      git: https://github.com/spack/spack-packages.git
+      commit: 3ebd010da9b44edbfd14adc1f08d2c1a129e3f6a
+      destination: $env/.spack-env/package-repos/builtin
   packages:
     all:
       # Pin to generic x86_64 so package hashes are consistent across all
@@ -19,3 +33,8 @@ spack:
       # runner's exact microarch and the base image packages are unusable
       # on any runner with a different microarch, triggering a full rebuild.
       target: [x86_64]
+    json-c:
+      # json-c 0.19 frees an object inside assert() in json_object_put, so a
+      # build with NDEBUG (spack's Release) never frees parsed objects.
+      # Fixed on json-c master after 0.19; no release has the fix yet.
+      require: "@0.18"

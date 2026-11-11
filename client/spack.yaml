@@ -1,7 +1,19 @@
 spack:
   specs:
-  - cmake@3.25.1 ^openssl@3.0.0:3.0.999
-  - spdlog@1.12.0
-  - mochi-thallium@0.10.1 ^libfabric@1.16.1 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
-  - py-pybind11@2.11.1
+  - cmake@4.4.4
+  - spdlog@1.17.0
+  - mochi-thallium@0.17.0 ^libfabric@2.6.0 fabrics=mlx,rxd,rxm,shm,sockets,tcp,udp,verbs
+  - py-pybind11@3.0.4
   view: true
+  repos:
+    # Same recipes as the top-level spack.yaml; see the comments there.
+    chronolog: $env/../tools/spack/spack_repo/chronolog
+    builtin:
+      git: https://github.com/spack/spack-packages.git
+      commit: 3ebd010da9b44edbfd14adc1f08d2c1a129e3f6a
+      destination: $env/.spack-env/package-repos/builtin
+  packages:
+    json-c:
+      # json-c 0.19 leaks every object it parses in an NDEBUG build; see the
+      # top-level spack.yaml.
+      require: "@0.18"

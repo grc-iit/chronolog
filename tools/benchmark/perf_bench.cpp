@@ -350,9 +350,13 @@ static int test_replay_story(chronolog::Client& client,
 {
     int ret = client.ReplayStory(chronicle_name, story_name, start_time, end_time, replay_events);
     // CL_ERR_PARTIAL_RESULT is an outcome to report, not an invariant: a keeper that
-    // misses its fetch deadline makes the player return what it has.
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST ||
-           ret == chronolog::CL_ERR_PARTIAL_RESULT);
+    // misses its fetch deadline makes the player return what it has. Any other failure,
+    // such as CL_ERR_QUERY_TIMED_OUT, is reported too, and the test goes on.
+    if(ret != chronolog::CL_SUCCESS && ret != chronolog::CL_ERR_NOT_EXIST && ret != chronolog::CL_ERR_PARTIAL_RESULT)
+    {
+        std::cerr << "ReplayStory of " << chronicle_name << "/" << story_name << " [" << start_time << ", " << end_time
+                  << ") returned " << chronolog::to_string_client(ret) << std::endl;
+    }
     return ret;
 }
 
@@ -1316,12 +1320,12 @@ int main(int argc, char** argv)
                 else if(workload_args.read)
                 {
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDuration() / 1e6;
-                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDuration() / 1e6;
+                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDuration();
                 }
                 else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6;
-                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration() / 1e6;
+                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration();
                 }
             }
             else
@@ -1343,14 +1347,12 @@ int main(int argc, char** argv)
                 else if(workload_args.read)
                 {
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDurationAve() / 1e6;
-                    replay_story_thpt =
-                            (double)workload_args.event_count * size / replayStoryTimer.getDurationAve() / 1e6;
+                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDurationAve();
                 }
                 else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6;
-                    record_event_thpt =
-                            (double)workload_args.event_count * size / writeEventTimer.getDurationAve() / 1e6;
+                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDurationAve();
                 }
             }
             std::cout << "Connect throughput: " << connect_thpt << " connections/s" << std::endl;

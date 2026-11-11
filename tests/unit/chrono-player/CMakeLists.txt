@@ -133,6 +133,41 @@ endif()
 
 #------------------------------------------------------------------------------
 
+# Archive request reply (GTest): an archive read the reading agent cannot use
+# still sends the query's response, marked incomplete (#741). Runs a fake
+# client query service, a QueryResponseAgent and an ArchiveReadingAgent over
+# ofi+sockets on 127.0.0.1.
+add_executable(archive_request_reply_test
+    chrono_player_archive_request_reply_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/HDF5ArchiveReadingAgent.cpp
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/src/QueryResponseTransferAgent.cpp
+)
+
+target_include_directories(archive_request_reply_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-player/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_link_directories(archive_request_reply_test PRIVATE ${HDF5_LIBRARY_DIRS})
+target_link_libraries(archive_request_reply_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+    ${HDF5_LIBRARIES}
+)
+
+set_target_properties(archive_request_reply_test PROPERTIES OUTPUT_NAME chronolog-test-player-archive-request-reply)
+gtest_discover_tests(archive_request_reply_test TEST_PREFIX "Unit_ChronoPlayer_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(archive_request_reply_test DESTINATION tests)
+endif()
+
+#------------------------------------------------------------------------------
+
 # Archive visibility (GTest): a replay made after the grapher writes a chunk
 # but before the player has seen the new archive file still returns the
 # chunk's events. Uses the keeper's real retention store, the replay split, the

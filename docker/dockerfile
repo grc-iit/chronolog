@@ -10,10 +10,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
-# Install system dependencies (merged from both dockerfiles)
+# Install system dependencies (merged from both dockerfiles).
+# gfortran: spack's py-scikit-build-core recipe, a build dependency of
+# py-pybind11 3, requires a Fortran compiler, and spack builds none itself.
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
-    gcc g++ automake cmake libtool pkgconf \
+    gcc g++ gfortran automake cmake libtool pkgconf \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
@@ -48,7 +50,7 @@ USER $USERNAME
 WORKDIR /home/$USERNAME
 
 # Clone Spack to user's home directory
-RUN git clone --branch v0.21.2 https://github.com/spack/spack.git ~/spack
+RUN git clone --depth 1 --branch v1.2.2 https://github.com/spack/spack.git ~/spack
 
 # Setup Spack in PATH (using user's home directory)
 ENV SPACK_ROOT=/home/$USERNAME/spack

@@ -12,7 +12,7 @@ ChronoLog's data model organizes time-series log events from distributed HPC app
 Client-oriented:
 - **[Chronicle](./concepts.md#chronicle)** — A named top-level container that groups related Stories. Identified by `CityHash64(chronicleName)`.
 - **[Story](./concepts.md#story)** — A time-series dataset within a Chronicle representing a logical event stream. Carries configurable attributes for indexing granularity, type, tiering policy, and access control.
-- **[Event](./concepts.md#logevent)** — The atomic data unit, carrying a timestamp, client ID, event index, and an opaque payload. Globally ordered by `EventSequence = (eventTime, clientId, eventIndex)`.
+- **[Event](./concepts.md#event)** — The atomic data unit, carrying a timestamp, client ID, event index, and an opaque payload. Globally ordered by `EventSequence = (eventTime, clientId, eventIndex)`.
 
 Internal:
 - **[StoryChunk](./concepts.md#storychunk)** — A time-windowed batch of Events `[startTime, endTime)`. The unit of data movement through the distributed pipeline, merged from partial chunks produced by multiple ChronoKeepers. It is transparent to the users. It is only used in communications between ChronoKeeper and ChronoGrapher.

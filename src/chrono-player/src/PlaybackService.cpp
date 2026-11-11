@@ -281,7 +281,9 @@ void chronolog::PlaybackService::story_playback_request(tl::request const& reque
                                                         story,
                                                         chronicle,
                                                         name,
-                                                        start,
+                                                        // a replay that starts at 0 starts at the
+                                                        // earliest event time; see replayStartTime
+                                                        replayStartTime(start),
                                                         end,
                                                         ackDeadline);
         runtime->submit<int>(std::move(admission->coordinator), std::move(work)).releaseToRuntime();

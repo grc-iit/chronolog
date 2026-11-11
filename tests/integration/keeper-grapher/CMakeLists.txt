@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
+# chrono_monitor.cpp pulls in spdlog, which (with an external fmt) needs
+# fmt::fmt linked. spdlog::spdlog carries that dependency transitively.
+find_package(spdlog REQUIRED)
 
 #------------------------------------------------------------------------------
 # Story Chunk Drain Test Executables
@@ -27,6 +30,7 @@ target_link_libraries(extract_test
     PRIVATE
         chrono_common
         thallium
+        spdlog::spdlog
 )
 
 add_test(NAME Integration_KeeperGrapher_StoryChunkExtract COMMAND extract_test)
@@ -52,6 +56,7 @@ target_link_libraries(ingest_test
     PRIVATE
         chrono_common
         thallium
+        spdlog::spdlog
 )
 
 add_test(NAME Integration_KeeperGrapher_StoryChunkIngest COMMAND ingest_test)

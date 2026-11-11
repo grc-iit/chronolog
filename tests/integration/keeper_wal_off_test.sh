@@ -31,12 +31,22 @@
 #
 # The v3.3.0 keeper is V330_KEEPER. When that file does not exist, the script
 # extracts the v3.3.0 tag with git archive into a temporary directory, renames
-# it to V330_SRC once the extraction is complete, copies the main checkout's
-# spack.lock (V330_SPACK_LOCK) into it, and builds and installs it with its own
-# local_single_user_deploy.sh into V330_BUILD and V330_INSTALL. The v3.3.0
-# build.sh then makes a .spack-env of its own in V330_SRC from that lock, out
-# of packages already in the spack store. The repo's .spack-env is never linked
-# there: build.sh would regenerate its view. This takes several minutes.
+# it to V330_SRC once the extraction is complete, and builds and installs it
+# with its own local_single_user_deploy.sh into V330_BUILD and V330_INSTALL.
+#
+# It builds the tag on this tree's dependency stack, not on v3.3.0's: a keeper
+# built on the v3.3.0 stack (Spack v0.21.2, Mercury 2.2.0, Margo 0.13.1) cannot
+# exchange RPCs with daemons built on Mercury 2.4.1 and Margo 0.24.4, so phase
+# 2 would fail on the transport instead of on the missing RPC. Before building,
+# the script copies this tree's spack.yaml, client/spack.yaml, tools/spack/,
+# spack.lock (V330_SPACK_LOCK) and recipe checkout into V330_SRC, and turns
+# CHRONOLOG_BUILD_TESTING off there: some v3.3.0 test targets do not link on
+# this stack, and only the keeper is needed. The default V330_SRC, V330_BUILD
+# and V330_INSTALL carry a hash of this tree's spack.yaml, so a keeper built on
+# another stack is not reused. The v3.3.0 build.sh makes a .spack-env of its
+# own in V330_SRC out of packages already in the spack store. The repo's
+# .spack-env is never linked there: build.sh would regenerate its view. This
+# takes several minutes.
 #
 # Requires an installed tree (deploy_local.sh layout) and the build tree for
 # the probe. The script patches the *installed* conf template (never the source
@@ -55,13 +65,15 @@ REPO_ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../")"
 H5DUMP="${H5DUMP:-$REPO_ROOT/.spack-env/view/bin/h5dump}"
 
 V330_TAG=v3.3.0
-V330_SRC="${V330_SRC:-$HOME/chronolog-build/v3.3.0-src}"
-V330_BUILD="${V330_BUILD:-$HOME/chronolog-build/v3.3.0}"
-V330_INSTALL="${V330_INSTALL:-$HOME/chronolog-install-v3.3.0}"
+# the dependency stack the v3.3.0 keeper is built on: this tree's
+V330_STACK=$(sha256sum "$REPO_ROOT/spack.yaml" | cut -c1-8)
+V330_SRC="${V330_SRC:-$HOME/chronolog-build/v3.3.0-$V330_STACK-src}"
+V330_BUILD="${V330_BUILD:-$HOME/chronolog-build/v3.3.0-$V330_STACK}"
+V330_INSTALL="${V330_INSTALL:-$HOME/chronolog-install-v3.3.0-$V330_STACK}"
 V330_KEEPER="${V330_KEEPER:-$V330_INSTALL/chronolog/bin/chrono-keeper}"
-# the main checkout's lock: a worktree has none of its own, or a different one
-MAIN_CHECKOUT="$(dirname "$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)")"
-V330_SPACK_LOCK="${V330_SPACK_LOCK:-$MAIN_CHECKOUT/spack.lock}"
+# this tree's lock, so the build makes its view from packages already
+# installed; without one the v3.3.0 build.sh concretizes this tree's spack.yaml
+V330_SPACK_LOCK="${V330_SPACK_LOCK:-$REPO_ROOT/spack.lock}"
 # written into V330_SRC once the tag is completely extracted
 V330_MARKER=.keeper_wal_off_test_tag
 
@@ -175,7 +187,8 @@ replay_story() {
 }
 
 # Extracts the v3.3.0 tag and builds its keeper with that tree's own deploy
-# script, which installs the whole v3.3.0 tree into V330_INSTALL.
+# script on this tree's dependency stack, which installs the whole v3.3.0 tree
+# into V330_INSTALL.
 build_v330_keeper() {
     say "building the $V330_TAG keeper: source $V330_SRC, build $V330_BUILD, install $V330_INSTALL"
     if [ -e "$V330_SRC" ] && [ "$(cat "$V330_SRC/$V330_MARKER" 2> /dev/null)" != "$V330_TAG" ]; then
@@ -190,15 +203,22 @@ build_v330_keeper() {
         local tmp
         mkdir -p "$(dirname "$V330_SRC")" || return 1
         tmp=$(mktemp -d "$V330_SRC.partial.XXXXXX") || return 1
-        git -C "$REPO_ROOT" archive "$V330_TAG" | tar -x -C "$tmp" && echo "$V330_TAG" > "$tmp/$V330_MARKER" &&
-            mv "$tmp" "$V330_SRC" || { rm -rf "$tmp"; return 1; }
-    fi
-    # without a lock the v3.3.0 build.sh would concretize its environment anew
-    # and could build packages; with the main checkout's lock it only makes its
-    # own .spack-env and view from the spack store
-    if [ ! -e "$V330_SRC/spack.lock" ]; then
-        [ -f "$V330_SPACK_LOCK" ] || { say "no spack.lock at $V330_SPACK_LOCK; set V330_SPACK_LOCK"; return 1; }
-        command cp -f "$V330_SPACK_LOCK" "$V330_SRC/spack.lock" || return 1
+        git -C "$REPO_ROOT" archive "$V330_TAG" | tar -x -C "$tmp" || { rm -rf "$tmp"; return 1; }
+        # this tree's dependency stack, and no v3.3.0 tests
+        command cp -f "$REPO_ROOT/spack.yaml" "$tmp/spack.yaml" &&
+            command cp -f "$REPO_ROOT/client/spack.yaml" "$tmp/client/spack.yaml" &&
+            mkdir -p "$tmp/tools" && command cp -a "$REPO_ROOT/tools/spack" "$tmp/tools/" &&
+            sed -i 's/^option(CHRONOLOG_BUILD_TESTING \(.*\) ON)$/option(CHRONOLOG_BUILD_TESTING \1 OFF)/' "$tmp/CMakeLists.txt" &&
+            grep -q '^option(CHRONOLOG_BUILD_TESTING .* OFF)$' "$tmp/CMakeLists.txt" || { rm -rf "$tmp"; return 1; }
+        if [ -f "$V330_SPACK_LOCK" ]; then
+            command cp -f "$V330_SPACK_LOCK" "$tmp/spack.lock" || { rm -rf "$tmp"; return 1; }
+        fi
+        # the recipe checkout, so the build does not clone spack-packages again
+        if [ -d "$REPO_ROOT/.spack-env/package-repos" ]; then
+            mkdir -p "$tmp/.spack-env" && command cp -a "$REPO_ROOT/.spack-env/package-repos" "$tmp/.spack-env/" ||
+                { rm -rf "$tmp"; return 1; }
+        fi
+        echo "$V330_TAG" > "$tmp/$V330_MARKER" && mv "$tmp" "$V330_SRC" || { rm -rf "$tmp"; return 1; }
     fi
     "$V330_SRC/tools/deploy/local_single_user_deploy.sh" -b -t Debug -B "$V330_BUILD" -I "$V330_INSTALL" \
         > "$RUN_DIR/v330_build.out" 2>&1 &&
