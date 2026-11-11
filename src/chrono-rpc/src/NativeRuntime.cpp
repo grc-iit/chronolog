@@ -6,6 +6,7 @@
 #include <limits>
 #include <pthread.h>
 #include <stdexcept>
+#include <string>
 namespace chronolog::rpc
 {
 namespace
@@ -61,7 +62,10 @@ public:
         ready_.notify_one();
         settled_.wait(lock, [&] { return request_ == Request::None; });
         if(phase_ != Phase::Dormant)
-            throw std::runtime_error("Native lifecycle retirement incomplete");
+            throw std::runtime_error("Native lifecycle retirement incomplete: same_primary=" +
+                                     std::to_string(releaseProof_.samePrimary) +
+                                     " streams=" + std::to_string(releaseProof_.streams) +
+                                     " uninitialized=" + std::to_string(releaseProof_.uninitialized));
         return releaseProof_;
     }
 

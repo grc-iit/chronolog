@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <RpcRuntime.h>
 #include <thallium/timeout.hpp>
 #include <mutex>
@@ -256,8 +257,17 @@ struct RuntimeState
         {
             ownerCleanup();
         }
+        catch(std::exception const& error)
+        {
+            // stderr: the daemon's logger may already be gone at this point.
+            std::fprintf(stderr, "[RpcRuntime] owner cleanup failed: %s\n", error.what());
+            ownerPhase.store(OwnerPhase::Quarantined, std::memory_order_release);
+            slot.phase.store(Phase::Quarantined, std::memory_order_release);
+            return false;
+        }
         catch(...)
         {
+            std::fprintf(stderr, "[RpcRuntime] owner cleanup failed with a non-standard exception\n");
             ownerPhase.store(OwnerPhase::Quarantined, std::memory_order_release);
             slot.phase.store(Phase::Quarantined, std::memory_order_release);
             return false;
