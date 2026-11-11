@@ -103,23 +103,23 @@ Finally, it displays the performance results:
 =================      Performance results:      =================
 ==================================================================
 Total payload written: 1024000 bytes
-Connect throughput: 861.217 connections/s
-CreateChronicle throughput: 2544.63 creations/s
-AcquireStory throughput: 374.676 acquisitions/s
-ReleaseStory throughput: 649.901 releases/s
-DestroyStory throughput: 1986.49 destructions/s
-DestroyChronicle throughput: 3131.12 destructions/s
-Disconnect throughput: 6684.67 disconnections/s
-End-to-end (incl. metadata time) bandwidth: 15.0663 MB/s
-Record-event (incl. metadata time) bandwidth: 16.383 MB/s
-Record-event (incl. metadata time) throughput: 0.0159991 events/s
+Connect throughput: 744.056 connections/s
+CreateChronicle throughput: 1967.92 creations/s
+AcquireStory throughput: 398.614 acquisitions/s
+ReleaseStory throughput: 617.501 releases/s
+DestroyStory throughput: 2240.08 destructions/s
+DestroyChronicle throughput: 3410 destructions/s
+Disconnect throughput: 6847.72 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 11.5443 MB/s
+Record-event (incl. metadata time) bandwidth: 12.2951 MB/s
+Record-event (incl. metadata time) throughput: 12006.9 events/s
 Accepted writes: 1000 sent, 1000 acknowledged
-Accepted ack latency (us): n=1000  min=37.99  mean=58.98  p50=58.18  p90=70.05  p99=86.68  max=638.75
-Accepted acknowledged throughput: 16001.50 events/s over 0.06 s
+Accepted ack latency (us): n=1000  min=59.36  mean=78.99  p50=75.98  p90=92.61  p99=119.93  max=657.75
+Accepted acknowledged throughput: 12008.09 events/s over 0.08 s
 Accepted return code CL_SUCCESS (0): 1000
 ```
 
-The values depend on the machine. The metadata lines give the rate of each operation, and the bandwidth lines the payload written per second. The `Record-event (incl. metadata time) throughput` line is in millions of Events per second, although its label says `events/s`: 0.016 here, which matches the 16,001 acknowledged Events per second two lines below. The `Accepted` lines count the writes the keepers acknowledged, with their latency and return codes. When the keepers run with their [write-ahead log](../../user-guide/architecture/keeper-wal.md) on, add `--durable` to write each Event durably; the same lines then start with `Durable`. With the write-ahead log off, as in this deployment, every durable write returns `CL_ERR_DURABILITY_UNAVAILABLE`.
+The values depend on the machine. The metadata lines give the rate of each operation, and the bandwidth lines the payload written per second. The `Accepted` lines count the writes the keepers acknowledged, with their latency and return codes. When the keepers run with their [write-ahead log](../../user-guide/architecture/keeper-wal.md) on, add `--durable` to write each Event durably; the same lines then start with `Durable`. With the write-ahead log off, as in this deployment, every durable write returns `CL_ERR_DURABILITY_UNAVAILABLE`.
 
 ## Conclusion
 

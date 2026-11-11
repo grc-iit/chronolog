@@ -1310,12 +1310,12 @@ int main(int argc, char** argv)
                 else if(workload_args.read)
                 {
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDuration() / 1e6;
-                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDuration() / 1e6;
+                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDuration();
                 }
                 else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDuration() / 1e6;
-                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration() / 1e6;
+                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDuration();
                 }
             }
             else
@@ -1337,14 +1337,12 @@ int main(int argc, char** argv)
                 else if(workload_args.read)
                 {
                     replay_story_bw = (double)total_event_payload_size / replayStoryTimer.getDurationAve() / 1e6;
-                    replay_story_thpt =
-                            (double)workload_args.event_count * size / replayStoryTimer.getDurationAve() / 1e6;
+                    replay_story_thpt = (double)workload_args.event_count * size / replayStoryTimer.getDurationAve();
                 }
                 else
                 {
                     record_event_bw = (double)total_event_payload_size / writeEventTimer.getDurationAve() / 1e6;
-                    record_event_thpt =
-                            (double)workload_args.event_count * size / writeEventTimer.getDurationAve() / 1e6;
+                    record_event_thpt = (double)workload_args.event_count * size / writeEventTimer.getDurationAve();
                 }
             }
             std::cout << "Connect throughput: " << connect_thpt << " connections/s" << std::endl;
