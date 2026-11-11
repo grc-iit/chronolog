@@ -112,7 +112,8 @@ if(CHRONOLOG_INSTALL_TESTS)
 endif()
 
 # Durable send path: StoryHandleImpl::log_event(record, options, event_time)
-# and KeeperRecordingClient::send_durable_event_msg against an in-process keeper
+# and KeeperRecordingClient::send_durable_event_msg against a fake keeper, in
+# the test process or, for the tests that kill it, in a child process
 add_executable(chronolog_client_durable_send_test
     client_durable_send_test.cpp
 )
@@ -122,8 +123,9 @@ target_include_directories(chronolog_client_durable_send_test PRIVATE
     ${CMAKE_SOURCE_DIR}/client/cpp/src
 )
 
+# its own main(): the executable is also the keeper process of the tests that kill one
 target_link_libraries(chronolog_client_durable_send_test PRIVATE
-    GTest::gtest_main
+    GTest::gtest
     chronolog_client
     thallium
 )
