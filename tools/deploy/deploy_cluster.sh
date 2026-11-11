@@ -861,9 +861,16 @@ start() {
 stop() {
   check_work_dir
   lifecycle_hosts
+  # A keeper waits up to shutdown_confirm_timeout_secs for the grapher to
+  # confirm its last chunks before it exits, so the one stop budget covers
+  # that wait plus 90 s for the keepers' other work and 90 s for the players,
+  # graphers and visor.
+  local confirm_secs
+  confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' "${CONF_FILE}" 2> /dev/null)
+  case "${confirm_secs}" in '' | *[!0-9]*) confirm_secs=150 ;; esac
   # An incomplete stop (-27) leaves every service and record in place, so
   # there is no table to read yet.
-  lifecycle stop || exit $?
+  lifecycle --budget-ms $(((confirm_secs + 180) * 1000)) stop || exit $?
   # Each keeper with the WAL on writes exit-summary in its WAL directory as it
   # exits.
   if ! report_keeper_wal_exit_summaries; then

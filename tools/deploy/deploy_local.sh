@@ -470,9 +470,18 @@ start() {
 stop() {
     echo -e "${INFO}Stopping ChronoLog...${NC}"
     check_work_dir
+    # A keeper waits up to shutdown_confirm_timeout_secs for the grapher to
+    # confirm its last chunks before it exits, so the one stop budget covers
+    # that wait plus 90 s for the keepers' other work and 90 s for the player,
+    # grapher and visor, as v3.4.0's separate waits did (240 s per keeper with
+    # the default 150 s, 30 s for each other service).
+    local confirm_secs
+    confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' \
+        "${CONF_DIR}/default-chrono-conf.json" 2> /dev/null)
+    case "${confirm_secs}" in '' | *[!0-9]*) confirm_secs=150 ;; esac
     # An incomplete stop (-27) leaves every service and record in place, so
     # there is no table to read yet.
-    lifecycle stop || exit $?
+    lifecycle --budget-ms $(((confirm_secs + 180) * 1000)) stop || exit $?
     echo -e "${INFO}All recorded ChronoLog processes stopped.${NC}"
     # Each keeper with the WAL on writes exit-summary as it exits.
     if ! report_wal_exit_summaries "${CONF_DIR}"; then
