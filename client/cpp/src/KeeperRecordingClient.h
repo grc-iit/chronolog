@@ -177,12 +177,11 @@ public:
                 .timed_async(std::chrono::milliseconds(kTailReadRpcTimeoutMs), story_id, seqs);
     }
 
+    // No deregister(): every KeeperRecordingClient on this engine defines the same
+    // RPC names and so shares their IDs. Deregistering them here took them away
+    // from the clients of the other keepers (#743); engine finalize releases them.
     ~KeeperRecordingClient()
     {
-        record_event.deregister();
-        record_event_durable.deregister();
-        tail_get_sequences.deregister();
-        tail_get_events.deregister();
         LOG_DEBUG("[KeeperRecordingClient] Destructor called {}", to_string(recordingServiceId));
     }
 

@@ -337,7 +337,7 @@ protected:
         if(storyteller)
         {
             storyteller->removeAcquiredStoryHandle(kChronicle, kStoryName);
-            // deletes the KeeperRecordingClients, which deregister their RPCs
+            // deletes the KeeperRecordingClients
             storyteller.reset();
         }
         rawClient.reset();
@@ -870,4 +870,32 @@ TEST_F(DurableSend, ConcurrentCallsOnOneHandle)
     }
     EXPECT_EQ(identities.size(), seen.size());
     EXPECT_EQ(records.size(), seen.size());
+}
+
+// Two keepers' KeeperRecordingClients on one client engine share their RPC IDs
+// (#743). Deleting one used to deregister them, and the other client's
+// record_event and record_event_durable then failed with HG_NOENTRY without
+// leaving the process.
+class KeeperClientLifetime: public DurableSend
+{
+};
+
+TEST_F(KeeperClientLifetime, DeletingOneClientLeavesTheOtherWorking)
+{
+    auto* leaving =
+            chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, serviceIdOf(*oldKeeperEngine));
+    rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, serviceIdOf(*keeperEngine)));
+    ASSERT_NE(leaving, nullptr);
+    ASSERT_NE(rawClient, nullptr);
+    chl::LogEvent event(kStory, 100, kClientId, 1, "record");
+    ASSERT_EQ(leaving->send_event_msg(event), chl::CL_SUCCESS);
+
+    delete leaving;
+
+    EXPECT_EQ(rawClient->send_event_msg(event), chl::CL_SUCCESS);
+    EXPECT_EQ(keeper->accepted().size(), 1u);
+    int code = 99;
+    EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
+              chl::DurableSendOutcome::Answered);
+    EXPECT_EQ(code, chl::CL_SUCCESS);
 }

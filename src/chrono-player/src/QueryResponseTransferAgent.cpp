@@ -56,8 +56,9 @@ chronolog::QueryResponseAgent::~QueryResponseAgent()
         active_queries.clear();
     }
 
-    receiver_is_available.deregister();
-    receive_query_response.deregister();
+    // No deregister(): every agent on this engine defines the same RPC names and
+    // so shares their IDs. Deregistering them here took them away from the
+    // agents of the other clients (#743); engine finalize releases them.
 
     extractionThreads.clear();
     extractionStreams.clear();

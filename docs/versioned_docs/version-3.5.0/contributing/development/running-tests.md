@@ -11,7 +11,7 @@ ChronoLog's tests come in three groups:
 - **Integration scripts** in `tests/integration/*.sh` that deploy their own daemons, run a scenario and stop them. They are not registered with CTest.
 - **The distributed pipeline**, a 7-container deployment that CI runs on every pull request and that `docker/local_distributed_ci.sh` runs locally. See [CI/CD](../guidelines/ci-cd.md).
 
-A Debug build registers 808 CTest entries: 761 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
+A Debug build registers 811 CTest entries: 764 unit tests, 6 functional tests (5 disabled), 16 integration tests, 12 end-to-end tests and their fixtures, 4 package discovery tests, 4 communication tests and 5 overhead tests. `ctest -N` lists them for your build; a Release build has fewer, because some logger tests exist only in Debug.
 
 ---
 
@@ -144,12 +144,14 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 | `Unit_ChronoVisor_StoryGroupSelection`, `..._ActiveGroups`, `..._ActiveRecordingGroup` | 12 | `story_group_selection_test.cpp` | A story's recording group comes from its story id, stays the same when it is acquired again, and moves only when the groups change |
 | `Unit_ChronoVisor_KeeperRestartStories` | 7 | `keeper_restart_stories_test.cpp` | The stories the visor starts on a registering keeper: only its recording group's active stories, and a stop for one released or moved during the start |
 | `Unit_ChronoVisor_ChronicleStoryId` | 3 | `chronicle_story_id_test.cpp` | Name pairs that concatenate alike get different story ids |
+| `Unit_ChronoVisor_DataStoreAdminClientLifetime` | 2 | `data_store_admin_client_test.cpp` | Deleting the admin client of a keeper that left leaves the other admin clients on the engine working, and one created afterwards works too |
 
 ### Client library (`tests/unit/chronolog-client/`)
 
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
 | `Unit_ChronologClient_DurableSend` | 19 | `client_durable_send_test.cpp` | A durable write against fake keepers: success, keeper codes, retries of the same event, a dead keeper (a keeper process killed with SIGKILL), a keeper without the RPC, and -21 with `event_time` |
+| `Unit_ChronologClient_KeeperClientLifetime` | 1 | `client_durable_send_test.cpp` | Deleting one keeper's recording client leaves the other keeper's `record_event` and `record_event_durable` working |
 | `Unit_ChronologClient_QueryServiceAddressTest` | 10 | `query_service_address_test.cpp` | The address a reader listens on when the visor is on another host |
 | `Unit_ChronologClient_ClientIdentityTest` | 5 | `chronolog_client_identity_test.cpp` | The `ClientId` layout |
 | `Unit_ChronologClient_ClientLoginName` | 4 | `client_login_name_test.cpp` | The logged user name when the process has no login name |
