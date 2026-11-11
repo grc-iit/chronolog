@@ -148,7 +148,7 @@ One row per test binary. **Cases** is the number of CTest entries it registers.
 
 | CTest prefix | Cases | Source File | What it covers |
 |---|---:|---|---|
-| `Unit_ChronologClient_DurableSend` | 18 | `client_durable_send_test.cpp` | A durable write against fake keepers: success, keeper codes, retries of the same event, a dead keeper, a keeper without the RPC, and -21 with `event_time` |
+| `Unit_ChronologClient_DurableSend` | 19 | `client_durable_send_test.cpp` | A durable write against fake keepers: success, keeper codes, retries of the same event, a dead keeper (a keeper process killed with SIGKILL), a keeper without the RPC, and -21 with `event_time` |
 | `Unit_ChronologClient_QueryServiceAddressTest` | 10 | `query_service_address_test.cpp` | The address a reader listens on when the visor is on another host |
 | `Unit_ChronologClient_ClientIdentityTest` | 5 | `chronolog_client_identity_test.cpp` | The `ClientId` layout |
 | `Unit_ChronologClient_ClientLoginName` | 4 | `client_login_name_test.cpp` | The logged user name when the process has no login name |
@@ -307,7 +307,7 @@ Between scripts it stops any daemon left running from `WORK_DIR`'s `bin/`, and p
 | `keeper_wal_cap_test.sh` | With the grapher stopped and `durable_cap_mb` at 1, durable writes that sealed into an unconfirmed chunk make the next durable write return `CL_ERR_DURABILITY_FULL` with nothing stored. After the grapher runs, durable writes are admitted again and every acknowledged identity is replayed once. |
 | `keeper_wal_shutdown_test.sh` | A durable write observed inside its group `fdatasync` is still answered `CL_SUCCESS` when the keeper is sent SIGTERM, a durable write after that gets `CL_ERR_DURABILITY_UNAVAILABLE` and is not stored, and the exit summary reports the events the grapher had not confirmed. |
 | `keeper_wal_startup_test.sh` | A keeper whose older WAL segment contains a bad record exits without changing the files. A bad record in the last group, with an intact record after it, is copied aside and zeroed, the keeper stays up, and a replay returns the earlier event and not the intact one that followed the bad record. |
-| `keeper_wal_off_test.sh` | A durable write to a keeper with the WAL off, and to a v3.3.0 keeper, gets `CL_ERR_DURABILITY_UNAVAILABLE` at once with no retry and stores nothing, while accepted writes to the same keepers still work. The v3.3.0 keeper is `V330_KEEPER`; if that file is missing, the script builds the `v3.3.0` tag on first use, which takes several minutes. |
+| `keeper_wal_off_test.sh` | A durable write to a keeper with the WAL off, and to a v3.3.0 keeper, gets `CL_ERR_DURABILITY_UNAVAILABLE` at once with no retry and stores nothing, while accepted writes to the same keepers still work. The v3.3.0 keeper is `V330_KEEPER`; if that file is missing, the script builds the `v3.3.0` tag on first use on this tree's dependency stack, since a keeper built on the v3.3.0 stack cannot exchange RPCs with 3.5.0 daemons. That build takes a few minutes. |
 | `keeper_restart_held_test.sh` | A keeper restarted while clients hold stories gets its pipelines back from the visor, accepts and durably stores new writes, is reached by the player's hot fetch, and the client reconnects at the same address; the durable events it acknowledged before the kill are recovered from its WAL. It runs once per protocol (the template's, then `ofi+tcp`). On `ofi+tcp` 3 of the 11 checks fail until two missing RPC deadlines are fixed: an accepted `record_event` to a dead keeper, and the visor's `start_story_recording` to it, wait without a deadline. |
 | `keeper_wal_group_test.sh` | One `fdatasync` covers many durable writes: with 64 MPI ranks writing to one keeper whose RPC pool has 4 streams, a synced group holds more than 4 events. |
 
@@ -344,7 +344,7 @@ tools/deploy/local_single_user_deploy.sh -i -t Debug -B ~/chronolog-build/Asan -
 ASAN_OPTIONS=detect_leaks=1 ctest --test-dir ~/chronolog-build/Asan/Debug -R 'Unit_' --output-on-failure
 ```
 
-Keep ASan and normal objects in separate build trees. As of 3.4.0, 28 unit tests fail under ASan, none with an AddressSanitizer error: 26 with leaks, from the StoryPipeline tests (its ingestion handle is never freed) and the ChronoKVS, ChronoPubSub and ChronoSQL configuration tests; `Unit_PyClient_DurableBinding`, because Python cannot load an ASan-built module; and `KeeperDurableWriter.StopAcceptingWritesLetsRunningHandlersFinish`, a 32-byte leak in margo 0.13.1 when a provider with a finalize callback is deleted. Compare a run against that, not against a clean result.
+Keep ASan and normal objects in separate build trees. As of 3.5.0, 27 unit tests fail under ASan, none with an AddressSanitizer error: 26 with leaks, from the StoryPipeline tests (its ingestion handle is never freed) and the ChronoKVS, ChronoPubSub and ChronoSQL configuration tests, and `Unit_PyClient_DurableBinding`, because Python cannot load an ASan-built module. The 32-byte Margo 0.13.1 leak that failed `KeeperDurableWriter.StopAcceptingWritesLetsRunningHandlersFinish` in 3.4.0 is gone with Margo 0.24.4. Compare a run against that, not against a clean result.
 
 ---
 

@@ -19,6 +19,10 @@ static constexpr uint32_t chronolog::CLIENT_PROTOCOL_VERSION;
 
 The wire-protocol version exchanged on `Connect()`. The Visor returns `CL_ERR_PROTOCOL_VERSION_MISMATCH` if a connecting client's version doesn't match the server's expected version. The constant is bumped whenever the wire format between the client and any ChronoLog server component changes in an incompatible way.
 
+:::warning
+A client built against ChronoLog 3.4.0 or older cannot reach 3.5.0 servers at all, and the reverse holds too. 3.5.0 moved from Mercury 2.2.0 and Margo 0.13.1 to Mercury 2.4.1 and Margo 0.24.4, which receive RPC requests in a different form, so an older client's `Connect()` waits without an answer instead of returning `CL_ERR_PROTOCOL_VERSION_MISMATCH`. Rebuild clients against 3.5.0, and run the visor, keepers, graphers and players at the same version.
+:::
+
 ---
 
 ## `Client` Class
