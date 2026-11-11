@@ -13,23 +13,21 @@ With the ChronoLog environment set up and all components deployed, it's time to 
 
 ### Step 1: Execute the ChronoLog Client
 
-Run the following command to start the **client admin** with multiple MPI processes:
+Inside the container, in the ChronoLog installation directory (`$CHRONOLOG_HOME`, the working directory), run the benchmark client `chrono-bench`:
 
 ```bash
-LD_LIBRARY_PATH=~/chronolog_install/Release/lib \
-/home/grc-iit/chronolog_repo/.spack-env/view/bin/mpiexec -n 4 \
-~/chronolog_install/Release/bin/client_admin \
---config ~/chronolog_install/Release/conf/default_conf.json \
--h 2 -t 2 -a 100 -s 100 -b 100 -n 100 -p
+tools/benchmark/chrono-bench -c conf/default-chrono-client-conf.json \
+    -w -h 2 -t 2 -a 100 -s 100 -b 100 -n 100 -p
 ```
 
 This command:
 
-- Launches the **ChronoLog client**.
-- Uses **4 MPI processes** for parallel execution (`-n 4`).
-- Runs a **performance test** with specific parameters (`-h 2 -t 2 -a 100 -s 100 -b 100 -n 100 -p`).
+- Launches **`chrono-bench`** as one client process.
+- Writes (`-w`) to **2 Chronicles** (`-h 2`) with **2 Stories** each (`-t 2`).
+- Writes **100 Events** (`-n 100`) of **100 bytes** each (`-a`, `-s` and `-b` are the minimum, average and maximum payload size).
+- Prints the **performance results** at the end (`-p`).
 
-Once executed, the client will create **Chronicles**, **Stories**, and **Events**, simulating real workloads to evaluate system performance.
+Once executed, the client will create **Chronicles**, **Stories**, and **Events**, simulating real workloads to evaluate system performance. See [How to Run a Performance Test](../native-linux/performance-test) for how to read the results, and run `tools/benchmark/chrono-bench -u` for every option.
 
 ## Stopping the ChronoLog Container
 

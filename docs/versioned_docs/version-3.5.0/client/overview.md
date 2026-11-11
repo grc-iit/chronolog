@@ -29,7 +29,7 @@ See [Python Client](./python/overview.md) for setup instructions and the API ref
 
 ### CLI Tool
 
-`client_admin` is a command-line utility for interacting with a running ChronoLog deployment. It supports both interactive and scripted modes, making it useful for ad-hoc administration, quick smoke tests, and automated performance benchmarks.
+`chrono-client-cli` (installed under `tools/cli/`) is a command-line client for interacting with a running ChronoLog deployment. It reads one command per line, typed or piped from a file, which makes it useful for ad-hoc administration, quick smoke tests and scripted workloads. Performance tests use `chrono-bench`, installed under `tools/benchmark/`.
 
 See [CLI Tool](./cli/overview.md) for the full command reference and usage examples.
 

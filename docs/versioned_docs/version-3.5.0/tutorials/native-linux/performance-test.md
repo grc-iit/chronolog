@@ -7,7 +7,7 @@ title: "How to Run a Performance Test"
 
 ## Introduction
 
-Welcome to the second tutorial for ChronoLog! In this tutorial, we will run a performance test on the system using the **Scripted Client Admin** tool. By the end of this guide, you'll be able to execute a scripted test and analyze the system's performance metrics.
+Welcome to the second tutorial for ChronoLog! In this tutorial, we will run a performance test on the system with **`chrono-bench`**, the benchmark client installed under `tools/benchmark/`. By the end of this guide, you'll be able to run a write test and read the performance metrics it reports.
 
 ### Prerequisites
 
@@ -27,102 +27,104 @@ If this command does not show all four ChronoLog services, it means ChronoLog is
 
 ---
 
-## Step 2: Prepare the Payload file (Optional)
+## Step 2: Run the Performance Test
 
-We will use **Scripted Client Admin** to run a performance test. To do this, create a payload file (e.g., `payload.txt`) containing a set of messages to be sent during the test.
-
-Example:
-
-```
-event 1
-event 2
-event 3
-event 4
-event 5
-event 6
-event 7
-event 8
-event 9
-event 10
-```
-
----
-
-## Step 3: Run the Performance Test
-
-Execute the following command to start the performance test:
+Go to the ChronoLog installation directory and start the test:
 
 ```bash
-./chrono-client_admin -f payload.txt -c /home/$USER/chronolog-install/chronolog/conf/default-chrono-client-conf.json --perf
+cd /home/$USER/chronolog-install/chronolog
+tools/benchmark/chrono-bench -c conf/default-chrono-client-conf.json -w -h 1 -t 1 -n 1000 -a 1024 -s 1024 -b 1024 -p
 ```
 
 ### Breakdown of the Command
 
-- `-f payload.txt`: Specifies the payload file containing all event payloads, one event per line.
-- `-c /home/$USER/chronolog-install/chronolog/conf/default-chrono-client-conf.json`: Points to the system's configuration file for clients.
-- `--perf`: Enables performance testing mode.
+- `-c conf/default-chrono-client-conf.json`: the client configuration file.
+- `-w`: write mode: the test creates Chronicles and Stories, writes Events, and then destroys them.
+- `-h 1`: one Chronicle per process.
+- `-t 1`: one Story per process.
+- `-n 1000`: 1000 Events per process.
+- `-a 1024 -s 1024 -b 1024`: the minimum, average and maximum Event payload size in bytes. With different values, the sizes follow a normal distribution between the minimum and the maximum.
+- `-p`: report performance metrics at the end.
+
+Run without `mpiexec`, `chrono-bench` is a single process. To run several processes, start it with the `mpiexec` of the Spack environment ChronoLog was built with, for example `/path-to-repo/.spack-env/view/bin/mpiexec -n 4 tools/benchmark/chrono-bench ...`; the counts above are then per process. Run `tools/benchmark/chrono-bench -u` for every option.
 
 ---
 
-## Step 4: Analyze the Output
-
-Once you run the test, the result will display several sections, including system status, configuration details, and performance results.
+## Step 3: Analyze the Output
 
 ### Parameters
 
-After executing the command, you will see the system's operational status:
+`chrono-bench` first prints the parameters of the run:
 
 ```bash
-Config file specified: /home/$USER/chronolog-install/chronolog/conf/default-chrono-conf.json
-Interactive mode: off
-Chronicle count: 1
-Story count: 1
-Event input file specified: scripted.sh
-Barrier: false
-Shared story: false
-[ConfigurationManager] Loading configuration from file: /home/$USER/chronolog-install/chronolog/conf/default-chrono-conf.json
+Config file specified: conf/default-chrono-client-conf.json
+Number of processes: 1
+Chronicle count (#chronicles per proc): 1
+Story count (#stories per proc): 1
+No event payload file specified, use default/specified separate conf args ...
+Min event size (minimum of event payload length following a normal distribution): 1024 bytes
+Ave event size (median of event payload length following a normal distribution): 1024 bytes
+Max event size (maximum of event payload length following a normal distribution): 1024 bytes
+Event count (#events per proc): 1000
+Event interval (time in-between event accesses): 0 us
+Barrier (hold on next ChronoLog API call until completion of the previous one): false
+Shared story (all procs access the same story): false
+Durable writes: false
 ```
 
 ### Configuration Details
 
-The system will then output its configuration settings:
+It then prints the client configuration it loaded:
 
 ```bash
-******** Start of configuration output ********
-CLOCK_CONF: CLOCKSOURCE_TYPE: CPP_STYLE, DRIFT_CAL_SLEEP_SEC: 10, DRIFT_CAL_SLEEP_NSEC: 0
-AUTH_CONF: AUTH_TYPE: RBAC, MODULE_PATH: /path/to/auth_module
-...
-CLIENT_CONF: [VISOR_CLIENT_PORTAL_SERVICE_CONF: [RPC_CONF: [PROTO_CONF: ofi+sockets, IP: 127.0.0.1, BASE_PORT: 5555, SERVICE_PROVIDER_ID: 55, PORTS: ]], CLIENT_LOG_CONF:[TYPE: file, FILE: chrono_client.log, LEVEL: DEBUG, NAME: ChronoClient, LOGFILESIZE: 1048576, LOGFILENUM: 3, FLUSH LEVEL: WARN]]
-******** End of configuration output ********
+===== ChronoLog Client Configuration =====
+[PORTAL_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5555
+  provider ID: 55
+[QUERY_CONF]
+  protocol: ofi+sockets
+  IP: 127.0.0.1
+  port: 5557
+  provider ID: 57
+[LOG_CONF]
+  ...
+[PerformanceTest] Running in write mode.
+Connected to server address: ofi+sockets://127.0.0.1:5555@55
 ```
 
 ### Performance Results
 
-Finally, the system will display the performance test results:
+Finally, it displays the performance results:
 
 ```bash
-======================================
-======== Performance results: ========
-======================================
-Total payload written: 1638400000 bytes
-Connect throughput: 844.619 connections/s
-CreateChronicle throughput: 4093.63 creations/s
-AcquireStory throughput: 554.781 acquisitions/s
-ReleaseStory throughput: 247.978 releases/s
-DestroyStory throughput: 1119.15 destructions/s
-DestroyChronicle throughput: 6111.26 destructions/s
-Disconnect throughput: 217.764 disconnections/s
-End-to-end (incl. metadata time) bandwidth: 209.729 MB/s
-Record-event (incl. metadata time) bandwidth: 26.8209 MB/s
-Record-event (incl. metadata time) throughput: 0.00654807 events/s
+==================================================================
+=================      Performance results:      =================
+==================================================================
+Total payload written: 1024000 bytes
+Connect throughput: 861.217 connections/s
+CreateChronicle throughput: 2544.63 creations/s
+AcquireStory throughput: 374.676 acquisitions/s
+ReleaseStory throughput: 649.901 releases/s
+DestroyStory throughput: 1986.49 destructions/s
+DestroyChronicle throughput: 3131.12 destructions/s
+Disconnect throughput: 6684.67 disconnections/s
+End-to-end (incl. metadata time) bandwidth: 15.0663 MB/s
+Record-event (incl. metadata time) bandwidth: 16.383 MB/s
+Record-event (incl. metadata time) throughput: 0.0159991 events/s
+Accepted writes: 1000 sent, 1000 acknowledged
+Accepted ack latency (us): n=1000  min=37.99  mean=58.98  p50=58.18  p90=70.05  p99=86.68  max=638.75
+Accepted acknowledged throughput: 16001.50 events/s over 0.06 s
+Accepted return code CL_SUCCESS (0): 1000
 ```
 
-These values provide insight into how efficiently ChronoLog is handling operations.
+The values depend on the machine. The metadata lines give the rate of each operation, and the bandwidth lines the payload written per second. The `Record-event (incl. metadata time) throughput` line is in millions of Events per second, although its label says `events/s`: 0.016 here, which matches the 16,001 acknowledged Events per second two lines below. The `Accepted` lines count the writes the keepers acknowledged, with their latency and return codes. When the keepers run with their [write-ahead log](../../user-guide/architecture/keeper-wal.md) on, add `--durable` to write each Event durably; the same lines then start with `Durable`. With the write-ahead log off, as in this deployment, every durable write returns `CL_ERR_DURABILITY_UNAVAILABLE`.
 
 ## Conclusion
 
-Congratulations! You have successfully run a performance test on ChronoLog using the **Scripted Client Admin** tool. This process allows you to measure system throughput and analyze performance under different conditions.
+Congratulations! You have successfully run a performance test on ChronoLog with `chrono-bench`. Change the counts, the Event sizes or the number of processes to measure the system under different conditions.
 
-If you encountered any issues, double-check that the system is running and verify your script file. For additional support, refer to the [First Steps with ChronoLog](./first-steps) tutorial or reach out to the ChronoLog community.
+If you encountered any issues, check that the system is running and that the configuration file path is right. For additional support, refer to the [First Steps with ChronoLog](./first-steps) tutorial or reach out to the ChronoLog community.
 
 Stay tuned for the next tutorial!

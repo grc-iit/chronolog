@@ -11,21 +11,15 @@ With your multi-node ChronoLog deployment running, you can now run a client perf
 
 ## Running a Client Performance Test
 
-### Step 1: Generate Client Hosts File
+### Step 1: Run the Client Performance Test
 
-Run the following command directly from your host machine:
-
-```bash
-docker exec chronolog-c1 bash -c 'echo "chronolog-c1" > ~/chronolog_install/Release/conf/hosts_client'
-```
-
-### Step 2: Run Client Performance Test
-
-Execute the performance test directly:
+Run the benchmark client `chrono-bench` in the `chronolog-c1` container, directly from your host machine:
 
 ```bash
-docker exec chronolog-c1 bash -c 'LD_LIBRARY_PATH=~/chronolog_install/Release/lib ~/chronolog_repo/.spack-env/view/bin/mpiexec -n 4 -f ~/chronolog_install/Release/conf/hosts_client ~/chronolog_install/Release/bin/client_admin --config ~/chronolog_install/Release/conf/default_client_conf.json -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p -r'
+docker exec chronolog-c1 bash -c 'cd "$CHRONOLOG_HOME" && tools/benchmark/chrono-bench -c conf/default-chrono-client-conf.json -w -a 4096 -b 4096 -s 4096 -n 4096 -t 1 -h 1 -p'
 ```
+
+The deployment script set `conf/default-chrono-client-conf.json` in that container to the ChronoVisor's address, so the client reaches the distributed deployment. The test writes (`-w`) 4096 Events (`-n 4096`) of 4096 bytes (`-a`, `-s` and `-b` are the minimum, average and maximum payload size) to one Story (`-t 1`) of one Chronicle (`-h 1`), and prints the performance results (`-p`). See [How to Run a Performance Test](../native-linux/performance-test) for how to read them, and run `tools/benchmark/chrono-bench -u` in the container for every option.
 
 ## Stopping ChronoLog
 

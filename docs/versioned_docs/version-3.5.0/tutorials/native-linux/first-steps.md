@@ -136,19 +136,19 @@ If you see 4 processes like the ones listed on the command, congratulations! Chr
 
 ---
 
-## Running the Interactive Client Admin
+## Running the CLI Client
 
-Now that you've got ChronoLog installed and deployed, it's time to explore its capabilities with the **Interactive Client Admin**. This tool lets you interact with the ChronoLog system in real time, and it's perfect for getting hands-on experience.
+Now that you've got ChronoLog installed and deployed, it's time to explore its capabilities with the **CLI client**, `chrono-client-cli`. This tool lets you interact with the ChronoLog system in real time, and it's perfect for getting hands-on experience.
 
-### Step 8: Launch the Interactive Client Admin
+### Step 8: Launch the CLI Client
 
-Let's fire up the interactive client! Open your terminal, navigate to the `/bin` directory on the location where ChronoLog is installed (`/home/$USER/chronolog-install/chronolog/bin` by default), and run:
+Let's fire up the CLI client! Open your terminal, go to the location where ChronoLog is installed (`/home/$USER/chronolog-install/chronolog` by default), and run:
 
 ```bash
-./chrono-client_admin -i ../conf/default-chrono-client-conf.json
+tools/cli/chrono-client-cli -c conf/default-chrono-client-conf.json
 ```
 
-This will launch the interactive interface, where you can manage **Chronicles**, **Stories**, and **Events** directly.
+The client connects to ChronoVisor, prints the commands it accepts, and then reads one command per line, so you can manage **Chronicles**, **Stories**, and **Events** directly. See the [CLI Tool](../../client/cli/overview.md) pages for every command.
 
 ---
 
@@ -181,10 +181,10 @@ This creates a Story named `my_story` in the Chronicle `my_chronicle` and acquir
 Events are the data payloads stored in a Story. To write an event, type:
 
 ```bash
--w "This is my first event in ChronoLog!"
+-w This is my first event in ChronoLog!
 ```
 
-Replace the text inside the quotation marks with your own message. Each event you write is logged in real time.
+Everything after `-w` becomes the event's payload, so replace the text with your own message. Do not put it in quotation marks: they would be stored as part of the payload. Each event you write is logged in real time.
 
 ---
 

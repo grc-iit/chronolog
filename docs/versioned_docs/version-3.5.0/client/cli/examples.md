@@ -7,10 +7,10 @@ title: "Examples"
 
 ## 1. Interactive Session
 
-Launch `client_cli` with a config file and manage a Chronicle/Story lifecycle step by step.
+Launch `chrono-client-cli` with a config file and manage a Chronicle/Story lifecycle step by step.
 
 ```bash
-client_cli -c /etc/chronolog/client_conf.json
+chrono-client-cli -c /etc/chronolog/client_conf.json
 ```
 
 Once the REPL is running, enter commands one at a time:
@@ -46,10 +46,10 @@ Save the same commands to a plain text file (`scripted_workload.txt`):
 -disconnect
 ```
 
-Pipe it into `client_cli`:
+Pipe it into `chrono-client-cli`:
 
 ```bash
-client_cli -c /etc/chronolog/client_conf.json < scripted_workload.txt
+chrono-client-cli -c /etc/chronolog/client_conf.json < scripted_workload.txt
 ```
 
 Scripted runs are suitable for CI pipelines, synthetic workload generation, and automated integration testing.

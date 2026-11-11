@@ -17,12 +17,12 @@ title: "Docker Compose"
 
 ## Docker Image
 
-All containers use `ghcr.io/grc-iit/chronolog:v3.0.0` (or `ghcr.io/grc-iit/chronolog:latest`). The image provides:
+All containers use `ghcr.io/grc-iit/chronolog:v3.4.0` (or `ghcr.io/grc-iit/chronolog:latest`). The image provides:
 
 - Ubuntu 24.04 base
 - Spack package manager with pre-installed dependencies (MPICH, Mochi/Thallium, etc.)
 - `grc-iit` user account
-- ChronoLog pre-installed at `$CHRONOLOG_HOME` (`/home/grc-iit/chronolog-release-install/chronolog/`)
+- ChronoLog pre-installed at `$CHRONOLOG_HOME` (`/home/grc-iit/chronolog-install/chronolog/`)
 - OpenSSH server for inter-container SSH (started automatically by the container entrypoint)
 
 ChronoLog is **pre-built and ready to deploy** — no compilation is needed inside the containers.
@@ -59,7 +59,7 @@ Running `dynamic_deploy.sh` performs the following steps in order:
 2. **Start containers** — runs `docker compose -f dynamic-compose.yaml up -d`; containers `c2`...`cN` depend on `c1`.
 3. **SSH key setup on `c1`** — generates an RSA 4096-bit key pair under `/home/grc-iit/.ssh/`, copies the public key to `authorized_keys`, and scans host keys for all containers into `known_hosts`. Sets correct permissions on the `.ssh` directory.
 4. **Restart SSH on all containers** — ensures the SSH daemon is running and accepts the newly configured keys.
-5. **Generate host files** — writes one hostname per line into `~/chronolog-release-install/chronolog/conf/`:
+5. **Generate host files** — writes one hostname per line into `~/chronolog-install/chronolog/conf/`:
    - `hosts_visor` — `c1`
    - `hosts_keeper` — `c2` ... `c(K+1)`
    - `hosts_grapher` — `c(K+2)` ... `c(K+G+1)`

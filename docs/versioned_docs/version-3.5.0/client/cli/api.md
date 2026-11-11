@@ -5,12 +5,12 @@ title: "API Reference"
 
 # CLI API Reference
 
-Full command reference for the `client_cli` binary.
+Full command reference for the `chrono-client-cli` binary.
 
 ## Launching the CLI
 
 ```bash
-client_cli [-c <config_file>] [-u|--usage]
+chrono-client-cli [-c <config_file>] [-u|--usage]
 ```
 
 | Flag | Argument | Description |
@@ -18,7 +18,7 @@ client_cli [-c <config_file>] [-u|--usage]
 | `-c`, `--config` | `<config_file>` | Path to a ChronoLog client configuration file |
 | `-u`, `--usage` | — | Print the usage page and exit |
 
-On startup, `client_cli` connects to the ChronoVisor portal (and, if configured, the ChronoPlayer query service) and enters an interactive REPL on stdin. Each line is parsed as a single command.
+On startup, `chrono-client-cli` connects to the ChronoVisor portal (and, if configured, the ChronoPlayer query service) and enters an interactive REPL on stdin. Each line is parsed as a single command.
 
 ## REPL commands
 

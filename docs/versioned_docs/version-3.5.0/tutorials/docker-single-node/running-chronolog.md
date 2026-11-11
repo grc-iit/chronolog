@@ -35,7 +35,7 @@ If you see a version number, you're good to go!
 First, pull the pre-built ChronoLog image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/grc-iit/chronolog:v3.0.0
+docker pull ghcr.io/grc-iit/chronolog:v3.4.0
 ```
 
 This downloads the ChronoLog v3.0.0 image to your local machine, with a pre-installed release build ready to use.
@@ -47,7 +47,7 @@ This downloads the ChronoLog v3.0.0 image to your local machine, with a pre-inst
 Next, launch the ChronoLog container:
 
 ```bash
-docker run -it --rm --name chronolog-instance ghcr.io/grc-iit/chronolog:v3.0.0
+docker run -it --rm --name chronolog-instance ghcr.io/grc-iit/chronolog:v3.4.0
 ```
 
 This command:
@@ -73,7 +73,7 @@ You should see a container named `chronolog-instance`. For example:
 
 ```bash
 CONTAINER ID   IMAGE                                    COMMAND       CREATED          STATUS          PORTS     NAMES
-bfbc93af1d50   ghcr.io/grc-iit/chronolog:v3.0.0        "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
+bfbc93af1d50   ghcr.io/grc-iit/chronolog:v3.4.0        "/bin/bash"   X seconds ago    Up X seconds             chronolog-instance
 ```
 
 This indicates your ChronoLog container is up and running successfully!
@@ -110,10 +110,10 @@ pgrep -fla 'chrono-visor|chrono-keeper|chrono-grapher|chrono-player'
 You should see an active process for each ChronoLog component:
 
 ```bash
-/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-visor ...
-/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-keeper ...
-/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-grapher ...
-/home/grc-iit/chronolog-release-install/chronolog/bin/chrono-player ...
+/home/grc-iit/chronolog-install/chronolog/bin/chrono-visor ...
+/home/grc-iit/chronolog-install/chronolog/bin/chrono-keeper ...
+/home/grc-iit/chronolog-install/chronolog/bin/chrono-grapher ...
+/home/grc-iit/chronolog-install/chronolog/bin/chrono-player ...
 ```
 
 If all four processes appear, your ChronoLog deployment is successfully running!
