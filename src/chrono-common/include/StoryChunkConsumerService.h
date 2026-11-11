@@ -7,6 +7,7 @@
 #include <private/RpcBulkControl.h>
 #include <private/RpcBulkSerialization.h>
 #include <private/Crc32c.h>
+#include <chrono_monitor.h>
 #include "StoryChunkIngestionQueue.h"
 namespace tl = thallium;
 namespace chronolog
@@ -36,7 +37,10 @@ public:
     }
     ~StoryChunkConsumerService() = default;
     void receiver_available(tl::request const& request) noexcept { rpc::bulkReady(owner_.lock(), request); }
-    void receive_story_chunk(tl::request const& request, tl::bulk& source, ServiceId const&, uint32_t checksum) noexcept
+    void receive_story_chunk(tl::request const& request,
+                             tl::bulk& source,
+                             ServiceId const& reporter,
+                             uint32_t checksum) noexcept
     {
         auto owner = owner_.lock();
         if(!owner || owner->closing)
@@ -64,10 +68,17 @@ public:
                                                 request,
                                                 source,
                                                 owner->incoming.observers,
-                                                owner->incoming.pieceBytes);
+                                                owner->incoming.pieceBytes,
+                                                owner->incoming.pullMs,
+                                                owner->incoming.answerMs);
             lease->retain(context);
             if(!context->pull())
             {
+                if(context->timedOut)
+                    LOG_WARNING("[StoryChunkConsumerService] gave up pulling a chunk of {} bytes from {} after {} ms",
+                                context->bytes.size(),
+                                to_string(reporter),
+                                owner->incoming.pullMs);
                 // The pull has returned, so no piece is in flight and the slot
                 // is free again. A keeper still there learns that nothing was
                 // received; it keeps the chunk and sends it again.

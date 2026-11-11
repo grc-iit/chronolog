@@ -123,6 +123,8 @@ private:
         : engine(std::move(native))
         , policy(policy)
     {
+        incoming.pullMs = policy.transfer_ms;
+        incoming.answerMs = policy.attempt_ms;
         if(engine)
             registrations_ = std::make_unique<RpcProviderRegistration>(*engine);
     }

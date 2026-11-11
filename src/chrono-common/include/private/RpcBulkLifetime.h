@@ -4,6 +4,8 @@
 #include <thallium.hpp>
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <tuple>
 #include <functional>
 #include <atomic>
 #include <memory>
@@ -15,6 +17,27 @@ namespace chronolog::rpc
 // piece after the other, as the sprint streams a chunk in 1 MiB frames. The
 // grapher and the player read their own value from the configuration.
 constexpr std::size_t kBulkPieceBytes = std::size_t{1} << 20;
+
+// request.respond(reply), given up after timeoutMs (0: no limit). thallium
+// 0.17 has no timed respond, so this encodes reply as respond does and calls
+// margo_respond_timed. At the timeout Margo cancels the response and returns
+// HG_TIMEOUT once Mercury is done with it.
+template <class Reply>
+hg_return_t respondTimed(thallium::request const& request, Reply const& reply, uint64_t timeoutMs)
+{
+    if(timeoutMs == 0)
+    {
+        request.respond(reply);
+        return HG_SUCCESS;
+    }
+    hg_handle_t handle = request.native_handle();
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+    auto args = std::make_tuple(std::cref(reply));
+    std::tuple<> context;
+    thallium::meta_proc_fn encode = [&args, mid, &context](hg_proc_t proc)
+    { return thallium::proc_object_encode(proc, args, mid, context); };
+    return margo_respond_timed(handle, &encode, static_cast<double>(timeoutMs));
+}
 
 // Separate from the control capacity. Payload sizes are not capped.
 class BulkPermits
@@ -87,6 +110,11 @@ public:
     } observers;
     // Set before exposure, as the observers are.
     std::size_t pieceBytes = kBulkPieceBytes;
+    // The time a whole pull may take, and an answer to the sender (0: no
+    // limit). RpcBulkOwner sets them from its policy's transfer_ms and
+    // attempt_ms. A pull or an answer to a sender that died returns at its
+    // limit, so it cannot keep a slot.
+    uint64_t pullMs = 0, answerMs = 0;
     class Lease
     {
         friend class BulkReceives;
@@ -142,9 +170,11 @@ public:
         bool sent = false;
         try
         {
-            request.respond(reply);
-            sent = true;
-            state_->refused.fetch_add(1, std::memory_order_relaxed);
+            if(respondTimed(request, reply, answerMs) == HG_SUCCESS)
+            {
+                sent = true;
+                state_->refused.fetch_add(1, std::memory_order_relaxed);
+            }
         }
         catch(...)
         {}
@@ -169,16 +199,21 @@ public:
                        thallium::request const& request,
                        thallium::bulk const& source,
                        BulkReceives::Observers observers = {},
-                       std::size_t pieceBytes = kBulkPieceBytes)
+                       std::size_t pieceBytes = kBulkPieceBytes,
+                       uint64_t pullMs = 0,
+                       uint64_t answerMs = 0)
         : owner_(std::move(owner))
         , engine_(engine)
         , observers_(std::move(observers))
         , pieceBytes_(pieceBytes ? pieceBytes : kBulkPieceBytes)
+        , pullMs_(pullMs)
+        , answerMs_(answerMs)
         , request_(request)
         , source_(source)
     {}
     bool pull()
     {
+        auto const until = RpcDeadline::Clock::now() + std::chrono::milliseconds(pullMs_);
         bytes.resize(source_.size());
         endpoint_.emplace(request_.get_endpoint());
         target_.emplace(engine_.expose({{bytes.data(), bytes.size()}}, thallium::bulk_mode::write_only));
@@ -192,23 +227,41 @@ public:
         for(std::size_t offset = 0; offset < bytes.size();)
         {
             std::size_t const size = std::min(pieceBytes_, bytes.size() - offset);
-            auto rc = margo_bulk_itransfer(engine_.get_margo_instance(),
-                                           HG_BULK_PULL,
-                                           endpoint_->get_addr(),
-                                           source_.get_bulk(),
-                                           offset,
-                                           target_->get_bulk(),
-                                           offset,
-                                           size,
-                                           &native_);
+            // Each piece gets what is left of the pull's time.
+            double timeoutMs = 0;
+            if(pullMs_)
+            {
+                auto left = std::chrono::duration<double, std::milli>(until - RpcDeadline::Clock::now()).count();
+                if(left < 1)
+                {
+                    timedOut = true;
+                    return false;
+                }
+                timeoutMs = left;
+            }
+            auto rc = margo_bulk_itransfer_timed(engine_.get_margo_instance(),
+                                                 HG_BULK_PULL,
+                                                 endpoint_->get_addr(),
+                                                 source_.get_bulk(),
+                                                 offset,
+                                                 target_->get_bulk(),
+                                                 offset,
+                                                 size,
+                                                 timeoutMs,
+                                                 &native_);
             if(rc != HG_SUCCESS)
                 return false;
             if(observers_.initiated)
                 observers_.initiated(native_);
+            // Returns after Mercury is done with the piece, also when the
+            // timeout cancelled it.
             rc = margo_wait(native_);
             native_ = nullptr;
             if(rc != HG_SUCCESS)
+            {
+                timedOut = rc == HG_TIMEOUT;
                 return false;
+            }
             offset += size;
             ++pieces;
         }
@@ -222,15 +275,14 @@ public:
         {
             if(observers_.beforeAnswer)
                 observers_.beforeAnswer();
-            request_.respond(reply);
-            return true;
+            return respondTimed(request_, reply, answerMs_) == HG_SUCCESS;
         }
         catch(...)
         {
             return false;
         }
     }
-    bool initiated = false, completed = false;
+    bool initiated = false, completed = false, timedOut = false;
     std::size_t pieces = 0;
     std::vector<char> bytes;
 
@@ -241,6 +293,7 @@ private:
     thallium::engine& engine_;
     BulkReceives::Observers observers_;
     std::size_t pieceBytes_;
+    uint64_t pullMs_, answerMs_;
     thallium::request request_;
     thallium::bulk source_;
     std::optional<thallium::endpoint> endpoint_;
