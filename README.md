@@ -1,6 +1,6 @@
 > [!IMPORTANT]
-> **ChronoLog v3.4.0 is now available.**
-> The latest stable release, with durable writes: a write made with `Durability::Durable` returns `CL_SUCCESS` only once ChronoKeeper has synced it to its write-ahead log, so an acknowledged event survives a keeper crash and reaches the archive after a restart. The WAL is off by default, and without durable writes ChronoKeeper behaves as in 3.3.0.
+> **ChronoLog v3.5.0 is now available.**
+> The dependency stack moves to Spack v1.2.2, with Mercury 2.4.1, Margo 0.24.4 and thallium 0.17.0. 3.5.0 clients and servers cannot exchange RPCs with 3.4.0 or older ones, so upgrade every component and client together. It also fixes a replay from time 0 that timed out after 180 s and new story acquires that failed once a keeper had left.
 > [Releases on chronolog.dev](https://www.chronolog.dev/releases) · [Release notes](https://github.com/grc-iit/ChronoLog/releases/latest) · [All releases on GitHub](https://github.com/grc-iit/ChronoLog/releases) · [Documentation](https://www.chronolog.dev/docs)
 
 <p align="center">
@@ -85,13 +85,13 @@ Best for trying ChronoLog quickly on a Linux x86_64 host.
 Download the tarball:
 
 ```bash
-wget https://github.com/grc-iit/ChronoLog/releases/download/v3.4.0/chronolog-3.4.0-linux-x86_64.tar.gz
+wget https://github.com/grc-iit/ChronoLog/releases/download/v3.5.0/chronolog-3.5.0-linux-x86_64.tar.gz
 ```
 
 Extract it:
 
 ```bash
-tar -xzf chronolog-3.4.0-linux-x86_64.tar.gz
+tar -xzf chronolog-3.5.0-linux-x86_64.tar.gz
 ```
 
 Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -104,7 +104,7 @@ Full guide → [Quick Start: Release Archive](https://www.chronolog.dev/docs/get
 System-wide install via `apt` for Debian, Ubuntu, and compatible distributions.
 
 ```bash
-sudo apt install ./chronolog-3.4.0-linux-x86_64.deb
+sudo apt install ./chronolog-3.5.0-linux-x86_64.deb
 ```
 
 Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -117,7 +117,7 @@ Full guide → [Quick Start: DEB Package](https://www.chronolog.dev/docs/getting
 System-wide install via `dnf` (or `yum`) for RHEL-family distributions.
 
 ```bash
-sudo dnf install ./chronolog-3.4.0-linux-x86_64.rpm
+sudo dnf install ./chronolog-3.5.0-linux-x86_64.rpm
 ```
 
 Full guide → [Quick Start: RPM Package](https://www.chronolog.dev/docs/getting-started/quick-start)
@@ -161,6 +161,8 @@ Enter the repo:
 ```bash
 cd ChronoLog
 ```
+
+The dependencies are built with [Spack v1.2.2](https://github.com/spack/spack/releases/tag/v1.2.2), which needs a Fortran compiler such as `gfortran` on the system; see [Environment Setup](https://www.chronolog.dev/docs/contributing/development/environment-setup) for the system packages. ChronoLog 3.4.0 and older build with Spack v0.21.2 instead.
 
 Activate the Spack environment and install dependencies:
 

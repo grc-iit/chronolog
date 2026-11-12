@@ -3,19 +3,30 @@
 // KeeperRecordingClient::send_durable_event_msg. Runs over ofi+sockets on
 // 127.0.0.1 against a fake keeper that defines record_event and
 // record_event_durable, and against a v3.3.0-style keeper that defines only
-// record_event.
+// record_event. The tests that kill a keeper run it in a child process (see
+// KeeperProcess); the others run it in the test process.
 
 #include <gtest/gtest.h>
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <fcntl.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/prctl.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <abt.h>
 #include <thallium.hpp>
@@ -41,6 +52,10 @@ constexpr chl::StoryId kStory = 7;
 constexpr chl::ClientId kClientId = 0x1234abcd5678ull;
 constexpr char kChronicle[] = "chron";
 constexpr char kStoryName[] = "story";
+// set in the environment of a KeeperProcess; names the file its address goes to
+constexpr char kKeeperAddressFileEnv[] = "CHRONOLOG_DURABLE_SEND_KEEPER_ADDRESS_FILE";
+// set to 1 in the environment of a KeeperProcess whose first durable request is dropped
+constexpr char kKeeperDropFirstDurableEnv[] = "CHRONOLOG_DURABLE_SEND_KEEPER_DROP_FIRST_DURABLE";
 
 void ensureLogger()
 {
@@ -113,23 +128,37 @@ public:
             std::lock_guard<std::mutex> lock(mutex);
             durableEvents.push_back(event);
             durableNames.emplace_back(chronicle, story);
+            if(!durableLog.empty())
+            {
+                std::ofstream(durableLog, std::ios::app) << event.time() << std::endl;
+            }
         }
         if(dropAndDeregister.exchange(false))
         {
             // no answer, so the client times out; its retry finds no
-            // record_event_durable here
+            // record_event_durable here. The request is never answered: once
+            // the RPC is deregistered, HG_Respond reads its freed registration.
+            // Mercury 2.4.1 then cannot destroy the context that holds the
+            // request, so this keeper runs only in a KeeperProcess, which is
+            // killed instead of finalized.
             durableRpc.deregister();
             active--;
             return;
         }
         if(hold || holdOne.exchange(false))
         {
-            // yields the ULT, so held requests do not block the handler xstreams
-            auto const until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-            while(!released && std::chrono::steady_clock::now() < until) { tl::thread::sleep(theEngine, 10); }
+            waitUntilReleased();
         }
         request.respond(durableCode.load());
         active--;
+    }
+
+    // Holds the handler until the test sets released, at most 5 s. Yields the
+    // ULT, so held requests do not block the handler xstreams.
+    void waitUntilReleased()
+    {
+        auto const until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while(!released && std::chrono::steady_clock::now() < until) { tl::thread::sleep(theEngine, 10); }
     }
 
     std::vector<chl::LogEvent> durable() const
@@ -158,6 +187,8 @@ public:
     std::atomic<int> active{0};
     // the next record_event_durable request gets no answer and removes the RPC
     std::atomic<bool> dropAndDeregister{false};
+    // when set, the time of each record_event_durable event is appended to this file
+    std::string durableLog;
 
 private:
     tl::engine& theEngine;
@@ -166,6 +197,120 @@ private:
     std::vector<chl::LogEvent> acceptedEvents;
     std::vector<chl::LogEvent> durableEvents;
     std::vector<std::pair<std::string, std::string>> durableNames;
+};
+
+uint16_t portOf(std::string const& address)
+{
+    return static_cast<uint16_t>(std::stoul(address.substr(address.rfind(':') + 1)));
+}
+
+// A FakeKeeper with record_event_durable in a process of its own, so a test
+// can kill it as a crash would: the kernel then closes its sockets at once.
+// Finalizing an engine in the test process does not reliably stand in for
+// that. With Mercury 2.4.1, HG_Finalize can stop in the multi-recv cancel path
+// ("Operation ID was completed") and leave the endpoint open, and a forward to
+// it then times out instead of failing. A keeper that never answers a request
+// runs here too, since Mercury 2.4.1 cannot destroy a context that holds one.
+//
+// The process is this test executable started with kKeeperAddressFileEnv set:
+// main() then runs serveKeeperProcess(), which writes the keeper's address to
+// that file and waits.
+class KeeperProcess
+{
+public:
+    // drop_first_durable: the first record_event_durable request gets no
+    // answer and removes the RPC (FakeKeeper::dropAndDeregister)
+    explicit KeeperProcess(bool drop_first_durable = false)
+    {
+        static int count = 0;
+        theAddressFile =
+                "/tmp/chronolog_durable_send_keeper_" + std::to_string(getpid()) + "_" + std::to_string(count++);
+        std::remove(theAddressFile.c_str());
+        std::remove(durableLog().c_str());
+
+        std::vector<std::string> env_strings;
+        for(char** e = environ; *e != nullptr; ++e) { env_strings.emplace_back(*e); }
+        env_strings.push_back(std::string(kKeeperAddressFileEnv) + "=" + theAddressFile);
+        if(drop_first_durable)
+        {
+            env_strings.push_back(std::string(kKeeperDropFirstDurableEnv) + "=1");
+        }
+        std::vector<char*> envp;
+        for(auto& e: env_strings) { envp.push_back(e.data()); }
+        envp.push_back(nullptr);
+
+        std::string exe = "/proc/self/exe";
+        char* argv[] = {exe.data(), nullptr};
+        int const rc = posix_spawn(&thePid, exe.c_str(), nullptr, nullptr, argv, envp.data());
+        if(rc != 0)
+        {
+            thePid = -1;
+            return;
+        }
+
+        auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while(std::chrono::steady_clock::now() < deadline)
+        {
+            std::ifstream in(theAddressFile);
+            if(in && std::getline(in, theAddress) && !theAddress.empty())
+            {
+                return;
+            }
+            if(waitpid(thePid, nullptr, WNOHANG) == thePid)
+            {
+                thePid = -1;
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+
+    ~KeeperProcess()
+    {
+        kill();
+        std::remove(theAddressFile.c_str());
+        std::remove(durableLog().c_str());
+    }
+
+    // the file the keeper appends the time of each durable event it receives to
+    std::string durableLog() const { return theAddressFile + ".durable"; }
+
+    // the times of the durable events the keeper received, in order
+    std::vector<uint64_t> durableTimes() const
+    {
+        std::vector<uint64_t> times;
+        std::ifstream in(durableLog());
+        uint64_t time = 0;
+        while(in >> time) { times.push_back(time); }
+        return times;
+    }
+
+    KeeperProcess(KeeperProcess const&) = delete;
+    KeeperProcess& operator=(KeeperProcess const&) = delete;
+
+    // whether the keeper started and wrote its address
+    bool ready() const { return thePid > 0 && !theAddress.empty(); }
+
+    chl::ServiceId serviceId() const
+    {
+        return chl::ServiceId(kProtocol, "127.0.0.1", portOf(theAddress), kKeeperProvider);
+    }
+
+    // SIGKILL, as a crash; returns once the process is gone
+    void kill()
+    {
+        if(thePid > 0)
+        {
+            ::kill(thePid, SIGKILL);
+            waitpid(thePid, nullptr, 0);
+            thePid = -1;
+        }
+    }
+
+private:
+    pid_t thePid = -1;
+    std::string theAddressFile;
+    std::string theAddress;
 };
 
 class DurableSend: public ::testing::Test
@@ -193,7 +338,7 @@ protected:
         if(storyteller)
         {
             storyteller->removeAcquiredStoryHandle(kChronicle, kStoryName);
-            // deletes the KeeperRecordingClients, which deregister their RPCs
+            // deletes the KeeperRecordingClients
             storyteller.reset();
         }
         rawClient.reset();
@@ -205,15 +350,7 @@ protected:
             keeperEngine->finalize();
         }
         oldKeeperEngine->finalize();
-    }
-
-    // stops the keeper that defines record_event_durable, as a crash would
-    void stopKeeper()
-    {
-        waitForKeeperHandlers();
-        keeper.reset();
-        keeperEngine->finalize();
-        keeperEngine.reset();
+        keeperProcess.reset();
     }
 
     // A handler can still be running after its answer reached the client: it
@@ -230,16 +367,24 @@ protected:
 
     static chl::ServiceId serviceIdOf(tl::engine& engine)
     {
-        std::string const self = engine.self();
-        auto const port = static_cast<uint16_t>(std::stoul(self.substr(self.rfind(':') + 1)));
-        return chl::ServiceId(kProtocol, "127.0.0.1", port, kKeeperProvider);
+        return chl::ServiceId(kProtocol, "127.0.0.1", portOf(engine.self()), kKeeperProvider);
     }
 
-    chl::StoryHandle* handleOn(tl::engine& keeper_engine)
+    chl::StoryHandle* handleOn(tl::engine& keeper_engine) { return handleOn(serviceIdOf(keeper_engine)); }
+
+    chl::StoryHandle* handleOn(chl::ServiceId const& keeper_id)
     {
         storyteller = std::make_unique<chl::StorytellerClient>(timer, *clientEngine, kClientId);
-        std::vector<chl::ServiceId> keepers{serviceIdOf(keeper_engine)};
+        std::vector<chl::ServiceId> keepers{keeper_id};
         return storyteller->initializeStoryHandle(kChronicle, kStoryName, kStory, keepers, chl::ServiceId());
+    }
+
+    // a keeper in its own process, for the tests that kill it or leave a
+    // request unanswered
+    bool startKeeperProcess(bool drop_first_durable = false)
+    {
+        keeperProcess = std::make_unique<KeeperProcess>(drop_first_durable);
+        return keeperProcess->ready();
     }
 
     static chl::LogEventOptions durable(uint32_t timeout_ms = 10000, uint32_t attempts = 3)
@@ -259,9 +404,43 @@ protected:
     std::unique_ptr<FakeKeeper> oldKeeper;
     std::unique_ptr<chl::StorytellerClient> storyteller;
     std::unique_ptr<chl::KeeperRecordingClient> rawClient;
+    std::unique_ptr<KeeperProcess> keeperProcess;
 };
 
+// The process a KeeperProcess starts: a FakeKeeper with record_event_durable
+// that writes its address to address_file and runs until it is killed.
+[[noreturn]] void serveKeeperProcess(char const* address_file)
+{
+    // dies with the test that started it
+    prctl(PR_SET_PDEATHSIG, SIGKILL);
+    ensureLogger();
+    ensureArgobots();
+    tl::engine engine(std::string(kProtocol) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 4);
+    FakeKeeper keeper(engine, kKeeperProvider, true);
+    keeper.durableLog = std::string(address_file) + ".durable";
+    char const* drop = std::getenv(kKeeperDropFirstDurableEnv);
+    keeper.dropAndDeregister = drop != nullptr && std::string(drop) == "1";
+    std::string const partial = std::string(address_file) + ".partial";
+    {
+        std::ofstream out(partial);
+        out << engine.self() << std::endl;
+    }
+    std::rename(partial.c_str(), address_file);
+    while(true) { pause(); }
+}
+
 } // namespace
+
+// The test executable is also the keeper process of a KeeperProcess.
+int main(int argc, char** argv)
+{
+    if(char const* address_file = std::getenv(kKeeperAddressFileEnv))
+    {
+        serveKeeperProcess(address_file);
+    }
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
 
 // What thallium raises when the keeper does not define the RPC: a
 // margo_exception carrying HG_NO_MATCH, not a timeout.
@@ -399,7 +578,8 @@ TEST_F(DurableSend, UnregisteredRpcIsUnavailableWithoutRetry)
 // answer either.
 TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
 {
-    chl::ServiceId const keeper_id = serviceIdOf(*keeperEngine);
+    ASSERT_TRUE(startKeeperProcess());
+    chl::ServiceId const keeper_id = keeperProcess->serviceId();
     rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, keeper_id));
     ASSERT_NE(rawClient, nullptr);
     chl::LogEvent event(kStory, 100, kClientId, 1, "record");
@@ -409,7 +589,7 @@ TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
               chl::DurableSendOutcome::Answered);
     EXPECT_EQ(code, chl::CL_SUCCESS);
 
-    stopKeeper();
+    keeperProcess->kill();
     EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
               chl::DurableSendOutcome::TransportError);
 
@@ -428,11 +608,12 @@ TEST_F(DurableSend, DeadKeeperIsATransportErrorOnceItAnswered)
 // tell the caller that only an operator can help.
 TEST_F(DurableSend, FirstDurableWriteToADeadKeeperIsRetried)
 {
-    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_TRUE(startKeeperProcess());
+    chl::StoryHandle* handle = handleOn(keeperProcess->serviceId());
     ASSERT_NE(handle, nullptr);
     ASSERT_NE(handle->log_event("accepted"), 0u);
 
-    stopKeeper();
+    keeperProcess->kill();
     uint64_t event_time = 0;
     EXPECT_EQ(handle->log_event("durable", durable(300, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
     EXPECT_NE(event_time, 0u);
@@ -444,12 +625,13 @@ TEST_F(DurableSend, FirstDurableWriteToADeadKeeperIsRetried)
 // instead of a few milliseconds.
 TEST_F(DurableSend, FastTransportErrorWaitsOutTheAttempt)
 {
-    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_TRUE(startKeeperProcess());
+    chl::StoryHandle* handle = handleOn(keeperProcess->serviceId());
     ASSERT_NE(handle, nullptr);
     uint64_t event_time = 0;
     ASSERT_EQ(handle->log_event("first", durable(), event_time), chl::CL_SUCCESS);
 
-    stopKeeper();
+    keeperProcess->kill();
     auto const start = std::chrono::steady_clock::now();
     EXPECT_EQ(handle->log_event("second", durable(500, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
     auto const elapsed = std::chrono::steady_clock::now() - start;
@@ -463,7 +645,8 @@ TEST_F(DurableSend, FastTransportErrorWaitsOutTheAttempt)
 // answering recovers the event from its WAL.
 TEST_F(DurableSend, KeeperThatAnsweredThenDiedIsUnknown)
 {
-    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_TRUE(startKeeperProcess());
+    chl::StoryHandle* handle = handleOn(keeperProcess->serviceId());
     ASSERT_NE(handle, nullptr);
 
     uint64_t event_time = 0;
@@ -471,7 +654,7 @@ TEST_F(DurableSend, KeeperThatAnsweredThenDiedIsUnknown)
 
     uint64_t const first_time = event_time;
 
-    stopKeeper();
+    keeperProcess->kill();
     event_time = 0;
     EXPECT_EQ(handle->log_event("second", durable(1000, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
     // the second event's timestamp, not 0 and not the first event's
@@ -481,17 +664,18 @@ TEST_F(DurableSend, KeeperThatAnsweredThenDiedIsUnknown)
 
 // The first attempt reaches the keeper and times out; the second finds no
 // record_event_durable there. The first attempt may have stored the event.
+// The keeper runs in its own process: it never answers the first attempt.
 TEST_F(DurableSend, UnregisteredRpcAfterATimeoutIsUnknown)
 {
-    chl::StoryHandle* handle = handleOn(*keeperEngine);
+    ASSERT_TRUE(startKeeperProcess(/*drop_first_durable=*/true));
+    chl::StoryHandle* handle = handleOn(keeperProcess->serviceId());
     ASSERT_NE(handle, nullptr);
-    keeper->dropAndDeregister = true;
 
     uint64_t event_time = 0;
     EXPECT_EQ(handle->log_event("record", durable(300, 3), event_time), chl::CL_ERR_DURABILITY_UNKNOWN);
-    auto const seen = keeper->durable();
+    auto const seen = keeperProcess->durableTimes();
     ASSERT_EQ(seen.size(), 1u);
-    EXPECT_EQ(event_time, seen[0].time());
+    EXPECT_EQ(event_time, seen[0]);
 }
 
 // After a timeout, a keeper that answers "nothing stored" may be answering a
@@ -687,4 +871,32 @@ TEST_F(DurableSend, ConcurrentCallsOnOneHandle)
     }
     EXPECT_EQ(identities.size(), seen.size());
     EXPECT_EQ(records.size(), seen.size());
+}
+
+// Two keepers' KeeperRecordingClients on one client engine share their RPC IDs
+// (#743). Deleting one used to deregister them, and the other client's
+// record_event and record_event_durable then failed with HG_NOENTRY without
+// leaving the process.
+class KeeperClientLifetime: public DurableSend
+{
+};
+
+TEST_F(KeeperClientLifetime, DeletingOneClientLeavesTheOtherWorking)
+{
+    auto* leaving =
+            chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, serviceIdOf(*oldKeeperEngine));
+    rawClient.reset(chl::KeeperRecordingClient::CreateKeeperRecordingClient(*clientEngine, serviceIdOf(*keeperEngine)));
+    ASSERT_NE(leaving, nullptr);
+    ASSERT_NE(rawClient, nullptr);
+    chl::LogEvent event(kStory, 100, kClientId, 1, "record");
+    ASSERT_EQ(leaving->send_event_msg(event), chl::CL_SUCCESS);
+
+    delete leaving;
+
+    EXPECT_EQ(rawClient->send_event_msg(event), chl::CL_SUCCESS);
+    EXPECT_EQ(keeper->accepted().size(), 1u);
+    int code = 99;
+    EXPECT_EQ(rawClient->send_durable_event_msg(kChronicle, kStoryName, event, 2000, code),
+              chl::DurableSendOutcome::Answered);
+    EXPECT_EQ(code, chl::CL_SUCCESS);
 }

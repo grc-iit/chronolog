@@ -43,6 +43,13 @@ struct HotRangeSplit
     bool complete = false;
 };
 
+// The start of a replay as the player plans it. ReplayStory takes a half-open
+// [start, end) with no lower bound, but the archive reading request and
+// StoryChunk treat a start of 0 as no range, so a replay that started at 0 got
+// no archive read and no reply (#741). No event has timestamp 0, so the player
+// starts such a replay at 1.
+inline uint64_t replayStartTime(uint64_t start_time) { return (start_time == 0) ? 1 : start_time; }
+
 // What the player does with the rest of the replay: how far the archive read
 // goes, and whether the reply it sends can claim to hold every event in range.
 struct ReplayPlan
