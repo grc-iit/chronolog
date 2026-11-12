@@ -17,20 +17,12 @@ The **Python Client** is a [pybind11](https://pybind11.readthedocs.io/) binding 
 
 ### Installation and Setup
 
-1. Build and install ChronoLog, ensuring `py_chronolog_client` is compiled and available in your library directory.
-2. Update environment variables:
-   - Add the library path to `LD_LIBRARY_PATH`:
-     ```bash
-     export LD_LIBRARY_PATH=/path/to/chronolog/lib:$LD_LIBRARY_PATH
-     ```
-   - Add the library path to `PYTHONPATH`:
-     ```bash
-     export PYTHONPATH=/path/to/chronolog/lib:$PYTHONPATH
-     ```
-3. Create a symbolic link for the Python client:
+1. Build and install ChronoLog. The install puts `py_chronolog_client` in the `lib` directory of the installation.
+2. Add that directory to `PYTHONPATH`:
    ```bash
-   ln -s /path/to/chronolog/lib/py_chronolog_client.[python-version-linux-version].so /path/to/chronolog/lib/py_chronolog_client.so
+   export PYTHONPATH=/path/to/chronolog/lib:$PYTHONPATH
    ```
+3. Run Python from ChronoLog's Spack environment, `/path/to/ChronoLog/.spack-env/view/bin/python3`. The module is built for that Python (3.14 on the 3.5.0 stack), and no other Python can import it. Its library paths are set at install, so it needs no `LD_LIBRARY_PATH`, and its file name needs no symbolic link.
 
 ### Client Modes
 

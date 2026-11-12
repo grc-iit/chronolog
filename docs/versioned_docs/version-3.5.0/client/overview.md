@@ -15,6 +15,10 @@ The Client API section documents every interface available for interacting with 
 | Python Client | Python | Scripting, data science, and rapid prototyping | [Python Client](./python/overview.md) |
 | CLI Tool | Shell | Admin tasks, quick tests, and scripted workflows | [CLI Tool](./cli/overview.md) |
 
+:::warning
+All three interfaces use the same C++ client library, so a client of any kind built against ChronoLog 3.4.0 or older cannot reach 3.5.0 servers, and a 3.5.0 client cannot reach older servers: the request gets no answer and no error. Build clients and servers from the same version.
+:::
+
 ### C++ Client
 
 The native C++ client library provides full access to the ChronoLog API. Use it when you need maximum throughput, fine-grained control over event layout, or are integrating ChronoLog into an existing C++ or MPI-based application. The library exposes the core `Client`, `StoryHandle`, and `Event` classes along with error codes and logging configuration.

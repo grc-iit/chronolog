@@ -49,7 +49,7 @@ set_target_properties(story_group_selection_test PROPERTIES OUTPUT_NAME chronolo
 gtest_discover_tests(story_group_selection_test TEST_PREFIX "Unit_ChronoVisor_")
 ```
 
-A binary with its own `main()` is not a GTest binary: register it with a plain `add_test()`. `gtest_discover_tests` runs the binary at build time to list its tests, so a custom `main()` would run the whole program during the build.
+A binary with its own `main()` is not a GTest binary: register it with a plain `add_test()`. `gtest_discover_tests` runs the binary at build time to list its tests, so a custom `main()` would run the whole program during the build. A `main()` that only calls `InitGoogleTest()` and `RUN_ALL_TESTS()`, unless an environment variable that the test itself sets asks for something else, is still a GTest binary: `client_durable_send_test.cpp` starts its fake keepers this way, as child processes of the test.
 
 ### Best Practices
 

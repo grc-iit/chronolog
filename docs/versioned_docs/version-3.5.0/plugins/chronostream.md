@@ -37,7 +37,7 @@ ChronoStream uses two cooperating client applications and an external time-serie
 - A running ChronoLog service (all four processes: Visor, Grapher, Player, Keeper)
 - Docker and Docker Compose (for Grafana and InfluxDB)
 - ChronoLog client library installed
-- Spack environment activated (for building)
+- Spack environment activated (for building), with Spack v1.2.2 for ChronoLog 3.5.0 and v0.21.2 for 3.4.0 and older (see [Environment Setup](../contributing/development/environment-setup.md))
 
 ## Setup
 
