@@ -64,6 +64,15 @@ public:
     void cleanup();
     std::shared_ptr<thallium::engine> engine() const { return engine_; }
     bool cleanupComplete() const noexcept { return complete_.load(std::memory_order_acquire); }
+    // The references thallium objects outside this runtime still hold on the
+    // MID: Margo's own and this runtime's engine wrapper are not counted.
+    // cleanup() finalizes only at 0; an owner waits for that after it released
+    // its own objects. 0 before initialization and after cleanup.
+    unsigned applicationReferences() const noexcept;
+    // Waits until applicationReferences() is 0. A holder that never lets go
+    // keeps the caller waiting, so after 5 s this prints the count to stderr
+    // once; the stop attempt's own deadline bounds the wait.
+    void awaitApplicationReferences() const;
 
 private:
     static void construct(void*) noexcept;

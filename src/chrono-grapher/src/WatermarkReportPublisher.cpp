@@ -190,6 +190,12 @@ WatermarkReportPublisher::WatermarkReportPublisher(std::shared_ptr<rpc::RpcBulkO
 }
 WatermarkReportPublisher::~WatermarkReportPublisher() = default;
 void WatermarkReportPublisher::quiesce() noexcept { core_->closing.store(true, std::memory_order_release); }
+void WatermarkReportPublisher::releaseNative()
+{
+    std::lock_guard<std::timed_mutex> lock(core_->mutex);
+    core_->closing.store(true, std::memory_order_release);
+    core_->remote = {};
+}
 void WatermarkReportPublisher::recordContributor(StoryId story,
                                                  ServiceId const& reporter,
                                                  StoryWatermarkRegistry::Incarnation incarnation)

@@ -66,6 +66,20 @@ std::shared_ptr<RpcBulkOwner> RpcBulkOwner::Prepare(std::shared_ptr<RpcRuntime> 
                       owner->incoming.used() != 0 || owner->pendingOutcomes.used() != 0)
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 auto retiredMid = owner->engine ? owner->engine->get_margo_instance() : MARGO_INSTANCE_NULL;
+                // Each thallium object holds a reference on the MID, and Margo
+                // cleans up only when the last one goes, so they are released
+                // before finalization, not after it: the provider deregisters
+                // its procedures through Margo as it is destroyed. Native
+                // procedure registrations remain with Margo through its
+                // incoming-handler fence.
+                owner->provider.reset();
+                owner->watermarkReports.reset();
+                owner->registrySession.reset();
+                owner->receiveChunk = {};
+                owner->available = {};
+                owner->engine.reset();
+                owner->dependencies.reset();
+                owner->native_->awaitApplicationReferences();
                 owner->native_->cleanup();
                 {
                     std::lock_guard<std::mutex> lock(ownersMutex);
@@ -73,16 +87,7 @@ std::shared_ptr<RpcBulkOwner> RpcBulkOwner::Prepare(std::shared_ptr<RpcRuntime> 
                     if(found != owners.end() && found->second.lock().get() == owner.get())
                         owners.erase(found);
                 }
-                // Owned providers used here have std-only destructors; native procedure
-                // registrations remain with Margo through its incoming-handler fence.
-                owner->provider.reset();
-                owner->watermarkReports.reset();
-                owner->registrySession.reset();
                 owner->registrations_.reset();
-                owner->receiveChunk = {};
-                owner->available = {};
-                owner->engine.reset();
-                owner->dependencies.reset();
                 owner->cleanupComplete.store(true, std::memory_order_release);
                 if(owner->afterCleanup)
                     owner->afterCleanup();

@@ -34,6 +34,10 @@ public:
     // ACK requires native cleanup of every original send to this exact target.
     int park(rpc::PublisherParkProof const& proof, rpc::RpcDeadline const& deadline);
     void quiesce() noexcept;
+    // After the final reports and once no publisher work runs: closes the
+    // publisher and releases its procedure, whose reference on the admin MID
+    // would otherwise keep that MID from being finalized.
+    void releaseNative();
 
 private:
     int publishImpl(rpc::RpcDeadline const&, bool force, bool final, rpc::StopDependencyEvidence const*);

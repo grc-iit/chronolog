@@ -1,6 +1,9 @@
 #include <NativeRuntime.h>
 #include <client_errcode.h>
 #include <condition_variable>
+#include <thread>
+#include <cstdio>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -262,6 +265,34 @@ NativeMidRuntime::NativeMidRuntime(std::shared_ptr<NativeProcessGeneration> proc
     if(!process_)
         throw std::invalid_argument("Native MID needs its actual process generation");
 }
+unsigned NativeMidRuntime::applicationReferences() const noexcept
+{
+    if(mid_ == MARGO_INSTANCE_NULL || complete_.load(std::memory_order_acquire))
+        return 0;
+    unsigned references = 0;
+    if(margo_instance_ref_count(mid_, &references) != HG_SUCCESS)
+        return 0;
+    unsigned const own = 1 + (engine_ ? 1u : 0u);
+    return references > own ? references - own : 0;
+}
+void NativeMidRuntime::awaitApplicationReferences() const
+{
+    auto const reportAt = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    bool reported = false;
+    for(unsigned references = applicationReferences(); references != 0; references = applicationReferences())
+    {
+        if(!reported && std::chrono::steady_clock::now() >= reportAt)
+        {
+            // stderr: the daemon's logger may already be gone at this point.
+            std::fprintf(stderr,
+                         "[NativeMidRuntime] %s: %u thallium reference(s) still hold the MID; finalization waits\n",
+                         spec_.address.c_str(),
+                         references);
+            reported = true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
 void NativeMidRuntime::construct(void* pointer) noexcept
 {
     auto& self = *static_cast<NativeMidRuntime*>(pointer);
@@ -339,13 +370,25 @@ void NativeMidRuntime::cleanup()
         // settle. The proved owned finalizer supplies the incoming wrapper fence.
         if(mid_ == MARGO_INSTANCE_NULL || finalizeCalled_ || constructor_ != ABT_THREAD_NULL)
             throw std::runtime_error("Native finalization is not safe to repeat");
+        // Every thallium engine, endpoint, procedure, provider, bulk handle
+        // and request holds a reference on its MID, and Margo frees Mercury
+        // and its own execution streams only when the last one is released:
+        // margo_finalize_and_wait alone just stops the progress loop. The
+        // wrapper this runtime handed out goes first; every other holder must
+        // already have released its objects, or the cleanup would run later in
+        // whichever destructor came last. Refused before anything native is
+        // touched, so a later attempt can try again.
+        engine_.reset();
+        unsigned references = 0;
+        if(margo_instance_ref_count(mid_, &references) != HG_SUCCESS || references != 1)
+            throw std::runtime_error("Native MID still has " + std::to_string(references) +
+                                     " references; only Margo's own may remain before finalization");
         uncertain_ = true;
         finalizeCalled_ = true;
         process_->finalizeCalls_.fetch_add(1, std::memory_order_release);
-        margo_finalize_and_wait(mid_);
+        margo_finalize_and_wait(mid_); // The last reference: Margo cleans up here.
         process_->finalizeReturns_.fetch_add(1, std::memory_order_release);
         mid_ = MARGO_INSTANCE_NULL;
-        engine_.reset(); // Original wrapper is non-owning; no native destructor.
         for(auto& stream: rpcStreams_)
         {
             checked(ABT_xstream_join(stream), "ABT_xstream_join RPC");

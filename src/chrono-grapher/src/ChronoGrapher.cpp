@@ -375,6 +375,13 @@ int main(int argc, char** argv)
             if(deadline.expired())
                 return false;
             data->unregistered = true;
+            // The registry client's procedures reference the admin MID, which
+            // is finalized only once nothing does. Main is its only user, and
+            // the stats loop ended with the stop request.
+            data->registry.reset();
+            // Both runtimes are idle (above), so no report work uses it.
+            if(data->publisher)
+                data->publisher->releaseNative();
         }
         return rpc::retireServices(owners, runtimes, deadline);
     };

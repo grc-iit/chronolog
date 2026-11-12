@@ -41,6 +41,16 @@ public:
                                        owner->queryPermits.used() || owner->responseSources.used())
                                      std::this_thread::sleep_for(std::chrono::milliseconds(1));
                                  auto mid = owner->engine ? owner->engine->get_margo_instance() : MARGO_INSTANCE_NULL;
+                                 // Thallium objects hold references on the MID
+                                 // and Margo cleans up only when the last one
+                                 // goes: release them before finalization.
+                                 owner->provider.reset();
+                                 owner->hotFetch = {};
+                                 owner->receiveResponse = {};
+                                 owner->responseAvailable = {};
+                                 owner->engine.reset();
+                                 owner->dependencies.reset();
+                                 owner->native_->awaitApplicationReferences();
                                  owner->native_->cleanup();
                                  {
                                      std::lock_guard<std::mutex> lock(registryMutex());
@@ -48,13 +58,7 @@ public:
                                      if(found != registry().end() && found->second.lock().get() == owner.get())
                                          registry().erase(found);
                                  }
-                                 owner->provider.reset();
-                                 owner->hotFetch = {};
-                                 owner->receiveResponse = {};
-                                 owner->responseAvailable = {};
                                  owner->registrations_.reset();
-                                 owner->engine.reset();
-                                 owner->dependencies.reset();
                                  owner->cleanupComplete.store(true, std::memory_order_release);
                                  if(owner->afterCleanup)
                                      owner->afterCleanup();

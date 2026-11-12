@@ -347,6 +347,10 @@ int main(int argc, char** argv)
             if(stopDeadline.expired())
                 return false;
             data->unregistered = true;
+            // The registry client's procedures reference the admin MID, which
+            // is finalized only once nothing does. Main is its only user, and
+            // the stats loop ended with the stop request.
+            data->registry.reset();
         }
         playback->retirementReady = true;
         if(!rpc::retireServices({recording, administration}, {recordingRuntime, adminRuntime}, stopDeadline))
