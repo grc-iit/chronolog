@@ -23,6 +23,9 @@ INCOMPLETE = -27
 # Exit status of a launch whose service process exited before it was Running:
 # the outcome is known (nothing runs), unlike an expired budget.
 STARTUP_EXITED = 3
+# How long a stop keeps observing a process that reads as unknown before it
+# gives up: long enough for an exiting process to finish exiting.
+UNKNOWN_GRACE_SECS = 2.0
 
 
 class StartupExited(RuntimeError):
@@ -741,6 +744,7 @@ def stop(work, hosts, budget_ms, worker=call_worker, now=time.monotonic, sleep=t
                     raise RuntimeError('unverified process/completion identity')
                 if record['state'] != 'stopped':
                     record['state'] = worker(record['_route'], work, 'term', deadline, record)['state']
+            unknown_since = {}
             while members:
                 pending = []
                 for record in members:
@@ -748,7 +752,15 @@ def stop(work, hosts, budget_ms, worker=call_worker, now=time.monotonic, sleep=t
                     observations[record['config']] = observation
                     record['state'] = observation['state']
                     if record['state'] == 'unknown':
-                        raise RuntimeError('process/SSH observation is unknown')
+                        # A process that is exiting can read as unknown for a
+                        # moment: its /proc entry outlives its executable link,
+                        # and its final record lands just after it is gone. Only
+                        # an unknown that lasts is an answer.
+                        first = unknown_since.setdefault(record['config'], now())
+                        if now()-first >= UNKNOWN_GRACE_SECS:
+                            raise RuntimeError('process/SSH observation is unknown')
+                    else:
+                        unknown_since.pop(record['config'], None)
                     if record['state'] != 'stopped':
                         pending.append(record)
                 members = pending

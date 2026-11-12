@@ -472,6 +472,32 @@ class ManagedStopController(unittest.TestCase):
             return lifecycle.stop(self.work, ['local'], 30000, worker=self.worker,
                                   now=lambda: self.clock, sleep=self.sleep)
 
+    def test_a_keeper_read_as_unknown_while_it_exits_still_stops(self):
+        # Between its executable link going and its final record landing, an
+        # exiting keeper reads as unknown once; the stop keeps observing it.
+        original, blinked = self.worker, []
+        def worker(host, work, action, deadline, record=None):
+            result = original(host, work, action, deadline, record)
+            if (action == 'inspect' and record['component'] == 'keeper' and result['state'] == 'stopped'
+                    and not blinked):
+                blinked.append(True)
+                return result | {'state': 'unknown'}
+            return result
+        self.worker = worker
+        self.assertEqual(self.run_stop(), 0)
+        self.assertTrue(blinked)
+
+    def test_a_keeper_that_stays_unknown_ends_the_stop_incomplete(self):
+        original = self.worker
+        def worker(host, work, action, deadline, record=None):
+            result = original(host, work, action, deadline, record)
+            if action == 'inspect' and record['component'] == 'keeper' and result['state'] == 'stopped':
+                return result | {'state': 'unknown'}
+            return result
+        self.worker = worker
+        self.assertEqual(self.run_stop(), 27)
+        self.assertLess(self.clock, 30.0)
+
     def test_missing_both_rpc_stream_counters_never_proves_native_release(self):
         self.assertEqual(self.run_stop(),0)
         observed = self.worker('local',self.work,'inspect',30.0,self.player)
