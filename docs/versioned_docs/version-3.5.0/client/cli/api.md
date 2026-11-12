@@ -20,6 +20,10 @@ chrono-client-cli [-c <config_file>] [-u|--usage]
 
 On startup, `chrono-client-cli` connects to the ChronoVisor portal (and, if configured, the ChronoPlayer query service) and enters an interactive REPL on stdin. Each line is parsed as a single command.
 
+:::warning
+The CLI and the deployment must be the same version. A `chrono-client-cli` from ChronoLog 3.4.0 or older cannot reach 3.5.0 servers, and a 3.5.0 one cannot reach older servers: its connection at startup gets no answer and no error.
+:::
+
 ## REPL commands
 
 ### Chronicle Operations
