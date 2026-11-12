@@ -817,8 +817,14 @@ restart_keeper() {
     # The lifecycle refuses while the recorded keeper still runs, and replaces
     # its record only once that process is gone. It appends to the launch log,
     # so the log of the run that died is kept.
-    if ! lifecycle restart-keeper --executable "${KEEPER_BIN}" --config "${conf}" \
-      --output "${MONITOR_DIR}/chrono-keeper-${remote_hostname}.launch.log"; then
+    local status=0
+    lifecycle restart-keeper --executable "${KEEPER_BIN}" --config "${conf}" \
+      --output "${MONITOR_DIR}/chrono-keeper-${remote_hostname}.launch.log" || status=$?
+    if ((status == 3)); then
+      # The keeper exited during startup (a WAL it cannot recover, for one).
+      echo -e "${ERR}The keeper on ${host} exited during startup; see its launch log.${NC}" >&2
+      return 3
+    elif ((status != 0)); then
       echo -e "${ERR}Cannot relaunch the keeper on ${host}, exiting ...${NC}" >&2
       return 1
     fi
@@ -883,7 +889,9 @@ restart() {
   check_work_dir
 
   echo -e "${INFO}Restarting the keeper on ${RESTART_KEEPER_HOST} ...${NC}"
-  restart_keeper "${RESTART_KEEPER_HOST}" || exit 1
+  local status=0
+  restart_keeper "${RESTART_KEEPER_HOST}" || status=$?
+  ((status == 0)) || exit $((status == 3 ? 3 : 1))
   echo -e "${INFO}Keeper on ${RESTART_KEEPER_HOST} relaunched; its launch log is in ${MONITOR_DIR}${NC}"
 }
 

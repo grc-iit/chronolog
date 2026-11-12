@@ -851,6 +851,38 @@ class KeeperRestart(unittest.TestCase):
         self.assertEqual(manifest['state'], 'starting')
         self.assertIn('pending_launch', manifest)
 
+    def test_keeper_that_exits_during_startup_is_reported_and_leaves_the_deployment_running(self):
+        # A keeper that refuses to start (a WAL it cannot recover) is a known
+        # outcome: restart_keeper returns STARTUP_EXITED, not INCOMPLETE, and
+        # the deployment stays running with the dead keeper's record, so a
+        # later restart can replace it.
+        def exits(host, work, action, deadline, record=None):
+            if action == 'inventory':
+                return self.worker(host, work, action, deadline, record)
+            manifest = json.loads(self.manifest.read_text())
+            replacement = self.keeper | dict(pid=456, start_ticks='9')
+            manifest.pop('pending_launch')
+            manifest['records'].append(replacement)
+            manifest['keepers'].append(replacement)
+            lifecycle.atomic_json(self.manifest, manifest)
+            raise lifecycle.StartupExited('launched service exited during startup with code 1')
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            result = lifecycle.restart_keeper(self.work, 'local', 1000, '/test/chrono-keeper', str(self.config),
+                                              str(self.work/'monitor/keeper-1.launch.log'), worker=exits)
+        self.assertEqual(result, lifecycle.STARTUP_EXITED, output.getvalue())
+        self.assertIn('"exited": true', output.getvalue().replace('":true', '": true'))
+        manifest = json.loads(self.manifest.read_text())
+        self.assertEqual(manifest['state'], 'running')
+        self.assertNotIn('pending_launch', manifest)
+        self.assertEqual([r['pid'] for r in manifest['keepers']], [456])
+        # the next restart finds that keeper gone and replaces it
+        self.keeper = self.keeper | dict(pid=456, start_ticks='9')
+        self.keeper_state = 'stopped'
+        self.calls.clear()
+        result, output = self.restart()
+        self.assertEqual(result, 0, output)
+        self.assertEqual(self.calls, ['inventory', 'launch'])
+
 
 if __name__ == '__main__':
     unittest.main()

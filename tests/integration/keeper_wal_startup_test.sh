@@ -65,8 +65,8 @@ keeper_pid() { pgrep -f "$WORK_DIR/bin/chrono-keeper --config" | head -1; }
 
 # Replace the WAL, then relaunch keeper 1. The log text written after this
 # returns is what the following checks read.
-replace_wal() { # $1 = fixture mode, $2 = label
-    local pid
+replace_wal() { # $1 = fixture mode, $2 = label, $3 = "exits" when the keeper must refuse to start
+    local pid status=0
     pid=$(keeper_pid)
     if [ -n "$pid" ]; then
         kill -9 "$pid"
@@ -81,8 +81,15 @@ replace_wal() { # $1 = fixture mode, $2 = label
     (cd "$WAL_DIR" && find . -maxdepth 1 -name '*.wal' -print0 | sort -z | xargs -0 sha256sum) > "$RUN_DIR/${2}_before.sha"
     LOG_AT=$(wc -c < "$KEEPER_LOG" 2> /dev/null || echo 0)
     say "restarting keeper 1 on a $1 WAL"
-    "$DEPLOY" --restart-keeper 1 -w "$WORK_DIR" > "$RUN_DIR/restart_$2.out" 2>&1 ||
-        { say "restart failed"; cat "$RUN_DIR/restart_$2.out"; exit 2; }
+    # --restart-keeper waits until the keeper is Running. It exits 3 when the
+    # keeper exited during startup instead, which is the expected outcome for
+    # a WAL the keeper must refuse; any other failure stops the test.
+    "$DEPLOY" --restart-keeper 1 -w "$WORK_DIR" > "$RUN_DIR/restart_$2.out" 2>&1 || status=$?
+    if [ "$status" -eq 3 ] && [ "${3:-}" = exits ]; then
+        say "restart: the keeper exited during startup, as this WAL requires"
+    elif [ "$status" -ne 0 ]; then
+        say "restart failed (exit $status)"; cat "$RUN_DIR/restart_$2.out"; exit 2
+    fi
 }
 
 log_since() { tail -c +$((LOG_AT + 1)) "$KEEPER_LOG" 2> /dev/null || true; }
@@ -126,10 +133,10 @@ jq ".chrono_client.ClientQueryService.rpc.service_base_port = 5601" \
     "$CLIENT_CONF" > "$RUN_DIR/replay_client_conf.json" || { say "client conf patch failed"; exit 2; }
 
 # -------------------------------------------------------- older bad ----
-replace_wal older-bad older
-# restart_keeper returns once the launch is in the background, so no keeper
-# process right after it may mean one that has not started yet. It has exited
-# only once it was seen running, or once it logged that recovery failed.
+replace_wal older-bad older exits
+# A keeper that exited during startup has already logged why; one that is
+# still starting may not have yet. It has exited only once it was seen
+# running, or once it logged that recovery failed.
 exited=0
 seen=0
 for _ in $(seq 1 40); do

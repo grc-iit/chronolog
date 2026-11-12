@@ -493,7 +493,15 @@ stop() {
 restart() {
     echo -e "${INFO}Restarting keeper ${RESTART_KEEPER_INDEX}...${NC}"
     check_work_dir
-    restart_keeper "${RESTART_KEEPER_INDEX}" || exit 1
+    # 3: the keeper exited during startup (a WAL it cannot recover, for one);
+    # any other failure leaves the outcome unknown.
+    local status=0
+    restart_keeper "${RESTART_KEEPER_INDEX}" || status=$?
+    if [[ ${status} -eq 3 ]]; then
+        echo -e "${ERR}Keeper ${RESTART_KEEPER_INDEX} exited during startup; see its launch log.${NC}" >&2
+        exit 3
+    fi
+    [[ ${status} -eq 0 ]] || exit 1
     echo -e "${INFO}Keeper ${RESTART_KEEPER_INDEX} relaunched.${NC}"
 }
 

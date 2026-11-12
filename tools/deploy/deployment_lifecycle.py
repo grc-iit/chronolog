@@ -20,6 +20,13 @@ import sys
 import time
 
 INCOMPLETE = -27
+# Exit status of a launch whose service process exited before it was Running:
+# the outcome is known (nothing runs), unlike an expired budget.
+STARTUP_EXITED = 3
+
+
+class StartupExited(RuntimeError):
+    """The launched service process exited before it reported Running."""
 COMPONENTS = ('keeper', 'player', 'grapher', 'visor')
 
 
@@ -297,6 +304,9 @@ def call_worker(host, work, action, deadline, record=None):
     child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         output, error = child.communicate(timeout=max(0, deadline-time.monotonic()))
+        if child.returncode == STARTUP_EXITED:
+            failure = json.loads(output)
+            raise StartupExited(failure.get('reason', 'launched service exited during startup'))
         if child.returncode != 0:
             detail = error or output
             try:
@@ -915,7 +925,13 @@ def launch(work, specification):
     original = None
     while time.monotonic() < deadline:
         if child.poll() is not None:
-            raise RuntimeError('launched service exited during startup; original launch retained')
+            # Our own child is gone before its identity was recorded: the
+            # reservation is resolved, with nothing left running.
+            manifest = json.loads(manifest_path(work).read_text())
+            if manifest.get('pending_launch',{}).get('specification') == specification:
+                manifest.pop('pending_launch')
+                atomic_json(manifest_path(work), manifest)
+            raise StartupExited('launched service exited during startup with code '+str(child.returncode))
         # The exec-error handshake can precede observable argument setup. Only
         # empty arguments on this exact original lifetime are re-observed; no
         # replacement launch or new startup budget is created.
@@ -938,7 +954,8 @@ def launch(work, specification):
                 manifest['keepers'].append(record)
             atomic_json(manifest_path(work), manifest)
         if child.poll() is not None:
-            raise RuntimeError('launched service exited during startup; identity retained')
+            raise StartupExited('launched service exited during startup with code '+str(child.returncode)
+                                +'; its identity is recorded')
         try:
             current = json.loads(Path(record['status_file']).read_text())
             if (same_identity(current, record) and current.get('deployment_id') == deployment
@@ -1017,6 +1034,20 @@ def restart_keeper(work, host, budget_ms, executable, config, output, worker=cal
              | {'operation':'restart-keeper', 'status':0, 'state':'Running',
                 'elapsed_ms':int((time.monotonic()-started)*1000)})
         return 0
+    except StartupExited as error:
+        # The keeper refused to start (a WAL it cannot recover, for one). Its
+        # record, if written, shows a process that is gone, so the deployment
+        # stays running and a later restart can replace it.
+        try:
+            manifest = json.loads(manifest_path(work).read_text())
+            if manifest.get('state') == 'starting' and 'pending_launch' not in manifest:
+                manifest['state'] = 'running'
+                atomic_json(manifest_path(work), manifest)
+        except (OSError, ValueError):
+            pass
+        emit({'operation':'restart-keeper', 'status':INCOMPLETE, 'exited':True,
+              'elapsed_ms':int((time.monotonic()-started)*1000), 'reason':str(error)})
+        return STARTUP_EXITED
     except (OSError, ValueError, KeyError, RuntimeError, TimeoutError, subprocess.TimeoutExpired) as error:
         emit({'operation':'restart-keeper', 'status':INCOMPLETE,
               'elapsed_ms':int((time.monotonic()-started)*1000), 'reason':str(error)})
@@ -1131,6 +1162,9 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
+    except StartupExited as error:
+        emit({'status':INCOMPLETE, 'exited':True, 'reason':str(error)})
+        sys.exit(STARTUP_EXITED)
     except (OSError, ValueError, KeyError, RuntimeError, TimeoutError, subprocess.TimeoutExpired) as error:
         emit({'status':INCOMPLETE, 'reason':str(error)})
         sys.exit(27)
