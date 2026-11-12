@@ -48,7 +48,7 @@ Add the `source` command to your `~/.bashrc` (or `~/.zshrc`) so Spack is availab
 :::
 
 :::note ChronoLog 3.4.0 and older
-ChronoLog 3.4.0 and older build with Spack [v0.21.2](https://github.com/spack/spack/releases/tag/v0.21.2), not v1.2.2: v1.2.2 has no recipes for the versions their `spack.yaml` pins, and v0.21.2 cannot read the `spack.yaml` of 3.5.0. To build an older version, clone `--branch v0.21.2` into another directory and source its `setup-env.sh` instead, including in `~/.bashrc` if you put it there. 3.5.0 and older components cannot exchange RPCs, so do not mix the builds.
+ChronoLog 3.4.0 and older build with Spack [v0.21.2](https://github.com/spack/spack/releases/tag/v0.21.2), not v1.2.2: their `spack.yaml` pins versions that the recipes of v1.2.2 no longer have (concretizing fails on its `cmake@3.25.1 ^openssl@3.0`), and v0.21.2 cannot read the `spack.yaml` of 3.5.0. To build an older version, clone `--branch v0.21.2` into another directory and source its `setup-env.sh` instead, including in `~/.bashrc` if you put it there. 3.5.0 and older components cannot exchange RPCs, so do not mix the builds.
 :::
 
 ## Checkout ChronoLog

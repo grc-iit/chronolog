@@ -53,7 +53,7 @@ source /path-to-where-spack-was-cloned/spack/share/spack/setup-env.sh
 
 Replace `/path-to-where-spack-was-cloned/` with your actual path.
 
-ChronoLog 3.4.0 and older need Spack v0.21.2 instead: Spack v1.2.2 has no recipes for the versions their `spack.yaml` pins (it stops at `cmake@3.25.1 ^openssl@3.0`), and v0.21.2 cannot read the `spack.yaml` of 3.5.0. To build such a version, clone `--branch v0.21.2` into another directory and source its `setup-env.sh` in place of the v1.2.2 one. A 3.5.0 client cannot talk to 3.4.0 or older servers, or the other way round, so build every component and client from the same version.
+ChronoLog 3.4.0 and older need Spack v0.21.2 instead: their `spack.yaml` pins versions that the recipes of Spack v1.2.2 no longer have (concretizing fails on its `cmake@3.25.1 ^openssl@3.0`), and v0.21.2 cannot read the `spack.yaml` of 3.5.0. To build such a version, clone `--branch v0.21.2` into another directory and source its `setup-env.sh` in place of the v1.2.2 one. A 3.5.0 client cannot talk to 3.4.0 or older servers, or the other way round, so build every component and client from the same version.
 
 ## Step 3: Move to the Repository
 

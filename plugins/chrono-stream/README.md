@@ -36,7 +36,7 @@ As part of the initial version of the streaming plugin we have a client streamin
 - File `provisioning/dashboards/chronolog.yml` has all the details for provisioning Grafana 
 
 ### 2. Environment setup
-Launch the below commands on your terminal to get the session ready
+Launch the below commands on your terminal to get the session ready. Source the Spack that matches the checkout: v1.2.2 for ChronoLog 3.5.0 and `develop`, v0.21.2 for 3.4.0 and older.
 ``` bash
 cd <ChronoLog code repo>
 source ~/<directory where spack is cloned>/spack/share/spack/setup-env.sh
