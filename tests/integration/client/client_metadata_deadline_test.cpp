@@ -436,7 +436,9 @@ TEST_P(ClientMetadataDeadline, ColdStartupExpiryDoesNotDispatchAndOwnerDropRetir
 {
     MetadataPeer peer(GetParam());
     auto conf = peer.portal;
-    conf.RPC_POLICY.control_ms = 40;
+    // Shorter than the native startup: on Margo 0.24 that takes less than
+    // 40 ms, and Connect then succeeded before its deadline.
+    conf.RPC_POLICY.control_ms = 5;
     auto owner = ChronologClientImpl::GetClientImplInstance(conf, WRITER_MODE, ClientQueryServiceConf{});
     auto context = owner->context();
     auto start = Clock::now();
