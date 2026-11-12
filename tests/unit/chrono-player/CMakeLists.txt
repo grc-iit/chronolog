@@ -156,6 +156,7 @@ target_link_libraries(archive_request_reply_test PRIVATE
     GTest::gtest_main
     chrono_common
     chronolog_client
+    chrono_rpc
     thallium
     ${HDF5_LIBRARIES}
 )
