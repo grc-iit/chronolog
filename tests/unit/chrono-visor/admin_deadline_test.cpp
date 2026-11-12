@@ -150,6 +150,34 @@ TEST_P(AdminDeadline, LateStopBlocksAnotherAcquirerAndRecreation)
     EXPECT_NE(portal.DestroyStory(100, "chronicle", "story"), CL_SUCCESS);
     EXPECT_EQ(starts[0].load(), 1);
 }
+// A stop the keeper did not confirm leaves the story closing, and the next
+// acquire sends that stop again. Once the keeper answers, the acquire succeeds
+// with a new recording instead of being refused until the visor restarts (a
+// keeper or grapher that was only paused when the story was released).
+TEST_P(AdminDeadline, UnconfirmedStopIsSentAgainByTheNextAcquire)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    ClientId second = 200;
+    uint64_t offset = 0;
+    ASSERT_EQ(portal.ClientConnect(0, second, offset), CL_SUCCESS);
+    ASSERT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
+    stopDelays[1] = 300;
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_ERR_OUTCOME_UNCONFIRMED);
+    int const stopsAfterRelease = stops[1].load();
+    EXPECT_EQ(stopsAfterRelease, 1);
+    stopDelays[1] = 0; // the keeper answers again
+    // Let the first stop's 300 ms handler finish, so its work no longer holds
+    // admin slots; while it does, the acquire is refused as busy.
+    std::this_thread::sleep_for(400ms);
+    auto response = portal.AcquireStory(200, "chronicle", "story");
+    EXPECT_EQ(response.getErrorCode(), CL_SUCCESS);
+    EXPECT_FALSE(response.getKeepers().empty());
+    EXPECT_GT(stops[1].load(), stopsAfterRelease) << "the stop was not sent again";
+    EXPECT_EQ(starts[0].load(), 2) << "no new recording was started";
+    EXPECT_EQ(portal.ReleaseStory(200, "chronicle", "story"), CL_SUCCESS);
+}
 TEST_P(AdminDeadline, SaturationDefault32StartsNoMutationOrFanout)
 {
     VisorClientPortal portal;

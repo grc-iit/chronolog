@@ -216,6 +216,9 @@ public:
                                                   rpc::RpcDeadline const* = nullptr,
                                                   bool* locally_rejected_before_setup = nullptr);
     int notifyRecordingGroupOfStoryRecordingStop(StoryId const&, rpc::RpcDeadline const* = nullptr);
+    // Sends the stop of a Closing recording to its stopTargets and, once each
+    // confirms, removes it from activeStories. CL_SUCCESS or the first failure.
+    int resendStops(std::shared_ptr<StoryRecording> const&, rpc::RpcDeadline const&);
 
     // Broadcast destroy_story to every active Grapher in the registry.
     // A story may have been recorded by several recording groups over its

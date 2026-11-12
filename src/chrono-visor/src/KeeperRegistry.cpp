@@ -683,19 +683,50 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     output.clear();
     std::shared_ptr<StoryRecording> recording;
     std::vector<rpc::RpcReservation> reservations;
+    bool resent = false;
+    for(;;)
+    {
+        std::shared_ptr<StoryRecording> closing;
+        {
+            auto lock = boundedRegistryLock(registryLock, deadline);
+            if(!lock.owns_lock())
+                return rejectBeforeSetup(CL_ERR_DEADLINE_EXCEEDED);
+            if(chronicleDestructions.count(chronicle))
+                return CL_ERR_OUTCOME_UNCONFIRMED;
+            auto existing = activeStories.find(id);
+            if(existing == activeStories.end())
+                break;
+            if(existing->second->phase == StoryRecording::Active)
+            {
+                output = existing->second->confirmedKeepers;
+                player = existing->second->player;
+                return CL_SUCCESS;
+            }
+            // A release whose stop one component did not confirm left the
+            // recording Closing. Send that stop again; a fresh recording starts
+            // once every component confirmed it.
+            if(existing->second->phase != StoryRecording::Closing || existing->second->stopTargets.empty())
+                return CL_ERR_OUTCOME_UNCONFIRMED;
+            closing = existing->second;
+        }
+        if(resendStops(closing, deadline) != CL_SUCCESS)
+            return CL_ERR_OUTCOME_UNCONFIRMED;
+        resent = true;
+    }
+    for(;;)
     {
         auto lock = boundedRegistryLock(registryLock, deadline);
         if(!lock.owns_lock())
             return rejectBeforeSetup(CL_ERR_DEADLINE_EXCEEDED);
         if(chronicleDestructions.count(chronicle))
             return CL_ERR_OUTCOME_UNCONFIRMED;
-        auto existing = activeStories.find(id);
-        if(existing != activeStories.end())
+        // Another acquire may have started the story since the check above.
+        if(auto again = activeStories.find(id); again != activeStories.end())
         {
-            if(existing->second->phase != StoryRecording::Active)
+            if(again->second->phase != StoryRecording::Active)
                 return CL_ERR_OUTCOME_UNCONFIRMED;
-            output = existing->second->confirmedKeepers;
-            player = existing->second->player;
+            output = again->second->confirmedKeepers;
+            player = again->second->player;
             return CL_SUCCESS;
         }
         if(!is_running())
@@ -728,16 +759,34 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         }
         // All children, including the dependent Player, are admitted before any
         // forward. A portal coordinator occupies its own separately counted slot.
+        bool retry = false;
         for(std::size_t i = 0; i < recording->clients.size(); ++i)
         {
             auto token = adminRuntime->runtime.reserve(deadline);
             if(!token)
-                return rejectBeforeSetup(token.status());
+            {
+                // The stops just sent again return their slots a moment
+                // after their results; wait for them, within this acquire's
+                // deadline, instead of refusing a story that is free now.
+                if(!resent || token.status() != CL_ERR_RPC_CAPACITY || deadline.expired())
+                    return rejectBeforeSetup(token.status());
+                retry = true;
+                break;
+            }
             reservations.push_back(std::move(token));
             recording->starts.push_back(std::make_shared<AdminCompletion>());
         }
+        if(retry)
+        {
+            reservations.clear();
+            recording.reset();
+            lock.unlock();
+            pause(deadline);
+            continue;
+        }
         recording->originalStarts = recording->starts.size();
         activeStories.emplace(id, recording);
+        break;
     }
     std::vector<rpc::RpcPending<int>> pending;
     uint64_t start = std::chrono::system_clock::now().time_since_epoch().count();
@@ -821,7 +870,6 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
     auto deadline =
             supplied ? *supplied : rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
     std::shared_ptr<StoryRecording> recording;
-    std::vector<rpc::RpcReservation> reservations;
     std::vector<std::size_t> targets;
     for(;;)
     {
@@ -832,6 +880,13 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
         if(it == activeStories.end())
             return CL_SUCCESS;
         recording = it->second;
+        if(recording->phase == StoryRecording::Closing && !recording->stopTargets.empty())
+        {
+            // An earlier stop was not confirmed by every component: send it
+            // again rather than leave the story closed.
+            lock.unlock();
+            return resendStops(recording, deadline);
+        }
         if(recording->phase != StoryRecording::Active)
             return CL_ERR_OUTCOME_UNCONFIRMED;
         // A late start must settle before the stop, so the stop reaches each
@@ -850,27 +905,38 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
             continue;
         }
         targets = std::move(stop.targets);
-        for(std::size_t i = 0; i < targets.size(); ++i)
+        recording->stopTargets = targets;
+        recording->phase = StoryRecording::Closing;
+        break;
+    }
+    return resendStops(recording, deadline);
+}
+
+int KeeperRegistry::resendStops(std::shared_ptr<StoryRecording> const& recording, rpc::RpcDeadline const& deadline)
+{
+    std::vector<rpc::RpcReservation> reservations;
+    std::vector<std::shared_ptr<DataStoreAdminClient>> clients;
+    {
+        auto lock = boundedRegistryLock(registryLock, deadline);
+        if(!lock.owns_lock())
+            return CL_ERR_OUTCOME_UNCONFIRMED;
+        for(auto target: recording->stopTargets)
         {
             auto token = adminRuntime->runtime.reserve(deadline);
             if(!token)
                 return token.status();
             reservations.push_back(std::move(token));
+            clients.push_back(recording->clients[target]);
         }
-        recording->phase = StoryRecording::Closing;
-        break;
     }
     std::vector<rpc::RpcPending<int>> pending;
-    for(std::size_t i = 0; i < targets.size(); ++i)
-    {
-        auto c = std::make_shared<AdminCompletion>();
+    for(std::size_t i = 0; i < clients.size(); ++i)
         pending.push_back(adminRuntime->runtime.submit<int>(
                 std::move(reservations[i]),
-                std::make_shared<AdminWork>(recording->clients[targets[i]],
-                                            AdminArguments{AdminAction::Stop, "", "", id, 0, {}},
-                                            c,
+                std::make_shared<AdminWork>(clients[i],
+                                            AdminArguments{AdminAction::Stop, "", "", recording->id, 0, {}},
+                                            std::make_shared<AdminCompletion>(),
                                             shared_from_this())));
-    }
     int status = CL_SUCCESS;
     for(auto& p: pending)
     {
@@ -878,16 +944,21 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
         if(!r.reply || *r.reply != CL_SUCCESS)
             status = r.reply ? *r.reply : r.status;
     }
-    if(status == CL_SUCCESS)
+    if(status != CL_SUCCESS)
     {
-        auto lock = boundedRegistryLock(registryLock, deadline);
-        if(!lock.owns_lock())
-            return CL_ERR_OUTCOME_UNCONFIRMED;
-        auto it = activeStories.find(id);
-        if(it != activeStories.end() && it->second == recording)
-            activeStories.erase(it);
+        LOG_WARNING("[ChronoProcessRegistry] Stop of StoryID={} not confirmed by every component ({}); it is sent "
+                    "again on the story's next acquire or release",
+                    recording->id,
+                    status);
+        return status;
     }
-    return status;
+    auto lock = boundedRegistryLock(registryLock, deadline);
+    if(!lock.owns_lock())
+        return CL_ERR_OUTCOME_UNCONFIRMED;
+    auto it = activeStories.find(recording->id);
+    if(it != activeStories.end() && it->second == recording)
+        activeStories.erase(it);
+    return CL_SUCCESS;
 }
 
 int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chronicle,

@@ -155,6 +155,11 @@ struct StoryRecording
     std::vector<std::shared_ptr<AdminCompletion>> starts;
     std::size_t originalStarts = 0;
     ServiceId player;
+    // Closing: the clients a stop was sent to. A stop that one of them did not
+    // confirm leaves the recording Closing; the next acquire or release sends
+    // it again to the same clients (stop is idempotent on each), so a
+    // component that was only paused cannot hold the story closed for good.
+    std::vector<std::size_t> stopTargets;
 };
 
 // The recordings a keeper of `group` must start when it registers: the active
