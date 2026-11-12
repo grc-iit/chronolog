@@ -408,11 +408,40 @@ TEST(KeeperChunkRetentionStore, CapacityRefusalIsRetriedSoonWithBackoff)
     std::this_thread::sleep_for(1000ms);
     EXPECT_EQ(store.requeueStalled(300s), 1u);
     ASSERT_EQ(q.ejectStoryChunk(), chunk);
-    store.markSendFailed(chunk, chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    store.markSendFailed(chunk, chl::CL_ERR_UNKNOWN);
     std::this_thread::sleep_for(1100ms);
     EXPECT_EQ(store.requeueStalled(300s), 0u) << "another failure waits for the stall age";
     EXPECT_EQ(store.retainedChunkCount(sid), 1u);
     EXPECT_EQ(store.requeueStalled(0s), 1u);
+    ASSERT_EQ(q.ejectStoryChunk(), chunk);
+    store.markSendFailed(chunk); // close the drain protocol so nothing dangles
+}
+
+// A transfer the caller stopped waiting for (CL_ERR_OUTCOME_UNCONFIRMED) goes
+// on, and a re-send of the same bytes only collects its outcome, so it is
+// tried again after 1 s, doubling while the outcome stays unknown, instead of
+// after the stall age (300 s by default). A paused grapher's late receipt is
+// then collected seconds after it answers.
+TEST(KeeperChunkRetentionStore, UnconfirmedSendIsRetriedSoonWithBackoff)
+{
+    ensureLogger();
+    using namespace std::chrono_literals;
+    chl::StoryChunkExtractionQueue q;
+    chl::KeeperChunkRetentionStore store(q, 100);
+    chl::StoryId sid = 7;
+    store.ingestSealedChunk(sid, makeChunk(sid, 100, 200, 100, 5, 1, "A"));
+    chl::StoryChunk* chunk = q.ejectStoryChunk();
+    ASSERT_NE(chunk, nullptr);
+    store.markSendFailed(chunk, chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_EQ(store.requeueStalled(300s), 0u);
+    std::this_thread::sleep_for(1100ms);
+    EXPECT_EQ(store.requeueStalled(300s), 1u) << "first unconfirmed send: retried after 1 s";
+    ASSERT_EQ(q.ejectStoryChunk(), chunk);
+    store.markSendFailed(chunk, chl::CL_ERR_OUTCOME_UNCONFIRMED);
+    std::this_thread::sleep_for(1100ms);
+    EXPECT_EQ(store.requeueStalled(300s), 0u) << "second unconfirmed send waits 2 s";
+    std::this_thread::sleep_for(1000ms);
+    EXPECT_EQ(store.requeueStalled(300s), 1u);
     ASSERT_EQ(q.ejectStoryChunk(), chunk);
     store.markSendFailed(chunk); // close the drain protocol so nothing dangles
 }

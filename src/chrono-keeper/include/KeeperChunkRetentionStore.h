@@ -306,11 +306,17 @@ public:
 
     // Drain callback: transfer failed. The chunk stays retained and readable;
     // the stall timer (requeueStalled) re-sends it later — no immediate
-    // re-stash, which would busy-loop against a dead grapher. A transfer
-    // refused for capacity (CL_ERR_RPC_CAPACITY: no free slot on this keeper,
-    // or the receiver answered that it is busy) sent nothing, so it is tried
-    // again after 1 s, doubling to 30 s while refusals continue, instead of
-    // after the stall age.
+    // re-stash, which would busy-loop against a dead grapher. Two outcomes are
+    // tried again after 1 s, doubling to 30 s while they continue, instead of
+    // after the stall age:
+    // - refused for capacity (CL_ERR_RPC_CAPACITY: no free slot on this
+    //   keeper, or the receiver answered that it is busy): nothing was sent;
+    // - unconfirmed (CL_ERR_OUTCOME_UNCONFIRMED): the caller stopped waiting
+    //   but the transfer goes on, and a re-send of the same bytes does not
+    //   transfer again. It answers at once while the outcome is unknown and
+    //   collects the receipt once it arrives, so a grapher that was only slow
+    //   or paused confirms the chunk seconds after it answers, not after the
+    //   stall age.
     void markSendFailed(StoryChunk* chunk, int status = CL_ERR_UNKNOWN)
     {
         std::lock_guard<std::mutex> lock(tailMutex);
@@ -329,14 +335,14 @@ public:
         chunk_it->second.in_queue = false;
         auto const now = std::chrono::steady_clock::now();
         chunk_it->second.last_activity = now;
-        if(status == CL_ERR_RPC_CAPACITY)
+        if(status == CL_ERR_RPC_CAPACITY || status == CL_ERR_OUTCOME_UNCONFIRMED)
         {
             auto& state = chunk_it->second;
             state.refusals = std::min(state.refusals + 1, 6u);
             state.retry_at =
                     now + std::min(std::chrono::seconds(1) * (1u << (state.refusals - 1)), std::chrono::seconds(30));
-            LOG_DEBUG("[KeeperChunkRetentionStore] send refused for capacity for StoryId={} chunk {}-{}; retrying "
-                      "after refusal {}",
+            LOG_DEBUG("[KeeperChunkRetentionStore] send {} for StoryId={} chunk {}-{}; retrying after attempt {}",
+                      status == CL_ERR_RPC_CAPACITY ? "refused for capacity" : "unconfirmed",
                       chunk->getStoryId(),
                       chunk->getStartTime(),
                       chunk->getEndTime(),
