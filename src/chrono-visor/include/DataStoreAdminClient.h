@@ -10,6 +10,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 
 #include <chrono_monitor.h>
+#include <chronolog_errcode.h>
 #include <chronolog_types.h>
 #include <ServiceId.h>
 
@@ -148,16 +149,11 @@ public:
         return status;
     }
 
-    ~DataStoreAdminClient()
-    {
-        collection_service_available.deregister();
-        shutdown_data_collection.deregister();
-        start_story_recording.deregister();
-        start_story_recording_with_keepers.deregister();
-        stop_story_recording.deregister();
-        destroy_story.deregister();
-        destroy_chronicle.deregister();
-    }
+    // No deregister(): every DataStoreAdminClient on this engine defines the same
+    // RPC names and so shares their IDs. Deregistering them here took them away
+    // from the clients of the other keepers, graphers and players (#743); engine
+    // finalize releases them.
+    ~DataStoreAdminClient() = default;
 
 private:
     std::string service_addr;           // na address of Keeper/Grapher/Player Collection Service

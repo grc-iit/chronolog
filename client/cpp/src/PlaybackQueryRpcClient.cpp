@@ -34,11 +34,10 @@ chl::PlaybackQueryRpcClient::PlaybackQueryRpcClient(chl::ClientQueryService& cli
     story_playback_request = theClientQueryService.get_engine().define("story_playback_request");
 }
 
-chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient()
-{
-    playback_service_available.deregister();
-    story_playback_request.deregister();
-}
+// No deregister(): every PlaybackQueryRpcClient on this engine defines the same
+// RPC names and so shares their IDs. Deregistering them here took them away from
+// the clients of the other players (#743); engine finalize releases them.
+chl::PlaybackQueryRpcClient::~PlaybackQueryRpcClient() = default;
 //////////////
 
 int chl::PlaybackQueryRpcClient::is_playback_service_available()

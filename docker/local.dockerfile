@@ -10,12 +10,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 ENV TZ=America/Chicago
 
-# Install system dependencies
+# Install system dependencies.
+# gfortran: spack's py-scikit-build-core recipe, a build dependency of
+# py-pybind11 3, requires a Fortran compiler, and spack builds none itself.
 RUN apt-get update \
 # && apt-mark hold libc6 libc-bin libc6-dev \
 # && apt-get -y upgrade \
  && DEBIAN_FRONTEND=noninteractive apt-get -y install \
-    gcc g++ automake cmake libtool pkgconf \
+    gcc g++ gfortran automake cmake libtool pkgconf \
     libjson-c-dev libboost-dev libcereal-dev \
     git vim fuse sudo curl wget \
     libfuse-dev libssl-dev \
@@ -57,7 +59,7 @@ RUN cd \
 
 # Install dependencies and ChronoLog, then clean Spack
 RUN cd \
- && git clone --branch v0.21.2 https://github.com/spack/spack.git \
+ && git clone --depth 1 --branch v1.2.2 https://github.com/spack/spack.git \
  && export SPACK_ROOT=$(pwd)/spack \
  && source spack/share/spack/setup-env.sh \
  && cd chronolog-repo \

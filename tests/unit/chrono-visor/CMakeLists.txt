@@ -77,3 +77,28 @@ gtest_discover_tests(keeper_restart_stories_test TEST_PREFIX "Unit_ChronoVisor_"
 if(CHRONOLOG_INSTALL_TESTS)
     chronolog_install_target(keeper_restart_stories_test DESTINATION tests)
 endif()
+
+# Admin clients of one engine outliving each other (GTest, #743). Runs fake
+# data store admin services over ofi+sockets on 127.0.0.1.
+add_executable(data_store_admin_client_test
+    data_store_admin_client_test.cpp
+)
+
+target_include_directories(data_store_admin_client_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/chrono-visor/include
+    ${CMAKE_SOURCE_DIR}/src/chrono-common/include
+    ${CMAKE_SOURCE_DIR}/client/cpp/include
+)
+
+target_link_libraries(data_store_admin_client_test PRIVATE
+    GTest::gtest_main
+    chrono_common
+    chronolog_client
+    thallium
+)
+
+set_target_properties(data_store_admin_client_test PROPERTIES OUTPUT_NAME chronolog-test-data-store-admin-client)
+gtest_discover_tests(data_store_admin_client_test TEST_PREFIX "Unit_ChronoVisor_" PROPERTIES TIMEOUT 60)
+if(CHRONOLOG_INSTALL_TESTS)
+    chronolog_install_target(data_store_admin_client_test DESTINATION tests)
+endif()

@@ -28,8 +28,9 @@ chronolog::RDMATransferAgent::RDMATransferAgent(tl::engine& tl_engine, chronolog
 chronolog::RDMATransferAgent::~RDMATransferAgent()
 {
     LOG_DEBUG("[RDMATransferAgent] Destroying agent for receiver service {}", chl::to_string(receiver_service_id));
-    receiver_available.deregister();
-    receive_story_chunk.deregister();
+    // No deregister(): every agent on this engine defines the same RPC names and
+    // so shares their IDs. Deregistering them here took them away from the
+    // agents of the other receivers (#743); engine finalize releases them.
 }
 
 bool chronolog::RDMATransferAgent::is_receiver_available() const

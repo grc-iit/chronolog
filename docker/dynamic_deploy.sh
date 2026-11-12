@@ -161,14 +161,14 @@ done
 CHRONOLOG_HOME=/home/grc-iit
 CHRONOLOG_PREFIX=""
 for candidate in chronolog-install chronolog-release-install; do
-    if docker exec chronolog-c1 test -x "${CHRONOLOG_HOME}/${candidate}/chronolog/tools/deploy_cluster.sh" 2>/dev/null; then
+    if docker exec chronolog-c1 test -x "${CHRONOLOG_HOME}/${candidate}/chronolog/tools/deploy/deploy_cluster.sh" 2>/dev/null; then
         CHRONOLOG_PREFIX="${CHRONOLOG_HOME}/${candidate}/chronolog"
         break
     fi
 done
 if [ -z "$CHRONOLOG_PREFIX" ]; then
     echo "Error: no ChronoLog install found in chronolog-c1."
-    echo "       Looked for <prefix>/chronolog/tools/deploy_cluster.sh under:"
+    echo "       Looked for <prefix>/chronolog/tools/deploy/deploy_cluster.sh under:"
     echo "         ${CHRONOLOG_HOME}/chronolog-install"
     echo "         ${CHRONOLOG_HOME}/chronolog-release-install"
     echo "       Does image '${IMAGE_NAME}' actually contain a built ChronoLog?"
@@ -176,7 +176,7 @@ if [ -z "$CHRONOLOG_PREFIX" ]; then
 fi
 echo "Using ChronoLog install prefix: ${CHRONOLOG_PREFIX}"
 CHRONOLOG_CONF=${CHRONOLOG_PREFIX}/conf
-CHRONOLOG_TOOLS=${CHRONOLOG_PREFIX}/tools
+CHRONOLOG_TOOLS=${CHRONOLOG_PREFIX}/tools/deploy
 
 # Prepare hosts files
 docker exec chronolog-c1 bash -c "rm -rf $CHRONOLOG_CONF/hosts_*"
@@ -197,8 +197,10 @@ for i in $(seq 1 $NUM_CONTAINERS); do
     docker exec chronolog-c1 bash -c "echo c$i >> $CHRONOLOG_CONF/hosts_all"
 done
 
-# Deploy ChronoLog (pre-built in image, no build/install needed)
-if ! docker exec chronolog-c1 bash -c "$CHRONOLOG_TOOLS/deploy_cluster.sh --start"; then
+# Deploy ChronoLog (pre-built in image, no build/install needed). The work
+# directory is passed explicitly: deploy_cluster.sh defaults it to its own
+# directory's parent, which is <prefix>/tools, not the install root.
+if ! docker exec chronolog-c1 bash -c "$CHRONOLOG_TOOLS/deploy_cluster.sh --start --work-dir $CHRONOLOG_PREFIX"; then
     echo "Error: deploy_cluster.sh --start failed; the cluster is NOT running."
     exit 1
 fi

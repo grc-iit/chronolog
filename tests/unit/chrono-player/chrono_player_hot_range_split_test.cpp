@@ -44,6 +44,15 @@ std::vector<uint64_t> eventTimes(chl::HotRangeSplit const& split)
 }
 } // namespace
 
+// A replay may start at 0; the player starts it at 1, the earliest time an
+// event can have, and leaves any other start as it is (#741).
+TEST(HotRangeSplit, ReplayStartingAtZeroStartsAtOne)
+{
+    EXPECT_EQ(chl::replayStartTime(0), 1u);
+    EXPECT_EQ(chl::replayStartTime(1), 1u);
+    EXPECT_EQ(chl::replayStartTime(1760000000123456789ull), 1760000000123456789ull);
+}
+
 TEST(HotRangeSplit, NoKeepersIsArchiveOnly)
 {
     std::vector<chl::HotRangeResponse> responses;

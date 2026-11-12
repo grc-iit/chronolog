@@ -102,12 +102,33 @@ activate_spack_environment() {
     fi
 }
 
+sync_spack_recipe_repos() {
+    # Spack clones the builtin package recipes at the commit spack.yaml pins
+    # only the first time, and never moves an existing checkout. When the pin
+    # has changed since, move the checkout, so the environment is concretized
+    # with the recipes spack.yaml names.
+    local pinned checkout current
+    pinned=$(spack config get repos | sed -n '/^  builtin:/,/^  [^ ]/s/^ *commit: *//p' | head -n 1)
+    [[ -z "${pinned}" ]] && return 0
+    checkout=$(spack location --repo builtin 2>/dev/null) || return 0
+    current=$(git -C "${checkout}" rev-parse HEAD 2>/dev/null) || return 0
+    if [[ "${current}" != "${pinned}" ]]; then
+        echo -e "${DEBUG}Moving the builtin package recipes from ${current:0:10} to ${pinned:0:10}, the commit spack.yaml pins...${NC}"
+        if ! spack repo update builtin; then
+            echo -e "${ERR}Could not move the builtin package recipes to ${pinned}. Exiting.${NC}"
+            exit 1
+        fi
+    fi
+}
+
 check_spack() {
     # Check if an environment is active
     if spack env status | grep -q "No active environment"; then
         echo -e "${DEBUG}No active Spack environment found. Exiting.${NC}"
         exit 1
     fi
+
+    sync_spack_recipe_repos
 
     # Concretize the environment to check for dependencies
     echo -e "${DEBUG}Checking dependencies...${NC}"

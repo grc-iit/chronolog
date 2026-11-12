@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 find_package(Thallium REQUIRED)
 find_package(MPI REQUIRED)
+# chrono_monitor.cpp pulls in spdlog, which (with an external fmt) needs
+# fmt::fmt linked. spdlog::spdlog carries that dependency transitively.
+find_package(spdlog REQUIRED)
 
 #------------------------------------------------------------------------------
 # Build Configuration
@@ -31,6 +34,7 @@ target_include_directories(thallium_server PRIVATE
 target_link_libraries(thallium_server
     PRIVATE
         thallium
+        spdlog::spdlog
         pthread
 )
 
@@ -50,6 +54,7 @@ target_include_directories(thallium_client PRIVATE
 target_link_libraries(thallium_client
     PRIVATE
         thallium
+        spdlog::spdlog
 )
 
 add_test(NAME Communication_Thallium_ClientSendRecvOrRdma COMMAND thallium_client)
@@ -70,6 +75,7 @@ target_include_directories(thallium_client_mpi SYSTEM PRIVATE
 target_link_libraries(thallium_client_mpi
     PRIVATE
         thallium
+        spdlog::spdlog
         ${MPI_C_LIBRARIES}
         ${MPI_CXX_LIBRARIES}
 )
