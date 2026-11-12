@@ -393,6 +393,27 @@ public:
     bool valid() const noexcept { return valid_; }
     std::string const& reason() const noexcept { return reason_; }
     std::vector<PublisherParkProof> const& requests() const noexcept { return requests_; }
+    // True when this daemon was launched by the deployment lifecycle and its
+    // deployment record says a managed stop is under way: the stop controller
+    // marks the record "stopping" before it sends any TERM. A daemon sent
+    // SIGTERM directly finds it "running" and stops on its own, without the
+    // barrier, which only a controller completes.
+    static bool StopRequested(std::string const& config) noexcept
+    {
+        try
+        {
+            auto deployment = std::getenv("CHRONOLOG_DEPLOYMENT_ID");
+            if(!deployment || !*deployment)
+                return false;
+            auto work = IO::deploymentRoot(std::filesystem::canonical(config));
+            auto manifest = IO::parse(IO::bytes(work / "monitor/lifecycle/deployment.json"));
+            return IO::string(manifest.get(), "id") == deployment && IO::string(manifest.get(), "state") == "stopping";
+        }
+        catch(...)
+        {
+            return false;
+        }
+    }
     static bool PublishReady(std::string const& config,
                              uint32_t group,
                              uint64_t generation,

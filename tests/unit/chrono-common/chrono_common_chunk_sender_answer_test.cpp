@@ -191,8 +191,10 @@ TEST(ChunkSenderAnswer, ThalliumErrorFromAnIntAnswerDoesNotLeaveTheHandler)
 }
 
 // The keeper's handlers answer only through rpc::respond, which catches a
-// failed reply: record_event (one answer), record_event_durable (two), then
-// tail_get_sequences, tail_get_events and story_range_fetch (one each).
+// failed reply: record_event (two: the refusal after quiescence and the
+// answer), record_event_durable (three: the refusal after quiescence, the
+// WAL-off answer and the durable answer), then tail_get_sequences,
+// tail_get_events and story_range_fetch (one each).
 TEST(ChunkSenderAnswer, KeeperHandlersAnswerOnlyThroughTheHelper)
 {
     std::string const file = fileText(CHRONOLOG_KEEPER_RECORDING_SERVICE);
@@ -205,5 +207,5 @@ TEST(ChunkSenderAnswer, KeeperHandlersAnswerOnlyThroughTheHelper)
         EXPECT_NE(handlers.find(name), std::string::npos) << name;
     }
     EXPECT_EQ(occurrences(handlers, "request.respond("), 0u);
-    EXPECT_EQ(occurrences(handlers, "rpc::respond(request, "), 6u);
+    EXPECT_EQ(occurrences(handlers, "rpc::respond(request, "), 8u);
 }

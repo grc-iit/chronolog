@@ -80,7 +80,13 @@ public:
         auto owner = owner_.lock();
         auto entry = owner ? owner->enterPublic() : std::optional<rpc::RpcBulkOwner::Entry>{};
         if(owned_ && !entry)
-            return; // No mutation or fabricated empty reply after quiescence.
+        {
+            // Stopping: nothing is stored, and the client is told so, as
+            // v3.4.0 did, instead of waiting out its deadline. Margo counts
+            // this running handler as pending, so finalization waits for it.
+            rpc::respond(request, chronolog::CL_ERR_UNKNOWN);
+            return;
+        }
 
         //  ClientId teller_id,  StoryId story_id,
         //  ChronoTick const& chrono_tick, std::string const& record)
@@ -101,9 +107,8 @@ public:
     // (see KeeperDurableWriter). The handler's ULT yields while it waits, so
     // the RPC streams keep serving other requests, and its public entry keeps
     // a stop waiting until the answer is sent. Defined whether the WAL is on
-    // or off; with it off the answer is CL_ERR_DURABILITY_UNAVAILABLE. After
-    // quiescence the request is not answered and nothing is stored: the
-    // client's attempt goes unanswered, as an append's does.
+    // or off; with it off the answer is CL_ERR_DURABILITY_UNAVAILABLE, and so
+    // it is after quiescence, when nothing is stored.
     void record_event_durable(tl::request const& request,
                               ChronicleName const& chronicle,
                               StoryName const& story,
@@ -112,7 +117,13 @@ public:
         auto owner = owner_.lock();
         auto entry = owner ? owner->enterPublic() : std::optional<rpc::RpcBulkOwner::Entry>{};
         if(owned_ && !entry)
-            return; // No mutation or fabricated reply after quiescence.
+        {
+            // Stopping: nothing is stored, so the write is refused with the
+            // code that says so (v3.4.0's answer), not left unanswered, which
+            // the client has to treat as CL_ERR_DURABILITY_UNKNOWN.
+            rpc::respond(request, chronolog::CL_ERR_DURABILITY_UNAVAILABLE);
+            return;
+        }
 
         LOG_TRACE("[KeeperRecordingService] Recording durable event: Chronicle={}, Story={}, storyId={}, time={}, "
                   "clientId={}, index={}",

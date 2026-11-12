@@ -606,8 +606,12 @@ int main(int argc, char** argv)
             // all retained data is archive-confirmed and outgoing work settled.
             // Keep the actual admin MID until every managed publisher has
             // parked its original target sends and native cleanup.
-            bool managed = std::getenv("CHRONOLOG_DEPLOYMENT_ID") != nullptr;
-            if(managed || owners[2]->writeAdmitted.load(std::memory_order_acquire))
+            // Only a stop the deployment controller runs completes the
+            // barrier. A keeper sent SIGTERM directly (a test, an operator,
+            // a node agent) stops on its own, as v3.4.0 did: its data is
+            // already confirmed or in its WAL's exit summary, and a grapher
+            // still sending it reports gets a bounded failure.
+            if(rpc::ManagedStopBarrier::StopRequested(config))
             {
                 if(!rpc::allControlIdle(*runtimes[2], 2, deadline))
                     return false;
