@@ -40,6 +40,8 @@ public:
 
 private:
     friend class PlaybackService;
+    // tests/unit/chrono-player: stashes a response as PlaybackService does.
+    friend struct QueryResponseAgentTestAccess;
     int stashOwnedQueryResponse(ClientQueryId, std::shared_ptr<PlaybackQueryResponse> const&, bool);
     QueryResponseAgent(std::shared_ptr<PlaybackRpcOwner> owner, ServiceId route)
         : owner_(owner)
