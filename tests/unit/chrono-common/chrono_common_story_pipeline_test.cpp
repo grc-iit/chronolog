@@ -12,6 +12,19 @@
 
 namespace chl = chronolog;
 
+// The chunks extractDecayedStoryChunks hands out belong to the caller; this
+// deletes them when the test ends, also when an assertion returns early.
+struct ExtractedChunks: std::vector<chl::StoryChunk*>
+{
+    ExtractedChunks() = default;
+    ExtractedChunks(ExtractedChunks const&) = delete;
+    ExtractedChunks& operator=(ExtractedChunks const&) = delete;
+    ~ExtractedChunks()
+    {
+        for(auto* chunk: *this) delete chunk;
+    }
+};
+
 // init chronolog logger
 static void initLogger()
 {
@@ -140,6 +153,24 @@ TEST(StoryPipeline_TestCollectIngestedEvents, testNoChunkValid)
     EXPECT_TRUE(h->getPassiveDeque().empty());
 }
 
+// A pipeline destroyed without finalize() frees its ingestion handle and the
+// chunks still queued in it (one per deque here). Under AddressSanitizer a
+// leak of either fails this test; the owners in the grapher and the player
+// always unhook the handle and call finalize() first.
+TEST(StoryPipeline_TestDestructor, testDestroyWithoutFinalizeFreesQueuedChunks)
+{
+    initLogger();
+    auto* p = new chl::StoryPipeline("C", "S", 1, 0, 1, 1);
+    auto* h = p->getActiveIngestionHandle();
+    auto* active = new chl::StoryChunk("C", "S", 1, 0, NS);
+    active->insertEvent(chl::LogEvent(1, 500, 1, 0, "queued active"));
+    h->getActiveDeque().push_back(active);
+    auto* passive = new chl::StoryChunk("C", "S", 1, 0, NS);
+    passive->insertEvent(chl::LogEvent(1, 600, 1, 1, "queued passive"));
+    h->getPassiveDeque().push_back(passive);
+    EXPECT_NO_THROW(delete p);
+}
+
 // Insert an empty storychunk, collectIngestedEvents should remove and delete the chunk without action
 // Both the dequeues should be empty
 TEST(StoryPipeline_TestCollectIngestedEvents, testSingleEmptyChunk)
@@ -200,7 +231,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testEmptyExtract)
     // gran 1s, window 1s, the timeline of the pipeline is [0,3*NS)
     chl::StoryPipeline p("C", "S", 1, 0, 1, 1);
 
-    std::vector<chl::StoryChunk*> q;
+    ExtractedChunks q;
     p.extractDecayedStoryChunks(2 * NS - 1, q);
     EXPECT_EQ(q.size(), 0);
 }
@@ -217,7 +248,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractSmallAfterDecay)
     c.insertEvent(chl::LogEvent(1, 500, 1, 0, "test"));
     p.mergeEvents(c);
 
-    std::vector<chl::StoryChunk*> q;
+    ExtractedChunks q;
     p.extractDecayedStoryChunks(2 * NS + 1, q);
     EXPECT_EQ(q.size(), 1);
 }
@@ -253,7 +284,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testExtractMultiple)
     c2.insertEvent(chl::LogEvent(1, 1'500'000'000, 1, 1, "second"));
     p.mergeEvents(c2);
 
-    std::vector<chl::StoryChunk*> q;
+    ExtractedChunks q;
     p.extractDecayedStoryChunks(3 * NS + 1, q);
     EXPECT_EQ(q.size(), 2);
 }
@@ -270,7 +301,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testNoAppendAfterSingleDecay)
     nonEmpty.insertEvent(chl::LogEvent(2, 250'000'000, 0, 0, "test"));
     p.mergeEvents(nonEmpty);
     // move to just past that chunks decay point
-    std::vector<chl::StoryChunk*> q;
+    ExtractedChunks q;
     p.extractDecayedStoryChunks(2 * NS + 1, q);
     // we should have stashed exactly 1 chunk
     EXPECT_EQ(q.size(), 1);
@@ -296,7 +327,7 @@ TEST(StoryPipeline_TestExtractDecayedChunks, testAppendBehaviorAfterMultiDecay)
     p.mergeEvents(c2);
     // now we move beyond the second's threshold
     // first removal threshold = 2s, second = 3s so we use 3s + 1ns
-    std::vector<chl::StoryChunk*> q;
+    ExtractedChunks q;
     p.extractDecayedStoryChunks(3 * NS + 1, q);
     // confirm that both chunks got stashed
     EXPECT_EQ(q.size(), 2);

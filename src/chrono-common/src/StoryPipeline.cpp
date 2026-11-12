@@ -92,6 +92,25 @@ chronolog::StoryPipeline::~StoryPipeline()
 {
     LOG_DEBUG("[StoryPipeline] Destructor called for StoryId {}", storyId);
 
+    // finalize() frees the ingestion handle on the normal path, after the
+    // owner removed it from the ingestion queue. A pipeline destroyed without
+    // finalize() (a test, an error path) still owns the handle and the chunks
+    // queued in it; every owner unhooks the handle before deleting a pipeline,
+    // so nothing else refers to it here.
+    if(activeIngestionHandle != nullptr)
+    {
+        for(auto* deque: {&activeIngestionHandle->getPassiveDeque(), &activeIngestionHandle->getActiveDeque()})
+        {
+            while(!deque->empty())
+            {
+                delete deque->front();
+                deque->pop_front();
+            }
+        }
+        delete activeIngestionHandle;
+        activeIngestionHandle = nullptr;
+    }
+
     //extract & destroy any remaining non-empty StoryChunks
     {
         std::lock_guard<std::mutex> lock(sequencingMutex);
