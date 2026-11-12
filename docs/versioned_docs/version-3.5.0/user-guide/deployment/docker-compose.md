@@ -17,7 +17,7 @@ title: "Docker Compose"
 
 ## Docker Image
 
-All containers use `ghcr.io/grc-iit/chronolog:v3.4.0` (or `ghcr.io/grc-iit/chronolog:latest`). The image provides:
+All containers use `ghcr.io/grc-iit/chronolog:v3.5.0` (or `ghcr.io/grc-iit/chronolog:latest`). The image provides:
 
 - Ubuntu 24.04 base
 - Spack package manager with pre-installed dependencies (MPICH, Mochi/Thallium, etc.)
