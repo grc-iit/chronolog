@@ -252,7 +252,10 @@ check "given binaries: start launches the given player" \
     launched "$given_bin/chrono-player" "$given_work/conf/chrono-player-conf-1.json" player
 check "given binaries: start fences on the given binaries" called "--occupied-executable $given_bin/chrono-keeper "
 run_script -s "${given_args[@]}" > "$fixture/given/stop.out" 2>&1 || true
-check "given binaries: stop runs the managed stop" called "--work-dir $given_work stop"
+# The stop budget covers the keeper's confirmation wait (150 s in the
+# template when it sets none) plus 180 s.
+check "given binaries: stop runs the managed stop" \
+    grep -qE -- "--work-dir $given_work --budget-ms [0-9]+ stop" "$calls"
 run_script --restart-keeper 1 "${given_args[@]}" > "$fixture/given/restart.out" 2>&1 || true
 check "given binaries: --restart-keeper relaunches the given keeper" \
     called "restart-keeper --executable $given_bin/chrono-keeper --config $given_work/conf/chrono-keeper-conf-1.json "
@@ -265,7 +268,9 @@ check "given binaries: the installed binaries were never named" test "$(grep -c 
 alt_work="$fixture/alt/work"
 alt_conf="$fixture/alt/conf"
 mkdir -p "$alt_work/bin" "$alt_work/lib" "$alt_work/conf" "$alt_conf" "$fixture/alt/client"
-cp "$template" "$alt_conf/my-conf.json"
+# A confirmation wait of its own, so the stop budget shows which template the
+# stop read: (20 + 180) * 1000.
+jq '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs = 20' "$template" > "$alt_conf/my-conf.json"
 jq '.chrono_client.marker = "alt"' "$client_template" > "$fixture/alt/client/my-client.json"
 alt_args=(-w "$alt_work" -f "$alt_conf/my-conf.json" -n "$fixture/alt/client/my-client.json"
     -v "$given_bin/chrono-visor" -g "$given_bin/chrono-grapher" -p "$given_bin/chrono-keeper" -a "$given_bin/chrono-player")
@@ -281,7 +286,8 @@ check "-f with -w: nothing generated in work_dir/conf" test -z "$(ls -A "$alt_wo
 # The fake keeper writes no exit-summary, so stop reports keeper 1 as missing:
 # only a stop that reads the -f conf directory finds that keeper's WAL.
 run_script -s "${alt_args[@]}" > "$fixture/alt/stop.out" 2>&1 || true
-check "-f with -w: stop runs the managed stop" called "--work-dir $alt_work stop"
+check "-f with -w: stop runs the managed stop with a budget from the -f template" \
+    called "--work-dir $alt_work --budget-ms 200000 stop"
 check "-f with -w: stop reads the keeper WAL from the -f conf directory" grep -q 'keeper-1 .*missing' "$fixture/alt/stop.out"
 run_script --restart-keeper 1 "${alt_args[@]}" > "$fixture/alt/restart.out" 2>&1 || true
 check "-f with -w: --restart-keeper relaunches the keeper with the -f conf directory's conf" \

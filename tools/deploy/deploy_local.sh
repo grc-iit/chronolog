@@ -477,7 +477,7 @@ stop() {
     # the default 150 s, 30 s for each other service).
     local confirm_secs
     confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' \
-        "${CONF_DIR}/default-chrono-conf.json" 2> /dev/null)
+        "${CONF_FILE}" 2> /dev/null)
     case "${confirm_secs}" in '' | *[!0-9]*) confirm_secs=150 ;; esac
     # An incomplete stop (-27) leaves every service and record in place, so
     # there is no table to read yet.

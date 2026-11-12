@@ -123,6 +123,8 @@ LIFECYCLE_STATUS=0
 lifecycle() {
     # The real one passes the --host routes in LIFECYCLE_HOST_ARGS first.
     echo "lifecycle ${LIFECYCLE_HOST_ARGS[*]:+${LIFECYCLE_HOST_ARGS[*]} }$*" >> "$fixture/lifecycle-calls"
+    # Options such as --budget-ms come before the command.
+    while [[ "$1" == --* ]]; do shift 2; done
     [[ "$1" == stop ]] && sleep 0.3
     echo "lifecycle $1"
     return "$LIFECYCLE_STATUS"
@@ -162,6 +164,12 @@ row nodeB 1 | grep -qE ' 7 +4096 +pending ' && pass "stop: pending counts shown"
     fail "stop: pending counts shown: $(cat "$fixture/stop-out")"
 grep -q '^lifecycle stop$' "$fixture/stop-out" && pass "stop: the managed stop ran before failing" ||
     fail "stop: the managed stop ran before failing: $(cat "$fixture/stop-out")"
+# The stop budget covers the keeper's confirmation wait from the conf template
+# (150 s when it sets none) plus 180 s.
+confirm_secs=$(jq -r '.chrono_keeper.DataStoreInternals.shutdown_confirm_timeout_secs // 150' "$CONF_FILE")
+grep -qE -- "--budget-ms $(((confirm_secs + 180) * 1000)) stop\$" "$fixture/lifecycle-calls" &&
+    pass "stop: the stop budget covers the keeper's confirmation wait" ||
+    fail "stop: the stop budget covers the keeper's confirmation wait: $(grep stop "$fixture/lifecycle-calls")"
 restart_advice() { # FILE: the advice after a WAL that is not clean, whole deployment restarted with the same options
     local text
     text=$(tr -s ' \n' ' ' < "$1")
