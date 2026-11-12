@@ -78,8 +78,8 @@ public:
         cereal::BinaryInputArchive iarchive(iss);
         iarchive(response);
         {
-            std::lock_guard<std::mutex> lock(mutex);
-            responses[response.query_id] = response;
+            std::lock_guard<std::mutex> lock(theMutex);
+            theResponses[response.query_id] = response;
         }
         request.respond(buffer.size());
     }
@@ -91,9 +91,9 @@ public:
         while(std::chrono::steady_clock::now() < until)
         {
             {
-                std::lock_guard<std::mutex> lock(mutex);
-                auto it = responses.find(query_id);
-                if(it != responses.end())
+                std::lock_guard<std::mutex> lock(theMutex);
+                auto it = theResponses.find(query_id);
+                if(it != theResponses.end())
                 {
                     out = it->second;
                     return true;
@@ -106,8 +106,8 @@ public:
 
 private:
     tl::engine& theEngine;
-    std::mutex mutex;
-    std::map<chl::ClientQueryId, chl::PlaybackQueryResponse> responses;
+    std::mutex theMutex;
+    std::map<chl::ClientQueryId, chl::PlaybackQueryResponse> theResponses;
 };
 
 class ArchiveRequestReply: public ::testing::Test

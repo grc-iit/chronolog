@@ -223,13 +223,14 @@ public:
     explicit KeeperProcess(bool drop_first_durable = false)
     {
         static int count = 0;
-        addressFile = "/tmp/chronolog_durable_send_keeper_" + std::to_string(getpid()) + "_" + std::to_string(count++);
-        std::remove(addressFile.c_str());
+        theAddressFile =
+                "/tmp/chronolog_durable_send_keeper_" + std::to_string(getpid()) + "_" + std::to_string(count++);
+        std::remove(theAddressFile.c_str());
         std::remove(durableLog().c_str());
 
         std::vector<std::string> env_strings;
         for(char** e = environ; *e != nullptr; ++e) { env_strings.emplace_back(*e); }
-        env_strings.push_back(std::string(kKeeperAddressFileEnv) + "=" + addressFile);
+        env_strings.push_back(std::string(kKeeperAddressFileEnv) + "=" + theAddressFile);
         if(drop_first_durable)
         {
             env_strings.push_back(std::string(kKeeperDropFirstDurableEnv) + "=1");
@@ -240,24 +241,24 @@ public:
 
         std::string exe = "/proc/self/exe";
         char* argv[] = {exe.data(), nullptr};
-        int const rc = posix_spawn(&pid, exe.c_str(), nullptr, nullptr, argv, envp.data());
+        int const rc = posix_spawn(&thePid, exe.c_str(), nullptr, nullptr, argv, envp.data());
         if(rc != 0)
         {
-            pid = -1;
+            thePid = -1;
             return;
         }
 
         auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while(std::chrono::steady_clock::now() < deadline)
         {
-            std::ifstream in(addressFile);
-            if(in && std::getline(in, address) && !address.empty())
+            std::ifstream in(theAddressFile);
+            if(in && std::getline(in, theAddress) && !theAddress.empty())
             {
                 return;
             }
-            if(waitpid(pid, nullptr, WNOHANG) == pid)
+            if(waitpid(thePid, nullptr, WNOHANG) == thePid)
             {
-                pid = -1;
+                thePid = -1;
                 return;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -267,12 +268,12 @@ public:
     ~KeeperProcess()
     {
         kill();
-        std::remove(addressFile.c_str());
+        std::remove(theAddressFile.c_str());
         std::remove(durableLog().c_str());
     }
 
     // the file the keeper appends the time of each durable event it receives to
-    std::string durableLog() const { return addressFile + ".durable"; }
+    std::string durableLog() const { return theAddressFile + ".durable"; }
 
     // the times of the durable events the keeper received, in order
     std::vector<uint64_t> durableTimes() const
@@ -288,28 +289,28 @@ public:
     KeeperProcess& operator=(KeeperProcess const&) = delete;
 
     // whether the keeper started and wrote its address
-    bool ready() const { return pid > 0 && !address.empty(); }
+    bool ready() const { return thePid > 0 && !theAddress.empty(); }
 
     chl::ServiceId serviceId() const
     {
-        return chl::ServiceId(kProtocol, "127.0.0.1", portOf(address), kKeeperProvider);
+        return chl::ServiceId(kProtocol, "127.0.0.1", portOf(theAddress), kKeeperProvider);
     }
 
     // SIGKILL, as a crash; returns once the process is gone
     void kill()
     {
-        if(pid > 0)
+        if(thePid > 0)
         {
-            ::kill(pid, SIGKILL);
-            waitpid(pid, nullptr, 0);
-            pid = -1;
+            ::kill(thePid, SIGKILL);
+            waitpid(thePid, nullptr, 0);
+            thePid = -1;
         }
     }
 
 private:
-    pid_t pid = -1;
-    std::string addressFile;
-    std::string address;
+    pid_t thePid = -1;
+    std::string theAddressFile;
+    std::string theAddress;
 };
 
 class DurableSend: public ::testing::Test
