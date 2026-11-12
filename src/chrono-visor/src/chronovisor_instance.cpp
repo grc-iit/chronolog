@@ -74,14 +74,18 @@ int main(int argc, char** argv)
                             while(!data->retirementReady.load(std::memory_order_acquire) ||
                                   data->portal.core()->incomingRequests.load(std::memory_order_acquire) != 0)
                                 std::this_thread::sleep_for(1ms);
-                            // Both MIDs share this original C32 and the one existing ABI process
-                            // generation. Each thallium object holds a reference on its MID and
-                            // Margo cleans up only when the last one goes, so a MID's services are
-                            // released before it is finalized: the client portal on MID 1, the
-                            // registry service and the keepers' admin clients on MID 0.
+                            // The actual Margo fences retain providers/metadata through queued
+                            // handlers, copied requests and post-wrapper destruction. Both MIDs
+                            // share this original C32 and the one existing ABI process generation.
+                            // Each thallium object holds a reference on its MID and Margo cleans
+                            // up only when the last one goes, so a MID's services are released
+                            // between its finalization and its cleanup: the client portal on
+                            // MID 1, the registry service and the keepers' admin clients on MID 0.
+                            data->mids[1]->finalize();
                             data->portal.core()->releaseOwnedServices();
                             data->mids[1]->awaitApplicationReferences();
                             data->mids[1]->cleanup();
+                            data->mids[0]->finalize();
                             data->registry->releaseOwnedRegistryService();
                             data->mids[0]->awaitApplicationReferences();
                             data->mids[0]->cleanup();

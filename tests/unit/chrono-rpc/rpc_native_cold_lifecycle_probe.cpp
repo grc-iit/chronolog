@@ -251,26 +251,26 @@ struct NativeContext
             observation->cleanupGate->wait();
         if(!observation->initialized.load(std::memory_order_acquire) || !observation->constructorULTFreed.load())
             throw std::runtime_error("native initialization not proven settled");
-        margo_push_finalize_callback(
-                mid,
-                [](void* arg)
-                {
-                    auto& self = *static_cast<NativeContext*>(arg);
-                    self.ping.deregister();
-                    self.ping = {};
-                    self.observation->providerCleanupWorker = std::this_thread::get_id();
-                    self.observation->providerCleared.store(true, std::memory_order_release);
-                },
-                this);
         ++observation->finalizeCalls;
+        // As NativeMidRuntime does: Margo 0.24 cleans up only when the last
+        // reference on the instance goes, and runs finalize callbacks on
+        // whichever thread finishes the last pending handler. Keep one
+        // reference across finalization, release the procedure and the
+        // wrapper here on the finalizing worker, then let Margo clean up.
+        margo_instance_ref_incr(mid);
         margo_finalize_and_wait(mid);
+        ping.deregister();
+        ping = {};
+        observation->providerCleanupWorker = std::this_thread::get_id();
+        observation->providerCleared.store(true, std::memory_order_release);
         if(blocker != ABT_THREAD_NULL)
         {
             checked(ABT_thread_join(blocker), "ABT_thread_join blocker");
             checked(ABT_thread_free(&blocker), "ABT_thread_free blocker");
         }
-        mid = MARGO_INSTANCE_NULL;
         engine.reset(); // non-owning: no duplicate native finalize
+        margo_instance_release(mid);
+        mid = MARGO_INSTANCE_NULL;
         checked(ABT_xstream_join(rpcES), "ABT_xstream_join RPC");
         checked(ABT_xstream_free(&rpcES), "ABT_xstream_free RPC");
         checked(ABT_pool_free(&rpcPool), "ABT_pool_free RPC");

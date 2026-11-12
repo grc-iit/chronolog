@@ -255,11 +255,15 @@ void ClientRpcContext::cleanup()
     // Copied requests/bulk/native leases are settled. Keep the actual reader,
     // procedure cache and engine wrapper rooted through Margo's final pending-
     // handler fence, including rejected entries and post-wrapper destruction.
-    native_.cleanup();
+    native_.finalize();
+    // Each thallium object holds a reference on the MID and Margo cleans up
+    // only when the last one goes: release them while Mercury is still there.
     delete reader;
     reader = nullptr;
     procedures.reset();
     engine.reset();
+    native_.awaitApplicationReferences();
+    native_.cleanup();
     cleanupComplete.store(true, std::memory_order_release);
 }
 } // namespace chronolog

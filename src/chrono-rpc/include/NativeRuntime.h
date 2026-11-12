@@ -61,13 +61,20 @@ public:
     NativeMidRuntime(NativeMidRuntime const&) = delete;
     ~NativeMidRuntime() = default;
     int initialize(NativeMidSpec spec);
+    // Stops the progress loop and waits for running handlers, keeping one
+    // reference so Margo does not clean up yet. The owner then releases its
+    // thallium objects, waits for awaitApplicationReferences and calls
+    // cleanup, which releases that reference last; Margo cleans up there.
+    void finalize();
+    // Calls finalize first if the owner has not.
     void cleanup();
     std::shared_ptr<thallium::engine> engine() const { return engine_; }
     bool cleanupComplete() const noexcept { return complete_.load(std::memory_order_acquire); }
     // The references thallium objects outside this runtime still hold on the
-    // MID: Margo's own and this runtime's engine wrapper are not counted.
-    // cleanup() finalizes only at 0; an owner waits for that after it released
-    // its own objects. 0 before initialization and after cleanup.
+    // MID: Margo's own (before finalize) or the one finalize keeps, and this
+    // runtime's engine wrapper, are not counted. cleanup() needs 0; an owner
+    // waits for that after it released its own objects. 0 before
+    // initialization and after cleanup.
     unsigned applicationReferences() const noexcept;
     // Waits until applicationReferences() is 0. A holder that never lets go
     // keeps the caller waiting, so after 5 s this prints the count to stderr

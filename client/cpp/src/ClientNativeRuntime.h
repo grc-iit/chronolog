@@ -14,6 +14,8 @@ public:
     ClientNativeRuntime(ClientNativeRuntime const&) = delete;
     ~ClientNativeRuntime() = default;
     int initialize(std::string address, int mode);
+    void finalize() { native_.finalize(); }
+    void awaitApplicationReferences() const { native_.awaitApplicationReferences(); }
     void cleanup();
     std::shared_ptr<thallium::engine> engine() const { return native_.engine(); }
 

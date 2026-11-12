@@ -358,6 +358,31 @@ int NativeMidRuntime::initialize(NativeMidSpec spec)
     }
     return status_;
 }
+void NativeMidRuntime::finalize()
+{
+    if(complete_.load(std::memory_order_acquire) || !retained_ || finalizeCalled_)
+        return;
+    if(uncertain_)
+        throw std::runtime_error("Native initialization or retirement is not proven settled");
+    // Call only after non-handler/outgoing/bulk access and copied requests
+    // settle. The proved owned finalizer supplies the incoming wrapper fence.
+    if(mid_ == MARGO_INSTANCE_NULL || constructor_ != ABT_THREAD_NULL)
+        throw std::runtime_error("Native finalization is not safe to repeat");
+    uncertain_ = true;
+    finalizeCalled_ = true;
+    process_->finalizeCalls_.fetch_add(1, std::memory_order_release);
+    // Every thallium engine, endpoint, procedure, provider, bulk handle and
+    // request holds a reference on its MID, and Margo frees Mercury and its own
+    // execution streams only when the last one is released. This reference
+    // keeps that from happening inside margo_finalize_and_wait, which stops the
+    // progress loop and waits for running handlers: the owner then releases
+    // its thallium objects, which still need Mercury, and cleanup() releases
+    // this one last.
+    margo_instance_ref_incr(mid_);
+    margo_finalize_and_wait(mid_);
+    process_->finalizeReturns_.fetch_add(1, std::memory_order_release);
+    uncertain_ = false;
+}
 void NativeMidRuntime::cleanup()
 {
     if(complete_.load(std::memory_order_acquire))
@@ -366,28 +391,17 @@ void NativeMidRuntime::cleanup()
         throw std::runtime_error("Native initialization or retirement is not proven settled");
     if(retained_)
     {
-        // Call only after non-handler/outgoing/bulk access and copied requests
-        // settle. The proved owned finalizer supplies the incoming wrapper fence.
-        if(mid_ == MARGO_INSTANCE_NULL || finalizeCalled_ || constructor_ != ABT_THREAD_NULL)
-            throw std::runtime_error("Native finalization is not safe to repeat");
-        // Every thallium engine, endpoint, procedure, provider, bulk handle
-        // and request holds a reference on its MID, and Margo frees Mercury
-        // and its own execution streams only when the last one is released:
-        // margo_finalize_and_wait alone just stops the progress loop. The
-        // wrapper this runtime handed out goes first; every other holder must
-        // already have released its objects, or the cleanup would run later in
-        // whichever destructor came last. Refused before anything native is
-        // touched, so a later attempt can try again.
+        finalize();
+        // The wrapper this runtime handed out goes now; every other holder
+        // must already have released its objects (awaitApplicationReferences),
+        // or Margo's cleanup would run later in whichever destructor came last.
         engine_.reset();
         unsigned references = 0;
         if(margo_instance_ref_count(mid_, &references) != HG_SUCCESS || references != 1)
             throw std::runtime_error("Native MID still has " + std::to_string(references) +
-                                     " references; only Margo's own may remain before finalization");
+                                     " references after finalization; only this runtime's may remain");
         uncertain_ = true;
-        finalizeCalled_ = true;
-        process_->finalizeCalls_.fetch_add(1, std::memory_order_release);
-        margo_finalize_and_wait(mid_); // The last reference: Margo cleans up here.
-        process_->finalizeReturns_.fetch_add(1, std::memory_order_release);
+        margo_instance_release(mid_); // The last reference: Margo cleans up here.
         mid_ = MARGO_INSTANCE_NULL;
         for(auto& stream: rpcStreams_)
         {
