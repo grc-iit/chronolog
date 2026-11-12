@@ -23,6 +23,10 @@ chrono-client-cli -c /path/to/client_conf.json < scripted_workload.txt
 
 The REPL exits when the special `-disconnect` command is read (or stdin is closed).
 
+:::warning
+A `chrono-client-cli` from ChronoLog 3.4.0 or older cannot reach 3.5.0 servers, and a 3.5.0 one cannot reach older servers: its commands get no answer and no error. Use the CLI of the same version as the deployment.
+:::
+
 ## Key Capabilities
 
 - **Chronicles** — create, list, and destroy named Chronicle containers
