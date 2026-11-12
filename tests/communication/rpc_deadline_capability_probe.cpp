@@ -632,7 +632,16 @@ struct EngineOwner
         slow.deregister();
         pull.deregister();
         receive_stats.deregister();
-        margo_finalize_and_wait(engine.get_margo_instance());
+        // thallium 0.17 objects hold references on the Margo instance, and
+        // Margo 0.24 cleans up only when the last one goes. Release them so
+        // the cleanup runs here, on the finalizing worker, and not later in
+        // whichever destructor comes last. engine.finalize_and_wait keeps its
+        // own reference; dropping the engine releases it.
+        slow = {};
+        pull = {};
+        receive_stats = {};
+        engine.finalize_and_wait();
+        engine = tl::engine();
     }
 };
 
