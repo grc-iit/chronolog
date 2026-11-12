@@ -397,6 +397,45 @@ TEST_P(WatermarkRpcDeadline, ParkNeverAcknowledgesUnknownOriginalSends)
             << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()
             << " ms" << std::endl;
 }
+// A report to a keeper that is down ends Unknown: it may have left before the
+// timeout cancelled it. Once that forward has returned, the target is sent the
+// current report again after its failure backoff, so a keeper restarted at the
+// same address is told its watermark and can free its chunks; before, it never
+// heard from this grapher again. Over ofi+tcp a cancelled forward to a closed
+// port can take 90 s to return (see ParkNeverAcknowledgesUnknownOriginalSends),
+// so the scenario runs over ofi+sockets.
+TEST_P(WatermarkRpcDeadline, UnknownAttemptIsSentAgainAfterItsBackoff)
+{
+    if(std::string(GetParam()) != "ofi+sockets")
+        GTEST_SKIP() << "a cancelled forward to a closed ofi+tcp port can take 90 s to return";
+    chl::RpcTimeoutPolicy policy;
+    policy.attempt_ms = 40;
+    start(0, policy);
+    // A port that was just in use and is free now: the keeper is down.
+    uint16_t port = 0;
+    {
+        tl::engine probe(std::string(GetParam()) + "://127.0.0.1", THALLIUM_SERVER_MODE, true, 1);
+        std::string self = probe.self();
+        port = static_cast<uint16_t>(std::stoul(self.substr(self.rfind(':') + 1)));
+        probe.finalize();
+    }
+    chl::ServiceId keeper(GetParam(), "127.0.0.1", port, 71);
+    publisher->recordContributor(5, keeper);
+    EXPECT_EQ(publisher->publish(true), chl::CL_SUCCESS);
+    ASSERT_TRUE(waitFor([&] { return idle(runtime); })) << "the forward to the closed port did not return";
+    // The keeper comes back at the same address.
+    auto state = std::make_shared<Received>();
+    tl::engine restarted(std::string(GetParam()) + "://127.0.0.1:" + std::to_string(port),
+                         THALLIUM_SERVER_MODE,
+                         true,
+                         1);
+    auto provider = std::make_shared<Receiver>(restarted, 71, state);
+    registry->advancePersisted(5, 200, 300);
+    EXPECT_TRUE(pump([&] { return state->count() >= 1 && state->latest().watermark == 300u; }))
+            << "the restarted keeper was never sent another report";
+    provider.reset();
+    restarted.finalize();
+}
 TEST_P(WatermarkRpcDeadline, LocalSendCompletionDoesNotMeanKeeperApplication)
 {
     start();
@@ -587,8 +626,8 @@ TEST_P(WatermarkRpcDeadline, DroppingFacadesRetainsActualEnginesRegistryAndCalla
     EXPECT_EQ(received[0]->latest().watermark, 200u);
 }
 // A report cancelled at its timeout may still reach the keeper, so neither
-// target is sent another report. Both forwards have returned, so both slots
-// come back.
+// target is sent another report before its failure backoff. Both forwards
+// have returned, so both slots come back.
 TEST_P(WatermarkRpcDeadline, UnknownStaleEndpointAttemptsGiveCapacityBackWithoutRetry)
 {
     chl::RpcTimeoutPolicy policy;

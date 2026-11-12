@@ -304,12 +304,22 @@ int WatermarkReportPublisher::publishImpl(rpc::RpcDeadline const& supplied,
         if(target->active)
         {
             auto state = target->active->state.load(std::memory_order_acquire);
+            bool const cleaned = target->active->cleaned.load(std::memory_order_acquire);
+            // A report cancelled at its timeout may still have reached the
+            // keeper, so this pass stays unconfirmed. While its native work
+            // runs, the target waits. Once Mercury is done with it, it counts
+            // as a failed attempt and the target is sent the current report
+            // after the failure backoff: a keeper restarted at the same address
+            // would otherwise never be told its watermark again, and could
+            // free nothing. A late copy of the older report changes nothing on
+            // the keeper, whose watermark and receipt view only move forward.
             if(state == Core::State::Unknown)
             {
                 result = CL_ERR_OUTCOME_UNCONFIRMED;
-                continue;
+                if(!cleaned)
+                    continue;
             }
-            if(state == Core::State::Queued || !target->active->cleaned.load(std::memory_order_acquire))
+            if(state == Core::State::Queued || !cleaned)
                 continue;
             if(state == Core::State::LocalSendComplete && target->active->final)
             {
