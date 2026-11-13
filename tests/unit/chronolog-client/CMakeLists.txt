@@ -141,6 +141,29 @@ if(TARGET py_chronolog_client)
     find_package(Python COMPONENTS Interpreter REQUIRED)
     add_test(NAME Unit_PyClient_DurableBinding
         COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/py_client_durable_binding_test.py)
+    set(py_client_test_environment "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+    # In an AddressSanitizer build the module needs the ASan runtime loaded
+    # first, which the Python interpreter is not built with, and libstdc++
+    # with it: Python does not link libstdc++, and without it the runtime
+    # finds no __cxa_throw to intercept. Leak checking is off for this test
+    # only: CPython leaves objects allocated at exit by design, so the report
+    # would be about the interpreter, not the binding.
+    if(CMAKE_CXX_FLAGS MATCHES "-fsanitize=address")
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libasan.so
+            OUTPUT_VARIABLE py_client_asan_runtime OUTPUT_STRIP_TRAILING_WHITESPACE)
+        execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so
+            OUTPUT_VARIABLE py_client_cxx_runtime OUTPUT_STRIP_TRAILING_WHITESPACE)
+        # -print-file-name returns the bare name when it finds no such
+        # library (clang names its runtime libclang_rt.asan); the test then
+        # runs without the preload and fails to load the module.
+        if(IS_ABSOLUTE "${py_client_asan_runtime}" AND IS_ABSOLUTE "${py_client_cxx_runtime}")
+            list(APPEND py_client_test_environment "LD_PRELOAD=${py_client_asan_runtime}:${py_client_cxx_runtime}"
+                 "ASAN_OPTIONS=detect_leaks=0")
+        else()
+            message(WARNING "Unit_PyClient_DurableBinding: ${CMAKE_CXX_COMPILER} has no libasan.so or "
+                            "libstdc++.so; the test will not load the ASan-built module")
+        endif()
+    endif()
     set_tests_properties(Unit_PyClient_DurableBinding PROPERTIES
-        ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:py_chronolog_client>")
+        ENVIRONMENT "${py_client_test_environment}")
 endif()
