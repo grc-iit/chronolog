@@ -2,11 +2,12 @@
 
 ChronoLog owns its process Argobots runtime. MPI applications can call
 `MPI_Init` before creating a Client when the MPI backend does not initialize
-Argobots. The shipped Spack environment selects MPICH 4.0.2 `~argobots`, which
-uses MPICH's POSIX thread backend. Margo still uses the pinned Argobots 1.1.
+Argobots. The shipped Spack environment selects MPICH 5.0.2 `~argobots`, which
+uses MPICH's POSIX thread backend. Margo still uses the pinned Argobots 1.2.
 
-MPICH 4.0.2 `+argobots` is unsupported. Its `MPI_Init` initializes Argobots,
-while its `MPI_Finalize` does not balance that initialization reference.
+MPICH `+argobots` is unsupported. With MPICH 4.0.2, where this was measured,
+its `MPI_Init` initializes Argobots, while its `MPI_Finalize` does not balance
+that initialization reference.
 ChronoLog rejects an existing runtime with
 `CL_ERR_NATIVE_RUNTIME_UNSUPPORTED (-28)` before sending Connect. Starting
 ChronoLog before MPI leaves the MPI reference live and prevents safe physical
