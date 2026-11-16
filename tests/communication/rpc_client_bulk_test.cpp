@@ -276,6 +276,40 @@ int main(int argc, char** argv)
     }
     if(initialized != chl::CL_SUCCESS)
         return 3;
+    if(scenario == "busy-refused")
+    {
+        // Both receive slots are taken, so the client has no room for another
+        // answer from the player. It must answer 0 (nothing taken) at once;
+        // the peer's send has no deadline and would otherwise wait forever.
+        auto first = client.context->incomingResponses.acquire();
+        auto second = client.context->incomingResponses.acquire();
+        if(!first || !second)
+            return 7;
+        auto actual = client.context;
+        auto port = peer->port;
+        auto started = std::chrono::steady_clock::now();
+        auto result = client.runtime->invoke<int>(
+                chl::rpc::RpcDeadline::after(5s),
+                std::make_shared<Work>(
+                        [actual, port, protocol](auto&)
+                        {
+                            auto probe = actual->engine->define("probe_reader");
+                            auto destination = tl::provider_handle(
+                                    actual->engine->lookup(protocol + "://127.0.0.1:" + std::to_string(port)),
+                                    25);
+                            uint64_t bytes = probe.on(destination)(actual->reader->get_service_id());
+                            return static_cast<int>(bytes);
+                        }));
+        auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+        unsigned refused = client.context->incomingResponses.refused();
+        std::cout << "reply=" << result.reply.value_or(-1) << " refused=" << refused << " in " << elapsed.count()
+                  << " ms" << std::endl;
+        if(result.reply.value_or(-1) != 0 || refused != 1)
+            return 8;
+        std::cout << "PASS a busy client answered the player 0" << std::endl;
+        return 0;
+    }
     client.context->reader->addStoryReader("chron", "story", 19, chl::ServiceId(protocol, "127.0.0.1", peer->port, 25));
     auto budget = (scenario == "late-private" || scenario == "staged-expiry" || scenario == "callback-active" ||
                    scenario == "callback-late")

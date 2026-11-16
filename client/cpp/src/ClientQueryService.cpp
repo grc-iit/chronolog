@@ -313,12 +313,23 @@ std::shared_ptr<PlaybackQueryRpcClient> ClientQueryService::addPlaybackQueryClie
 void ClientQueryService::receive_query_response(tl::request const& request, tl::bulk& source)
 {
     auto owner = context_.lock();
-    auto native = owner ? owner->acquireNative() : std::optional<ClientRpcContext::NativeLease>{};
-    if(!owner || !native)
+    if(!owner)
         return;
+    // A client that is closing, or has no free receive slot, says so with 0
+    // (nothing accepted, nothing pulled) instead of leaving the player to wait
+    // out its attempt for an answer that never comes.
+    auto native = owner->acquireNative();
+    if(!native)
+    {
+        owner->incomingResponses.refuse(request, uint64_t{0});
+        return;
+    }
     auto lease = owner->incomingResponses.acquire();
     if(!lease)
+    {
+        owner->incomingResponses.refuse(request, uint64_t{0});
         return;
+    }
     struct NativeOwner
     {
         ClientRpcContext::NativeLease lease;
@@ -340,11 +351,21 @@ void ClientQueryService::receive_query_response(tl::request const& request, tl::
                                             *owner->engine,
                                             request,
                                             source,
-                                            owner->incomingResponses.observers);
+                                            owner->incomingResponses.observers,
+                                            owner->incomingResponses.pieceBytes,
+                                            owner->incomingResponses.pullMs,
+                                            owner->incomingResponses.answerMs);
         lease->retain(context);
         if(!context->pull())
         {
-            lease->quarantine();
+            if(context->timedOut)
+                LOG_WARNING("[ClientQueryService] gave up pulling a replay answer of {} bytes after {} ms",
+                            context->bytes.size(),
+                            owner->incomingResponses.pullMs);
+            // The pull has returned, so no piece is in flight and the slot is
+            // free again. A player still there learns that nothing was taken.
+            if(!context->answer(uint64_t{0}))
+                lease->quarantine();
             return;
         }
         if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), context->response))

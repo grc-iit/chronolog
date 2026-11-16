@@ -165,7 +165,7 @@ target_include_directories(rpc_client_bulk_test PRIVATE
     ${CMAKE_SOURCE_DIR}/client/cpp/include)
 target_link_libraries(rpc_client_bulk_test PRIVATE chronolog_client chrono_common chrono_rpc thallium pthread)
 foreach(transport IN ITEMS sockets tcp)
-    foreach(scenario IN ITEMS register-before register-after response-before-ack late-private staged-expiry callback-thread callback-active callback-late callback-throw callback-control)
+    foreach(scenario IN ITEMS register-before register-after response-before-ack late-private staged-expiry callback-thread callback-active callback-late callback-throw callback-control busy-refused)
         add_test(NAME Communication_RpcClientBulk_${transport}_${scenario}
             COMMAND rpc_client_bulk_test ofi+${transport} ${scenario})
         set_tests_properties(Communication_RpcClientBulk_${transport}_${scenario}

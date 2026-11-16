@@ -51,7 +51,13 @@ ClientRpcContext::ClientRpcContext(ClientPortalServiceConf const& portal,
     , portalConf(portal)
     , queryConf(query)
     , readerMode(mode)
-{}
+{
+    // A pull of a replay answer and the answer to the player end at these
+    // limits, as the services' receives do, so a player that died cannot keep
+    // a receive slot.
+    incomingResponses.pullMs = portal.RPC_POLICY.transfer_ms;
+    incomingResponses.answerMs = portal.RPC_POLICY.attempt_ms;
+}
 int ClientRpcContext::initialize(rpc::RpcDeadline const& deadline)
 {
     std::unique_lock<std::timed_mutex> lock(initializeMutex_, std::defer_lock);
