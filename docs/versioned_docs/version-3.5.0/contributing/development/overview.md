@@ -23,7 +23,7 @@ See [Building for Development](./building-for-development.md) for build workflow
 
 ### Running Tests
 
-ChronoLog's test suite spans unit, functional, integration, end-to-end, communication and overhead tests, with 805 CTest entries in a Debug build, plus integration scripts that deploy their own daemons and the distributed pipeline. This page catalogs the tests, explains how to run subsets with CTest, and documents which tests need a running deployment or are disabled.
+ChronoLog's test suite spans unit, functional, integration, end-to-end, communication and overhead tests, with 811 CTest entries in a Debug build, plus integration scripts that deploy their own daemons and the distributed pipeline. This page catalogs the tests, explains how to run subsets with CTest, and documents which tests need a running deployment or are disabled.
 
 See [Running Tests](./running-tests.md) for the full test catalog and execution instructions.
 

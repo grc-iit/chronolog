@@ -96,8 +96,10 @@ jobs:
         run: |
           set -e
           # grc-iit, as in the Local Pipeline: the cached base image may
-          # default to root
-          CONTAINER_ID=$(docker create --user grc-iit --init \
+          # default to root. MPICH 5.0.2 needs more than Docker's default
+          # 64 MB /dev/shm for the 64 ranks of keeper_wal_group_test.sh;
+          # 512m matches the distributed pipeline's shm_size.
+          CONTAINER_ID=$(docker create --user grc-iit --init --shm-size=512m \
             -v "${{ github.workspace }}:/home/grc-iit/chronolog-repo" \
             -w /home/grc-iit/chronolog-repo \
             "${{ needs.chronolog-base.outputs.image-name }}" \

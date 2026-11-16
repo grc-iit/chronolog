@@ -25,6 +25,7 @@ bool ClientConfiguration::load_from_file(const std::string& path)
     {
         json_object_put(root);
         std::cerr << "[ClientConfiguration] Missing 'chrono_client' section." << std::endl;
+        json_object_put(root);
         return false;
     }
 
