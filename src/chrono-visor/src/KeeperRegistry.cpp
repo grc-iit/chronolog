@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <algorithm>
+#include <optional>
 #include <ctime>
 #include <cstdlib>
 #include <unistd.h>
@@ -660,6 +661,11 @@ void pause(rpc::RpcDeadline const& d)
 {
     std::this_thread::sleep_for(std::min(d.remaining(), rpc::RpcDeadline::Clock::duration(1ms)));
 }
+// How long an acquire waits for the other keepers of the group once the
+// grapher and a first keeper have confirmed the start. Keepers answer the
+// same start within milliseconds of each other; without the wait the roster
+// misses a keeper whose answer came a moment after the first one.
+constexpr auto lateKeeperWait = std::chrono::milliseconds(200);
 } // namespace
 
 int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName const& chronicle,
@@ -803,6 +809,11 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
     // silent A/B before noticing responsive C or starting the reserved Player.
     bool playerSubmitted = false;
     int status = CL_ERR_OUTCOME_UNCONFIRMED;
+    // Set when the grapher and a first keeper have confirmed: the roster is
+    // fixed when every keeper has answered or at this time, whichever comes
+    // first. The wait takes at most half the time left, so the player start
+    // still has the rest of the budget.
+    std::optional<rpc::RpcDeadline::Clock::time_point> rosterCloses;
     while(!deadline.expired())
     {
         if(complete(recording->starts[0]) && !success(recording->starts[0]))
@@ -818,7 +829,16 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             if(success(recording->starts[i + 1]))
                 confirmed.push_back(recording->keepers[i]);
         }
+        bool rosterClosed = false;
         if(success(recording->starts[0]) && !confirmed.empty() && !playerSubmitted)
+        {
+            auto now = rpc::RpcDeadline::Clock::now();
+            if(!rosterCloses)
+                rosterCloses =
+                        now + std::min<rpc::RpcDeadline::Clock::duration>(lateKeeperWait, deadline.remaining() / 2);
+            rosterClosed = keepersDone || now >= *rosterCloses;
+        }
+        if(rosterClosed)
         {
             recording->confirmedKeepers = std::move(confirmed);
             if(recording->clients.size() == recording->keepers.size() + 1)

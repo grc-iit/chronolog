@@ -1,5 +1,6 @@
 #include "admin_test_fixture.h"
 #include <private/LifecycleStep.h>
+#include <algorithm>
 TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
 {
     std::vector<KeeperIdCard> roster;
@@ -19,6 +20,25 @@ TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
     EXPECT_EQ(starts[1].load(), 1);
     EXPECT_EQ(starts[2].load(), 1);
     EXPECT_EQ(starts[3].load(), 1);
+}
+// Keeper 2 confirms the start 20 ms after keeper 3: the acquire waits for it
+// instead of fixing the roster on the first keeper's answer. Keeper 1 stays
+// silent and is left out once the wait ends.
+TEST_P(AdminDeadline, KeeperConfirmingShortlyAfterTheFirstJoinsTheRoster)
+{
+    delays[2] = 20;
+    std::vector<KeeperIdCard> roster;
+    ServiceId player;
+    auto begin = std::chrono::steady_clock::now();
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("chronicle", "story", 126, roster, player),
+              CL_SUCCESS);
+    EXPECT_LT(std::chrono::steady_clock::now() - begin, 220ms);
+    std::vector<std::string> names;
+    for(auto const& k: roster) names.push_back(to_string(k));
+    std::sort(names.begin(), names.end());
+    std::vector<std::string> expected{to_string(keeper(2)), to_string(keeper(3))};
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(names, expected);
 }
 TEST_P(AdminDeadline, NoResponsiveKeeperFailsWithoutBlindCompensatingStop)
 {
