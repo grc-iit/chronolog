@@ -500,6 +500,9 @@ int main(int argc, char** argv)
         pass = until([&] { return state->active.load(); });
         peer.shared->duplicate = true;
         pass = until([&] { return peer.shared->duplicateDone.load(); }) && pass;
+        // The duplicate's handler answers the peer before it returns and drops
+        // its incoming permit, so the peer can finish first.
+        pass = until([&] { return context->incomingResponses.used() == 1; }) && pass;
         unsigned incoming = context->incomingResponses.used();
         // A fully pulled duplicate is rejected with scalar0. It owns no staged
         // result and must release its incoming permit while the publisher stays

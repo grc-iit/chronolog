@@ -427,21 +427,28 @@ int main(int argc, char** argv)
         peer->shared->allowAck = true;
     }
     int status = pending.get();
+    // The peer sets delivered when its forward of the response returns. The
+    // client answers that forward before it releases the incoming permit, and
+    // its replay can return before either, so wait for both.
+    bool late = scenario == "late-private";
+    auto settled = std::chrono::steady_clock::now() + 2s;
+    while(((!late && !peer->shared->delivered) || actualClient->incomingResponses.used() != 0) &&
+          std::chrono::steady_clock::now() < settled)
+        std::this_thread::sleep_for(1ms);
+    bool delivered = peer->shared->delivered;
+    unsigned incoming = actualClient->incomingResponses.used();
     bool success;
-    if(scenario == "late-private")
+    if(late)
         success = status == chl::CL_ERR_QUERY_TIMED_OUT && output->size() == 1 &&
                   output->front().log_record() == "unchanged";
     else
-        success = status == chl::CL_SUCCESS && peer->shared->delivered && output->size() == 1 &&
+        success = status == chl::CL_SUCCESS && delivered && output->size() == 1 &&
                   output->front().log_record() == "owned-response";
-    auto settled = std::chrono::steady_clock::now() + 2s;
-    while(actualClient->incomingResponses.used() != 0 && std::chrono::steady_clock::now() < settled)
-        std::this_thread::sleep_for(1ms);
-    success = success && actualClient->incomingResponses.used() == 0;
+    success = success && incoming == 0;
     if(scenario == "staged-expiry")
-        success = success && peer->shared->delivered && stagingFreed;
-    std::cout << "status=" << status << " response_before_ack=" << peer->shared->delivered
-              << " output=" << output->front().log_record() << std::endl;
+        success = success && delivered && stagingFreed;
+    std::cout << "status=" << status << " response_before_ack=" << delivered << " incoming=" << incoming
+              << " output_size=" << output->size() << " output=" << output->front().log_record() << std::endl;
     if(!success)
         return 1;
     std::cout << "PASS actual client " << scenario << std::endl;
