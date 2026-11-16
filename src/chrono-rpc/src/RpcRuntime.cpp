@@ -463,6 +463,8 @@ RpcRuntime::RpcRuntime(std::size_t capacity)
 
 RpcRuntime::~RpcRuntime() { state_->close(); }
 
+std::size_t RpcRuntime::capacity() const noexcept { return state_->capacity; }
+
 RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
 {
     state_->admissionStarted.store(true, std::memory_order_release);

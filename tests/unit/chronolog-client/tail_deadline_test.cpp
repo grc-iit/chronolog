@@ -95,7 +95,10 @@ TEST_P(TailDeadline, BothPhasesConsumeOnePublicBudget)
     ASSERT_EQ(1u, events.size());
     EXPECT_EQ("caller-owned sentinel", events.front().log_record());
 }
-TEST_P(TailDeadline, RejectsRosterBeyondFixedCapacityBeforeDispatch)
+// A story with three keepers, read by a client runtime with two slots: each
+// phase runs as a wave of two calls and then one, and every keeper's event is
+// returned.
+TEST_P(TailDeadline, ThreeKeepersAreReadInWavesOfTheFreeSlots)
 {
     test::NativePeer peer(GetParam(), true);
     auto owner = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
@@ -103,9 +106,11 @@ TEST_P(TailDeadline, RejectsRosterBeyondFixedCapacityBeforeDispatch)
     auto handle = owner->AcquireStory("tail", "a");
     ASSERT_EQ(CL_SUCCESS, handle.first);
     std::vector<Event> events;
-    EXPECT_EQ(CL_ERR_RPC_CAPACITY, handle.second->playback(3, events));
-    EXPECT_EQ(0u, peer.state().sequenceCalls.load());
-    EXPECT_EQ(0u, peer.state().payloadCalls.load());
+    EXPECT_EQ(CL_SUCCESS, playbackWhenAdmitted(handle.second, 3, events, peer.state()));
+    ASSERT_EQ(3u, events.size());
+    EXPECT_EQ(3u, peer.state().sequenceCalls.load());
+    EXPECT_EQ(3u, peer.state().payloadCalls.load());
+    for(auto const& event: events) EXPECT_EQ("tail", event.log_record());
 }
 TEST_P(TailDeadline, TruncatedPayloadIsPartialAndNotAnEmptyCompleteRead)
 {

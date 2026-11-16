@@ -1,6 +1,5 @@
 #include "KeeperTailReader.h"
 #include "KeeperRecordingClient.h"
-#include <array>
 #include <atomic>
 #include <map>
 #include <thread>
@@ -13,25 +12,26 @@ struct TailReply
     int status;
     std::vector<LogEvent> events;
 };
-struct TailMailbox
+// One keeper of the story: its sequences, written by its sequences job and read
+// by the coordinator once ready is set, and the sequences chosen from it.
+struct TailSource
 {
-    std::atomic<bool> ready{false}, selected{false};
+    std::atomic<bool> ready{false};
     int status = CL_ERR_UNKNOWN;
     bool timedOut = false;
     std::vector<EventSequence> sequences, selection;
 };
 struct TailShared
 {
-    explicit TailShared(std::shared_ptr<void> retained, unsigned count)
+    TailShared(std::shared_ptr<void> retained, size_t count)
         : retention(std::move(retained))
-        , sequenceIssued(count)
+        , sources(count)
     {}
     std::shared_ptr<void> retention;
-    rpc::FanoutIssueBarrier sequenceIssued;
-    std::optional<rpc::FanoutIssueBarrier> payloadIssued;
-    std::atomic<bool> abandoned{false};
-    std::array<TailMailbox, 2> sources;
+    std::vector<TailSource> sources;
 };
+using TailRequestPtr = std::shared_ptr<KeeperRecordingClient::TailRequest>;
+using Barrier = std::shared_ptr<rpc::FanoutIssueBarrier>;
 void pause(rpc::RpcDeadline const& deadline)
 {
     auto duration =
@@ -40,53 +40,74 @@ void pause(rpc::RpcDeadline const& deadline)
     if(duration > rpc::RpcDeadline::Clock::duration::zero())
         std::this_thread::sleep_for(duration);
 }
-class TailChild final: public rpc::OwnedRpcWork<TailReply>
+// Asks one keeper for its newest sequences. The job ends once that call has, so
+// it holds a worker only for its own call.
+class TailSequences final: public rpc::OwnedRpcWork<int>
 {
 public:
-    TailChild(std::shared_ptr<TailShared> shared,
-              size_t index,
-              std::unique_ptr<KeeperRecordingClient::TailRequest> request,
-              StoryId story,
-              size_t n,
-              uint64_t cap)
+    TailSequences(std::shared_ptr<TailShared> shared,
+                  size_t index,
+                  TailRequestPtr request,
+                  Barrier issued,
+                  StoryId story,
+                  size_t n,
+                  uint64_t cap)
         : shared_(std::move(shared))
         , index_(index)
         , request_(std::move(request))
+        , issued_(std::move(issued))
         , story_(story)
         , n_(n)
         , cap_(cap)
     {}
+    rpc::RpcResult<int> run(rpc::OperationContext& operation) override
+    {
+        auto& source = shared_->sources[index_];
+        auto sequences = request_->sequences(operation, story_, n_, cap_, *issued_);
+        source.status = sequences.status;
+        source.timedOut = request_->timedOut();
+        if(sequences.reply)
+            source.sequences = std::move(*sequences.reply);
+        source.ready.store(true, std::memory_order_release);
+        if(!sequences.reply && sequences.may_have_dispatched)
+            return {sequences.status, true, std::nullopt};
+        return {CL_SUCCESS, sequences.may_have_dispatched, sequences.status};
+    }
+
+private:
+    std::shared_ptr<TailShared> shared_;
+    size_t index_;
+    TailRequestPtr request_;
+    Barrier issued_;
+    StoryId story_;
+    size_t n_;
+    uint64_t cap_;
+};
+// Fetches the events of the sequences chosen from one keeper.
+class TailEvents final: public rpc::OwnedRpcWork<TailReply>
+{
+public:
+    TailEvents(std::shared_ptr<TailShared> shared,
+               size_t index,
+               TailRequestPtr request,
+               Barrier issued,
+               StoryId story,
+               uint64_t cap)
+        : shared_(std::move(shared))
+        , index_(index)
+        , request_(std::move(request))
+        , issued_(std::move(issued))
+        , story_(story)
+        , cap_(cap)
+    {}
     rpc::RpcResult<TailReply> run(rpc::OperationContext& operation) override
     {
-        auto& mailbox = shared_->sources[index_];
-        auto sequences = request_->sequences(operation, story_, n_, cap_, shared_->sequenceIssued);
-        mailbox.status = sequences.status;
-        mailbox.timedOut = request_->timedOut();
-        if(sequences.reply)
-            mailbox.sequences = std::move(*sequences.reply);
-        mailbox.ready.store(true, std::memory_order_release);
-        if(!sequences.reply)
-        {
-            if(sequences.may_have_dispatched)
-                return {sequences.status, true, std::nullopt};
-            return {CL_SUCCESS, false, TailReply{sequences.status, {}}};
-        }
-        while(!mailbox.selected.load(std::memory_order_acquire))
-        {
-            if(shared_->abandoned.load(std::memory_order_acquire) || operation.deadline().expired())
-                return {CL_SUCCESS, true, TailReply{CL_ERR_QUERY_TIMED_OUT, {}}};
-            pause(operation.deadline());
-        }
-        if(shared_->abandoned.load(std::memory_order_acquire) || operation.deadline().expired())
-            return {CL_SUCCESS, true, TailReply{CL_ERR_QUERY_TIMED_OUT, {}}};
-        if(mailbox.selection.empty())
-            return {CL_SUCCESS, true, TailReply{CL_SUCCESS, {}}};
-        auto events = request_->events(operation, story_, mailbox.selection, cap_, *shared_->payloadIssued);
+        auto events = request_->events(operation, story_, shared_->sources[index_].selection, cap_, *issued_);
         if(!events.reply)
         {
             if(events.may_have_dispatched)
                 return {events.status, true, std::nullopt};
-            return {CL_SUCCESS, true, TailReply{events.status, {}}};
+            return {CL_SUCCESS, false, TailReply{events.status, {}}};
         }
         return {CL_SUCCESS, true, TailReply{CL_SUCCESS, std::move(*events.reply)}};
     }
@@ -94,11 +115,56 @@ public:
 private:
     std::shared_ptr<TailShared> shared_;
     size_t index_;
-    std::unique_ptr<KeeperRecordingClient::TailRequest> request_;
+    TailRequestPtr request_;
+    Barrier issued_;
     StoryId story_;
-    size_t n_;
     uint64_t cap_;
 };
+// Runs one job per entry of `order` in waves of as many jobs as the runtime has
+// slots (fewer for the last wave). A wave starts only once it holds all its
+// slots, issues its calls together and is waited for before the next one, so a
+// story can have more keepers than the runtime has slots. Without `retry`, a
+// first wave that cannot get every slot at once returns at once, before any
+// dispatch, as a read with no more keepers than slots always has. With it, a
+// wave gives back what it holds and tries again until the deadline, for slots
+// that this read's own earlier jobs are giving back. Returns CL_SUCCESS once
+// every entry ran, or the reservation status that stopped it.
+template <class Reply, class Make, class Done>
+int runInWaves(std::vector<size_t> const& order,
+               rpc::RpcRuntime& runtime,
+               rpc::RpcDeadline const& deadline,
+               bool retry,
+               Make make,
+               Done done)
+{
+    size_t next = 0;
+    while(next < order.size())
+    {
+        size_t const want = std::min(runtime.capacity(), order.size() - next);
+        std::vector<rpc::RpcReservation> reservations;
+        while(reservations.size() < want)
+        {
+            auto token = runtime.reserve(deadline);
+            if(token)
+            {
+                reservations.push_back(std::move(token));
+                continue;
+            }
+            reservations.clear();
+            if(!retry || token.status() != CL_ERR_RPC_CAPACITY || deadline.expired())
+                return token.status();
+            pause(deadline);
+        }
+        auto issued = std::make_shared<rpc::FanoutIssueBarrier>(static_cast<unsigned>(want));
+        std::vector<rpc::RpcPending<Reply>> pending;
+        for(size_t i = 0; i < want; ++i)
+            pending.push_back(runtime.submit<Reply>(std::move(reservations[i]), make(order[next + i], issued)));
+        for(size_t i = 0; i < want; ++i) done(order[next + i], pending[i].wait());
+        next += want;
+        retry = true;
+    }
+    return CL_SUCCESS;
+}
 } // namespace
 int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
                       StoryId const& story,
@@ -114,35 +180,33 @@ int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
         return CL_ERR_NO_KEEPERS;
     if(n == 0)
         return CL_SUCCESS;
-    if(keepers.size() > 2)
-        return CL_ERR_RPC_CAPACITY;
-    std::array<rpc::RpcReservation, 2> reservations;
+    std::vector<TailRequestPtr> requests;
+    std::vector<size_t> all;
     for(size_t i = 0; i < keepers.size(); ++i)
     {
         if(!keepers[i])
             return CL_ERR_UNKNOWN;
-        reservations[i] = runtime.reserve(deadline);
-        if(!reservations[i])
-            return reservations[i].status();
+        requests.push_back(keepers[i]->prepareTail());
+        all.push_back(i);
     }
     auto shared = std::make_shared<TailShared>(std::move(retention), keepers.size());
-    struct Abandon
-    {
-        std::shared_ptr<TailShared> state;
-        ~Abandon() { state->abandoned.store(true, std::memory_order_release); }
-    } abandon{shared};
-    std::array<rpc::RpcPending<TailReply>, 2> pending;
-    for(size_t i = 0; i < keepers.size(); ++i)
-        pending[i] = runtime.submit<TailReply>(
-                std::move(reservations[i]),
-                std::make_shared<TailChild>(shared, i, keepers[i]->prepareTail(), story, n, cap));
-    bool incomplete = false, sourceTimedOut = false;
+    size_t ran = 0;
+    int stopped = runInWaves<int>(
+            all,
+            runtime,
+            deadline,
+            false,
+            [&](size_t i, Barrier issued)
+            { return std::make_shared<TailSequences>(shared, i, requests[i], std::move(issued), story, n, cap); },
+            [&](size_t, rpc::RpcResult<int> const&) { ++ran; });
+    if(ran == 0)
+        return stopped;
+    bool incomplete = stopped != CL_SUCCESS, sourceTimedOut = false;
     size_t answered = 0;
     std::map<EventSequence, size_t> sequences;
     for(size_t i = 0; i < keepers.size(); ++i)
     {
         auto& source = shared->sources[i];
-        while(!source.ready.load(std::memory_order_acquire) && !deadline.expired()) pause(deadline);
         bool ready = source.ready.load(std::memory_order_acquire);
         if(ready)
             sourceTimedOut |= source.timedOut;
@@ -161,27 +225,32 @@ int gather_story_tail(std::vector<KeeperRecordingClient*> const& keepers,
         --sequence;
         shared->sources[sequence->second].selection.push_back(sequence->first);
     }
-    unsigned selected = 0;
+    std::vector<size_t> selected;
     for(size_t i = 0; i < keepers.size(); ++i)
         if(!shared->sources[i].selection.empty())
-            ++selected;
-    shared->payloadIssued.emplace(selected);
-    for(size_t i = 0; i < keepers.size(); ++i) shared->sources[i].selected.store(true, std::memory_order_release);
+            selected.push_back(i);
     std::map<EventSequence, Event> assembled;
-    for(size_t i = 0; i < keepers.size(); ++i)
-    {
-        auto result = pending[i].wait();
-        if(!result.reply || result.reply->status != CL_SUCCESS)
-        {
-            incomplete = true;
-            continue;
-        }
-        for(auto const& event: result.reply->events)
-        {
-            Event value(event.time(), event.getClientId(), event.index(), event.getRecord());
-            assembled[value.sequence()] = std::move(value);
-        }
-    }
+    if(runInWaves<TailReply>(
+               selected,
+               runtime,
+               deadline,
+               true,
+               [&](size_t i, Barrier issued)
+               { return std::make_shared<TailEvents>(shared, i, requests[i], std::move(issued), story, cap); },
+               [&](size_t, rpc::RpcResult<TailReply> result)
+               {
+                   if(!result.reply || result.reply->status != CL_SUCCESS)
+                   {
+                       incomplete = true;
+                       return;
+                   }
+                   for(auto const& event: result.reply->events)
+                   {
+                       Event value(event.time(), event.getClientId(), event.index(), event.getRecord());
+                       assembled[value.sequence()] = std::move(value);
+                   }
+               }) != CL_SUCCESS)
+        incomplete = true;
     output.reserve(assembled.size());
     for(auto& event: assembled) output.push_back(std::move(event.second));
     if(!answered)

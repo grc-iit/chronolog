@@ -9,9 +9,11 @@ namespace chronolog
 {
 class KeeperRecordingClient;
 // One shared deadline covers lookup and both fanout phases. The coordinator
-// occupies no worker; every keeper requires one reserved slot before dispatch.
-// The current owner has two slots. Larger/occupied rosters fail with capacity
-// before any lookup or forward. Missing sources and payloads report partial.
+// occupies no worker; every call requires one reserved slot before dispatch.
+// When the story has more keepers than the runtime has slots, each phase runs
+// in waves of as many calls as there are slots. If the first wave cannot get
+// all its slots at once, the read fails with capacity before any lookup or
+// forward. Missing sources and payloads report partial.
 // Retention owns the actual context, entry/native lease and policy snapshot.
 int gather_story_tail(std::vector<KeeperRecordingClient*> const&,
                       StoryId const&,

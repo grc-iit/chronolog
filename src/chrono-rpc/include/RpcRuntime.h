@@ -278,6 +278,8 @@ public:
     RpcRuntime(RpcRuntime const&) = delete;
     RpcRuntime& operator=(RpcRuntime const&) = delete;
     ~RpcRuntime();
+    // The number of slots, fixed at construction.
+    std::size_t capacity() const noexcept;
     RpcReservation reserve(RpcDeadline const&) noexcept;
 
     // Convenience for lightweight descriptors with NONBLOCKING destruction, or
