@@ -77,10 +77,6 @@ jobs:
         with:
           ref: ${{ env.TEST_REF }}
 
-      # keeper_wal_off_test.sh builds a v3.3.0 keeper from this tag
-      - name: Fetch the v3.3.0 tag
-        run: git fetch --depth=1 origin tag v3.3.0 || echo "v3.3.0 tag not fetched; keeper_wal_off_test.sh cannot build its keeper"
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
         with:
