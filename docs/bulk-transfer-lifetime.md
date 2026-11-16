@@ -107,7 +107,7 @@ that a copied raw-MID wrapper prevents explicit native finalization.
 Build through tools/deploy, then run:
 
 ```bash
-BUILD_DIR=$HOME/chronolog-build/bounded-rpc-monotonic/Debug \
+BUILD_DIR=$HOME/chronolog-build/Debug \
   tests/integration/rpc_bulk_timeout_test.sh
 ```
 

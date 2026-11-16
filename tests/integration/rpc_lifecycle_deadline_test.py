@@ -158,8 +158,8 @@ def dispose_fixture(owned, work, logs):
 
 
 def run(args):
-    work = Path(os.environ.get('WORK_DIR', str(Path.home()/'chronolog-install-bounded-rpc-monotonic/chronolog'))).resolve()
-    build = Path(os.environ.get('BUILD_DIR', str(Path.home()/'chronolog-build/bounded-rpc-monotonic/Debug'))).resolve()
+    work = Path(os.environ.get('WORK_DIR', str(Path.home()/'chronolog-install/chronolog'))).resolve()
+    build = Path(os.environ.get('BUILD_DIR', str(Path.home()/'chronolog-build/Debug'))).resolve()
     if args.grapher_stopped_fail:
         if args.archive_recovery:
             raise RuntimeError('--grapher-stopped-fail and --archive-recovery each preload their own gate')

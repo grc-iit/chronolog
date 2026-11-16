@@ -6,7 +6,7 @@ if [[ "${1:-}" == "--help" ]]; then
     cat <<'HELP'
 Run actual native bulk ownership/fault fixtures on ofi+sockets AND ofi+tcp.
 Requires a deploy-script build; no build/install is performed here.
-  BUILD_DIR=$HOME/chronolog-build/bounded-rpc-monotonic/Debug \
+  BUILD_DIR=$HOME/chronolog-build/Debug \
     tests/integration/rpc_bulk_timeout_test.sh
 Fixtures use loopback peers, real registrations/pulls, finite admission,
 late receipt/content checks, query response handoff and actual client owners.
@@ -32,4 +32,17 @@ count=$(awk '/Total Tests:/ { print $3 }' <<<"$discovery")
 for transport in sockets tcp; do
     grep -q "_$transport" <<<"$discovery" || { echo "missing mandatory $transport cases" >&2; exit 2; }
 done
-ctest --test-dir "$BUILD_DIR" -j 1 -R "$scope" --output-on-failure
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+set +e
+ctest --test-dir "$BUILD_DIR" -j 1 -R "$scope" --output-on-failure | tee "$log"
+status=${PIPESTATUS[0]}
+set -e
+# CTest's own line is "N% tests passed, F tests failed out of T".
+read -r failed total < <(awk '/tests failed out of/ { print $4, $NF }' "$log")
+if [[ -z "${total:-}" ]]; then
+    echo "ctest exited $status without a result line" >&2
+    exit 2
+fi
+echo "$((total - failed)) passed, $failed failed"
+[[ "$failed" -eq 0 && "$status" -eq 0 ]] || exit 1

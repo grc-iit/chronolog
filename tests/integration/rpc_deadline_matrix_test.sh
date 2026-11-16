@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BUILD_DIR="${BUILD_DIR:-/home/kfeng/chronolog-build/bounded-rpc-monotonic/Debug}"
-WORK_DIR="${WORK_DIR:-/home/kfeng/chronolog-install-bounded-rpc-monotonic/chronolog}"
+BUILD_DIR="${BUILD_DIR:-$HOME/chronolog-build/Debug}"
+WORK_DIR="${WORK_DIR:-$HOME/chronolog-install/chronolog}"
 CLIENT_INCLUDE="${WORK_DIR}/include"
 scope='Integration_Client(Append|Metadata|Replay)Deadline'
 
@@ -33,8 +33,34 @@ cat >"${tmp}/sdk-consumer.cpp" <<'CPP'
 #include <chronolog_client.h>
 int main() { return 0; }
 CPP
-"${CXX:-c++}" -std=c++17 -I"${CLIENT_INCLUDE}" -fsyntax-only "${tmp}/sdk-consumer.cpp"
-echo "PASS: standalone installed SDK public-header consumer compiles"
+passed=0
+failed=0
+if "${CXX:-c++}" -std=c++17 -I"${CLIENT_INCLUDE}" -fsyntax-only "${tmp}/sdk-consumer.cpp"; then
+    echo "PASS: standalone installed SDK public-header consumer compiles"
+    passed=$((passed + 1))
+else
+    echo "FAIL: standalone installed SDK public-header consumer does not compile"
+    failed=$((failed + 1))
+fi
+
+# Runs ctest with the given arguments and adds its counts to passed and
+# failed. CTest's own line is "N% tests passed, F tests failed out of T".
+run_ctest() {
+    local status counts f t
+    set +e
+    ctest --test-dir "${BUILD_DIR}" -j 1 "$@" --output-on-failure | tee "${tmp}/ctest.log"
+    status=${PIPESTATUS[0]}
+    set -e
+    counts="$(awk '/tests failed out of/ { print $4, $NF }' "${tmp}/ctest.log")"
+    if [[ -z "${counts}" ]]; then
+        echo "ctest exited ${status} without a result line" >&2
+        exit 2
+    fi
+    read -r f t <<<"${counts}"
+    passed=$((passed + t - f))
+    failed=$((failed + f))
+    [[ "${status}" -eq 0 || "${f}" -gt 0 ]] || failed=$((failed + 1))
+}
 
 discovery="$(ctest --test-dir "${BUILD_DIR}" -N -R "${scope}")"
 printf '%s\n' "${discovery}"
@@ -45,18 +71,14 @@ grep -q 'ClientAppendDeadline_.*tcp' <<<"${discovery}" || { echo "append TCP cas
 grep -q 'ClientReplayDeadline_.*sockets' <<<"${discovery}" || { echo "replay sockets cases missing" >&2; exit 2; }
 grep -q 'ClientReplayDeadline_.*tcp' <<<"${discovery}" || { echo "replay TCP cases missing" >&2; exit 2; }
 
-set +e
-ctest --test-dir "${BUILD_DIR}" -j 1 -R "${scope}" -E shipped-default --output-on-failure
-matrix_status=$?
-set -e
-echo "Focused client matrix exit status: ${matrix_status}"
+run_ctest -R "${scope}" -E shipped-default
 
 # This is a real public Client::ReplayStory call over an actual native RPC to
 # a peer that accepts the request but withholds its response. The CTest test
 # asserts 175000..185000 ms, the original event vector stays untouched, and no
 # acknowledgement or response arrives. Run sockets once; TCP runs in the
 # focused short matrix above and the full distributed/NFS matrix separately.
-ctest --test-dir "${BUILD_DIR}" -j 1 \
-    -R '^Integration_ClientReplayDeadline_sockets_shipped-default$' --output-on-failure
+run_ctest -R '^Integration_ClientReplayDeadline_sockets_shipped-default$'
 
-exit "${matrix_status}"
+echo "${passed} passed, ${failed} failed"
+[[ "${failed}" -eq 0 ]] || exit 1
