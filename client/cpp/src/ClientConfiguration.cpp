@@ -23,7 +23,6 @@ bool ClientConfiguration::load_from_file(const std::string& path)
     json_object* chrono_client;
     if(!json_object_object_get_ex(root, "chrono_client", &chrono_client))
     {
-        json_object_put(root);
         std::cerr << "[ClientConfiguration] Missing 'chrono_client' section." << std::endl;
         json_object_put(root);
         return false;
