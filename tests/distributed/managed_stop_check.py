@@ -6,6 +6,8 @@ import subprocess
 import sys
 import time
 
+KILL_GRACE_SECONDS = 2
+MIN_ATTEMPT_SECONDS = 5
 
 def managed_stop(work, deploy, log, guard_seconds=240, runner=subprocess.run,
                  now=time.monotonic, pause=time.sleep):
@@ -14,13 +16,17 @@ def managed_stop(work, deploy, log, guard_seconds=240, runner=subprocess.run,
     with Path(log).open("w") as evidence:
         while True:
             remaining = deadline - now()
-            # Each controller attempt keeps its shipped 30000 ms budget. A
-            # 35-second command guard plus two-second signal grace must fit.
-            if remaining < 37:
+            # The controller waits until the keepers exit, up to
+            # (shutdown_confirm_timeout_secs + 180) s, and a keeper waits for
+            # the grapher to confirm its last chunk, which can take longer
+            # than one 30 s keeper stop attempt. So one controller run gets
+            # what is left of the guard, less two seconds of signal grace.
+            if remaining < MIN_ATTEMPT_SECONDS + KILL_GRACE_SECONDS:
                 print("Managed stop did not complete inside the original test guard", file=evidence)
                 return 1
             attempt += 1
-            command = ["timeout", "--signal=TERM", "--kill-after=2s", "35s",
+            command = ["timeout", "--signal=TERM", f"--kill-after={KILL_GRACE_SECONDS}s",
+                       f"{int(remaining) - KILL_GRACE_SECONDS}s",
                        str(deploy), "-s", "-w", str(work)]
             result = runner(command, capture_output=True, text=True)
             output = (result.stdout or "") + (result.stderr or "")
