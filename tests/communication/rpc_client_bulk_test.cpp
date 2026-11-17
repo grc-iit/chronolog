@@ -192,6 +192,29 @@ struct Peer
                     [&](tl::request const& request, chl::ServiceId const& receiver)
                     { request.respond(send(receiver, 999)); },
                     uint16_t{25});
+            // As probe_reader, but gives up on the client's answer after 1 s
+            // and replies UINT64_MAX instead of waiting for it.
+            auto probeTimed = engine.define(
+                    "probe_reader_timed",
+                    [&](tl::request const& request, chl::ServiceId const& receiver)
+                    {
+                        chl::PlaybackQueryResponse response(999);
+                        response.events.push_back(chl::Event{150, 1, 0, "owned-response"});
+                        auto payload = chl::rpc::serializeBulk(response);
+                        auto bulk = engine.expose({{payload.data(), payload.size()}}, tl::bulk_mode::read_only);
+                        std::string address;
+                        receiver.get_service_as_string(address);
+                        auto peer = tl::provider_handle(engine.lookup(address), receiver.getProviderId());
+                        uint64_t received = UINT64_MAX;
+                        try
+                        {
+                            received = receive.on(peer).timed(std::chrono::milliseconds(1000), bulk);
+                        }
+                        catch(tl::timeout const&)
+                        {}
+                        request.respond(received);
+                    },
+                    uint16_t{25});
             std::string address = engine.self();
             address += '\n';
             write(descriptors[1], address.data(), address.size());
@@ -240,6 +263,10 @@ int main(int argc, char** argv)
                         throw std::runtime_error("injected registration failure");
                 });
     }
+    if(scenario == "answer-fails")
+        // The client's answer to the player fails after the full pull.
+        client.context->incomingResponses.observers.beforeAnswer = []
+        { throw std::runtime_error("injected answer failure"); };
     int initialized = client.initialize();
     if(registration)
     {
@@ -308,6 +335,35 @@ int main(int argc, char** argv)
         if(result.reply.value_or(-1) != 0 || refused != 1)
             return 8;
         std::cout << "PASS a busy client answered the player 0" << std::endl;
+        return 0;
+    }
+    if(scenario == "answer-fails")
+    {
+        // margo_respond_timed returns only once Mercury is done with the
+        // answer, also when it fails, so the failed answer holds nothing and
+        // its receive slot must be free again, not kept for good.
+        auto actual = client.context;
+        auto port = peer->port;
+        auto result = client.runtime->invoke<int>(
+                chl::rpc::RpcDeadline::after(5s),
+                std::make_shared<Work>(
+                        [actual, port, protocol](auto&)
+                        {
+                            auto probe = actual->engine->define("probe_reader_timed");
+                            auto destination = tl::provider_handle(
+                                    actual->engine->lookup(protocol + "://127.0.0.1:" + std::to_string(port)),
+                                    25);
+                            uint64_t bytes = probe.on(destination)(actual->reader->get_service_id());
+                            return bytes == UINT64_MAX ? -1 : static_cast<int>(bytes);
+                        }));
+        auto settled = std::chrono::steady_clock::now() + 2s;
+        while(actual->incomingResponses.used() != 0 && std::chrono::steady_clock::now() < settled)
+            std::this_thread::sleep_for(1ms);
+        unsigned used = actual->incomingResponses.used();
+        std::cout << "probe=" << result.reply.value_or(-2) << " receive_slots_used=" << used << std::endl;
+        if(result.reply.value_or(-2) != -1 || used != 0)
+            return 9;
+        std::cout << "PASS a failed answer to the player freed its receive slot" << std::endl;
         return 0;
     }
     client.context->reader->addStoryReader("chron", "story", 19, chl::ServiceId(protocol, "127.0.0.1", peer->port, 25));

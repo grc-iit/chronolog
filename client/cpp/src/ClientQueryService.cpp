@@ -364,14 +364,13 @@ void ClientQueryService::receive_query_response(tl::request const& request, tl::
                             owner->incomingResponses.pullMs);
             // The pull has returned, so no piece is in flight and the slot is
             // free again. A player still there learns that nothing was taken.
-            if(!context->answer(uint64_t{0}))
-                lease->quarantine();
+            // An answer that fails has returned as well and holds nothing.
+            context->answer(uint64_t{0});
             return;
         }
         if(!rpc::deserializeBulk(context->bytes.data(), context->bytes.size(), context->response))
         {
-            if(!context->answer(uint64_t{0}))
-                lease->quarantine();
+            context->answer(uint64_t{0});
             return;
         }
         std::shared_ptr<PlaybackQuery> query;
@@ -443,9 +442,12 @@ void ClientQueryService::receive_query_response(tl::request const& request, tl::
         // No caller vector is reachable. The owned callback has closed/active
         // arbitration and never runs under the map lock.
         // An expired/unknown query is a known rejection after the full pull.
-        if(!context->answer(published ? uint64_t(context->bytes.size()) : uint64_t{0}))
-            lease->quarantine();
-        else if(publishingOwner)
+        // margo_respond_timed returns once Mercury is done with the answer,
+        // also when it failed or timed out, so a failed answer holds nothing
+        // and the slot is freed as after a sent one. A published result still
+        // waits below for its caller.
+        context->answer(published ? uint64_t(context->bytes.size()) : uint64_t{0});
+        if(publishingOwner)
         {
             // Only the publishing winner owns staging. A rejected duplicate
             // must neither clear that storage nor wait on its consumer.
@@ -482,8 +484,7 @@ void ClientQueryService::receive_query_response(tl::request const& request, tl::
                 lease->quarantine();
                 return;
             }
-            if(!context->answer(uint64_t{0}))
-                lease->quarantine();
+            context->answer(uint64_t{0});
         }
     }
 }
