@@ -560,11 +560,21 @@ int main(int argc, char** argv)
         if(!phase(data->durable,
                   [data]
                   {
-                      while(!data->retained.waitUntilDurable(
-                              1s,
-                              10ms,
-                              std::chrono::seconds(data->conf.DATA_STORE_CONF.watermark_resend_timeout_secs)))
-                      {}
+                      // The wait runs on its worker across stop attempts, so a
+                      // slow grapher gets the whole shutdown_confirm_timeout_secs,
+                      // counted from the first attempt, however short shutdown_ms
+                      // is. A grapher that has not confirmed by then is taken as
+                      // gone: the stop goes on, the WAL exit summary lists the
+                      // events it did not confirm, and with the WAL off they are
+                      // lost.
+                      int const confirmSecs = data->conf.DATA_STORE_CONF.shutdown_confirm_timeout_secs;
+                      if(!data->retained.waitUntilDurable(
+                                 std::chrono::seconds(confirmSecs),
+                                 10ms,
+                                 std::chrono::seconds(data->conf.DATA_STORE_CONF.watermark_resend_timeout_secs)))
+                          LOG_WARNING("[ChronoKeeperInstance] The grapher did not confirm every chunk written within "
+                                      "shutdown_confirm_timeout_secs={}",
+                                      confirmSecs);
                       return chl::CL_SUCCESS;
                   }))
             return false;
