@@ -1,5 +1,6 @@
 #include <signal.h>
 #include <sys/uio.h>
+#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -668,12 +669,40 @@ int main(int argc, char** argv)
         }
         return rpc::retireServices(owners, runtimes, deadline);
     };
+    // The steps a stop attempt left running when its deadline passed. Each
+    // keeps running on its worker; the wait for the grapher to confirm every
+    // chunk often outlasts one attempt (shutdown_ms), since the grapher's
+    // merged chunks close on their own longer window.
+    auto unsettledSteps = [&]
+    {
+        std::vector<std::shared_ptr<rpc::LifecycleStep>> steps;
+        for(auto const& step: data->initialized)
+            if(step && !step->done.load(std::memory_order_acquire))
+                steps.push_back(step);
+        for(auto const* step: {&data->walStart,
+                               &data->start,
+                               &data->stopCollection,
+                               &data->durable,
+                               &data->stopExtraction,
+                               &data->walStop,
+                               &data->publisherPermit})
+            if(*step && !(*step)->done.load(std::memory_order_acquire))
+                steps.push_back(*step);
+        return steps;
+    };
     sig_atomic_t observed = 0;
     bool first = true;
     std::optional<rpc::RpcDeadline> previous;
+    std::vector<std::shared_ptr<rpc::LifecycleStep>> leftRunning;
     for(;;)
     {
-        if(!first && observed == stop_requests)
+        // Once a step the last attempt left running has finished, the stop
+        // goes on by itself, as after another SIGTERM: the deployment
+        // controller, and whoever else sent the first one, sends it once.
+        bool settled = std::any_of(leftRunning.begin(),
+                                   leftRunning.end(),
+                                   [](auto const& step) { return step->done.load(std::memory_order_acquire); });
+        if(!first && observed == stop_requests && !settled)
         {
             // A status write refused for capacity may still be admitted, but
             // only before the deadline of the attempt that requested it.
@@ -709,6 +738,12 @@ int main(int argc, char** argv)
             return exitCode;
         }
         lifecycle.draining();
+        leftRunning = unsettledSteps();
+        if(!leftRunning.empty())
+            LOG_WARNING("[ChronoKeeper] stop attempt {} ran out with {} step(s) still running; the stop goes on when "
+                        "they finish",
+                        attempt,
+                        leftRunning.size());
         // An expired attempt admits no more work; it stays Draining in memory.
         if(!deadline.expired())
         {
