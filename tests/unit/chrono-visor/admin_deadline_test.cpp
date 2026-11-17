@@ -153,6 +153,41 @@ TEST_P(AdminDeadline, UnregisterAndReplaceDescriptorWhileOldSetupCompletes)
     EXPECT_TRUE(roster.empty());
     for(auto const& count: stops) EXPECT_EQ(count.load(), 0);
 }
+// A keeper that registers again while clients hold more stories than the
+// admin runtime has free slots (12 against the fixture's 8) gets every story
+// started: the first 8 at once, the rest as their slots come free.
+TEST_P(AdminDeadline, HeldStoriesBeyondTheFreeSlotsAreStartedInWaves)
+{
+    delays[1] = delays[2] = 0;
+    std::vector<KeeperIdCard> roster;
+    ServiceId player;
+    for(int i = 0; i < 12; ++i)
+    {
+        int status = CL_ERR_RPC_CAPACITY;
+        auto until = std::chrono::steady_clock::now() + 1s;
+        while(status == CL_ERR_RPC_CAPACITY && std::chrono::steady_clock::now() < until)
+        {
+            status = registry->notifyRecordingGroupOfStoryRecordingStart("chronicle",
+                                                                         "story" + std::to_string(i),
+                                                                         600 + i,
+                                                                         roster,
+                                                                         player);
+            if(status == CL_ERR_RPC_CAPACITY)
+                std::this_thread::sleep_for(1ms);
+        }
+        ASSERT_EQ(status, CL_SUCCESS) << "story " << i;
+    }
+    int const before = starts[1].load();
+    EXPECT_EQ(before, 12);
+    // Let the acquires' work give its slots back, so all 8 are free.
+    std::this_thread::sleep_for(100ms);
+    delays[1] = 50; // each start holds its slot for 50 ms
+    ASSERT_EQ(registry->unregisterKeeperProcess(keeper(1)), CL_SUCCESS);
+    ASSERT_EQ(registry->registerKeeperProcess(KeeperRegistrationMsg(keeper(1), service(2))), CL_SUCCESS);
+    auto until = std::chrono::steady_clock::now() + 2s;
+    while(starts[1].load() < before + 12 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(1ms);
+    EXPECT_EQ(starts[1].load(), before + 12) << "held stories left without a start on the registering keeper";
+}
 TEST_P(AdminDeadline, LateStopBlocksAnotherAcquirerAndRecreation)
 {
     delays[1] = delays[2] = 0;

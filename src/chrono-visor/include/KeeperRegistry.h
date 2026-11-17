@@ -283,7 +283,15 @@ private:
         std::shared_ptr<AdminCompletion> completion;
         rpc::RpcReservation reservation;
     };
-    void startHeldStoriesOnKeeper(KeeperIdCard const&, std::vector<HeldStart>);
+    // Counts a registering keeper's held stories as their starts settle, or
+    // are given up, and logs the result after the last one.
+    struct HeldTally;
+    // Under registryLock: reserves an admin slot for as many of waiting as
+    // there are free slots, adds each start to its recording and moves those
+    // recordings out of waiting.
+    std::vector<HeldStart> reserveHeldStarts(std::vector<std::shared_ptr<StoryRecording>>& waiting,
+                                             std::shared_ptr<DataStoreAdminClient> const& client);
+    void startHeldStoriesOnKeeper(std::vector<HeldStart>, std::shared_ptr<HeldTally> const&);
 };
 } // namespace chronolog
 

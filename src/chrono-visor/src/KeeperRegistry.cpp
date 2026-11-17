@@ -259,6 +259,33 @@ KeeperRegistry::~KeeperRegistry()
 /////////////////
 
 
+struct KeeperRegistry::HeldTally
+{
+    HeldTally(size_t count, std::string keeperName)
+        : remaining(count)
+        , total(count)
+        , keeper(std::move(keeperName))
+    {}
+    std::atomic<size_t> remaining, started{0};
+    size_t const total;
+    std::string const keeper;
+    // Logs, after the last start returns, how many the keeper confirmed, as
+    // v3.4.0 did when it started them one after the other.
+    void settle(size_t count, bool confirmed)
+    {
+        if(count == 0)
+            return;
+        if(confirmed)
+            started.fetch_add(count, std::memory_order_relaxed);
+        if(remaining.fetch_sub(count, std::memory_order_acq_rel) == count)
+            LOG_INFO("[ChronoProcessRegistry] Started {} of {} held stories on keeper {}",
+                     started.load(std::memory_order_relaxed),
+                     total,
+                     keeper);
+    }
+    void skip(size_t count) { settle(count, false); }
+};
+
 int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_reg_msg)
 {
 
@@ -401,64 +428,107 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
     }
 
     // A keeper registering again after a restart has no pipeline for the
-    // stories clients still hold. Each start joins its story's recording here,
+    // stories clients still hold. Each start joins its story's recording
     // under the lock, so a stop that follows waits for it and also reaches
-    // this keeper. A story whose start cannot be admitted is logged and left
-    // out; the registration still succeeds, and a durable write for the story
-    // starts its pipeline instead.
-    std::vector<HeldStart> held;
-    auto deadline = rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
-    for(auto const& recording: storiesToStartOnRegistration(activeStories, recording_group.groupId))
+    // this keeper. The admin runtime has a fixed number of slots, so the
+    // starts go out in waves: as many as there are free slots, then more as
+    // slots come free. Registration returns once every held story's start is
+    // sent, or is given up because no slot came free for control_ms; a
+    // durable write to a story given up starts its pipeline instead.
+    auto waiting = storiesToStartOnRegistration(activeStories, recording_group.groupId);
+    if(waiting.empty())
+        return chronolog::CL_SUCCESS;
+    LOG_INFO("[ChronoProcessRegistry] Starting {} held stories on keeper {}",
+             waiting.size(),
+             to_string(keeper_id_card));
+    auto tally = std::make_shared<HeldTally>(waiting.size(), to_string(keeper_id_card));
+    auto const group_id = recording_group.groupId;
+    auto const endpoint = keeper_id_card.getRecordingServiceId().get_service_endpoint();
+    auto const idleLimit = std::chrono::milliseconds(adminRuntime->policy.control_ms);
+    auto lastStart = std::chrono::steady_clock::now();
+    for(;;)
     {
-        auto token = adminRuntime->runtime.reserve(deadline);
-        if(!token)
+        auto held = reserveHeldStarts(waiting, collectionClient);
+        lock.unlock();
+        if(!held.empty())
         {
-            LOG_WARNING("[ChronoProcessRegistry] No admin slot to start StoryId {} on registering keeper {}: {}",
-                        recording->id,
-                        to_string(keeper_id_card),
-                        token.status());
-            continue;
+            startHeldStoriesOnKeeper(std::move(held), tally);
+            lastStart = std::chrono::steady_clock::now();
         }
-        auto completion = std::make_shared<AdminCompletion>();
-        recording->clients.push_back(collectionClient);
-        recording->starts.push_back(completion);
-        held.push_back({recording, collectionClient, completion, std::move(token)});
+        if(waiting.empty())
+            break;
+        if(std::chrono::steady_clock::now() - lastStart >= idleLimit)
+        {
+            LOG_WARNING("[ChronoProcessRegistry] No admin slot came free in {} ms to start {} more held stories on "
+                        "keeper {}",
+                        idleLimit.count(),
+                        waiting.size(),
+                        to_string(keeper_id_card));
+            tally->skip(waiting.size());
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        lock.lock();
+        // The keeper may have unregistered, or registered again with another
+        // admin client, while the lock was released.
+        bool registered = false;
+        auto group = recordingGroups.find(group_id);
+        if(group != recordingGroups.end())
+        {
+            auto process = group->second.keeperProcesses.find(endpoint);
+            registered = process != group->second.keeperProcesses.end() && process->second.active &&
+                         process->second.keeperAdminClient == collectionClient;
+        }
+        if(!registered)
+        {
+            lock.unlock();
+            tally->skip(waiting.size());
+            break;
+        }
+        // A story released or destroyed meanwhile is not started.
+        auto before = waiting.size();
+        waiting.erase(std::remove_if(waiting.begin(),
+                                     waiting.end(),
+                                     [this](std::shared_ptr<StoryRecording> const& recording)
+                                     {
+                                         auto found = activeStories.find(recording->id);
+                                         return found == activeStories.end() || found->second != recording ||
+                                                recording->phase != StoryRecording::Active;
+                                     }),
+                      waiting.end());
+        tally->skip(before - waiting.size());
     }
-    lock.unlock();
-    if(!held.empty())
-        startHeldStoriesOnKeeper(keeper_id_card, std::move(held));
     return chronolog::CL_SUCCESS;
 }
 
-void KeeperRegistry::startHeldStoriesOnKeeper(KeeperIdCard const& keeper_id_card, std::vector<HeldStart> held)
+std::vector<KeeperRegistry::HeldStart>
+KeeperRegistry::reserveHeldStarts(std::vector<std::shared_ptr<StoryRecording>>& waiting,
+                                  std::shared_ptr<DataStoreAdminClient> const& client)
 {
-    LOG_INFO("[ChronoProcessRegistry] Starting {} held stories on keeper {}", held.size(), to_string(keeper_id_card));
-    uint64_t start = std::chrono::system_clock::now().time_since_epoch().count();
-    // Logs, after the last start returns, how many the keeper confirmed, as
-    // v3.4.0 did when it started them one after the other.
-    struct Tally
+    std::vector<HeldStart> held;
+    auto deadline = rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
+    size_t taken = 0;
+    for(; taken < waiting.size(); ++taken)
     {
-        std::atomic<size_t> remaining, started{0};
-        size_t total;
-        std::string keeper;
-    };
-    auto tally = std::make_shared<Tally>();
-    tally->remaining = held.size();
-    tally->total = held.size();
-    tally->keeper = to_string(keeper_id_card);
-    for(auto& item: held)
-    {
-        item.completion->finished = [tally](AdminCompletion const& done)
-        {
-            if(done.confirmed && done.status == chronolog::CL_SUCCESS)
-                tally->started.fetch_add(1, std::memory_order_relaxed);
-            if(tally->remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
-                LOG_INFO("[ChronoProcessRegistry] Started {} of {} held stories on keeper {}",
-                         tally->started.load(std::memory_order_relaxed),
-                         tally->total,
-                         tally->keeper);
-        };
+        auto token = adminRuntime->runtime.reserve(deadline);
+        if(!token)
+            break;
+        auto const& recording = waiting[taken];
+        auto completion = std::make_shared<AdminCompletion>();
+        recording->clients.push_back(client);
+        recording->starts.push_back(completion);
+        held.push_back({recording, client, completion, std::move(token)});
     }
+    waiting.erase(waiting.begin(), waiting.begin() + static_cast<std::ptrdiff_t>(taken));
+    return held;
+}
+
+void KeeperRegistry::startHeldStoriesOnKeeper(std::vector<HeldStart> held, std::shared_ptr<HeldTally> const& tally)
+{
+    uint64_t start = std::chrono::system_clock::now().time_since_epoch().count();
+    for(auto& item: held)
+        item.completion->finished = [tally](AdminCompletion const& done)
+        { tally->settle(1, done.confirmed && done.status == chronolog::CL_SUCCESS); };
     for(auto& item: held)
     {
         // The keeper's start_story_recording is idempotent, so a story also
