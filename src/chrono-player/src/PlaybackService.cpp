@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <map>
 #include <mutex>
@@ -326,65 +327,79 @@ chronolog::PlaybackService::prepareQuery(ServiceId const& receiver,
     auto hotDeadline = KeeperHotFetchClient::fanoutDeadline(deadline,
                                                             rpc::RpcDeadline::Clock::now(),
                                                             std::chrono::milliseconds(owner->policy.attempt_ms));
-    std::vector<rpc::RpcReservation> reserved;
-    std::vector<rpc::BulkPermits::Permit> hotPermits;
-    bool admitted = keepers.size() <= 2;
-    {
-        std::unique_lock<std::timed_mutex> lock(owner->admissionMutex, std::defer_lock);
-        if(!lock.try_lock_until(hotDeadline.expiresAt()))
-            admitted = false;
-        if(admitted)
-            for(size_t i = 0; i < keepers.size(); ++i)
-            {
-                auto permit = owner->hotPermits.acquire();
-                if(!permit)
-                {
-                    admitted = false;
-                    break;
-                }
-                hotPermits.push_back(std::move(*permit));
-                auto slot = runtime->reserve(hotDeadline);
-                if(!slot)
-                {
-                    admitted = false;
-                    break;
-                }
-                reserved.push_back(std::move(slot));
-            }
-    }
-    if(!admitted)
-    {
-        reserved.clear();
-        hotPermits.clear();
-    }
-    std::vector<std::pair<KeeperHotFetchClient*, rpc::RpcPending<HotRangeResponse>>> pending;
-    auto barrier = std::make_shared<rpc::FanoutIssueBarrier>(keepers.size());
-    bool allAnswered = admitted, anyTruncated = false;
-    if(admitted)
-        for(size_t i = 0; i < keepers.size(); ++i)
-        {
-            auto* client = getHotFetchClient(keepers[i]);
-            if(!client)
-            {
-                allAnswered = false;
-                continue;
-            }
-            pending.emplace_back(
-                    client,
-                    client->fetchRangeAsync(std::move(reserved[i]),
-                                            story,
-                                            start,
-                                            end,
-                                            262144,
-                                            barrier,
-                                            std::optional<rpc::BulkPermits::Permit>(std::move(hotPermits[i]))));
-        }
+    // Each fetch needs a hot permit and a slot, and there are two permits, so
+    // the keepers are fetched in waves of at most two. A wave waits, up to
+    // the hot deadline, until it holds all its permits and slots, then issues
+    // its fetches together. A keeper not fetched before the deadline makes the
+    // reply partial, as one that does not answer does.
     std::vector<HotRangeResponse> hot;
-    for(auto& child: pending)
+    bool allAnswered = true, anyTruncated = false;
+    for(size_t next = 0; next < keepers.size();)
     {
-        hot.push_back(child.first->waitForRange(child.second));
-        allAnswered &= hot.back().answered;
-        anyTruncated |= hot.back().truncated;
+        size_t const want = std::min<size_t>(2, keepers.size() - next);
+        std::vector<rpc::RpcReservation> reserved;
+        std::vector<rpc::BulkPermits::Permit> hotPermits;
+        while(reserved.size() < want && !hotDeadline.expired())
+        {
+            {
+                std::unique_lock<std::timed_mutex> lock(owner->admissionMutex, std::defer_lock);
+                if(!lock.try_lock_until(hotDeadline.expiresAt()))
+                    break;
+                while(reserved.size() < want)
+                {
+                    auto permit = owner->hotPermits.acquire();
+                    if(!permit)
+                        break;
+                    auto slot = runtime->reserve(hotDeadline);
+                    if(!slot)
+                        break;
+                    hotPermits.push_back(std::move(*permit));
+                    reserved.push_back(std::move(slot));
+                }
+            }
+            if(reserved.size() < want)
+            {
+                // Give back a partial wave, so two queries cannot each hold
+                // one permit and wait for the other's.
+                reserved.clear();
+                hotPermits.clear();
+                std::this_thread::sleep_for(std::min(hotDeadline.remaining(),
+                                                     rpc::RpcDeadline::Clock::duration(std::chrono::milliseconds(1))));
+            }
+        }
+        if(reserved.size() < want)
+        {
+            allAnswered = false;
+            break;
+        }
+        std::vector<KeeperHotFetchClient*> clients;
+        for(size_t i = 0; i < want; ++i)
+        {
+            auto* client = getHotFetchClient(keepers[next + i]);
+            if(client)
+                clients.push_back(client);
+            else
+                allAnswered = false;
+        }
+        auto barrier = std::make_shared<rpc::FanoutIssueBarrier>(static_cast<unsigned>(clients.size()));
+        std::vector<std::pair<KeeperHotFetchClient*, rpc::RpcPending<HotRangeResponse>>> pending;
+        for(size_t i = 0; i < clients.size(); ++i)
+            pending.emplace_back(
+                    clients[i],
+                    clients[i]->fetchRangeAsync(std::move(reserved[i]),
+                                                story,
+                                                start,
+                                                end,
+                                                262144,
+                                                barrier,
+                                                std::optional<rpc::BulkPermits::Permit>(std::move(hotPermits[i]))));
+        for(auto& child: pending)
+        {
+            hot.push_back(child.first->waitForRange(child.second));
+            allAnswered &= hot.back().answered;
+            anyTruncated |= hot.back().truncated;
+        }
+        next += want;
     }
     auto split = splitHotRange(hot, start, end);
     LOG_DEBUG("[PlaybackService] query_id {} story_id {} range {}-{} keepers {} hot_boundary {} hot_events {}",

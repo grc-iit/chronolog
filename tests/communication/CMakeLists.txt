@@ -156,6 +156,10 @@ foreach(transport IN ITEMS sockets tcp)
         COMMAND rpc_player_response_test ofi+${transport})
     set_tests_properties(Communication_RpcPlayerResponse_${transport}
         PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
+    add_test(NAME Communication_RpcPlayerResponse_${transport}_three-keepers
+        COMMAND rpc_player_response_test ofi+${transport} three-keepers)
+    set_tests_properties(Communication_RpcPlayerResponse_${transport}_three-keepers
+        PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
 endforeach()
 
 add_executable(rpc_client_bulk_test rpc_client_bulk_test.cpp)
