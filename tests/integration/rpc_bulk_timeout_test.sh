@@ -38,8 +38,9 @@ set +e
 ctest --test-dir "$BUILD_DIR" -j 1 -R "$scope" --output-on-failure | tee "$log"
 status=${PIPESTATUS[0]}
 set -e
-# CTest's own line is "N% tests passed, F tests failed out of T".
-read -r failed total < <(awk '/tests failed out of/ { print $4, $NF }' "$log")
+# CTest's own line is "N% tests passed, F tests failed out of T", and
+# CTest 4 leaves out ", 0 tests failed" when nothing failed.
+read -r failed total < <(awk '/tests passed.* out of [0-9]+/ { f = 0; if (match($0, /[0-9]+ tests? failed/)) f = substr($0, RSTART, RLENGTH) + 0; print f, $NF }' "$log") || true
 if [[ -z "${total:-}" ]]; then
     echo "ctest exited $status without a result line" >&2
     exit 2

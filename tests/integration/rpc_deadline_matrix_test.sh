@@ -44,14 +44,15 @@ else
 fi
 
 # Runs ctest with the given arguments and adds its counts to passed and
-# failed. CTest's own line is "N% tests passed, F tests failed out of T".
+# failed. CTest's own line is "N% tests passed, F tests failed out of T",
+# and CTest 4 leaves out ", 0 tests failed" when nothing failed.
 run_ctest() {
     local status counts f t
     set +e
     ctest --test-dir "${BUILD_DIR}" -j 1 "$@" --output-on-failure | tee "${tmp}/ctest.log"
     status=${PIPESTATUS[0]}
     set -e
-    counts="$(awk '/tests failed out of/ { print $4, $NF }' "${tmp}/ctest.log")"
+    counts="$(awk '/tests passed.* out of [0-9]+/ { f = 0; if (match($0, /[0-9]+ tests? failed/)) f = substr($0, RSTART, RLENGTH) + 0; print f, $NF }' "${tmp}/ctest.log")"
     if [[ -z "${counts}" ]]; then
         echo "ctest exited ${status} without a result line" >&2
         exit 2
