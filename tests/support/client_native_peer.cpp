@@ -212,8 +212,23 @@ int main(int argc, char** argv)
                     save(event, i, true);
                     unsigned drop = state->durableDropReplies.load();
                     while(drop > 0 && !state->durableDropReplies.compare_exchange_weak(drop, drop - 1)) {}
-                    if(drop == 0)
-                        req.respond(state->durableStatus.load());
+                    if(drop != 0)
+                    {
+                        // Mercury keeps a request's handle until it is
+                        // answered, and an open handle stops the peer's
+                        // finalize from freeing Mercury. So a dropped reply is
+                        // sent once the test stops the peer, after the client
+                        // has gone; it can only fail then.
+                        while(!state->stop.load()) margo_thread_sleep(mid, 1);
+                        try
+                        {
+                            req.respond(state->durableStatus.load());
+                        }
+                        catch(...)
+                        {}
+                        return;
+                    }
+                    req.respond(state->durableStatus.load());
                 },
                 clock ? 52 : 74));
     }
