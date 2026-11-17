@@ -70,10 +70,14 @@ public:
         //        storyId2NameMap_ = new std::unordered_map<uint64_t, std::string>();
     }
 
+    // The chronicle owns its stories and archives: removeStory() deletes a
+    // story it removes, and what is left goes with the chronicle. ClientInfo
+    // keeps plain pointers to the stories a client holds and never frees or
+    // reads them on destruction.
     ~Chronicle()
     {
-        //        delete storyName2IdMap_;
-        //        delete storyId2NameMap_;
+        for(auto& entry: storyMap_) delete entry.second;
+        for(auto& entry: archiveMap_) delete entry.second;
     }
 
     void setName(const std::string& name) { name_ = name; }

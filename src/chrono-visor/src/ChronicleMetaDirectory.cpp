@@ -21,7 +21,11 @@ ChronicleMetaDirectory::ChronicleMetaDirectory()
     chronicleMap_ = new std::unordered_map<uint64_t, Chronicle*>();
 }
 
-ChronicleMetaDirectory::~ChronicleMetaDirectory() { delete chronicleMap_; }
+ChronicleMetaDirectory::~ChronicleMetaDirectory()
+{
+    for(auto& entry: *chronicleMap_) delete entry.second;
+    delete chronicleMap_;
+}
 
 /**
  * Create a Chronicle
