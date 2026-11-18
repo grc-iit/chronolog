@@ -329,6 +329,11 @@ int main(int argc, char** argv)
                         }));
         auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+        // refuse() counts an answer once its send has returned, which can be
+        // after the peer got the 0 and answered the probe.
+        auto counted = std::chrono::steady_clock::now() + 2s;
+        while(client.context->incomingResponses.refused() == 0 && std::chrono::steady_clock::now() < counted)
+            std::this_thread::sleep_for(1ms);
         unsigned refused = client.context->incomingResponses.refused();
         std::cout << "reply=" << result.reply.value_or(-1) << " refused=" << refused << " in " << elapsed.count()
                   << " ms" << std::endl;
