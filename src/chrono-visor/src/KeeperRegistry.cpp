@@ -731,6 +731,33 @@ void pause(rpc::RpcDeadline const& d)
 {
     std::this_thread::sleep_for(std::min(d.remaining(), rpc::RpcDeadline::Clock::duration(1ms)));
 }
+// Settles a recording an earlier acquire left Unresolved (see
+// settleUnresolvedStart). Returns Pending while a start's work is still out;
+// otherwise the recording is Active, or Closing with the stops still to send,
+// or Stop with no targets, which the caller erases. Called under the registry
+// lock.
+UnresolvedStart::State settleUnresolved(StoryRecording& recording)
+{
+    auto settled = settleUnresolvedStart(recording);
+    if(settled.state == UnresolvedStart::Active)
+    {
+        recording.confirmedKeepers = std::move(settled.keepers);
+        recording.phase = StoryRecording::Active;
+        LOG_INFO("[ChronoProcessRegistry] StoryID={} left unresolved by an earlier acquire: every start was "
+                 "confirmed late, the story is active",
+                 recording.id);
+    }
+    else if(settled.state == UnresolvedStart::Stop && !settled.targets.empty())
+    {
+        recording.stopTargets = std::move(settled.targets);
+        recording.phase = StoryRecording::Closing;
+        LOG_INFO("[ChronoProcessRegistry] StoryID={} left unresolved by an earlier acquire: sending a stop to the {} "
+                 "component(s) whose start may have run",
+                 recording.id,
+                 recording.stopTargets.size());
+    }
+    return settled.state;
+}
 // How long an acquire waits for the other keepers of the group once the
 // grapher and a first keeper have confirmed the start. Keepers answer the
 // same start within milliseconds of each other; without the wait the roster
@@ -772,6 +799,18 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             auto existing = activeStories.find(id);
             if(existing == activeStories.end())
                 break;
+            if(existing->second->phase == StoryRecording::Unresolved)
+            {
+                auto settled = settleUnresolved(*existing->second);
+                if(settled == UnresolvedStart::Pending)
+                    return CL_ERR_OUTCOME_UNCONFIRMED;
+                if(existing->second->phase == StoryRecording::Unresolved)
+                {
+                    // Nothing may have run anywhere: start the story anew.
+                    activeStories.erase(existing);
+                    break;
+                }
+            }
             if(existing->second->phase == StoryRecording::Active)
             {
                 output = existing->second->confirmedKeepers;
@@ -939,12 +978,23 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         }
         pause(deadline);
     }
+    // A player start that was never submitted is known not to have run; mark
+    // it so a later acquire or release can settle the recording.
+    if(!playerSubmitted && recording->clients.size() > recording->keepers.size() + 1)
     {
-        auto lock = boundedRegistryLock(registryLock, deadline);
-        if(!lock.owns_lock())
-            return CL_ERR_OUTCOME_UNCONFIRMED;
+        auto& unsent = *recording->starts.back();
+        unsent.status = CL_ERR_DEADLINE_EXCEEDED;
+        unsent.done.store(true, std::memory_order_release);
+    }
+    {
+        // Taken whatever the deadline: the wait above usually ends because
+        // the deadline passed, and a recording left Starting would read as
+        // an acquire still in progress to every later acquire and release.
+        // The registry lock is only ever held briefly.
+        std::lock_guard<std::mutex> lock(registryLock);
         // No completion callback erases or remaps a generation. Failed or
-        // ambiguous setup remains a barrier; timeout is not a stop instruction.
+        // ambiguous setup stays Unresolved until a later acquire or release
+        // settles it (settleUnresolved); timeout is not a stop instruction.
         recording->phase = status == CL_SUCCESS ? StoryRecording::Active : StoryRecording::Unresolved;
         if(status == CL_SUCCESS)
         {
@@ -970,6 +1020,16 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
         if(it == activeStories.end())
             return CL_SUCCESS;
         recording = it->second;
+        if(recording->phase == StoryRecording::Unresolved)
+        {
+            if(settleUnresolved(*recording) == UnresolvedStart::Pending)
+                return CL_ERR_OUTCOME_UNCONFIRMED;
+            if(recording->phase == StoryRecording::Unresolved)
+            {
+                activeStories.erase(it);
+                return CL_SUCCESS;
+            }
+        }
         if(recording->phase == StoryRecording::Closing && !recording->stopTargets.empty())
         {
             // An earlier stop was not confirmed by every component: send it

@@ -212,5 +212,50 @@ inline StoryStopTargets storyStopTargets(StoryRecording const& recording)
     }
     return result;
 }
+// An acquire whose starts did not all confirm in time leaves the story
+// Unresolved. A start that timed out has returned without an answer, so none
+// will come; the next acquire or release settles the story from what is
+// known. If every start was confirmed as succeeded, the story is Active with
+// its keepers. Otherwise every component whose start succeeded or may have
+// run gets a stop, as a keeper that registered later does: stop is
+// idempotent, and a component that never had the story ignores it. A start
+// whose work has not returned yet leaves the story Unresolved.
+struct UnresolvedStart
+{
+    enum State
+    {
+        Pending, // a start's work has not returned yet
+        Active,  // every start was confirmed as succeeded
+        Stop     // stop `targets`, then the story can start anew
+    };
+    State state = Pending;
+    std::vector<std::size_t> targets;
+    std::vector<KeeperIdCard> keepers;
+};
+inline UnresolvedStart settleUnresolvedStart(StoryRecording const& recording)
+{
+    UnresolvedStart result;
+    bool allSucceeded = true;
+    for(std::size_t i = 0; i < recording.starts.size(); ++i)
+    {
+        auto const& start = *recording.starts[i];
+        if(!start.done.load(std::memory_order_acquire))
+            return {};
+        bool succeeded = start.confirmed && start.status == CL_SUCCESS;
+        allSucceeded &= succeeded;
+        if(succeeded || (!start.confirmed && start.dispatched))
+            result.targets.push_back(i);
+        if(succeeded && i >= 1 && i <= recording.keepers.size())
+            result.keepers.push_back(recording.keepers[i - 1]);
+    }
+    if(allSucceeded && !result.keepers.empty())
+    {
+        result.state = UnresolvedStart::Active;
+        result.targets.clear();
+    }
+    else
+        result.state = UnresolvedStart::Stop;
+    return result;
+}
 } // namespace chronolog
 #endif

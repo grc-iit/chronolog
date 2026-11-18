@@ -151,7 +151,12 @@ TEST_P(AdminDeadline, UnregisterAndReplaceDescriptorWhileOldSetupCompletes)
     std::this_thread::sleep_for(330ms);
     EXPECT_NE(registry->notifyRecordingGroupOfStoryRecordingStart("c", "s", 503, roster, player), CL_SUCCESS);
     EXPECT_TRUE(roster.empty());
-    for(auto const& count: stops) EXPECT_EQ(count.load(), 0);
+    // The second acquire first settles the first one: the grapher confirmed
+    // its start and the keepers' starts timed out, so each gets one stop; the
+    // player's start was never sent and gets none. Its own fresh start then
+    // fails as well, since the keepers are still slow.
+    for(int i = 0; i < 4; ++i) EXPECT_EQ(stops[i].load(), 1) << "component " << i;
+    EXPECT_EQ(stops[4].load(), 0);
 }
 // A keeper that registers again while clients hold more stories than the
 // admin runtime has free slots (12 against the fixture's 8) gets every story
@@ -232,6 +237,53 @@ TEST_P(AdminDeadline, UnconfirmedStopIsSentAgainByTheNextAcquire)
     EXPECT_GT(stops[1].load(), stopsAfterRelease) << "the stop was not sent again";
     EXPECT_EQ(starts[0].load(), 2) << "no new recording was started";
     EXPECT_EQ(portal.ReleaseStory(200, "chronicle", "story"), CL_SUCCESS);
+}
+TEST_P(AdminDeadline, UnresolvedStartIsSettledByAnotherClientsAcquire)
+{
+    // The player answers its start only after the acquire's budget, so the
+    // first acquire fails and leaves the story Unresolved; its client keeps
+    // the acquisition. Another client's acquire stops every component whose
+    // start may have run, then starts the story anew, instead of refusing it
+    // until the visor restarts.
+    delays[1] = delays[2] = 0;
+    delays[4] = 300;
+    VisorClientPortal portal;
+    attach(portal);
+    ClientId second = 200;
+    uint64_t offset = 0;
+    ASSERT_EQ(portal.ClientConnect(0, second, offset), CL_SUCCESS);
+    EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_OUTCOME_UNCONFIRMED);
+    // Let the player's 300 ms handler finish, so its work holds no slot.
+    std::this_thread::sleep_for(400ms);
+    delays[4] = 0;
+    auto response = portal.AcquireStory(200, "chronicle", "story");
+    EXPECT_EQ(response.getErrorCode(), CL_SUCCESS);
+    EXPECT_FALSE(response.getKeepers().empty());
+    EXPECT_EQ(stops[0].load(), 1) << "the grapher's start was not stopped";
+    EXPECT_EQ(stops[4].load(), 1) << "the player's unconfirmed start was not stopped";
+    EXPECT_EQ(starts[0].load(), 2) << "no new recording was started";
+    EXPECT_EQ(portal.ReleaseStory(200, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+}
+TEST_P(AdminDeadline, UnresolvedStartIsStoppedByItsHoldersRelease)
+{
+    // As above, but the client whose acquire failed releases the story: the
+    // release stops every component whose start may have run, and the same
+    // client can then acquire the story again.
+    delays[1] = delays[2] = 0;
+    delays[4] = 300;
+    VisorClientPortal portal;
+    attach(portal);
+    EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_OUTCOME_UNCONFIRMED);
+    std::this_thread::sleep_for(400ms);
+    delays[4] = 0;
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(stops[0].load(), 1) << "the grapher's start was not stopped";
+    EXPECT_EQ(stops[4].load(), 1) << "the player's unconfirmed start was not stopped";
+    auto response = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(response.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(starts[0].load(), 2) << "no new recording was started";
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
 }
 TEST_P(AdminDeadline, SaturationDefault32StartsNoMutationOrFanout)
 {
