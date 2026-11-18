@@ -50,7 +50,7 @@ inline int parseRpcTimeoutPolicy(json_object* object, RpcTimeoutPolicy& policy) 
 
 struct ClientPortalServiceConf
 {
-    std::string PROTO_CONF = "ofi+sockets";
+    std::string PROTO_CONF = "ofi+tcp";
     std::string IP = "127.0.0.1";
     uint16_t PORT = 5555;
     uint16_t PROVIDER_ID = 55;
@@ -59,7 +59,7 @@ struct ClientPortalServiceConf
 
 struct ClientQueryServiceConf
 {
-    std::string PROTO_CONF = "ofi+sockets";
+    std::string PROTO_CONF = "ofi+tcp";
     std::string IP = "127.0.0.1";
     uint16_t PORT = 5557;
     uint16_t PROVIDER_ID = 57;

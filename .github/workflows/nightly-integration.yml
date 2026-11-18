@@ -37,7 +37,7 @@ on:
       protocols:
         description: "Protocols keeper_restart_held_test.sh runs over"
         required: false
-        default: "ofi+sockets"
+        default: "ofi+tcp"
   pull_request:
     branches: [develop, main]
     paths:
@@ -66,9 +66,9 @@ jobs:
     timeout-minutes: 300
     env:
       TEST_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.ref || 'develop' }}
-      # keeper_restart_held_test.sh fails over ofi+tcp until its missing RPC
-      # deadlines are fixed; the default leaves that protocol out
-      PROTOCOLS: ${{ inputs.protocols || 'ofi+sockets' }}
+      # The shipped transport; keeper_restart_held_test.sh also takes
+      # "ofi+tcp ofi+sockets" to cover both
+      PROTOCOLS: ${{ inputs.protocols || 'ofi+tcp' }}
       SCRIPTS: ${{ inputs.scripts || '' }}
 
     steps:

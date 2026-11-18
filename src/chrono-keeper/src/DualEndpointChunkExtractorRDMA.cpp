@@ -201,13 +201,13 @@ int chronolog::DualEndpointChunkExtractorRDMA::process_chunk(chronolog::StoryChu
            "extractor_name": {
                 "type": "dual_endpoint_rdma_extractor",
                 "player_receiving_endpoint": {
-                    "protocol_conf": "ofi+sockets",
+                    "protocol_conf": "ofi+tcp",
                     "service_ip": "127.0.0.1",
                     "service_base_port": 2230,
                     "service_provider_id": 30
                 },
                 "grapher_receiving_endpoint": {
-                    "protocol_conf": "ofi+sockets",
+                    "protocol_conf": "ofi+tcp",
                     "service_ip": "127.0.0.1",
                     "service_base_port": 3333,
                     "service_provider_id": 33

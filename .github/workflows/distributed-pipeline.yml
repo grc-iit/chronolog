@@ -116,6 +116,10 @@ jobs:
               <<: *x-common
               hostname: c$i
               container_name: chronolog-c$i
+              # ofi+tcp binds the interface named here; lo would be
+              # unreachable from the other containers
+              environment:
+                - FI_TCP_IFACE=eth0
               volumes:
                 - shared_home:/home/grc-iit
                 - ${{ github.workspace }}:/workspace

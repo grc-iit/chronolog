@@ -49,8 +49,8 @@
 # gave writer B and B's post-restart successes at keeper 2's parity, without
 # judging them.
 #
-# The scenario runs once with the template's protocol and once with ofi+tcp if
-# the template uses another one (PROTOCOLS="..." overrides the list). The
+# The scenario runs once with the template's protocol and once with the other
+# of ofi+tcp and ofi+sockets (PROTOCOLS="..." overrides the list). The
 # keeper and grapher chunk and acceptance times are pinned, since check 3
 # depends on them: an event is sealed on its keeper at most
 # K_CHUNK_SECS + K_ACCEPT_SECS after its time, and the grapher writes it no
@@ -566,7 +566,11 @@ fi
 TEMPLATE_PROTO=$(jq -r '.chrono_keeper.KeeperRecordingService.rpc.protocol_conf' "$CONF_TEMPLATE")
 if [ -z "${PROTOCOLS:-}" ]; then
     PROTOCOLS="$TEMPLATE_PROTO"
-    [ "$TEMPLATE_PROTO" = "ofi+tcp" ] || PROTOCOLS="$PROTOCOLS ofi+tcp"
+    if [ "$TEMPLATE_PROTO" = "ofi+tcp" ]; then
+        PROTOCOLS="$PROTOCOLS ofi+sockets"
+    else
+        PROTOCOLS="$PROTOCOLS ofi+tcp"
+    fi
 fi
 
 command cp -f "$CONF_TEMPLATE" "$CONF_TEMPLATE.restart_held_backup"

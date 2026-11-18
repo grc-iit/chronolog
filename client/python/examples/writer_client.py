@@ -37,7 +37,7 @@ def writer_client():
     # create ClientPortalServiceConf instance with the connection credentials to ChronoVisor ClientPortalService
 
     clientConf = py_chronolog_client.ClientPortalServiceConf(
-        "ofi+sockets", "127.0.0.1", 5555, 55
+        "ofi+tcp", "127.0.0.1", 5555, 55
     )
 
     # instantiate ChronoLog Client object

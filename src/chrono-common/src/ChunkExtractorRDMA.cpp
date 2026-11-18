@@ -157,7 +157,7 @@ int chronolog::StoryChunkExtractorRDMA::reset(chl::ServiceId const& new_receiver
 //   "extractor_name": {
 //          "type": "single_endpoint_rdma_extractor",
 //          "receiving_endpoint": {
-//            "protocol_conf": "ofi+sockets",
+//            "protocol_conf": "ofi+tcp",
 //            "service_ip": "127.0.0.1",
 //            "service_base_port": 2230,
 //            "service_provider_id": 30

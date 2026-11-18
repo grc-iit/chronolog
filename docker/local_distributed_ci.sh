@@ -39,7 +39,7 @@
 #   -k N         keepers  (default 2, as in CI)
 #   -g N         graphers (default 2, as in CI)
 #   -p N         players  (default 2, as in CI)
-#   --rpc-protocol P      daemon/client RPC transport: ofi+sockets or ofi+tcp
+#   --rpc-protocol P      daemon/client RPC transport: ofi+tcp (default) or ofi+sockets
 #   --rpc-tcp-iface IFACE reachable container interface for ofi+tcp (default eth0)
 #   --skip-build reuse whatever is already installed in the shared volume
 #   --keep       leave containers running after the run (for debugging)
@@ -93,7 +93,7 @@ NFS_PASSES=()
 NFS_DESTROY_PROFILE=default
 NFS_EXPORT=/srv/chronolog-nfs-localci
 NFS_CACHE_SECS=60
-RPC_PROTOCOL=ofi+sockets
+RPC_PROTOCOL=ofi+tcp
 RPC_TCP_IFACE=eth0
 NFS_OVERRIDE="${REPO_ROOT}/dynamic-compose.local-ci.nfs.yaml"
 NFS_OVERRIDE_NEW=""

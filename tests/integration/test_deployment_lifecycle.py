@@ -776,12 +776,12 @@ class ShippedConfigContract(unittest.TestCase):
         config = MODULE.parents[2] / 'conf/default_conf.json.in'
         record = {'component': 'keeper', 'config': str(config)}
         # Independently fixed shipped default, not another generated fixture.
-        self.assertEqual(lifecycle.target(record), 'ofi+sockets://127.0.0.1:7777@77')
+        self.assertEqual(lifecycle.target(record), 'ofi+tcp://127.0.0.1:7777@77')
         self.assertEqual(lifecycle.group(record), 7)
         self.assertEqual(lifecycle.visor_target({'component':'visor','config':str(config)}),
-                         'ofi+sockets://127.0.0.1:8888@88')
+                         'ofi+tcp://127.0.0.1:8888@88')
         self.assertEqual(lifecycle.player_target({'component':'player','config':str(config)}),
-                         'ofi+sockets://127.0.0.1:2525@25')
+                         'ofi+tcp://127.0.0.1:2525@25')
 
 
 class KeeperRestart(unittest.TestCase):

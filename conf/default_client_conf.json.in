@@ -12,7 +12,7 @@
     },
     "VisorClientPortalService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
         "service_provider_id": 55
@@ -20,7 +20,7 @@
     },
     "ClientQueryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5557,
         "service_provider_id": 57
