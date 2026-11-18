@@ -22,6 +22,11 @@ struct WatermarkReportPublisher::Core
         std::atomic<bool> cleaned{false};
         bool final = false;
         uint64_t contributions = 0;
+        // When the pass that submitted this attempt ran. A report that went out
+        // makes the target eligible again one interval after this, not after
+        // the pass that sees it complete: that pass would otherwise skip the
+        // target, and a keeper would be told W only every other pass.
+        rpc::RpcDeadline::Clock::time_point submitted{};
         std::map<StoryId, StoryWatermarkRegistry::Incarnation> snapshots;
     };
     struct Target
@@ -328,10 +333,10 @@ int WatermarkReportPublisher::publishImpl(rpc::RpcDeadline const& supplied,
             }
             target->failures = state == Core::State::LocalSendComplete ? 0 : std::min(target->failures + 1, 6u);
             target->eligible =
-                    now + (target->failures
-                                   ? std::chrono::milliseconds(std::min(uint64_t{1000}, owner->policy.attempt_ms) *
-                                                               (1u << (target->failures - 1)))
-                                   : core_->interval);
+                    target->failures
+                            ? now + std::chrono::milliseconds(std::min(uint64_t{1000}, owner->policy.attempt_ms) *
+                                                              (1u << (target->failures - 1)))
+                            : target->active->submitted + core_->interval;
             target->active.reset();
         }
         if(evidence && evidence->contains(it->first))
@@ -361,6 +366,7 @@ int WatermarkReportPublisher::publishImpl(rpc::RpcDeadline const& supplied,
         }
         auto attempt = std::make_shared<Core::Attempt>();
         attempt->final = final;
+        attempt->submitted = now;
         target->active = attempt;
         runtime->submit<int>(std::move(reservation), std::make_shared<Core::Work>(owner, core_, target, attempt))
                 .releaseToRuntime();

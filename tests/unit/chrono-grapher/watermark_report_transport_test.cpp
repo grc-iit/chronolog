@@ -333,6 +333,30 @@ TEST_F(WatermarkReportTransport, PublishWithinTheIntervalSendsNothing)
     EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 200; }));
 }
 
+// A pass that finds the previous report sent must send the current one when an
+// interval has passed since that report went out. The old code counted the
+// interval from the pass that saw the send complete and skipped the target in
+// that pass, so with passes one interval apart a keeper heard of W every other
+// pass.
+TEST_F(WatermarkReportTransport, PublishOneIntervalAfterASentReportSendsTheNextOne)
+{
+    startPublisher(1);
+    constexpr chl::StoryId kStory = 5;
+    registry.registerStory(kStory, 100);
+    publisher->recordContributor(kStory, keeper1Id);
+    registry.advancePersisted(kStory, 100, 200);
+
+    auto const constructed = std::chrono::steady_clock::now();
+    std::this_thread::sleep_until(constructed + std::chrono::milliseconds(1100));
+    publisher->publish();
+    ASSERT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 200; }));
+
+    registry.advancePersisted(kStory, 200, 300);
+    std::this_thread::sleep_until(constructed + std::chrono::milliseconds(2300));
+    publisher->publish();
+    EXPECT_TRUE(waitFor([&] { return keeper1->retentionStore.knownPersisted(kStory) == 300; }));
+}
+
 TEST_F(WatermarkReportTransport, ChunkAckCarriesTheGraphersReceipt)
 {
     auto transfer = startReceiptTransfer();
