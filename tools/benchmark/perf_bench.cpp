@@ -975,7 +975,7 @@ int main(int argc, char** argv)
 
     if(result == 1)
     {
-        exit(EXIT_FAILURE);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
     if(workload_args.latency_test)
@@ -1072,11 +1072,13 @@ int main(int argc, char** argv)
                 auto ret = acquireStoryTimer.timeBlock(test_acquire_story, client, chronicle_name, story_name);
                 ret_i = ret.first;
                 story_handle = ret.second;
+                // MPI_Abort, not exit(): the other ranks wait in the next
+                // barrier and would otherwise hang until killed.
                 if((workload_args.write || workload_args.latency_test) && ret_i != chronolog::CL_SUCCESS)
                 {
                     std::cerr << "Failed to acquire story: " << story_name << " in Chronicle: " << chronicle_name
                               << ", ret: " << chronolog::to_string_client(ret_i) << std::endl;
-                    exit(EXIT_FAILURE);
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
                 }
                 else if(workload_args.read && ret_i == chronolog::CL_ERR_NOT_EXIST)
                 {
@@ -1085,7 +1087,7 @@ int main(int argc, char** argv)
                     std::cout << "Please make sure a write test with the same configuration is executed before the "
                                  "read test."
                               << std::endl;
-                    exit(EXIT_FAILURE);
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
                 }
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
