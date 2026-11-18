@@ -585,7 +585,7 @@ dex c1 bash -c "
     cd ${WORK_DIR}
     timeout 300 \$MPIEXEC -l -n ${CLIENT_HOSTS} -f conf/hosts_client \
       tools/benchmark/chrono-bench --config conf/default-chrono-client-conf.json \
-      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/chrono_bench_write.log | tail -20
+      -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p 2>&1 | tee /tmp/chrono_bench_write.log | tail -20
 " || stage_fail "performance test failed"
 stage_ok
 

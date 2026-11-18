@@ -546,7 +546,7 @@ jobs:
             if timeout 300 \${MPIEXEC_BIN} -l -n 4 -f conf/hosts_client \
               tools/benchmark/chrono-bench \
               --config conf/default-chrono-client-conf.json \
-              -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p -y 2>&1 | tee /tmp/mpi_test_output.log; then
+              -a 4096 -b 4096 -s 4096 -n 1024 -t 1 -h 1 -p 2>&1 | tee /tmp/mpi_test_output.log; then
               echo '✅ Client performance test completed successfully'
             else
               TEST_EXIT_CODE=\$?

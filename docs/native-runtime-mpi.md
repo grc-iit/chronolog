@@ -46,11 +46,31 @@ All observed boundary states must be `ABT_ERR_UNINITIALIZED`. The probe fails
 before reading the config when MPI itself initializes Argobots. It does not
 call compensating Argobots initialization/finalization.
 
-For a native TCP fixture whose endpoints all use `127.0.0.1`, explicitly set
-`FI_TCP_IFACE=lo` for both the daemons and MPI ranks, as the existing native
-deadline fixtures do. Unset interface selection is not proof of a working
-loopback route. Distributed TCP must use a reachable container or host
-interface; never carry the loopback setting into a distributed deployment.
+The shipped transport is `ofi+tcp`. For a deployment whose endpoints all use
+`127.0.0.1`, `FI_TCP_IFACE=lo` must be set for the daemons, the deploy
+script's stop controller and the clients; `deploy_local.sh` exports it for its
+own processes when every `service_ip` is loopback and the variable is not
+already set, and the native deadline fixtures set it themselves. Unset
+interface selection is not proof of a working loopback route. Distributed TCP
+must use a reachable container or host interface (the distributed pipeline
+sets `FI_TCP_IFACE=eth0`); never carry the loopback setting into a distributed
+deployment.
+
+`ofi+sockets` still works, but a reply that arrives after its call's deadline
+stays in the sockets provider's receive buffer with no posted receive, and the
+provider's progress thread then polls at 100% CPU for the rest of the process's
+life (libfabric 1.22 to 2.7). Prefer `ofi+tcp`.
+
+Every control call (story acquire, release, destroy) has a budget of
+`control_ms`, and each attempt at most `attempt_ms` (5 s by default). Over
+`ofi+tcp`, Mercury moves data only when each process's progress thread runs. MPI
+ranks that busy-poll, for example while waiting in `MPI_Barrier`, on the same
+cores as the daemons can keep those threads off the CPU for seconds: on a
+4-CPU host running 7 daemons and 4 ranks that each wait in a barrier after
+every call, about one acquire in five ran out of its budget and failed with
+`CL_ERR_OUTCOME_UNCONFIRMED`, even with 15 s budgets. Leave the daemons cores
+of their own, or do not hold ranks in a barrier between ChronoLog calls; the
+distributed pipeline's `chrono-bench` write runs without `-y` for this reason.
 
 Applications must still avoid independently initialized Argobots/Margo work
 and keep the client library loaded until process exit. Existing foreign-runtime

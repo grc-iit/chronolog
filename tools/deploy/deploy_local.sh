@@ -59,7 +59,21 @@ RESTART_KEEPER_INDEX=""
 WAL_ENABLED="${WAL_ENABLED:-0}"
 
 # Helper Methods -----------------------------------------------------------------------------------
+# ofi+tcp binds the first interface libfabric picks unless FI_TCP_IFACE names
+# one. On a single host every endpoint is 127.0.0.1, and a process bound to
+# eth0 then cannot be answered over loopback (the stop controller's quiesce
+# calls time out), so loopback deployments pin it to lo. A value already in the
+# environment is kept.
+select_tcp_iface() {
+    [[ -n "${FI_TCP_IFACE:-}" || ! -f "${CONF_FILE}" ]] && return 0
+    jq -e '([.. | objects | select(has("protocol_conf")) | .protocol_conf] | any(. == "ofi+tcp")) and
+           ([.. | objects | select(has("service_ip")) | .service_ip] | all(startswith("127.")))' \
+        "${CONF_FILE}" > /dev/null 2>&1 && export FI_TCP_IFACE=lo
+    return 0
+}
+
 lifecycle() {
+    select_tcp_iface
     python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" "$@"
 }
 
@@ -72,6 +86,7 @@ start_service() {
 fence_mutation() {
     local operation="$1"
     if [[ -z "${CHRONOLOG_DEPLOYMENT_GUARD:-}" ]]; then
+        select_tcp_iface
         exec python3 "${SCRIPT_DIR}/deployment_lifecycle.py" --work-dir "${WORK_DIR}" \
             --occupied-executable "${VISOR_BIN}" --occupied-executable "${GRAPHER_BIN}" \
             --occupied-executable "${PLAYER_BIN}" --occupied-executable "${KEEPER_BIN}" \
