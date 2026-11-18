@@ -363,9 +363,7 @@ static int test_replay_story(chronolog::Client& client,
 static int
 test_release_story(chronolog::Client& client, const std::string& chronicle_name, const std::string& story_name)
 {
-    int ret = client.ReleaseStory(chronicle_name, story_name);
-    assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_NOT_EXIST);
-    return ret;
+    return client.ReleaseStory(chronicle_name, story_name);
 }
 
 static int test_destroy_chronicle(chronolog::Client& client, const std::string& chronicle_name)
@@ -1250,6 +1248,19 @@ int main(int argc, char** argv)
 
                 // release story test
                 ret_i = releaseStoryTimer.timeBlock(test_release_story, client, chronicle_name, story_name);
+                // Name the failure and this rank's write answers before
+                // aborting; MPI_Abort, as for a failed acquire, so the other
+                // ranks do not wait in a collective
+                if(ret_i != chronolog::CL_SUCCESS && ret_i != chronolog::CL_ERR_NOT_EXIST)
+                {
+                    std::cerr << "Rank " << rank << ": failed to release story: " << story_name
+                              << " in Chronicle: " << chronicle_name << ", ret: " << chronolog::to_string_client(ret_i)
+                              << "; this rank's write answers:";
+                    for(auto const& [code, count]: dur_stats.return_codes)
+                        std::cerr << " " << chronolog::to_string_client(code) << " x" << count;
+                    std::cerr << std::endl;
+                    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+                }
                 if(workload_args.barrier)
                     MPI_Barrier(MPI_COMM_WORLD);
 
