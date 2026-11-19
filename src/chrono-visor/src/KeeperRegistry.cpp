@@ -803,11 +803,16 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
             auto lock = boundedRegistryLock(registryLock, deadline);
             if(!lock.owns_lock())
                 return rejectBeforeSetup(CL_ERR_DEADLINE_EXCEEDED);
+            // A destroy of the chronicle or the story is in flight (the
+            // portal finished any unconfirmed one first): nothing is sent, so
+            // the acquisition is rolled back.
             if(chronicleDestructions.count(chronicle))
-                return CL_ERR_OUTCOME_UNCONFIRMED;
+                return rejectBeforeSetup(CL_ERR_OUTCOME_UNCONFIRMED);
             auto existing = activeStories.find(id);
             if(existing == activeStories.end())
                 break;
+            if(existing->second->destroy)
+                return rejectBeforeSetup(CL_ERR_OUTCOME_UNCONFIRMED);
             if(existing->second->phase == StoryRecording::Unresolved)
             {
                 auto settled = settleUnresolved(*existing->second);
@@ -843,10 +848,12 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
         if(!lock.owns_lock())
             return rejectBeforeSetup(CL_ERR_DEADLINE_EXCEEDED);
         if(chronicleDestructions.count(chronicle))
-            return CL_ERR_OUTCOME_UNCONFIRMED;
+            return rejectBeforeSetup(CL_ERR_OUTCOME_UNCONFIRMED);
         // Another acquire may have started the story since the check above.
         if(auto again = activeStories.find(id); again != activeStories.end())
         {
+            if(again->second->destroy)
+                return rejectBeforeSetup(CL_ERR_OUTCOME_UNCONFIRMED);
             if(again->second->phase != StoryRecording::Active)
                 return CL_ERR_OUTCOME_UNCONFIRMED;
             output = again->second->confirmedKeepers;
@@ -1147,11 +1154,15 @@ int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chr
             supplied ? *supplied : rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
     std::vector<std::shared_ptr<DataStoreAdminClient>> clients;
     std::vector<rpc::RpcReservation> reservations;
+    std::shared_ptr<StoryRecording> barrier;
     {
         auto lock = boundedRegistryLock(registryLock, deadline);
         if(!lock.owns_lock())
             return CL_ERR_DEADLINE_EXCEEDED;
-        if(activeStories.count(id))
+        // A recording, or a destroy in flight, refuses; a destroy that ended
+        // unconfirmed is sent again with the same placeholder.
+        auto existing = activeStories.find(id);
+        if(existing != activeStories.end() && (!existing->second->destroy || existing->second->destroyInFlight))
             return CL_ERR_OUTCOME_UNCONFIRMED;
         for(auto const& group: recordingGroups)
             if(group.second.grapherProcess && group.second.grapherProcess->active)
@@ -1163,13 +1174,20 @@ int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chr
                 return t.status();
             reservations.push_back(std::move(t));
         }
-        auto barrier = std::make_shared<StoryRecording>();
-        barrier->id = id;
-        barrier->chronicle = chronicle;
-        barrier->story = story;
-        barrier->phase = StoryRecording::Closing;
-        barrier->generation = ++nextGeneration;
-        activeStories.emplace(id, std::move(barrier));
+        if(existing != activeStories.end())
+            barrier = existing->second;
+        else
+        {
+            barrier = std::make_shared<StoryRecording>();
+            barrier->id = id;
+            barrier->chronicle = chronicle;
+            barrier->story = story;
+            barrier->phase = StoryRecording::Closing;
+            barrier->generation = ++nextGeneration;
+            barrier->destroy = true;
+            activeStories.emplace(id, barrier);
+        }
+        barrier->destroyInFlight = true;
     }
     std::vector<rpc::RpcPending<int>> pending;
     for(std::size_t i = 0; i < clients.size(); ++i)
@@ -1186,12 +1204,14 @@ int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chr
         if(!r.reply || *r.reply != CL_SUCCESS)
             status = r.reply ? *r.reply : r.status;
     }
-    if(status == CL_SUCCESS)
     {
-        auto lock = boundedRegistryLock(registryLock, deadline);
-        if(!lock.owns_lock())
-            return CL_ERR_OUTCOME_UNCONFIRMED;
-        activeStories.erase(id);
+        // Taken whatever the deadline, as in the start path: the placeholder
+        // must not be left marked in flight. Held only briefly.
+        std::lock_guard<std::mutex> lock(registryLock);
+        barrier->destroyInFlight = false;
+        auto it = activeStories.find(id);
+        if(status == CL_SUCCESS && it != activeStories.end() && it->second == barrier)
+            activeStories.erase(it);
     }
     return status;
 }
@@ -1202,15 +1222,23 @@ int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const&
             supplied ? *supplied : rpc::RpcDeadline::after(std::chrono::milliseconds(adminRuntime->policy.control_ms));
     std::vector<std::shared_ptr<DataStoreAdminClient>> clients;
     std::vector<rpc::RpcReservation> reservations;
+    std::vector<std::shared_ptr<StoryRecording>> covered;
     {
         auto lock = boundedRegistryLock(registryLock, deadline);
         if(!lock.owns_lock())
             return CL_ERR_DEADLINE_EXCEEDED;
-        if(chronicleDestructions.count(chronicle))
+        // A destroy in flight refuses; one that ended unconfirmed is sent
+        // again. It also covers the placeholders of unconfirmed story
+        // destroys in the chronicle; a recording there refuses.
+        if(auto marker = chronicleDestructions.find(chronicle); marker != chronicleDestructions.end() && marker->second)
             return CL_ERR_OUTCOME_UNCONFIRMED;
         for(auto const& item: activeStories)
             if(item.second->chronicle == chronicle)
-                return CL_ERR_OUTCOME_UNCONFIRMED;
+            {
+                if(!item.second->destroy || item.second->destroyInFlight)
+                    return CL_ERR_OUTCOME_UNCONFIRMED;
+                covered.push_back(item.second);
+            }
         for(auto const& group: recordingGroups)
             if(group.second.grapherProcess && group.second.grapherProcess->active)
                 clients.push_back(group.second.grapherProcess->adminClient);
@@ -1221,7 +1249,8 @@ int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const&
                 return t.status();
             reservations.push_back(std::move(t));
         }
-        chronicleDestructions.emplace(chronicle, true);
+        chronicleDestructions[chronicle] = true;
+        for(auto const& c: covered) c->destroyInFlight = true;
     }
     std::vector<rpc::RpcPending<int>> pending;
     for(std::size_t i = 0; i < clients.size(); ++i)
@@ -1238,14 +1267,62 @@ int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const&
         if(!r.reply || *r.reply != CL_SUCCESS)
             status = r.reply ? *r.reply : r.status;
     }
-    if(status == CL_SUCCESS)
+    {
+        std::lock_guard<std::mutex> lock(registryLock);
+        for(auto const& c: covered)
+        {
+            c->destroyInFlight = false;
+            auto it = activeStories.find(c->id);
+            if(status == CL_SUCCESS && it != activeStories.end() && it->second == c)
+                activeStories.erase(it);
+        }
+        if(status == CL_SUCCESS)
+            chronicleDestructions.erase(chronicle);
+        else
+            chronicleDestructions[chronicle] = false;
+    }
+    return status;
+}
+
+int KeeperRegistry::finishUnconfirmedDestruction(ChronicleName const& chronicle,
+                                                 StoryName const& story,
+                                                 rpc::RpcDeadline const& deadline,
+                                                 bool& chronicleDestroyed,
+                                                 bool& storyDestroyed)
+{
+    chronicleDestroyed = storyDestroyed = false;
+    bool chroniclePending = false;
+    std::optional<StoryId> storyPending;
     {
         auto lock = boundedRegistryLock(registryLock, deadline);
         if(!lock.owns_lock())
-            return CL_ERR_OUTCOME_UNCONFIRMED;
-        chronicleDestructions.erase(chronicle);
+            return CL_ERR_DEADLINE_EXCEEDED;
+        if(auto marker = chronicleDestructions.find(chronicle); marker != chronicleDestructions.end())
+        {
+            if(marker->second)
+                return CL_ERR_OUTCOME_UNCONFIRMED; // in flight
+            chroniclePending = true;
+        }
+        else if(!story.empty())
+            for(auto const& item: activeStories)
+                if(item.second->destroy && item.second->chronicle == chronicle && item.second->story == story)
+                {
+                    if(item.second->destroyInFlight)
+                        return CL_ERR_OUTCOME_UNCONFIRMED;
+                    storyPending = item.first;
+                }
     }
-    return status;
+    if(!chroniclePending && !storyPending)
+        return CL_SUCCESS;
+    LOG_INFO("[ChronoProcessRegistry] Sending again the destroy of {} {} that a grapher did not confirm",
+             chroniclePending ? "Chronicle" : "Story",
+             chroniclePending ? chronicle : chronicle + "/" + story);
+    int status = chroniclePending ? notifyAllGraphersOfChronicleDestruction(chronicle, &deadline)
+                                  : notifyAllGraphersOfStoryDestruction(chronicle, story, *storyPending, &deadline);
+    if(status != CL_SUCCESS)
+        return CL_ERR_OUTCOME_UNCONFIRMED;
+    (chroniclePending ? chronicleDestroyed : storyDestroyed) = true;
+    return CL_SUCCESS;
 }
 
 int KeeperRegistry::registerGrapherProcess(GrapherRegistrationMsg const& reg_msg)

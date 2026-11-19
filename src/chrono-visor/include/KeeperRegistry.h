@@ -236,6 +236,19 @@ public:
     // Broadcast destroy_chronicle to every active Grapher in the registry.
     int notifyAllGraphersOfChronicleDestruction(ChronicleName const&, rpc::RpcDeadline const* = nullptr);
 
+    // A destroy of `chronicle`, or of `story` in it, that a grapher did not
+    // confirm is sent again, as an unconfirmed stop is: the next create or
+    // acquire of the name calls this first. CL_SUCCESS with chronicleDestroyed
+    // or storyDestroyed set means every grapher has now confirmed it, and the
+    // caller removes the name from the directory; CL_SUCCESS with neither set
+    // means no destroy was pending. Any failure leaves the destroy pending and
+    // returns CL_ERR_OUTCOME_UNCONFIRMED.
+    int finishUnconfirmedDestruction(ChronicleName const&,
+                                     StoryName const&,
+                                     rpc::RpcDeadline const&,
+                                     bool& chronicleDestroyed,
+                                     bool& storyDestroyed);
+
     int registerGrapherProcess(GrapherRegistrationMsg const& reg_msg);
     int unregisterGrapherProcess(GrapherIdCard const& id_card);
     void updateGrapherProcessStats(GrapherStatsMsg const&);
@@ -261,6 +274,9 @@ private:
     std::vector<std::shared_ptr<DataStoreAdminClient>> shutdownDependencies;
     std::shared_ptr<VisorAdminRuntime> adminRuntime;
     uint64_t nextGeneration = 0;
+    // Chronicles whose destroy was sent to the graphers and not yet confirmed
+    // by all of them: true while a destroy is in flight, false once one ended
+    // unconfirmed (finishUnconfirmedDestruction sends it again).
     std::map<std::string, bool> chronicleDestructions;
     std::mutex registryLock;
     std::shared_ptr<thallium::engine> registryEngine;

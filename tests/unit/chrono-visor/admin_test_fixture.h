@@ -65,6 +65,9 @@ protected:
     std::atomic<unsigned> appendCounts[5]{};
     std::atomic<int> stops[5]{};
     int stopDelays[5]{};
+    // destroy_story and destroy_chronicle: answered CL_SUCCESS after destroyDelays[i] ms
+    int destroyDelays[5]{};
+    std::atomic<int> storyDestroys[5]{}, chronicleDestroys[5]{};
     bool suppressShutdownReply[5]{};
     int shutdownAcks[5]{1, 1, 1, 1, 1};
     std::atomic<unsigned> shutdownEntries[5]{};
@@ -168,6 +171,34 @@ protected:
                     {
                         ++stops[i];
                         margo_thread_sleep(peers->get_margo_instance(), stopDelays[i]);
+                        try
+                        {
+                            req.respond(0);
+                        }
+                        catch(...)
+                        {}
+                    },
+                    static_cast<uint16_t>(i + 1)));
+            procedures.push_back(peers->define(
+                    "destroy_story",
+                    [this, i](tl::request const& req, std::string const&, std::string const&, StoryId)
+                    {
+                        ++storyDestroys[i];
+                        margo_thread_sleep(peers->get_margo_instance(), destroyDelays[i]);
+                        try
+                        {
+                            req.respond(0);
+                        }
+                        catch(...)
+                        {}
+                    },
+                    static_cast<uint16_t>(i + 1)));
+            procedures.push_back(peers->define(
+                    "destroy_chronicle",
+                    [this, i](tl::request const& req, std::string const&)
+                    {
+                        ++chronicleDestroys[i];
+                        margo_thread_sleep(peers->get_margo_instance(), destroyDelays[i]);
                         try
                         {
                             req.respond(0);

@@ -51,6 +51,74 @@ TEST(VisorRpcSlots, RefusalLogReportsAtMostOnceASecondWithTheCount)
     EXPECT_EQ(log.note(), 3u);
     EXPECT_EQ(log.note(), 0u);
 }
+// The grapher answers a destroy after the visor's 120 ms deadline, so the
+// destroy's outcome is unknown. Before, the visor kept a marker for it that
+// nothing cleared: every later destroy, create or acquire of the name returned
+// -23 until the visor restarted.
+TEST_P(AdminDeadline, UnconfirmedStoryDestroyIsSentAgainByTheNextDestroy)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    ASSERT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
+    ASSERT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    destroyDelays[0] = 300;
+    EXPECT_NE(portal.DestroyStory(100, "chronicle", "story"), CL_SUCCESS);
+    std::this_thread::sleep_for(400ms);
+    destroyDelays[0] = 0;
+    EXPECT_EQ(portal.DestroyStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(storyDestroys[0].load(), 2);
+    EXPECT_EQ(portal.DestroyStory(100, "chronicle", "story"), CL_ERR_NOT_EXIST);
+}
+TEST_P(AdminDeadline, UnconfirmedStoryDestroyIsFinishedByTheNextAcquire)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    ASSERT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
+    ASSERT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    destroyDelays[0] = 300;
+    EXPECT_NE(portal.DestroyStory(100, "chronicle", "story"), CL_SUCCESS);
+    std::this_thread::sleep_for(400ms);
+    destroyDelays[0] = 0;
+    auto again = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(again.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(again.getKeepers().size(), 3u);
+    EXPECT_EQ(storyDestroys[0].load(), 2);
+    EXPECT_EQ(starts[0].load(), 2);
+}
+// The CI case: a chronicle destroy that one grapher did not confirm in time,
+// then another client creates the chronicle again and acquires a story in it.
+TEST_P(AdminDeadline, UnconfirmedChronicleDestroyIsFinishedByTheNextCreate)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    destroyDelays[0] = 300;
+    EXPECT_NE(portal.DestroyChronicle(100, "chronicle"), CL_SUCCESS);
+    std::this_thread::sleep_for(400ms);
+    destroyDelays[0] = 0;
+    EXPECT_EQ(portal.CreateChronicle(100, "chronicle"), CL_SUCCESS);
+    EXPECT_EQ(chronicleDestroys[0].load(), 2);
+    auto acquired = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(acquired.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(acquired.getKeepers().size(), 3u);
+}
+// An acquire finishes the chronicle's destroy too, and then finds no chronicle.
+TEST_P(AdminDeadline, AcquireFinishesAnUnconfirmedChronicleDestroyAndFindsNoChronicle)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    destroyDelays[0] = 300;
+    EXPECT_NE(portal.DestroyChronicle(100, "chronicle"), CL_SUCCESS);
+    std::this_thread::sleep_for(400ms);
+    destroyDelays[0] = 0;
+    EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_NOT_EXIST);
+    EXPECT_EQ(chronicleDestroys[0].load(), 2);
+    for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
+    EXPECT_EQ(portal.CreateChronicle(100, "chronicle"), CL_SUCCESS);
+}
 TEST_P(AdminDeadline, DegradedAcquireIsReleasedAndTheNextAcquireReachesEveryKeeper)
 {
     std::vector<KeeperIdCard> roster;

@@ -197,6 +197,12 @@ struct StoryRecording
     // it again to the same clients (stop is idempotent on each), so a
     // component that was only paused cannot hold the story closed for good.
     std::vector<std::size_t> stopTargets;
+    // A placeholder for a DestroyStory, not a recording: it keeps starts out
+    // while the graphers delete the story. One left by a destroy that a
+    // grapher did not confirm stays, with destroyInFlight false, until the
+    // next destroy, create or acquire of the name sends the destroy again.
+    bool destroy = false;
+    bool destroyInFlight = false;
 };
 
 // The recordings a keeper of `group` must start when it registers: the active

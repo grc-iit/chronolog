@@ -239,6 +239,23 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
     auto r = failure(CL_ERR_UNKNOWN);
     StoryId id = 0;
     bool last = false;
+    // A destroy of the chronicle, or of the story, that a grapher did not
+    // confirm is sent again before a create or acquire of the name, as an
+    // unconfirmed stop is; once every grapher confirms it, the name is removed
+    // here too, and the create or acquire goes on as for a new name.
+    auto finishDestruction = [&](std::string const& c, std::string const& s) -> int
+    {
+        bool chronicleDestroyed = false, storyDestroyed = false;
+        int status = registry->finishUnconfirmedDestruction(c, s, deadline, chronicleDestroyed, storyDestroyed);
+        if(status != CL_SUCCESS)
+            return status;
+        int removed = CL_SUCCESS;
+        if(chronicleDestroyed)
+            removed = directory.destroy_chronicle(c);
+        else if(storyDestroyed)
+            removed = directory.destroy_story(c, s);
+        return removed == CL_SUCCESS || removed == CL_ERR_NOT_EXIST ? CL_SUCCESS : CL_ERR_OUTCOME_UNCONFIRMED;
+    };
     switch(action)
     {
         case VisorControlAction::Connect:
@@ -253,7 +270,14 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
             break;
         }
         case VisorControlAction::CreateChronicle:
-            r->status = chronicle.empty() ? CL_ERR_INVALID_ARG : directory.create_chronicle(chronicle);
+            if(chronicle.empty())
+            {
+                r->status = CL_ERR_INVALID_ARG;
+                break;
+            }
+            r->status = finishDestruction(chronicle, "");
+            if(r->status == CL_SUCCESS)
+                r->status = directory.create_chronicle(chronicle);
             break;
         case VisorControlAction::Acquire:
         {
@@ -267,6 +291,11 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                 r->status = CL_ERR_NO_KEEPERS;
                 break;
             }
+            // Before the acquisition is added, so a destroy finished here never
+            // deletes it. A chronicle destroyed here leaves CL_ERR_NOT_EXIST.
+            r->status = finishDestruction(chronicle, story);
+            if(r->status != CL_SUCCESS)
+                break;
             r->status = directory.acquire_story(client, chronicle, story, id);
             // The client already holds the story: an earlier acquire whose reply
             // it did not get. Answer with the story's current recording, as a
