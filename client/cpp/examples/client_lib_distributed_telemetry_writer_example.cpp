@@ -144,6 +144,18 @@ public:
         network_story_handle = nullptr;
     }
 
+    // A failed setup call ends the whole job, saying which call failed and
+    // with what, instead of an assert that prints no code (and is compiled
+    // out of a Release build).
+    void requireSetup(bool ok, char const* what, int ret)
+    {
+        if(ok)
+            return;
+        std::cerr << "[DistributedTelemetryWriter] rank " << rank << ": " << what
+                  << " failed: " << chronolog::to_string_client(ret) << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
     bool initializeChronoLog(chronolog::ClientConfiguration& confManager)
     {
         // Configure the client connection
@@ -154,28 +166,28 @@ public:
 
         // Connect to ChronoVisor
         int ret = client->Connect();
-        assert(ret == chronolog::CL_SUCCESS);
+        requireSetup(ret == chronolog::CL_SUCCESS, "Connect", ret);
 
         // Create a chronicle named after the hostname
         std::string chronicle_name = node_name;
         ret = client->CreateChronicle(chronicle_name);
-        assert(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS);
+        requireSetup(ret == chronolog::CL_SUCCESS || ret == chronolog::CL_ERR_CHRONICLE_EXISTS, "CreateChronicle", ret);
 
         // Acquire stories for different metrics
 
         // CPU usage story
         auto cpu_result = client->AcquireStory(chronicle_name, "cpu_usage");
-        assert(cpu_result.first == chronolog::CL_SUCCESS);
+        requireSetup(cpu_result.first == chronolog::CL_SUCCESS, "AcquireStory cpu_usage", cpu_result.first);
         cpu_story_handle = cpu_result.second;
 
         // Memory usage story
         auto memory_result = client->AcquireStory(chronicle_name, "memory_usage");
-        assert(memory_result.first == chronolog::CL_SUCCESS);
+        requireSetup(memory_result.first == chronolog::CL_SUCCESS, "AcquireStory memory_usage", memory_result.first);
         memory_story_handle = memory_result.second;
 
         // Network usage story
         auto network_result = client->AcquireStory(chronicle_name, "network_usage");
-        assert(network_result.first == chronolog::CL_SUCCESS);
+        requireSetup(network_result.first == chronolog::CL_SUCCESS, "AcquireStory network_usage", network_result.first);
         network_story_handle = network_result.second;
 
         return true;

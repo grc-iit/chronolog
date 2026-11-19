@@ -626,6 +626,8 @@ jobs:
               examples/chrono-client-example-distributed-telemetry-writer \
               --config \${CLIENT_CONF} -d 30 -i 5 > /tmp/telemetry_writer.log 2>&1 || RC=\$?
             tail -8 /tmp/telemetry_writer.log || true
+            # A rank's failed setup call, which mpiexec's own lines can push out of the tail
+            grep -h 'DistributedTelemetryWriter.*failed' /tmp/telemetry_writer.log || true
             if [ \$RC -ne 0 ]; then
               echo \"❌ telemetry writer failed (exit \${RC})\"
               exit 1

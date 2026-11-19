@@ -608,7 +608,7 @@ dex c1 bash -c "
     timeout 240 \$MPIEXEC -n ${CLIENT_HOSTS} -f conf/hosts_client \
       examples/chrono-client-example-distributed-telemetry-writer \
       --config \$CONF -d 30 -i 5 > /tmp/telemetry_writer.log 2>&1 || RC=\$?
-    [ \$RC -eq 0 ] || { echo 'writer failed'; tail -20 /tmp/telemetry_writer.log; exit 1; }
+    [ \$RC -eq 0 ] || { echo 'writer failed'; tail -20 /tmp/telemetry_writer.log; grep -h 'DistributedTelemetryWriter.*failed' /tmp/telemetry_writer.log; exit 1; }
     echo '  ✅ telemetry written'
 
     echo '--- [2/3] tail read: chrono-bench -l ---'
