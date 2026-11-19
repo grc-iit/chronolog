@@ -100,6 +100,87 @@ TEST_P(AdminDeadline, ThreeSlotsReachThirdNativePeerWhileFirstTwoAreSilent)
     EXPECT_EQ(*c.reply, CL_SUCCESS);
     EXPECT_EQ(starts[3].load(), 1);
 }
+// #743: admin clients on one engine share the RPC IDs of the names they call.
+// On develop before 6c364840 a client's destructor deregistered them, so once
+// the visor deleted the admin client of a keeper that left, it could not
+// start a story on the keepers that stayed and every acquire failed with
+// CL_ERR_NO_KEEPERS. Here the clients hold no registration (the admin runtime
+// does); these tests keep it that way.
+static bool destroyedSoon(std::weak_ptr<DataStoreAdminClient> const& client)
+{
+    auto until = std::chrono::steady_clock::now() + 3s;
+    while(!client.expired() && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(1ms);
+    return client.expired();
+}
+TEST_P(AdminDeadline, DeletingOneAdminClientLeavesTheOtherWorking)
+{
+    delays[1] = delays[2] = 0;
+    auto owner = registry->adminOwner();
+    auto clientFor = [&](int provider)
+    {
+        std::string address;
+        service(provider).get_service_as_string(address);
+        return DataStoreAdminClient::CreateDataStoreAdminClient(owner, address, static_cast<uint16_t>(provider));
+    };
+    auto call = [&](std::shared_ptr<DataStoreAdminClient> client, AdminAction action)
+    {
+        auto token = owner->runtime.reserve(rpc::RpcDeadline::after(1s));
+        EXPECT_TRUE(token);
+        return owner->runtime
+                .submit<int>(std::move(token),
+                             std::make_shared<AdminWork>(std::move(client),
+                                                         AdminArguments{action, "c", "s", 910, 0, {}},
+                                                         std::make_shared<AdminCompletion>(),
+                                                         registry))
+                .wait();
+    };
+    auto leaving = clientFor(2);
+    auto staying = clientFor(3);
+    auto first = call(leaving, AdminAction::Start);
+    ASSERT_TRUE(first.reply);
+    ASSERT_EQ(*first.reply, CL_SUCCESS);
+    std::weak_ptr<DataStoreAdminClient> gone = leaving;
+    leaving.reset();
+    ASSERT_TRUE(destroyedSoon(gone));
+    auto start = call(staying, AdminAction::Start);
+    auto stop = call(staying, AdminAction::Stop);
+    ASSERT_TRUE(start.reply);
+    EXPECT_EQ(*start.reply, CL_SUCCESS);
+    ASSERT_TRUE(stop.reply);
+    EXPECT_EQ(*stop.reply, CL_SUCCESS);
+    EXPECT_EQ(starts[1].load(), 1);
+    EXPECT_EQ(starts[2].load(), 1);
+    EXPECT_EQ(stops[2].load(), 1);
+}
+// #743 as the visor meets it, with a keeper that comes back: it unregisters,
+// registers again at the same address, and the registry replaces its admin
+// client and deletes the old one. The next acquire still starts the story on
+// every keeper, the returning one and the two that stayed.
+TEST_P(AdminDeadline, AdminClientReplacedForAReturningKeeperLeavesEveryKeeperWorking)
+{
+    delays[1] = delays[2] = 0;
+    std::vector<KeeperIdCard> roster;
+    ServiceId player;
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("c", "first", 920, roster, player), CL_SUCCESS);
+    ASSERT_EQ(roster.size(), 3u);
+    // A recording keeps its components' admin clients for its stop; stop it
+    // so that only the registry holds keeper 1's.
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStop(920), CL_SUCCESS);
+    auto old = KeeperRegistryTestAccess::keeperAdminClient(*registry, keeper(1));
+    ASSERT_FALSE(old.expired());
+    ASSERT_EQ(registry->unregisterKeeperProcess(keeper(1)), CL_SUCCESS);
+    // The old client is deleted on registration once its delayed-exit time
+    // (0 s here, at one-second resolution) has passed.
+    std::this_thread::sleep_for(1100ms);
+    ASSERT_EQ(registry->registerKeeperProcess(KeeperRegistrationMsg(keeper(1), service(2))), CL_SUCCESS);
+    EXPECT_TRUE(destroyedSoon(old));
+    roster.clear();
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("c", "second", 921, roster, player), CL_SUCCESS);
+    EXPECT_EQ(roster.size(), 3u);
+    EXPECT_EQ(starts[1].load(), 2);
+    EXPECT_EQ(starts[2].load(), 2);
+    EXPECT_EQ(starts[3].load(), 2);
+}
 TEST_P(AdminDeadline, OccupiedRosterFailsBeforeAnySetupDispatch)
 {
     auto owner = registry->adminOwner();

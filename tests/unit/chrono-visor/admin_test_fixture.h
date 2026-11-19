@@ -34,6 +34,16 @@ struct KeeperRegistryTestAccess
     {
         return registry.keeperRegistryService->lifetimeToken_;
     }
+    // The admin client the registry holds for a registered keeper, or none.
+    static std::weak_ptr<DataStoreAdminClient> keeperAdminClient(KeeperRegistry& registry, KeeperIdCard const& keeper)
+    {
+        std::lock_guard<std::mutex> lock(registry.registryLock);
+        for(auto& [id, group]: registry.recordingGroups)
+            for(auto& [key, entry]: group.keeperProcesses)
+                if(to_string(entry.idCard) == to_string(keeper))
+                    return entry.keeperAdminClient;
+        return {};
+    }
 };
 } // namespace chronolog
 class AdminDeadline: public ::testing::TestWithParam<std::string>
