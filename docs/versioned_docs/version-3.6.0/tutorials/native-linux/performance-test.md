@@ -79,19 +79,19 @@ It then prints the client configuration it loaded:
 ```bash
 ===== ChronoLog Client Configuration =====
 [PORTAL_CONF]
-  protocol: ofi+sockets
+  protocol: ofi+tcp
   IP: 127.0.0.1
   port: 5555
   provider ID: 55
 [QUERY_CONF]
-  protocol: ofi+sockets
+  protocol: ofi+tcp
   IP: 127.0.0.1
   port: 5557
   provider ID: 57
 [LOG_CONF]
   ...
 [PerformanceTest] Running in write mode.
-Connected to server address: ofi+sockets://127.0.0.1:5555@55
+Connected to server address: ofi+tcp://127.0.0.1:5555@55
 ```
 
 ### Performance Results

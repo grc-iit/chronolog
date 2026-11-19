@@ -33,6 +33,13 @@ All Client API methods return an `int` status code. Check the return value again
 | `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, it is shutting down, or it lacks the durable RPC. Nothing was stored |
 | `CL_ERR_DURABILITY_FULL` | -20 | Durable write: the keeper's WAL file system is below its reserve, or the keeper holds more unconfirmed data than `durable_cap_mb`. Nothing was stored |
 | `CL_ERR_DURABILITY_UNKNOWN` | -21 | Durable write: the event may be stored. `event_time` holds its timestamp (see [Durability error codes](#durability-error-codes)) |
+| `CL_ERR_DEADLINE_EXCEEDED` | -22 | The call's budget ran out before its request was sent. Nothing was sent (see [Deadline and capacity codes](#deadline-and-capacity-codes)) |
+| `CL_ERR_OUTCOME_UNCONFIRMED` | -23 | The request was sent, but no answer came within the budget. The operation may have taken effect |
+| `CL_ERR_RPC_CAPACITY` | -24 | Every RPC slot of the client is taken, or the client is closing. Nothing was sent |
+| `CL_ERR_CLOCK_UNAVAILABLE` | -25 | The event time could not be read. Nothing was sent |
+| `CL_ERR_TIMESTAMP_EXHAUSTED` | -26 | No timestamp larger than the client's last one can be assigned. Nothing was sent |
+| `CL_ERR_SHUTDOWN_INCOMPLETE` | -27 | A stop ran out of its budget while work it owns was still running |
+| `CL_ERR_NATIVE_RUNTIME_UNSUPPORTED` | -28 | `Connect`: Argobots or Margo was already initialized in this process, for example by an MPICH built with `+argobots`. Permanent for the process; nothing was sent |
 
 :::note Reserved range
 Codes `-14` through `-17` are intentionally unassigned. They are reserved for the ingest acceptance-window and collision-policy work developing in parallel, so that branch and this one never assign the same number to different meanings.
@@ -95,6 +102,20 @@ answer. A call that fails at once is not retried at once: the client waits until
 `timeout_ms` has passed, so the attempts are `timeout_ms` apart and a keeper restarted at the same
 address can answer. If it does not come back in time, the writer gets -21 with the event's
 timestamp.
+
+## Deadline and capacity codes
+
+Since 3.6.0 every client call has a budget from the client's [`RpcPolicy`](../../user-guide/configuration/network-and-rpc.md#rpc-deadlines) (`append_ms`, `control_ms`, `tail_ms`, `replay_ms`). What a caller does next depends on whether the request left the process:
+
+| Code | Was the request sent? | What to do |
+|------|-----------------------|------------|
+| `CL_ERR_DEADLINE_EXCEEDED` (-22) | No | Retrying is safe. The budget ran out while the call waited for a slot, looked up the server or prepared the request. |
+| `CL_ERR_OUTCOME_UNCONFIRMED` (-23) | Yes | Do not treat it as a failure. An accepted write may be stored: use `append_event`, which returns the event's timestamp with this code, and check for the event as for a [-21](#checking-whether-a--21-event-was-stored). A metadata change (create, destroy, acquire, release) may have taken effect: check before repeating it. ChronoVisor settles a story whose start or stop it could not confirm on the next acquire or release of that story. |
+| `CL_ERR_RPC_CAPACITY` (-24) | No | Retry after a short backoff. The client has two RPC slots. A slot whose call got no answer stays taken until Mercury is done with it, so a server that stopped answering can hold both, and every later call returns -24 at once. A `Client` constructed while the previous last `Client` of the process is still closing gets -24 for its whole life. |
+| `CL_ERR_CLOCK_UNAVAILABLE` (-25), `CL_ERR_TIMESTAMP_EXHAUSTED` (-26) | No | The client could not give the event a timestamp. Timestamps are strictly increasing per client, also across a clock step back; -26 means the clock is at the largest value. |
+| `CL_ERR_NATIVE_RUNTIME_UNSUPPORTED` (-28) | No | ChronoLog must initialize the process's Argobots and Margo itself. Build MPI applications against an MPICH without Argobots (`~argobots`, as the shipped Spack environment does), and do not initialize Argobots or Margo before `Connect`. |
+
+`log_event(record)` returns the event's timestamp, or 0 for any failure, so it cannot tell these cases apart. `append_event(record)` returns an `AppendResult` with the code (`status`), the `outcome` (`Acknowledged`, `NotSubmitted`, `Rejected` or `Unconfirmed`), and the `timestamp` and `event_index` it gave the event. With `Unconfirmed` the timestamp is kept, so the event can be looked up; never send an `Unconfirmed` event again as if the keeper had refused it. A keeper's own refusal comes back with `Rejected` and the keeper's code.
 
 ## Error Handling
 

@@ -236,7 +236,7 @@ A story's events are striped across its assigned ChronoKeepers. To gather the gl
 
   {/* Phase 1 Box (Scatter: Concurrent Key Lookup) */}
   <rect x="180" y="98" width="510" height="114" rx="6" fill="#1e2330" fillOpacity="0.6" stroke="#4a90a4" strokeWidth="0.75" strokeDasharray="5,3" strokeOpacity="0.4"/>
-  <text x="195" y="112" fill="#4a90a4" fontSize="7" fontWeight="600">{"Phase 1 (Scatter): Concurrent Key Lookup (RPC Timeout: 5000ms)"}</text>
+  <text x="195" y="112" fill="#4a90a4" fontSize="7" fontWeight="600">{"Phase 1 (Scatter): Concurrent Key Lookup (both phases share tail_ms, 5000 ms)"}</text>
 
   {/* TR -> K1 tail_get_sequences */}
   <line x1="270" y1="126" x2="466" y2="126" stroke="#c3e04d" strokeWidth="0.75" strokeOpacity="0.8"/>
@@ -303,15 +303,15 @@ A story's events are striped across its assigned ChronoKeepers. To gather the gl
 </svg>
 
 ### Phase 1 — Scatter (Keys Only)
-1. The client issues asynchronous `tail_get_sequences(story_id, n)` RPCs concurrently to all keepers assigned to the story.
+1. The client issues asynchronous `tail_get_sequences(story_id, n)` RPCs to the keepers assigned to the story, in waves of as many as it has free RPC slots (two), so two keepers are asked at once and a story with more keepers is read two at a time.
 2. Each keeper queries `KeeperChunkRetentionStore::getTailSequences` and returns up to $n$ newest `EventSequence` keys (each a tuple of `(chrono_time, clientId, index)`).
-3. Total Phase 1 latency is bounded by the slowest keeper rather than the sum, and per-RPC timeouts (`kTailReadRpcTimeoutMs = 5000ms`) isolate failed keepers.
+3. Within a wave, latency is bounded by the slower keeper rather than the sum. Both phases share one `tail_ms` budget (5 s by default), and each RPC is capped at `attempt_ms` and the time left, so a keeper that does not answer cannot hold the read past the budget. A keeper that fails returns `CL_ERR_PARTIAL_RESULT` with what the others gave, and gives its slot back.
 
 ### Selection
 The client merges all returned keys into a single globally-ordered collection, picks the largest $N$ sequences, and groups them by their owning keeper.
 
 ### Phase 2 — Gather (Payloads for Winners Only)
-1. The client issues concurrent `tail_get_events(story_id, selected_seqs)` RPCs to each keeper that holds winning keys.
+1. The client issues `tail_get_events(story_id, selected_seqs)` RPCs to each keeper that holds winning keys, in the same waves, within what is left of `tail_ms`.
 2. Each keeper retrieves the specific `LogEvent` payloads using `KeeperChunkRetentionStore::getTailEvents`.
 3. The client inserts returned events into a `std::map<EventSequence, Event>` to ensure cross-keeper deduplication and ascending ordering, returning a `std::vector<Event>`.
 

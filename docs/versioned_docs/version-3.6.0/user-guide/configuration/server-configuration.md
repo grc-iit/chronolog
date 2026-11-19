@@ -59,10 +59,14 @@ Every service endpoint is described by an `rpc` block, parsed by `RPCProviderCon
 
 | Field                 | Type    | Example         | Description                                                                   |
 | --------------------- | ------- | --------------- | ----------------------------------------------------------------------------- |
-| `protocol_conf`       | string  | `"ofi+sockets"` | Thallium/Mercury transport string. See [Network & RPC](./network-and-rpc.md). |
+| `protocol_conf`       | string  | `"ofi+tcp"` | Thallium/Mercury transport string. See [Network & RPC](./network-and-rpc.md). |
 | `service_ip`          | string  | `"127.0.0.1"`   | IP the service binds to (servers) or connects to (clients).                   |
 | `service_base_port`   | integer | `5555`          | TCP port.                                                                     |
 | `service_provider_id` | integer | `55`            | Thallium provider ID; multiplexes services on the same address.               |
+
+### `RpcPolicy` — RPC deadlines
+
+Each of `chrono_visor`, `chrono_keeper`, `chrono_grapher` and `chrono_player` (and `chrono_client` in the client file) reads an `RpcPolicy` block of eight budgets in milliseconds: `append_ms`, `control_ms`, `tail_ms`, `replay_ms`, `attempt_ms`, `startup_ms`, `shutdown_ms` and `transfer_ms`. The block and each key are optional; a component refuses a value that is not a positive integer. What each budget bounds is described under [RPC Deadlines](./network-and-rpc.md#rpc-deadlines).
 
 ### `Monitoring` — logging
 
@@ -111,6 +115,7 @@ The defaults below are the template's. The first four keys have a different temp
 | `archive_visibility_delay_secs` | integer | `10` | *(Keeper only)* Seconds a keeper keeps a chunk after ChronoGrapher confirms it written, serving its events to replays meanwhile. ChronoGrapher records the file in the [archive manifest](../architecture/hdf5-archive.md#archive-manifest) before it confirms, and a player reads the manifest before each archive read, so this only covers a replay already under way when the confirmation arrives; see [Timing rules across components](#timing-rules-across-components). `0` frees on confirmation. See [Durable Chunk Retention](../architecture/durable-retention.md). |
 | `shutdown_confirm_timeout_secs` | integer | `150` | *(Keeper only)* Seconds a keeper stopped with SIGTERM waits for ChronoGrapher to confirm its chunks written before it exits. Cover ChronoGrapher's `story_chunk_duration_secs` plus `acceptance_window_secs`; see [Timing rules across components](#timing-rules-across-components). `0` exits without waiting. |
 | `watermark_report_interval_secs` | integer | `1` | *(Grapher only)* How often ChronoGrapher sends changed persisted watermarks and unwritten receipts to the keepers. |
+| `duplicate_receipt_hold_secs` | integer | `600` | *(Grapher only)* Seconds ChronoGrapher remembers a keeper partial chunk it received after its events are written, so a keeper that sends it again gets the first receipt instead of the events being written twice. Keep it above the keepers' `watermark_resend_timeout_secs`. `0` or more. |
 
 
 ### Timing rules across components
@@ -125,6 +130,7 @@ starts. If you change any of the settings below, keep the rules. The values are 
 | grapher `acceptance_window_secs` > keeper `story_chunk_duration_secs` + keeper `acceptance_window_secs` | 60 > 10 + 15 | A keeper ships a chunk that long after its first event; it has to reach the grapher before the grapher's window for that time closes. | Every keeper chunk arrives after its window was written and lands in a second file for that window. |
 | grapher `story_chunk_duration_secs` + `acceptance_window_secs` (the write window) stays short | 30 + 60 = 90 s | An event reaches the archive within the write window, and a keeper holds each chunk at least that long. | Keepers hold more memory and replays read more from the keepers. |
 | keeper `watermark_resend_timeout_secs` ≥ 2 × the grapher's write window | 300 ≥ 180 | A keeper sends a chunk again only when the grapher has had time to write it. | A delivery about to be confirmed is replaced by a new one that has to be confirmed from the start; chunks are sent and written again, and a keeper can wait indefinitely. |
+| grapher `duplicate_receipt_hold_secs` > keeper `watermark_resend_timeout_secs` | 600 > 300 | A resend of a chunk already written still finds its receipt. | The resent chunk's events are written a second time; reads drop the copies, but the archive holds them twice. |
 | keeper `shutdown_confirm_timeout_secs` ≥ the grapher's write window | 150 ≥ 90 | A keeper stopped with SIGTERM waits for the grapher to write the chunks it just sent. | The keeper exits before its last chunks are confirmed, and frees them unconfirmed with a warning. |
 | keeper `retention_cap_mb` ≥ 3 × peak per-keeper MB/s × (keeper `story_chunk_duration_secs` + `acceptance_window_secs` + the grapher's write window + grapher `watermark_report_interval_secs` + keeper `archive_visibility_delay_secs`) | 4096 ≥ 3 × 10 × 126 | That is how long a healthy keeper holds each chunk; the factor 3 leaves room for a short grapher stall. | The retention warning fires in normal operation and stops meaning anything. Nothing is dropped. |
 | grapher `watermark_report_interval_secs` well below keeper `archive_visibility_delay_secs` | 1 vs 10 | Keepers learn that a chunk is written from these reports. | Chunks stay on the keepers longer than they need to. |
@@ -190,7 +196,7 @@ Present under `chrono_keeper` and `chrono_grapher`. Parsed by `ExtractionModuleC
 | Field                     | Type    | Description                                                                                                                                                                       |
 | ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `extraction_stream_count` | integer | Number of parallel extraction-stream threads draining the extraction queue. Default: `2`.                                                                                         |
-| `extraction_protocol`     | string  | Thallium protocol of the keeper's engine for its RDMA extractors. Default: `"ofi+sockets"`. Read by the keeper only.                                                              |
+| `extraction_protocol`     | string  | Thallium protocol of the keeper's engine for its RDMA extractors. Default: `"ofi+tcp"`. Read by the keeper only.                                                              |
 | `extractors`              | object  | Map of extractor entries. Each key is a label of your choice (the template uses `extractor_to_grapher` and `hdf5_archive_extractor`), and each entry must set `"type"` to one of the extractor types listed below; additional fields depend on the type. A component keeps one extractor per type: of two entries with the same `type`, only the last one in the file is used. An entry whose `type` the component does not know is ignored. |
 
 **Supported extractor types**
@@ -239,6 +245,7 @@ Parsed by `VisorConfiguration` (`src/chrono-visor/include/ChronoVisorConfigurati
 | `VisorClientPortalService`        | object  | `{ "rpc": { ... } }` — endpoint used by clients to connect to ChronoVisor.                    |
 | `VisorKeeperRegistryService`      | object  | `{ "rpc": { ... } }` — endpoint where ChronoKeeper/Grapher/Player register and heartbeat.     |
 | `Monitoring`                      | object  | See [`Monitoring`](#monitoring--logging).                                                     |
+| `RpcPolicy`                       | object  | See [`RpcPolicy`](#rpcpolicy--rpc-deadlines). Bounds ChronoVisor's start, stop and destroy calls to the keepers, graphers and players. |
 | `delayed_data_admin_exit_in_secs` | integer | Seconds ChronoVisor keeps its admin RPC client for a keeper, grapher or player after that process unregisters or registers again, and while ChronoVisor shuts down, before destroying it, so calls already sent on it can finish. It holds no events. Default `3`; a value outside 1–59 becomes `5`. |
 
 ## `chrono_keeper`
@@ -256,6 +263,7 @@ Parsed by `KeeperConfiguration` (`src/chrono-keeper/include/ChronoKeeperConfigur
 | `DataStoreInternals`          | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
 | `ExtractionModule`            | object  | See [`ExtractionModule`](#extractionmodule).                                               |
 | `WAL`                         | object  | Write-ahead log for durable writes. Optional; off by default. See [`WAL`](#wal--keeper-write-ahead-log). |
+| `RpcPolicy`                   | object  | See [`RpcPolicy`](#rpcpolicy--rpc-deadlines). Bounds the keeper's chunk sends, its registration and each stop attempt (`shutdown_ms`). |
 
 `KeeperRecordingService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
 
@@ -272,8 +280,9 @@ Parsed by `GrapherConfiguration` (`src/chrono-grapher/include/ChronoGrapherConfi
 | `Monitoring`                | object  | See [`Monitoring`](#monitoring--logging).                                                  |
 | `DataStoreInternals`        | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
 | `ExtractionModule`          | object  | See [`ExtractionModule`](#extractionmodule).                                               |
+| `RpcPolicy`                 | object  | See [`RpcPolicy`](#rpcpolicy--rpc-deadlines). Bounds the pull of a keeper's chunk (`transfer_ms`), the answer to the keeper and the watermark reports. |
 
-`KeeperGrapherDrainService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
+`KeeperGrapherDrainService` carries an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism) — and `transfer_piece_bytes`, the largest piece in which the grapher pulls a keeper partial chunk: default `1048576` (1 MiB), at least `4096`.
 
 ## `chrono_player`
 
@@ -289,8 +298,9 @@ Parsed by `PlayerConfiguration` (`src/chrono-player/include/ChronoPlayerConfigur
 | `DataStoreInternals`      | object  | See [`DataStoreInternals`](#datastoreinternals--story-chunk-tuning).                       |
 | `PlayerRecordingService`  | object  | `{ "rpc": { ... } }` — endpoint that receives chunks from a keeper's `dual_endpoint_rdma_extractor`. Keepers ship with `single_endpoint_rdma_extractor`, so nothing sends to it by default. |
 | `ArchiveReaders`          | object  | See [`ArchiveReaders`](#archivereaders--story-files-directory).                            |
+| `RpcPolicy`               | object  | See [`RpcPolicy`](#rpcpolicy--rpc-deadlines). Bounds a replay's fetch from the keepers, its answer to the client and the pull of a chunk from a keeper. |
 
-`PlaybackQueryService` and `PlayerRecordingService` carry an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism).
+`PlaybackQueryService` and `PlayerRecordingService` carry an `IngestionThreadCount` field — see [`IngestionThreadCount`](#ingestionthreadcount--ingestion-thread-parallelism). `PlayerRecordingService` also carries `transfer_piece_bytes`, as the grapher's `KeeperGrapherDrainService` does: default `1048576`, at least `4096`.
 
 ---
 

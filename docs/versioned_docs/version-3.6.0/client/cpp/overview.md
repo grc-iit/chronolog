@@ -56,11 +56,11 @@ Default values:
 
 | Struct | Field | Default |
 |--------|-------|---------|
-| `ClientPortalServiceConf` | `PROTO_CONF` | `"ofi+sockets"` |
+| `ClientPortalServiceConf` | `PROTO_CONF` | `"ofi+tcp"` |
 | `ClientPortalServiceConf` | `IP` | `"127.0.0.1"` |
 | `ClientPortalServiceConf` | `PORT` | `5555` |
 | `ClientPortalServiceConf` | `PROVIDER_ID` | `55` |
-| `ClientQueryServiceConf` | `PROTO_CONF` | `"ofi+sockets"` |
+| `ClientQueryServiceConf` | `PROTO_CONF` | `"ofi+tcp"` |
 | `ClientQueryServiceConf` | `IP` | `"127.0.0.1"` |
 | `ClientQueryServiceConf` | `PORT` | `5557` |
 | `ClientQueryServiceConf` | `PROVIDER_ID` | `57` |

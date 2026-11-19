@@ -51,10 +51,10 @@ Exactly one mode must be specified per invocation:
 
 | Mode | Description |
 |------|-------------|
-| `--start` | Start all ChronoLog processes |
-| `--stop` | Stop all ChronoLog processes gracefully (force-kills after timeout). With the keeper WAL on, it reads each keeper's `exit-summary` and reports durable events still pending in a WAL |
+| `--start` | Start all ChronoLog processes. Each process writes a status record next to its generated conf (`<conf>.lifecycle.json`); `--start` refuses, with status 27, while a process recorded by an earlier start may still run, and replaces the old records once every recorded process is gone |
+| `--stop` | Stop all ChronoLog processes: keepers first, then the players, graphers and the visor, each with SIGTERM only, within one budget of the keeper's `shutdown_confirm_timeout_secs` plus 180 s (330 s with the template). A process still running when the budget ends is not killed: the stop exits with status 27 (`CL_ERR_SHUTDOWN_INCOMPLETE`) and leaves the processes and their records in place; run `--stop` again. With the keeper WAL on, it then reads each keeper's `exit-summary` and reports durable events still pending in a WAL |
 | `--clean` | Remove generated config files and logs, and the archive in the output directory: the files its manifest names, their story directories if empty, then `%manifest`. Other files in the output directory stay. Requires all processes to be stopped first. A keeper WAL directory is removed only when its `exit-summary` shows no pending events; one with pending events or no summary is reported and nothing is removed, unless `--force` is given |
-| `--restart-keeper <n>` | Start keeper `n` again with the configuration `--start` generated for it, so it reuses the same ports and WAL directory |
+| `--restart-keeper <n>` | Start keeper `n` again with the configuration `--start` generated for it, so it reuses the same ports and WAL directory. Refused while the keeper it recorded still runs. Exits with status 3 if the new keeper exits during startup (a WAL it cannot recover, for one), leaving the rest of the deployment running |
 
 ## Options
 

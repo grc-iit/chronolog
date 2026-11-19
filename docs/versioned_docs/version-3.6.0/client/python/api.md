@@ -25,7 +25,7 @@ ClientPortalServiceConf(proto, ip, port, provider_id)
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `proto` | `str` | Transport protocol (e.g. `"ofi+sockets"`) |
+| `proto` | `str` | Transport protocol (e.g. `"ofi+tcp"`) |
 | `ip` | `str` | IP address of the ChronoVisor portal service |
 | `port` | `int` | Port number of the portal service |
 | `provider_id` | `int` | Margo/Thallium provider ID |
@@ -34,7 +34,7 @@ ClientPortalServiceConf(proto, ip, port, provider_id)
 
 | Field | Default |
 |-------|---------|
-| `proto` | `"ofi+sockets"` |
+| `proto` | `"ofi+tcp"` |
 | `ip` | `"127.0.0.1"` |
 | `port` | `5555` |
 | `provider_id` | `55` |
@@ -53,7 +53,7 @@ ClientQueryServiceConf(proto, ip, port, provider_id)
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `proto` | `str` | Transport protocol (e.g. `"ofi+sockets"`) |
+| `proto` | `str` | Transport protocol (e.g. `"ofi+tcp"`) |
 | `ip` | `str` | IP address of the ChronoPlayer query service |
 | `port` | `int` | Port number of the query service |
 | `provider_id` | `int` | Margo/Thallium provider ID |
@@ -62,7 +62,7 @@ ClientQueryServiceConf(proto, ip, port, provider_id)
 
 | Field | Default |
 |-------|---------|
-| `proto` | `"ofi+sockets"` |
+| `proto` | `"ofi+tcp"` |
 | `ip` | `"127.0.0.1"` |
 | `port` | `5557` |
 | `provider_id` | `57` |
@@ -174,7 +174,7 @@ Client.ReplayStory(chronicle_name: str,
 - Retrieve all events in the story whose timestamps fall within the half-open range `[start, end)`.
 - Events are appended to `event_series` (an `EventList` instance that must be created by the caller) in chronological order.
 - Returns `0` (`CL_SUCCESS`) on success, `-11` (`CL_ERR_NOT_READER_MODE`) if the client was constructed without a `ClientQueryServiceConf`, `-12` (`CL_ERR_QUERY_TIMED_OUT`) if the query did not complete in time, or another error code on failure.
-- Returns `-18` (`CL_ERR_PARTIAL_RESULT`) when ChronoPlayer answered but knows the series is short: a keeper of the story did not answer within its 5-second fetch deadline, a keeper's answer hit its per-query event cap, or an archive file in the range could not be read. `event_series` holds the events it did gather; retry the range to pick up the rest.
+- Returns `-18` (`CL_ERR_PARTIAL_RESULT`) when ChronoPlayer answered but knows the series is short: a keeper of the story was not fetched, or did not answer, within the player's fetch deadline (its `attempt_ms`, 5 s, for all the story's keepers, fetched two at a time), a keeper's answer hit its per-query event cap, or an archive file in the range could not be read. `event_series` holds the events it did gather; retry the range to pick up the rest.
 
 ---
 
@@ -186,11 +186,14 @@ Client.ReplayStory(chronicle_name: str,
 StoryHandle.log_event(event_string: str) -> int
 ```
 
-- Append a new event with the log record `event_string`.
-- Returns the `uint64_t` timestamp (as a Python `int`) assigned to the event by the client library.
-- The keeper's answer is discarded; a keeper crash before ChronoGrapher writes the event loses it.
-  Use the overload below with `Durability.Durable` when the call must not return until the event is
-  on the keeper's disk.
+- Append a new event with the log record `event_string`, within the client's `append_ms` (5 s by
+  default).
+- Returns the `uint64_t` timestamp (as a Python `int`) assigned to the event by the client library
+  once the keeper acknowledged it, and `0` otherwise. Up to 3.5.0 it returned the timestamp whatever
+  the keeper answered. A `0` can also mean the append was sent and not answered in time, so the
+  event may be stored; the overload below returns the code.
+- A keeper crash before ChronoGrapher writes the event loses it. Use the overload below with
+  `Durability.Durable` when the call must not return until the event is on the keeper's disk.
 
 ```python
 StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, int]
@@ -200,8 +203,9 @@ StoryHandle.log_event(log_string: str, options: LogEventOptions) -> tuple[int, i
   `(status, event_time)`. `status` is `0` (`CL_SUCCESS`) once the event got there; `event_time` is
   the event's timestamp on success and with `-21`, and `0` with every other status.
 - With `Durability.Accepted` (the default) it takes the same path as `log_event(event_string)` and
-  returns the keeper's status instead of discarding it; a keeper that is shutting down returns `-1`
-  and stores nothing.
+  returns the code: the keeper's status when it answered (a keeper that is shutting down returns
+  `-1` and stores nothing), otherwise `-22`, `-24` or, for an append sent but not answered, `-23`.
+  See [Error Codes](./error-codes.md#deadline-and-capacity-codes).
 - With `Durability.Durable` it returns `0` only after the keeper wrote the event to its write-ahead
   log (WAL) and `fdatasync` returned. A keeper that cannot make the event durable answers with an
   error and stores nothing, except that `-21` means it may be stored; the write is never downgraded

@@ -15,7 +15,7 @@ import py_chronolog_client
 print("Basic test for py_chronolog_client")
 
 # Create ClientPortalServiceConf with connection credentials
-client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)
+client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+tcp", "127.0.0.1", 5555, 55)
 
 # Instantiate a write-only Client
 client = py_chronolog_client.Client(client_conf)
@@ -59,7 +59,7 @@ print("\nclient.Disconnect() returned:", return_code)
 | **Connect** | Opens a session with ChronoVisor over the configured transport. |
 | **CreateChronicle** | Registers a top-level namespace. Returns `-6` (`CL_ERR_CHRONICLE_EXISTS`) if one already exists with that name, which is safe to ignore when you just want to ensure it exists. |
 | **AcquireStory** | Opens (and creates if necessary) a story. Returns a `tuple` — check `[0]` for the return code and use `[1]` as the `StoryHandle`. |
-| **log_event** | Appends an event record. The call is non-blocking; events are buffered and flushed in the background. |
+| **log_event** | Appends an event record and waits for the keeper to acknowledge it, at most the client's `append_ms` (5 s by default). Returns the event's timestamp, or 0 if the keeper did not acknowledge it. |
 | **ReleaseStory** | Flushes buffered events and releases the story handle. |
 
 ---
@@ -74,8 +74,8 @@ import py_chronolog_client
 print("Basic test for py_chronolog_client reader")
 
 # Configure both the portal service (writes) and the query service (reads)
-client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)
-query_conf  = py_chronolog_client.ClientQueryServiceConf("ofi+sockets", "127.0.0.1", 5557, 57)
+client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+tcp", "127.0.0.1", 5555, 55)
+query_conf  = py_chronolog_client.ClientQueryServiceConf("ofi+tcp", "127.0.0.1", 5557, 57)
 
 # Passing both configs enables WRITER + READER mode
 client = py_chronolog_client.Client(client_conf, query_conf)
@@ -123,7 +123,7 @@ print("\nclient.Disconnect() returned:", return_code)
 | **`event.log_record()`** | The string payload that was passed to `log_event`. |
 
 :::note
-Events logged by `log_event` are buffered and flushed to storage asynchronously. Allow sufficient time between writing and replaying for the background flush to complete. Future versions may provide an explicit sync mechanism.
+Events logged by `log_event` are held by the keepers in chunks that reach the archive later. A replay reads the newest ones from keeper memory, but allow some time between writing and replaying: an event becomes visible to a replay once its chunk is sealed.
 :::
 
 ### Expected Console Output
@@ -155,7 +155,7 @@ import py_chronolog_client
 print("Basic test for py_chronolog_client tail read (playback)")
 
 # Create ClientPortalServiceConf (writer mode is sufficient for tail reads)
-client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)
+client_conf = py_chronolog_client.ClientPortalServiceConf("ofi+tcp", "127.0.0.1", 5555, 55)
 
 client = py_chronolog_client.Client(client_conf)
 return_code = client.Connect()

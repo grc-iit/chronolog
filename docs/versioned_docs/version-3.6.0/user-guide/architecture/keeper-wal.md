@@ -206,18 +206,23 @@ clients still hold, so accepted writes after the restart are kept too.
 A keeper stopped with SIGTERM first unregisters from the visor, then stops taking writes: a new
 durable write gets `CL_ERR_DURABILITY_UNAVAILABLE` and a new accepted write `CL_ERR_UNKNOWN`, and
 neither is stored. An accepted write that arrived just before is taken in before data collection
-stops, so one answered `CL_SUCCESS` is collected. The recording service and its RPCs stay up, so a durable write already waiting
-for its sync is still synced and answered, and a client that holds a story on this keeper gets that
-answer. The keeper then waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its
-chunks, stops the WAL, which syncs and answers everything queued and writes `exit-summary`, and
-deletes the recording service once no write handler has run for 200 ms (waiting at most 10
-seconds). A handler still answering a client when the service is deleted crashes the keeper at that
-point: for example one answering a client that has gone, over `ofi+tcp`. By then the WAL has
-stopped and `exit-summary` is written, so no acknowledged durable write is lost.
+stops, so one answered `CL_SUCCESS` is collected. A durable write already waiting for its sync is
+still synced and answered.
 
-Deleting the service deregisters all its RPCs, including `tail_get_sequences`. From then on a
-durable write fails as it does against a dead keeper: the client's probe gets no answer, so it
-waits, retries and returns `CL_ERR_DURABILITY_UNKNOWN` (-21). An accepted write still gets -1.
+The keeper then waits for ChronoGrapher to confirm its chunks, up to `shutdown_confirm_timeout_secs`
+counted from the first stop attempt. A grapher that has not confirmed them by then is taken as gone:
+the stop goes on, and the events it did not confirm are listed in the WAL's `exit-summary` (with the
+WAL off, they are lost). The keeper then stops the WAL, which syncs and answers everything queued and
+writes `exit-summary`, and closes its RPC services once every handler has answered.
+
+Each stop attempt has the keeper's `shutdown_ms` (30 s by default). A step still running when an
+attempt runs out, usually the wait for the grapher, keeps running; the keeper logs
+`stop attempt N ran out with K step(s) still running; the stop goes on when they finish` and
+finishes the stop by itself once the step is done, without a second SIGTERM.
+
+Once its services are closed, the keeper answers nothing. A durable write then fails as it does
+against a dead keeper: the client's probe gets no answer, so it waits, retries and returns
+`CL_ERR_DURABILITY_UNKNOWN` (-21). An accepted write returns `CL_ERR_OUTCOME_UNCONFIRMED` (-23).
 
 ---
 
@@ -257,7 +262,7 @@ burst of writes, against 0.27 ms in 3.3.0 without the syncs.
 | Bad record in an older segment | The keeper refuses to start and names the segment and offset. |
 | WAL from a build with another format | The keeper refuses to start and names the segment and both versions. |
 | WAL directory locked | The keeper exits and names the directory. |
-| Keeper receives SIGTERM | New durable writes get `CL_ERR_DURABILITY_UNAVAILABLE` and new accepted writes `CL_ERR_UNKNOWN`, with nothing stored. Durable writes already queued are synced and answered. See [Shutdown](#shutdown). |
+| Keeper receives SIGTERM | New durable writes get `CL_ERR_DURABILITY_UNAVAILABLE` and new accepted writes `CL_ERR_UNKNOWN`, with nothing stored. Durable writes already queued are synced and answered. The keeper finishes the stop by itself, also when a stop attempt runs out. See [Shutdown](#shutdown). |
 | Keeper exits with unconfirmed durable events | It logs how many and writes them to `exit-summary`. `deploy_cluster.sh --stop` reads that file; a missing one means the keeper crashed. |
 | Story destroyed | The keeper writes a `D` record and releases the story's events. A power loss before the `D` record synced can bring the story's events back from a WAL replay; a grapher that still holds the story's tombstone refuses them. When the `D` record's group fails, or the WAL has already failed, the keeper records the destroy in `dropped-unlogged` instead, and recovery discards the story's events from the segments up to the active one. A `D` record whose segment is deleted before an older segment is added to `dropped-unlogged` first. |
 | Durable event the pipeline cannot place | The keeper answers `CL_SUCCESS` once the event is synced, before the story's pipeline merges it into a chunk. The pipeline drops an event only when it cannot add a chunk for its time, which takes a timestamp so far off that chunk start times wrap around; long before that, the pipeline's chunk-by-chunk extension toward such a timestamp stalls the story. The dropped event is released from the WAL, so a restart does not bring it back: a durable `CL_SUCCESS` for such a timestamp is not kept. A timestamp check before the answer belongs to the acceptance-window work. |

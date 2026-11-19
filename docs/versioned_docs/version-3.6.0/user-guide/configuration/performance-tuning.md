@@ -141,7 +141,13 @@ These matter only for durable writes, with `chrono_keeper.WAL.enabled` set. See 
 
 A keeper stopped with SIGTERM waits up to `shutdown_confirm_timeout_secs` for ChronoGrapher to confirm its chunks written, then logs any chunk still unconfirmed and exits. Keep it above the grapher's `story_chunk_duration_secs` plus `acceptance_window_secs` (90 s in the template), stop the graphers only after the keepers have exited, and give a keeper more time to stop than this timeout. See [Durable Chunk Retention](../architecture/durable-retention.md#failure-behavior).
 
+The deploy scripts' `--stop` gives the whole stop one budget of `shutdown_confirm_timeout_secs` plus 180 s, so raising it also lengthens how long a stop may take. Each stop attempt of a keeper has its `RpcPolicy.shutdown_ms` (30 s); the wait for the grapher keeps running across attempts.
+
 ChronoVisor's `delayed_data_admin_exit_in_secs` (template `3`) is not a data setting: it is how long the visor keeps its admin RPC client for a process that left before destroying it, and it holds no events.
+
+## RPC Deadlines
+
+Every RPC has a budget from the component's `RpcPolicy` (see [RPC Deadlines](./network-and-rpc.md#rpc-deadlines)). The defaults (5 s for writes, metadata calls and tail reads, 180 s for a replay) leave room on an idle host. A host whose cores are taken by other work, for example MPI ranks that busy-poll, can push calls past them; calls then fail with `CL_ERR_OUTCOME_UNCONFIRMED` or, once slots fill, `CL_ERR_RPC_CAPACITY`. Freeing CPU for the daemons helps more than raising the budgets; see [MPI Applications](../../client/cpp/mpi.md#ranks-that-wait-by-polling).
 
 ## Summary of Tuning Recommendations
 
@@ -157,3 +163,4 @@ ChronoVisor's `delayed_data_admin_exit_in_secs` (template `3`) is not a data set
 | Lower durable write latency                    | Put the keeper WAL on a local NVMe drive and keep `group_commit_window_us` at `0`             |
 | Durable writes refused during a grapher outage | Raise `WAL.durable_cap_mb` on ChronoKeeper, with keeper memory to match                       |
 | Extraction-bound ChronoKeeper or ChronoGrapher | Raise `ExtractionModule.extraction_stream_count` until storage/network saturates              |
+| Control calls fail with `CL_ERR_OUTCOME_UNCONFIRMED` under load | Give the daemons cores of their own; then raise `control_ms` and `attempt_ms` in `RpcPolicy` |

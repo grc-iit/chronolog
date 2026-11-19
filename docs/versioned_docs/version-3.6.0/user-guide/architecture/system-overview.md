@@ -193,7 +193,7 @@ For the most recent part of a range, the Player asks the story's ChronoKeepers, 
 
 ## Communication Model
 
-ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) as its RPC framework, layered on top of Mercury and OFI (OpenFabrics Interfaces). The default transport protocol is `ofi+sockets`; for clusters with RDMA support, `ofi+verbs` enables native RDMA.
+ChronoLog uses [Thallium](https://mochi.readthedocs.io/en/latest/thallium.html) as its RPC framework, layered on top of Mercury and OFI (OpenFabrics Interfaces). The default transport protocol is `ofi+tcp` (`ofi+sockets` up to 3.5.0); for clusters with RDMA support, `ofi+verbs` enables native RDMA. Every RPC has a deadline from the component's `RpcPolicy`; see [RPC Deadlines](../configuration/network-and-rpc.md#rpc-deadlines).
 
 ### Default service ports and provider IDs
 
@@ -248,7 +248,7 @@ Tiering policy can be set per-Chronicle (`normal`, `hot`, or `cold`) to bias tow
 - **Double-buffering** — StoryPipelines use a two-deque pattern (active and passive queues) so that ingestion and extraction can proceed in parallel without blocking each other. The active deque receives new data while the passive deque is drained by sequencing/extraction threads; they swap atomically when conditions are met.
 - **Parallelized ingestion** — Multiple ChronoKeepers per Recording Group accept events concurrently, distributing ingestion load across compute nodes.
 - **Batch data movement** — Retired StoryChunks are transferred in bulk from Keepers to Graphers, amortizing RPC overhead.
-- **RDMA-capable transport** — The Keeper→Grapher drain path uses Thallium's `tl::bulk`, which is a zero-copy RDMA transfer with an RDMA provider such as `ofi+verbs` and a copy over TCP with `ofi+sockets` or `ofi+tcp`.
+- **RDMA-capable transport** — The Keeper→Grapher drain path uses Thallium's `tl::bulk`, which is a zero-copy RDMA transfer with an RDMA provider such as `ofi+verbs` and a copy over TCP with `ofi+tcp` or `ofi+sockets`. The receiver pulls a chunk in 1 MiB pieces (`transfer_piece_bytes`) and checks its CRC-32C.
 - **Single-writer per tier** — Each Recording Group has exactly one Grapher and one Player, avoiding write conflicts at the merge and archive stages.
 
 ## Further Reading

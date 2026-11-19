@@ -29,6 +29,13 @@ All `Client` methods return a plain `int` status code. A return value of `0` mea
 | `CL_ERR_DURABILITY_UNAVAILABLE` | -19 | Durable write: the keeper has no WAL, its WAL failed, it is shutting down, or it lacks the durable RPC. Nothing was stored |
 | `CL_ERR_DURABILITY_FULL` | -20 | Durable write: the keeper's WAL file system is below its reserve, or the keeper holds more unconfirmed data than `durable_cap_mb`. Nothing was stored |
 | `CL_ERR_DURABILITY_UNKNOWN` | -21 | Durable write: the event may be stored. `event_time` holds its timestamp |
+| `CL_ERR_DEADLINE_EXCEEDED` | -22 | The call's budget ran out before its request was sent. Nothing was sent |
+| `CL_ERR_OUTCOME_UNCONFIRMED` | -23 | The request was sent, but no answer came within the budget. The operation may have taken effect |
+| `CL_ERR_RPC_CAPACITY` | -24 | Every RPC slot of the client is taken, or the client is closing. Nothing was sent |
+| `CL_ERR_CLOCK_UNAVAILABLE` | -25 | The event time could not be read. Nothing was sent |
+| `CL_ERR_TIMESTAMP_EXHAUSTED` | -26 | No timestamp larger than the client's last one can be assigned. Nothing was sent |
+| `CL_ERR_SHUTDOWN_INCOMPLETE` | -27 | A stop ran out of its budget while work it owns was still running |
+| `CL_ERR_NATIVE_RUNTIME_UNSUPPORTED` | -28 | `Connect`: Argobots or Margo was already initialized in this process. Permanent for the process; nothing was sent |
 
 :::note Reserved range
 Codes `-14` through `-17` are intentionally unassigned. They are reserved for the ingest acceptance-window and collision-policy work developing in parallel, so that branch and this one never assign the same number to different meanings.
@@ -45,6 +52,10 @@ Only `StoryHandle.log_event(log_string, options)` with `Durability.Durable` retu
 | -21 | Maybe | The caller decides. Every attempt went unanswered, or an unanswered attempt was followed by -19, -20 or a keeper without the RPC, or the story's keepers left between attempts, or the keeper's WAL failed while writing the event and could not erase it. `event_time` is the event's timestamp: replay the story over a range that includes it, once the keepers have recovered, and look for your record. A new `log_event` call creates a second event with a new identity; put your own identifier in the record if repeats must be dropped. |
 
 The [C++ error codes page](../cpp/error-codes.md#durability-error-codes) gives the causes in full.
+
+## Deadline and capacity codes
+
+Since 3.6.0 every call has a budget from the client's `RpcPolicy`. -22, -24, -25 and -26 mean nothing was sent, and retrying is safe; -24 after a short backoff. -23 means the request was sent and may have taken effect: a metadata change should be checked before it is repeated, and an accepted `log_event` may have stored the event. The one-argument `log_event(record)` returns 0 for every failure; `log_event(record, options)` with `Durability.Accepted` returns `(status, event_time)` with the code. With -23 its `event_time` is 0: the Python binding has no `append_event`, which in C++ keeps the timestamp of an unconfirmed event. The [C++ page](../cpp/error-codes.md#deadline-and-capacity-codes) explains each one.
 
 ## Error Handling
 
@@ -72,10 +83,17 @@ ERROR_NAMES = {
     -19: "CL_ERR_DURABILITY_UNAVAILABLE",
     -20: "CL_ERR_DURABILITY_FULL",
     -21: "CL_ERR_DURABILITY_UNKNOWN",
+    -22: "CL_ERR_DEADLINE_EXCEEDED",
+    -23: "CL_ERR_OUTCOME_UNCONFIRMED",
+    -24: "CL_ERR_RPC_CAPACITY",
+    -25: "CL_ERR_CLOCK_UNAVAILABLE",
+    -26: "CL_ERR_TIMESTAMP_EXHAUSTED",
+    -27: "CL_ERR_SHUTDOWN_INCOMPLETE",
+    -28: "CL_ERR_NATIVE_RUNTIME_UNSUPPORTED",
 }
 
 
-portal_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)
+portal_conf = py_chronolog_client.ClientPortalServiceConf("ofi+tcp", "127.0.0.1", 5555, 55)
 client = py_chronolog_client.Client(portal_conf)
 
 ret = client.Connect()

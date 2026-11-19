@@ -52,7 +52,7 @@ A typical session follows this sequence:
 ```python
 import py_chronolog_client
 
-portal_conf = py_chronolog_client.ClientPortalServiceConf("ofi+sockets", "127.0.0.1", 5555, 55)
+portal_conf = py_chronolog_client.ClientPortalServiceConf("ofi+tcp", "127.0.0.1", 5555, 55)
 client = py_chronolog_client.Client(portal_conf)
 client.Connect()
 

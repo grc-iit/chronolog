@@ -20,6 +20,7 @@ The entire client configuration lives under a top-level `chrono_client` key:
 ```json
 {
   "chrono_client": {
+    "RpcPolicy": { ... },
     "VisorClientPortalService": { ... },
     "ClientQueryService": { ... },
     "Monitoring": { ... }
@@ -32,9 +33,19 @@ The entire client configuration lives under a top-level `chrono_client` key:
 ```json
 {
   "chrono_client": {
+    "RpcPolicy": {
+      "append_ms": 5000,
+      "control_ms": 5000,
+      "tail_ms": 5000,
+      "replay_ms": 180000,
+      "attempt_ms": 5000,
+      "startup_ms": 30000,
+      "shutdown_ms": 30000,
+      "transfer_ms": 30000
+    },
     "VisorClientPortalService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5555,
         "service_provider_id": 55
@@ -42,7 +53,7 @@ The entire client configuration lives under a top-level `chrono_client` key:
     },
     "ClientQueryService": {
       "rpc": {
-        "protocol_conf": "ofi+sockets",
+        "protocol_conf": "ofi+tcp",
         "service_ip": "127.0.0.1",
         "service_base_port": 5557,
         "service_provider_id": 57
@@ -65,13 +76,19 @@ The entire client configuration lives under a top-level `chrono_client` key:
 
 ## Field Reference
 
+### `RpcPolicy`
+
+The budgets, in milliseconds, of the client's calls: `append_ms` for a write, `control_ms` for each metadata call, `tail_ms` for a tail read, `replay_ms` for a replay, `attempt_ms` for each RPC attempt within one, and `transfer_ms` for the pull of a replay's answer. The client does not use `startup_ms` and `shutdown_ms`. The block and each key are optional; missing keys take the defaults shown above, and a value that is not a positive integer makes the configuration invalid. [RPC Deadlines](./network-and-rpc.md#rpc-deadlines) describes each budget, and [Error Codes](../../client/cpp/error-codes.md#deadline-and-capacity-codes) what a call returns when one runs out. An application can also set them with `Client::SetRpcTimeoutPolicy` before its first `Connect`.
+
+When the client runs on the same host as ChronoVisor over `ofi+tcp` with `127.0.0.1` addresses, set `FI_TCP_IFACE=lo` in its environment, as the deploy scripts do for the daemons; see [Choosing the interface for `ofi+tcp`](./network-and-rpc.md#choosing-the-interface-for-ofitcp).
+
 ### `VisorClientPortalService`
 
 Defines how the client connects to ChronoVisor's client-facing portal. **These values must match the `VisorClientPortalService` block in the ChronoVisor's server configuration.**
 
 | Field | Default | Description |
 |---|---|---|
-| `protocol_conf` | `"ofi+sockets"` | Thallium transport protocol. See [Network & RPC](./network-and-rpc.md) for options. |
+| `protocol_conf` | `"ofi+tcp"` | Thallium transport protocol. See [Network & RPC](./network-and-rpc.md) for options. |
 | `service_ip` | `"127.0.0.1"` | IP address of the host running ChronoVisor. Change to the visor's actual IP for remote connections. |
 | `service_base_port` | `5555` | Port on which ChronoVisor listens for client connections. |
 | `service_provider_id` | `55` | Thallium provider ID. Must match the visor's configured value. |
@@ -82,7 +99,7 @@ Configures the client's local endpoint used for query responses from ChronoPlaye
 
 | Field | Default | Description |
 |---|---|---|
-| `protocol_conf` | `"ofi+sockets"` | Transport protocol (must match the rest of the deployment). |
+| `protocol_conf` | `"ofi+tcp"` | Transport protocol (must match the rest of the deployment). |
 | `service_ip` | `"127.0.0.1"` | IP address the client binds for receiving query responses. A loopback address is replaced when `VisorClientPortalService.service_ip` is not loopback: the client then listens on this host's address on the route to the visor, so one client conf serves clients on every host. Any other address is used as given; a host name is resolved to its IPv4 address. |
 | `service_base_port` | `5557` | Port the client listens on for playback query responses. Two reader-mode clients on the same host need different ports: the second one cannot start on a port already in use. |
 | `service_provider_id` | `57` | Thallium provider ID for this service endpoint. |
@@ -108,7 +125,7 @@ For deployments where the client and ChronoVisor run on different hosts, update 
 ```json
 "VisorClientPortalService": {
   "rpc": {
-    "protocol_conf": "ofi+sockets",
+    "protocol_conf": "ofi+tcp",
     "service_ip": "192.168.1.10",
     "service_base_port": 5555,
     "service_provider_id": 55

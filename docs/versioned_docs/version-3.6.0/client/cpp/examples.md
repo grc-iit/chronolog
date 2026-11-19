@@ -86,7 +86,7 @@ int main(int argc, char** argv)
     std::cout << "[ClientExample] AcquireStory: " << chronolog::to_string_client(acquire_ret) << "\n";
 
     // ── 7. Log events ────────────────────────────────────────────────────────
-    // log_event returns the uint64_t timestamp assigned to the event.
+    // log_event returns the event's timestamp once the keeper acknowledged it, or 0.
     story_handle->log_event("Event 1");
     story_handle->log_event("Event 2");
     story_handle->log_event("Event 3");
@@ -138,10 +138,10 @@ int main(int argc, char** argv)
 | Step | What it does |
 |------|-------------|
 | **Load configuration** | `ClientConfiguration::load_from_file` parses a JSON config file and populates the portal and query service structs. If no file is provided the defaults (`127.0.0.1:5555` / `127.0.0.1:5557`) are used. |
-| **Connect** | Opens a session with ChronoVisor over the configured transport (`ofi+sockets` by default). |
+| **Connect** | Opens a session with ChronoVisor over the configured transport (`ofi+tcp` by default). |
 | **CreateChronicle** | Registers a top-level namespace. Returns `CL_ERR_CHRONICLE_EXISTS` if one already exists with that name, which is safe to ignore if you just want to ensure it exists. |
 | **AcquireStory** | Opens (and creates if necessary) a story within the chronicle. The returned `StoryHandle*` is used for all subsequent writes. |
-| **log_event** | Appends an event record to the story. The call is non-blocking; events are buffered and flushed in the background. A durable write (`LogEventOptions{Durability::Durable}`) blocks until the keeper has synced the event to its write-ahead log; see [`StoryHandle`](./api.md#storyhandle-class). |
+| **log_event** | Appends an event record to the story and waits for the keeper to acknowledge it, at most the client's `append_ms` (5 s by default); it returns the event's timestamp, or 0 if the keeper did not acknowledge it. The keeper holds the event in a chunk that reaches the archive later. A durable write (`LogEventOptions{Durability::Durable}`) blocks until the keeper has synced the event to its write-ahead log; see [`StoryHandle`](./api.md#storyhandle-class). |
 | **sleep(120)** | Waits for background persistence to complete before issuing a replay. See the note in the code above. |
 | **ReplayStory** | Fetches every event in the given time range, from the archive and, for the most recent ones, from keeper memory. Requires the client to have been constructed with a `ClientQueryServiceConf` (READER mode). |
 | **ReleaseStory** | Flushes buffered events and releases the story handle. Must be called before `DestroyStory`. |

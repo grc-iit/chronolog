@@ -19,7 +19,11 @@ outage therefore lost every chunk sent during it, with nothing recording the los
 
 1. **Seal and send.** When a chunk seals, the keeper sends it to the grapher and keeps it in memory.
    The grapher answers with a *receipt*, a number it gives the chunk. The chunk keeps serving
-   [tail reads](./on-demand-tail-read.md) while it is held.
+   [tail reads](./on-demand-tail-read.md) while it is held. The keeper serializes the chunk once,
+   with a CRC-32C, and the grapher (and a player that receives chunks) pulls it in pieces of at most
+   `transfer_piece_bytes` (1 MiB) within its `transfer_ms`, checks the CRC, and answers within
+   `attempt_ms`. A receiver with no free receive slot answers *busy*, and the keeper sends the chunk
+   again after 1 s, doubling the wait up to 30 s.
 2. **Persisted watermark and receipts.** For each story the grapher tracks how far the story is
    written to HDF5 with no gaps: the *persisted watermark*. The watermark alone cannot confirm every
    chunk: a chunk that arrives after the watermark has passed its range goes into a reopened past
@@ -46,7 +50,12 @@ outage therefore lost every chunk sent during it, with nothing recording the los
 4. **Re-send.** A chunk whose send failed, or that is still unconfirmed after
    `watermark_resend_timeout_secs`, is sent again. That wait matters: each delivery gets its own
    receipt, and the grapher can only confirm one once it has written the window holding it, so a
-   chunk sent again sooner loses the receipt it was waiting on and starts over.
+   chunk sent again sooner loses the receipt it was waiting on and starts over. A send that got no
+   answer in time (`CL_ERR_OUTCOME_UNCONFIRMED`) is tried again after the same 1 s to 30 s backoff
+   as a busy answer; that retry does not transfer the chunk again, it collects the receipt the
+   grapher gave the first delivery. A grapher that receives a chunk it has already written answers
+   with the first receipt instead of writing the events twice, for `duplicate_receipt_hold_secs`
+   (600 s) after it wrote them.
 
 With the [keeper WAL](./keeper-wal.md) on, the same confirmation also releases the chunk's durable
 events from the WAL, and a WAL segment is deleted once none of its events are pending.
