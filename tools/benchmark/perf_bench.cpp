@@ -516,11 +516,12 @@ static uint64_t write_event(chronolog::StoryHandle* story_handle,
     }
     else
     {
-        // log_event() answers the event time, or 0 when the write failed;
-        // counted, not asserted, so a failure does not abort the rank
-        event_time = story_handle->log_event(event_payload);
-        if(event_time == 0)
-            rc = chronolog::CL_ERR_UNKNOWN;
+        // append_event() is log_event() with the failure's code; counted,
+        // not asserted, so a failure does not abort the rank
+        auto const result = story_handle->append_event(event_payload);
+        rc = result.status;
+        if(rc == chronolog::CL_SUCCESS)
+            event_time = result.timestamp;
     }
     uint64_t t_end = now_ns();
 
