@@ -21,6 +21,29 @@ TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
     EXPECT_EQ(starts[2].load(), 1);
     EXPECT_EQ(starts[3].load(), 1);
 }
+// Keepers 1 and 2 answer the start only after its attempt timed out, so the
+// acquire gets keeper 3 alone and their starts stay without an answer. The
+// release still stops the story, on every component, and the next acquire
+// starts it afresh on all three keepers. Before, every release of such a story
+// returned CL_ERR_OUTCOME_UNCONFIRMED until the visor restarted, and an
+// acquire kept reusing the one-keeper roster.
+TEST_P(AdminDeadline, DegradedAcquireIsReleasedAndTheNextAcquireReachesEveryKeeper)
+{
+    std::vector<KeeperIdCard> roster;
+    ServiceId player;
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("chronicle", "story", 940, roster, player),
+              CL_SUCCESS);
+    ASSERT_EQ(roster.size(), 1u);
+    EXPECT_EQ(registry->notifyRecordingGroupOfStoryRecordingStop(940), CL_SUCCESS);
+    for(int i = 0; i < 5; ++i) EXPECT_EQ(stops[i].load(), 1) << "component " << i;
+    // Let the late start handlers finish before the next acquire.
+    std::this_thread::sleep_for(400ms);
+    delays[1] = delays[2] = 0;
+    roster.clear();
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("chronicle", "story", 940, roster, player),
+              CL_SUCCESS);
+    EXPECT_EQ(roster.size(), 3u);
+}
 // Keeper 2 confirms the start 20 ms after keeper 3: the acquire waits for it
 // instead of fixing the roster on the first keeper's answer. Keeper 1 stays
 // silent and is left out once the wait ends.

@@ -32,11 +32,12 @@ std::vector<StoryId> ids(std::vector<std::shared_ptr<StoryRecording>> const& sto
     return out;
 }
 
-std::shared_ptr<AdminCompletion> settled(int status, bool confirmed = true)
+std::shared_ptr<AdminCompletion> settled(int status, bool confirmed = true, bool dispatched = true)
 {
     auto c = std::make_shared<AdminCompletion>();
     c->status = status;
     c->confirmed = confirmed;
+    c->dispatched = dispatched;
     c->done.store(true);
     return c;
 }
@@ -110,12 +111,20 @@ TEST(KeeperRestartStories, StopWaitsForAStartInFlight)
     EXPECT_EQ(storyStopTargets(r).state, StoryStopTargets::Ready);
 }
 
-// A start of the first acquire with no confirmed answer stays unresolved, as
-// it did before keepers could register into an active story.
-TEST(KeeperRestartStories, UnconfirmedFirstStartStaysUnresolved)
+// A start of the first acquire that was sent and never answered may have run,
+// so it gets a stop like a succeeded one: stop is idempotent, and a component
+// that never had the story ignores it. Before, the story could never be
+// released, since no answer ever comes for a start that timed out. One that
+// was never sent cannot have run and gets none.
+TEST(KeeperRestartStories, UnconfirmedFirstStartGetsAStop)
 {
     StoryRecording r;
-    r.starts = {settled(chronolog::CL_SUCCESS), settled(chronolog::CL_ERR_OUTCOME_UNCONFIRMED, false)};
+    r.starts = {settled(chronolog::CL_SUCCESS),
+                settled(chronolog::CL_ERR_OUTCOME_UNCONFIRMED, false),
+                settled(chronolog::CL_ERR_DEADLINE_EXCEEDED, false, false),
+                settled(chronolog::CL_SUCCESS)};
     r.originalStarts = r.starts.size();
-    EXPECT_EQ(storyStopTargets(r).state, StoryStopTargets::Unconfirmed);
+    auto stop = storyStopTargets(r);
+    EXPECT_EQ(stop.state, StoryStopTargets::Ready);
+    EXPECT_EQ(stop.targets, (std::vector<std::size_t>{0, 1, 3}));
 }

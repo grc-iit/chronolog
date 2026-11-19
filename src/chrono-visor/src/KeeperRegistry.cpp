@@ -1046,11 +1046,9 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStop(StoryId const& id, 
             return CL_ERR_OUTCOME_UNCONFIRMED;
         // A late start must settle before the stop, so the stop reaches each
         // keeper after its start, and no new generation can start until every
-        // stop confirms. An unknown start from the first acquire stays
-        // quarantined.
+        // stop confirms. A first-acquire start that got no answer gets a stop
+        // too (see storyStopTargets).
         auto stop = storyStopTargets(*recording);
-        if(stop.state == StoryStopTargets::Unconfirmed)
-            return CL_ERR_OUTCOME_UNCONFIRMED;
         if(stop.state == StoryStopTargets::Pending)
         {
             lock.unlock();

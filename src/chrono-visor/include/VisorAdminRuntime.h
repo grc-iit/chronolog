@@ -179,18 +179,17 @@ storiesToStartOnRegistration(std::map<StoryId, std::shared_ptr<StoryRecording>> 
 
 // Which of a story's starts its stop goes to, by index into its clients. Every
 // start must have settled first, so a stop reaches each keeper after the
-// start. A start from the first acquire must have a confirmed answer, and gets
-// a stop only if it succeeded; one with no confirmed answer stays unresolved.
-// A start sent to a keeper that registered later gets a stop whatever its
-// answer was: a failed call may still have run on the keeper, and a keeper
-// that never had the story ignores the stop.
+// start. A start from the first acquire gets a stop if it succeeded, or if it
+// was sent and got no answer: it may have run. One that failed with an answer,
+// or was never sent, gets none. A start sent to a keeper that registered later
+// gets a stop whatever its answer was: a failed call may still have run on the
+// keeper, and a keeper that never had the story ignores the stop.
 struct StoryStopTargets
 {
     enum State
     {
         Ready,
-        Pending,    // a start has not settled yet
-        Unconfirmed // a start from the first acquire has no confirmed answer
+        Pending, // a start has not settled yet
     };
     State state = Ready;
     std::vector<std::size_t> targets;
@@ -203,11 +202,13 @@ inline StoryStopTargets storyStopTargets(StoryRecording const& recording)
         auto const& start = *recording.starts[i];
         if(!start.done.load(std::memory_order_acquire))
             return {StoryStopTargets::Pending, {}};
-        if(i >= recording.originalStarts)
-            result.targets.push_back(i);
-        else if(!start.confirmed)
-            return {StoryStopTargets::Unconfirmed, {}};
-        else if(start.status == CL_SUCCESS)
+        // A later start, a succeeded one, and a first-acquire start that was
+        // sent but never answered may have run, so each gets a stop; stop is
+        // idempotent, and a component that never had the story ignores it. A
+        // start that timed out gets no answer later, so waiting for one would
+        // keep the story from ever being released.
+        if(i >= recording.originalStarts || (start.confirmed && start.status == CL_SUCCESS) ||
+           (!start.confirmed && start.dispatched))
             result.targets.push_back(i);
     }
     return result;
