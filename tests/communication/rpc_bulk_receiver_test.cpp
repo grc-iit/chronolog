@@ -95,8 +95,10 @@ int main(int argc, char** argv)
     auto until = Clock::now() + 1s;
     while(!failure && !malformed && barriers < 2 && Clock::now() < until) std::this_thread::sleep_for(1ms);
     int third = (failure || malformed) ? chl::CL_ERR_OUTCOME_UNCONFIRMED : senders[2]->transfer_story_chunk(chunk);
+    // The grapher counts a refusal only once its busy answer has been sent,
+    // and the sender can get that answer first, so wait for the count.
     until = Clock::now() + 1s;
-    while(!failure && !malformed && receiveOwner->incoming.rejected() == 0 && Clock::now() < until)
+    while(!failure && !malformed && receiveOwner->incoming.refused() == 0 && Clock::now() < until)
         std::this_thread::sleep_for(1ms);
     // The third sender finds both slots taken. The grapher answers that it
     // is busy, having pulled nothing, so the keeper hears back at once.
