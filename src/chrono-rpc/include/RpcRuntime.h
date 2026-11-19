@@ -89,6 +89,8 @@ struct SettledOnExit
 // OperationContext::markNativeSettled. Local timeout/cancellation/error is not
 // bulk settlement: work that exposed a bulk region never marks it.
 // Reply moves and destruction on the receiving caller must be nonblocking.
+// A finished job, with its result, may also be destroyed on another caller
+// that frees its slot in reserve().
 template <class Reply>
 class OwnedRpcWork
 {

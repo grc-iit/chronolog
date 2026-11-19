@@ -15,6 +15,7 @@ constexpr std::size_t DefaultCapacity = 2;
 constexpr unsigned Closed = 1u << 8;
 constexpr unsigned CountMask = Closed - 1;
 constexpr auto PollInterval = std::chrono::milliseconds(1);
+constexpr auto ReclaimSpin = std::chrono::microseconds(50);
 
 // No shared lock, native cleanup or diagnostic I/O on waiting caller paths.
 void pause(RpcDeadline const& deadline) noexcept
@@ -166,10 +167,34 @@ struct RuntimeState
     {
         // All result/work/native destruction precedes both capacity release and
         // the worker-exit condition. No successor sees retained native owners.
+        // A worker calls this, or a reserving caller for a Retiring slot, which
+        // holds only the finished job: its work and cleanup are already gone.
         slot.job.reset();
         slot.cleanup.reset();
         slot.phase.store(Phase::Empty, std::memory_order_release);
         admissions.fetch_sub(1, std::memory_order_acq_rel);
+    }
+
+    // On a reserving caller: free every Retiring slot whose caller has taken
+    // its result or left. Such a slot holds no work, cleanup or native owner
+    // (process released them before publishing Retiring), so this runs no
+    // native cleanup on the caller. Without it the slot stays charged until a
+    // worker's next pass, which may be a sleep interval away or, on a starved
+    // CPU, much longer, and a caller's next call is refused.
+    void reclaimRetired() noexcept
+    {
+        for(auto& slot: slots)
+        {
+            auto phase = Phase::Retiring;
+            if(!slot.phase.compare_exchange_strong(phase, Phase::Running, std::memory_order_acq_rel))
+                continue;
+            if(!slot.job->callerDone.load(std::memory_order_acquire))
+            {
+                slot.phase.store(Phase::Retiring, std::memory_order_release);
+                continue;
+            }
+            release(slot);
+        }
     }
 
     bool process(Slot& slot)
@@ -471,27 +496,47 @@ RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
     if(deadline.expired())
         return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
     auto observed = state_->admissions.load(std::memory_order_acquire);
-    while(!(observed & Closed) && (observed & CountMask) < state_->capacity)
+    // A slot passes through several short states on its way back to Empty
+    // (a worker checking or releasing it holds it Running; release publishes
+    // Empty before it lowers the count). So a full runtime retries for up to
+    // ReclaimSpin, freeing retired slots on each pass, before it refuses. A
+    // runtime whose slots are really busy refuses after that time.
+    std::optional<RpcDeadline::Clock::time_point> spinUntil;
+    for(;;)
     {
-        if(deadline.expired())
-            return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
-        if(state_->admissions.compare_exchange_weak(observed, observed + 1, std::memory_order_acq_rel))
+        while(!(observed & Closed) && (observed & CountMask) < state_->capacity)
         {
-            for(std::size_t i = 0; i != state_->capacity; ++i)
+            if(deadline.expired())
+                return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
+            if(state_->admissions.compare_exchange_weak(observed, observed + 1, std::memory_order_acq_rel))
             {
-                auto phase = detail::Phase::Empty;
-                if(state_->slots[i].phase.compare_exchange_strong(phase,
-                                                                  detail::Phase::Reserved,
-                                                                  std::memory_order_acq_rel))
-                    return RpcReservation(state_, i, deadline);
+                for(std::size_t i = 0; i != state_->capacity; ++i)
+                {
+                    auto phase = detail::Phase::Empty;
+                    if(state_->slots[i].phase.compare_exchange_strong(phase,
+                                                                      detail::Phase::Reserved,
+                                                                      std::memory_order_acq_rel))
+                        return RpcReservation(state_, i, deadline);
+                }
+                // A completed release publishes Empty before decrementing the count.
+                // A finite scan can still lose to a concurrent reservation; refuse.
+                state_->admissions.fetch_sub(1, std::memory_order_acq_rel);
+                return RpcReservation(CL_ERR_RPC_CAPACITY);
             }
-            // A completed release publishes Empty before decrementing the count.
-            // A finite scan can still lose to a concurrent reservation; refuse.
-            state_->admissions.fetch_sub(1, std::memory_order_acq_rel);
-            return RpcReservation(CL_ERR_RPC_CAPACITY);
         }
+        // Every slot is charged. Finished slots whose caller is done are freed
+        // here; slots still running, queued or quarantined refuse once the
+        // short retry has passed.
+        if(observed & Closed)
+            return RpcReservation(CL_ERR_RPC_CAPACITY);
+        auto now = RpcDeadline::Clock::now();
+        if(!spinUntil)
+            spinUntil = now + ReclaimSpin;
+        else if(now >= *spinUntil)
+            return RpcReservation(CL_ERR_RPC_CAPACITY);
+        state_->reclaimRetired();
+        observed = state_->admissions.load(std::memory_order_acquire);
     }
-    return RpcReservation(CL_ERR_RPC_CAPACITY);
 }
 
 void RpcRuntime::retainOwner(std::shared_ptr<void> owner, std::function<void()> cleanup)

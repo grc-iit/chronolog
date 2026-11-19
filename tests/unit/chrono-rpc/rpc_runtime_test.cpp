@@ -508,6 +508,83 @@ TEST(RpcRuntime, SettledForwardWithoutReplyGivesItsSlotBack)
     EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
 }
 
+// A caller that issues its next call as soon as the previous one returned must
+// be admitted: the finished call's slot holds no work any more. The worker
+// that ran it may be sleeping between passes, so reserve() itself frees a slot
+// whose caller has taken its result. Without that, 193 to 198 of the 200 calls
+// were refused. A worker preempted for longer than reserve()'s short retry
+// between completing a call and publishing its slot can still cost a refusal,
+// so a few are allowed.
+TEST(RpcRuntime, BackToBackCallsOnOneSlotAreAdmitted)
+{
+    RpcRuntime runtime(1);
+    int refused = 0;
+    for(int i = 0; i < 200; ++i)
+    {
+        auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                          work(
+                                                  [i](OperationContext& context)
+                                                  {
+                                                      EXPECT_TRUE(context.tryBeginDispatch());
+                                                      return confirmed(i);
+                                                  }));
+        if(result.status == CL_ERR_RPC_CAPACITY)
+            ++refused;
+        else
+        {
+            EXPECT_EQ(result.status, CL_SUCCESS);
+            ASSERT_TRUE(result.reply);
+            EXPECT_EQ(*result.reply, i);
+        }
+    }
+    EXPECT_LE(refused, 2);
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
+// Callers freeing retired slots race the workers freeing the same slots; each
+// slot is freed once, so afterwards exactly capacity slots can be reserved.
+TEST(RpcRuntime, ConcurrentCallersFreeingRetiredSlotsKeepTheCountExact)
+{
+    RpcRuntime runtime(2);
+    std::atomic<int> answered{0};
+    std::vector<std::thread> callers;
+    for(int t = 0; t < 4; ++t)
+        callers.emplace_back(
+                [&]
+                {
+                    for(int i = 0; i < 300; ++i)
+                    {
+                        auto result = runtime.invoke<int>(RpcDeadline::after(1s),
+                                                          work(
+                                                                  [](OperationContext& context)
+                                                                  {
+                                                                      EXPECT_TRUE(context.tryBeginDispatch());
+                                                                      return confirmed();
+                                                                  }));
+                        if(result.status == CL_SUCCESS)
+                            ++answered;
+                        else
+                            EXPECT_EQ(result.status, CL_ERR_RPC_CAPACITY);
+                    }
+                });
+    for(auto& caller: callers) caller.join();
+    EXPECT_GT(answered.load(), 0);
+    RpcReservation first, second;
+    ASSERT_TRUE(eventually(
+            [&]
+            {
+                if(!first)
+                    first = runtime.reserve(RpcDeadline::after(1s));
+                if(!second)
+                    second = runtime.reserve(RpcDeadline::after(1s));
+                return first && second;
+            }));
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    first = RpcReservation();
+    second = RpcReservation();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
 // The mark covers only the forward before it: a later dispatch that returns
 // without its own mark keeps the work and its slot.
 TEST(RpcRuntime, LaterDispatchClearsTheSettledMark)
