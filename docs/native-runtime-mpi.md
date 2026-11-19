@@ -63,14 +63,24 @@ life (libfabric 1.22 to 2.7). Prefer `ofi+tcp`.
 
 Every control call (story acquire, release, destroy) has a budget of
 `control_ms`, and each attempt at most `attempt_ms` (5 s by default). Over
-`ofi+tcp`, Mercury moves data only when each process's progress thread runs. MPI
-ranks that busy-poll, for example while waiting in `MPI_Barrier`, on the same
-cores as the daemons can keep those threads off the CPU for seconds: on a
-4-CPU host running 7 daemons and 4 ranks that each wait in a barrier after
-every call, about one acquire in five ran out of its budget and failed with
-`CL_ERR_OUTCOME_UNCONFIRMED`, even with 15 s budgets. Leave the daemons cores
-of their own, or do not hold ranks in a barrier between ChronoLog calls; the
-distributed pipeline's `chrono-bench` write runs without `-y` for this reason.
+`ofi+tcp`, Mercury moves data only when each process's progress thread runs, so
+on oversubscribed cores a control call can run out of its budget and fail with
+`CL_ERR_OUTCOME_UNCONFIRMED`. MPI ranks add to this while they wait: MPICH
+waits in `MPI_Barrier` by polling (`MPIR_CVAR_POLLS_BEFORE_YIELD` only yields
+the CPU), so ranks held in a barrier take whole cores. Measured with 7 daemon
+containers and 4 `chrono-bench` ranks pinned to 4 cores:
+
+- with the shipped configuration, 8 of 8 runs passed with a barrier after
+  every call (`-y`);
+- with the daemons also logging at debug level and flushing every line, 3 of
+  7 runs with `-y` failed an acquire, and 1 of 6 without `-y` failed;
+  `MPIR_CVAR_CH4_PROGRESS_THROTTLE=1`, which makes a waiting rank sleep, left
+  1 failure in 8 runs with `-y`;
+- with the same logging on 5, 6 or 8 cores, 18 of 18 runs with `-y` passed.
+
+Give the daemons cores of their own, or leave them headroom. The distributed
+pipeline's `chrono-bench` write runs without `-y`, since its 4-CPU runner
+leaves little.
 
 Applications must still avoid independently initialized Argobots/Margo work
 and keep the client library loaded until process exit. Existing foreign-runtime
