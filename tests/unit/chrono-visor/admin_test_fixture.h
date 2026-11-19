@@ -44,6 +44,14 @@ struct KeeperRegistryTestAccess
                     return entry.keeperAdminClient;
         return {};
     }
+    // Keeper entries in the registry, active or waiting for their delayed exit.
+    static std::size_t keeperEntries(KeeperRegistry& registry)
+    {
+        std::lock_guard<std::mutex> lock(registry.registryLock);
+        std::size_t count = 0;
+        for(auto& [id, group]: registry.recordingGroups) count += group.keeperProcesses.size();
+        return count;
+    }
 };
 } // namespace chronolog
 class AdminDeadline: public ::testing::TestWithParam<std::string>

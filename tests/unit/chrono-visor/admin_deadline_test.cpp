@@ -181,6 +181,32 @@ TEST_P(AdminDeadline, AdminClientReplacedForAReturningKeeperLeavesEveryKeeperWor
     EXPECT_EQ(starts[2].load(), 2);
     EXPECT_EQ(starts[3].load(), 2);
 }
+// A keeper that leaves for good: once its delayed exit has passed (0 s in this
+// fixture), the next acquire frees its admin client and registry entry, as
+// develop's getActiveKeepers() does, and starts the story on the others.
+TEST_P(AdminDeadline, AcquireAfterAKeeperLeftFreesItsAdminClient)
+{
+    delays[1] = delays[2] = 0;
+    std::vector<KeeperIdCard> roster;
+    ServiceId player;
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("c", "first", 930, roster, player), CL_SUCCESS);
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStop(930), CL_SUCCESS);
+    auto gone = KeeperRegistryTestAccess::keeperAdminClient(*registry, keeper(1));
+    ASSERT_FALSE(gone.expired());
+    ASSERT_EQ(KeeperRegistryTestAccess::keeperEntries(*registry), 3u);
+    ASSERT_EQ(registry->unregisterKeeperProcess(keeper(1)), CL_SUCCESS);
+    std::this_thread::sleep_for(1100ms);
+    roster.clear();
+    ASSERT_EQ(registry->notifyRecordingGroupOfStoryRecordingStart("c", "second", 931, roster, player), CL_SUCCESS);
+    EXPECT_TRUE(destroyedSoon(gone));
+    EXPECT_EQ(KeeperRegistryTestAccess::keeperEntries(*registry), 2u);
+    std::vector<std::string> keepers;
+    for(auto const& k: roster) keepers.push_back(to_string(k));
+    std::sort(keepers.begin(), keepers.end());
+    std::vector<std::string> expected{to_string(keeper(2)), to_string(keeper(3))};
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(keepers, expected);
+}
 TEST_P(AdminDeadline, OccupiedRosterFailsBeforeAnySetupDispatch)
 {
     auto owner = registry->adminOwner();

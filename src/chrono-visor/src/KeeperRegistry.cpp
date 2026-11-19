@@ -854,6 +854,11 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                                                     });
         if(!group)
             return rejectBeforeSetup(CL_ERR_NO_KEEPERS);
+        // Free the admin clients and entries of keepers that left once their
+        // delayed exit has passed. A recording that still needs a client for
+        // its stop holds its own reference.
+        std::vector<KeeperIdCard> stillActive;
+        group->getActiveKeepers(stillActive);
         recording = std::make_shared<StoryRecording>();
         recording->id = id;
         recording->chronicle = chronicle;
