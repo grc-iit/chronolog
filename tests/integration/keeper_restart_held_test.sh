@@ -90,6 +90,9 @@ STORY_A=HeldStoryA
 STORY_B=HeldStoryB
 
 INTERVAL_MS=100
+# a durable call's whole budget is DURABLE_ATTEMPTS x DURABLE_TIMEOUT_MS
+DURABLE_TIMEOUT_MS=1000
+DURABLE_ATTEMPTS=1
 PRE_SECS=15
 DOWN_SECS=20
 POST_SECS=30
@@ -179,7 +182,7 @@ start_writer() {
          .chrono_client.Monitoring.monitor.file = $log |
          .chrono_client.Monitoring.monitor.filesize = 104857600' "$CLIENT_CONF" > "$conf" || return 1
     "$PROBE" --config "$conf" --chronicle "$CHRONICLE" --story "$2" --loop --interval-ms "$INTERVAL_MS" \
-        --timeout-ms 1000 --attempts 1 --stop-file "$RUN_DIR/stop" --release-file "$RUN_DIR/release" \
+        --timeout-ms "$DURABLE_TIMEOUT_MS" --attempts "$DURABLE_ATTEMPTS" --stop-file "$RUN_DIR/stop" --release-file "$RUN_DIR/release" \
         > "$RUN_DIR/$1.out" 2>&1 &
     WRITER_PIDS="$WRITER_PIDS $!"
 }
@@ -372,26 +375,32 @@ run_scenario() {
     # writer A's durable calls before the kill, so a durable call to it now got
     # no answer: it may have been stored, and the client returns
     # CL_ERR_DURABILITY_UNKNOWN, never CL_ERR_DURABILITY_UNAVAILABLE ("nothing
-    # was stored"). After the restart a durable call may also succeed. An
+    # was stored"). A durable call that could have ended after the restart may
+    # also succeed: one sent while keeper 2 was down can reach the new keeper
+    # once it listens on the same port, so its start time ($6) is before
+    # RESTART_NS. A durable call ends within its budget of attempts x
+    # timeout_ms, so only a success that started before durable_settled_ns,
+    # and so ended while keeper 2 was down, is wrong. An
     # accepted call sent before the restart fails with some error code. A failed
     # call prints event time 0, so its parity says nothing; the calls of keeper 2
     # are all but the successes at keeper 1's parity (the check above ties every
     # failure to keeper 2 through the client log).
-    local down_calls durable_down durable_bad accepted_down accepted_bad down_summary
+    local down_calls durable_down durable_bad accepted_down accepted_bad down_summary durable_settled_ns
+    durable_settled_ns=$((RESTART_NS - (DURABLE_TIMEOUT_MS * DURABLE_ATTEMPTS + 500) * 1000000))
     down_calls=$(events "$RUN_DIR/writerA.out" | awk -v kill="$KILL_NS" -v rec="$reconnect_ns" -v p="$K2_PARITY" \
         '$6 > kill + 1e9 && $6 < rec && !($2 == "CL_SUCCESS" && $7 != p)')
     durable_down=$(echo "$down_calls" | awk '$1 == "durable"' | wc -l)
-    durable_bad=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
-        '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > restart)' | wc -l)
+    durable_bad=$(echo "$down_calls" | awk -v settled="$durable_settled_ns" \
+        '$1 == "durable" && $2 != "CL_ERR_DURABILITY_UNKNOWN" && !($2 == "CL_SUCCESS" && $6 > settled)' | wc -l)
     accepted_down=$(echo "$down_calls" | awk -v restart="$RESTART_NS" '$1 == "accepted" && $6 < restart' | wc -l)
     accepted_bad=$(echo "$down_calls" | awk -v settled="$settled_ns" \
         '$1 == "accepted" && $6 < settled && $2 == "CL_SUCCESS"' | wc -l)
     down_summary=$(echo "$down_calls" | awk -v restart="$RESTART_NS" \
         'NF { c[$1 " " $2 " " (($6 > restart) ? "after" : "before")]++ } END { for(k in c) printf "%s=%d, ", k, c[k] }')
     if [ "$durable_down" -gt 0 ] && [ "$durable_bad" -eq 0 ] && [ "$accepted_down" -gt 0 ] && [ "$accepted_bad" -eq 0 ]; then
-        ok "$PROTO: codes: writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect returned CL_ERR_DURABILITY_UNKNOWN or, after the restart, CL_SUCCESS, and its $accepted_down accepted call(s) to keeper 2 before the restart failed (mode code before/after the restart: ${down_summary%, })"
+        ok "$PROTO: codes: writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect returned CL_ERR_DURABILITY_UNKNOWN or, when it could have ended after the restart, CL_SUCCESS, and its $accepted_down accepted call(s) to keeper 2 before the restart failed (mode code before/after the restart: ${down_summary%, })"
     else
-        bad "$PROTO: codes: of writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect, $durable_bad returned neither CL_ERR_DURABILITY_UNKNOWN nor a post-restart CL_SUCCESS; $accepted_bad of its $accepted_down accepted call(s) to keeper 2 before the restart succeeded (mode code before/after the restart: ${down_summary%, })"
+        bad "$PROTO: codes: of writer A's $durable_down durable call(s) to keeper 2 between the kill and the reconnect, $durable_bad returned neither CL_ERR_DURABILITY_UNKNOWN nor a CL_SUCCESS that could have ended after the restart; $accepted_bad of its $accepted_down accepted call(s) to keeper 2 before the restart succeeded (mode code before/after the restart: ${down_summary%, })"
     fi
 
     # ------------------------------------------------------ hot replay ----
