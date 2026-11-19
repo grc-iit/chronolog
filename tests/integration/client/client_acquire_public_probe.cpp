@@ -114,6 +114,14 @@ int main(int argc, char** argv)
             if(!writeLine(outputFd, "RELEASE " + std::to_string(status)))
                 return 8;
         }
+        else if(command == "DISCONNECT")
+        {
+            // Disconnect alone, keeping the Client for a later DROP.
+            status = client->Disconnect();
+            handle = nullptr;
+            if(!writeLine(outputFd, "DISCONNECTED " + std::to_string(status)))
+                return 13;
+        }
         else if(command == "RETIRE")
         {
             status = client->Disconnect();

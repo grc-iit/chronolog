@@ -267,8 +267,12 @@ class ChronologClientImpl;
 // Rebuild applications after this private ownership-layout change.
 // Startup, native lookup and metadata RPCs consume the original entry budget.
 // Expiry before dispatch returns CL_ERR_DEADLINE_EXCEEDED; a dispatched mutation
-// without a confirmed result returns CL_ERR_OUTCOME_UNCONFIRMED. Do not retry
-// ambiguous mutations. A closing/incomplete context cannot be replaced.
+// without a confirmed result returns CL_ERR_OUTCOME_UNCONFIRMED. Later changes
+// naming that story or chronicle are then refused locally with the same code,
+// except that an AcquireStory or ReleaseStory with that outcome may be called
+// again: ChronoVisor's answer settles it (after a release, only a release).
+// Disconnect settles unknown acquires and releases. A closing/incomplete
+// context cannot be replaced.
 //
 // Disconnect() auto-releases any stories still acquired by the client so the
 // caller never has to walk its own acquisitions to clean up. The destructor

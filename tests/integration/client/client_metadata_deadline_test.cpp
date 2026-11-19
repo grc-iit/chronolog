@@ -87,7 +87,11 @@ TEST_P(ClientMetadataDeadline, DelayedMutationReturnsUnconfirmedWithinControlBud
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, client.Disconnect());
 }
 
-TEST_P(ClientMetadataDeadline, RemoteCapacityAcquireStaysUnconfirmedWithoutRetryOrHandle)
+// An acquire answered with the Visor's -24 has an unknown outcome. The next
+// acquire of the story is sent again, stays unknown while the Visor still says
+// -24, and gets a handle once the Visor answers with a roster. A change that
+// names the chronicle stays refused, and is not sent, until then.
+TEST_P(ClientMetadataDeadline, RemoteCapacityAcquireIsSentAgainUntilTheVisorSettlesIt)
 {
     MetadataPeer peer(GetParam());
     Client client(peer.portal);
@@ -99,7 +103,15 @@ TEST_P(ClientMetadataDeadline, RemoteCapacityAcquireStaysUnconfirmedWithoutRetry
     auto second = client.AcquireStory("c", "s");
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, second.first);
     EXPECT_EQ(nullptr, second.second);
-    EXPECT_EQ(1u, peer.state().acquisitions.load());
+    EXPECT_EQ(2u, peer.state().acquisitions.load());
+    EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, client.CreateChronicle("c"));
+    peer.state().acquireStatus = CL_SUCCESS;
+    peer.state().roster = true;
+    auto third = client.AcquireStory("c", "s");
+    EXPECT_EQ(CL_SUCCESS, third.first);
+    EXPECT_NE(nullptr, third.second);
+    EXPECT_EQ(3u, peer.state().acquisitions.load());
+    EXPECT_EQ(CL_SUCCESS, client.ReleaseStory("c", "s"));
 }
 TEST_P(ClientMetadataDeadline, OldAlreadyAcquiredWithoutRosterStaysUnconfirmed)
 {
@@ -228,7 +240,9 @@ TEST_P(ClientMetadataDeadline, ConcurrentCallersUseIndependentEntryBudgets)
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, second);
     EXPECT_LT(elapsed, std::chrono::milliseconds(120));
 }
-TEST_P(ClientMetadataDeadline, RemoteDeadlineAcquireStaysUnconfirmed)
+// After an acquire with an unknown outcome the client has no handle, but a
+// release is sent to the Visor anyway, and its answer settles the outcome.
+TEST_P(ClientMetadataDeadline, RemoteDeadlineAcquireIsSettledByARelease)
 {
     MetadataPeer peer(GetParam());
     Client client(peer.portal);
@@ -237,8 +251,13 @@ TEST_P(ClientMetadataDeadline, RemoteDeadlineAcquireStaysUnconfirmed)
     auto result = client.AcquireStory("c", "s");
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, result.first);
     EXPECT_EQ(nullptr, result.second);
-    EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, client.ReleaseStory("c", "s"));
+    EXPECT_EQ(CL_SUCCESS, client.ReleaseStory("c", "s"));
+    EXPECT_EQ(1u, peer.state().releases.load());
     EXPECT_EQ(1u, peer.state().acquisitions.load());
+    // Settled: a release without a handle is answered locally again.
+    EXPECT_EQ(CL_ERR_NOT_ACQUIRED, client.ReleaseStory("c", "s"));
+    EXPECT_EQ(1u, peer.state().releases.load());
+    EXPECT_EQ(CL_SUCCESS, client.CreateChronicle("c"));
 }
 TEST_P(ClientMetadataDeadline, SuccessWithoutRosterDoesNotFabricateHandle)
 {
@@ -383,7 +402,11 @@ TEST_P(ClientMetadataDeadline, UnknownMutationKeepsActualSingletonAfterFacadeDro
     EXPECT_FALSE(context->cleanupComplete.load());
     EXPECT_EQ(1u, peer.state().destroys.load());
 }
-TEST_P(ClientMetadataDeadline, ConfirmedRemoteCapacityReplyKeepsUnresolvedSingletonAfterFacadeDrop)
+// An acquire with an unknown outcome no longer pins the process: the last
+// facade's final Disconnect is sent and confirmed, which releases every story
+// the client held at the Visor, the context cleans up, and a new client
+// connects.
+TEST_P(ClientMetadataDeadline, UnconfirmedAcquireIsSettledByTheFinalDisconnect)
 {
     MetadataPeer peer(GetParam());
     auto owner = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
@@ -391,14 +414,12 @@ TEST_P(ClientMetadataDeadline, ConfirmedRemoteCapacityReplyKeepsUnresolvedSingle
     peer.state().acquireStatus = CL_ERR_RPC_CAPACITY;
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, owner->AcquireStory("unknown", "story").first);
     auto context = owner->context();
-    std::weak_ptr<thallium::engine> engine = context->engine;
     owner.reset();
-    EXPECT_FALSE(peer.until([&] { return context->cleanupComplete.load(); }));
-    EXPECT_FALSE(engine.expired());
-    auto rejected = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
-    EXPECT_EQ(context.get(), rejected->context().get());
-    EXPECT_EQ(nullptr, rejected->runtime());
-    EXPECT_EQ(CL_ERR_RPC_CAPACITY, rejected->Connect());
+    EXPECT_TRUE(peer.until([&] { return context->cleanupComplete.load(); }));
+    EXPECT_EQ(1u, peer.state().disconnects.load());
+    auto replacement = ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{});
+    EXPECT_NE(context.get(), replacement->context().get());
+    EXPECT_EQ(CL_SUCCESS, connectReady(replacement));
 }
 TEST_P(ClientMetadataDeadline, AmbiguousConnectBlocksLifecycleAndMutationsWithoutRetry)
 {

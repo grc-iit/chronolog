@@ -55,7 +55,7 @@ The [C++ error codes page](../cpp/error-codes.md#durability-error-codes) gives t
 
 ## Deadline and capacity codes
 
-Since 3.6.0 every call has a budget from the client's `RpcPolicy`. -22, -24, -25 and -26 mean nothing was sent, and retrying is safe; -24 after a short backoff. -23 means the request was sent and may have taken effect: a metadata change should be checked before it is repeated, and an accepted `log_event` may have stored the event. The one-argument `log_event(record)` returns 0 for every failure; `log_event(record, options)` with `Durability.Accepted` returns `(status, event_time)` with the code. With -23 its `event_time` is 0: the Python binding has no `append_event`, which in C++ keeps the timestamp of an unconfirmed event. The [C++ page](../cpp/error-codes.md#deadline-and-capacity-codes) explains each one.
+Since 3.6.0 every call has a budget from the client's `RpcPolicy`. -22, -24, -25 and -26 mean nothing was sent, and retrying is safe; -24 after a short backoff. -23 means the request was sent and may have taken effect. After an `AcquireStory` or `ReleaseStory` with -23, call it again: ChronoVisor's answer settles it. Any other change to that story or chronicle returns -23 until then (see [Unconfirmed metadata changes](../cpp/error-codes.md#unconfirmed-metadata-changes)). An accepted `log_event` with -23 may have stored the event. The one-argument `log_event(record)` returns 0 for every failure; `log_event(record, options)` with `Durability.Accepted` returns `(status, event_time)` with the code. With -23 its `event_time` is 0: the Python binding has no `append_event`, which in C++ keeps the timestamp of an unconfirmed event. The [C++ page](../cpp/error-codes.md#deadline-and-capacity-codes) explains each one.
 
 ## Error Handling
 

@@ -110,10 +110,20 @@ Since 3.6.0 every client call has a budget from the client's [`RpcPolicy`](../..
 | Code | Was the request sent? | What to do |
 |------|-----------------------|------------|
 | `CL_ERR_DEADLINE_EXCEEDED` (-22) | No | Retrying is safe. The budget ran out while the call waited for a slot, looked up the server or prepared the request. |
-| `CL_ERR_OUTCOME_UNCONFIRMED` (-23) | Yes | Do not treat it as a failure. An accepted write may be stored: use `append_event`, which returns the event's timestamp with this code, and check for the event as for a [-21](#checking-whether-a--21-event-was-stored). A metadata change (create, destroy, acquire, release) may have taken effect: check before repeating it. ChronoVisor settles a story whose start or stop it could not confirm on the next acquire or release of that story. |
+| `CL_ERR_OUTCOME_UNCONFIRMED` (-23) | Yes | Do not treat it as a failure. An accepted write may be stored: use `append_event`, which returns the event's timestamp with this code, and check for the event as for a [-21](#checking-whether-a--21-event-was-stored). A metadata change may have taken effect; see [Unconfirmed metadata changes](#unconfirmed-metadata-changes). |
 | `CL_ERR_RPC_CAPACITY` (-24) | No | Retry after a short backoff. The client has two RPC slots. A slot whose call got no answer stays taken until Mercury is done with it, so a server that stopped answering can hold both, and every later call returns -24 at once. A `Client` constructed while the previous last `Client` of the process is still closing gets -24 for its whole life. |
 | `CL_ERR_CLOCK_UNAVAILABLE` (-25), `CL_ERR_TIMESTAMP_EXHAUSTED` (-26) | No | The client could not give the event a timestamp. Timestamps are strictly increasing per client, also across a clock step back; -26 means the clock is at the largest value. |
 | `CL_ERR_NATIVE_RUNTIME_UNSUPPORTED` (-28) | No | ChronoLog must initialize the process's Argobots and Margo itself. Build MPI applications against an MPICH without Argobots (`~argobots`, as the shipped Spack environment does), and do not initialize Argobots or Margo before `Connect`. |
+
+### Unconfirmed metadata changes
+
+After a metadata change returns -23, the client refuses, also with -23, every later change that names the same story, or its chronicle, until the outcome is settled. Repeating the change could otherwise apply it twice. While the first call's work is still in flight, which can outlast its budget, the refusal comes back at once: retry after a short backoff.
+
+- **`AcquireStory` or `ReleaseStory` returned -23.** Call it again. The client sends a repeated acquire, or a release, of the story to ChronoVisor, whose answer settles the outcome. ChronoVisor answers a repeated acquire by the client that already holds the story with the story's current keepers, so the call returns a handle. A release returns `CL_SUCCESS` once this client no longer holds the story, whether the earlier call took effect or not. After a release that returned -23, an acquire of that story stays refused until a release succeeds, because the client still holds the earlier handle.
+- **`Disconnect`.** It is sent while the only unsettled changes are acquires and releases. ChronoVisor releases every story the client holds, and a confirmed `Disconnect` settles them all; destroying the last `Client` sends one the same way.
+- **A create or destroy returned -23.** The name stays refused for the life of the process, and so do `Disconnect` and a replacement `Client`. Check with `ShowChronicles` or `ShowStories` whether the change took effect, then restart the process.
+
+ChronoVisor itself settles a story whose start or stop it could not confirm on the next acquire or release of that story, by any client.
 
 `log_event(record)` returns the event's timestamp, or 0 for any failure, so it cannot tell these cases apart. `append_event(record)` returns an `AppendResult` with the code (`status`), the `outcome` (`Acknowledged`, `NotSubmitted`, `Rejected` or `Unconfirmed`), and the `timestamp` and `event_index` it gave the event. With `Unconfirmed` the timestamp is kept, so the event can be looked up; never send an `Unconfirmed` event again as if the keeper had refused it. A keeper's own refusal comes back with `Rejected` and the keeper's code.
 

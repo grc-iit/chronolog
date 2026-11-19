@@ -470,6 +470,9 @@ TEST_P(AdminDeadline, LocalRosterCapacityRejectionRollsBackOnlyItsOwnAcquisition
     std::this_thread::sleep_for(10ms);
     EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
 }
+// The failed acquire sends no stop and keeps client 100's acquisition: the
+// same client's next acquire settles the recording and gets the story, and one
+// release by it is the last.
 TEST_P(AdminDeadline, RemoteCapacityErrorAfterPartialSetupRetainsAcquisition)
 {
     delays[1] = delays[2] = 0;
@@ -477,11 +480,19 @@ TEST_P(AdminDeadline, RemoteCapacityErrorAfterPartialSetupRetainsAcquisition)
     VisorClientPortal portal;
     attach(portal);
     EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_RPC_CAPACITY);
-    auto duplicate = portal.AcquireStory(100, "chronicle", "story");
-    EXPECT_EQ(duplicate.getErrorCode(), CL_ERR_ACQUIRED);
-    EXPECT_TRUE(duplicate.getKeepers().empty());
     for(auto const& count: stops) EXPECT_EQ(count.load(), 0);
+    replies[4] = CL_SUCCESS;
+    auto again = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(again.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(again.getKeepers().size(), 3u);
+    auto stopsBefore = stops[0].load();
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(stops[0].load(), stopsBefore + 1);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_ERR_NOT_ACQUIRED);
 }
+// The failed acquire sends no stop and keeps client 100's acquisition: the
+// same client's next acquire settles the recording and gets the story, and one
+// release by it is the last.
 TEST_P(AdminDeadline, RemoteDeadlineErrorAfterPartialSetupRetainsAcquisition)
 {
     delays[1] = delays[2] = 0;
@@ -489,10 +500,32 @@ TEST_P(AdminDeadline, RemoteDeadlineErrorAfterPartialSetupRetainsAcquisition)
     VisorClientPortal portal;
     attach(portal);
     EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_DEADLINE_EXCEEDED);
-    auto duplicate = portal.AcquireStory(100, "chronicle", "story");
-    EXPECT_EQ(duplicate.getErrorCode(), CL_ERR_ACQUIRED);
-    EXPECT_TRUE(duplicate.getKeepers().empty());
     for(auto const& count: stops) EXPECT_EQ(count.load(), 0);
+    replies[4] = CL_SUCCESS;
+    auto again = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(again.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(again.getKeepers().size(), 3u);
+    auto stopsBefore = stops[0].load();
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(stops[0].load(), stopsBefore + 1);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_ERR_NOT_ACQUIRED);
+}
+// Every keeper rejects its start after the grapher's ran, so the acquire fails
+// but keeps client 100's acquisition. It is reported as unknown, not as
+// CL_ERR_NO_KEEPERS, which a client would read as "not acquired". Once the
+// keepers accept, the same client's next acquire gets the story.
+TEST_P(AdminDeadline, AcquisitionKeptAfterEveryKeeperRejectedIsReportedUnknown)
+{
+    delays[1] = delays[2] = 0;
+    replies[1] = replies[2] = replies[3] = CL_ERR_UNKNOWN;
+    VisorClientPortal portal;
+    attach(portal);
+    EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_ERR_OUTCOME_UNCONFIRMED);
+    replies[1] = replies[2] = replies[3] = CL_SUCCESS;
+    auto again = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(again.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(again.getKeepers().size(), 3u);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
 }
 TEST_P(AdminDeadline, ConfirmedRejectedKeeperSetupNeverReceivesStop)
 {

@@ -220,7 +220,7 @@ void ClientRpcContext::disconnectFinalOwner()
         throw std::runtime_error("Final Client Disconnect could not lock metadata state");
     if(!connected)
         return; // Never connected, or an explicit Disconnect was confirmed.
-    auto ticket = mutations.begin("", "");
+    auto ticket = mutations.begin("", "", MetadataOperationState::Kind::Disconnect);
     if(!ticket)
         throw std::runtime_error("Final Client Disconnect could not begin");
     auto operation = rpc::OperationContext::forOwnerCleanup(deadline);
@@ -235,6 +235,7 @@ void ClientRpcContext::disconnectFinalOwner()
         throw std::runtime_error("Final Client Disconnect outcome is not confirmed");
     }
     mutations.finish(*ticket, true);
+    mutations.settleAcquisitions();
     connected = false;
     clientId.store(0, std::memory_order_release);
 }
@@ -243,7 +244,8 @@ void ClientRpcContext::cleanup()
     nativeUses_.fetch_or(Closed, std::memory_order_acq_rel);
     if(storyteller)
         storyteller->quiesceNativeEntries();
-    if(mutations.unresolved())
+    // The final Disconnect below settles unknown acquire and release outcomes.
+    if(mutations.unresolvedBeyondAcquisitions())
         throw std::runtime_error("Client metadata outcome remains unresolved");
     for(;;)
     {

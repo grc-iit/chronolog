@@ -75,6 +75,21 @@ int ChronologClientImpl::SetRpcTimeoutPolicy(RpcTimeoutPolicy const& policy)
         return CL_ERR_INVALID_ARG;
     return runtime_ && !context_->closing() ? context_->policy->setPolicy(policy) : CL_ERR_RPC_CAPACITY;
 }
+MetadataOperationState::Kind ChronologClientImpl::mutationKind(Action action)
+{
+    using Kind = MetadataOperationState::Kind;
+    switch(action)
+    {
+        case Action::AcquireStory:
+            return Kind::Acquire;
+        case Action::ReleaseStory:
+            return Kind::Release;
+        case Action::Disconnect:
+            return Kind::Disconnect;
+        default:
+            return Kind::Other;
+    }
+}
 class ChronologClientImpl::Work final: public rpc::OwnedRpcWork<Reply>
 {
 public:
@@ -104,15 +119,18 @@ public:
         std::optional<MetadataOperationState::Ticket> ticket;
         if(!readOnly)
         {
-            ticket = owner_->mutations.begin(chronicle_, story_);
+            ticket = owner_->mutations.begin(chronicle_, story_, mutationKind(action_));
             if(!ticket)
                 return local(CL_ERR_OUTCOME_UNCONFIRMED);
         }
+        // A retry settles an earlier unknown outcome only through the Visor's
+        // reply; a local answer leaves it unknown.
+        bool retry = ticket && ticket->retry;
         auto reject = [&](int status, StoryHandle* handle = nullptr)
         {
             if(ticket)
-                owner_->mutations.finish(*ticket, true);
-            return local(status, handle);
+                owner_->mutations.finish(*ticket, !retry);
+            return local(retry ? CL_ERR_OUTCOME_UNCONFIRMED : status, handle);
         };
         if(action_ == Action::Connect && owner_->connected)
             return reject(CL_SUCCESS);
@@ -120,10 +138,13 @@ public:
             return reject(CL_SUCCESS);
         if(action_ != Action::Connect && !owner_->connected)
             return reject(CL_ERR_NO_CONNECTION);
-        if(action_ == Action::AcquireStory && owner_->storyteller)
+        // A retried acquire follows one with an unknown outcome, which left no
+        // handle; a retried release may follow an acquire whose outcome is
+        // unknown, so it asks the Visor whether this client holds the story.
+        if(action_ == Action::AcquireStory && owner_->storyteller && !retry)
             if(auto handle = owner_->storyteller->findStoryHandle(chronicle_, story_))
                 return reject(CL_SUCCESS, handle);
-        if(action_ == Action::ReleaseStory &&
+        if(action_ == Action::ReleaseStory && !retry &&
            (!owner_->storyteller || !owner_->storyteller->findStoryHandle(chronicle_, story_)))
             return reject(CL_ERR_NOT_ACQUIRED);
         lock.unlock();
@@ -140,6 +161,11 @@ public:
                              reply.status == CL_ERR_RPC_CAPACITY;
             if(!readOnly && uncertain)
                 reply.status = CL_ERR_OUTCOME_UNCONFIRMED;
+            // A retried release that the Visor answers "not acquired" means this
+            // client no longer holds the story: the earlier release took effect,
+            // or the earlier acquire never did.
+            if(retry && action_ == Action::ReleaseStory && reply.status == CL_ERR_NOT_ACQUIRED)
+                reply.status = CL_SUCCESS;
             if(reply.status == CL_SUCCESS)
             {
                 if(action_ == Action::Connect)
@@ -186,6 +212,7 @@ public:
                     owner_->connected = false;
                     owner_->clientId.store(0, std::memory_order_release);
                     owner_->storyteller->clearAcquiredStoryHandles();
+                    owner_->mutations.settleAcquisitions();
                 }
             }
             if(ticket)
@@ -329,7 +356,7 @@ ChronologClientImpl::Reply ChronologClientImpl::invoke(Action action,
         std::unique_lock<std::timed_mutex> lock(context_->metadataMutex, std::defer_lock);
         if(!lock.try_lock_until(deadline.expiresAt()))
             return {CL_ERR_DEADLINE_EXCEEDED, nullptr, {}};
-        if(context_->mutations.conflicts(chronicle, story))
+        if(context_->mutations.conflicts(chronicle, story, mutationKind(action)))
             return {CL_ERR_OUTCOME_UNCONFIRMED, nullptr, {}};
     }
     auto reservation = runtime_->reserve(deadline);

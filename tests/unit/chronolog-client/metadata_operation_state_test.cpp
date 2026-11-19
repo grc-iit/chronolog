@@ -43,6 +43,88 @@ TEST(MetadataOperationState, ClientLifecycleAdmissionSeesPendingNames)
     ASSERT_TRUE(lifecycle);
     EXPECT_FALSE(state.begin("c", "s"));
 }
+using Kind = MetadataOperationState::Kind;
+// After an acquire with an unknown outcome, the same story's next acquire or
+// release is sent as a retry; every other change that names the story or its
+// chronicle stays refused. A confirmed retry clears the record.
+TEST(MetadataOperationState, UnconfirmedAcquireAdmitsARetriedAcquireOrRelease)
+{
+    MetadataOperationState state;
+    auto acquire = state.begin("c", "s", Kind::Acquire);
+    ASSERT_TRUE(acquire);
+    EXPECT_FALSE(acquire->retry);
+    state.finish(*acquire, false);
+    EXPECT_FALSE(state.begin("c", "s"));
+    EXPECT_FALSE(state.begin("c", ""));
+    EXPECT_FALSE(state.begin("", ""));
+    EXPECT_FALSE(state.conflicts("c", "s", Kind::Release));
+    auto retry = state.begin("c", "s", Kind::Acquire);
+    ASSERT_TRUE(retry);
+    EXPECT_TRUE(retry->retry);
+    EXPECT_FALSE(state.matches(*acquire));
+    // A retry in flight blocks another one.
+    EXPECT_FALSE(state.begin("c", "s", Kind::Release));
+    state.finish(*retry, true);
+    EXPECT_FALSE(state.unresolved());
+    auto fresh = state.begin("c", "s", Kind::Release);
+    ASSERT_TRUE(fresh);
+    EXPECT_FALSE(fresh->retry);
+}
+// A retry whose own outcome is unknown can be retried again.
+TEST(MetadataOperationState, UnconfirmedRetryStaysRetryable)
+{
+    MetadataOperationState state;
+    auto acquire = state.begin("c", "s", Kind::Acquire);
+    state.finish(*acquire, false);
+    auto release = state.begin("c", "s", Kind::Release);
+    ASSERT_TRUE(release && release->retry);
+    state.finish(*release, false);
+    auto again = state.begin("c", "s", Kind::Release);
+    ASSERT_TRUE(again);
+    EXPECT_TRUE(again->retry);
+}
+// After a release with an unknown outcome the client still has the story's
+// handle, so only another release is sent.
+TEST(MetadataOperationState, UnconfirmedReleaseAdmitsOnlyARetriedRelease)
+{
+    MetadataOperationState state;
+    auto release = state.begin("c", "s", Kind::Release);
+    state.finish(*release, false);
+    EXPECT_FALSE(state.begin("c", "s", Kind::Acquire));
+    auto retry = state.begin("c", "s", Kind::Release);
+    ASSERT_TRUE(retry);
+    EXPECT_TRUE(retry->retry);
+}
+// Disconnect is sent while only acquires and releases have unknown outcomes,
+// and a confirmed one clears them. Any other unknown outcome, or a change still
+// in flight, blocks it.
+TEST(MetadataOperationState, DisconnectSettlesUnknownAcquiresAndReleases)
+{
+    MetadataOperationState state;
+    auto acquire = state.begin("c", "s", Kind::Acquire);
+    state.finish(*acquire, false);
+    auto release = state.begin("c", "t", Kind::Release);
+    state.finish(*release, false);
+    EXPECT_TRUE(state.unresolved());
+    EXPECT_FALSE(state.unresolvedBeyondAcquisitions());
+    auto disconnect = state.begin("", "", Kind::Disconnect);
+    ASSERT_TRUE(disconnect);
+    EXPECT_FALSE(disconnect->retry);
+    state.finish(*disconnect, true);
+    state.settleAcquisitions();
+    EXPECT_FALSE(state.unresolved());
+
+    auto pending = state.begin("c", "s", Kind::Acquire);
+    ASSERT_TRUE(pending);
+    EXPECT_FALSE(state.begin("", "", Kind::Disconnect));
+    state.finish(*pending, true);
+    auto destroy = state.begin("c", "s");
+    state.finish(*destroy, false);
+    EXPECT_TRUE(state.unresolvedBeyondAcquisitions());
+    EXPECT_FALSE(state.begin("", "", Kind::Disconnect));
+    state.settleAcquisitions();
+    EXPECT_TRUE(state.unresolved());
+}
 
 namespace chronolog
 {

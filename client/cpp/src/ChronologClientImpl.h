@@ -75,6 +75,7 @@ private:
     class Work;
     ChronologClientImpl(std::shared_ptr<ClientRpcContext>, std::shared_ptr<rpc::RpcRuntime>, bool);
     Reply invoke(Action, std::string const&, std::string const&, Clock::time_point);
+    static MetadataOperationState::Kind mutationKind(Action);
     static std::mutex factoryMutex_;
     static std::weak_ptr<ClientRpcContext> instance_;
     std::shared_ptr<ClientRpcContext> context_;

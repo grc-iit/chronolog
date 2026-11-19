@@ -70,7 +70,7 @@ int Client::SetRpcTimeoutPolicy(RpcTimeoutPolicy const& policy);
 - Set the context's budgets (see [RPC Deadlines](../../user-guide/configuration/network-and-rpc.md#rpc-deadlines)); by default they come from the `RpcPolicy` block of the client configuration file.
 - Call it before the first `Connect`: entering `Connect` freezes the policy for the context's life, even if `Connect` fails. Returns `CL_ERR_INVALID_ARG` for a value of 0 or out of range, and `CL_ERR_RPC_CAPACITY` when work is already admitted.
 
-Every metadata call below (`Connect`, `Disconnect`, chronicle and story create, acquire, release and destroy, `ShowChronicles`, `ShowStories`) has one `control_ms` budget. It returns `CL_ERR_DEADLINE_EXCEEDED` if the budget ran out before the request was sent, and `CL_ERR_OUTCOME_UNCONFIRMED` if the request was sent and not answered in time; the change may then have taken effect, so check before repeating it (see [Deadline and capacity codes](./error-codes.md#deadline-and-capacity-codes)).
+Every metadata call below (`Connect`, `Disconnect`, chronicle and story create, acquire, release and destroy, `ShowChronicles`, `ShowStories`) has one `control_ms` budget. It returns `CL_ERR_DEADLINE_EXCEEDED` if the budget ran out before the request was sent, and `CL_ERR_OUTCOME_UNCONFIRMED` if the request was sent and not answered in time. The change may then have taken effect. Call an acquire or release again to settle it; any other change to that name is refused until then (see [Unconfirmed metadata changes](./error-codes.md#unconfirmed-metadata-changes)).
 
 ```cpp
 ClientId Client::client_id() const;

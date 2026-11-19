@@ -78,7 +78,10 @@ TEST_P(ClientAcquireDeadline, NativePortalSerializesOnlyConfirmedResponsiveRoste
     EXPECT_EQ(to_string(response.getPlayer()), to_string(service(5)));
     EXPECT_EQ(caller.drain(rpc::RpcDeadline::after(200ms)), CL_SUCCESS);
 }
-TEST_P(ClientAcquireDeadline, LostClientReplyLeavesDuplicateAcquireErrorWithEmptyRoster)
+// The client's reply is lost, but the acquire completes at the Visor. The same
+// client's next acquire gets the story and its roster, and one release by that
+// client is the last.
+TEST_P(ClientAcquireDeadline, LostClientReplyIsAnsweredByTheSameClientsNextAcquire)
 {
     delays[0] = 70;
     delays[1] = delays[2] = 0;
@@ -90,10 +93,12 @@ TEST_P(ClientAcquireDeadline, LostClientReplyLeavesDuplicateAcquireErrorWithEmpt
     EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
     EXPECT_TRUE(result.may_have_dispatched);
     std::this_thread::sleep_for(150ms);
-    auto duplicate = portal.AcquireStory(100, "chronicle", "story");
-    EXPECT_EQ(duplicate.getErrorCode(), CL_ERR_ACQUIRED);
-    EXPECT_TRUE(duplicate.getKeepers().empty());
+    auto again = portal.AcquireStory(100, "chronicle", "story");
+    EXPECT_EQ(again.getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(again.getKeepers().size(), 3u);
     EXPECT_FALSE(result.reply);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_ERR_NOT_ACQUIRED);
 }
 TEST_P(ClientAcquireDeadline, SaturationRejectsBeforeOwningRequestAndCallerWaitIsBounded)
 {
@@ -288,6 +293,19 @@ public:
         return false;
     }
 
+    // Sends a command whose reply is "<marker> <status>" and returns the status,
+    // or CL_ERR_UNKNOWN when no such reply arrives within 10 s.
+    int command(std::string const& name, std::string const& marker)
+    {
+        std::string line;
+        if(!send(name) || !readLine(line, std::chrono::seconds(10)))
+            return CL_ERR_UNKNOWN;
+        std::istringstream parsed(line);
+        std::string seen;
+        int status = CL_ERR_UNKNOWN;
+        parsed >> seen >> status;
+        return !parsed.fail() && seen == marker ? status : CL_ERR_UNKNOWN;
+    }
     bool retired() const { return retired_; }
     int retireStatus() const { return retireStatus_; }
 
@@ -450,7 +468,10 @@ protected:
     }
 };
 
-TEST_P(PublicClientAcquireDeadline, C32PortalSaturationTimesOutOnceAndRetainsUnknownClientMutation)
+// The first acquire never reaches the portal, but the client cannot know that.
+// Its next acquire is sent, gets the story, and the story is released and the
+// client disconnected without an unknown outcome left behind.
+TEST_P(PublicClientAcquireDeadline, C32PortalSaturationTimesOutOnceAndTheNextAcquireSettlesIt)
 {
     VisorClientPortal portal;
     attach(portal, true);
@@ -479,17 +500,27 @@ TEST_P(PublicClientAcquireDeadline, C32PortalSaturationTimesOutOnceAndRetainsUnk
     for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
 
     permits.clear();
-    ASSERT_TRUE(probe.send("AGAIN"));
-    ASSERT_TRUE(probe.readLine(line, 1s));
-    auto second = parseAcquireResult(line, "AGAIN");
+    // The first call's work can still be in flight after its caller got -23;
+    // until it ends, the client refuses the story at once with -23 as well.
+    // Retry as an application would, for at most 3 s.
+    PublicAcquireResult second;
+    int tries = 0;
+    auto retryUntil = std::chrono::steady_clock::now() + 3s;
+    do {
+        if(tries++)
+            std::this_thread::sleep_for(100ms);
+        ASSERT_TRUE(probe.send("AGAIN"));
+        ASSERT_TRUE(probe.readLine(line, 7s));
+        second = parseAcquireResult(line, "AGAIN");
+    } while(second.status == CL_ERR_OUTCOME_UNCONFIRMED && std::chrono::steady_clock::now() < retryUntil);
     std::cout << "C32 public retry status=" << second.status << " elapsed_ms=" << second.elapsedMs
-              << " handle=" << second.hasHandle << "; portal requests and admin starts unchanged\n";
-    EXPECT_EQ(second.status, CL_ERR_OUTCOME_UNCONFIRMED);
-    EXPECT_FALSE(second.hasHandle);
-    EXPECT_LT(second.elapsedMs, 500);
-    EXPECT_EQ(portal.core()->incomingRequests.load(std::memory_order_acquire), incomingBefore);
-    for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
+              << " handle=" << second.hasHandle << " tries=" << tries << "\n";
+    EXPECT_EQ(second.status, CL_SUCCESS);
+    EXPECT_TRUE(second.hasHandle);
+    for(auto const& count: starts) EXPECT_EQ(count.load(), 1);
 
+    EXPECT_EQ(probe.command("RELEASE", "RELEASE"), CL_SUCCESS);
+    EXPECT_EQ(probe.command("DISCONNECT", "DISCONNECTED"), CL_SUCCESS);
     EXPECT_TRUE(probe.retire());
     EXPECT_TRUE(probe.retired());
     EXPECT_EQ(probe.retireStatus(), CL_SUCCESS);
@@ -548,7 +579,11 @@ TEST_P(PublicClientAcquireDeadline, DefaultAcquireUsesResponsiveKeeperAndAppends
     EXPECT_EQ(probe.retireStatus(), CL_SUCCESS);
 }
 
-TEST_P(PublicClientAcquireDeadline, LostPlayerReplyTimesOutAndPreservesServerAcquisition)
+// The player answers after the acquire's deadline, so the outcome is unknown
+// and the Visor keeps the acquisition. With the player answering again, the
+// same client's next acquire settles the old recording and gets the story, and
+// its Disconnect is confirmed.
+TEST_P(PublicClientAcquireDeadline, LostPlayerReplyTimesOutAndTheNextAcquireSettlesIt)
 {
     delays[1] = 0;
     delays[2] = 0;
@@ -572,15 +607,54 @@ TEST_P(PublicClientAcquireDeadline, LostPlayerReplyTimesOutAndPreservesServerAcq
     EXPECT_TRUE(waitForCount(completions[4], 1, 8s));
     std::this_thread::sleep_for(100ms);
 
-    auto duplicate = portal.AcquireStory(probe.clientId(), "public-chronicle", "story");
-    std::cout << "server duplicate status=" << duplicate.getErrorCode() << " roster=" << duplicate.getKeepers().size()
-              << "\n";
-    EXPECT_EQ(duplicate.getErrorCode(), CL_ERR_ACQUIRED);
-    EXPECT_TRUE(duplicate.getKeepers().empty());
     EXPECT_EQ(starts[1].load(), 1);
     EXPECT_EQ(starts[2].load(), 1);
     EXPECT_EQ(starts[3].load(), 1);
     EXPECT_EQ(starts[4].load(), 1);
+
+    delays[4] = 0;
+    ASSERT_TRUE(probe.send("AGAIN"));
+    ASSERT_TRUE(probe.readLine(line, 7s));
+    auto again = parseAcquireResult(line, "AGAIN");
+    std::cout << "lost-player public retry status=" << again.status << " handle=" << again.hasHandle << "\n";
+    EXPECT_EQ(again.status, CL_SUCCESS);
+    EXPECT_TRUE(again.hasHandle);
+    EXPECT_EQ(starts[4].load(), 2);
+    EXPECT_EQ(probe.command("DISCONNECT", "DISCONNECTED"), CL_SUCCESS);
+    // One stop settled the old recording, one ended the story at the Disconnect.
+    EXPECT_EQ(stops[4].load(), 2);
+    EXPECT_TRUE(probe.retire());
+    EXPECT_TRUE(probe.retired());
+    EXPECT_EQ(probe.retireStatus(), CL_SUCCESS);
+}
+
+// After the same unknown outcome, the client releases instead: the release is
+// sent although the client has no handle, the Visor stops the story, and a
+// second release is answered as not acquired.
+TEST_P(PublicClientAcquireDeadline, LostPlayerReplyTimesOutAndAReleaseReachesTheVisor)
+{
+    delays[1] = 0;
+    delays[2] = 0;
+    delays[3] = 0;
+    delays[4] = 6000;
+    VisorClientPortal portal;
+    attach(portal, true);
+    PublicClientProbe probe;
+    ASSERT_TRUE(startPublicProbe(portal, probe)) << probe.startupLine();
+
+    ASSERT_TRUE(probe.send("ACQUIRE"));
+    std::string line;
+    ASSERT_TRUE(probe.readLine(line, 7s));
+    auto result = parseAcquireResult(line, "RESULT");
+    EXPECT_EQ(result.status, CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_FALSE(result.hasHandle);
+    EXPECT_TRUE(waitForCount(completions[4], 1, 8s));
+    std::this_thread::sleep_for(100ms);
+
+    EXPECT_EQ(probe.command("RELEASE", "RELEASE"), CL_SUCCESS);
+    for(int i = 0; i < 4; ++i) EXPECT_GE(stops[i].load(), 1) << "component " << i;
+    EXPECT_EQ(probe.command("RELEASE", "RELEASE"), CL_ERR_NOT_ACQUIRED);
+    EXPECT_EQ(probe.command("DISCONNECT", "DISCONNECTED"), CL_SUCCESS);
 
     EXPECT_TRUE(probe.retire());
     EXPECT_TRUE(probe.retired());

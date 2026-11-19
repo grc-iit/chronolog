@@ -232,7 +232,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
         return ret.first;
     }
     Story* pStory = ret.second;
-    /* Last check if this client has acquired this Story already, do nothing and return success if true */
+    /* Last check if this client has acquired this Story already: change nothing, report its id */
     auto acquirerMap = pStory->getAcquirerMap();
     auto acquirerMapRecord = acquirerMap.find(client_id);
     if(acquirerMapRecord != acquirerMap.end())
@@ -240,7 +240,7 @@ int ChronicleMetaDirectory::acquire_story(chl::ClientId const& client_id,
         LOG_DEBUG("[ChronicleMetaDirectory] StoryName={} has already been acquired by ClientID={}",
                   story_name.c_str(),
                   client_id);
-        /* All checks passed, manipulate metadata */
+        story_id = pStory->getSid();
         return chronolog::CL_ERR_ACQUIRED;
     }
 

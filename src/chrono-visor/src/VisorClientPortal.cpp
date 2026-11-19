@@ -257,7 +257,13 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                 break;
             }
             r->status = directory.acquire_story(client, chronicle, story, id);
-            if(r->status != CL_SUCCESS)
+            // The client already holds the story: an earlier acquire whose reply
+            // it did not get. Answer with the story's current recording, as a
+            // second client would get, so the client can settle that outcome.
+            // The acquisition is the earlier call's, so this call never rolls it
+            // back.
+            bool repeated = r->status == CL_ERR_ACQUIRED;
+            if(r->status != CL_SUCCESS && !repeated)
                 break;
             std::vector<KeeperIdCard> keepers;
             ServiceId player;
@@ -272,15 +278,24 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
             // This local proof is set only before roster admission/insertion and
             // child submission, never from a remote error code. Core exclusion
             // preserves this operation's acquisition until the checked rollback.
-            if(r->status != CL_SUCCESS && locallyRejectedBeforeSetup)
+            if(r->status != CL_SUCCESS && locallyRejectedBeforeSetup && !repeated)
             {
                 StoryId released = 0;
                 bool wasLast = false;
                 if(directory.release_story(client, chronicle, story, released, wasLast, id) != CL_SUCCESS)
                     r->status = CL_ERR_OUTCOME_UNCONFIRMED;
             }
-            // Dispatched/possibly dispatched setup retains acquisition. A lost
-            // reply or remote -22/-24 must still leave duplicate acquire ACQUIRED.
+            else if(r->status != CL_SUCCESS && r->status != CL_ERR_DEADLINE_EXCEEDED &&
+                    r->status != CL_ERR_RPC_CAPACITY)
+                // The client holds the story and some start may have run, so no
+                // answer may read as a definite failure: the client would forget
+                // the acquisition this registry keeps. Its next acquire or release
+                // of the story settles it. The client reads -22 and -24 as
+                // unknown already.
+                r->status = CL_ERR_OUTCOME_UNCONFIRMED;
+            // Dispatched/possibly dispatched setup retains acquisition. After a
+            // lost reply or a remote -22/-24, a repeated acquire by the same
+            // client settles the recording and answers with it.
             if(r->status == CL_SUCCESS)
             {
                 std::vector<ServiceId> services;
