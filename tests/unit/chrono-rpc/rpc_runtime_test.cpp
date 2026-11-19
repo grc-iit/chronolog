@@ -541,6 +541,23 @@ TEST(RpcRuntime, BackToBackCallsOnOneSlotAreAdmitted)
     EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
 }
 
+// A full runtime retries for a few microseconds before it refuses, but never
+// past the call's deadline: a call whose deadline ends in the retry is told
+// its deadline passed, not that the runtime is full.
+TEST(RpcRuntime, FullRuntimeReportsTheDeadlineWhenItEndsFirst)
+{
+    RpcRuntime runtime(1);
+    auto held = runtime.reserve(RpcDeadline::after(1s));
+    ASSERT_TRUE(held);
+    // A deadline 20 us away: 1 ms from a start 980 us ago.
+    auto late =
+            runtime.reserve(RpcDeadline::fromStart(RpcDeadline::Clock::now() - std::chrono::microseconds(980), 1ms));
+    EXPECT_EQ(late.status(), CL_ERR_DEADLINE_EXCEEDED);
+    EXPECT_EQ(runtime.reserve(RpcDeadline::after(1s)).status(), CL_ERR_RPC_CAPACITY);
+    held = RpcReservation();
+    EXPECT_EQ(runtime.drain(RpcDeadline::after(1s)), CL_SUCCESS);
+}
+
 // Callers freeing retired slots race the workers freeing the same slots; each
 // slot is freed once, so afterwards exactly capacity slots can be reserved.
 TEST(RpcRuntime, ConcurrentCallersFreeingRetiredSlotsKeepTheCountExact)

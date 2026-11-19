@@ -529,6 +529,8 @@ RpcReservation RpcRuntime::reserve(RpcDeadline const& deadline) noexcept
         // short retry has passed.
         if(observed & Closed)
             return RpcReservation(CL_ERR_RPC_CAPACITY);
+        if(deadline.expired())
+            return RpcReservation(CL_ERR_DEADLINE_EXCEEDED);
         auto now = RpcDeadline::Clock::now();
         if(!spinUntil)
             spinUntil = now + ReclaimSpin;
