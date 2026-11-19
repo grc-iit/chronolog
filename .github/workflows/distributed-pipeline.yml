@@ -642,7 +642,7 @@ jobs:
               > /tmp/tail_read_output.log 2>&1 || RC=\$?
             # chrono-bench heads this block 'Tail-read latency / cost results' with
             # rows named 'send->visible'; the previous pattern 'Latency (send' matched
-            # nothing, and `|| true` hid that, so a regression showed the assertion
+            # nothing, and '|| true' hid that, so a regression showed the assertion
             # failure with no latency numbers next to it.
             grep -E 'Tail-read latency|send->visible|playback\(\) call' /tmp/tail_read_output.log || true
             if [ \$RC -ne 0 ]; then
@@ -881,6 +881,23 @@ jobs:
           path: ./nfs-pass-logs
           retention-days: 14
 
+      # The client tools write their output to /tmp in the container they run
+      # in (c1, and c2/c3 for the Python tail test), and the next step deletes
+      # it: keep the top-level logs and results of every container.
+      - name: Copy client outputs out of the containers
+        if: failure()
+        run: |
+          rm -rf ./distributed-logs
+          mkdir -p ./distributed-logs/client
+          for c in $(docker ps --format '{{.Names}}' | grep '^chronolog-c[0-9]*$'); do
+            files=$(docker exec "$c" bash -c 'cd /tmp && ls -1 -- *.log *.csv *.ids *.json 2>/dev/null' || true)
+            [ -n "$files" ] || continue
+            mkdir -p "./distributed-logs/client/$c"
+            for f in $files; do
+              docker cp "$c:/tmp/$f" "./distributed-logs/client/$c/$f" || true
+            done
+          done
+
       - name: Clean up archive output directory
         if: always()
         run: |
@@ -910,6 +927,28 @@ jobs:
               ./tools/deploy/single_user_deploy.sh -s -w \"\${WORK_DIR}\" 2>/dev/null || true
             fi
           " || echo "⚠️ Stop command had errors but continuing cleanup"
+
+      # Every daemon logs to chrono-<component>-<host>.log in monitor/ on the
+      # shared_home volume, which "Clean up containers" deletes. Copied after
+      # the stop, so the lines a daemon buffers are written out.
+      - name: Copy daemon logs and configs out of c1
+        if: failure()
+        run: |
+          mkdir -p ./distributed-logs
+          WORK_DIR=/home/grc-iit/chronolog-install/chronolog
+          docker cp "chronolog-c1:${WORK_DIR}/monitor" ./distributed-logs/monitor || \
+            echo "no monitor directory" > ./distributed-logs/MISSING-monitor.txt
+          docker cp "chronolog-c1:${WORK_DIR}/conf" ./distributed-logs/conf || \
+            echo "no conf directory" > ./distributed-logs/MISSING-conf.txt
+          du -sh ./distributed-logs
+
+      - name: Upload distributed logs artifact
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: distributed-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ./distributed-logs
+          retention-days: 14
 
       - name: Clean up containers
         if: always()
