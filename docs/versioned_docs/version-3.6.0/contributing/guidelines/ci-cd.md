@@ -65,7 +65,7 @@ The workflow starts 7 containers from the base image (`c1` to `c7`: 1 visor, 2 k
 
 1. **Setup**: user and SSH keys in every container, the workspace copied in, the build in `c1`, and the `hosts_*` files.
 2. **Deploy** with `tools/deploy/single_user_deploy.sh`, and check with `parallel-ssh` that each process runs on its container.
-3. **Client performance test**: `chrono-bench` writes from MPI ranks spread over several containers.
+3. **Client performance test**: `chrono-bench` writes from MPI ranks spread over several containers, without a barrier after each call (`-y`): on the 4-CPU runner, ranks waiting in a barrier poll and take the CPUs the daemons need. The containers use `ofi+tcp` with `FI_TCP_IFACE=eth0`.
 4. **Read path test**: the distributed telemetry writer writes, `chrono-bench -l` reads the newest events back from the keepers (`playback`), and a replay reads them from the archive into a CSV file.
 5. **Every recording group archived data**: each grapher wrote at least one non-empty window.
 6. **Python tail read**: the writer on `c2`, the reader on `c3`.
@@ -122,7 +122,7 @@ Run it before a pull request that changes RPC endpoints, ports, configuration pl
 
 Two jobs, each on its own runner:
 
-1. **integration**: in one container from the base image, a Debug build, then every `tests/integration/*_test.sh` one at a time through `tests/integration/run_integration_tests.sh` (see [Running Tests](../development/running-tests.md#integration-scripts)). `keeper_restart_held_test.sh` runs over `ofi+sockets` only unless the dispatch input `protocols` says otherwise, and `keeper_wal_off_test.sh` builds its v3.3.0 keeper from the `v3.3.0` tag. The job summary has one row per script: pass, fail, error or timeout, its check count and its time. The `integration-logs-<run>-<attempt>` artifact has each script's output and the daemons' logs.
+1. **integration**: in one container from the base image, a Debug build, then every `tests/integration/*_test.sh` one at a time through `tests/integration/run_integration_tests.sh` (see [Running Tests](../development/running-tests.md#integration-scripts)). `keeper_restart_held_test.sh` runs over `ofi+tcp` only unless the dispatch input `protocols` says otherwise. The job summary has one row per script: pass, fail, error or timeout, its check count and its time. The `integration-logs-<run>-<attempt>` artifact has each script's output and the daemons' logs.
 2. **distributed-wal-restart**: `docker/local_distributed_ci.sh --wal-restart-only` on the 7-container deployment of the Distributed Pipeline, which runs its stage 11c: a keeper killed with SIGKILL after durable writes, restarted, and checked to archive and replay every acknowledged durable event. Its log is the `wal-restart-log-<run>-<attempt>` artifact.
 
 The dispatch inputs are `ref` (default `develop`), `scripts` (names separated by spaces; empty runs all) and `protocols`.
