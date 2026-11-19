@@ -247,6 +247,7 @@ Parsed by `VisorConfiguration` (`src/chrono-visor/include/ChronoVisorConfigurati
 | `Monitoring`                      | object  | See [`Monitoring`](#monitoring--logging).                                                     |
 | `RpcPolicy`                       | object  | See [`RpcPolicy`](#rpcpolicy--rpc-deadlines). Bounds ChronoVisor's start, stop and destroy calls to the keepers, graphers and players. |
 | `delayed_data_admin_exit_in_secs` | integer | Seconds ChronoVisor keeps its admin RPC client for a keeper, grapher or player after that process unregisters or registers again, and while ChronoVisor shuts down, before destroying it, so calls already sent on it can finish. It holds no events. Default `3`; a value outside 1–59 becomes `5`. |
+| `rpc_slots`                       | integer | How many RPCs ChronoVisor works on at once, client requests and its own calls to graphers, keepers and players together; each slot has a worker thread. Default `32`, allowed 1–255; any other value is refused at startup. An acquire of a new story needs the number of keepers in its recording group + 3 at once; see [RPC slots](../architecture/chronovisor.md#starting-and-stopping-a-story). |
 
 ## `chrono_keeper`
 

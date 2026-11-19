@@ -8,6 +8,7 @@
 #include <RpcPolicy.h>
 #include <thallium.hpp>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <map>
@@ -34,6 +35,37 @@ struct AdminObservation
     std::atomic<int> shutdownExceptionKind{0};
     std::atomic<int> nativeShutdownError{0};
 };
+// Slots an acquire of a story no client holds needs at once from the visor's
+// runtime: the client's own request, then one start each for the grapher, the
+// group's keepers and the player, all reserved before the first is sent.
+inline std::size_t storyStartSlots(std::size_t keepers) { return keepers + 3; }
+
+// Says when a refused call should be logged: at most once a second, with the
+// number refused since the last line, so a flood of refusals does not flood
+// the log.
+class RefusalLog
+{
+    std::atomic<int64_t> lastNs_{0};
+    std::atomic<uint64_t> count_{0};
+
+public:
+    // Counts one refusal; returns the number to report when a line is due now,
+    // else 0.
+    uint64_t note()
+    {
+        count_.fetch_add(1, std::memory_order_relaxed);
+        auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
+        auto last = lastNs_.load(std::memory_order_relaxed);
+        if(last != 0 && now - last < 1000000000)
+            return 0;
+        if(!lastNs_.compare_exchange_strong(last, now, std::memory_order_relaxed))
+            return 0;
+        return count_.exchange(0, std::memory_order_relaxed);
+    }
+};
+
 // Legacy fixtures own their existing runtime here. The native daemon binds
 // weakly to its one externally retained C32; no owner/Core backlink cycle.
 class VisorControlRuntime
@@ -56,6 +88,11 @@ public:
     {
         auto runtime = actual_.lock();
         return runtime ? runtime->reserve(deadline) : rpc::RpcReservation{};
+    }
+    std::size_t capacity() const
+    {
+        auto runtime = actual_.lock();
+        return runtime ? runtime->capacity() : 0;
     }
     template <class Reply>
     rpc::RpcPending<Reply> submit(rpc::RpcReservation&& token, std::shared_ptr<rpc::OwnedRpcWork<Reply>> work)

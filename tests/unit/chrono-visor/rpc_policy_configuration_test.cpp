@@ -54,3 +54,35 @@ TEST(VisorRpcPolicy, RejectsNonObjectPolicy)
         json_object_put(root);
     }
 }
+
+// rpc_slots sizes the visor's one RPC runtime: 32 unless set, 1 to 255
+// accepted, anything else refused rather than clamped.
+TEST(VisorRpcSlots, DefaultsTo32AndAcceptsOneTo255)
+{
+    chronolog::VisorConfiguration conf;
+    auto* root = json_tokener_parse("{}");
+    ASSERT_EQ(conf.parseJsonConf(root), chronolog::CL_SUCCESS);
+    json_object_put(root);
+    EXPECT_EQ(conf.RPC_SLOTS, 32u);
+    for(auto value: {1, 64, 255})
+    {
+        chronolog::VisorConfiguration set;
+        auto text = std::string("{\"rpc_slots\":") + std::to_string(value) + "}";
+        root = json_tokener_parse(text.c_str());
+        ASSERT_EQ(set.parseJsonConf(root), chronolog::CL_SUCCESS) << text;
+        json_object_put(root);
+        EXPECT_EQ(set.RPC_SLOTS, static_cast<size_t>(value));
+    }
+}
+TEST(VisorRpcSlots, RejectsValuesOutsideOneTo255)
+{
+    for(auto value: {"0", "-1", "256", "18446744073709551615", "1.5", "true", "\"32\"", "null", "[]", "{}"})
+    {
+        chronolog::VisorConfiguration conf;
+        auto text = std::string("{\"rpc_slots\":") + value + "}";
+        auto* root = json_tokener_parse(text.c_str());
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(conf.parseJsonConf(root), chronolog::CL_ERR_INVALID_CONF) << text;
+        json_object_put(root);
+    }
+}

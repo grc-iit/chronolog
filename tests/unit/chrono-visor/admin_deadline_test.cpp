@@ -27,6 +27,30 @@ TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
 // starts it afresh on all three keepers. Before, every release of such a story
 // returned CL_ERR_OUTCOME_UNCONFIRMED until the visor restarted, and an
 // acquire kept reusing the one-keeper roster.
+// The registry uses the size of the runtime it is given (rpc_slots), and an
+// acquire of a new story needs its own request, the grapher, the player and
+// every keeper of the group at once.
+TEST(VisorRpcSlots, RegistryUsesTheRuntimesSizeAndAStartNeedsKeepersPlusThree)
+{
+    // The registry holds the runtime weakly; the visor's VisorData owns it.
+    auto runtime = std::make_shared<rpc::RpcRuntime>(7);
+    auto registry = KeeperRegistry::CreateOwned(RpcTimeoutPolicy{}, runtime);
+    EXPECT_EQ(registry->adminOwner()->runtime.capacity(), 7u);
+    EXPECT_EQ(chronolog::storyStartSlots(2), 5u);
+    EXPECT_EQ(chronolog::storyStartSlots(29), 32u);
+}
+// A refusal is reported at once, then at most once a second with the number
+// refused since the last report.
+TEST(VisorRpcSlots, RefusalLogReportsAtMostOnceASecondWithTheCount)
+{
+    chronolog::RefusalLog log;
+    EXPECT_EQ(log.note(), 1u);
+    EXPECT_EQ(log.note(), 0u);
+    EXPECT_EQ(log.note(), 0u);
+    std::this_thread::sleep_for(1050ms);
+    EXPECT_EQ(log.note(), 3u);
+    EXPECT_EQ(log.note(), 0u);
+}
 TEST_P(AdminDeadline, DegradedAcquireIsReleasedAndTheNextAcquireReachesEveryKeeper)
 {
     std::vector<KeeperIdCard> roster;

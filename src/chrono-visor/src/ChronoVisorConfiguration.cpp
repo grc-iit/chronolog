@@ -95,6 +95,18 @@ int chronolog::VisorConfiguration::parseJsonConf(json_object* json_conf)
             DELAYED_DATA_ADMIN_EXIT_IN_SECS =
                     ((0 < delayed_exit_value && delayed_exit_value < 60) ? delayed_exit_value : 5);
         }
+        else if(strcmp(key, "rpc_slots") == 0)
+        {
+            // Refused rather than clamped: a wrong value would either starve
+            // every acquire of a large recording group or start many threads.
+            int64_t slots = json_object_is_type(val, json_type_int) ? json_object_get_int64(val) : 0;
+            if(slots < 1 || slots > 255)
+            {
+                std::cerr << "[VisorConfiguration] Invalid 'rpc_slots': expected an integer from 1 to 255" << std::endl;
+                return chl::CL_ERR_INVALID_CONF;
+            }
+            RPC_SLOTS = static_cast<size_t>(slots);
+        }
         else
         {
             std::cerr << "[VisorConfiguration] Unknown Visor configuration: " << key << std::endl;

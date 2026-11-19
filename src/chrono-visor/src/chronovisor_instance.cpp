@@ -66,7 +66,7 @@ int main(int argc, char** argv)
     auto publisher = rpc::LifecyclePublisher::Create(config);
     rpc::LifecycleRecord lifecycle;
     auto startup = rpc::RpcDeadline::fromStart(startupEntered, std::chrono::milliseconds(conf.RPC_POLICY.startup_ms));
-    auto actual = std::make_shared<rpc::RpcRuntime>(32);
+    auto actual = std::make_shared<rpc::RpcRuntime>(conf.RPC_SLOTS);
     auto data = std::make_shared<VisorData>(conf, actual);
     actual->retainOwner(data,
                         [data, publisher]
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
             if(!data->publicSettled)
             {
                 if(!data->portal.core()->quiesce(deadline) || !data->registry->quiescePublic(deadline) ||
-                   !rpc::allControlIdle(*actual, 32, deadline))
+                   !rpc::allControlIdle(*actual, actual->capacity(), deadline))
                     return false;
                 // Public admission stays closed. Original native/member work
                 // is settled; do not reacquire all32 probes before file retries.
@@ -257,7 +257,7 @@ int main(int argc, char** argv)
         }
         if(!data->retirementReady.load(std::memory_order_acquire))
         {
-            if(!rpc::allControlIdle(*actual, 32, deadline))
+            if(!rpc::allControlIdle(*actual, actual->capacity(), deadline))
                 return false;
             data->retirementReady.store(true, std::memory_order_release);
         }

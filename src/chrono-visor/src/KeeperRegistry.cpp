@@ -92,7 +92,7 @@ std::shared_ptr<KeeperRegistry> KeeperRegistry::CreateOwned(RpcTimeoutPolicy con
 {
     if(!actual)
         throw std::invalid_argument("Visor needs its actual shared C32 owner");
-    return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(policy, 32, {}, actual));
+    return std::shared_ptr<KeeperRegistry>(new KeeperRegistry(policy, actual->capacity(), {}, actual));
 }
 int KeeperRegistry::InitializeOwnedRegistryService(std::shared_ptr<thallium::engine> const& engine,
                                                    uint16_t provider,
@@ -410,6 +410,15 @@ int KeeperRegistry::registerKeeperProcess(KeeperRegistrationMsg const& keeper_re
     LOG_INFO("[ChronoProcessRegistry] RecordingGroup {} has {} keepers",
              recording_group.groupId,
              recording_group.keeperProcesses.size());
+    if(storyStartSlots(recording_group.activeKeeperCount) > adminRuntime->runtime.capacity())
+        LOG_WARNING("[ChronoProcessRegistry] RecordingGroup {} has {} active keepers: starting a story there needs "
+                    "{} RPC slots at once, more than the visor's {} (rpc_slots), so every acquire of a story no "
+                    "client holds in this group fails. Raise rpc_slots to at least {}",
+                    recording_group.groupId,
+                    recording_group.activeKeeperCount,
+                    storyStartSlots(recording_group.activeKeeperCount),
+                    adminRuntime->runtime.capacity(),
+                    storyStartSlots(recording_group.activeKeeperCount));
 
     // check if this is the first keeper for the recording group and the group is ready to be part of
     //  the activeGroups rotation
@@ -889,7 +898,22 @@ int KeeperRegistry::notifyRecordingGroupOfStoryRecordingStart(ChronicleName cons
                 // after their results; wait for them, within this acquire's
                 // deadline, instead of refusing a story that is free now.
                 if(!resent || token.status() != CL_ERR_RPC_CAPACITY || deadline.expired())
+                {
+                    static RefusalLog refusals;
+                    if(token.status() == CL_ERR_RPC_CAPACITY)
+                        if(auto refused = refusals.note())
+                            LOG_WARNING("[ChronoProcessRegistry] Refused {} story start(s) since the last such "
+                                        "warning, the latest StoryID={}: it needs {} slots at once (the client's "
+                                        "request and {} starts) and had reserved {} of the starts when the "
+                                        "visor's {} slots (rpc_slots) ran out",
+                                        refused,
+                                        id,
+                                        recording->clients.size() + 1,
+                                        recording->clients.size(),
+                                        i,
+                                        adminRuntime->runtime.capacity());
                     return rejectBeforeSetup(token.status());
+                }
                 retry = true;
                 break;
             }

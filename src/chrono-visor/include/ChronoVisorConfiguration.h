@@ -22,6 +22,10 @@ struct VisorConfiguration
     RPCProviderConf VISOR_KEEPER_REGISTRY_SERVICE_CONF;
     LogConf VISOR_LOG_CONF;
     size_t DELAYED_DATA_ADMIN_EXIT_IN_SECS{};
+    // Slots of the visor's one RPC runtime, each with its own worker thread:
+    // client requests and the visor's calls to graphers, keepers and players
+    // all hold one while they run. 1-255.
+    size_t RPC_SLOTS = 32;
 
     VisorConfiguration()
     {
@@ -46,7 +50,8 @@ struct VisorConfiguration
         return "[VISOR_CLIENT_PORTAL_SERVICE_CONF: " + VISOR_CLIENT_PORTAL_SERVICE_CONF.to_String() +
                ", VISOR_KEEPER_REGISTRY_SERVICE_CONF: " + VISOR_KEEPER_REGISTRY_SERVICE_CONF.to_String() +
                ", VISOR_LOG: " + VISOR_LOG_CONF.to_String() +
-               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " + std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) + "]";
+               ", DELAYED_DATA_ADMIN_EXIT_IN_SECS: " + std::to_string(DELAYED_DATA_ADMIN_EXIT_IN_SECS) +
+               ", RPC_SLOTS: " + std::to_string(RPC_SLOTS) + "]";
     }
 };
 

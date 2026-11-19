@@ -1,4 +1,5 @@
 #include <VisorClientPortal.h>
+#include <chrono_monitor.h>
 #include <KeeperRegistry.h>
 #include <ClientPortalService.h>
 #include <private/RpcReply.h>
@@ -197,7 +198,17 @@ void VisorClientPortal::Core::Dispatch(thallium::request const& request,
     // At saturation no request copy, argument ownership, response context or
     // mutation is created. The unchanged-wire client must bound its own wait.
     if(!token)
+    {
+        static RefusalLog refusals;
+        if(auto refused = refusals.note())
+            LOG_WARNING("[VisorClientPortal] Dropped {} client request(s) without a reply since the last such "
+                        "warning, the latest with status {}: no free slot among the visor's {} (rpc_slots). Those "
+                        "clients get CL_ERR_OUTCOME_UNCONFIRMED when their control_ms runs out",
+                        refused,
+                        token.status(),
+                        owner->runtime.capacity());
         return;
+    }
     auto work = std::make_shared<PortalWork>(shared_from_this(),
                                              action,
                                              client,

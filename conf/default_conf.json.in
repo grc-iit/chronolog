@@ -46,7 +46,8 @@
         "flushlevel": "warning"
       }
     },
-    "delayed_data_admin_exit_in_secs": 3
+    "delayed_data_admin_exit_in_secs": 3,
+    "rpc_slots": 32
   },
   "chrono_keeper": {
     "RpcPolicy": {
