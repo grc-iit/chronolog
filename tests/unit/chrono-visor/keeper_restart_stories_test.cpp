@@ -7,11 +7,14 @@
 #include <VisorAdminRuntime.h>
 
 using chronolog::AdminCompletion;
+using chronolog::KeeperIdCard;
+using chronolog::settleUnresolvedStart;
 using chronolog::storiesToStartOnRegistration;
 using chronolog::StoryId;
 using chronolog::StoryRecording;
 using chronolog::StoryStopTargets;
 using chronolog::storyStopTargets;
+using chronolog::UnresolvedStart;
 
 namespace
 {
@@ -127,4 +130,28 @@ TEST(KeeperRestartStories, UnconfirmedFirstStartGetsAStop)
     auto stop = storyStopTargets(r);
     EXPECT_EQ(stop.state, StoryStopTargets::Ready);
     EXPECT_EQ(stop.targets, (std::vector<std::size_t>{0, 1, 3}));
+}
+
+// An unresolved story whose starts all succeeded becomes Active with the
+// keepers the player was told about, not every keeper that succeeded: a keeper
+// that confirmed after the roster closed gets no writes the player would
+// fetch. Before, the roster was rebuilt from every succeeded keeper, so writes
+// could go to a keeper replays never ask.
+TEST(KeeperRestartStories, SettledStoryKeepsThePlayersRoster)
+{
+    KeeperIdCard a(1, chronolog::ServiceId("ofi+tcp", "127.0.0.1", 6001, 61));
+    KeeperIdCard b(1, chronolog::ServiceId("ofi+tcp", "127.0.0.1", 6002, 62));
+    StoryRecording r;
+    r.keepers = {a, b};
+    r.confirmedKeepers = {a};                    // the roster the player was given
+    r.clients.resize(4);                         // grapher, two keepers, player
+    r.starts = {settled(chronolog::CL_SUCCESS),  // grapher
+                settled(chronolog::CL_SUCCESS),  // a
+                settled(chronolog::CL_SUCCESS),  // b, after the roster closed
+                settled(chronolog::CL_SUCCESS)}; // player
+    r.originalStarts = r.starts.size();
+    auto settledStart = settleUnresolvedStart(r);
+    ASSERT_EQ(settledStart.state, UnresolvedStart::Active);
+    ASSERT_EQ(settledStart.keepers.size(), 1u);
+    EXPECT_EQ(chronolog::to_string(settledStart.keepers.front()), chronolog::to_string(a));
 }

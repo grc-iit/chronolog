@@ -249,6 +249,12 @@ inline UnresolvedStart settleUnresolvedStart(StoryRecording const& recording)
         if(succeeded && i >= 1 && i <= recording.keepers.size())
             result.keepers.push_back(recording.keepers[i - 1]);
     }
+    // With a player, its start carried the roster fixed when the acquire's
+    // wait ended (confirmedKeepers), and every start succeeded, so that roster
+    // is what the player fetches from. Keep it: a keeper that confirmed later
+    // would get writes the player never fetches.
+    if(allSucceeded && recording.clients.size() > recording.keepers.size() + 1)
+        result.keepers = recording.confirmedKeepers;
     if(allSucceeded && !result.keepers.empty())
     {
         result.state = UnresolvedStart::Active;
