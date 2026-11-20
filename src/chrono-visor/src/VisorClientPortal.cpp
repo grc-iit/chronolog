@@ -370,8 +370,9 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                 break;
             }
             // A client that disconnected, or never connected, holds nothing:
-            // an acquire of its that ChronoVisor works on only now, after its
-            // disconnect, must not record a story no release will come for.
+            // its acquire admitted after its disconnect (one admitted before
+            // it is refused above as stale) must not record a story no release
+            // will come for.
             if(!clients.get_client_info(client))
             {
                 r->status = CL_ERR_NO_CONNECTION;
