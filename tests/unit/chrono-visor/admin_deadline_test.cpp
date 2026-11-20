@@ -145,10 +145,56 @@ TEST_P(AdminDeadline, CreateWhileTheChroniclesDestroyStillFailsSaysItExists)
     destroyDelays[0] = 300;
     EXPECT_NE(portal.DestroyChronicle(100, "chronicle"), CL_SUCCESS);
     EXPECT_EQ(portal.CreateChronicle(200, "chronicle"), CL_ERR_CHRONICLE_EXISTS);
-    std::this_thread::sleep_for(700ms);
+    // The grapher reads its delay when the call arrives.
+    for(int i = 0; i < 200 && chronicleDestroys[0].load() < 2; ++i) std::this_thread::sleep_for(10ms);
+    ASSERT_EQ(chronicleDestroys[0].load(), 2);
     destroyDelays[0] = 0;
     EXPECT_EQ(portal.CreateChronicle(200, "chronicle"), CL_SUCCESS);
     EXPECT_EQ(chronicleDestroys[0].load(), 3);
+}
+// With no destroy pending, a create that cannot take the registry lock in time
+// says so, not that the chronicle exists: nothing of that name is in the
+// directory, and the next create makes it.
+TEST_P(AdminDeadline, CreateOfANewNameThatRunsOutOfTimeDoesNotSayItExists)
+{
+    VisorClientPortal portal;
+    attach(portal);
+    {
+        auto held = KeeperRegistryTestAccess::lock(*registry);
+        EXPECT_EQ(portal.CreateChronicle(100, "fresh"), CL_ERR_DEADLINE_EXCEEDED);
+    }
+    EXPECT_EQ(portal.CreateChronicle(100, "fresh"), CL_SUCCESS);
+    EXPECT_EQ(chronicleDestroys[0].load(), 0);
+}
+// Less than 2 ms left: half of it rounds down to nothing, and the create
+// still runs with what is left instead of failing to make a deadline.
+TEST_P(AdminDeadline, CreateWithAlmostNoTimeLeftDoesNotThrow)
+{
+    VisorClientPortal portal;
+    attach(portal);
+    auto deadline = rpc::RpcDeadline::after(1ms);
+    EXPECT_NO_THROW(portal.core()->Execute(VisorControlAction::CreateChronicle, 100, "fresh", "", 0, 3, deadline));
+}
+// The client's acquire waited at the visor until the client gave up on it, and
+// the client then disconnected, which the client may do with only acquires
+// unknown. The acquire must not run after the disconnect: no release would
+// ever come for it.
+TEST_P(AdminDeadline, AcquireOvertakenByTheSameClientsDisconnectDoesNothing)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    auto core = portal.core();
+    auto acquire = core->arrive(VisorControlAction::Acquire, 100, "chronicle", "story");
+    auto disconnect = core->arrive(VisorControlAction::Disconnect, 100, "", "");
+    auto deadline = rpc::RpcDeadline::after(std::chrono::seconds(2));
+    core->Execute(VisorControlAction::Disconnect, 100, "", "", 0, 3, deadline, disconnect);
+    EXPECT_EQ(core->Execute(VisorControlAction::Acquire, 100, "chronicle", "story", 0, 3, deadline, acquire)->status,
+              CL_ERR_OUTCOME_UNCONFIRMED);
+    for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
+    core->depart(VisorControlAction::Acquire, 100, "chronicle", "story");
+    core->depart(VisorControlAction::Disconnect, 100, "", "");
+    EXPECT_TRUE(core->arrivalEntries.empty());
 }
 // A client's acquire waited at the visor behind a slow call until the client
 // gave up on it, and the client's retried release of the story ran first. The

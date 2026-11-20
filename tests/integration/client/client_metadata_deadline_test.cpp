@@ -25,6 +25,10 @@ struct ClientRpcContextTestAccess
     {
         context.beforeInitializeUnlock_ = std::move(observer);
     }
+    static void beforeMetadataSend(ClientRpcContext& context, std::function<void()> observer)
+    {
+        context.beforeMetadataSend_ = std::move(observer);
+    }
 };
 } // namespace chronolog
 namespace
@@ -274,11 +278,12 @@ TEST_P(ClientMetadataDeadline, RetryThatIsNeverSentKeepsTheUnknownAcquire)
     peer.state().acquireStatus = CL_ERR_DEADLINE_EXCEEDED;
     EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, client.AcquireStory("c", "s").first);
     std::atomic<bool> held{false};
-    context->beforeMetadataSend = [&]
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(80));
-        held = true;
-    };
+    ClientRpcContextTestAccess::beforeMetadataSend(*context,
+                                                   [&]
+                                                   {
+                                                       std::this_thread::sleep_for(std::chrono::milliseconds(80));
+                                                       held = true;
+                                                   });
     EXPECT_NE(CL_SUCCESS, client.ReleaseStory("c", "s"));
     // The worker settles the retry after the caller's budget ended.
     ASSERT_TRUE(peer.until(
@@ -289,7 +294,7 @@ TEST_P(ClientMetadataDeadline, RetryThatIsNeverSentKeepsTheUnknownAcquire)
                 std::lock_guard<std::timed_mutex> lock(context->metadataMutex);
                 return !context->mutations.unresolvedBeyondAcquisitions();
             }));
-    context->beforeMetadataSend = nullptr;
+    ClientRpcContextTestAccess::beforeMetadataSend(*context, nullptr);
     EXPECT_EQ(0u, peer.state().releases.load());
     EXPECT_EQ(CL_SUCCESS, client.ReleaseStory("c", "s"));
     EXPECT_EQ(1u, peer.state().releases.load());

@@ -105,9 +105,13 @@ public:
     // Logical replay records: public waiters, queued/running submissions and
     // receive owners share these two permits. Unknown work keeps its permit.
     rpc::BulkPermits replayQueries;
-    // Test observer, set before the calls it observes: runs on the worker after
-    // a metadata mutation was admitted and before it is sent to the Visor.
-    std::function<void()> beforeMetadataSend;
+    // Runs the test observer, if any, on the worker after a metadata mutation
+    // was admitted and before it is sent to the Visor.
+    void observeMetadataSend() const
+    {
+        if(beforeMetadataSend_)
+            beforeMetadataSend_();
+    }
 
 private:
     friend struct ClientRpcContextTestAccess;
@@ -115,6 +119,7 @@ private:
     // Test observer is installed before first Connect. It never replaces setup
     // or ownership; it observes actual construction while the init lock is held.
     std::function<void()> beforeInitializeUnlock_;
+    std::function<void()> beforeMetadataSend_; // set by tests before the calls it observes
     std::function<void(ClientQueryService&, bool)> readerRegistrationObserver_;
     static constexpr unsigned Closed = 1u << 31;
     std::atomic<unsigned> facades_{0};

@@ -6,6 +6,7 @@
 #include <ConnectResponseMsg.h>
 #include <chronolog_client.h>
 #include <thallium/serialization/stl/pair.hpp>
+#include <algorithm>
 #include <thread>
 #include <optional>
 namespace chronolog
@@ -154,6 +155,8 @@ orderedKey(VisorControlAction action, ClientId client, std::string const& chroni
         case VisorControlAction::Release:
         case VisorControlAction::DestroyStory:
             return VisorClientPortal::Core::RequestKey{client, chronicle, story};
+        case VisorControlAction::Disconnect: // chronicle names are never empty
+            return VisorClientPortal::Core::RequestKey{client, "", ""};
         default:
             return std::nullopt;
     }
@@ -287,10 +290,20 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
     if(auto key = orderedKey(action, client, chronicle, story); key && arrival != 0)
     {
         std::lock_guard<std::mutex> order(arrivalMutex);
-        auto& entry = arrivalEntries[*key];
-        if(entry.lastRun > arrival)
-            return failure(CL_ERR_OUTCOME_UNCONFIRMED);
-        entry.lastRun = arrival;
+        auto entry = arrivalEntries.find(*key);
+        if(entry != arrivalEntries.end())
+        {
+            if(entry->second.lastRun > arrival)
+                return failure(CL_ERR_OUTCOME_UNCONFIRMED);
+            entry->second.lastRun = arrival;
+        }
+        // A disconnect releases everything the client holds: its requests
+        // that arrived earlier and still wait must not run after it.
+        if(action == VisorControlAction::Disconnect)
+            for(auto it = arrivalEntries.lower_bound(RequestKey{client, "", ""});
+                it != arrivalEntries.end() && std::get<0>(it->first) == client;
+                ++it)
+                it->second.lastRun = std::max(it->second.lastRun, arrival);
     }
     auto r = failure(CL_ERR_UNKNOWN);
     StoryId id = 0;
@@ -305,7 +318,7 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
     {
         bool chronicleDestroyed = false, storyDestroyed = false;
         auto half = std::chrono::duration_cast<std::chrono::milliseconds>(deadline.remaining() / 2);
-        auto resend = rpc::RpcDeadline::after(half);
+        auto resend = half > std::chrono::milliseconds::zero() ? rpc::RpcDeadline::after(half) : deadline;
         int status = registry->finishUnconfirmedDestruction(c, s, resend, chronicleDestroyed, storyDestroyed);
         if(status != CL_SUCCESS)
             return status;
@@ -341,7 +354,7 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
             r->status = finishDestruction(chronicle, "");
             if(r->status == CL_SUCCESS)
                 r->status = directory.create_chronicle(chronicle);
-            else
+            else if(r->status == CL_ERR_OUTCOME_UNCONFIRMED) // a destroy was pending
                 r->status = CL_ERR_CHRONICLE_EXISTS;
             break;
         case VisorControlAction::Acquire:

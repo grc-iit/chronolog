@@ -245,8 +245,8 @@ public:
     // or storyDestroyed set means every grapher has now confirmed it, and the
     // caller removes the name from the directory; CL_SUCCESS with neither set
     // means no destroy was pending. Any failure leaves the destroy pending and
-    // returns CL_ERR_OUTCOME_UNCONFIRMED, or CL_ERR_DEADLINE_EXCEEDED or
-    // CL_ERR_RPC_CAPACITY when it ended before the destroy was sent again.
+    // returns CL_ERR_OUTCOME_UNCONFIRMED, or CL_ERR_DEADLINE_EXCEEDED when it
+    // could not take the registry lock, before it looked for a pending destroy.
     int finishUnconfirmedDestruction(ChronicleName const&,
                                      StoryName const&,
                                      rpc::RpcDeadline const&,

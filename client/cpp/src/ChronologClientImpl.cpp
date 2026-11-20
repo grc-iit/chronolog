@@ -150,8 +150,8 @@ public:
            (!owner_->storyteller || !owner_->storyteller->findStoryHandle(chronicle_, story_)))
             return reject(CL_ERR_NOT_ACQUIRED);
         lock.unlock();
-        if(ticket && owner_->beforeMetadataSend)
-            owner_->beforeMetadataSend();
+        if(ticket)
+            owner_->observeMetadataSend();
         auto result = execute(operation);
         // This is worker-only state publication. The public result is private
         // staging; no returned caller frame/output is ever retained here.

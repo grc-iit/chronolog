@@ -70,9 +70,10 @@ public:
                                                    rpc::RpcDeadline const&,
                                                    uint64_t arrival = 0);
         // A client's create, acquire, release and destroy of one name run in
-        // the order they arrived. A request numbered when it arrives (under
-        // admissionMutex) that gets operationMutex after a later request of the
-        // same client on the same name has run does nothing and answers
+        // the order they were admitted. A request numbered when it is admitted
+        // (under admissionMutex) that gets operationMutex after a later request
+        // of the same client on the same name, or after the client's later
+        // disconnect, has run does nothing and answers
         // CL_ERR_OUTCOME_UNCONFIRMED. The client gave up on it before it sent
         // the later request, which settles the outcome; without this an
         // acquire that waited behind a slow call could run after the client's
