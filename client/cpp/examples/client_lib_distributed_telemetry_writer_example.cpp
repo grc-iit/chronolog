@@ -390,8 +390,17 @@ public:
             std::cout << "[DistributedTelemetryWriter] Stories: cpu_usage, memory_usage, network_usage\n";
         }
 
-        while(std::chrono::steady_clock::now() < end_time)
+        // Rank 0 decides each round whether there is another, so every rank
+        // runs the same number of rounds and so of barriers. Each rank used to
+        // test its own end time, taken when its own setup finished: a rank
+        // that set up a few seconds later ran one round more and waited in
+        // MPI_Barrier while the others were already in MPI_Finalize.
+        while(true)
         {
+            int more = rank == 0 && std::chrono::steady_clock::now() < end_time ? 1 : 0;
+            MPI_Bcast(&more, 1, MPI_INT, 0, MPI_COMM_WORLD);
+            if(!more)
+                break;
             SystemMetrics metrics = collectMetrics();
             logMetrics(metrics);
 
