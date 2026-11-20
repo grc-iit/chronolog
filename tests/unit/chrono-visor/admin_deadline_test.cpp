@@ -21,12 +21,6 @@ TEST_P(AdminDeadline, TwoSilentKeepersDoNotHideResponsiveThird)
     EXPECT_EQ(starts[2].load(), 1);
     EXPECT_EQ(starts[3].load(), 1);
 }
-// Keepers 1 and 2 answer the start only after its attempt timed out, so the
-// acquire gets keeper 3 alone and their starts stay without an answer. The
-// release still stops the story, on every component, and the next acquire
-// starts it afresh on all three keepers. Before, every release of such a story
-// returned CL_ERR_OUTCOME_UNCONFIRMED until the visor restarted, and an
-// acquire kept reusing the one-keeper roster.
 // The registry uses the size of the runtime it is given (rpc_slots), and an
 // acquire of a new story needs its own request, the grapher, the player and
 // every keeper of the group at once.
@@ -119,6 +113,81 @@ TEST_P(AdminDeadline, AcquireFinishesAnUnconfirmedChronicleDestroyAndFindsNoChro
     for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
     EXPECT_EQ(portal.CreateChronicle(100, "chronicle"), CL_SUCCESS);
 }
+// A grapher that answers a destroy with an error (here one shutting down) may
+// not be the only grapher, and the destroy stays pending to be sent again, so
+// the client is told the outcome is unknown. Before, it got the grapher's
+// code, read it as "not destroyed", and the next create or acquire of the name
+// destroyed it anyway.
+TEST_P(AdminDeadline, DestroyAGrapherRefusedIsUnconfirmedAndSentAgain)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    ASSERT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
+    ASSERT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    destroyReplies[0] = CL_ERR_SHUTDOWN_INCOMPLETE;
+    EXPECT_EQ(portal.DestroyStory(100, "chronicle", "story"), CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_EQ(portal.DestroyChronicle(100, "chronicle"), CL_ERR_OUTCOME_UNCONFIRMED);
+    destroyReplies[0] = CL_SUCCESS;
+    EXPECT_EQ(portal.DestroyChronicle(100, "chronicle"), CL_SUCCESS);
+    EXPECT_EQ(storyDestroys[0].load(), 1);
+    EXPECT_EQ(chronicleDestroys[0].load(), 2);
+}
+// The pending destroy of a chronicle still fails when a client creates the
+// chronicle again. The old chronicle is still in the directory and nothing was
+// created, so the answer is definite. Before, the create returned -23, and the
+// creating client refused every change in the chronicle until it restarted.
+TEST_P(AdminDeadline, CreateWhileTheChroniclesDestroyStillFailsSaysItExists)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    destroyDelays[0] = 300;
+    EXPECT_NE(portal.DestroyChronicle(100, "chronicle"), CL_SUCCESS);
+    EXPECT_EQ(portal.CreateChronicle(200, "chronicle"), CL_ERR_CHRONICLE_EXISTS);
+    std::this_thread::sleep_for(700ms);
+    destroyDelays[0] = 0;
+    EXPECT_EQ(portal.CreateChronicle(200, "chronicle"), CL_SUCCESS);
+    EXPECT_EQ(chronicleDestroys[0].load(), 3);
+}
+// A client's acquire waited at the visor behind a slow call until the client
+// gave up on it, and the client's retried release of the story ran first. The
+// acquire then does nothing: the client counts the story as released. Before,
+// it started recording a story the client believed it did not hold.
+TEST_P(AdminDeadline, AcquireOvertakenByTheSameClientsReleaseDoesNothing)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    auto core = portal.core();
+    auto acquire = core->arrive(VisorControlAction::Acquire, 100, "chronicle", "story");
+    auto release = core->arrive(VisorControlAction::Release, 100, "chronicle", "story");
+    auto other = core->arrive(VisorControlAction::Acquire, 200, "chronicle", "story");
+    ASSERT_LT(acquire, release);
+    auto deadline = rpc::RpcDeadline::after(std::chrono::seconds(2));
+    EXPECT_NE(core->Execute(VisorControlAction::Release, 100, "chronicle", "story", 0, 3, deadline, release)->status,
+              CL_ERR_OUTCOME_UNCONFIRMED);
+    EXPECT_EQ(core->Execute(VisorControlAction::Acquire, 100, "chronicle", "story", 0, 3, deadline, acquire)->status,
+              CL_ERR_OUTCOME_UNCONFIRMED);
+    for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
+    // Another client's request on the same story is not ordered against it.
+    EXPECT_EQ(core->Execute(VisorControlAction::Acquire, 200, "chronicle", "story", 0, 3, deadline, other)->status,
+              CL_SUCCESS);
+    core->depart(VisorControlAction::Acquire, 100, "chronicle", "story");
+    core->depart(VisorControlAction::Release, 100, "chronicle", "story");
+    core->depart(VisorControlAction::Acquire, 200, "chronicle", "story");
+    EXPECT_TRUE(core->arrivalEntries.empty());
+    // Requests that arrive in order run.
+    EXPECT_EQ(portal.AcquireStory(100, "chronicle", "story").getErrorCode(), CL_SUCCESS);
+    EXPECT_EQ(portal.ReleaseStory(100, "chronicle", "story"), CL_SUCCESS);
+    EXPECT_TRUE(core->arrivalEntries.empty());
+}
+// Keepers 1 and 2 answer the start only after its attempt timed out, so the
+// acquire gets keeper 3 alone and their starts stay without an answer. The
+// release still stops the story, on every component, and the next acquire
+// starts it afresh on all three keepers. Before, every release of such a story
+// returned CL_ERR_OUTCOME_UNCONFIRMED until the visor restarted, and an
+// acquire kept reusing the one-keeper roster.
 TEST_P(AdminDeadline, DegradedAcquireIsReleasedAndTheNextAcquireReachesEveryKeeper)
 {
     std::vector<KeeperIdCard> roster;

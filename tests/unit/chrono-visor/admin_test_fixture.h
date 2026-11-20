@@ -65,8 +65,10 @@ protected:
     std::atomic<unsigned> appendCounts[5]{};
     std::atomic<int> stops[5]{};
     int stopDelays[5]{};
-    // destroy_story and destroy_chronicle: answered CL_SUCCESS after destroyDelays[i] ms
+    // destroy_story and destroy_chronicle: answered destroyReplies[i] (CL_SUCCESS
+    // by default) after destroyDelays[i] ms
     int destroyDelays[5]{};
+    std::atomic<int> destroyReplies[5]{};
     std::atomic<int> storyDestroys[5]{}, chronicleDestroys[5]{};
     bool suppressShutdownReply[5]{};
     int shutdownAcks[5]{1, 1, 1, 1, 1};
@@ -187,7 +189,7 @@ protected:
                         margo_thread_sleep(peers->get_margo_instance(), destroyDelays[i]);
                         try
                         {
-                            req.respond(0);
+                            req.respond(destroyReplies[i].load());
                         }
                         catch(...)
                         {}
@@ -201,7 +203,7 @@ protected:
                         margo_thread_sleep(peers->get_margo_instance(), destroyDelays[i]);
                         try
                         {
-                            req.respond(0);
+                            req.respond(destroyReplies[i].load());
                         }
                         catch(...)
                         {}

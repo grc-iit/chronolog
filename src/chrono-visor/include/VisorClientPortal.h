@@ -6,8 +6,10 @@
 #include <ChronicleMetaDirectory.h>
 #include <AcquireStoryResponseMsg.h>
 #include <ConfigurationBlocks.h>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <tuple>
 namespace chronolog
 {
 class KeeperRegistry;
@@ -57,13 +59,37 @@ public:
                                                   std::string const& chronicle = {},
                                                   std::string const& story = {},
                                                   uint32_t account = 0);
+        // `arrival` is the request's number from arrive(), or 0 for a call
+        // that is not ordered.
         std::shared_ptr<VisorControlReply> Execute(VisorControlAction,
                                                    ClientId,
                                                    std::string const&,
                                                    std::string const&,
                                                    uint32_t,
                                                    uint32_t,
-                                                   rpc::RpcDeadline const&);
+                                                   rpc::RpcDeadline const&,
+                                                   uint64_t arrival = 0);
+        // A client's create, acquire, release and destroy of one name run in
+        // the order they arrived. A request numbered when it arrives (under
+        // admissionMutex) that gets operationMutex after a later request of the
+        // same client on the same name has run does nothing and answers
+        // CL_ERR_OUTCOME_UNCONFIRMED. The client gave up on it before it sent
+        // the later request, which settles the outcome; without this an
+        // acquire that waited behind a slow call could run after the client's
+        // retried release had been answered "not acquired". arrive() returns
+        // 0 for the other calls. Each arrive() is matched by one depart(); an
+        // entry lives only while a request on its name is queued.
+        using RequestKey = std::tuple<ClientId, std::string, std::string>;
+        uint64_t arrive(VisorControlAction, ClientId, std::string const& chronicle, std::string const& story);
+        void depart(VisorControlAction, ClientId, std::string const& chronicle, std::string const& story);
+        struct ArrivalEntry
+        {
+            std::size_t queued = 0;
+            uint64_t lastRun = 0;
+        };
+        std::mutex arrivalMutex;
+        uint64_t arrivals = 0;
+        std::map<RequestKey, ArrivalEntry> arrivalEntries;
         std::atomic<bool> shuttingDown{false};
         std::atomic<std::size_t> incomingRequests{0};
         std::shared_ptr<KeeperRegistry> registry;

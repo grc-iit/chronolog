@@ -21,6 +21,7 @@ struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
     std::string chronicle, story;
     uint32_t account, protocol;
     std::optional<thallium::request> request;
+    uint64_t arrival;
     PortalWork(std::shared_ptr<VisorClientPortal::Core> c,
                VisorControlAction a,
                ClientId id,
@@ -36,6 +37,7 @@ struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
         , story(sn)
         , account(account)
         , protocol(protocol)
+        , arrival(core->arrive(a, id, cn, sn))
     {
         if(req)
         {
@@ -45,6 +47,7 @@ struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
     }
     ~PortalWork() override
     {
+        core->depart(action, client, chronicle, story);
         if(request)
         {
             request.reset();
@@ -55,7 +58,7 @@ struct PortalWork final: rpc::OwnedRpcWork<std::shared_ptr<VisorControlReply>>
     {
         if(!context.tryBeginDispatch())
             return {CL_ERR_DEADLINE_EXCEEDED, false, std::nullopt};
-        auto reply = core->Execute(action, client, chronicle, story, account, protocol, context.deadline());
+        auto reply = core->Execute(action, client, chronicle, story, account, protocol, context.deadline(), arrival);
         if(request)
         {
             // request carries a native handle ref; Core retains engine/provider.
@@ -136,6 +139,50 @@ void VisorClientPortal::Core::releaseOwnedServices()
     provider = nullptr;
     engine.reset();
     registry.reset();
+}
+namespace
+{
+std::optional<VisorClientPortal::Core::RequestKey>
+orderedKey(VisorControlAction action, ClientId client, std::string const& chronicle, std::string const& story)
+{
+    switch(action)
+    {
+        case VisorControlAction::CreateChronicle:
+        case VisorControlAction::DestroyChronicle:
+            return VisorClientPortal::Core::RequestKey{client, chronicle, ""};
+        case VisorControlAction::Acquire:
+        case VisorControlAction::Release:
+        case VisorControlAction::DestroyStory:
+            return VisorClientPortal::Core::RequestKey{client, chronicle, story};
+        default:
+            return std::nullopt;
+    }
+}
+} // namespace
+uint64_t VisorClientPortal::Core::arrive(VisorControlAction action,
+                                         ClientId client,
+                                         std::string const& chronicle,
+                                         std::string const& story)
+{
+    auto key = orderedKey(action, client, chronicle, story);
+    if(!key)
+        return 0;
+    std::lock_guard<std::mutex> lock(arrivalMutex);
+    ++arrivalEntries[*key].queued;
+    return ++arrivals;
+}
+void VisorClientPortal::Core::depart(VisorControlAction action,
+                                     ClientId client,
+                                     std::string const& chronicle,
+                                     std::string const& story)
+{
+    auto key = orderedKey(action, client, chronicle, story);
+    if(!key)
+        return;
+    std::lock_guard<std::mutex> lock(arrivalMutex);
+    auto it = arrivalEntries.find(*key);
+    if(it != arrivalEntries.end() && --it->second.queued == 0)
+        arrivalEntries.erase(it);
 }
 bool VisorClientPortal::Core::quiesce(rpc::RpcDeadline const& deadline)
 {
@@ -227,7 +274,8 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                                                                     std::string const& story,
                                                                     uint32_t account,
                                                                     uint32_t protocol,
-                                                                    rpc::RpcDeadline const& deadline)
+                                                                    rpc::RpcDeadline const& deadline,
+                                                                    uint64_t arrival)
 {
     std::unique_lock<std::mutex> lock(operationMutex, std::defer_lock);
     while(!deadline.expired() && !lock.try_lock())
@@ -236,6 +284,14 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
         return failure(CL_ERR_DEADLINE_EXCEEDED);
     if(shuttingDown.load(std::memory_order_acquire))
         return failure(CL_ERR_SHUTDOWN_INCOMPLETE);
+    if(auto key = orderedKey(action, client, chronicle, story); key && arrival != 0)
+    {
+        std::lock_guard<std::mutex> order(arrivalMutex);
+        auto& entry = arrivalEntries[*key];
+        if(entry.lastRun > arrival)
+            return failure(CL_ERR_OUTCOME_UNCONFIRMED);
+        entry.lastRun = arrival;
+    }
     auto r = failure(CL_ERR_UNKNOWN);
     StoryId id = 0;
     bool last = false;
@@ -243,10 +299,14 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
     // confirm is sent again before a create or acquire of the name, as an
     // unconfirmed stop is; once every grapher confirms it, the name is removed
     // here too, and the create or acquire goes on as for a new name.
+    // The destroy gets half the time left, so the create or acquire still
+    // answers within the client's budget when a grapher does not.
     auto finishDestruction = [&](std::string const& c, std::string const& s) -> int
     {
         bool chronicleDestroyed = false, storyDestroyed = false;
-        int status = registry->finishUnconfirmedDestruction(c, s, deadline, chronicleDestroyed, storyDestroyed);
+        auto half = std::chrono::duration_cast<std::chrono::milliseconds>(deadline.remaining() / 2);
+        auto resend = rpc::RpcDeadline::after(half);
+        int status = registry->finishUnconfirmedDestruction(c, s, resend, chronicleDestroyed, storyDestroyed);
         if(status != CL_SUCCESS)
             return status;
         int removed = CL_SUCCESS;
@@ -275,9 +335,14 @@ std::shared_ptr<VisorControlReply> VisorClientPortal::Core::Execute(VisorControl
                 r->status = CL_ERR_INVALID_ARG;
                 break;
             }
+            // A pending destroy that cannot be finished now leaves the old
+            // chronicle in the directory, so nothing was created: the answer
+            // is definite, and a later create sends the destroy again.
             r->status = finishDestruction(chronicle, "");
             if(r->status == CL_SUCCESS)
                 r->status = directory.create_chronicle(chronicle);
+            else
+                r->status = CL_ERR_CHRONICLE_EXISTS;
             break;
         case VisorControlAction::Acquire:
         {

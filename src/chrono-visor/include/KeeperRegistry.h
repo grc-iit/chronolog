@@ -234,6 +234,9 @@ public:
                                             rpc::RpcDeadline const* = nullptr);
 
     // Broadcast destroy_chronicle to every active Grapher in the registry.
+    // Both return CL_ERR_OUTCOME_UNCONFIRMED for a destroy that was sent and
+    // that some grapher did not confirm, whatever it answered, and keep it
+    // pending to be sent again.
     int notifyAllGraphersOfChronicleDestruction(ChronicleName const&, rpc::RpcDeadline const* = nullptr);
 
     // A destroy of `chronicle`, or of `story` in it, that a grapher did not
@@ -242,7 +245,8 @@ public:
     // or storyDestroyed set means every grapher has now confirmed it, and the
     // caller removes the name from the directory; CL_SUCCESS with neither set
     // means no destroy was pending. Any failure leaves the destroy pending and
-    // returns CL_ERR_OUTCOME_UNCONFIRMED.
+    // returns CL_ERR_OUTCOME_UNCONFIRMED, or CL_ERR_DEADLINE_EXCEEDED or
+    // CL_ERR_RPC_CAPACITY when it ended before the destroy was sent again.
     int finishUnconfirmedDestruction(ChronicleName const&,
                                      StoryName const&,
                                      rpc::RpcDeadline const&,

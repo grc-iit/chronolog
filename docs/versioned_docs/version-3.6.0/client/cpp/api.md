@@ -86,7 +86,7 @@ int Client::CreateChronicle(std::string const& chronicle_name);
 ```
 
 - Create a new chronicle named `chronicle_name`.
-- Returns `CL_SUCCESS` on success, `CL_ERR_CHRONICLE_EXISTS` if a chronicle with that name already exists, or another error code on failure.
+- Returns `CL_SUCCESS` on success, `CL_ERR_CHRONICLE_EXISTS` if a chronicle with that name already exists, or another error code on failure. `CL_ERR_CHRONICLE_EXISTS` also comes back while an earlier destroy of the chronicle that a grapher did not confirm cannot be finished yet (see [ChronoVisor](../../user-guide/architecture/chronovisor.md#starting-and-stopping-a-story)); a later create tries again.
 
 ```cpp
 int Client::DestroyChronicle(std::string const& chronicle_name);

@@ -1197,12 +1197,16 @@ int KeeperRegistry::notifyAllGraphersOfStoryDestruction(ChronicleName const& chr
                                             AdminArguments{AdminAction::DestroyStory, chronicle, story, id, 0, {}},
                                             std::make_shared<AdminCompletion>(),
                                             shared_from_this())));
+    // Once sent, a destroy that any grapher did not confirm stays pending and
+    // is sent again later, so the caller is never told it failed: a grapher
+    // may have deleted its files, and the next create or acquire of the name
+    // finishes it.
     int status = CL_SUCCESS;
     for(auto& p: pending)
     {
         auto r = p.wait();
         if(!r.reply || *r.reply != CL_SUCCESS)
-            status = r.reply ? *r.reply : r.status;
+            status = CL_ERR_OUTCOME_UNCONFIRMED;
     }
     {
         // Taken whatever the deadline, as in the start path: the placeholder
@@ -1260,12 +1264,16 @@ int KeeperRegistry::notifyAllGraphersOfChronicleDestruction(ChronicleName const&
                                             AdminArguments{AdminAction::DestroyChronicle, chronicle, "", 0, 0, {}},
                                             std::make_shared<AdminCompletion>(),
                                             shared_from_this())));
+    // Once sent, a destroy that any grapher did not confirm stays pending and
+    // is sent again later, so the caller is never told it failed: a grapher
+    // may have deleted its files, and the next create or acquire of the name
+    // finishes it.
     int status = CL_SUCCESS;
     for(auto& p: pending)
     {
         auto r = p.wait();
         if(!r.reply || *r.reply != CL_SUCCESS)
-            status = r.reply ? *r.reply : r.status;
+            status = CL_ERR_OUTCOME_UNCONFIRMED;
     }
     {
         std::lock_guard<std::mutex> lock(registryLock);
