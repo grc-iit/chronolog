@@ -105,6 +105,9 @@ public:
     // Logical replay records: public waiters, queued/running submissions and
     // receive owners share these two permits. Unknown work keeps its permit.
     rpc::BulkPermits replayQueries;
+    // Test observer, set before the calls it observes: runs on the worker after
+    // a metadata mutation was admitted and before it is sent to the Visor.
+    std::function<void()> beforeMetadataSend;
 
 private:
     friend struct ClientRpcContextTestAccess;

@@ -43,9 +43,10 @@ public:
         std::pair<std::string, std::string> name;
         uint64_t generation;
         // Sent to settle an earlier unconfirmed acquire or release of this
-        // name. Only a Visor reply may clear it; a local answer keeps the
-        // record Unconfirmed.
+        // name. Only a Visor reply may clear it; a local answer, or a failure
+        // before it is sent, restores the earlier record (keepEarlier).
         bool retry = false;
+        Kind earlier = Kind::Other;
     };
     bool unresolved() const noexcept { return !records_.empty(); }
     // True when a record other than an unconfirmed acquire or release is left;
@@ -69,8 +70,18 @@ public:
         if(next_ == UINT64_MAX)
             return std::nullopt;
         Ticket ticket{{chronicle, story}, ++next_, admitted == Admission::Retry};
+        if(auto position = records_.find(ticket.name); ticket.retry && position != records_.end())
+            ticket.earlier = position->second.kind;
         records_.insert_or_assign(ticket.name, Record{ticket.generation, Phase::Pending, kind});
         return ticket;
+    }
+    // A retry that was answered locally or never sent changed nothing: the
+    // earlier unconfirmed outcome stands as it was.
+    void keepEarlier(Ticket const& ticket)
+    {
+        auto position = records_.find(ticket.name);
+        if(ticket.retry && position != records_.end() && position->second.generation == ticket.generation)
+            position->second = Record{ticket.generation, Phase::Unconfirmed, ticket.earlier};
     }
     void finish(Ticket const& ticket, bool confirmed)
     {

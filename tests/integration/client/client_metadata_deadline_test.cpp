@@ -259,6 +259,41 @@ TEST_P(ClientMetadataDeadline, RemoteDeadlineAcquireIsSettledByARelease)
     EXPECT_EQ(1u, peer.state().releases.load());
     EXPECT_EQ(CL_SUCCESS, client.CreateChronicle("c"));
 }
+// A retried release that is never sent (here its 40 ms budget runs out before
+// it is) leaves the acquire's outcome unknown, so the next release is sent and
+// settles it. Before, the failed retry erased the record: the client then
+// answered every release "not acquired" locally while the Visor might hold the
+// story.
+TEST_P(ClientMetadataDeadline, RetryThatIsNeverSentKeepsTheUnknownAcquire)
+{
+    MetadataPeer peer(GetParam());
+    Client client(peer.portal);
+    ASSERT_EQ(CL_SUCCESS, connectReady(client, peer.portal));
+    auto context =
+            ChronologClientImpl::GetClientImplInstance(peer.portal, WRITER_MODE, ClientQueryServiceConf{})->context();
+    peer.state().acquireStatus = CL_ERR_DEADLINE_EXCEEDED;
+    EXPECT_EQ(CL_ERR_OUTCOME_UNCONFIRMED, client.AcquireStory("c", "s").first);
+    std::atomic<bool> held{false};
+    context->beforeMetadataSend = [&]
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        held = true;
+    };
+    EXPECT_NE(CL_SUCCESS, client.ReleaseStory("c", "s"));
+    // The worker settles the retry after the caller's budget ended.
+    ASSERT_TRUE(peer.until(
+            [&]
+            {
+                if(!held.load())
+                    return false;
+                std::lock_guard<std::timed_mutex> lock(context->metadataMutex);
+                return !context->mutations.unresolvedBeyondAcquisitions();
+            }));
+    context->beforeMetadataSend = nullptr;
+    EXPECT_EQ(0u, peer.state().releases.load());
+    EXPECT_EQ(CL_SUCCESS, client.ReleaseStory("c", "s"));
+    EXPECT_EQ(1u, peer.state().releases.load());
+}
 TEST_P(ClientMetadataDeadline, SuccessWithoutRosterDoesNotFabricateHandle)
 {
     MetadataPeer peer(GetParam());

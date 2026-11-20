@@ -83,6 +83,22 @@ TEST(MetadataOperationState, UnconfirmedRetryStaysRetryable)
     ASSERT_TRUE(again);
     EXPECT_TRUE(again->retry);
 }
+// A retried release that changed nothing (answered locally, or never sent)
+// leaves the acquire's unknown outcome as it was, so a retried acquire is
+// still admitted.
+TEST(MetadataOperationState, RetryThatChangedNothingKeepsTheEarlierOutcome)
+{
+    MetadataOperationState state;
+    auto acquire = state.begin("c", "s", Kind::Acquire);
+    state.finish(*acquire, false);
+    auto release = state.begin("c", "s", Kind::Release);
+    ASSERT_TRUE(release && release->retry);
+    state.keepEarlier(*release);
+    EXPECT_TRUE(state.unresolved());
+    auto again = state.begin("c", "s", Kind::Acquire);
+    ASSERT_TRUE(again);
+    EXPECT_TRUE(again->retry);
+}
 // After a release with an unknown outcome the client still has the story's
 // handle, so only another release is sent.
 TEST(MetadataOperationState, UnconfirmedReleaseAdmitsOnlyARetriedRelease)

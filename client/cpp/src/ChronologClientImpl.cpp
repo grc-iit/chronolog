@@ -128,8 +128,10 @@ public:
         bool retry = ticket && ticket->retry;
         auto reject = [&](int status, StoryHandle* handle = nullptr)
         {
-            if(ticket)
-                owner_->mutations.finish(*ticket, !retry);
+            if(ticket && retry)
+                owner_->mutations.keepEarlier(*ticket);
+            else if(ticket)
+                owner_->mutations.finish(*ticket, true);
             return local(retry ? CL_ERR_OUTCOME_UNCONFIRMED : status, handle);
         };
         if(action_ == Action::Connect && owner_->connected)
@@ -148,6 +150,8 @@ public:
            (!owner_->storyteller || !owner_->storyteller->findStoryHandle(chronicle_, story_)))
             return reject(CL_ERR_NOT_ACQUIRED);
         lock.unlock();
+        if(ticket && owner_->beforeMetadataSend)
+            owner_->beforeMetadataSend();
         auto result = execute(operation);
         // This is worker-only state publication. The public result is private
         // staging; no returned caller frame/output is ever retained here.
@@ -219,7 +223,18 @@ public:
                 owner_->mutations.finish(*ticket, !uncertain);
         }
         else if(ticket)
-            owner_->mutations.finish(*ticket, !result.may_have_dispatched);
+        {
+            // No reply. A call that was not sent changed nothing; a retry that
+            // was not sent leaves the earlier outcome unknown, as its local
+            // answers do.
+            if(retry && !result.may_have_dispatched)
+            {
+                owner_->mutations.keepEarlier(*ticket);
+                result.status = CL_ERR_OUTCOME_UNCONFIRMED;
+            }
+            else
+                owner_->mutations.finish(*ticket, !result.may_have_dispatched);
+        }
         if(readOnly && !result.reply && result.may_have_dispatched)
             result.status = CL_ERR_DEADLINE_EXCEEDED;
         return result;
