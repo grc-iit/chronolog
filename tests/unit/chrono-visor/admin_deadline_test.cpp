@@ -175,6 +175,23 @@ TEST_P(AdminDeadline, CreateWithAlmostNoTimeLeftDoesNotThrow)
     auto deadline = rpc::RpcDeadline::after(1ms);
     EXPECT_NO_THROW(portal.core()->Execute(VisorControlAction::CreateChronicle, 100, "fresh", "", 0, 3, deadline));
 }
+// An acquire that ChronoVisor works on only after the same client's
+// disconnect, here numbered after it, as when it waited in the transport's
+// queue, is refused: the client is gone and no release would come for it.
+TEST_P(AdminDeadline, AcquireAfterTheClientsDisconnectIsRefused)
+{
+    delays[1] = delays[2] = 0;
+    VisorClientPortal portal;
+    attach(portal);
+    ClientId client = 300;
+    uint64_t offset = 0;
+    ASSERT_EQ(portal.ClientConnect(0, client, offset), CL_SUCCESS);
+    ASSERT_EQ(portal.ClientDisconnect(300), CL_SUCCESS);
+    EXPECT_EQ(portal.AcquireStory(300, "chronicle", "story").getErrorCode(), CL_ERR_NO_CONNECTION);
+    for(auto const& count: starts) EXPECT_EQ(count.load(), 0);
+    // Nothing was added: not even the story.
+    EXPECT_EQ(portal.DestroyStory(100, "chronicle", "story"), CL_ERR_NOT_EXIST);
+}
 // The client's acquire waited at the visor until the client gave up on it, and
 // the client then disconnected, which the client may do with only acquires
 // unknown. The acquire must not run after the disconnect: no release would
@@ -208,6 +225,9 @@ TEST_P(AdminDeadline, AcquireOvertakenByTheSameClientsReleaseDoesNothing)
     auto core = portal.core();
     auto acquire = core->arrive(VisorControlAction::Acquire, 100, "chronicle", "story");
     auto release = core->arrive(VisorControlAction::Release, 100, "chronicle", "story");
+    ClientId second = 200;
+    uint64_t offset = 0;
+    ASSERT_EQ(portal.ClientConnect(0, second, offset), CL_SUCCESS);
     auto other = core->arrive(VisorControlAction::Acquire, 200, "chronicle", "story");
     ASSERT_LT(acquire, release);
     auto deadline = rpc::RpcDeadline::after(std::chrono::seconds(2));
