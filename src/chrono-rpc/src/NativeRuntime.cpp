@@ -299,7 +299,7 @@ void NativeMidRuntime::construct(void* pointer) noexcept
     try
     {
         margo_init_info options = MARGO_INIT_INFO_INITIALIZER;
-        options.json_config = R"({"use_progress_thread":true})";
+        options.json_config = R"({"use_progress_thread":true,"progress_spindown_msec":0})";
         options.rpc_pool = self.rpcPool_;
         self.mid_ = margo_init_ext(self.spec_.address.c_str(), self.spec_.mode, &options);
         if(self.mid_ == MARGO_INSTANCE_NULL)
